@@ -85,17 +85,16 @@ BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
 
 ## Unraid
 
-This fork includes Unraid XML templates and Community Applications submission metadata:
+This fork includes a Community Applications-ready Unraid template:
 
 - IronsBot template: `templates/ironsbot.xml`
-- NapCat template: `unraid/templates/napcat.xml`
 - CA profile: `ca_profile.xml`
+- Optional NapCat example: `unraid/examples/napcat.xml.example`
 
 Template URLs:
 
 ```text
 https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml
-https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/unraid/templates/napcat.xml
 ```
 
 The Unraid template exposes the runtime variables as editable fields, including group IDs, meeting number, OneBot token, and Bilibili monitor settings.

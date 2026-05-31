@@ -9,10 +9,10 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/NapNeko/NapCatQQ</Support>
   <Project>https://github.com/NapNeko/NapCatQQ</Project>
-  <Overview>NapCatQQ OneBot endpoint for IronsBot.</Overview>
-  <Category>Tools:</Category>
+  <Overview>NapCatQQ OneBot endpoint example for IronsBot.</Overview>
+  <Category>Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:6099]/webui</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/unraid/templates/napcat.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/unraid/examples/napcat.xml.example</TemplateURL>
   <Icon/>
   <ExtraParams/>
   <PostArgs/>
