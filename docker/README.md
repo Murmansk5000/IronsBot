@@ -15,6 +15,7 @@ ghcr.io/murmansk5000/ironsbot:latest
 
 ## Included Custom Plugins
 
+- `ai_chat`: chat with DeepSeek through mentions or authorized private messages.
 - `sendpic_custom`: reply with fixed local images by command keywords.
 - `meeting_reply`: reply with Tencent Meeting information from environment variables.
 - `event_link`: reply or schedule-send event links to configured groups/users.
@@ -99,6 +100,10 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `BILIBILI_MONITOR_TARGET_GROUP_IDS` | QQ groups receiving Bilibili dynamic updates. |
 | `BILIBILI_MONITOR_ADMIN_UIDS` | QQ users allowed to run Bilibili monitor admin commands. |
 | `SCHEDULED_PRIVATE_MESSAGES` | JSON-like list of scheduled private message tasks. |
+| `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
+| `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat. In group chats they must mention the bot. |
+| `AI_CHAT_ALLOWED_GROUP_IDS` | Optional group whitelist for AI chat. Empty means no group restriction. |
+| `AI_CHAT_ALLOW_GROUP_OWNER` | Whether group owners can use AI chat by mentioning the bot. |
 
 List values should use JSON-like syntax, for example:
 
@@ -107,6 +112,7 @@ SUPERUSERS=["123456789"]
 MEETING_REPLY_GROUPS=[123456789]
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
 SCHEDULED_PRIVATE_MESSAGES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
+AI_CHAT_ALLOWED_USER_IDS=[123456789]
 ```
 
 ## Unraid

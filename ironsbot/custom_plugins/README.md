@@ -15,6 +15,7 @@ plugin_dirs = ["ironsbot/plugins", "ironsbot/custom_plugins"]
 
 ```text
 ironsbot/custom_plugins/
+  ai_chat/           # 接入 DeepSeek API，群聊 @机器人 或授权私聊触发
   bilibili_monitor/   # 监控指定 B 站账号动态，推送到配置的群/用户
   event_link/         # 回复“签到/活动/链接”，并可定时推送活动链接
   meeting_reply/      # 回复“开播/会议”的腾讯会议信息
@@ -108,6 +109,11 @@ SCHEDULED_PRIVATE_MESSAGES=[
     "message": "该休息了"
   }
 ]
+
+AI_CHAT_API_KEY=sk-...
+AI_CHAT_ALLOWED_USER_IDS=[123456789]
+AI_CHAT_ALLOWED_GROUP_IDS=[123456789]
+AI_CHAT_ALLOW_GROUP_OWNER=true
 ```
 
 ## 本地开发与部署
