@@ -19,6 +19,7 @@ ironsbot/custom_plugins/
   event_link/         # 回复“签到/活动/链接”，并可定时推送活动链接
   meeting_reply/      # 回复“开播/会议”的腾讯会议信息
   pet_config_reply/   # 对“精灵名 + 配置”提示暂不支持配置查询
+  scheduled_private_message/ # 定时向指定用户发送私聊消息
   sendpic_custom/     # 本地固定关键词发图
 ```
 
@@ -90,6 +91,23 @@ BILIBILI_MONITOR_UID=1310714247
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789]
 BILIBILI_MONITOR_TARGET_USER_IDS=[123456789]
 BILIBILI_MONITOR_ADMIN_UIDS=[123456789]
+
+SCHEDULED_PRIVATE_MESSAGES=[
+  {
+    "id": "morning",
+    "user_ids": [123456789, 987654321],
+    "hour": 8,
+    "minute": 30,
+    "message": "早上好"
+  },
+  {
+    "id": "night",
+    "user_ids": [123456789],
+    "hour": 23,
+    "minute": 0,
+    "message": "该休息了"
+  }
+]
 ```
 
 ## 本地开发与部署

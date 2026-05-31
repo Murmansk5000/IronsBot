@@ -62,6 +62,8 @@
   <Config Name="Event Link Send Hour" Target="EVENT_LINK_SEND_HOUR" Default="23" Mode="" Description="Scheduled event link send hour." Type="Variable" Display="advanced" Required="false" Mask="false">23</Config>
   <Config Name="Event Link Send Minute" Target="EVENT_LINK_SEND_MINUTE" Default="0" Mode="" Description="Scheduled event link send minute." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
 
+  <Config Name="Scheduled Private Messages" Target="SCHEDULED_PRIVATE_MESSAGES" Default="[]" Mode="" Description="JSON list of private message tasks. Example: [{&quot;id&quot;:&quot;morning&quot;,&quot;user_ids&quot;:[123456789],&quot;hour&quot;:8,&quot;minute&quot;:30,&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+
   <Config Name="Bilibili Monitor UID" Target="BILIBILI_MONITOR_UID" Default="1310714247" Mode="" Description="Bilibili UID to monitor." Type="Variable" Display="always" Required="false" Mask="false">1310714247</Config>
   <Config Name="Bilibili Check Interval" Target="BILIBILI_MONITOR_CHECK_INTERVAL_MINUTES" Default="5" Mode="" Description="Bilibili dynamic check interval in minutes." Type="Variable" Display="advanced" Required="false" Mask="false">5</Config>
   <Config Name="Bilibili Sleep Start Hour" Target="BILIBILI_MONITOR_SLEEP_START_HOUR" Default="23" Mode="" Description="Low-frequency check start hour." Type="Variable" Display="advanced" Required="false" Mask="false">23</Config>

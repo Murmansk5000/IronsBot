@@ -3,11 +3,12 @@ import time
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 
 from nonebot import require, get_driver
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
 # 注册 APScheduler
@@ -41,6 +42,18 @@ TARGET_USER_IDS = plugin_config.bilibili_monitor_target_user_ids
 
 CACHE_FILE = Path(__file__).parent / "last_dynamic_time.txt"
 COOKIE_CACHE_FILE = Path(__file__).parent / "bili_cookie_cache.txt"
+LOGIN_QR_FILE = Path(__file__).parent / "bili_login_qrcode.png"
+
+AUTH_INVALID_CODES = {-101, -401, -403, 412}
+LOGIN_NOTICE_COOLDOWN_SECONDS = 5 * 60
+LOGIN_QR_EXPIRE_SECONDS = 180
+
+_bili_login_required = False
+_last_login_notice_at = 0.0
+_login_poll_task: asyncio.Task[None] | None = None
+_login_qrcode_key = ""
+_login_qr_url = ""
+_login_expires_at = 0.0
 
 
 # =========================================================
@@ -83,54 +96,271 @@ def save_new_cookie(cookie_str: str):
     )
 
 
+def get_bili_admin_uids() -> list[int]:
+    uids = set(plugin_config.bilibili_monitor_admin_uids)
+
+    superusers = getattr(
+        get_driver().config,
+        "superusers",
+        set()
+    )
+
+    for uid in superusers:
+        try:
+            uids.add(int(uid))
+        except (TypeError, ValueError):
+            continue
+
+    return sorted(uids)
+
+
+def is_bili_admin(user_id: int) -> bool:
+    return user_id in get_bili_admin_uids()
+
+
+def is_bili_login_required() -> bool:
+    return _bili_login_required
+
+
+def is_bili_auth_invalid(
+    status_code: int,
+    data: dict[str, Any] | None = None
+) -> bool:
+    if status_code in {401, 403}:
+        return True
+
+    if not isinstance(data, dict):
+        return False
+
+    return data.get("code") in AUTH_INVALID_CODES
+
+
+def _set_bili_login_required(required: bool) -> None:
+    global _bili_login_required
+    _bili_login_required = required
+
+
+def _get_first_bot() -> Bot | None:
+    bots = get_driver().bots
+
+    if not bots:
+        return None
+
+    return list(bots.values())[0]
+
+
+async def _send_private_to_admins(
+    message: str | Message,
+    bot: Bot | None = None,
+    user_ids: list[int] | None = None
+) -> None:
+    target_user_ids = user_ids or get_bili_admin_uids()
+
+    if not target_user_ids:
+        logger.warning("B站监控未配置管理员，无法发送登录提醒")
+        return
+
+    bot = bot or _get_first_bot()
+
+    if not bot:
+        logger.warning("当前没有Bot在线，无法发送B站登录提醒")
+        return
+
+    for user_id in target_user_ids:
+        try:
+            await bot.send_private_msg(
+                user_id=user_id,
+                message=message
+            )
+
+            await asyncio.sleep(1.2)
+
+        except Exception as e:
+            logger.warning(
+                f"B站登录提醒发送失败 {user_id}: {e}"
+            )
+
+
+async def send_bili_login_qrcode_to_admins(
+    reason: str = "",
+    force: bool = False
+) -> None:
+    global _last_login_notice_at
+
+    _set_bili_login_required(True)
+
+    now = time.time()
+
+    if (
+        not force
+        and now - _last_login_notice_at
+        < LOGIN_NOTICE_COOLDOWN_SECONDS
+    ):
+        return
+
+    bot = _get_first_bot()
+
+    if not bot:
+        logger.warning("当前没有Bot在线，无法发送B站登录二维码")
+        return
+
+    try:
+        qr_message = await request_bili_login_qrcode(bot)
+        _last_login_notice_at = now
+    except Exception as e:
+        logger.error(
+            f"B站登录二维码申请失败: {e}"
+        )
+
+        _last_login_notice_at = now
+
+        detail = f"\n原因：{reason}" if reason else ""
+
+        await _send_private_to_admins(
+            "B站动态监控登录已失效。"
+            f"{detail}\n"
+            "二维码申请失败，请稍后重试。\n"
+            "其他机器人功能会继续正常运行。",
+            bot=bot
+        )
+
+        return
+
+    detail = f"\n原因：{reason}" if reason else ""
+
+    await _send_private_to_admins(
+        Message([
+            MessageSegment.text(
+                "B站动态监控登录已失效。"
+                f"{detail}\n"
+                "其他机器人功能会继续正常运行。\n"
+            ),
+            *qr_message,
+        ]),
+        bot=bot
+    )
+
+
 # =========================================================
 # B站扫码登录
 # =========================================================
 
-def trigger_bili_terminal_qrcode():
-
-    logger.warning(
-        "🚨 Cookie失效，正在申请B站扫码登录..."
+def _build_login_qrcode_message(qr_url: str) -> Message:
+    tip_text = (
+        "请使用B站App扫码登录。\n"
+        "二维码约3分钟内有效；扫码确认后，机器人会自动保存Cookie。\n"
+        "如果图片无法显示，可复制下面的登录链接到二维码工具中生成：\n"
+        f"{qr_url}"
     )
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0"
+    try:
+        import qrcode
+
+        image = qrcode.make(qr_url)
+        image.save(LOGIN_QR_FILE)
+
+        return Message([
+            MessageSegment.image(LOGIN_QR_FILE),
+            MessageSegment.text("\n" + tip_text),
+        ])
+
+    except Exception as e:
+        logger.warning(
+            f"B站登录二维码图片生成失败: {e}"
         )
+
+        return Message(tip_text)
+
+
+async def request_bili_login_qrcode(
+    bot: Bot,
+    requester_id: int | None = None
+) -> Message:
+    global _login_poll_task
+    global _login_qrcode_key
+    global _login_qr_url
+    global _login_expires_at
+
+    now = time.time()
+
+    if (
+        _login_qr_url
+        and _login_expires_at > now
+        and _login_poll_task
+        and not _login_poll_task.done()
+    ):
+        return _build_login_qrcode_message(_login_qr_url)
+
+    if _login_poll_task and not _login_poll_task.done():
+        _login_poll_task.cancel()
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    async with httpx.AsyncClient(
+        headers=headers,
+        timeout=10.0,
+        follow_redirects=True
+    ) as client:
+        response = await client.get(
+            "https://passport.bilibili.com/"
+            "x/passport-login/web/qrcode/generate"
+        )
+
+    result = response.json()
+
+    if result.get("code") != 0:
+        raise RuntimeError(
+            f"B站二维码申请失败: {result}"
+        )
+
+    qr_data = result.get("data", {})
+    qr_url = qr_data.get("url")
+    qrcode_key = qr_data.get("qrcode_key")
+
+    if not qr_url or not qrcode_key:
+        raise RuntimeError("B站二维码返回内容不完整")
+
+    _login_qr_url = qr_url
+    _login_qrcode_key = qrcode_key
+    _login_expires_at = now + LOGIN_QR_EXPIRE_SECONDS
+    _login_poll_task = asyncio.create_task(
+        _poll_bili_login(
+            bot=bot,
+            qrcode_key=qrcode_key,
+            requester_id=requester_id
+        )
+    )
+
+    return _build_login_qrcode_message(qr_url)
+
+
+async def _poll_bili_login(
+    bot: Bot,
+    qrcode_key: str,
+    requester_id: int | None = None
+) -> None:
+    global _login_poll_task
+    global _login_qrcode_key
+    global _login_qr_url
+    global _login_expires_at
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
     }
 
     try:
-        with httpx.Client(
+        async with httpx.AsyncClient(
             headers=headers,
-            timeout=10.0
+            timeout=10.0,
+            follow_redirects=True
         ) as client:
 
-            apply_res = client.get(
-                "https://passport.bilibili.com/"
-                "x/passport-login/web/qrcode/generate"
-            ).json()
-
-            if apply_res.get("code") != 0:
-                return None
-
-            qr_data = apply_res.get("data", {})
-
-            qr_url = qr_data.get("url")
-            qrcode_key = qr_data.get("qrcode_key")
-
-            import qrcode_terminal
-
-            qrcode_terminal.draw(qr_url)
-
-            print(
-                "\n👉 请使用B站APP扫码登录 👈\n"
-            )
-
             for _ in range(36):
+                await asyncio.sleep(5)
 
-                time.sleep(5)
-
-                poll_res = client.get(
+                poll_res = await client.get(
                     "https://passport.bilibili.com/"
                     "x/passport-login/web/qrcode/poll",
                     params={
@@ -138,18 +368,28 @@ def trigger_bili_terminal_qrcode():
                     }
                 )
 
-                if (
-                    poll_res.json()
-                    .get("data", {})
-                    .get("code")
-                    == 0
-                ):
+                poll_data = poll_res.json().get("data", {})
+                poll_code = poll_data.get("code")
 
+                if poll_code == 0:
                     cookies_list = [
                         f"{k}={v}"
                         for k, v
                         in poll_res.cookies.items()
                     ]
+
+                    if not cookies_list:
+                        await _send_private_to_admins(
+                            "B站扫码已确认，但没有取得Cookie。"
+                            "下次检测到登录失效时会重新发送二维码。",
+                            bot=bot,
+                            user_ids=(
+                                [requester_id]
+                                if requester_id
+                                else None
+                            )
+                        )
+                        return
 
                     new_cookie = (
                         "; ".join(cookies_list)
@@ -157,25 +397,58 @@ def trigger_bili_terminal_qrcode():
                     )
 
                     save_new_cookie(new_cookie)
+                    _set_bili_login_required(False)
 
-                    logger.info(
-                        "✅ B站Cookie刷新成功"
+                    logger.info("B站Cookie刷新成功")
+
+                    await _send_private_to_admins(
+                        "B站登录成功，Cookie已刷新。",
+                        bot=bot
                     )
 
-                    return new_cookie
+                    return
 
-            logger.warning(
-                "⚠️ B站扫码登录超时"
+                if poll_code == 86038:
+                    break
+
+            await _send_private_to_admins(
+                "B站登录二维码已过期。"
+                "下次检测到登录失效时会重新发送二维码。",
+                bot=bot,
+                user_ids=(
+                    [requester_id]
+                    if requester_id
+                    else None
+                )
             )
 
-            return None
+    except asyncio.CancelledError:
+        raise
 
     except Exception as e:
         logger.error(
-            f"扫码登录故障: {e}"
+            f"B站扫码登录轮询故障: {e}"
         )
 
-        return None
+        await _send_private_to_admins(
+            "B站扫码登录过程中发生错误。"
+            "下次检测到登录失效时会重新发送二维码。",
+            bot=bot,
+            user_ids=(
+                [requester_id]
+                if requester_id
+                else None
+            )
+        )
+
+    finally:
+        if _login_qrcode_key == qrcode_key:
+            _login_qrcode_key = ""
+            _login_qr_url = ""
+            _login_expires_at = 0.0
+
+        if _login_poll_task is asyncio.current_task():
+            _login_poll_task = None
 
 
 # =========================================================
@@ -412,27 +685,29 @@ async def do_check_logic(
         ) as client:
 
             response = await client.get(list_url)
-
-            if (
-                response.status_code != 200
-                or response.json().get("code")
-                in [-101, -401, -403, 412]
-            ):
-
-                fresh_cookie = (
-                    trigger_bili_terminal_qrcode()
-                )
-
-                if not fresh_cookie:
-                    return
-
-                headers["Cookie"] = fresh_cookie
-
-                response = await client.get(list_url)
-
             res_json = response.json()
 
+            if is_bili_auth_invalid(
+                response.status_code,
+                res_json
+            ):
+
+                await send_bili_login_qrcode_to_admins(
+                    "自动检查动态时发现B站登录失效"
+                )
+
+                return
+
+            if response.status_code != 200:
+                logger.warning(
+                    f"B站动态接口异常: HTTP {response.status_code}"
+                )
+                return
+
             if res_json.get("code") != 0:
+                logger.warning(
+                    f"B站动态接口返回异常: {res_json.get('code')}"
+                )
                 return
 
             valid_dynamics = []

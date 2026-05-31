@@ -12,11 +12,6 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
-from .config import plugin_config
-
-# 超级管理员
-ADMIN_UIDS = plugin_config.bilibili_monitor_admin_uids
-
 # Session缓存
 DYNAMIC_CACHE_SESSION = {}
 
@@ -55,6 +50,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
     from . import (
         BILI_UID,
         get_saved_cookie,
+        is_bili_auth_invalid,
+        send_bili_login_qrcode_to_admins,
         scan_and_swallow_all_long_strings,
     )
 
@@ -85,17 +82,19 @@ async def _(bot: Bot, event: GroupMessageEvent):
         ) as client:
 
             response = await client.get(list_url)
+            res_json = response.json()
 
-            if (
-                response.status_code != 200
-                or response.json().get("code")
-                in [-101, -401, -403, 412]
+            if is_bili_auth_invalid(
+                response.status_code,
+                res_json
             ):
+                await send_bili_login_qrcode_to_admins(
+                    "用户查询动态时发现B站登录失效"
+                )
+
                 await dynamic_menu_matcher.finish(
                     "⚠️ Cookie已失效。"
                 )
-
-            res_json = response.json()
 
             items = (
                 res_json.get("data", {})
@@ -230,7 +229,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     user_id = event.user_id
 
-    if user_id not in ADMIN_UIDS:
+    from . import is_bili_admin
+
+    if not is_bili_admin(user_id):
 
         await update_dynamic_matcher.finish(
             "⛔ 仅超级管理员可用。"

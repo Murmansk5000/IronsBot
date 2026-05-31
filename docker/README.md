@@ -20,6 +20,7 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `event_link`: reply or schedule-send event links to configured groups/users.
 - `bilibili_monitor`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
+- `scheduled_private_message`: send scheduled private messages to configured users.
 
 All group IDs, user IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
 
@@ -45,15 +46,38 @@ services:
       ALIAS_SYNC_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite"
       ALIAS_FINGERPRINT_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
     restart: always
+
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    mac_address: 02:42:ac:11:00:02
+    ports:
+      - "6099:6099"
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./ntqq:/app/.config/QQ
+    environment:
+      NAPCAT_UID: "1000"
+      NAPCAT_GID: "1000"
+      NAPCAT_WEB_TOKEN: "change-me"
+      NAPCAT_REVERSE_WS_POST: "ws://ironsbot:8080/onebot/v11/ws"
+      NAPCAT_REVERSE_WS_TOKEN: "change-me"
+    restart: always
 ```
 
-The bot needs a OneBot v11 client such as NapCat. Configure NapCat reverse WebSocket to:
+The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 
 ```text
 ws://ironsbot:8080/onebot/v11/ws
 ```
 
-The token must match `ONEBOT_ACCESS_TOKEN`.
+If NapCat is created separately in Unraid bridge mode, use the Unraid host IP and mapped port instead:
+
+```text
+ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
+```
+
+The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 
 ## Common Environment Variables
 
@@ -74,6 +98,7 @@ The token must match `ONEBOT_ACCESS_TOKEN`.
 | `EVENT_LINK_SEND_GROUPS` | QQ groups receiving scheduled event links. |
 | `BILIBILI_MONITOR_TARGET_GROUP_IDS` | QQ groups receiving Bilibili dynamic updates. |
 | `BILIBILI_MONITOR_ADMIN_UIDS` | QQ users allowed to run Bilibili monitor admin commands. |
+| `SCHEDULED_PRIVATE_MESSAGES` | JSON-like list of scheduled private message tasks. |
 
 List values should use JSON-like syntax, for example:
 
@@ -81,6 +106,7 @@ List values should use JSON-like syntax, for example:
 SUPERUSERS=["123456789"]
 MEETING_REPLY_GROUPS=[123456789]
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
+SCHEDULED_PRIVATE_MESSAGES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
 ```
 
 ## Unraid

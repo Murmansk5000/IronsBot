@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class Config(BaseModel):
-    help_ignored_plugins: list[str] = ["会议回复", "精灵配置提示"]
+    help_ignored_plugins: list[str] = []
     """需要忽略的插件名称列表"""
 
 
