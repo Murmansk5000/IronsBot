@@ -119,6 +119,8 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `STARTUP_NOTICE_USERS` | Extra QQ users receiving startup notices. |
 | `SCHEDULED_PRIVATE_MESSAGES` | JSON-like list of scheduled private message tasks. |
 | `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
+| `AI_CHAT_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
+| `AI_CHAT_MODEL` | Model name used by the configured AI chat provider. |
 | `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat. In group chats they must mention the bot. |
 | `AI_CHAT_ALLOWED_GROUP_IDS` | Optional group whitelist for AI chat. Empty means no group restriction. |
 | `AI_CHAT_ALLOW_GROUP_OWNER` | Whether group owners can use AI chat by mentioning the bot. |
