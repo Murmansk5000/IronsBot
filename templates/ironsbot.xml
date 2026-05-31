@@ -17,9 +17,6 @@
   <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.svg</Icon>
   <ReadMe>https://github.com/Murmansk5000/IronsBot/blob/main/docker/README.md</ReadMe>
   <ExtraParams/>
-  <PostArgs/>
-  <CPUset/>
-  <DateInstalled/>
   <DonateText/>
   <DonateLink/>
   <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network.</Requires>

@@ -89,7 +89,6 @@ This fork includes a Community Applications-ready Unraid template:
 
 - IronsBot template: `templates/ironsbot.xml`
 - CA profile: `ca_profile.xml`
-- Optional NapCat example: `unraid/examples/napcat.xml.example`
 
 Template URLs:
 
