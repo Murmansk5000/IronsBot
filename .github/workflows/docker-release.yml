@@ -48,7 +48,6 @@ jobs:
                       docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
                   tags: |
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-                      type=sha
                       type=ref,event=branch
                       type=ref,event=tag
                       type=semver,pattern={{version}}

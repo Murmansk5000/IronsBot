@@ -79,7 +79,7 @@ jobs:
                       docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
                   tags: |
                       type=raw,value=latest
-                      type=sha
+                      type=ref,event=branch
 
             - name: Build and Publish
               if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
