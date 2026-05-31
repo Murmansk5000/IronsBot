@@ -1,11 +1,77 @@
 version: "3"
 
-services:
-  IronsBot:
-    build: .
-    ports:
-      - "${PORT:-8080}:${PORT:-8080}"
-    environment:
-      ENVIRONMENT: prod
+networks:
+  ironsbot_net:
+    driver: bridge
 
+services:
+  ironsbot:
+    image: ghcr.io/murmansk5000/ironsbot:latest
+    container_name: ironsbot
+    networks:
+      - ironsbot_net
+    ports:
+      - "8085:8080"
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
+    env_file:
+      - .env.prod
+    environment:
+      # 基础运行配置
+      ENVIRONMENT: "prod"
+      DRIVER: "~fastapi+~httpx"
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      LOG_LEVEL: "INFO"
+      COMMAND_START: '["/",""]'
+
+      # 赛尔号主数据库在线同步配置
+      SEERAPI_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite"
+      SEERAPI_FINGERPRINT_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256"
+      SEERAPI_SYNC_INTERVAL_MINUTES: "60"
+      SEERAPI_LOCAL_PATH: "seerapi-data.sqlite"
+
+      # 别名数据库在线同步配置
+      ALIAS_SYNC_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite"
+      ALIAS_FINGERPRINT_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+      ALIAS_SYNC_INTERVAL_MINUTES: "65"
+      ALIAS_LOCAL_PATH: "aliases-data.sqlite"
+
+      # 渲染缓存
+      RENDER_CACHE_DIR: "render_cache"
+      RENDER_CACHE_MAX_SIZE_MB: "200"
+
+      # 无头客户端重连策略
+      HEADLESS_SEER_RECONNECT_RETRIES: "3"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: always
+
+  napcat:
+    image: docker.m.daocloud.io/mlikiowa/napcat-docker:latest
+    container_name: napcat
+    networks:
+      - ironsbot_net
+    mac_address: 02:42:ac:11:00:02
+    ports:
+      - "6099:6099"
+    env_file:
+      - .env.prod
+    environment:
+      NAPCAT_UID: "99"
+      NAPCAT_GID: "100"
+      ELECTRON_DISABLE_GPU: "true"
+      NAPCAT_REVERSE_WS_POST: "ws://ironsbot:8080/onebot/v11/ws"
+    volumes:
+      - /mnt/user/appdata/ironsbot/napcat/config:/app/napcat/config
+      - /mnt/user/appdata/ironsbot/ntqq:/app/.config/QQ
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: always

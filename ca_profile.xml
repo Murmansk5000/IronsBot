@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>Custom Unraid templates for IronsBot, a NoneBot2 / OneBot v11 QQ bot image that follows the upstream IronsBot project and adds runtime-configurable custom plugins for personal deployments.</Profile>
+  <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.svg</Icon>
+  <WebPage>https://github.com/Murmansk5000/IronsBot</WebPage>
+</CommunityApplications>
