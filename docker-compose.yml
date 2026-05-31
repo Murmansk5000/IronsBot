@@ -27,18 +27,20 @@ services:
       PORT: "8080"
       LOG_LEVEL: "INFO"
       COMMAND_START: '["/",""]'
+      DB_SYNC_ON_STARTUP: "false"
+      DB_SYNC_INTERVAL_ENABLED: "true"
 
       # 赛尔号主数据库在线同步配置
       SEERAPI_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite"
       SEERAPI_FINGERPRINT_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256"
       SEERAPI_SYNC_INTERVAL_MINUTES: "60"
-      SEERAPI_LOCAL_PATH: "seerapi-data.sqlite"
+      SEERAPI_LOCAL_PATH: "data/seerapi-data.sqlite"
 
       # 别名数据库在线同步配置
       ALIAS_SYNC_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite"
       ALIAS_FINGERPRINT_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
       ALIAS_SYNC_INTERVAL_MINUTES: "65"
-      ALIAS_LOCAL_PATH: "aliases-data.sqlite"
+      ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
 
       # 渲染缓存
       RENDER_CACHE_DIR: "render_cache"

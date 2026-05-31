@@ -49,10 +49,14 @@ services:
       PORT: "8080"
       ONEBOT_ACCESS_TOKEN: "change-me"
       SUPERUSERS: '["123456789"]'
+      DB_SYNC_ON_STARTUP: "false"
+      DB_SYNC_INTERVAL_ENABLED: "true"
       SEERAPI_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite"
       SEERAPI_FINGERPRINT_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256"
+      SEERAPI_LOCAL_PATH: "data/seerapi-data.sqlite"
       ALIAS_SYNC_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite"
       ALIAS_FINGERPRINT_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+      ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
     restart: always
 
   napcat:
@@ -93,10 +97,14 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | --- | --- |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
+| `DB_SYNC_ON_STARTUP` | Whether to sync registered databases automatically on startup. Default is `false`; superusers can send `更新数据` or `数据更新`. |
+| `DB_SYNC_INTERVAL_ENABLED` | Whether to run scheduled database sync jobs. Default is `true`; set `false` for manual-only updates. |
 | `SEERAPI_SYNC_URL` | Remote SeerAPI database URL. |
 | `SEERAPI_FINGERPRINT_URL` | SHA256 fingerprint URL for SeerAPI database updates. |
+| `SEERAPI_LOCAL_PATH` | Local SeerAPI database cache/fallback path. Use `/app/data` persistence for Docker. |
 | `ALIAS_SYNC_URL` | Remote alias database URL. |
 | `ALIAS_FINGERPRINT_URL` | SHA256 fingerprint URL for alias database updates. |
+| `ALIAS_LOCAL_PATH` | Local alias database cache/fallback path. Use `/app/data` persistence for Docker. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for features that require login. |
 | `HEADLESS_SEER_PASSWORD` | Optional MD5 password for the headless Seer client. |
 | `MEETING_REPLY_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
