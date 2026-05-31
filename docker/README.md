@@ -85,15 +85,16 @@ BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
 
 ## Unraid
 
-This fork includes Unraid XML templates:
+This fork includes Unraid XML templates and Community Applications submission metadata:
 
-- IronsBot template: `unraid/templates/ironsbot.xml`
+- IronsBot template: `templates/ironsbot.xml`
 - NapCat template: `unraid/templates/napcat.xml`
+- CA profile: `ca_profile.xml`
 
 Template URLs:
 
 ```text
-https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/unraid/templates/ironsbot.xml
+https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml
 https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/unraid/templates/napcat.xml
 ```
 

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="IronsBot">
+  <rect width="256" height="256" rx="48" fill="#15181d"/>
+  <path d="M58 66h140v34H58zM58 156h140v34H58zM82 100h34v56H82zM140 100h34v56h-34z" fill="#7dd3fc"/>
+  <circle cx="99" cy="128" r="10" fill="#15181d"/>
+  <circle cx="157" cy="128" r="10" fill="#15181d"/>
+  <path d="M78 211c25 16 75 16 100 0" fill="none" stroke="#9ae6b4" stroke-width="12" stroke-linecap="round"/>
+</svg>
