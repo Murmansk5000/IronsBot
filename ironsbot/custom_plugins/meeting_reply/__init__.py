@@ -7,16 +7,8 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     PrivateMessageEvent,
 )
-from nonebot.plugin import PluginMetadata
 
-from .config import Config, plugin_config
-
-__plugin_meta__ = PluginMetadata(
-    name="会议回复",
-    description="开播/会议关键词回复腾讯会议信息",
-    usage="开播 / 会议",
-    config=Config,
-)
+from .config import plugin_config
 
 meeting_matcher = on_regex(r"^(开播|会议)$", priority=5, block=True)
 

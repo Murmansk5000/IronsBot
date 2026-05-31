@@ -61,6 +61,7 @@ def _register(
             sync_url=sync_url,
             sync_interval_minutes=interval,
             get_fingerprint=get_fingerprint,
+            local_path=local_path,
         )
     else:
         register_local_database(name, file_path=local_path)
