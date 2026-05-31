@@ -22,8 +22,10 @@
   <DonateLink/>
   <Requires/>
 
+  <!-- Port mapping: host 8085 -> container 8080. -->
   <Config Name="WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="Host port mapped to IronsBot internal port 8080." Type="Port" Display="always" Required="true" Mask="false">8085</Config>
 
+  <!-- Basic NoneBot runtime settings. -->
   <Config Name="Environment" Target="ENVIRONMENT" Default="prod" Mode="" Description="NoneBot environment name." Type="Variable" Display="advanced" Required="true" Mask="false">prod</Config>
   <Config Name="Driver" Target="DRIVER" Default="~fastapi+~httpx" Mode="" Description="NoneBot driver setting." Type="Variable" Display="advanced" Required="true" Mask="false">~fastapi+~httpx</Config>
   <Config Name="Host" Target="HOST" Default="0.0.0.0" Mode="" Description="IronsBot listen host inside container." Type="Variable" Display="advanced" Required="true" Mask="false">0.0.0.0</Config>
@@ -31,44 +33,56 @@
   <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="TRACE / DEBUG / INFO / WARNING / ERROR." Type="Variable" Display="advanced" Required="true" Mask="false">INFO</Config>
   <Config Name="Command Start" Target="COMMAND_START" Default="[&quot;/&quot;,&quot;&quot;]" Mode="" Description="NoneBot command prefixes." Type="Variable" Display="advanced" Required="false" Mask="false">["/",""]</Config>
 
-  <Config Name="OneBot 连接密钥" Target="ONEBOT_ACCESS_TOKEN" Default="" Mode="" Description="NapCat 连接 IronsBot 使用的密钥，需要和 NapCat 的 NAPCAT_REVERSE_WS_TOKEN 保持一致。" Type="Variable" Display="always" Required="true" Mask="true"/>
-  <Config Name="机器人管理员 QQ" Target="SUPERUSERS" Default="[]" Mode="" Description="NoneBot 超级管理员 QQ 列表，例如 [&quot;123456789&quot;]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <!-- OneBot 连接密钥；需要和 NapCat 的 NAPCAT_REVERSE_WS_TOKEN 保持一致。 -->
+  <Config Name="OneBot Access Token" Target="ONEBOT_ACCESS_TOKEN" Default="" Mode="" Description="Access token used by NapCat to connect IronsBot." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <!-- 机器人超级管理员 QQ 列表，例如 ["123456789"]。 -->
+  <Config Name="Superusers" Target="SUPERUSERS" Default="[]" Mode="" Description="NoneBot superuser QQ list, for example [&quot;123456789&quot;]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 
+  <!-- SeerAPI 数据库同步配置。 -->
   <Config Name="SeerAPI Sync URL" Target="SEERAPI_SYNC_URL" Default="https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite" Mode="" Description="Remote SeerAPI SQLite database URL." Type="Variable" Display="advanced" Required="false" Mask="false">https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite</Config>
   <Config Name="SeerAPI Fingerprint URL" Target="SEERAPI_FINGERPRINT_URL" Default="https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256" Mode="" Description="Remote SeerAPI SHA256 fingerprint URL." Type="Variable" Display="advanced" Required="false" Mask="false">https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256</Config>
   <Config Name="SeerAPI Sync Interval" Target="SEERAPI_SYNC_INTERVAL_MINUTES" Default="60" Mode="" Description="SeerAPI sync interval in minutes." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
   <Config Name="SeerAPI Local Path" Target="SEERAPI_LOCAL_PATH" Default="seerapi-data.sqlite" Mode="" Description="Local fallback SeerAPI database path." Type="Variable" Display="advanced" Required="false" Mask="false">seerapi-data.sqlite</Config>
 
+  <!-- 精灵别名数据库同步配置。 -->
   <Config Name="Alias Sync URL" Target="ALIAS_SYNC_URL" Default="https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite" Mode="" Description="Remote alias SQLite database URL." Type="Variable" Display="advanced" Required="false" Mask="false">https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite</Config>
   <Config Name="Alias Fingerprint URL" Target="ALIAS_FINGERPRINT_URL" Default="https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256" Mode="" Description="Remote alias SHA256 fingerprint URL." Type="Variable" Display="advanced" Required="false" Mask="false">https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256</Config>
   <Config Name="Alias Sync Interval" Target="ALIAS_SYNC_INTERVAL_MINUTES" Default="65" Mode="" Description="Alias database sync interval in minutes." Type="Variable" Display="advanced" Required="false" Mask="false">65</Config>
   <Config Name="Alias Local Path" Target="ALIAS_LOCAL_PATH" Default="aliases-data.sqlite" Mode="" Description="Local fallback alias database path." Type="Variable" Display="advanced" Required="false" Mask="false">aliases-data.sqlite</Config>
 
+  <!-- 渲染缓存配置。 -->
   <Config Name="Render Cache Dir" Target="RENDER_CACHE_DIR" Default="render_cache" Mode="" Description="Rendered image cache directory." Type="Variable" Display="advanced" Required="false" Mask="false">render_cache</Config>
   <Config Name="Render Cache Max MB" Target="RENDER_CACHE_MAX_SIZE_MB" Default="200" Mode="" Description="Rendered image cache max size in MB." Type="Variable" Display="advanced" Required="false" Mask="false">200</Config>
 
-  <Config Name="赛尔号米米号" Target="HEADLESS_SEER_USER_ID" Default="" Mode="" Description="无头赛尔号客户端登录用的米米号。" Type="Variable" Display="always" Required="false" Mask="false"/>
-  <Config Name="赛尔号密码 MD5" Target="HEADLESS_SEER_PASSWORD" Default="" Mode="" Description="无头赛尔号客户端登录用的密码 MD5。" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <!-- 无头赛尔号客户端登录配置。 -->
+  <Config Name="Headless Seer User ID" Target="HEADLESS_SEER_USER_ID" Default="" Mode="" Description="Seer user ID / Mimi number." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Headless Seer Password" Target="HEADLESS_SEER_PASSWORD" Default="" Mode="" Description="MD5 password for headless Seer login." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="Headless Reconnect Retries" Target="HEADLESS_SEER_RECONNECT_RETRIES" Default="3" Mode="" Description="Headless client reconnect retry count." Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
 
-  <Config Name="腾讯会议号" Target="MEETING_REPLY_NUMBER" Default="" Mode="" Description="只填写会议号即可，例如 1234567890 或 123-456-7890。机器人会自动生成会议链接。" Type="Variable" Display="always" Required="false" Mask="true"/>
-  <Config Name="腾讯会议回复模板" Target="MEETING_REPLY_TEMPLATE" Default="腾讯会议&#10;腾讯会议号：{meeting_number}&#10;点击链接直接加入：{meeting_url}" Mode="" Description="会议回复模板。可用变量：{meeting_number} 带连字符会议号，{meeting_digits} 纯数字会议号，{meeting_url} 入会链接。" Type="Variable" Display="advanced" Required="false" Mask="true">腾讯会议&#10;腾讯会议号：{meeting_number}&#10;点击链接直接加入：{meeting_url}</Config>
-  <Config Name="腾讯会议生效群号" Target="MEETING_REPLY_GROUPS" Default="[]" Mode="" Description="允许使用会议回复的 QQ 群号列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="腾讯会议私聊用户" Target="MEETING_REPLY_USERS" Default="[]" Mode="" Description="允许私聊触发会议回复的 QQ 用户列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <!-- 腾讯会议回复：只填写会议号，链接会自动生成。 -->
+  <Config Name="Meeting Reply Number" Target="MEETING_REPLY_NUMBER" Default="" Mode="" Description="Tencent Meeting number, for example 1234567890 or 123-456-7890. The meeting URL is generated automatically." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <!-- 腾讯会议回复模板；可用变量：{meeting_number}, {meeting_digits}, {meeting_url}。 -->
+  <Config Name="Meeting Reply Template" Target="MEETING_REPLY_TEMPLATE" Default="Tencent Meeting&#10;Meeting Number: {meeting_number}&#10;Join Link: {meeting_url}" Mode="" Description="Meeting reply template. Variables: {meeting_number}, {meeting_digits}, {meeting_url}." Type="Variable" Display="advanced" Required="false" Mask="true">Tencent Meeting&#10;Meeting Number: {meeting_number}&#10;Join Link: {meeting_url}</Config>
+  <!-- 允许触发会议回复的 QQ 群号列表，例如 [123456789]。 -->
+  <Config Name="Meeting Reply Groups" Target="MEETING_REPLY_GROUPS" Default="[]" Mode="" Description="QQ groups allowed to use meeting reply." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <!-- 允许私聊触发会议回复的 QQ 用户列表，例如 [123456789]。 -->
+  <Config Name="Meeting Reply Users" Target="MEETING_REPLY_USERS" Default="[]" Mode="" Description="QQ users allowed to use meeting reply in private chat." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 
-  <Config Name="活动链接查询群号" Target="EVENT_LINK_REPLY_GROUPS" Default="[]" Mode="" Description="允许查询活动链接的 QQ 群号列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="活动链接私聊用户" Target="EVENT_LINK_REPLY_USERS" Default="[]" Mode="" Description="允许私聊查询活动链接的 QQ 用户列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="活动链接定时发送群号" Target="EVENT_LINK_SEND_GROUPS" Default="[]" Mode="" Description="定时接收活动链接的 QQ 群号列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="活动链接定时私聊用户" Target="EVENT_LINK_SEND_USERS" Default="[]" Mode="" Description="定时私聊接收活动链接的 QQ 用户列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <!-- 活动链接插件：查询和定时发送的群号/私聊用户。 -->
+  <Config Name="Event Link Reply Groups" Target="EVENT_LINK_REPLY_GROUPS" Default="[]" Mode="" Description="QQ groups allowed to query event link." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Event Link Reply Users" Target="EVENT_LINK_REPLY_USERS" Default="[]" Mode="" Description="QQ users allowed to query event link in private chat." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Event Link Send Groups" Target="EVENT_LINK_SEND_GROUPS" Default="[]" Mode="" Description="QQ groups receiving scheduled event link." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Event Link Send Users" Target="EVENT_LINK_SEND_USERS" Default="[]" Mode="" Description="QQ users receiving scheduled event link." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
   <Config Name="Event Link Send Hour" Target="EVENT_LINK_SEND_HOUR" Default="23" Mode="" Description="Scheduled event link send hour." Type="Variable" Display="advanced" Required="false" Mask="false">23</Config>
   <Config Name="Event Link Send Minute" Target="EVENT_LINK_SEND_MINUTE" Default="0" Mode="" Description="Scheduled event link send minute." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
 
-  <Config Name="B站监控 UID" Target="BILIBILI_MONITOR_UID" Default="1310714247" Mode="" Description="要监控的 Bilibili 用户 UID。" Type="Variable" Display="always" Required="false" Mask="false">1310714247</Config>
+  <!-- Bilibili 动态监控配置。 -->
+  <Config Name="Bilibili Monitor UID" Target="BILIBILI_MONITOR_UID" Default="1310714247" Mode="" Description="Bilibili UID to monitor." Type="Variable" Display="always" Required="false" Mask="false">1310714247</Config>
   <Config Name="Bilibili Check Interval" Target="BILIBILI_MONITOR_CHECK_INTERVAL_MINUTES" Default="5" Mode="" Description="Bilibili dynamic check interval in minutes." Type="Variable" Display="advanced" Required="false" Mask="false">5</Config>
   <Config Name="Bilibili Sleep Start Hour" Target="BILIBILI_MONITOR_SLEEP_START_HOUR" Default="23" Mode="" Description="Low-frequency check start hour." Type="Variable" Display="advanced" Required="false" Mask="false">23</Config>
   <Config Name="Bilibili Sleep End Hour" Target="BILIBILI_MONITOR_SLEEP_END_HOUR" Default="7" Mode="" Description="Low-frequency check end hour." Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>
   <Config Name="Bilibili Sleep Interval" Target="BILIBILI_MONITOR_SLEEP_INTERVAL_MINUTES" Default="30" Mode="" Description="Low-frequency check interval in minutes." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
-  <Config Name="B站动态推送群号" Target="BILIBILI_MONITOR_TARGET_GROUP_IDS" Default="[]" Mode="" Description="接收 B 站动态推送的 QQ 群号列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="B站动态推送私聊用户" Target="BILIBILI_MONITOR_TARGET_USER_IDS" Default="[]" Mode="" Description="接收 B 站动态推送私聊的 QQ 用户列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="B站监控管理员 QQ" Target="BILIBILI_MONITOR_ADMIN_UIDS" Default="[]" Mode="" Description="允许执行 B 站监控管理命令的 QQ 用户列表，例如 [123456789]。" Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Bilibili Target Groups" Target="BILIBILI_MONITOR_TARGET_GROUP_IDS" Default="[]" Mode="" Description="QQ groups receiving Bilibili dynamic updates." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Bilibili Target Users" Target="BILIBILI_MONITOR_TARGET_USER_IDS" Default="[]" Mode="" Description="QQ users receiving Bilibili dynamic updates." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Bilibili Admin Users" Target="BILIBILI_MONITOR_ADMIN_UIDS" Default="[]" Mode="" Description="QQ users allowed to run Bilibili monitor admin commands." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 </Container>
