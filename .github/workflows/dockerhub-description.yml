@@ -1,0 +1,27 @@
+name: Update Docker Hub Description
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "docker/README.md"
+            - ".github/workflows/dockerhub-description.yml"
+    workflow_dispatch:
+
+jobs:
+    dockerhub-description:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Update Docker Hub Description
+              uses: peter-evans/dockerhub-description@v5
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+                  repository: ${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
+                  short-description: Custom IronsBot image with QQ bot plugins and Unraid templates.
+                  readme-filepath: ./docker/README.md
