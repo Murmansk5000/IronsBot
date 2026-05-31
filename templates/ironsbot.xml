@@ -22,6 +22,7 @@
   <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network.</Requires>
 
   <Config Name="WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="Host port mapped to IronsBot internal port 8080." Type="Port" Display="always" Required="true" Mask="false">8085</Config>
+  <Config Name="IronsBot Data" Target="/app/data" Default="/mnt/user/appdata/ironsbot/data" Mode="rw" Description="Persistent data directory for plugin caches, including Bilibili cookies." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/data</Config>
 
   <Config Name="Environment" Target="ENVIRONMENT" Default="prod" Mode="" Description="NoneBot environment name." Type="Variable" Display="advanced" Required="true" Mask="false">prod</Config>
   <Config Name="Driver" Target="DRIVER" Default="~fastapi+~httpx" Mode="" Description="NoneBot driver setting." Type="Variable" Display="advanced" Required="true" Mask="false">~fastapi+~httpx</Config>
@@ -64,6 +65,11 @@
 
   <Config Name="Scheduled Private Messages" Target="SCHEDULED_PRIVATE_MESSAGES" Default="[]" Mode="" Description="JSON list of private message tasks. Example: [{&quot;id&quot;:&quot;morning&quot;,&quot;user_ids&quot;:[123456789],&quot;hour&quot;:8,&quot;minute&quot;:30,&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 
+  <Config Name="Startup Notice Enabled" Target="STARTUP_NOTICE_ENABLED" Default="true" Mode="" Description="Send a private startup notice after the bot connects. SUPERUSERS receive it automatically." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Startup Notice Users" Target="STARTUP_NOTICE_USERS" Default="[]" Mode="" Description="Extra QQ users receiving startup notices. SUPERUSERS are included automatically." Type="Variable" Display="advanced" Required="false" Mask="false">[]</Config>
+  <Config Name="Startup Notice Message" Target="STARTUP_NOTICE_MESSAGE" Default="Bot started." Mode="" Description="Private message sent when IronsBot starts and connects." Type="Variable" Display="advanced" Required="false" Mask="false">Bot started.</Config>
+  <Config Name="Startup Notice Delay" Target="STARTUP_NOTICE_DELAY_SECONDS" Default="3" Mode="" Description="Seconds to wait after bot connection before sending the startup notice." Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+
   <Config Name="AI Chat API Key" Target="AI_CHAT_API_KEY" Default="" Mode="" Description="DeepSeek API key. Keep this private." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="AI Chat Base URL" Target="AI_CHAT_BASE_URL" Default="https://api.deepseek.com" Mode="" Description="OpenAI-compatible API base URL." Type="Variable" Display="advanced" Required="false" Mask="false">https://api.deepseek.com</Config>
   <Config Name="AI Chat Model" Target="AI_CHAT_MODEL" Default="deepseek-v4-flash" Mode="" Description="DeepSeek model used for chat." Type="Variable" Display="always" Required="false" Mask="false">deepseek-v4-flash</Config>
@@ -81,6 +87,7 @@
   <Config Name="AI Chat Max Reply Chars" Target="AI_CHAT_MAX_REPLY_CHARS" Default="1500" Mode="" Description="Maximum characters sent back to QQ before truncation." Type="Variable" Display="advanced" Required="false" Mask="false">1500</Config>
 
   <Config Name="Bilibili Monitor UID" Target="BILIBILI_MONITOR_UID" Default="1310714247" Mode="" Description="Bilibili UID to monitor." Type="Variable" Display="always" Required="false" Mask="false">1310714247</Config>
+  <Config Name="Bilibili Data Directory" Target="BILIBILI_MONITOR_DATA_DIR" Default="data/bilibili_monitor" Mode="" Description="Directory for Bilibili cookie and dynamic timestamp cache. Keep /app/data mounted for persistence." Type="Variable" Display="advanced" Required="false" Mask="false">data/bilibili_monitor</Config>
   <Config Name="Bilibili Check Interval" Target="BILIBILI_MONITOR_CHECK_INTERVAL_MINUTES" Default="5" Mode="" Description="Bilibili dynamic check interval in minutes." Type="Variable" Display="advanced" Required="false" Mask="false">5</Config>
   <Config Name="Bilibili Sleep Start Hour" Target="BILIBILI_MONITOR_SLEEP_START_HOUR" Default="23" Mode="" Description="Low-frequency check start hour." Type="Variable" Display="advanced" Required="false" Mask="false">23</Config>
   <Config Name="Bilibili Sleep End Hour" Target="BILIBILI_MONITOR_SLEEP_END_HOUR" Default="7" Mode="" Description="Low-frequency check end hour." Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>

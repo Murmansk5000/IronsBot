@@ -1,7 +1,9 @@
+import base64
 import re
 import time
 import asyncio
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +42,13 @@ TARGET_USER_IDS = plugin_config.bilibili_monitor_target_user_ids
 
 # =========================================================
 
-CACHE_FILE = Path(__file__).parent / "last_dynamic_time.txt"
-COOKIE_CACHE_FILE = Path(__file__).parent / "bili_cookie_cache.txt"
-LOGIN_QR_FILE = Path(__file__).parent / "bili_login_qrcode.png"
+BILI_DATA_DIR = plugin_config.bilibili_monitor_data_dir
+BILI_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+CACHE_FILE = BILI_DATA_DIR / "last_dynamic_time.txt"
+COOKIE_CACHE_FILE = BILI_DATA_DIR / "bili_cookie_cache.txt"
+LEGACY_CACHE_FILE = Path(__file__).parent / "last_dynamic_time.txt"
+LEGACY_COOKIE_CACHE_FILE = Path(__file__).parent / "bili_cookie_cache.txt"
 
 AUTH_INVALID_CODES = {-101, -401, -403, 412}
 LOGIN_NOTICE_COOLDOWN_SECONDS = 5 * 60
@@ -59,6 +65,23 @@ _login_expires_at = 0.0
 # =========================================================
 # 缓存操作
 # =========================================================
+
+def _migrate_legacy_cache_file(legacy_file: Path, cache_file: Path) -> None:
+    if cache_file.exists() or not legacy_file.exists():
+        return
+
+    try:
+        cache_file.write_text(
+            legacy_file.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning(f"B站缓存迁移失败 {legacy_file.name}: {e}")
+
+
+_migrate_legacy_cache_file(LEGACY_CACHE_FILE, CACHE_FILE)
+_migrate_legacy_cache_file(LEGACY_COOKIE_CACHE_FILE, COOKIE_CACHE_FILE)
+
 
 def get_last_saved_time() -> int:
     if CACHE_FILE.exists():
@@ -247,8 +270,10 @@ async def send_bili_login_qrcode_to_admins(
 
 def _build_login_qrcode_message(qr_url: str) -> Message:
     tip_text = (
-        "请使用B站App扫码登录。\n"
-        "二维码约3分钟内有效；扫码确认后，机器人会自动保存Cookie。\n"
+        "B站登录已失效，需要重新登录。\n"
+        "请使用B站App扫码；确认后机器人会自动保存Cookie。\n"
+        "二维码约3分钟内有效，过期后下次检测到登录失效会重新发送。\n"
+        "不扫码只会影响B站动态监控，其他机器人功能不受影响。\n"
         "如果图片无法显示，可复制下面的登录链接到二维码工具中生成：\n"
         f"{qr_url}"
     )
@@ -257,10 +282,14 @@ def _build_login_qrcode_message(qr_url: str) -> Message:
         import qrcode
 
         image = qrcode.make(qr_url)
-        image.save(LOGIN_QR_FILE)
+        image_bytes = BytesIO()
+        image.save(image_bytes, format="PNG")
+        image_base64 = base64.b64encode(
+            image_bytes.getvalue()
+        ).decode("ascii")
 
         return Message([
-            MessageSegment.image(LOGIN_QR_FILE),
+            MessageSegment.image(f"base64://{image_base64}"),
             MessageSegment.text("\n" + tip_text),
         ])
 
@@ -345,6 +374,7 @@ async def _poll_bili_login(
     global _login_qrcode_key
     global _login_qr_url
     global _login_expires_at
+    global _last_login_notice_at
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -411,16 +441,8 @@ async def _poll_bili_login(
                 if poll_code == 86038:
                     break
 
-            await _send_private_to_admins(
-                "B站登录二维码已过期。"
-                "下次检测到登录失效时会重新发送二维码。",
-                bot=bot,
-                user_ids=(
-                    [requester_id]
-                    if requester_id
-                    else None
-                )
-            )
+            logger.info("B站登录二维码已过期，等待下次登录失效检测后重新发送")
+            _last_login_notice_at = 0.0
 
     except asyncio.CancelledError:
         raise

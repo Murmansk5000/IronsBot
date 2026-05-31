@@ -20,6 +20,7 @@ ironsbot/custom_plugins/
   event_link/         # 回复“签到/活动/链接”，并可定时推送活动链接
   meeting_reply/      # 回复“开播/会议”的腾讯会议信息
   pet_config_reply/   # 对“精灵名 + 配置”提示暂不支持配置查询
+  startup_notice/     # 机器人启动并连接后私聊通知超级管理员
   scheduled_private_message/ # 定时向指定用户发送私聊消息
   sendpic_custom/     # 本地固定关键词发图
 ```
@@ -89,9 +90,15 @@ EVENT_LINK_SEND_USERS=[123456789]
 EVENT_LINK_SEND_HOUR=23
 
 BILIBILI_MONITOR_UID=1310714247
+BILIBILI_MONITOR_DATA_DIR=data/bilibili_monitor
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789]
 BILIBILI_MONITOR_TARGET_USER_IDS=[123456789]
 BILIBILI_MONITOR_ADMIN_UIDS=[123456789]
+
+STARTUP_NOTICE_ENABLED=true
+STARTUP_NOTICE_USERS=[]
+STARTUP_NOTICE_MESSAGE=机器人已开启。
+STARTUP_NOTICE_DELAY_SECONDS=3
 
 SCHEDULED_PRIVATE_MESSAGES=[
   {

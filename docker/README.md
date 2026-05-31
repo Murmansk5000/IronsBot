@@ -25,6 +25,7 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `event_link`: reply or schedule-send event links to configured groups/users.
 - `bilibili_monitor`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
+- `startup_notice`: notify superusers when the bot starts and connects.
 - `scheduled_private_message`: send scheduled private messages to configured users.
 
 All group IDs, user IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
@@ -40,6 +41,8 @@ services:
     container_name: ironsbot
     ports:
       - "8085:8080"
+    volumes:
+      - ./ironsbot-data:/app/data
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
@@ -103,6 +106,9 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `EVENT_LINK_SEND_GROUPS` | QQ groups receiving scheduled event links. |
 | `BILIBILI_MONITOR_TARGET_GROUP_IDS` | QQ groups receiving Bilibili dynamic updates. |
 | `BILIBILI_MONITOR_ADMIN_UIDS` | QQ users allowed to run Bilibili monitor admin commands. |
+| `BILIBILI_MONITOR_DATA_DIR` | Directory for Bilibili cookies and dynamic timestamp cache. Mount `/app/data` for persistence. |
+| `STARTUP_NOTICE_ENABLED` | Whether to notify superusers after bot startup. |
+| `STARTUP_NOTICE_USERS` | Extra QQ users receiving startup notices. |
 | `SCHEDULED_PRIVATE_MESSAGES` | JSON-like list of scheduled private message tasks. |
 | `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
 | `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat. In group chats they must mention the bot. |
