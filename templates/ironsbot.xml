@@ -9,8 +9,8 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Murmansk5000/IronsBot/issues</Support>
   <Project>https://github.com/Murmansk5000/IronsBot</Project>
-  <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins.</Overview>
-  <Description>IronsBot is a QQ bot based on NoneBot2 and OneBot v11. This custom image follows the upstream IronsBot project and adds local custom plugins for fixed image replies, Tencent Meeting replies, event links, Bilibili dynamic monitoring, scheduled private messages, startup notices, and AI chat through OpenAI-compatible APIs. Private values such as QQ IDs, group IDs, tokens, account credentials, meeting numbers, and AI keys are configured at runtime through this template. Persistent plugin data, Bilibili cookies, and database caches are stored under /app/data. Startup database downloads are disabled by default; scheduled updates remain enabled, and superusers can send 更新数据 or 数据更新 to refresh immediately.</Description>
+  <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins. Version tags use latest plus upstream-version.fork-revision tags and exact sha tags; recent changes include AI chat, persistent Bilibili login data, startup notices, scheduled messages, and team group shortcuts.</Overview>
+  <Description>IronsBot is a QQ bot based on NoneBot2 and OneBot v11. This custom image follows the upstream IronsBot project and adds local custom plugins for fixed image replies, Tencent Meeting replies, event links, Bilibili dynamic monitoring, scheduled private messages, startup notices, team group query shortcuts, and AI chat through OpenAI-compatible APIs. Docker image tags keep latest available and also use the current upstream version plus this fork revision. Private values such as QQ IDs, group IDs, tokens, account credentials, meeting numbers, and AI keys are configured at runtime through this template. Persistent plugin data, Bilibili cookies, and database caches are stored under /app/data. Startup database downloads are disabled by default; scheduled updates remain enabled, and superusers can send 更新数据 or 数据更新 to refresh immediately.</Description>
   <Category>Tools:Utilities</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
@@ -19,7 +19,19 @@
   <ExtraParams/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network.</Requires>
+  <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network. Changelog/version check: latest remains available; fixed builds are tagged as upstream-version.fork-revision plus sha-xxxxxxx. See the Docker Hub README / ReadMe link for full notes.</Requires>
+  <Changes><![CDATA[
+Version scheme:
+- latest: current main branch of this fork.
+- upstream-version.fork-revision: current upstream IronsBot version plus this fork revision.
+- sha-xxxxxxx: exact Git commit used to build the image.
+
+Recent changes:
+- Added DeepSeek/OpenAI-compatible AI chat through bot mentions.
+- Added persistent Bilibili login data under /app/data.
+- Added startup notice, scheduled private messages, team group query shortcuts, and manual database refresh.
+- Improved Unraid template fields for runtime-only private configuration.
+  ]]></Changes>
 
   <Config Name="WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="Host port mapped to IronsBot internal port 8080." Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="IronsBot Data" Target="/app/data" Default="/mnt/user/appdata/ironsbot/data" Mode="rw" Description="Persistent data directory for plugin caches, Bilibili cookies, and local database cache files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/data</Config>
@@ -67,6 +79,10 @@
 
   <Config Name="Scheduled Private Messages" Target="SCHEDULED_PRIVATE_MESSAGES" Default="[]" Mode="" Description="JSON list of private message tasks. Example: [{&quot;id&quot;:&quot;morning&quot;,&quot;user_ids&quot;:[123456789],&quot;hour&quot;:8,&quot;minute&quot;:30,&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 
+  <Config Name="Team Group Shortcut Groups" Target="TEAM_SHORTCUT_GROUP_IDS" Default="[]" Mode="" Description="QQ team groups where the shortcut command should trigger team queries. Keep private group IDs here instead of committing them to Git." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Team Group Shortcut Team IDs" Target="TEAM_SHORTCUT_TEAM_IDS" Default="[]" Mode="" Description="Team IDs queried for the team group shortcut command, for example [1234567,7654321]. Keep private values out of Git." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Team Group Shortcut Commands" Target="TEAM_SHORTCUT_COMMANDS" Default="[&quot;战队&quot;]" Mode="" Description="Exact team group shortcut commands that trigger the configured team queries." Type="Variable" Display="advanced" Required="false" Mask="false">["战队"]</Config>
+
   <Config Name="Startup Notice Enabled" Target="STARTUP_NOTICE_ENABLED" Default="true" Mode="" Description="Send a private startup notice after the bot connects. SUPERUSERS receive it automatically." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="Startup Notice Users" Target="STARTUP_NOTICE_USERS" Default="[]" Mode="" Description="Extra QQ users receiving startup notices. SUPERUSERS are included automatically." Type="Variable" Display="advanced" Required="false" Mask="false">[]</Config>
   <Config Name="Startup Notice Message" Target="STARTUP_NOTICE_MESSAGE" Default="Bot started." Mode="" Description="Private message sent when IronsBot starts and connects." Type="Variable" Display="advanced" Required="false" Mask="false">Bot started.</Config>
@@ -75,7 +91,7 @@
   <Config Name="AI Chat API Key" Target="AI_CHAT_API_KEY" Default="" Mode="" Description="DeepSeek API key. Keep this private." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="AI Chat Base URL" Target="AI_CHAT_BASE_URL" Default="https://api.deepseek.com" Mode="" Description="OpenAI-compatible API base URL. For relay/NewAPI services, usually use the /v1 endpoint, for example https://example.com/v1." Type="Variable" Display="advanced" Required="false" Mask="false">https://api.deepseek.com</Config>
   <Config Name="AI Chat Model" Target="AI_CHAT_MODEL" Default="deepseek-v4-flash" Mode="" Description="Model name used by the configured AI chat provider." Type="Variable" Display="always" Required="false" Mask="false">deepseek-v4-flash</Config>
-  <Config Name="AI Chat System Prompt" Target="AI_CHAT_SYSTEM_PROMPT" Default="You are a friendly QQ group chat assistant. Answer naturally and concisely." Mode="" Description="System prompt sent to the AI model." Type="Variable" Display="advanced" Required="false" Mask="false">You are a friendly QQ group chat assistant. Answer naturally and concisely.</Config>
+  <Config Name="AI Chat System Prompt" Target="AI_CHAT_SYSTEM_PROMPT" Default="You are IronsBot, a QQ group bot for Seer information queries. Help users discuss Seer pets, skills, abilities, stats, type matchups, events, and bot usage. You may chat naturally, but keep replies concise, friendly, and honest. If unsure, say so instead of inventing facts." Mode="" Description="System prompt sent to the AI model." Type="Variable" Display="advanced" Required="false" Mask="false">You are IronsBot, a QQ group bot for Seer information queries. Help users discuss Seer pets, skills, abilities, stats, type matchups, events, and bot usage. You may chat naturally, but keep replies concise, friendly, and honest. If unsure, say so instead of inventing facts.</Config>
   <Config Name="AI Chat Allowed Groups" Target="AI_CHAT_ALLOWED_GROUP_IDS" Default="[]" Mode="" Description="Optional QQ group whitelist. Empty means no group restriction. Group chats still require mentioning the bot." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
   <Config Name="AI Chat Allowed Users" Target="AI_CHAT_ALLOWED_USER_IDS" Default="[]" Mode="" Description="QQ users allowed to use AI chat. Group chats require mentioning the bot." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
   <Config Name="AI Chat Admin Users" Target="AI_CHAT_ADMIN_UIDS" Default="[]" Mode="" Description="Extra AI chat admins. SUPERUSERS are allowed automatically." Type="Variable" Display="advanced" Required="false" Mask="false">[]</Config>
@@ -85,7 +101,7 @@
   <Config Name="AI Chat Max Tokens" Target="AI_CHAT_MAX_TOKENS" Default="800" Mode="" Description="Maximum generated tokens per AI reply." Type="Variable" Display="advanced" Required="false" Mask="false">800</Config>
   <Config Name="AI Chat Temperature" Target="AI_CHAT_TEMPERATURE" Default="0.7" Mode="" Description="AI sampling temperature from 0 to 2." Type="Variable" Display="advanced" Required="false" Mask="false">0.7</Config>
   <Config Name="AI Chat Thinking Enabled" Target="AI_CHAT_THINKING_ENABLED" Default="false" Mode="" Description="Enable DeepSeek thinking mode. Disabled is usually faster for casual chat." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
-  <Config Name="AI Chat Waiting Notice" Target="AI_CHAT_SEND_WAITING_NOTICE" Default="true" Mode="" Description="Send a short waiting message before calling the AI API." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="AI Chat Waiting Notice" Target="AI_CHAT_SEND_WAITING_NOTICE" Default="false" Mode="" Description="Send a short waiting message before calling the AI API." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="AI Chat Max Reply Chars" Target="AI_CHAT_MAX_REPLY_CHARS" Default="1500" Mode="" Description="Maximum characters sent back to QQ before truncation." Type="Variable" Display="advanced" Required="false" Mask="false">1500</Config>
 
   <Config Name="Bilibili Monitor UID" Target="BILIBILI_MONITOR_UID" Default="1310714247" Mode="" Description="Bilibili UID to monitor." Type="Variable" Display="always" Required="false" Mask="false">1310714247</Config>
