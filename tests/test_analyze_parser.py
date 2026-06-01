@@ -3,6 +3,13 @@ from ironsbot.utils.analyze_parser import (
     DescLine,
 )
 
+EXPECTED_PAIR_COUNT = 2
+EXPECTED_QUAD_COUNT = 4
+EXPECTED_DESC_LINE_COUNT = 8
+TURN_SEGMENT_ID = 412
+ENTRY_SEGMENT_ID = 491
+
+
 DESC = (
     "[sprite name=dot4]自身作为首发精灵[color=#52a5f2]首次[/color]"
     "[color=#52a5f2][color=#57c975]出战时[/color]，令对手"
@@ -28,23 +35,23 @@ DESC = (
 
 
 class TestLineCount:
-    def test_total_lines(self):
+    def test_total_lines(self) -> None:
         parser = AnalyzeDescParser(DESC)
-        assert len(parser.lines) == 8
+        assert len(parser.lines) == EXPECTED_DESC_LINE_COUNT
 
 
 class TestSprites:
-    def test_all_sprites(self):
+    def test_all_sprites(self) -> None:
         parser = AnalyzeDescParser(DESC)
         assert parser.sprites == {"dot1", "dot4", "dot5"}
 
-    def test_lines_by_sprite(self):
+    def test_lines_by_sprite(self) -> None:
         parser = AnalyzeDescParser(DESC)
-        assert len(parser.lines_by_sprite("dot4")) == 2
-        assert len(parser.lines_by_sprite("dot1")) == 4
-        assert len(parser.lines_by_sprite("dot5")) == 2
+        assert len(parser.lines_by_sprite("dot4")) == EXPECTED_PAIR_COUNT
+        assert len(parser.lines_by_sprite("dot1")) == EXPECTED_QUAD_COUNT
+        assert len(parser.lines_by_sprite("dot5")) == EXPECTED_PAIR_COUNT
 
-    def test_sprite_per_line(self):
+    def test_sprite_per_line(self) -> None:
         parser = AnalyzeDescParser(DESC)
         expected_sprites = [
             "dot4",
@@ -56,41 +63,41 @@ class TestSprites:
             "dot1",
             "dot4",
         ]
-        for line, expected in zip(parser.lines, expected_sprites):
+        for line, expected in zip(parser.lines, expected_sprites, strict=False):
             assert line.sprite == expected
 
 
 class TestIndent:
-    def test_top_level_lines_no_indent(self):
+    def test_top_level_lines_no_indent(self) -> None:
         parser = AnalyzeDescParser(DESC)
         for i in (0, 1, 2, 6, 7):
             assert parser.lines[i].indent == 0
 
-    def test_sub_items_indented(self):
+    def test_sub_items_indented(self) -> None:
         parser = AnalyzeDescParser(DESC)
         for i in (3, 4, 5):
-            assert parser.lines[i].indent == 4
+            assert parser.lines[i].indent == EXPECTED_QUAD_COUNT
 
 
 class TestColors:
-    def test_all_colors(self):
+    def test_all_colors(self) -> None:
         parser = AnalyzeDescParser(DESC)
         assert parser.colors == {"#52a5f2", "#57c975", "#f35555"}
 
 
 class TestPlainText:
-    def test_first_line(self):
+    def test_first_line(self) -> None:
         parser = AnalyzeDescParser(DESC)
         assert parser.lines[0].plain_text == (
             "自身作为首发精灵首次出战时，令对手当回合无法主动切换精灵且50%驱逐对手（boss无效）"
         )
 
-    def test_plain_text_no_indent(self):
+    def test_plain_text_no_indent(self) -> None:
         """plain_text 不应包含行首缩进空格"""
         parser = AnalyzeDescParser(DESC)
         assert not parser.lines[4].plain_text.startswith(" ")
 
-    def test_sub_item_plain_text(self):
+    def test_sub_item_plain_text(self) -> None:
         parser = AnalyzeDescParser(DESC)
         assert (
             parser.lines[4].plain_text
@@ -101,7 +108,7 @@ class TestPlainText:
 class TestMultiColor:
     """测试多颜色嵌套：同一个 [/color] 闭合多个标签时，文本应关联所有活跃颜色"""
 
-    def test_dual_color_segment(self):
+    def test_dual_color_segment(self) -> None:
         """[color=#52a5f2][color=#57c975]出战时[/color] 应同时关联两种颜色"""
         parser = AnalyzeDescParser(DESC)
         line0 = parser.lines[0]
@@ -109,14 +116,17 @@ class TestMultiColor:
         assert "#52a5f2" in segment.colors
         assert "#57c975" in segment.colors
 
-    def test_triple_nested_colors(self):
-        """[color=#52a5f2][color=#f35555][color=#52a5f2]驱逐[/color] 应同时关联蓝/红两种颜色"""
+    def test_triple_nested_colors(self) -> None:
+        (
+            "[color=#52a5f2][color=#f35555][color=#52a5f2]驱逐[/color] "
+            "应同时关联蓝/红两种颜色"
+        )
         parser = AnalyzeDescParser(DESC)
         line0 = parser.lines[0]
         segment = next(s for s in line0.segments if s.text == "驱逐")
         assert set(segment.colors) == {"#52a5f2", "#f35555"}
 
-    def test_colored_texts_matches_multi(self):
+    def test_colored_texts_matches_multi(self) -> None:
         """colored_texts 应在多颜色片段中也能命中"""
         parser = AnalyzeDescParser(DESC)
         line0 = parser.lines[0]
@@ -125,7 +135,7 @@ class TestMultiColor:
         green_texts = line0.colored_texts("#57c975")
         assert "出战时" in "".join(green_texts)
 
-    def test_last_line_dual_color(self):
+    def test_last_line_dual_color(self) -> None:
         """最后一行 [color=#57c975][color=#f35555]英雄圣殿成员[/color]"""
         parser = AnalyzeDescParser(DESC)
         line7 = parser.lines[7]
@@ -137,14 +147,14 @@ class TestMultiColor:
 class TestBatchClose:
     """回归测试：连续打开的多个 [color] 应被单个 [/color] 一并关闭"""
 
-    def test_red_does_not_leak_after_close(self):
+    def test_red_does_not_leak_after_close(self) -> None:
         """'驱逐' 后的 '对手（boss无效）' 不应携带 #f35555"""
         parser = AnalyzeDescParser(DESC)
         line0 = parser.lines[0]
         seg = next(s for s in line0.segments if "对手（boss无效）" in s.text)
         assert "#f35555" not in seg.colors
 
-    def test_styled_html_does_not_leak(self):
+    def test_styled_html_does_not_leak(self) -> None:
         """用 #f35555 工厂函数渲染时，'对手（boss无效）' 不应被包裹"""
         parser = AnalyzeDescParser(DESC)
         styles = {"#f35555": lambda t: f"<b>{t}</b>"}
@@ -154,13 +164,13 @@ class TestBatchClose:
 
 
 class TestColoredTexts:
-    def test_red_names_in_line1(self):
+    def test_red_names_in_line1(self) -> None:
         parser = AnalyzeDescParser(DESC)
         line1 = parser.lines[1]
         reds = line1.colored_texts("#f35555")
         assert reds == ["辛", "辛"]
 
-    def test_no_color_segments(self):
+    def test_no_color_segments(self) -> None:
         """无颜色片段不应出现在 colored_texts 结果中"""
         parser = AnalyzeDescParser(DESC)
         line4 = parser.lines[4]
@@ -169,13 +179,13 @@ class TestColoredTexts:
 
 
 class TestToHtml:
-    def test_no_styles_returns_plain(self):
+    def test_no_styles_returns_plain(self) -> None:
         parser = AnalyzeDescParser(DESC)
         result = parser.lines[4].to_html()
         assert "<" not in result
         assert result == "若自身处于异常状态，则令对手随机1个技能PP值归零（boss无效）"
 
-    def test_single_color_style(self):
+    def test_single_color_style(self) -> None:
         parser = AnalyzeDescParser(DESC)
         styles = {"#f35555": lambda t: f"<b>{t}</b>"}
         line1_html = parser.lines[1].to_html(styles)
@@ -183,7 +193,7 @@ class TestToHtml:
         assert "自身" in line1_html
         assert "<b>自身" not in line1_html
 
-    def test_multi_color_nesting(self):
+    def test_multi_color_nesting(self) -> None:
         """多颜色片段应嵌套应用所有匹配的工厂函数"""
         parser = AnalyzeDescParser(DESC)
         styles = {
@@ -195,7 +205,7 @@ class TestToHtml:
         assert 'class="green"' in line0_html
         assert "出战时" in line0_html
 
-    def test_duplicate_color_in_stack_applied_once(self):
+    def test_duplicate_color_in_stack_applied_once(self) -> None:
         """颜色栈中重复的颜色，工厂函数只应用一次"""
         parser = AnalyzeDescParser(DESC)
         call_count = 0
@@ -211,14 +221,14 @@ class TestToHtml:
         DescLine(segments=[seg]).to_html(styles)
         assert call_count == 1
 
-    def test_full_html_with_separator(self):
+    def test_full_html_with_separator(self) -> None:
         parser = AnalyzeDescParser(DESC)
         styles = {"#f35555": lambda t: f"<b>{t}</b>"}
         full = parser.to_html(styles, line_separator="\n")
         lines = full.split("\n")
-        assert len(lines) == 8
+        assert len(lines) == EXPECTED_DESC_LINE_COUNT
 
-    def test_html_escapes_text(self):
+    def test_html_escapes_text(self) -> None:
         """含 HTML 特殊字符的文本应被转义"""
         p = AnalyzeDescParser("体力>50%时[color=#52a5f2]攻击<防御[/color]")
         styles = {"#52a5f2": lambda t: f"<em>{t}</em>"}
@@ -241,45 +251,45 @@ DESC_WITH_ID = (
 
 
 class TestSegmentId:
-    def test_id_extracted(self):
+    def test_id_extracted(self) -> None:
         """'出战(491)' 应提取 id=491"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
         seg = next(s for s in parser.segments if s.text == "出战")
-        assert seg.id == 491
+        assert seg.id == ENTRY_SEGMENT_ID
 
-    def test_id_stripped_from_text(self):
+    def test_id_stripped_from_text(self) -> None:
         """提取 ID 后文本不应包含 '(491)'"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
-        seg = next(s for s in parser.segments if s.id == 491)
+        seg = next(s for s in parser.segments if s.id == ENTRY_SEGMENT_ID)
         assert "(491)" not in seg.text
         assert seg.text == "出战"
 
-    def test_multiple_same_id(self):
+    def test_multiple_same_id(self) -> None:
         """同一描述中多次出现的相同 ID 应分别提取"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
-        segs_412 = [s for s in parser.segments if s.id == 412]
-        assert len(segs_412) == 2
+        segs_412 = [s for s in parser.segments if s.id == TURN_SEGMENT_ID]
+        assert len(segs_412) == EXPECTED_PAIR_COUNT
         assert all(s.text == "当回合" for s in segs_412)
 
-    def test_segments_with_id_property(self):
+    def test_segments_with_id_property(self) -> None:
         """segments_with_id 应返回所有出现的 ID"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
         assert parser.segments_with_id == {491, 412}
 
-    def test_no_id_segments_are_none(self):
+    def test_no_id_segments_are_none(self) -> None:
         """无 ID 的片段 id 应为 None"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
         seg = next(s for s in parser.segments if s.text == "首次")
         assert seg.id is None
 
-    def test_plain_text_excludes_id(self):
+    def test_plain_text_excludes_id(self) -> None:
         """纯文本输出不应包含括号内的 ID"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
         plain = parser.lines[0].plain_text
         assert "(491)" not in plain
         assert "出战" in plain
 
-    def test_html_excludes_id(self):
+    def test_html_excludes_id(self) -> None:
         """HTML 输出不应包含括号内的 ID"""
         parser = AnalyzeDescParser(DESC_WITH_ID)
         styles = {"#52a5f2": lambda t: f"<b>{t}</b>"}
@@ -287,7 +297,7 @@ class TestSegmentId:
         assert "(491)" not in result
         assert "<b>出战</b>" in result
 
-    def test_full_width_parens_not_treated_as_id(self):
+    def test_full_width_parens_not_treated_as_id(self) -> None:
         """全角括号（数字）不应被当作 ID 提取"""
         parser = AnalyzeDescParser(DESC)
         plain = parser.to_plain_text()
