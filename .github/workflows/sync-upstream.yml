@@ -69,6 +69,27 @@ jobs:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+            - name: Resolve Fork Version
+              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+              id: fork_version
+              shell: bash
+              run: |
+                  base_tag="$(tr -d '[:space:]' < __version__)"
+                  base_version="${base_tag#v}"
+
+                  if git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
+                    custom_revision="$(git rev-list --count "${base_tag}..HEAD")"
+                  else
+                    custom_revision="${GITHUB_RUN_NUMBER}"
+                    echo "Base tag ${base_tag} not found; using workflow run number ${custom_revision}."
+                  fi
+
+                  if [ "${custom_revision}" = "0" ]; then
+                    custom_revision="1"
+                  fi
+
+                  echo "fork_version=${base_version}.${custom_revision}" >> "$GITHUB_OUTPUT"
+
             - name: Generate Tags
               if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
               uses: docker/metadata-action@v5
@@ -79,6 +100,8 @@ jobs:
                       docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
                   tags: |
                       type=raw,value=latest
+                      type=raw,value=${{ steps.fork_version.outputs.fork_version }}
+                      type=sha,prefix=sha-
                       type=ref,event=branch
 
             - name: Build and Publish

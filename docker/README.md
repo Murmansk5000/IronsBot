@@ -12,10 +12,26 @@ This image is based on the upstream project [Nattsu39/IronsBot](https://github.c
 
 ```text
 docker.io/murmansk5000/ironsbot:latest
+docker.io/murmansk5000/ironsbot:0.5.1.x
+docker.io/murmansk5000/ironsbot:sha-xxxxxxx
 ghcr.io/murmansk5000/ironsbot:latest
+ghcr.io/murmansk5000/ironsbot:0.5.1.x
+ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 ```
 
 `latest` tracks the `main` branch of this fork.
+
+## Version Tags And Changelog
+
+This fork keeps Docker `latest` available, and also publishes extra tags so you can see exactly which custom build you are running.
+
+- `latest`: the newest `main` build, suitable for normal Unraid updates.
+- `0.5.1.x`: upstream IronsBot `0.5.1` plus this fork's custom revision.
+- `sha-xxxxxxx`: the exact Git commit used to build the image.
+
+For example, `0.5.1.24` means the image is based on upstream `0.5.1` with the 24th fork revision after upstream tag `v0.5.1`.
+
+Recent changes are tracked in the GitHub commit history and in the Unraid template changelog. On Docker Hub, check the tag list for the newest `0.5.1.x` and `sha-xxxxxxx` tags.
 
 ## Included Custom Plugins
 
@@ -27,8 +43,9 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
 - `scheduled_private_message`: send scheduled private messages to configured users.
+- `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.
 
-All group IDs, user IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
+All group IDs, user IDs, team IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
 
 ## Quick Start With Docker Compose
 
@@ -118,6 +135,9 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `STARTUP_NOTICE_ENABLED` | Whether to notify superusers after bot startup. |
 | `STARTUP_NOTICE_USERS` | Extra QQ users receiving startup notices. |
 | `SCHEDULED_PRIVATE_MESSAGES` | JSON-like list of scheduled private message tasks. |
+| `TEAM_SHORTCUT_GROUP_IDS` | QQ team/guild groups where team shortcut commands are enabled. |
+| `TEAM_SHORTCUT_TEAM_IDS` | Team IDs queried by the team group shortcut command. |
+| `TEAM_SHORTCUT_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
 | `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
 | `AI_CHAT_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
 | `AI_CHAT_MODEL` | Model name used by the configured AI chat provider. |
@@ -132,8 +152,34 @@ SUPERUSERS=["123456789"]
 MEETING_REPLY_GROUPS=[123456789]
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
 SCHEDULED_PRIVATE_MESSAGES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
+TEAM_SHORTCUT_GROUP_IDS=[123456789]
+TEAM_SHORTCUT_TEAM_IDS=[1234567,7654321]
+TEAM_SHORTCUT_COMMANDS=["战队"]
 AI_CHAT_ALLOWED_USER_IDS=[123456789]
 ```
+
+## Team Group Shortcut
+
+If you use this Docker image for a Seer team/guild QQ group, you can enable a short group command that expands to one or more fixed team queries.
+
+Example behavior:
+
+```text
+User sends: 战队
+Bot replies: team info for each configured team ID
+```
+
+This is the same kind of output as the built-in `战队<team_id>` query, but the group member does not need to remember the team IDs.
+
+Configure it at runtime:
+
+```env
+TEAM_SHORTCUT_GROUP_IDS=[123456789]
+TEAM_SHORTCUT_TEAM_IDS=[1234567,7654321]
+TEAM_SHORTCUT_COMMANDS=["战队"]
+```
+
+Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an ignored `.env.prod` file. Do not commit them to GitHub.
 
 ## Unraid
 
@@ -148,11 +194,11 @@ Template URLs:
 https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml
 ```
 
-The Unraid template exposes the runtime variables as editable fields, including group IDs, meeting number, OneBot token, and Bilibili monitor settings.
+The Unraid template exposes the runtime variables as editable fields, including group IDs, team shortcut IDs, meeting number, OneBot token, and Bilibili monitor settings.
 
 ## Privacy Notes
 
-Do not put private QQ IDs, group IDs, meeting links, meeting numbers, account passwords, or tokens into files committed to GitHub.
+Do not put private QQ IDs, group IDs, team IDs, meeting links, meeting numbers, account passwords, or tokens into files committed to GitHub.
 
 Use one of these instead:
 

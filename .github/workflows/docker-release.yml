@@ -19,6 +19,8 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@v3
+              with:
+                  fetch-depth: 0
 
             - name: Set up QEMU
               uses: docker/setup-qemu-action@v2
@@ -39,6 +41,26 @@ jobs:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+            - name: Resolve Fork Version
+              id: fork_version
+              shell: bash
+              run: |
+                  base_tag="$(tr -d '[:space:]' < __version__)"
+                  base_version="${base_tag#v}"
+
+                  if git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
+                    custom_revision="$(git rev-list --count "${base_tag}..HEAD")"
+                  else
+                    custom_revision="${GITHUB_RUN_NUMBER}"
+                    echo "Base tag ${base_tag} not found; using workflow run number ${custom_revision}."
+                  fi
+
+                  if [ "${custom_revision}" = "0" ]; then
+                    custom_revision="1"
+                  fi
+
+                  echo "fork_version=${base_version}.${custom_revision}" >> "$GITHUB_OUTPUT"
+
             - name: Generate Tags
               uses: docker/metadata-action@v4
               id: metadata
@@ -48,6 +70,8 @@ jobs:
                       docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
                   tags: |
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+                      type=raw,value=${{ steps.fork_version.outputs.fork_version }}
+                      type=sha,prefix=sha-
                       type=ref,event=branch
                       type=ref,event=tag
                       type=semver,pattern={{version}}

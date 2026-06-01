@@ -22,6 +22,7 @@ ironsbot/custom_plugins/
   pet_config_reply/   # 对“精灵名 + 配置”提示暂不支持配置查询
   startup_notice/     # 机器人启动并连接后私聊通知超级管理员
   scheduled_private_message/ # 定时向指定用户发送私聊消息
+  team_shortcut/      # 给战队群使用：群内短指令触发预设战队查询
   sendpic_custom/     # 本地固定关键词发图
 ```
 
@@ -116,6 +117,10 @@ SCHEDULED_PRIVATE_MESSAGES=[
     "message": "该休息了"
   }
 ]
+
+TEAM_SHORTCUT_GROUP_IDS=[]
+TEAM_SHORTCUT_TEAM_IDS=[]
+TEAM_SHORTCUT_COMMANDS=["战队"]
 
 AI_CHAT_API_KEY=sk-...
 AI_CHAT_ALLOWED_USER_IDS=[123456789]

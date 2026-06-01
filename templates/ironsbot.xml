@@ -10,7 +10,7 @@
   <Support>https://github.com/Murmansk5000/IronsBot/issues</Support>
   <Project>https://github.com/Murmansk5000/IronsBot</Project>
   <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins.</Overview>
-  <Description>IronsBot is a QQ bot based on NoneBot2 and OneBot v11. This custom image follows the upstream IronsBot project and adds local custom plugins for fixed image replies, Tencent Meeting replies, event links, Bilibili dynamic monitoring, scheduled private messages, startup notices, and AI chat through OpenAI-compatible APIs. Private values such as QQ IDs, group IDs, tokens, account credentials, meeting numbers, and AI keys are configured at runtime through this template. Persistent plugin data, Bilibili cookies, and database caches are stored under /app/data. Startup database downloads are disabled by default; scheduled updates remain enabled, and superusers can send 更新数据 or 数据更新 to refresh immediately.</Description>
+  <Description>IronsBot is a QQ bot based on NoneBot2 and OneBot v11. This custom image follows the upstream IronsBot project and adds local custom plugins for fixed image replies, Tencent Meeting replies, event links, Bilibili dynamic monitoring, scheduled private messages, startup notices, team group query shortcuts, and AI chat through OpenAI-compatible APIs. Docker image tags keep latest available and also use the upstream version plus this fork revision, for example 0.5.1.x. Private values such as QQ IDs, group IDs, tokens, account credentials, meeting numbers, and AI keys are configured at runtime through this template. Persistent plugin data, Bilibili cookies, and database caches are stored under /app/data. Startup database downloads are disabled by default; scheduled updates remain enabled, and superusers can send 更新数据 or 数据更新 to refresh immediately.</Description>
   <Category>Tools:Utilities</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
@@ -20,6 +20,18 @@
   <DonateText/>
   <DonateLink/>
   <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network.</Requires>
+  <Changes><![CDATA[
+Version scheme:
+- latest: current main branch of this fork.
+- 0.5.1.x: upstream IronsBot 0.5.1 plus this fork revision.
+- sha-xxxxxxx: exact Git commit used to build the image.
+
+Recent changes:
+- Added DeepSeek/OpenAI-compatible AI chat through bot mentions.
+- Added persistent Bilibili login data under /app/data.
+- Added startup notice, scheduled private messages, team group query shortcuts, and manual database refresh.
+- Improved Unraid template fields for runtime-only private configuration.
+  ]]></Changes>
 
   <Config Name="WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="Host port mapped to IronsBot internal port 8080." Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="IronsBot Data" Target="/app/data" Default="/mnt/user/appdata/ironsbot/data" Mode="rw" Description="Persistent data directory for plugin caches, Bilibili cookies, and local database cache files." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/data</Config>
@@ -66,6 +78,10 @@
   <Config Name="Event Link Send Minute" Target="EVENT_LINK_SEND_MINUTE" Default="0" Mode="" Description="Scheduled event link send minute." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
 
   <Config Name="Scheduled Private Messages" Target="SCHEDULED_PRIVATE_MESSAGES" Default="[]" Mode="" Description="JSON list of private message tasks. Example: [{&quot;id&quot;:&quot;morning&quot;,&quot;user_ids&quot;:[123456789],&quot;hour&quot;:8,&quot;minute&quot;:30,&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+
+  <Config Name="Team Group Shortcut Groups" Target="TEAM_SHORTCUT_GROUP_IDS" Default="[]" Mode="" Description="QQ team groups where the shortcut command should trigger team queries. Keep private group IDs here instead of committing them to Git." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Team Group Shortcut Team IDs" Target="TEAM_SHORTCUT_TEAM_IDS" Default="[]" Mode="" Description="Team IDs queried for the team group shortcut command, for example [1234567,7654321]. Keep private values out of Git." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Team Group Shortcut Commands" Target="TEAM_SHORTCUT_COMMANDS" Default="[&quot;战队&quot;]" Mode="" Description="Exact team group shortcut commands that trigger the configured team queries." Type="Variable" Display="advanced" Required="false" Mask="false">["战队"]</Config>
 
   <Config Name="Startup Notice Enabled" Target="STARTUP_NOTICE_ENABLED" Default="true" Mode="" Description="Send a private startup notice after the bot connects. SUPERUSERS receive it automatically." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="Startup Notice Users" Target="STARTUP_NOTICE_USERS" Default="[]" Mode="" Description="Extra QQ users receiving startup notices. SUPERUSERS are included automatically." Type="Variable" Display="advanced" Required="false" Mask="false">[]</Config>
