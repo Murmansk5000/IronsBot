@@ -23,7 +23,7 @@ dynamic_menu_matcher = on_regex(
 )
 
 update_dynamic_matcher = on_regex(
-    r"^(更新动态|动态更新)$",
+    r"^(动态刷新|动态更新|刷新动态|更新动态)$",
     priority=1,
     block=True
 )

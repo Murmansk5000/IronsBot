@@ -6,6 +6,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlparse
 
 import httpx
 
@@ -53,6 +54,13 @@ LEGACY_COOKIE_CACHE_FILE = Path(__file__).parent / "bili_cookie_cache.txt"
 AUTH_INVALID_CODES = {-101, -401, -403, 412}
 LOGIN_NOTICE_COOLDOWN_SECONDS = 5 * 60
 LOGIN_QR_EXPIRE_SECONDS = 180
+LOGIN_COOKIE_KEYS = {
+    "SESSDATA",
+    "bili_jct",
+    "DedeUserID",
+    "DedeUserID__ckMd5",
+    "sid",
+}
 
 _bili_login_required = False
 _last_login_notice_at = 0.0
@@ -116,6 +124,31 @@ def save_new_cookie(cookie_str: str):
     COOKIE_CACHE_FILE.write_text(
         cookie_str,
         encoding="utf-8"
+    )
+
+
+def _extract_bili_login_cookie(
+    response: httpx.Response,
+    login_url: str = "",
+) -> str:
+    cookies: dict[str, str] = {
+        key: value
+        for key, value in response.cookies.items()
+        if value
+    }
+
+    if login_url:
+        query_items = parse_qsl(
+            urlparse(login_url).query,
+            keep_blank_values=False,
+        )
+        for key, value in query_items:
+            if key in LOGIN_COOKIE_KEYS and value:
+                cookies[key] = value
+
+    return "; ".join(
+        f"{key}={value}"
+        for key, value in cookies.items()
     )
 
 
@@ -402,15 +435,14 @@ async def _poll_bili_login(
                 poll_code = poll_data.get("code")
 
                 if poll_code == 0:
-                    cookies_list = [
-                        f"{k}={v}"
-                        for k, v
-                        in poll_res.cookies.items()
-                    ]
+                    new_cookie = _extract_bili_login_cookie(
+                        poll_res,
+                        poll_data.get("url", ""),
+                    )
 
-                    if not cookies_list:
+                    if "SESSDATA=" not in new_cookie:
                         await _send_private_to_admins(
-                            "B站扫码已确认，但没有取得Cookie。"
+                            "B站扫码已确认，但没有取得完整登录Cookie。"
                             "下次检测到登录失效时会重新发送二维码。",
                             bot=bot,
                             user_ids=(
@@ -420,11 +452,6 @@ async def _poll_bili_login(
                             )
                         )
                         return
-
-                    new_cookie = (
-                        "; ".join(cookies_list)
-                        + ";"
-                    )
 
                     save_new_cookie(new_cookie)
                     _set_bili_login_required(False)

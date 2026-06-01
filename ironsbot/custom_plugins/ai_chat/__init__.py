@@ -325,7 +325,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         )
 
     if plugin_config.ai_chat_send_waiting_notice:
-        await ai_chat_matcher.send(Message("我想一下..."))
+        await ai_chat_matcher.send(Message("处理中..."))
 
     history = _HISTORY.get(key, [])
 
