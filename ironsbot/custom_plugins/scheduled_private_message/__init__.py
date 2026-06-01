@@ -15,6 +15,7 @@ from .config import Config, ScheduledPrivateMessageTask, plugin_config
 __plugin_meta__ = PluginMetadata(
     name="定时私聊",
     description="按配置定时向指定用户发送私聊消息",
+    usage="通过 SCHEDULED_PRIVATE_MESSAGES 配置定时私聊任务。",
     config=Config,
 )
 
