@@ -12,10 +12,10 @@ This image is based on the upstream project [Nattsu39/IronsBot](https://github.c
 
 ```text
 docker.io/murmansk5000/ironsbot:latest
-docker.io/murmansk5000/ironsbot:0.5.1.x
+docker.io/murmansk5000/ironsbot:<upstream-version>.<fork-revision>
 docker.io/murmansk5000/ironsbot:sha-xxxxxxx
 ghcr.io/murmansk5000/ironsbot:latest
-ghcr.io/murmansk5000/ironsbot:0.5.1.x
+ghcr.io/murmansk5000/ironsbot:<upstream-version>.<fork-revision>
 ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 ```
 
@@ -26,12 +26,12 @@ ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 This fork keeps Docker `latest` available, and also publishes extra tags so you can see exactly which custom build you are running.
 
 - `latest`: the newest `main` build, suitable for normal Unraid updates.
-- `0.5.1.x`: upstream IronsBot `0.5.1` plus this fork's custom revision.
+- `<upstream-version>.<fork-revision>`: upstream IronsBot version plus this fork's custom revision.
 - `sha-xxxxxxx`: the exact Git commit used to build the image.
 
-For example, `0.5.1.24` means the image is based on upstream `0.5.1` with the 24th fork revision after upstream tag `v0.5.1`.
+For example, `0.5.1.26` means the image is based on upstream `0.5.1` with the 26th fork revision after upstream tag `v0.5.1`. If upstream later becomes `0.5.2` or `0.6.0`, this fork will publish tags such as `0.5.2.1` or `0.6.0.1`.
 
-Recent changes are tracked in the GitHub commit history and in the Unraid template changelog. On Docker Hub, check the tag list for the newest `0.5.1.x` and `sha-xxxxxxx` tags.
+Recent changes are tracked in the GitHub commit history and in the Unraid template notes. On Docker Hub, check the tag list for the newest upstream-based version tag and `sha-xxxxxxx` tag.
 
 ## Included Custom Plugins
 

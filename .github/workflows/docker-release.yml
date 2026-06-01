@@ -48,6 +48,14 @@ jobs:
                   base_tag="$(tr -d '[:space:]' < __version__)"
                   base_version="${base_tag#v}"
 
+                  if ! git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
+                    git fetch --tags origin || true
+                  fi
+
+                  if ! git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
+                    git fetch --tags https://github.com/Nattsu39/IronsBot.git "refs/tags/${base_tag}:refs/tags/${base_tag}" || true
+                  fi
+
                   if git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
                     custom_revision="$(git rev-list --count "${base_tag}..HEAD")"
                   else
