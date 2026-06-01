@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot import get_plugin_config
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
@@ -13,13 +13,6 @@ class Config(BaseModel):
     headless_seer_reconnect_retries: int = -1
     headless_seer_reconnect_delay: float = 5.0
     headless_seer_reconnect_delay_max: float = 120.0
-
-    @field_validator("headless_seer_user_id", mode="before")
-    @classmethod
-    def empty_user_id_as_none(cls, value: object) -> object:
-        if value == "":
-            return None
-        return value
 
 
 plugin_config = get_plugin_config(Config)
