@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <CommunityApplications>
-  <Profile>Custom Unraid templates for IronsBot, a NoneBot2 / OneBot v11 QQ bot image that follows the upstream IronsBot project and adds runtime-configurable plugins, persistent appdata, Bilibili monitoring, scheduled messages, and AI chat settings for personal deployments.</Profile>
+  <Profile>Custom Unraid templates for IronsBot, a NoneBot2 / OneBot v11 QQ bot image that follows the upstream IronsBot project and adds runtime-configurable plugins, persistent appdata, Bilibili monitoring, scheduled messages, team group shortcuts, AI chat settings, and upstream-based Docker version tags such as 0.5.1.x.</Profile>
   <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.svg</Icon>
   <WebPage>https://github.com/Murmansk5000/IronsBot</WebPage>
 </CommunityApplications>

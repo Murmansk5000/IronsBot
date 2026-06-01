@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Murmansk5000/IronsBot/issues</Support>
   <Project>https://github.com/Murmansk5000/IronsBot</Project>
-  <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins.</Overview>
+  <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins. Version tags use latest plus upstream-based tags like 0.5.1.x and exact sha tags; recent changes include AI chat, persistent Bilibili login data, startup notices, scheduled messages, and team group shortcuts.</Overview>
   <Description>IronsBot is a QQ bot based on NoneBot2 and OneBot v11. This custom image follows the upstream IronsBot project and adds local custom plugins for fixed image replies, Tencent Meeting replies, event links, Bilibili dynamic monitoring, scheduled private messages, startup notices, team group query shortcuts, and AI chat through OpenAI-compatible APIs. Docker image tags keep latest available and also use the upstream version plus this fork revision, for example 0.5.1.x. Private values such as QQ IDs, group IDs, tokens, account credentials, meeting numbers, and AI keys are configured at runtime through this template. Persistent plugin data, Bilibili cookies, and database caches are stored under /app/data. Startup database downloads are disabled by default; scheduled updates remain enabled, and superusers can send 更新数据 or 数据更新 to refresh immediately.</Description>
   <Category>Tools:Utilities</Category>
   <WebUI/>
@@ -19,7 +19,7 @@
   <ExtraParams/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network.</Requires>
+  <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network. Changelog/version check: latest remains available; fixed builds are tagged as 0.5.1.x and sha-xxxxxxx. See the Docker Hub README / ReadMe link for full notes.</Requires>
   <Changes><![CDATA[
 Version scheme:
 - latest: current main branch of this fork.
