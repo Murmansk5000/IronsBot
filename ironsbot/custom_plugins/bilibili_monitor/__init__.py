@@ -62,12 +62,21 @@ LOGIN_COOKIE_KEYS = {
     "sid",
 }
 
+def _unique_ints(values: list[int]) -> list[int]:
+    return list(dict.fromkeys(values))
+
+
+TARGET_GROUP_IDS = _unique_ints(TARGET_GROUP_IDS)
+TARGET_USER_IDS = _unique_ints(TARGET_USER_IDS)
+
 _bili_login_required = False
 _last_login_notice_at = 0.0
 _login_poll_task: asyncio.Task[None] | None = None
 _login_qrcode_key = ""
 _login_qr_url = ""
 _login_expires_at = 0.0
+_startup_check_done = asyncio.Event()
+_check_lock = asyncio.Lock()
 
 
 # =========================================================
@@ -176,6 +185,10 @@ def is_bili_admin(user_id: int) -> bool:
 
 def is_bili_login_required() -> bool:
     return _bili_login_required
+
+
+async def wait_startup_check_done() -> None:
+    await _startup_check_done.wait()
 
 
 def is_bili_auth_invalid(
@@ -894,6 +907,19 @@ async def do_check_logic(
         )
 
 
+async def run_check_logic(
+    is_startup_check: bool = False
+) -> bool:
+    if _check_lock.locked():
+        logger.info("B站动态检测正在运行，跳过本次触发")
+        return False
+
+    async with _check_lock:
+        await do_check_logic(is_startup_check=is_startup_check)
+
+    return True
+
+
 # =========================================================
 # 自动轮询
 # =========================================================
@@ -903,7 +929,7 @@ async def do_check_logic(
     minutes=CHECK_INTERVAL_MINUTES
 )
 async def auto_check_job():
-    await do_check_logic()
+    await run_check_logic()
 
 
 # =========================================================
@@ -919,11 +945,14 @@ async def run_safely_when_bot_ready(bot: Bot):
         f"🎉 Bot {bot.self_id} 已连接"
     )
 
-    await asyncio.sleep(2)
+    try:
+        await asyncio.sleep(2)
 
-    await do_check_logic(
-        is_startup_check=True
-    )
+        await run_check_logic(
+            is_startup_check=True
+        )
+    finally:
+        _startup_check_done.set()
 
 
 # 导入命令模块

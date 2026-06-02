@@ -20,7 +20,7 @@ IMAGE_COMMANDS = {
 
 
 for command, filename in IMAGE_COMMANDS.items():
-    matcher = on_fullmatch(command, rule=no_reply(), priority=5, block=True)
+    matcher = on_fullmatch(command, rule=no_reply(), priority=1, block=True)
 
     @matcher.handle()
     async def _handle(matcher: Matcher, filename: str = filename) -> None:

@@ -1,3 +1,5 @@
+import json
+
 from nonebot import get_plugin_config
 from pydantic import BaseModel, Field, field_validator
 
@@ -8,6 +10,31 @@ class Config(BaseModel):
     team_shortcut_commands: list[str] = Field(default_factory=lambda: ["战队"])
     team_shortcut_resource_notice_user_ids: list[int] = Field(default_factory=list)
     team_shortcut_resource_notice_message: str = "出来买资源，别逼我求你😡"
+
+    @field_validator("team_shortcut_resource_notice_user_ids", mode="before")
+    @classmethod
+    def normalize_resource_notice_user_ids(cls, value: object) -> object:
+        if value is None or value == "":
+            return []
+
+        if isinstance(value, int):
+            return [value]
+
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+
+            if text.startswith("["):
+                return json.loads(text)
+
+            return [
+                int(item.strip())
+                for item in text.split(",")
+                if item.strip()
+            ]
+
+        return value
 
     @field_validator("team_shortcut_commands")
     @classmethod

@@ -138,7 +138,7 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `TEAM_SHORTCUT_GROUP_IDS` | QQ team/guild groups where team shortcut commands are enabled. |
 | `TEAM_SHORTCUT_TEAM_IDS` | Team IDs queried by the team group shortcut command. |
 | `TEAM_SHORTCUT_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
-| `TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS` | QQ users to mention when any configured team resource is below 1000. |
+| `TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS` | QQ users to mention when any configured team resource is below 1000. Use `[123456789]` or `123456789`. |
 | `TEAM_SHORTCUT_RESOURCE_NOTICE_MESSAGE` | Message sent after the mention when team resources are low. |
 | `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
 | `AI_CHAT_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
