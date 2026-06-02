@@ -271,7 +271,7 @@ async def _(bot: Bot, event: MessageEvent):
             "⛔ 仅超级管理员可用。"
         )
 
-    from . import do_check_logic
+    from . import run_check_logic
 
     try:
 
@@ -284,9 +284,14 @@ async def _(bot: Bot, event: MessageEvent):
             "⚡ 正在刷新动态..."
         )
 
-        await do_check_logic(
+        did_run = await run_check_logic(
             is_startup_check=True
         )
+
+        if not did_run:
+            await update_dynamic_matcher.finish(
+                "⏳ 动态刷新正在进行中，请稍后再试。"
+            )
 
         await update_dynamic_matcher.finish(
             "✅ 动态刷新完成。"
