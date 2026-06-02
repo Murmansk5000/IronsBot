@@ -1,11 +1,8 @@
-import asyncio
-
 from nonebot import on_message, require
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
     MessageEvent,
-    MessageSegment,
 )
 from nonebot.exception import FinishedException
 from nonebot.log import logger
@@ -13,6 +10,11 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
 from ironsbot.utils.rule import no_reply
+from ironsbot.custom_plugins.message_actions import (
+    build_message,
+    command_text_matches,
+    finish_message_sequence,
+)
 
 require("ironsbot.plugins.get_seer_info")
 
@@ -24,12 +26,10 @@ from .config import plugin_config
 
 
 def _build_resource_notice() -> Message:
-    message = Message()
-    for user_id in plugin_config.team_shortcut_resource_notice_user_ids:
-        message += MessageSegment.at(user_id)
-        message += MessageSegment.text(" ")
-    message += MessageSegment.text(plugin_config.team_shortcut_resource_notice_message)
-    return message
+    return build_message(
+        plugin_config.team_shortcut_resource_notice_message,
+        at_user_ids=plugin_config.team_shortcut_resource_notice_user_ids,
+    )
 
 
 async def _is_team_shortcut(event: MessageEvent) -> bool:
@@ -45,7 +45,10 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
     if event.group_id not in plugin_config.team_shortcut_group_ids:
         return False
 
-    return event.get_plaintext().strip() in plugin_config.team_shortcut_commands
+    return command_text_matches(
+        event.get_plaintext(),
+        plugin_config.team_shortcut_commands,
+    )
 
 
 team_shortcut_matcher = on_message(
@@ -58,6 +61,7 @@ team_shortcut_matcher = on_message(
 @team_shortcut_matcher.handle()
 async def handle_team_shortcut(
     matcher: Matcher,
+    event: MessageEvent,
     game: SeerGame = GameClient,
 ) -> None:
     replies: list[Message] = []
@@ -83,8 +87,4 @@ async def handle_team_shortcut(
     if resource_notice_needed:
         replies.append(_build_resource_notice())
 
-    for reply in replies[:-1]:
-        await matcher.send(reply)
-        await asyncio.sleep(0.5)
-
-    await matcher.finish(replies[-1])
+    await finish_message_sequence(matcher, replies, event=event)

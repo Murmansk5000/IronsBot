@@ -4,6 +4,8 @@ from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
+from ironsbot.custom_plugins.message_actions import send_broadcast_message
+
 from .config import plugin_config
 
 driver = get_driver()
@@ -65,16 +67,15 @@ async def send_startup_notice(bot: Bot) -> None:
 
         message = Message(plugin_config.startup_notice_message)
 
-        sent_any = False
-        for user_id in target_users:
-            try:
-                await bot.send_private_msg(user_id=user_id, message=message)
-                sent_any = True
-                await asyncio.sleep(1.2)
-            except Exception as e:
-                logger.warning(f"启动通知发送失败 {user_id}: {e}")
+        summary = await send_broadcast_message(
+            message,
+            private_user_ids=target_users,
+            bot=bot,
+            action_name="启动通知",
+            interval_seconds=1.2,
+        )
 
-        if sent_any:
+        if summary.succeeded:
             _notice_sent = True
             logger.info(f"启动通知已发送给 {len(target_users)} 个用户")
 

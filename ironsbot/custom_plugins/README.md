@@ -17,11 +17,10 @@ plugin_dirs = ["ironsbot/plugins", "ironsbot/custom_plugins"]
 ironsbot/custom_plugins/
   ai_chat/           # 接入 DeepSeek API，群聊 @机器人 或授权私聊触发
   bilibili_monitor/   # 监控指定 B 站账号动态，推送到配置的群/用户
-  event_link/         # 回复“签到/活动/链接”，并可定时推送活动链接
+  message_actions/    # 通用文本消息动作：指令回复、定时发送、批量推送、事件回复
   meeting_reply/      # 回复“开播/会议”的腾讯会议信息
   pet_config_reply/   # 对“精灵名 + 配置”提示暂不支持配置查询
   startup_notice/     # 机器人启动并连接后私聊通知超级管理员
-  scheduled_private_message/ # 定时向指定用户发送私聊消息
   team_shortcut/      # 给战队群使用：群内短指令触发预设战队查询
   sendpic_custom/     # 本地固定关键词发图
 ```
@@ -36,23 +35,35 @@ ironsbot/custom_plugins/my_plugin/
   config.py        # 可选：放配置模型
 ```
 
-最小命令示例：
+固定文本指令、定时私聊、定时群发优先不要写插件，直接用
+`MESSAGE_ACTION_*` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
+最终发送走 `message_actions`。
+
+最小业务命令示例：
 
 ```python
-from nonebot.plugin import PluginMetadata, on_fullmatch
+from nonebot import on_message
+from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.matcher import Matcher
+from nonebot.rule import Rule
 
-__plugin_meta__ = PluginMetadata(
-    name="Ping",
-    description="测试机器人是否在线",
-    usage="ping",
+from ironsbot.custom_plugins.message_actions import (
+    command_text_matches,
+    finish_event_reply,
 )
+from ironsbot.utils.rule import no_reply
 
-ping = on_fullmatch("ping", priority=10, block=True)
+
+async def _is_ping(event: MessageEvent) -> bool:
+    return command_text_matches(event.get_plaintext(), ("ping",))
+
+
+ping = on_message(rule=Rule(_is_ping) & no_reply(), priority=10, block=True)
 
 
 @ping.handle()
-async def handle_ping() -> None:
-    await ping.finish("pong")
+async def handle_ping(matcher: Matcher, event: MessageEvent) -> None:
+    await finish_event_reply(matcher, event, "pong")
 ```
 
 把代码放进某个插件目录的 `__init__.py`，重启机器人后即可测试。
@@ -86,10 +97,6 @@ MEETING_REPLY_TEMPLATE="腾讯会议\n腾讯会议号：{meeting_number}\n点击
 MEETING_REPLY_GROUPS=[123456789,987654321]
 MEETING_REPLY_USERS=[123456789]
 
-EVENT_LINK_REPLY_GROUPS=[123456789]
-EVENT_LINK_SEND_USERS=[123456789]
-EVENT_LINK_SEND_HOUR=23
-
 BILIBILI_MONITOR_UID=1310714247
 BILIBILI_MONITOR_DATA_DIR=data/bilibili_monitor
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789]
@@ -99,22 +106,42 @@ BILIBILI_MONITOR_ADMIN_UIDS=[123456789]
 STARTUP_NOTICE_ENABLED=true
 STARTUP_NOTICE_USERS=[]
 STARTUP_NOTICE_MESSAGE=机器人已开启。
-STARTUP_NOTICE_DELAY_SECONDS=3
+STARTUP_NOTICE_DELAY_SECONDS=0
 
-SCHEDULED_PRIVATE_MESSAGES=[
+# 群聊中由用户触发的文本回复是否在开头 @ 触发者；自动推送和定时消息不受影响。
+MESSAGE_ACTION_MENTION_GROUP_TRIGGER_USER=false
+MESSAGE_ACTION_PRIVATE_COMMANDS=[
+  {
+    "id": "activity_link_private",
+    "commands": ["签到", "活动", "链接"],
+    "allowed_user_ids": [123456789],
+    "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
+  }
+]
+MESSAGE_ACTION_PRIVATE_SCHEDULES=[
   {
     "id": "morning",
     "user_ids": [123456789, 987654321],
     "hour": 8,
     "minute": 30,
     "message": "早上好"
-  },
+  }
+]
+MESSAGE_ACTION_GROUP_COMMANDS=[
   {
-    "id": "night",
-    "user_ids": [123456789],
+    "id": "activity_link_group",
+    "group_ids": [123456789],
+    "commands": ["签到", "活动", "链接"],
+    "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
+  }
+]
+MESSAGE_ACTION_GROUP_SCHEDULES=[
+  {
+    "id": "activity_link_daily",
+    "group_ids": [123456789],
     "hour": 23,
     "minute": 0,
-    "message": "该休息了"
+    "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
   }
 ]
 

@@ -14,6 +14,10 @@ from nonebot import require, get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
+from ironsbot.custom_plugins.message_actions import (
+    send_broadcast_message,
+)
+
 # 注册 APScheduler
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -229,25 +233,13 @@ async def _send_private_to_admins(
         logger.warning("B站监控未配置管理员，无法发送登录提醒")
         return
 
-    bot = bot or _get_first_bot()
-
-    if not bot:
-        logger.warning("当前没有Bot在线，无法发送B站登录提醒")
-        return
-
-    for user_id in target_user_ids:
-        try:
-            await bot.send_private_msg(
-                user_id=user_id,
-                message=message
-            )
-
-            await asyncio.sleep(1.2)
-
-        except Exception as e:
-            logger.warning(
-                f"B站登录提醒发送失败 {user_id}: {e}"
-            )
+    await send_broadcast_message(
+        message,
+        private_user_ids=target_user_ids,
+        bot=bot or _get_first_bot(),
+        action_name="B站登录提醒",
+        interval_seconds=1.2,
+    )
 
 
 async def send_bili_login_qrcode_to_admins(
@@ -854,39 +846,14 @@ async def do_check_logic(
                         bots.values()
                     )[0]
 
-                    # 群推送
-                    for group_id in TARGET_GROUP_IDS:
-
-                        try:
-                            await bot.send_group_msg(
-                                group_id=group_id,
-                                message=msg_text
-                            )
-
-                            await asyncio.sleep(1.2)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"群推送失败 "
-                                f"{group_id}: {e}"
-                            )
-
-                    # 私聊推送
-                    for user_id in TARGET_USER_IDS:
-
-                        try:
-                            await bot.send_private_msg(
-                                user_id=user_id,
-                                message=msg_text
-                            )
-
-                            await asyncio.sleep(1.2)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"私聊推送失败 "
-                                f"{user_id}: {e}"
-                            )
+                    await send_broadcast_message(
+                        msg_text,
+                        group_ids=TARGET_GROUP_IDS,
+                        private_user_ids=TARGET_USER_IDS,
+                        bot=bot,
+                        action_name="B站动态推送",
+                        interval_seconds=1.2,
+                    )
 
                     if pub_ts > highest_ts:
                         highest_ts = pub_ts

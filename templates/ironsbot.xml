@@ -14,7 +14,7 @@
   <Category>Tools:Utilities</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.png</Icon>
   <ReadMe>https://github.com/Murmansk5000/IronsBot/blob/main/docker/README.md</ReadMe>
   <ExtraParams/>
   <DonateText/>
@@ -70,14 +70,11 @@ Recent changes:
   <Config Name="Meeting Reply Groups" Target="MEETING_REPLY_GROUPS" Default="[]" Mode="" Description="QQ groups allowed to use meeting reply, for example [123456789]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
   <Config Name="Meeting Reply Users" Target="MEETING_REPLY_USERS" Default="[]" Mode="" Description="QQ users allowed to use meeting reply in private chat, for example [123456789]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 
-  <Config Name="Event Link Reply Groups" Target="EVENT_LINK_REPLY_GROUPS" Default="[]" Mode="" Description="QQ groups allowed to query event links." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="Event Link Reply Users" Target="EVENT_LINK_REPLY_USERS" Default="[]" Mode="" Description="QQ users allowed to query event links in private chat." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="Event Link Send Groups" Target="EVENT_LINK_SEND_GROUPS" Default="[]" Mode="" Description="QQ groups receiving scheduled event links." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="Event Link Send Users" Target="EVENT_LINK_SEND_USERS" Default="[]" Mode="" Description="QQ users receiving scheduled event links in private chat." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
-  <Config Name="Event Link Send Hour" Target="EVENT_LINK_SEND_HOUR" Default="23" Mode="" Description="Scheduled event link send hour." Type="Variable" Display="advanced" Required="false" Mask="false">23</Config>
-  <Config Name="Event Link Send Minute" Target="EVENT_LINK_SEND_MINUTE" Default="0" Mode="" Description="Scheduled event link send minute." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
-
-  <Config Name="Scheduled Private Messages" Target="SCHEDULED_PRIVATE_MESSAGES" Default="[]" Mode="" Description="JSON list of private message tasks. Example: [{&quot;id&quot;:&quot;morning&quot;,&quot;user_ids&quot;:[123456789],&quot;hour&quot;:8,&quot;minute&quot;:30,&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Mention Group Trigger User" Target="MESSAGE_ACTION_MENTION_GROUP_TRIGGER_USER" Default="false" Mode="" Description="When enabled, text replies triggered by a group message start by mentioning the triggering QQ user. Disabled by default." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Message Action Private Commands" Target="MESSAGE_ACTION_PRIVATE_COMMANDS" Default="[]" Mode="" Description="Generic private command replies. Example: [{&quot;id&quot;:&quot;ping&quot;,&quot;commands&quot;:[&quot;ping&quot;],&quot;allowed_user_ids&quot;:[123456789],&quot;message&quot;:&quot;pong&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Message Action Private Schedules" Target="MESSAGE_ACTION_PRIVATE_SCHEDULES" Default="[]" Mode="" Description="Generic scheduled private messages. Example: [{&quot;id&quot;:&quot;morning&quot;,&quot;user_ids&quot;:[123456789],&quot;hour&quot;:8,&quot;minute&quot;:30,&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Message Action Group Commands" Target="MESSAGE_ACTION_GROUP_COMMANDS" Default="[]" Mode="" Description="Generic group command replies, with optional at_user_ids. Example: [{&quot;id&quot;:&quot;notice&quot;,&quot;group_ids&quot;:[123456789],&quot;commands&quot;:[&quot;notice&quot;],&quot;at_user_ids&quot;:[987654321],&quot;message&quot;:&quot;hello&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
+  <Config Name="Message Action Group Schedules" Target="MESSAGE_ACTION_GROUP_SCHEDULES" Default="[]" Mode="" Description="Generic scheduled group messages, with optional at_user_ids. Example: [{&quot;id&quot;:&quot;night&quot;,&quot;group_ids&quot;:[123456789],&quot;hour&quot;:23,&quot;minute&quot;:0,&quot;message&quot;:&quot;good night&quot;}]." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
 
   <Config Name="Team Group Shortcut Groups" Target="TEAM_SHORTCUT_GROUP_IDS" Default="[]" Mode="" Description="QQ team groups where the shortcut command should trigger team queries. Keep private group IDs here instead of committing them to Git." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
   <Config Name="Team Group Shortcut Team IDs" Target="TEAM_SHORTCUT_TEAM_IDS" Default="[]" Mode="" Description="Team IDs queried for the team group shortcut command, for example [1234567,7654321]. Keep private values out of Git." Type="Variable" Display="always" Required="false" Mask="false">[]</Config>
