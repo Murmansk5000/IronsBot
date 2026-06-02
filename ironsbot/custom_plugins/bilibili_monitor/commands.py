@@ -8,28 +8,63 @@ from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
     Message,
+    MessageEvent,
+    PrivateMessageEvent,
 )
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from nonebot.rule import Rule
 
 # Session缓存
 DYNAMIC_CACHE_SESSION = {}
 
+
+def _get_dynamic_session_key(event: MessageEvent) -> str:
+    if isinstance(event, GroupMessageEvent):
+        return f"{event.user_id}_{event.group_id}"
+
+    return f"{event.user_id}_private"
+
+
+async def _is_dynamic_query_allowed(event: MessageEvent) -> bool:
+    from . import TARGET_GROUP_IDS, TARGET_USER_IDS, is_bili_admin
+
+    if is_bili_admin(event.user_id):
+        return True
+
+    if isinstance(event, GroupMessageEvent):
+        return event.group_id in TARGET_GROUP_IDS
+
+    if isinstance(event, PrivateMessageEvent):
+        return event.user_id in TARGET_USER_IDS
+
+    return False
+
+
+async def _has_dynamic_menu_session(event: MessageEvent) -> bool:
+    if not await _is_dynamic_query_allowed(event):
+        return False
+
+    return _get_dynamic_session_key(event) in DYNAMIC_CACHE_SESSION
+
+
 # 指令
 dynamic_menu_matcher = on_regex(
-    r"^(动态)$",
+    r"^\s*动态\s*$",
+    rule=Rule(_is_dynamic_query_allowed),
     priority=1,
     block=True
 )
 
 update_dynamic_matcher = on_regex(
-    r"^(动态刷新|动态更新|刷新动态|更新动态)$",
+    r"^\s*(动态刷新|动态更新|刷新动态|更新动态)\s*$",
     priority=1,
     block=True
 )
 
 num_select_matcher = on_regex(
-    r"^([1-9]|10)$",
+    r"^\s*([1-9]|10)\s*$",
+    rule=Rule(_has_dynamic_menu_session),
     priority=1,
     block=True
 )
@@ -40,12 +75,11 @@ num_select_matcher = on_regex(
 # =========================================================
 
 @dynamic_menu_matcher.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: MessageEvent):
 
     user_id = event.user_id
-    group_id = event.group_id
 
-    session_key = f"{user_id}_{group_id}"
+    session_key = _get_dynamic_session_key(event)
 
     from . import (
         BILI_UID,
@@ -225,7 +259,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 # =========================================================
 
 @update_dynamic_matcher.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: MessageEvent):
 
     user_id = event.user_id
 
@@ -277,12 +311,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
 # =========================================================
 
 @num_select_matcher.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: MessageEvent):
 
     user_id = event.user_id
-    group_id = event.group_id
 
-    session_key = f"{user_id}_{group_id}"
+    session_key = _get_dynamic_session_key(event)
 
     if session_key not in DYNAMIC_CACHE_SESSION:
         return

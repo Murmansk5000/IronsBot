@@ -138,12 +138,13 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `TEAM_SHORTCUT_GROUP_IDS` | QQ team/guild groups where team shortcut commands are enabled. |
 | `TEAM_SHORTCUT_TEAM_IDS` | Team IDs queried by the team group shortcut command. |
 | `TEAM_SHORTCUT_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
+| `TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS` | QQ users to mention when any configured team resource is below 1000. |
+| `TEAM_SHORTCUT_RESOURCE_NOTICE_MESSAGE` | Message sent after the mention when team resources are low. |
 | `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
 | `AI_CHAT_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
 | `AI_CHAT_MODEL` | Model name used by the configured AI chat provider. |
-| `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat. In group chats they must mention the bot. |
-| `AI_CHAT_ALLOWED_GROUP_IDS` | Optional group whitelist for AI chat. Empty means no group restriction. |
-| `AI_CHAT_ALLOW_GROUP_OWNER` | Whether group owners can use AI chat by mentioning the bot. |
+| `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat outside group-wide allowlists. Private chats require this, admin access, or SUPERUSERS. |
+| `AI_CHAT_ALLOWED_GROUP_IDS` | QQ groups whose members may use AI chat by mentioning the bot. Empty means no group-wide access. |
 
 List values should use JSON-like syntax, for example:
 
@@ -155,6 +156,8 @@ SCHEDULED_PRIVATE_MESSAGES=[{"id":"morning","user_ids":[123456789],"hour":8,"min
 TEAM_SHORTCUT_GROUP_IDS=[123456789]
 TEAM_SHORTCUT_TEAM_IDS=[1234567,7654321]
 TEAM_SHORTCUT_COMMANDS=["战队"]
+TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS=[123456789]
+TEAM_SHORTCUT_RESOURCE_NOTICE_MESSAGE=出来买资源，别逼我求你😡
 AI_CHAT_ALLOWED_USER_IDS=[123456789]
 ```
 
@@ -177,6 +180,8 @@ Configure it at runtime:
 TEAM_SHORTCUT_GROUP_IDS=[123456789]
 TEAM_SHORTCUT_TEAM_IDS=[1234567,7654321]
 TEAM_SHORTCUT_COMMANDS=["战队"]
+TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS=[123456789]
+TEAM_SHORTCUT_RESOURCE_NOTICE_MESSAGE=出来买资源，别逼我求你😡
 ```
 
 Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an ignored `.env.prod` file. Do not commit them to GitHub.
