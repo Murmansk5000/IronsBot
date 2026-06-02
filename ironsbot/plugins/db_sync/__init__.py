@@ -33,6 +33,7 @@ class _SyncEntry(NamedTuple):
 
 _driver = get_driver()
 _sync_locks: dict[str, asyncio.Lock] = {}
+_sync_all_lock = asyncio.Lock()
 _registered_syncs: dict[str, _SyncEntry] = {}
 _local_databases: set[str] = set()
 _fingerprints: dict[str, str] = {}
@@ -50,6 +51,13 @@ def _get_lock(name: str) -> asyncio.Lock:
     if name not in _sync_locks:
         _sync_locks[name] = asyncio.Lock()
     return _sync_locks[name]
+
+
+def is_sync_running() -> bool:
+    return _sync_all_lock.locked() or any(
+        _get_lock(name).locked()
+        for name in _registered_syncs
+    )
 
 
 def register_database(
@@ -81,7 +89,7 @@ def register_database(
 
     if plugin_config.db_sync_interval_enabled:
         scheduler.add_job(
-            sync_database,
+            run_sync_database,
             "interval",
             args=[name],
             minutes=sync_interval_minutes,
@@ -185,11 +193,43 @@ async def sync_database(name: str) -> bool:
             await tmp_path.unlink(missing_ok=True)
 
 
+async def run_sync_database(name: str) -> bool:
+    if _sync_all_lock.locked():
+        logger.info(f"数据库全量同步正在运行，跳过 '{name}' 本次定时同步")
+        return False
+
+    if _get_lock(name).locked():
+        logger.info(f"数据库 '{name}' 正在同步，跳过本次触发")
+        return False
+
+    return await sync_database(name)
+
+
 async def sync_all_databases() -> dict[str, bool]:
     results: dict[str, bool] = {}
     for name in _registered_syncs:
         results[name] = await sync_database(name)
     return results
+
+
+async def run_sync_all_databases() -> tuple[bool, dict[str, bool]]:
+    if _sync_all_lock.locked():
+        logger.info("数据库全量同步正在运行，跳过本次手动触发")
+        return False, {}
+
+    async with _sync_all_lock:
+        busy_names = [
+            name for name in _registered_syncs
+            if _get_lock(name).locked()
+        ]
+        if busy_names:
+            logger.info(
+                "数据库同步正在运行，跳过本次手动触发: "
+                f"{', '.join(busy_names)}"
+            )
+            return False, {}
+
+        return True, await sync_all_databases()
 
 
 def load_cached_database(name: str) -> bool:
@@ -211,10 +251,17 @@ async def _handle_manual_sync(matcher: Matcher) -> None:
     if not _registered_syncs:
         await matcher.finish("当前没有已注册的远程同步数据库。")
 
+    if is_sync_running():
+        await matcher.finish("⏳ 数据更新正在进行中，请稍后再试。")
+
     names = list(_registered_syncs)
     await matcher.send(f"开始更新数据：{', '.join(names)}，请稍等。")
 
-    results = await sync_all_databases()
+    did_run, results = await run_sync_all_databases()
+
+    if not did_run:
+        await matcher.finish("⏳ 数据更新正在进行中，请稍后再试。")
+
     failed = [name for name, ok in results.items() if not ok]
     succeeded = [name for name, ok in results.items() if ok]
 
@@ -249,5 +296,6 @@ async def _on_startup() -> None:
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“更新数据”手动同步")
         return
 
-    for name in _registered_syncs:
-        await sync_database(name)
+    async with _sync_all_lock:
+        for name in _registered_syncs:
+            await sync_database(name)
