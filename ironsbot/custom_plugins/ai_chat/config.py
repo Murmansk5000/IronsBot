@@ -19,7 +19,6 @@ class Config(BaseModel):
     ai_chat_allowed_group_ids: list[int] = Field(default_factory=list)
     ai_chat_allowed_user_ids: list[int] = Field(default_factory=list)
     ai_chat_admin_uids: list[int] = Field(default_factory=list)
-    ai_chat_allow_group_owner: bool = True
     ai_chat_history_turns: int = Field(default=6, ge=0, le=20)
     ai_chat_timeout_seconds: float = Field(default=45.0, gt=0)
     ai_chat_max_tokens: int = Field(default=800, gt=0)

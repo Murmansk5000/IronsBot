@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
     MessageEvent,
+    MessageSegment,
     PrivateMessageEvent,
 )
 from nonebot.exception import FinishedException
@@ -23,6 +24,22 @@ from .config import Config, get_ai_chat_admin_uids, plugin_config
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 ADMIN_NOTICE_COOLDOWN_SECONDS = 10 * 60
+RESERVED_PRIVATE_COMMANDS = {
+    "help",
+    "帮助",
+    "动态",
+    "动态刷新",
+    "动态更新",
+    "刷新动态",
+    "更新动态",
+    "数据版本",
+    "数据更新",
+    "更新数据",
+    "服务器状态",
+    "签到",
+    "活动",
+    "链接",
+}
 
 __plugin_meta__ = PluginMetadata(
     name="AI聊天",
@@ -83,14 +100,12 @@ async def _notify_admins_once(key: str, message: str) -> None:
     await _send_private_to_admins(message)
 
 
-def _is_group_owner(event: GroupMessageEvent) -> bool:
-    role = getattr(event.sender, "role", "")
-    return role == "owner"
+def _is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
+    if not isinstance(event, PrivateMessageEvent):
+        return False
 
-
-def _is_group_enabled(group_id: int) -> bool:
-    allowed_group_ids = plugin_config.ai_chat_allowed_group_ids
-    return not allowed_group_ids or group_id in allowed_group_ids
+    normalized = "".join(prompt.split()).lower()
+    return normalized in RESERVED_PRIVATE_COMMANDS
 
 
 def _is_allowed(event: MessageEvent) -> bool:
@@ -98,16 +113,8 @@ def _is_allowed(event: MessageEvent) -> bool:
         return True
 
     if isinstance(event, GroupMessageEvent):
-        if not _is_group_enabled(event.group_id):
-            return False
-
-        if event.user_id in plugin_config.ai_chat_allowed_user_ids:
-            return True
-
-        return (
-            plugin_config.ai_chat_allow_group_owner
-            and _is_group_owner(event)
-        )
+        allowed_group_ids = plugin_config.ai_chat_allowed_group_ids
+        return event.group_id in allowed_group_ids
 
     if isinstance(event, PrivateMessageEvent):
         return event.user_id in plugin_config.ai_chat_allowed_user_ids
@@ -125,6 +132,8 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
             return False
 
     prompt = event.get_plaintext().strip()
+    if _is_reserved_private_command(event, prompt):
+        return False
 
     state[AI_CHAT_PROMPT_KEY] = prompt
     return True
@@ -142,6 +151,16 @@ def _history_key(event: MessageEvent) -> str:
         return f"group:{event.group_id}:user:{event.user_id}"
 
     return f"private:{event.user_id}"
+
+
+def _build_response_message(event: MessageEvent, text: str) -> Message:
+    if isinstance(event, GroupMessageEvent):
+        message = Message()
+        message += MessageSegment.at(event.user_id)
+        message += MessageSegment.text(f" {text}")
+        return message
+
+    return Message(text)
 
 
 def _trim_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -304,14 +323,16 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
 
     if not prompt:
         await ai_chat_matcher.finish(
-            Message("你想聊什么？可以 @我 后面直接写问题。")
+            _build_response_message(event, "你想聊什么？可以 @我 后面直接写问题。")
         )
 
     key = _history_key(event)
 
     if _is_reset_prompt(prompt):
         _HISTORY.pop(key, None)
-        await ai_chat_matcher.finish(Message("已清空这段聊天上下文。"))
+        await ai_chat_matcher.finish(
+            _build_response_message(event, "已清空这段聊天上下文。")
+        )
 
     if not plugin_config.ai_chat_api_key:
         await _notify_admins_once(
@@ -321,11 +342,14 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         )
 
         await ai_chat_matcher.finish(
-            Message("AI聊天还没有配置 API Key。请先设置 AI_CHAT_API_KEY。")
+            _build_response_message(
+                event,
+                "AI聊天还没有配置 API Key。请先设置 AI_CHAT_API_KEY。",
+            )
         )
 
     if plugin_config.ai_chat_send_waiting_notice:
-        await ai_chat_matcher.send(Message("处理中..."))
+        await ai_chat_matcher.send(_build_response_message(event, "处理中..."))
 
     history = _HISTORY.get(key, [])
 
@@ -348,7 +372,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             ]
             _HISTORY[key] = _trim_history(new_history)
 
-        await ai_chat_matcher.finish(Message(reply))
+        await ai_chat_matcher.finish(_build_response_message(event, reply))
 
     except FinishedException:
         raise
@@ -363,7 +387,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             "请检查网络或适当调大 AI_CHAT_TIMEOUT_SECONDS。"
         )
         await ai_chat_matcher.finish(
-            Message("AI接口响应超时，我已经通知管理员。")
+            _build_response_message(event, "AI接口响应超时，我已经通知管理员。")
         )
 
     except Exception as e:
@@ -375,5 +399,5 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             "请查看容器日志确认具体原因。"
         )
         await ai_chat_matcher.finish(
-            Message("AI聊天出错了，我已经通知管理员。")
+            _build_response_message(event, "AI聊天出错了，我已经通知管理员。")
         )
