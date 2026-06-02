@@ -12,7 +12,7 @@ IronsBot 是一个基于 NoneBot2 / OneBot v11 的赛尔号信息查询机器人
 - 提供 Docker Hub / GHCR 镜像，方便 Unraid 和 Docker Compose 部署。
 - 提供 Unraid Community Applications 模板。
 - 保留赛尔号精灵、技能、魂印、巅峰、战队等查询能力。
-- 增加本地自定义图片回复、B站动态监控、AI 聊天、活动链接、会议回复、启动通知、定时私聊和战队群快捷查询。
+- 增加本地自定义图片回复、B站动态监控、AI 聊天、活动链接、会议回复、通用消息动作、启动通知、定时私聊和战队群快捷查询。
 - 将 B站 Cookie、数据库缓存等运行数据放到 `/app/data`，便于容器重建后保留状态。
 
 ## 镜像
@@ -92,9 +92,8 @@ services:
 | `sendpic_custom` | 本地固定关键词发图。 |
 | `bilibili_monitor` | 监控指定 B站账号动态，支持 Cookie 失效后给管理员发登录二维码。 |
 | `ai_chat` | 接入 DeepSeek / OpenAI-compatible API，群聊通过 @ 触发。 |
-| `event_link` | 回复或定时推送活动链接。 |
+| `message_actions` | 统一处理私聊/群聊的指令回复、定时消息、批量推送和事件回复。 |
 | `meeting_reply` | 根据环境变量回复腾讯会议信息。 |
-| `scheduled_private_message` | 定时给指定用户发送私聊消息。 |
 | `startup_notice` | 机器人连接后通知超级管理员。 |
 | `team_shortcut` | 战队群快捷查询固定战队，并可在资源过低时 @ 指定用户。 |
 

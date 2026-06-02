@@ -3,9 +3,8 @@ from datetime import datetime
 
 import httpx
 
-from nonebot import on_regex
+from nonebot import on_message
 from nonebot.adapters.onebot.v11 import (
-    Bot,
     GroupMessageEvent,
     Message,
     MessageEvent,
@@ -15,8 +14,18 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.rule import Rule
 
+from ironsbot.custom_plugins.message_actions import (
+    command_text_matches,
+    finish_event_reply,
+    normalize_command_text,
+    send_event_reply,
+)
+
 # Session缓存
 DYNAMIC_CACHE_SESSION = {}
+DYNAMIC_MENU_COMMANDS = ("动态",)
+DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
+DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
 
 
 def _get_dynamic_session_key(event: MessageEvent) -> str:
@@ -48,23 +57,45 @@ async def _has_dynamic_menu_session(event: MessageEvent) -> bool:
     return _get_dynamic_session_key(event) in DYNAMIC_CACHE_SESSION
 
 
+async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
+    if not await _is_dynamic_query_allowed(event):
+        return False
+
+    return command_text_matches(
+        event.get_plaintext(),
+        DYNAMIC_MENU_COMMANDS,
+    )
+
+
+async def _is_update_dynamic_command(event: MessageEvent) -> bool:
+    return command_text_matches(
+        event.get_plaintext(),
+        DYNAMIC_UPDATE_COMMANDS,
+    )
+
+
+async def _is_dynamic_select_command(event: MessageEvent) -> bool:
+    if not await _has_dynamic_menu_session(event):
+        return False
+
+    return normalize_command_text(event.get_plaintext()) in DYNAMIC_SELECT_COMMANDS
+
+
 # 指令
-dynamic_menu_matcher = on_regex(
-    r"^\s*动态\s*$",
-    rule=Rule(_is_dynamic_query_allowed),
+dynamic_menu_matcher = on_message(
+    rule=Rule(_is_dynamic_menu_command),
     priority=1,
     block=True
 )
 
-update_dynamic_matcher = on_regex(
-    r"^\s*(动态刷新|动态更新|刷新动态|更新动态)\s*$",
+update_dynamic_matcher = on_message(
+    rule=Rule(_is_update_dynamic_command),
     priority=1,
     block=True
 )
 
-num_select_matcher = on_regex(
-    r"^\s*([1-9]|10)\s*$",
-    rule=Rule(_has_dynamic_menu_session),
+num_select_matcher = on_message(
+    rule=Rule(_is_dynamic_select_command),
     priority=1,
     block=True
 )
@@ -75,7 +106,7 @@ num_select_matcher = on_regex(
 # =========================================================
 
 @dynamic_menu_matcher.handle()
-async def _(bot: Bot, event: MessageEvent):
+async def _(event: MessageEvent):
 
     user_id = event.user_id
 
@@ -104,7 +135,8 @@ async def _(bot: Bot, event: MessageEvent):
 
     try:
 
-        await bot.send(
+        await send_event_reply(
+            dynamic_menu_matcher,
             event,
             "🔄 正在拉取B站动态..."
         )
@@ -126,7 +158,9 @@ async def _(bot: Bot, event: MessageEvent):
                     "用户查询动态时发现B站登录失效"
                 )
 
-                await dynamic_menu_matcher.finish(
+                await finish_event_reply(
+                    dynamic_menu_matcher,
+                    event,
                     "⚠️ Cookie已失效。"
                 )
 
@@ -136,7 +170,9 @@ async def _(bot: Bot, event: MessageEvent):
             )
 
             if not items:
-                await dynamic_menu_matcher.finish(
+                await finish_event_reply(
+                    dynamic_menu_matcher,
+                    event,
                     "📭 没有动态数据。"
                 )
 
@@ -169,7 +205,9 @@ async def _(bot: Bot, event: MessageEvent):
                         )
 
             if not target_dynamics:
-                await dynamic_menu_matcher.finish(
+                await finish_event_reply(
+                    dynamic_menu_matcher,
+                    event,
                     "📭 近期没有公开动态。"
                 )
 
@@ -236,7 +274,9 @@ async def _(bot: Bot, event: MessageEvent):
                 f"📋 用户 {user_id} 获取动态菜单成功"
             )
 
-            await dynamic_menu_matcher.finish(
+            await finish_event_reply(
+                dynamic_menu_matcher,
+                event,
                 Message(reply_text)
             )
 
@@ -249,7 +289,9 @@ async def _(bot: Bot, event: MessageEvent):
             f"动态菜单故障: {e}"
         )
 
-        await dynamic_menu_matcher.finish(
+        await finish_event_reply(
+            dynamic_menu_matcher,
+            event,
             "❌ 获取动态列表失败。"
         )
 
@@ -259,7 +301,7 @@ async def _(bot: Bot, event: MessageEvent):
 # =========================================================
 
 @update_dynamic_matcher.handle()
-async def _(bot: Bot, event: MessageEvent):
+async def _(event: MessageEvent):
 
     user_id = event.user_id
 
@@ -267,7 +309,9 @@ async def _(bot: Bot, event: MessageEvent):
 
     if not is_bili_admin(user_id):
 
-        await update_dynamic_matcher.finish(
+        await finish_event_reply(
+            update_dynamic_matcher,
+            event,
             "⛔ 仅超级管理员可用。"
         )
 
@@ -279,7 +323,8 @@ async def _(bot: Bot, event: MessageEvent):
             f"⚡ 管理员 {user_id} 手动更新动态"
         )
 
-        await bot.send(
+        await send_event_reply(
+            update_dynamic_matcher,
             event,
             "⚡ 正在刷新动态..."
         )
@@ -289,11 +334,15 @@ async def _(bot: Bot, event: MessageEvent):
         )
 
         if not did_run:
-            await update_dynamic_matcher.finish(
+            await finish_event_reply(
+                update_dynamic_matcher,
+                event,
                 "⏳ 动态刷新正在进行中，请稍后再试。"
             )
 
-        await update_dynamic_matcher.finish(
+        await finish_event_reply(
+            update_dynamic_matcher,
+            event,
             "✅ 动态刷新完成。"
         )
 
@@ -306,7 +355,9 @@ async def _(bot: Bot, event: MessageEvent):
             f"手动更新动态故障: {e}"
         )
 
-        await update_dynamic_matcher.finish(
+        await finish_event_reply(
+            update_dynamic_matcher,
+            event,
             "❌ 动态刷新失败。"
         )
 
@@ -316,7 +367,7 @@ async def _(bot: Bot, event: MessageEvent):
 # =========================================================
 
 @num_select_matcher.handle()
-async def _(bot: Bot, event: MessageEvent):
+async def _(event: MessageEvent):
 
     user_id = event.user_id
 
@@ -335,7 +386,9 @@ async def _(bot: Bot, event: MessageEvent):
             session_key
         ]
 
-        await num_select_matcher.finish(
+        await finish_event_reply(
+            num_select_matcher,
+            event,
             "⏳ 会话已超时，请重新发送“动态”。"
         )
 
@@ -387,7 +440,9 @@ async def _(bot: Bot, event: MessageEvent):
 
         if final_message:
 
-            await num_select_matcher.finish(
+            await finish_event_reply(
+                num_select_matcher,
+                event,
                 Message(final_message)
             )
 
@@ -400,6 +455,8 @@ async def _(bot: Bot, event: MessageEvent):
             f"数字点播故障: {e}"
         )
 
-        await num_select_matcher.finish(
+        await finish_event_reply(
+            num_select_matcher,
+            event,
             "❌ 动态详情解析失败。"
         )

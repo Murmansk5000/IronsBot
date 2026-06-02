@@ -1,16 +1,43 @@
 import re
 
-from nonebot import on_regex
+from nonebot import on_message
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
-    Message,
     MessageEvent,
     PrivateMessageEvent,
 )
+from nonebot.matcher import Matcher
+from nonebot.rule import Rule
+
+from ironsbot.custom_plugins.message_actions import (
+    command_text_matches,
+    finish_event_reply,
+)
+from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
 
-meeting_matcher = on_regex(r"^(开播|会议)$", priority=5, block=True)
+MEETING_COMMANDS = ("开播", "会议")
+
+
+async def _is_meeting_command(event: MessageEvent) -> bool:
+    if isinstance(event, GroupMessageEvent):
+        if event.group_id not in plugin_config.meeting_reply_groups:
+            return False
+    elif isinstance(event, PrivateMessageEvent):
+        if event.user_id not in plugin_config.meeting_reply_users:
+            return False
+    else:
+        return False
+
+    return command_text_matches(event.get_plaintext(), MEETING_COMMANDS)
+
+
+meeting_matcher = on_message(
+    rule=Rule(_is_meeting_command) & no_reply(),
+    priority=5,
+    block=True,
+)
 
 
 def build_meeting_reply() -> str:
@@ -33,17 +60,9 @@ def build_meeting_reply() -> str:
 
 
 @meeting_matcher.handle()
-async def handle_meeting_reply(event: MessageEvent) -> None:
-    if isinstance(event, GroupMessageEvent):
-        if event.group_id not in plugin_config.meeting_reply_groups:
-            return
-
-    elif isinstance(event, PrivateMessageEvent):
-        if event.user_id not in plugin_config.meeting_reply_users:
-            return
-
+async def handle_meeting_reply(matcher: Matcher, event: MessageEvent) -> None:
     reply = build_meeting_reply()
     if not reply:
         return
 
-    await meeting_matcher.finish(Message(reply))
+    await finish_event_reply(matcher, event, reply)

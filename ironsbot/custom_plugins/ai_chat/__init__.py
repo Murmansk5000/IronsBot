@@ -7,9 +7,7 @@ import httpx
 from nonebot import get_driver, on_message
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
-    Message,
     MessageEvent,
-    MessageSegment,
     PrivateMessageEvent,
 )
 from nonebot.exception import FinishedException
@@ -18,6 +16,11 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+    send_broadcast_message,
+    send_event_reply,
+)
 from ironsbot.utils.rule import no_reply
 
 from .config import Config, get_ai_chat_admin_uids, plugin_config
@@ -76,17 +79,12 @@ async def _send_private_to_admins(message: str) -> None:
         logger.warning("AI聊天未配置管理员，无法发送异常提醒")
         return
 
-    bot = _get_first_bot()
-
-    if not bot:
-        logger.warning("当前没有Bot在线，无法发送AI聊天异常提醒")
-        return
-
-    for user_id in sorted(admin_uids):
-        try:
-            await bot.send_private_msg(user_id=user_id, message=message)
-        except Exception as e:
-            logger.warning(f"AI聊天异常提醒发送失败 {user_id}: {e}")
+    await send_broadcast_message(
+        message,
+        private_user_ids=sorted(admin_uids),
+        bot=_get_first_bot(),
+        action_name="AI聊天异常提醒",
+    )
 
 
 async def _notify_admins_once(key: str, message: str) -> None:
@@ -151,16 +149,6 @@ def _history_key(event: MessageEvent) -> str:
         return f"group:{event.group_id}:user:{event.user_id}"
 
     return f"private:{event.user_id}"
-
-
-def _build_response_message(event: MessageEvent, text: str) -> Message:
-    if isinstance(event, GroupMessageEvent):
-        message = Message()
-        message += MessageSegment.at(event.user_id)
-        message += MessageSegment.text(f" {text}")
-        return message
-
-    return Message(text)
 
 
 def _trim_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -322,16 +310,22 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
     prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
 
     if not prompt:
-        await ai_chat_matcher.finish(
-            _build_response_message(event, "你想聊什么？可以 @我 后面直接写问题。")
+        await finish_event_reply(
+            ai_chat_matcher,
+            event,
+            "你想聊什么？可以 @我 后面直接写问题。",
+            mention_sender=True,
         )
 
     key = _history_key(event)
 
     if _is_reset_prompt(prompt):
         _HISTORY.pop(key, None)
-        await ai_chat_matcher.finish(
-            _build_response_message(event, "已清空这段聊天上下文。")
+        await finish_event_reply(
+            ai_chat_matcher,
+            event,
+            "已清空这段聊天上下文。",
+            mention_sender=True,
         )
 
     if not plugin_config.ai_chat_api_key:
@@ -341,15 +335,20 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             "请在 Unraid 容器变量或 .env.prod 中设置 AI_CHAT_API_KEY。"
         )
 
-        await ai_chat_matcher.finish(
-            _build_response_message(
-                event,
-                "AI聊天还没有配置 API Key。请先设置 AI_CHAT_API_KEY。",
-            )
+        await finish_event_reply(
+            ai_chat_matcher,
+            event,
+            "AI聊天还没有配置 API Key。请先设置 AI_CHAT_API_KEY。",
+            mention_sender=True,
         )
 
     if plugin_config.ai_chat_send_waiting_notice:
-        await ai_chat_matcher.send(_build_response_message(event, "处理中..."))
+        await send_event_reply(
+            ai_chat_matcher,
+            event,
+            "处理中...",
+            mention_sender=True,
+        )
 
     history = _HISTORY.get(key, [])
 
@@ -372,7 +371,12 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             ]
             _HISTORY[key] = _trim_history(new_history)
 
-        await ai_chat_matcher.finish(_build_response_message(event, reply))
+        await finish_event_reply(
+            ai_chat_matcher,
+            event,
+            reply,
+            mention_sender=True,
+        )
 
     except FinishedException:
         raise
@@ -386,8 +390,11 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             f"超时时间：{plugin_config.ai_chat_timeout_seconds} 秒\n"
             "请检查网络或适当调大 AI_CHAT_TIMEOUT_SECONDS。"
         )
-        await ai_chat_matcher.finish(
-            _build_response_message(event, "AI接口响应超时，我已经通知管理员。")
+        await finish_event_reply(
+            ai_chat_matcher,
+            event,
+            "AI接口响应超时，我已经通知管理员。",
+            mention_sender=True,
         )
 
     except Exception as e:
@@ -398,6 +405,9 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             f"错误：{e}\n"
             "请查看容器日志确认具体原因。"
         )
-        await ai_chat_matcher.finish(
-            _build_response_message(event, "AI聊天出错了，我已经通知管理员。")
+        await finish_event_reply(
+            ai_chat_matcher,
+            event,
+            "AI聊天出错了，我已经通知管理员。",
+            mention_sender=True,
         )

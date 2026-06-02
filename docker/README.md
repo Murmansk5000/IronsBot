@@ -38,11 +38,10 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `ai_chat`: chat with DeepSeek through mentions or authorized private messages.
 - `sendpic_custom`: reply with fixed local images by command keywords.
 - `meeting_reply`: reply with Tencent Meeting information from environment variables.
-- `event_link`: reply or schedule-send event links to configured groups/users.
+- `message_actions`: generic private/group command replies and scheduled messages.
 - `bilibili_monitor`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
-- `scheduled_private_message`: send scheduled private messages to configured users.
 - `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.
 
 All group IDs, user IDs, team IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
@@ -127,14 +126,16 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `MEETING_REPLY_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
 | `MEETING_REPLY_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
 | `MEETING_REPLY_GROUPS` | QQ groups allowed to trigger meeting replies. |
-| `EVENT_LINK_REPLY_GROUPS` | QQ groups allowed to query event links. |
-| `EVENT_LINK_SEND_GROUPS` | QQ groups receiving scheduled event links. |
 | `BILIBILI_MONITOR_TARGET_GROUP_IDS` | QQ groups receiving Bilibili dynamic updates. |
 | `BILIBILI_MONITOR_ADMIN_UIDS` | QQ users allowed to run Bilibili monitor admin commands. |
 | `BILIBILI_MONITOR_DATA_DIR` | Directory for Bilibili cookies and dynamic timestamp cache. Mount `/app/data` for persistence. |
 | `STARTUP_NOTICE_ENABLED` | Whether to notify superusers after bot startup. |
 | `STARTUP_NOTICE_USERS` | Extra QQ users receiving startup notices. |
-| `SCHEDULED_PRIVATE_MESSAGES` | JSON-like list of scheduled private message tasks. |
+| `MESSAGE_ACTION_MENTION_GROUP_TRIGGER_USER` | Whether group text replies triggered by a user should start by mentioning that user. Default `false`. |
+| `MESSAGE_ACTION_PRIVATE_COMMANDS` | Generic private command replies. |
+| `MESSAGE_ACTION_PRIVATE_SCHEDULES` | Generic scheduled private messages. |
+| `MESSAGE_ACTION_GROUP_COMMANDS` | Generic group command replies, with optional `at_user_ids`. |
+| `MESSAGE_ACTION_GROUP_SCHEDULES` | Generic scheduled group messages, with optional `at_user_ids`. |
 | `TEAM_SHORTCUT_GROUP_IDS` | QQ team/guild groups where team shortcut commands are enabled. |
 | `TEAM_SHORTCUT_TEAM_IDS` | Team IDs queried by the team group shortcut command. |
 | `TEAM_SHORTCUT_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
@@ -152,7 +153,8 @@ List values should use JSON-like syntax, for example:
 SUPERUSERS=["123456789"]
 MEETING_REPLY_GROUPS=[123456789]
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
-SCHEDULED_PRIVATE_MESSAGES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
+MESSAGE_ACTION_PRIVATE_SCHEDULES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
+MESSAGE_ACTION_GROUP_COMMANDS=[{"id":"notice","group_ids":[123456789],"commands":["买资源"],"at_user_ids":[987654321],"message":"出来买资源"}]
 TEAM_SHORTCUT_GROUP_IDS=[123456789]
 TEAM_SHORTCUT_TEAM_IDS=[1234567,7654321]
 TEAM_SHORTCUT_COMMANDS=["战队"]
