@@ -1,7 +1,12 @@
 import asyncio
 
 from nonebot import on_message, require
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
@@ -16,6 +21,15 @@ from ironsbot.plugins.get_seer_info.depends import GameClient
 from ironsbot.plugins.headless_seer.game import SeerGame
 
 from .config import plugin_config
+
+
+def _build_resource_notice() -> Message:
+    message = Message()
+    for user_id in plugin_config.team_shortcut_resource_notice_user_ids:
+        message += MessageSegment.at(user_id)
+        message += MessageSegment.text(" ")
+    message += MessageSegment.text(plugin_config.team_shortcut_resource_notice_message)
+    return message
 
 
 async def _is_team_shortcut(event: MessageEvent) -> bool:
@@ -46,7 +60,8 @@ async def handle_team_shortcut(
     matcher: Matcher,
     game: SeerGame = GameClient,
 ) -> None:
-    replies: list[str] = []
+    replies: list[Message] = []
+    resource_notice_needed = False
 
     for team_id in plugin_config.team_shortcut_team_ids:
         try:
@@ -55,16 +70,21 @@ async def handle_team_shortcut(
             raise
         except Exception as e:
             logger.exception(f"快捷战队查询失败，战队ID: {team_id}: {e}")
-            replies.append(f"战队 {team_id} 查询失败，请稍后再试。")
+            replies.append(Message(f"战队 {team_id} 查询失败，请稍后再试。"))
             continue
 
-        replies.append(_format_team_info(team_info))
+        replies.append(Message(_format_team_info(team_info)))
+        if team_info.score < 1000:
+            resource_notice_needed = True
 
     if not replies:
         return
 
+    if resource_notice_needed:
+        replies.append(_build_resource_notice())
+
     for reply in replies[:-1]:
-        await matcher.send(Message(reply))
+        await matcher.send(reply)
         await asyncio.sleep(0.5)
 
-    await matcher.finish(Message(replies[-1]))
+    await matcher.finish(replies[-1])

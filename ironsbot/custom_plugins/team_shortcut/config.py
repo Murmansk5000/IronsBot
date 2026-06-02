@@ -6,6 +6,8 @@ class Config(BaseModel):
     team_shortcut_group_ids: list[int] = Field(default_factory=list)
     team_shortcut_team_ids: list[int] = Field(default_factory=list)
     team_shortcut_commands: list[str] = Field(default_factory=lambda: ["战队"])
+    team_shortcut_resource_notice_user_ids: list[int] = Field(default_factory=list)
+    team_shortcut_resource_notice_message: str = "出来买资源，别逼我求你😡"
 
     @field_validator("team_shortcut_commands")
     @classmethod

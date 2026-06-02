@@ -8,12 +8,21 @@ from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
     Message,
+    MessageEvent,
 )
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
 # Session缓存
 DYNAMIC_CACHE_SESSION = {}
+
+
+def _get_dynamic_session_key(event: MessageEvent) -> str:
+    if isinstance(event, GroupMessageEvent):
+        return f"{event.user_id}_{event.group_id}"
+
+    return f"{event.user_id}_private"
+
 
 # 指令
 dynamic_menu_matcher = on_regex(
@@ -40,12 +49,11 @@ num_select_matcher = on_regex(
 # =========================================================
 
 @dynamic_menu_matcher.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: MessageEvent):
 
     user_id = event.user_id
-    group_id = event.group_id
 
-    session_key = f"{user_id}_{group_id}"
+    session_key = _get_dynamic_session_key(event)
 
     from . import (
         BILI_UID,
@@ -225,7 +233,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 # =========================================================
 
 @update_dynamic_matcher.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: MessageEvent):
 
     user_id = event.user_id
 
@@ -277,12 +285,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
 # =========================================================
 
 @num_select_matcher.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: MessageEvent):
 
     user_id = event.user_id
-    group_id = event.group_id
 
-    session_key = f"{user_id}_{group_id}"
+    session_key = _get_dynamic_session_key(event)
 
     if session_key not in DYNAMIC_CACHE_SESSION:
         return

@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 
 from nonebot.adapters.onebot.v11 import MessageSegment
@@ -24,4 +25,8 @@ for command, filename in IMAGE_COMMANDS.items():
     @matcher.handle()
     async def _handle(matcher: Matcher, filename: str = filename) -> None:
         image_path = IMAGE_DIR / filename
-        await matcher.finish(MessageSegment.image(image_path))
+        if not image_path.is_file():
+            await matcher.finish("图片文件不存在，请检查机器人图片目录。")
+
+        image_base64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        await matcher.finish(MessageSegment.image(f"base64://{image_base64}"))
