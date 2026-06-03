@@ -262,7 +262,7 @@ async def handle_dynamic_select(event: MessageEvent) -> None:
             await finish_event_reply(
                 num_select_matcher,
                 event,
-                Message(final_message),
+                final_message,
             )
 
     except FinishedException:

@@ -125,6 +125,13 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `ALIAS_LOCAL_PATH` | Local alias database cache/fallback path. Use `/app/data` persistence for Docker. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for features that require login. |
 | `HEADLESS_SEER_PASSWORD` | Optional MD5 password for the headless Seer client. |
+| `HEADLESS_SEER_LOGIN_FAILURE_NOTICE_ENABLED` | Notify `SUPERUSERS` by private message when the configured headless Seer login is unavailable after startup. Default `true`. |
+| `HEADLESS_SEER_LOGIN_FAILURE_NOTICE_MESSAGE` | Message template for the headless Seer login failure notice. Supports `{user_id}` and `{reason}`. |
+| `CUSTOM_GET_SEER_INFO_PLAYER_SECTIONS` | Sections shown by custom Mimi ID queries. Use JSON list or comma-separated values. Supported: `basic`, `appearance`, `social`, `collection`, `rank`, `achievement`, `peak`, `titles`, `pets`, `stages`, `battle`, `raw`. |
+| `CUSTOM_GET_SEER_INFO_TEAM_SECTIONS` | Sections shown by custom team queries. Use JSON list or comma-separated values. Supported: `basic`, `resource`, `facilities`, `status`, `logo`, `text`. |
+| `CUSTOM_GET_SEER_INFO_RANK_SEARCH_LIMIT` | When querying a Mimi ID, scan this many top entries in the global book and achievement rankings. Default `10000`; set `0` to disable. |
+| `CUSTOM_GET_SEER_INFO_RANK_PAGE_SIZE` | Ranking entries fetched per request for Mimi ID rank lookup. Default `100`; the 4481 ranking API should stay at 100 or less. |
+| `CUSTOM_GET_SEER_INFO_PEAK_SEASON_SUB_KEY` | Optional peak season ranking subkey for custom Mimi ID queries. Leave empty to read the current season from SeerAPI data; set `YYYYMMDD` manually if season data is unavailable. |
 | `MEETING_REPLY_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
 | `MEETING_REPLY_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
 | `MEETING_REPLY_GROUPS` | QQ groups allowed to trigger meeting replies; `SUPERUSER_GROUP_IDS` are included automatically. |
@@ -153,10 +160,17 @@ List values should use JSON-like syntax, for example:
 SUPERUSERS=["123456789"]
 SUPERUSER_GROUP_IDS=[686376929]
 SUPERUSER_BYPASS_GROUP_RESTRICTIONS=false
+HEADLESS_SEER_LOGIN_FAILURE_NOTICE_ENABLED=true
+HEADLESS_SEER_LOGIN_FAILURE_NOTICE_MESSAGE="Headless Seer login did not complete.\nMimi ID: {user_id}\nStatus: {reason}\nFeatures that require Mimi login may be unavailable."
+CUSTOM_GET_SEER_INFO_PLAYER_SECTIONS=["basic","appearance","social","collection","rank","achievement","peak","titles","pets","stages","battle","raw"]
+CUSTOM_GET_SEER_INFO_TEAM_SECTIONS=["basic","resource","facilities","status","logo","text"]
+CUSTOM_GET_SEER_INFO_RANK_SEARCH_LIMIT=10000
+CUSTOM_GET_SEER_INFO_RANK_PAGE_SIZE=100
+CUSTOM_GET_SEER_INFO_PEAK_SEASON_SUB_KEY=
 MEETING_REPLY_GROUPS=[123456789]
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
 MESSAGE_ACTION_PRIVATE_SCHEDULES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
-MESSAGE_ACTION_GROUP_COMMANDS=[{"id":"notice","group_ids":[123456789],"commands":["买资源"],"at_user_ids":[987654321],"message":"出来买资源"}]
+MESSAGE_ACTION_GROUP_COMMANDS=[{"id":"notice","group_ids":[123456789],"commands":["买资源"],"at_user_ids":[987654321],"message":"出来买资源"},{"id":"seerinfo","group_ids":[123456789],"commands":["xm","xrym","雷小伊","重聚"],"message":"https://seerinfo.yuyuqaq.cn/"}]
 TEAM_SHORTCUT_GROUP_IDS=[123456789]
 TEAM_SHORTCUT_TEAM_IDS=[1234567,7654321]
 TEAM_SHORTCUT_COMMANDS=["战队"]
