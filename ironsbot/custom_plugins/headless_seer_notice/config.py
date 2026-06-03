@@ -3,8 +3,8 @@ from pydantic import BaseModel
 
 
 class Config(BaseModel):
-    headless_seer_login_failure_notice_enabled: bool = True
-    headless_seer_login_failure_notice_message: str = (
+    seer_login_notice: bool = True
+    seer_login_notice_message: str = (
         "无头米米号登录未成功。\n"
         "米米号：{user_id}\n"
         "状态：{reason}\n"

@@ -4,10 +4,12 @@ from collections.abc import Callable
 from typing import Any
 
 from nonebot import logger
+from nonebot.adapters import Event
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import plugin_config
@@ -16,15 +18,14 @@ from ..packets import ensure_extended_packets
 from ._args import has_arg, parse_numeric_id
 from ._client import get_game_client
 from ._format import format_datetime, yes_no
-from ._names import lookup_equip_names, lookup_pet_names, lookup_title_names
+from ._local_rank import LocalRankSummary, update_local_rank_cache
 from ._rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
     build_peak_rating_score,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
-    format_peak_rank_lookup,
-    format_player_rank_summary,
+    get_current_peak_sub_key,
 )
 from ._sequ_extra import (
     UnityPartOneInfo,
@@ -36,6 +37,8 @@ from ._sequ_extra import (
 )
 
 PLAYER_ID_KEY = "player_id"
+PLAYER_COLLECTION_KEY = "_player_collection_message"
+METRIC_SEPARATOR = "\uFF5C"
 
 player_matcher = matcher_group.on_message(
     rule=(
@@ -54,22 +57,6 @@ PEAK_RANK_NAMES = {
     5: "宇宙圣皇",
 }
 
-PLAYER_SECTION_HEADINGS = {
-    "【基础信息】": "basic",
-    "【装备与外观】": "appearance",
-    "【社交信息】": "social",
-    "【精灵收集】": "collection",
-    "【全服排行】": "rank",
-    "【成就收集】": "achievement",
-    "【巅峰之战】": "peak",
-    "【称号展示】": "titles",
-    "【精灵展示】": "pets",
-    "【赛尔闯关】": "stages",
-    "【赛尔对抗】": "battle",
-    "【其他原始字段】": "raw",
-}
-
-
 def _filter_blank_lines(lines: list[str]) -> list[str]:
     result: list[str] = []
     for line in lines:
@@ -81,24 +68,6 @@ def _filter_blank_lines(lines: list[str]) -> list[str]:
         result.pop()
 
     return result
-
-
-def _filter_player_sections(lines: list[str], enabled_sections: set[str]) -> list[str]:
-    result: list[str] = []
-    keep_section = True
-
-    for line in lines:
-        heading = line.split("\n", 1)[0]
-        section = PLAYER_SECTION_HEADINGS.get(heading)
-        if section is not None:
-            keep_section = section in enabled_sections
-            if keep_section and result and result[-1] != "":
-                result.append("")
-
-        if keep_section:
-            result.append(line)
-
-    return _filter_blank_lines(result)
 
 
 def _format_id_name(item_id: int, names: dict[int, str]) -> str:
@@ -156,6 +125,11 @@ def _format_rank_star(rank: int, star: int) -> str:
     return f"{name}（{star}星）"
 
 
+def _format_rank_star_compact(rank: int, star: int) -> str:
+    name = PEAK_RANK_NAMES.get(rank, f"段位{rank}")
+    return f"{name}{star}星"
+
+
 def _format_win_rate(wins: int, total: int) -> str:
     if total <= 0:
         return "当前赛季未参赛"
@@ -163,43 +137,293 @@ def _format_win_rate(wins: int, total: int) -> str:
     return f"{wins}/{total}={wins / total * 100:.3f}%"
 
 
-def _format_peak_section(
-    peak: UnityPeakInfo,
-    peak_rank_summary: PeakSeasonRankSummary,
+def _join_metric_parts(*parts: str) -> str:
+    return METRIC_SEPARATOR.join(part for part in parts if part)
+
+
+def _global_rank_text(rank: int | None) -> str:
+    return f"全服第{rank}" if rank is not None else ""
+
+
+def _sample_rank_text(summary: LocalRankSummary, key: str) -> str:
+    return summary.sample_rank(key)
+
+
+def _format_metric_line(
+    title: str,
+    value: int | None,
+    *,
+    global_rank: int | None = None,
+    local_summary: LocalRankSummary,
+    local_key: str,
+) -> str | None:
+    if value is None or value <= 0:
+        return None
+
+    metric_text = _join_metric_parts(
+        str(value),
+        _global_rank_text(global_rank),
+        _sample_rank_text(local_summary, local_key),
+    )
+    return f"{title}：{metric_text}"
+
+
+def _format_peak_rank_text(rank: int | None) -> str:
+    return f"赛季榜第{rank}" if rank is not None else "赛季榜未上榜"
+
+
+def _format_local_rank_suffix(summary: LocalRankSummary, key: str) -> str:
+    text = summary.sample_rank(key)
+    return f"（{text}）" if text else ""
+
+
+def _format_peak_line(  # noqa: PLR0913
+    title: str,
+    *,
+    current: str,
+    history: str,
+    win_rate: str,
+    rank: int | None,
+    local_summary: LocalRankSummary,
+    score_key: str,
+    win_rate_key: str,
 ) -> str:
+    win_rate_text = (
+        f"胜率{win_rate}{_format_local_rank_suffix(local_summary, win_rate_key)}"
+    )
+    rank_text = (
+        f"{_format_peak_rank_text(rank)}"
+        f"{_format_local_rank_suffix(local_summary, score_key)}"
+    )
     return (
-        "【巅峰之战】\n"
-        f"竞技当前赛季：{_format_rank_star(peak.current_j_rank, peak.current_j_star)}\n"
-        f"竞技历史最高：{_format_rank_star(peak.history_j_rank, peak.history_j_star)}\n"
-        f"竞技当前胜率：{_format_win_rate(peak.current_j_win, peak.current_j_all)}\n"
-        f"竞技赛季榜排名：{format_peak_rank_lookup(peak_rank_summary.standard, inactive_text='当前赛季未参赛')}\n"
-        f"狂野当前赛季：{_format_rank_star(peak.current_k_rank, peak.current_k_star)}\n"
-        f"狂野历史最高：{_format_rank_star(peak.history_k_rank, peak.history_k_star)}\n"
-        f"狂野当前胜率：{_format_win_rate(peak.current_k_win, peak.current_k_all)}\n"
-        f"狂野赛季榜排名：{format_peak_rank_lookup(peak_rank_summary.wild, inactive_text='当前赛季未参赛')}\n"
-        f"专家当前赛季：专家积分（{peak.current_z_score}分）\n"
-        f"专家历史最高：专家积分（{peak.history_z_score}分）\n"
-        f"专家当前胜率：{_format_win_rate(peak.current_z_win, peak.current_z_all)}\n"
-        f"专家赛季榜排名：{format_peak_rank_lookup(peak_rank_summary.expert, inactive_text='当前赛季未参赛')}"
+        f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
+        f"{METRIC_SEPARATOR}{win_rate_text}{METRIC_SEPARATOR}{rank_text}"
     )
 
 
-def _format_player_info(
+def _format_compact_peak_section(
+    peak: UnityPeakInfo,
+    peak_rank_summary: PeakSeasonRankSummary,
+    local_summary: LocalRankSummary,
+) -> str:
+    return "\n".join(
+        [
+            "【巅峰之战】",
+            _format_peak_line(
+                "竞技",
+                current=_format_rank_star_compact(
+                    peak.current_j_rank,
+                    peak.current_j_star,
+                ),
+                history=_format_rank_star_compact(
+                    peak.history_j_rank,
+                    peak.history_j_star,
+                ),
+                win_rate=_format_win_rate(
+                    peak.current_j_win,
+                    peak.current_j_all,
+                ),
+                rank=peak_rank_summary.standard.rank,
+                local_summary=local_summary,
+                score_key="peak_standard",
+                win_rate_key="peak_standard_win_rate",
+            ),
+            _format_peak_line(
+                "狂野",
+                current=_format_rank_star_compact(
+                    peak.current_k_rank,
+                    peak.current_k_star,
+                ),
+                history=_format_rank_star_compact(
+                    peak.history_k_rank,
+                    peak.history_k_star,
+                ),
+                win_rate=_format_win_rate(
+                    peak.current_k_win,
+                    peak.current_k_all,
+                ),
+                rank=peak_rank_summary.wild.rank,
+                local_summary=local_summary,
+                score_key="peak_wild",
+                win_rate_key="peak_wild_win_rate",
+            ),
+            _format_peak_line(
+                "专家",
+                current=f"{peak.current_z_score}分",
+                history=f"{peak.history_z_score}分",
+                win_rate=_format_win_rate(
+                    peak.current_z_win,
+                    peak.current_z_all,
+                ),
+                rank=peak_rank_summary.expert.rank,
+                local_summary=local_summary,
+                score_key="peak_expert",
+                win_rate_key="peak_expert_win_rate",
+            ),
+        ]
+    )
+
+
+def _format_collection_info(
+    more_info: Any,
+    *,
+    unity_part_one: UnityPartOneInfo,
+    rank_summary: PlayerRankSummary,
+    local_summary: LocalRankSummary,
+) -> str:
+    breakdown = rank_summary.breakdown
+    outfit_suit_score = (
+        None if breakdown.outfit_suit is None else breakdown.outfit_suit.score
+    )
+    outfit_suit_rank = (
+        None if breakdown.outfit_suit is None else breakdown.outfit_suit.rank
+    )
+    outfit_part_score = (
+        None if breakdown.outfit_part is None else breakdown.outfit_part.score
+    )
+    outfit_part_rank = (
+        None if breakdown.outfit_part is None else breakdown.outfit_part.rank
+    )
+    countermark_score = (
+        None if breakdown.countermark is None else breakdown.countermark.score
+    )
+    countermark_rank = (
+        None if breakdown.countermark is None else breakdown.countermark.rank
+    )
+
+    metric_lines = [
+        f"精灵总数：{getattr(more_info, 'pet_all_num', 0)}",
+        _format_metric_line(
+            "图鉴积分",
+            rank_summary.book.score,
+            global_rank=rank_summary.book.rank,
+            local_summary=local_summary,
+            local_key="book_score",
+        ),
+        _format_metric_line(
+            "成就点数",
+            getattr(more_info, "total_achieve", 0),
+            global_rank=rank_summary.achieve.rank,
+            local_summary=local_summary,
+            local_key="achievement_score",
+        ),
+        _format_metric_line(
+            "精灵图鉴",
+            unity_part_one.pet_kind_num,
+            local_summary=local_summary,
+            local_key="pet_kind_count",
+        ),
+        _format_metric_line(
+            "皮肤图鉴",
+            unity_part_one.skin_num,
+            global_rank=None if breakdown.skin is None else breakdown.skin.rank,
+            local_summary=local_summary,
+            local_key="skin_count",
+        ),
+        _format_metric_line(
+            "套装图鉴",
+            outfit_suit_score,
+            global_rank=outfit_suit_rank,
+            local_summary=local_summary,
+            local_key="outfit_suit_count",
+        ),
+        _format_metric_line(
+            "部件图鉴",
+            outfit_part_score,
+            global_rank=outfit_part_rank,
+            local_summary=local_summary,
+            local_key="outfit_part_count",
+        ),
+        _format_metric_line(
+            "座驾图鉴",
+            None if breakdown.mount is None else breakdown.mount.score,
+            global_rank=None if breakdown.mount is None else breakdown.mount.rank,
+            local_summary=local_summary,
+            local_key="mount_count",
+        ),
+        _format_metric_line(
+            "刻印图鉴",
+            countermark_score,
+            global_rank=countermark_rank,
+            local_summary=local_summary,
+            local_key="countermark_count",
+        ),
+        _format_metric_line(
+            "已解锁图鉴条目",
+            breakdown.unlocked_count,
+            local_summary=local_summary,
+            local_key="unlocked_book_entries",
+        ),
+        _format_metric_line(
+            "成就数量",
+            unity_part_one.achievement_num,
+            local_summary=local_summary,
+            local_key="achievement_count",
+        ),
+    ]
+    lines = ["📚【收集与排行】"]
+    lines.extend(line for line in metric_lines if line)
+    return "\n".join(lines)
+
+
+def _format_compact_player_info(  # noqa: PLR0913
     user_info: Any,
     more_info: Any,
     *,
     team_name: str,
     online_info: Any | None,
-    unity_part_one: UnityPartOneInfo,
-    unity_part_two: UnityPartTwoInfo,
     unity_peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
+    local_summary: LocalRankSummary,
+    has_collection: bool,
+    show_peak: bool,
+    extra_errors: list[str],
+) -> str:
+    lines = [
+        "🤖【玩家信息】",
+        f"米米号：{user_info.user_id}（{user_info.nick}）",
+        "",
+        "【基础信息】",
+        f"昵称：{user_info.nick}",
+        f"VIP状态：{_format_vip(user_info)}",
+        f"注册时间：{format_datetime(getattr(more_info, 'reg_time', 0))}",
+        f"最后登录：{format_datetime(getattr(user_info, 'login_time', 0))}",
+        f"最后离线：{format_datetime(getattr(user_info, 'last_offline_time', 0))}",
+        f"是否在线：{_format_online_text(online_info)}",
+        "",
+        f"战队：{_format_team_text(user_info, team_name)}",
+    ]
+
+    if show_peak:
+        lines.extend(
+            (
+                "",
+                _format_compact_peak_section(
+                    unity_peak,
+                    peak_rank_summary,
+                    local_summary,
+                ),
+            )
+        )
+
+    if has_collection:
+        lines.extend(("", "回复“收集”查看收集与排行"))
+
+    if extra_errors:
+        lines.extend(("", "【扩展数据提示】", "；".join(extra_errors)))
+
+    return "\n".join(_filter_blank_lines(lines))
+
+
+def _format_hidden_player_details(  # noqa: PLR0913
+    user_info: Any,
+    more_info: Any,
+    *,
+    unity_part_one: UnityPartOneInfo,
+    unity_part_two: UnityPartTwoInfo,
     title_names: dict[int, str],
     pet_names: dict[int, str],
     equip_names: dict[int, str],
-    rank_summary: PlayerRankSummary,
-    enabled_sections: set[str],
-    extra_errors: list[str],
 ) -> str:
     clothes = tuple(getattr(user_info, "clothes", ()))
     decorate = tuple(getattr(user_info, "decorate_list", ()))
@@ -207,66 +431,32 @@ def _format_player_info(
     boss_count = sum(1 for flag in boss_flags if flag)
 
     lines = [
-        "【米米号扩展信息】",
-        f"米米号：{user_info.user_id}（{user_info.nick}）",
-        "",
-        "【基础信息】",
-        f"昵称：{user_info.nick}",
-        f"VIP状态：{_format_vip(user_info)}",
+        "【隐藏详情】",
         f"至尊NONO：{yes_no(getattr(user_info, 'is_extreme_nono', False))}",
         f"账号状态：{_format_status(getattr(user_info, 'status', 0))}",
-        f"注册时间：{format_datetime(getattr(more_info, 'reg_time', 0))}",
-        f"最后登录：{format_datetime(getattr(user_info, 'login_time', 0))}",
-        f"最后离线：{format_datetime(getattr(user_info, 'last_offline_time', 0))}",
-        f"是否在线：{_format_online_text(online_info)}",
-        "",
-        "【装备与外观】",
         f"当前称号：{_format_id_name(getattr(more_info, 'cur_title', 0), title_names)}",
         f"头像ID：{getattr(user_info, 'head_id', 0)}",
         f"头像框ID：{getattr(user_info, 'head_frame_id', 0)}",
         f"昵称背景ID：{getattr(user_info, 'nick_bg', 0)}",
         f"装备：{_format_id_name_list(clothes, equip_names)}",
         f"幻化/装饰：{_format_id_name_list(decorate, equip_names)}",
-        "",
-        "【社交信息】",
-        f"战队：{_format_team_text(user_info, team_name)}",
         f"可成为教官：{yes_no(getattr(user_info, 'is_can_be_teacher', False))}",
         f"老师米米号：{getattr(user_info, 'teacher_id', 0) or '无'}",
         f"学生米米号：{getattr(user_info, 'student_id', 0) or '无'}",
         f"毕业学员数：{getattr(more_info, 'graduation_count', 0)}",
         f"机器人好友：{yes_no(getattr(user_info, 'is_friend', False))}",
         f"机器人黑名单：{yes_no(getattr(user_info, 'is_black', False))}",
-        "",
-        "【精灵收集】",
-        f"精灵总数：{getattr(more_info, 'pet_all_num', 0)}",
-        f"精灵种类：{unity_part_one.pet_kind_num}",
-        f"皮肤收集：{unity_part_one.skin_num}",
         f"最高精灵等级：{getattr(more_info, 'pet_max_lev', 0)}",
-        "",
-        format_player_rank_summary(rank_summary),
-        "",
-        "【成就收集】",
-        f"总成就点数：{getattr(more_info, 'total_achieve', 0)}",
-        f"成就数量：{unity_part_one.achievement_num}",
         f"成就闪耀值：{getattr(more_info, 'achie_shine', 0)}",
-        f"成就排名值：{getattr(more_info, 'achie_rank', 0)}",
         f"Boss成就：{boss_count}/{len(boss_flags) or 199}",
-        "",
-        _format_peak_section(unity_peak, peak_rank_summary),
-        "",
-        "【称号展示】",
         f"称号1：{_format_id_name(unity_part_one.title1, title_names)}",
         f"称号2：{_format_id_name(unity_part_one.title2, title_names)}",
         f"称号3：{_format_id_name(unity_part_one.title3, title_names)}",
         f"称号4：{_format_id_name(unity_part_one.title4, title_names)}",
-        "",
-        "【精灵展示】",
         f"精灵1：{_format_id_name(unity_part_two.show_pet1, pet_names)}",
         f"精灵2：{_format_id_name(unity_part_two.show_pet2, pet_names)}",
         f"精灵3：{_format_id_name(unity_part_two.show_pet3, pet_names)}",
         f"精灵4：{_format_id_name(unity_part_two.show_pet4, pet_names)}",
-        "",
-        "【赛尔闯关】",
         f"试炼之塔：{getattr(more_info, 'max_fresh_stage', 0)}层",
         f"勇者之塔：{getattr(more_info, 'max_stage', 0)}层",
         f"王者之塔：{getattr(more_info, 'max_king_stage', 0)}层",
@@ -276,10 +466,7 @@ def _format_player_info(
         f"高阶战斗：{getattr(more_info, 'high_fight_win', 0)}",
         f"极限法则：{getattr(more_info, 'extreme_law_level', 0)}",
         f"作战实验室：{getattr(more_info, 'battle_lab_info', 0)}",
-        "",
-        "【赛尔对抗】",
         f"精灵王之战：{getattr(more_info, 'mon_king_win', 0)}胜",
-        f"老巅峰之战等级：{getattr(more_info, 'cur_top_lv', 0)}",
         f"老巅峰胜负：{getattr(more_info, 'top_win_count', 0)}胜/"
         f"{getattr(more_info, 'top_loss_count', 0)}负",
         f"精灵大乱斗：{getattr(more_info, 'mess_win', 0)}胜",
@@ -290,8 +477,6 @@ def _format_player_info(
         f"星际/星空擂台：{getattr(more_info, 'max_space_arena_wins', 0)}",
         f"折光幻阵：{getattr(more_info, 'zheguang_win_times', 0)}胜",
         f"梦幻大乱斗：{getattr(more_info, 'dream_mess_wins', 0)}胜",
-        "",
-        "【其他原始字段】",
         f"课堂胜场：{getattr(more_info, 'total_class_wins', 0)}",
         f"战队Boss字段：{getattr(more_info, 'team_boss', 0)}",
         f"训练师之门：{getattr(more_info, 'trainer_door_num', 0)}",
@@ -304,11 +489,7 @@ def _format_player_info(
         f"跳跃次数：{getattr(more_info, 'jump_num', 0)}",
         f"阿瑞斯联盟队伍字段：{getattr(more_info, 'ares_union_team', 0)}",
     ]
-
-    if extra_errors:
-        lines.extend(("", "【扩展数据提示】", "；".join(extra_errors)))
-
-    return "\n".join(_filter_player_sections(lines, enabled_sections))
+    return "\n".join(_filter_blank_lines(lines))
 
 
 async def _safe_extra(
@@ -327,7 +508,7 @@ async def _safe_extra(
 
 async def _optional_extra(
     label: str,
-    enabled: bool,
+    enabled: bool,  # noqa: FBT001
     coro_factory: Callable[[], Any],
     default: Any,
     extra_errors: list[str],
@@ -352,13 +533,57 @@ async def validate_player_id(
     )
 
 
+async def _handle_collection_reply(matcher: Matcher, state: T_State) -> None:
+    message = state.get(PLAYER_COLLECTION_KEY)
+    if not message:
+        raise FinishedException
+
+    await matcher.finish(message)
+
+
+async def _send_player_info_with_collection_prompt(
+    matcher: Matcher,
+    event: Event,
+    state: T_State,
+    *,
+    player_message: str,
+    collection_message: str,
+) -> None:
+    state[PLAYER_COLLECTION_KEY] = collection_message
+
+    session_id = event.get_session_id()
+    version = prompt_session_manager.acquire(session_id)
+
+    def _is_collection_request(next_event: Event) -> bool:
+        return (
+            next_event.get_session_id() == session_id
+            and next_event.get_plaintext().strip() == "收集"
+        )
+
+    rule = prompt_session_manager.make_rule(
+        session_id,
+        version,
+        _is_collection_request,
+    )
+    await enter_prompt_loop(
+        matcher,
+        handlers=[_handle_collection_reply],
+        rule=rule,
+        prompt=player_message,
+    )
+
+
 @player_matcher.handle()
-async def handle_player(matcher: Matcher, state: T_State) -> None:
+async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
     ensure_extended_packets()
     player_id: int = state[PLAYER_ID_KEY]
     game = get_game_client()
     extra_errors: list[str] = []
-    enabled_sections = set(plugin_config.custom_get_seer_info_player_sections)
+    enabled_sections = set(plugin_config.seer_query_player_sections)
+    show_local_rank = "local_rank" in enabled_sections
+    has_collection = bool(
+        {"collection", "rank", "local_rank", "achievement"} & enabled_sections
+    )
 
     try:
         user_info, more_info = await asyncio.gather(
@@ -367,24 +592,28 @@ async def handle_player(matcher: Matcher, state: T_State) -> None:
         )
 
         team_name = "无"
-        if "social" in enabled_sections and getattr(user_info, "team_id", 0) > 0:
+        if getattr(user_info, "team_id", 0) > 0:
             try:
                 team_info = await game.get_team_info(user_info.team_id)
                 team_name = team_info.name
             except Exception:  # noqa: BLE001
                 team_name = str(user_info.team_id)
 
-        needs_unity_part_one = bool(
-            {"collection", "achievement", "titles", "rank"} & enabled_sections
-        )
-        needs_unity_part_two = "pets" in enabled_sections
-        needs_unity_peak = "peak" in enabled_sections
+        needs_unity_part_one = has_collection
+        needs_unity_part_two = False
+        needs_peak_section = "peak" in enabled_sections
+        needs_unity_peak = needs_peak_section
+        needs_local_rank = plugin_config.seer_query_local_rank
         needs_online_info = "basic" in enabled_sections
-        needs_rank_summary = "rank" in enabled_sections
+        needs_rank_summary = has_collection or needs_local_rank
+
+        if needs_local_rank:
+            needs_unity_part_one = True
+            needs_unity_peak = True
 
         (
             unity_part_one,
-            unity_part_two,
+            _unity_part_two,
             unity_peak,
             online_info,
         ) = await asyncio.gather(
@@ -430,64 +659,98 @@ async def handle_player(matcher: Matcher, state: T_State) -> None:
             PlayerRankSummary.empty(),
             extra_errors,
         )
+        peak_sub_key = get_current_peak_sub_key()
+        peak_standard_score = (
+            build_peak_rating_score(
+                unity_peak.current_j_rank,
+                unity_peak.current_j_star,
+            )
+            if unity_peak.current_j_all > 0
+            else None
+        )
+        peak_wild_score = (
+            build_peak_rating_score(
+                unity_peak.current_k_rank,
+                unity_peak.current_k_star,
+            )
+            if unity_peak.current_k_all > 0
+            else None
+        )
+        peak_expert_score = (
+            unity_peak.current_z_score
+            if unity_peak.current_z_all > 0
+            else None
+        )
         peak_rank_summary = await _optional_extra(
             "巅峰赛季榜",
-            needs_unity_peak,
+            needs_peak_section,
             lambda: fetch_peak_season_rank_summary(
                 game,
                 player_id,
-                standard_score=build_peak_rating_score(
-                    unity_peak.current_j_rank,
-                    unity_peak.current_j_star,
-                )
-                if unity_peak.current_j_all > 0
-                else None,
-                wild_score=build_peak_rating_score(
-                    unity_peak.current_k_rank,
-                    unity_peak.current_k_star,
-                )
-                if unity_peak.current_k_all > 0
-                else None,
-                expert_score=unity_peak.current_z_score
-                if unity_peak.current_z_all > 0
-                else None,
+                standard_score=peak_standard_score,
+                wild_score=peak_wild_score,
+                expert_score=peak_expert_score,
             ),
             PeakSeasonRankSummary.empty(),
             extra_errors,
         )
+        local_rank_summary = await _optional_extra(
+            "机器人查询排行",
+            needs_local_rank,
+            lambda: update_local_rank_cache(
+                player_id=player_id,
+                nick=user_info.nick,
+                more_info=more_info,
+                unity_part_one=unity_part_one,
+                unity_peak=unity_peak,
+                rank_summary=rank_summary,
+                peak_sub_key=peak_sub_key,
+                peak_standard_score=peak_standard_score,
+                peak_wild_score=peak_wild_score,
+                peak_expert_score=peak_expert_score,
+            ),
+            LocalRankSummary(),
+            extra_errors,
+        )
+        visible_local_rank_summary = (
+            local_rank_summary if show_local_rank else LocalRankSummary()
+        )
 
     except FinishedException:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         await matcher.finish(f"❌ 米米号 {player_id} 查询失败：{e}")
 
-    title_ids = (
-        getattr(more_info, "cur_title", 0),
-        unity_part_one.title1,
-        unity_part_one.title2,
-        unity_part_one.title3,
-        unity_part_one.title4,
+    collection_message = (
+        _format_collection_info(
+            more_info,
+            unity_part_one=unity_part_one,
+            rank_summary=rank_summary,
+            local_summary=visible_local_rank_summary,
+        )
+        if has_collection
+        else ""
     )
-    pet_ids = unity_part_two.show_pets
-    equip_ids = tuple(getattr(user_info, "clothes", ())) + tuple(
-        getattr(user_info, "decorate_list", ())
+    player_message = _format_compact_player_info(
+        user_info,
+        more_info,
+        team_name=team_name,
+        online_info=online_info,
+        unity_peak=unity_peak,
+        peak_rank_summary=peak_rank_summary,
+        local_summary=visible_local_rank_summary,
+        has_collection=bool(collection_message),
+        show_peak=needs_peak_section,
+        extra_errors=extra_errors,
     )
 
-    await matcher.finish(
-        _format_player_info(
-            user_info,
-            more_info,
-            team_name=team_name,
-            online_info=online_info,
-            unity_part_one=unity_part_one,
-            unity_part_two=unity_part_two,
-            unity_peak=unity_peak,
-            peak_rank_summary=peak_rank_summary,
-            title_names=lookup_title_names(title_ids),
-            pet_names=lookup_pet_names(pet_ids),
-            equip_names=lookup_equip_names(equip_ids),
-            rank_summary=rank_summary,
-            enabled_sections=enabled_sections,
-            extra_errors=extra_errors,
+    if collection_message:
+        await _send_player_info_with_collection_prompt(
+            matcher,
+            event,
+            state,
+            player_message=player_message,
+            collection_message=collection_message,
         )
-    )
+
+    await matcher.finish(player_message)

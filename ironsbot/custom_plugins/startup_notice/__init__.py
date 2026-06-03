@@ -26,7 +26,7 @@ async def send_startup_notice(bot: Bot) -> None:
     if (
         _notice_sent
         or _notice_sending
-        or not plugin_config.startup_notice_enabled
+        or not plugin_config.startup_notice
     ):
         return
 
@@ -40,11 +40,11 @@ async def send_startup_notice(bot: Bot) -> None:
 
         await ensure_startup_ready(bot)
 
-        if plugin_config.startup_notice_delay_seconds > 0:
-            await asyncio.sleep(plugin_config.startup_notice_delay_seconds)
+        if plugin_config.startup_delay > 0:
+            await asyncio.sleep(plugin_config.startup_delay)
 
         summary = await send_broadcast_message(
-            Message(plugin_config.startup_notice_message),
+            Message(plugin_config.startup_message),
             private_user_ids=target_users,
             bot=bot,
             action_name="startup notice",

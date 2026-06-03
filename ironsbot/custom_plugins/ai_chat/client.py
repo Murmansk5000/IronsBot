@@ -25,7 +25,7 @@ def _extract_reply(data: dict[str, Any]) -> str:
 
 
 def _truncate_reply(text: str) -> str:
-    max_chars = plugin_config.ai_chat_max_reply_chars
+    max_chars = plugin_config.ai_max_reply_chars
     if len(text) <= max_chars:
         return text
 
@@ -61,30 +61,30 @@ def _api_error_title(status_code: int) -> str:
 
 async def call_ai_chat(prompt: str, history: list[HistoryMessage]) -> str:
     payload = {
-        "model": plugin_config.ai_chat_model,
+        "model": plugin_config.ai_model,
         "messages": build_messages(history, prompt),
-        "temperature": plugin_config.ai_chat_temperature,
-        "max_tokens": plugin_config.ai_chat_max_tokens,
+        "temperature": plugin_config.ai_temperature,
+        "max_tokens": plugin_config.ai_max_tokens,
         "stream": False,
         "thinking": {
             "type": (
                 "enabled"
-                if plugin_config.ai_chat_thinking_enabled
+                if plugin_config.ai_thinking
                 else "disabled"
             )
         },
     }
     headers = {
-        "Authorization": f"Bearer {plugin_config.ai_chat_api_key}",
+        "Authorization": f"Bearer {plugin_config.ai_key}",
         "Content-Type": "application/json",
     }
 
     async with httpx.AsyncClient(
-        timeout=plugin_config.ai_chat_timeout_seconds,
+        timeout=plugin_config.ai_timeout,
         follow_redirects=True,
     ) as client:
         response = await client.post(
-            f"{plugin_config.ai_chat_base_url}/chat/completions",
+            f"{plugin_config.ai_base_url}/chat/completions",
             headers=headers,
             json=payload,
         )
@@ -101,10 +101,10 @@ async def call_ai_chat(prompt: str, history: list[HistoryMessage]) -> str:
             "AI聊天接口异常。\n"
             f"类型：{error_title}\n"
             f"HTTP：{response.status_code}\n"
-            f"模型：{plugin_config.ai_chat_model}\n"
-            f"接口：{plugin_config.ai_chat_base_url}\n"
+            f"模型：{plugin_config.ai_model}\n"
+            f"接口：{plugin_config.ai_base_url}\n"
             f"详情：{error_detail}\n"
-            "请检查 AI_CHAT_API_KEY、账户额度、模型名和网络连接。",
+            "请检查 AI_KEY、账户额度、模型名和网络连接。",
         )
         return REQUEST_FAILED_REPLY
 
@@ -113,7 +113,7 @@ async def call_ai_chat(prompt: str, history: list[HistoryMessage]) -> str:
         await notify_superusers_once(
             "empty_reply",
             "AI聊天接口返回了空内容。\n"
-            f"模型：{plugin_config.ai_chat_model}\n"
+            f"模型：{plugin_config.ai_model}\n"
             "请检查模型配置或稍后重试。",
         )
         return EMPTY_REPLY

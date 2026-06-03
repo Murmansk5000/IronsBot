@@ -29,13 +29,13 @@ async def _is_meeting_command(event: MessageEvent) -> bool:
         if not is_group_allowed_for_user(
             event.user_id,
             event.group_id,
-            plugin_config.meeting_reply_groups,
+            plugin_config.meeting_groups,
         ):
             return False
     elif isinstance(event, PrivateMessageEvent):
         if not is_private_user_allowed(
             event.user_id,
-            plugin_config.meeting_reply_users,
+            plugin_config.meeting_users,
         ):
             return False
     else:
@@ -52,7 +52,7 @@ meeting_matcher = on_message(
 
 
 def build_meeting_reply() -> str:
-    raw_number = plugin_config.meeting_reply_number.strip()
+    raw_number = plugin_config.meeting_number.strip()
     digits = re.sub(r"\D", "", raw_number)
     if not digits:
         return ""
@@ -63,7 +63,7 @@ def build_meeting_reply() -> str:
         meeting_number = raw_number
 
     meeting_url = f"https://meeting.tencent.com/p/{digits}"
-    return plugin_config.meeting_reply_template.format(
+    return plugin_config.meeting_template.format(
         meeting_number=meeting_number,
         meeting_digits=digits,
         meeting_url=meeting_url,

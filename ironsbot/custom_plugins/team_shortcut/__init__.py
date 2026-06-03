@@ -19,8 +19,8 @@ from .config import plugin_config
 
 def _build_resource_notice() -> Message:
     return build_message(
-        plugin_config.team_shortcut_resource_notice_message,
-        at_user_ids=plugin_config.team_shortcut_resource_notice_user_ids,
+        plugin_config.team_resource_message,
+        at_user_ids=plugin_config.team_resource_users,
     )
 
 
@@ -28,19 +28,19 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
-    if not plugin_config.team_shortcut_team_ids:
+    if not plugin_config.team_ids:
         return False
 
     if not is_group_allowed_for_user(
         event.user_id,
         event.group_id,
-        plugin_config.team_shortcut_group_ids,
+        plugin_config.team_groups,
     ):
         return False
 
     return command_text_matches(
         event.get_plaintext(),
-        plugin_config.team_shortcut_commands,
+        plugin_config.team_commands,
     )
 
 
@@ -56,7 +56,7 @@ async def handle_team_shortcut(matcher: Matcher, event: MessageEvent) -> None:
     replies: list[Message] = []
     resource_notice_needed = False
 
-    for team_id in plugin_config.team_shortcut_team_ids:
+    for team_id in plugin_config.team_ids:
         try:
             result = await fetch_team_shortcut_result(team_id)
         except FinishedException:

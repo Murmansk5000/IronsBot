@@ -56,7 +56,7 @@ async def _match_private_command(event: MessageEvent, state: T_State) -> bool:
         return False
 
     text = normalize_command_text(event.get_plaintext())
-    for action in plugin_config.message_action_private_commands:
+    for action in plugin_config.msg_private_commands:
         if not action.enabled or not _private_action_allowed(event, action):
             continue
 
@@ -72,7 +72,7 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
         return False
 
     text = normalize_command_text(event.get_plaintext())
-    for action in plugin_config.message_action_group_commands:
+    for action in plugin_config.msg_group_commands:
         if not action.enabled:
             continue
 
@@ -191,13 +191,13 @@ def _register_group_schedule(
 
 
 for _index, _task in enumerate(
-    plugin_config.message_action_private_schedules,
+    plugin_config.msg_private_schedules,
     start=1,
 ):
     _register_private_schedule(_index, _task)
 
 for _index, _task in enumerate(
-    plugin_config.message_action_group_schedules,
+    plugin_config.msg_group_schedules,
     start=1,
 ):
     _register_group_schedule(_index, _task)

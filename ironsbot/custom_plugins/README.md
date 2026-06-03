@@ -36,7 +36,7 @@ ironsbot/custom_plugins/my_plugin/
 ```
 
 固定文本指令、定时私聊、定时群发优先不要写插件，直接用
-`MESSAGE_ACTION_*` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
+`MSG_*` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
 最终发送走 `message_actions`。
 
 最小业务命令示例：
@@ -92,27 +92,27 @@ plugin_config = get_plugin_config(Config)
 示例：
 
 ```env
-SUPERUSER_GROUP_IDS=[686376929]
-SUPERUSER_BYPASS_GROUP_RESTRICTIONS=false
+ADMIN_GROUPS=[686376929]
+ADMIN_BYPASS_GROUPS=false
 
-MEETING_REPLY_NUMBER=1234567890
-MEETING_REPLY_TEMPLATE="腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}"
-MEETING_REPLY_GROUPS=[123456789,987654321]
-MEETING_REPLY_USERS=[123456789]
+MEETING_NUMBER=1234567890
+MEETING_TEMPLATE="腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}"
+MEETING_GROUPS=[123456789,987654321]
+MEETING_USERS=[123456789]
 
-BILIBILI_MONITOR_UID=1310714247              # 旧版单账号 UID；UIDS 为空时使用
-BILIBILI_MONITOR_UIDS=[1310714247,123456789] # 多账号订阅动态；非空时优先使用这个列表
-BILIBILI_MONITOR_DATA_DIR=data/bilibili_monitor
-BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789]
-BILIBILI_MONITOR_TARGET_USER_IDS=[123456789]
+BILI_UID=1310714247              # 旧版单账号 UID；UIDS 为空时使用
+BILI_UIDS=[1310714247,123456789] # 多账号订阅动态；非空时优先使用这个列表
+BILI_DATA_DIR=data/bilibili_monitor
+BILI_GROUPS=[123456789]
+BILI_USERS=[123456789]
 
-STARTUP_NOTICE_ENABLED=true
-STARTUP_NOTICE_MESSAGE=机器人已开启。
-STARTUP_NOTICE_DELAY_SECONDS=0
+STARTUP_NOTICE=true
+STARTUP_MESSAGE=机器人已开启。
+STARTUP_DELAY=0
 
 # 群聊中由用户触发的文本回复是否在开头 @ 触发者；自动推送和定时消息不受影响。
-MESSAGE_ACTION_MENTION_GROUP_TRIGGER_USER=false
-MESSAGE_ACTION_PRIVATE_COMMANDS=[
+MSG_AT_TRIGGER=false
+MSG_PRIVATE_COMMANDS=[
   {
     "id": "activity_link_private",
     "commands": ["签到", "活动", "链接"],
@@ -120,7 +120,7 @@ MESSAGE_ACTION_PRIVATE_COMMANDS=[
     "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
   }
 ]
-MESSAGE_ACTION_PRIVATE_SCHEDULES=[
+MSG_PRIVATE_SCHEDULES=[
   {
     "id": "morning",
     "user_ids": [123456789, 987654321],
@@ -129,7 +129,7 @@ MESSAGE_ACTION_PRIVATE_SCHEDULES=[
     "message": "早上好"
   }
 ]
-MESSAGE_ACTION_GROUP_COMMANDS=[
+MSG_GROUP_COMMANDS=[
   {
     "id": "activity_link_group",
     "group_ids": [123456789],
@@ -137,7 +137,7 @@ MESSAGE_ACTION_GROUP_COMMANDS=[
     "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
   }
 ]
-MESSAGE_ACTION_GROUP_SCHEDULES=[
+MSG_GROUP_SCHEDULES=[
   {
     "id": "activity_link_daily",
     "group_ids": [123456789],
@@ -147,15 +147,15 @@ MESSAGE_ACTION_GROUP_SCHEDULES=[
   }
 ]
 
-TEAM_SHORTCUT_GROUP_IDS=[]
-TEAM_SHORTCUT_TEAM_IDS=[]
-TEAM_SHORTCUT_COMMANDS=["战队"]
-TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS=[]
-TEAM_SHORTCUT_RESOURCE_NOTICE_MESSAGE=出来买资源，别逼我求你😡
+TEAM_GROUPS=[]
+TEAM_IDS=[]
+TEAM_COMMANDS=["战队"]
+TEAM_RESOURCE_USERS=[]
+TEAM_RESOURCE_MESSAGE=出来买资源，别逼我求你😡
 
-AI_CHAT_API_KEY=sk-...
-AI_CHAT_ALLOWED_USER_IDS=[123456789]
-AI_CHAT_ALLOWED_GROUP_IDS=[123456789]
+AI_KEY=sk-...
+AI_USERS=[123456789]
+AI_GROUPS=[123456789]
 ```
 
 ## 本地开发与部署

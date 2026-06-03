@@ -29,7 +29,7 @@ def _headless_login_failure_reason() -> str | None:
 def _build_notice_message(reason: str) -> Message:
     user_id = headless_config.headless_seer_user_id or "未配置"
     return Message(
-        plugin_config.headless_seer_login_failure_notice_message.format(
+        plugin_config.seer_login_notice_message.format(
             user_id=user_id,
             reason=reason,
         )
@@ -38,7 +38,7 @@ def _build_notice_message(reason: str) -> Message:
 
 async def _startup_check(bot: Bot) -> None:
     if (
-        not plugin_config.headless_seer_login_failure_notice_enabled
+        not plugin_config.seer_login_notice
         or not _headless_is_configured()
     ):
         return
