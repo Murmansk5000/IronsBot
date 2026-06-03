@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
+from ironsbot.custom_plugins.startup_ready import ensure_startup_ready
 from ironsbot.custom_plugins.superuser_policy import get_superuser_ids
 
 from .config import plugin_config
@@ -16,16 +17,6 @@ _notice_sending = False
 
 def _get_target_users() -> list[int]:
     return sorted(get_superuser_ids())
-
-
-async def _wait_for_startup_services() -> None:
-    try:
-        from ironsbot.custom_plugins.bilibili_monitor import wait_startup_check_done
-    except Exception as e:
-        logger.warning(f"启动通知等待服务状态失败，将直接发送: {e}")
-        return
-
-    await wait_startup_check_done()
 
 
 @driver.on_bot_connect
@@ -44,27 +35,25 @@ async def send_startup_notice(bot: Bot) -> None:
     try:
         target_users = _get_target_users()
         if not target_users:
-            logger.warning("启动通知未配置接收用户，跳过发送")
+            logger.warning("startup notice has no target users")
             return
 
-        await _wait_for_startup_services()
+        await ensure_startup_ready(bot)
 
         if plugin_config.startup_notice_delay_seconds > 0:
             await asyncio.sleep(plugin_config.startup_notice_delay_seconds)
 
-        message = Message(plugin_config.startup_notice_message)
-
         summary = await send_broadcast_message(
-            message,
+            Message(plugin_config.startup_notice_message),
             private_user_ids=target_users,
             bot=bot,
-            action_name="启动通知",
+            action_name="startup notice",
             interval_seconds=1.2,
         )
 
         if summary.succeeded:
             _notice_sent = True
-            logger.info(f"启动通知已发送给 {len(target_users)} 个用户")
+            logger.info(f"startup notice sent to {len(summary.succeeded)} users")
 
     finally:
         if not _notice_sent:
