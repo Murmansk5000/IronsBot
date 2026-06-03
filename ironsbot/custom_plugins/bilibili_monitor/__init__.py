@@ -14,6 +14,15 @@ from nonebot import require, get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
+from ironsbot.custom_plugins.message_actions import (
+    send_broadcast_message,
+)
+from ironsbot.custom_plugins.superuser_policy import (
+    get_superuser_ids,
+    with_superuser_groups,
+    with_superusers,
+)
+
 # 注册 APScheduler
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -36,10 +45,14 @@ SLEEP_END_HOUR = plugin_config.bilibili_monitor_sleep_end_hour
 SLEEP_INTERVAL_MINUTES = plugin_config.bilibili_monitor_sleep_interval_minutes
 
 # 群推送目标
-TARGET_GROUP_IDS = plugin_config.bilibili_monitor_target_group_ids
+TARGET_GROUP_IDS = with_superuser_groups(
+    plugin_config.bilibili_monitor_target_group_ids
+)
 
 # 私聊目标
-TARGET_USER_IDS = plugin_config.bilibili_monitor_target_user_ids
+TARGET_USER_IDS = with_superusers(
+    plugin_config.bilibili_monitor_target_user_ids
+)
 
 # =========================================================
 
@@ -161,26 +174,12 @@ def _extract_bili_login_cookie(
     )
 
 
-def get_bili_admin_uids() -> list[int]:
-    uids = set(plugin_config.bilibili_monitor_admin_uids)
-
-    superusers = getattr(
-        get_driver().config,
-        "superusers",
-        set()
-    )
-
-    for uid in superusers:
-        try:
-            uids.add(int(uid))
-        except (TypeError, ValueError):
-            continue
-
-    return sorted(uids)
+def get_bili_superuser_uids() -> list[int]:
+    return sorted(get_superuser_ids())
 
 
-def is_bili_admin(user_id: int) -> bool:
-    return user_id in get_bili_admin_uids()
+def is_bili_superuser(user_id: int) -> bool:
+    return user_id in get_bili_superuser_uids()
 
 
 def is_bili_login_required() -> bool:
@@ -218,39 +217,27 @@ def _get_first_bot() -> Bot | None:
     return list(bots.values())[0]
 
 
-async def _send_private_to_admins(
+async def _send_private_to_superusers(
     message: str | Message,
     bot: Bot | None = None,
     user_ids: list[int] | None = None
 ) -> None:
-    target_user_ids = user_ids or get_bili_admin_uids()
+    target_user_ids = user_ids or get_bili_superuser_uids()
 
     if not target_user_ids:
         logger.warning("B站监控未配置管理员，无法发送登录提醒")
         return
 
-    bot = bot or _get_first_bot()
-
-    if not bot:
-        logger.warning("当前没有Bot在线，无法发送B站登录提醒")
-        return
-
-    for user_id in target_user_ids:
-        try:
-            await bot.send_private_msg(
-                user_id=user_id,
-                message=message
-            )
-
-            await asyncio.sleep(1.2)
-
-        except Exception as e:
-            logger.warning(
-                f"B站登录提醒发送失败 {user_id}: {e}"
-            )
+    await send_broadcast_message(
+        message,
+        private_user_ids=target_user_ids,
+        bot=bot or _get_first_bot(),
+        action_name="B站登录提醒",
+        interval_seconds=1.2,
+    )
 
 
-async def send_bili_login_qrcode_to_admins(
+async def send_bili_login_qrcode_to_superusers(
     reason: str = "",
     force: bool = False
 ) -> None:
@@ -285,7 +272,7 @@ async def send_bili_login_qrcode_to_admins(
 
         detail = f"\n原因：{reason}" if reason else ""
 
-        await _send_private_to_admins(
+        await _send_private_to_superusers(
             "B站动态监控登录已失效。"
             f"{detail}\n"
             "二维码申请失败，请稍后重试。\n"
@@ -297,7 +284,7 @@ async def send_bili_login_qrcode_to_admins(
 
     detail = f"\n原因：{reason}" if reason else ""
 
-    await _send_private_to_admins(
+    await _send_private_to_superusers(
         Message([
             MessageSegment.text(
                 "B站动态监控登录已失效。"
@@ -454,7 +441,7 @@ async def _poll_bili_login(
                     )
 
                     if "SESSDATA=" not in new_cookie:
-                        await _send_private_to_admins(
+                        await _send_private_to_superusers(
                             "B站扫码已确认，但没有取得完整登录Cookie。"
                             "下次检测到登录失效时会重新发送二维码。",
                             bot=bot,
@@ -471,7 +458,7 @@ async def _poll_bili_login(
 
                     logger.info("B站Cookie刷新成功")
 
-                    await _send_private_to_admins(
+                    await _send_private_to_superusers(
                         "B站登录成功，Cookie已刷新。",
                         bot=bot
                     )
@@ -492,7 +479,7 @@ async def _poll_bili_login(
             f"B站扫码登录轮询故障: {e}"
         )
 
-        await _send_private_to_admins(
+        await _send_private_to_superusers(
             "B站扫码登录过程中发生错误。"
             "下次检测到登录失效时会重新发送二维码。",
             bot=bot,
@@ -754,7 +741,7 @@ async def do_check_logic(
                 res_json
             ):
 
-                await send_bili_login_qrcode_to_admins(
+                await send_bili_login_qrcode_to_superusers(
                     "自动检查动态时发现B站登录失效"
                 )
 
@@ -854,39 +841,14 @@ async def do_check_logic(
                         bots.values()
                     )[0]
 
-                    # 群推送
-                    for group_id in TARGET_GROUP_IDS:
-
-                        try:
-                            await bot.send_group_msg(
-                                group_id=group_id,
-                                message=msg_text
-                            )
-
-                            await asyncio.sleep(1.2)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"群推送失败 "
-                                f"{group_id}: {e}"
-                            )
-
-                    # 私聊推送
-                    for user_id in TARGET_USER_IDS:
-
-                        try:
-                            await bot.send_private_msg(
-                                user_id=user_id,
-                                message=msg_text
-                            )
-
-                            await asyncio.sleep(1.2)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"私聊推送失败 "
-                                f"{user_id}: {e}"
-                            )
+                    await send_broadcast_message(
+                        msg_text,
+                        group_ids=TARGET_GROUP_IDS,
+                        private_user_ids=TARGET_USER_IDS,
+                        bot=bot,
+                        action_name="B站动态推送",
+                        interval_seconds=1.2,
+                    )
 
                     if pub_ts > highest_ts:
                         highest_ts = pub_ts
