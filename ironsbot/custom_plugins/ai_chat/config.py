@@ -1,4 +1,4 @@
-from nonebot import get_driver, get_plugin_config
+from nonebot import get_plugin_config
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -18,7 +18,6 @@ class Config(BaseModel):
     )
     ai_chat_allowed_group_ids: list[int] = Field(default_factory=list)
     ai_chat_allowed_user_ids: list[int] = Field(default_factory=list)
-    ai_chat_admin_uids: list[int] = Field(default_factory=list)
     ai_chat_history_turns: int = Field(default=6, ge=0, le=20)
     ai_chat_timeout_seconds: float = Field(default=45.0, gt=0)
     ai_chat_max_tokens: int = Field(default=800, gt=0)
@@ -44,21 +43,3 @@ class Config(BaseModel):
 
 
 plugin_config = get_plugin_config(Config)
-
-
-def get_ai_chat_admin_uids() -> set[int]:
-    uids = set(plugin_config.ai_chat_admin_uids)
-
-    superusers = getattr(
-        get_driver().config,
-        "superusers",
-        set(),
-    )
-
-    for uid in superusers:
-        try:
-            uids.add(int(uid))
-        except (TypeError, ValueError):
-            continue
-
-    return uids

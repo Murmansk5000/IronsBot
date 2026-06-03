@@ -42,6 +42,8 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
 - `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 保持一致
 - `SUPERUSERS`: 机器人超级管理员 QQ，例如 `["123456789"]`
+- `SUPERUSER_GROUP_IDS`: 超级管理/测试群，自定义群功能会默认在这些群启用
+- `SUPERUSER_BYPASS_GROUP_RESTRICTIONS`: 是否允许超级管理员在未启用功能的群里绕过群限制，默认 `false`
 
 NapCat 反向 WebSocket 地址：
 
@@ -108,6 +110,8 @@ services:
 ```env
 ONEBOT_ACCESS_TOKEN=change-me
 SUPERUSERS=["123456789"]
+SUPERUSER_GROUP_IDS=[686376929]
+SUPERUSER_BYPASS_GROUP_RESTRICTIONS=false
 ```
 
 ### 数据库缓存与同步
@@ -127,7 +131,6 @@ ALIAS_LOCAL_PATH=data/aliases-data.sqlite
 BILIBILI_MONITOR_UID=1310714247
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[]
 BILIBILI_MONITOR_TARGET_USER_IDS=[]
-BILIBILI_MONITOR_ADMIN_UIDS=[]
 BILIBILI_MONITOR_DATA_DIR=data/bilibili_monitor
 ```
 
@@ -141,14 +144,14 @@ AI_CHAT_BASE_URL=https://api.deepseek.com
 AI_CHAT_MODEL=deepseek-v4-flash
 AI_CHAT_ALLOWED_GROUP_IDS=[]
 AI_CHAT_ALLOWED_USER_IDS=[]
-AI_CHAT_ADMIN_UIDS=[]
 ```
 
 规则：
 
-- `SUPERUSERS` 全局可用。
-- 群聊中，只有 `AI_CHAT_ALLOWED_GROUP_IDS` 里的群允许群成员 @ 机器人聊天。
-- 私聊中，用户需要在 `AI_CHAT_ALLOWED_USER_IDS`、`AI_CHAT_ADMIN_UIDS` 或 `SUPERUSERS` 中。
+- 私聊中，`SUPERUSERS` 默认可用。
+- 群聊中，只有 `AI_CHAT_ALLOWED_GROUP_IDS` 或 `SUPERUSER_GROUP_IDS` 里的群允许群成员 @ 机器人聊天。
+- 如需让超级管理员在任意群绕过群限制，可设置 `SUPERUSER_BYPASS_GROUP_RESTRICTIONS=true`。
+- 私聊中，用户需要在 `AI_CHAT_ALLOWED_USER_IDS` 或 `SUPERUSERS` 中。
 - 群聊回复会自动 @ 提问者，避免多人同时提问时混乱。
 
 ### 战队群快捷查询
