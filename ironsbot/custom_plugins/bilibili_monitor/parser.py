@@ -2,6 +2,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
 
 from .state import BILI_UIDS
@@ -135,7 +136,7 @@ def parse_single_item(
     item: dict[str, Any],
     pub_ts: int,
     menu_mode: bool = False,
-) -> str | None:
+) -> Message | None:
     try:
         dynamic_id = str(item.get("id_str") or "")
         time_str = datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d %H:%M:%S")
@@ -151,21 +152,26 @@ def parse_single_item(
         if not content:
             content = f"{item_author_name(item)}发布了一条动态\n回复“动态”查询历史动态"
 
-        cq_images = "".join(
-            f"\n[CQ:image,file={image_url}]"
-            for image_url in _image_urls(item)
-        )
         short_content = content[:500] + "..." if len(content) > 500 else content
         tag = "点播详情" if menu_mode else "动态更新"
 
-        return (
+        message = Message()
+        message += MessageSegment.text(
             f"🔔 【B站{tag}】\n"
             f"👤 账号：{author_label}\n"
             f"⏰ 发布时间: {time_str}\n\n"
-            f"{short_content}"
-            f"{cq_images}\n\n"
-            f"传送门: https://t.bilibili.com/{dynamic_id}"
+            f"{short_content}\n"
         )
+
+        for image_url in _image_urls(item):
+            sanitized_url = image_url.strip().rstrip("]")
+            if sanitized_url:
+                message += MessageSegment.image(sanitized_url)
+                message += MessageSegment.text("\n")
+
+        message += MessageSegment.text(f"传送门: https://t.bilibili.com/{dynamic_id}")
+
+        return message
 
     except Exception as e:
         logger.error(f"failed to parse Bilibili dynamic: {e}")
