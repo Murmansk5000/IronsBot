@@ -15,7 +15,7 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 from ..config import plugin_config
 from ..group import matcher_group
 from ..packets import ensure_extended_packets
-from ._args import has_arg, parse_numeric_id
+from ._args import has_numeric_arg, parse_numeric_id
 from ._client import get_game_client
 from ._format import format_datetime, yes_no
 from ._local_rank import LocalRankSummary, update_local_rank_cache
@@ -43,7 +43,7 @@ METRIC_SEPARATOR = "\uFF5C"
 player_matcher = matcher_group.on_message(
     rule=(
         startswith_or_endswith(prefixes=("查询玩家信息", "米米号"), suffixes=())
-        & has_arg
+        & has_numeric_arg
         & no_reply()
     ),
 )
@@ -292,7 +292,12 @@ def _format_collection_info(
     )
 
     metric_lines = [
-        f"精灵总数：{getattr(more_info, 'pet_all_num', 0)}",
+        _format_metric_line(
+            "精灵数量",
+            getattr(more_info, "pet_all_num", 0),
+            local_summary=local_summary,
+            local_key="pet_total_count",
+        ),
         _format_metric_line(
             "图鉴积分",
             rank_summary.book.score,
@@ -310,6 +315,7 @@ def _format_collection_info(
         _format_metric_line(
             "精灵图鉴",
             unity_part_one.pet_kind_num,
+            global_rank=None if breakdown.pet_kind is None else breakdown.pet_kind.rank,
             local_summary=local_summary,
             local_key="pet_kind_count",
         ),

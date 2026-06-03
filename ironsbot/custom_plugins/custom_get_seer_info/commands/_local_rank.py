@@ -9,7 +9,7 @@ from typing import Any
 from nonebot.log import logger
 
 from ..config import plugin_config
-from ._rank import PlayerRankSummary, RankLookupResult
+from ._rank import PlayerRankSummary, RankLookupResult, is_pet_kind_rank_anomaly_user
 from ._sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
 MetricValue = dict[str, int | str | None]
@@ -26,6 +26,7 @@ _LOCAL_METRICS: tuple[_MetricSpec, ...] = (
     _MetricSpec("book_score", "图鉴积分"),
     _MetricSpec("achievement_score", "成就点数"),
     _MetricSpec("achievement_count", "成就数量"),
+    _MetricSpec("pet_total_count", "精灵数量"),
     _MetricSpec("pet_kind_count", "精灵图鉴"),
     _MetricSpec("countermark_count", "刻印图鉴"),
     _MetricSpec("outfit_suit_count", "套装图鉴"),
@@ -52,6 +53,15 @@ class LocalRankSummary:
 
     def sample_rank(self, metric_key: str) -> str:
         return self.sample_ranks.get(metric_key, "")
+
+
+@dataclass(frozen=True, slots=True)
+class LocalRankEntry:
+    rank: int
+    user_id: int
+    nick: str
+    value: int
+    display: str
 
 
 def _metric_from_rank(result: RankLookupResult | None) -> int | None:
@@ -117,6 +127,9 @@ def _collect_metrics(  # noqa: PLR0913
             _positive_int(getattr(more_info, "total_achieve", 0))
         ),
         "achievement_count": _metric(_positive_int(unity_part_one.achievement_num)),
+        "pet_total_count": _metric(
+            _positive_int(getattr(more_info, "pet_all_num", 0))
+        ),
         "pet_kind_count": _metric(_positive_int(unity_part_one.pet_kind_num)),
         "countermark_count": _metric(_metric_from_rank(breakdown.countermark)),
         "outfit_suit_count": _metric(_metric_from_rank(breakdown.outfit_suit)),
@@ -297,6 +310,77 @@ def _format_summary(
     )
 
 
+def get_local_rank_entries(  # noqa: C901
+    metric_key: str,
+    *,
+    limit: int = 20,
+    season_sub_key: int | None = None,
+) -> tuple[list[LocalRankEntry], int]:
+    cache = _read_cache(plugin_config.seer_query_local_rank_path)
+    players = cache.get("players")
+    if not isinstance(players, dict):
+        return [], 0
+
+    rows: list[tuple[int, int, str, str]] = []
+    for record in players.values():
+        if not isinstance(record, dict):
+            continue
+
+        metrics = record.get("metrics")
+        if not isinstance(metrics, dict):
+            continue
+
+        metric = metrics.get(metric_key)
+        if not isinstance(metric, dict):
+            continue
+
+        if (
+            season_sub_key is not None
+            and metric.get("season_sub_key") != season_sub_key
+        ):
+            continue
+
+        value = _positive_int(metric.get("value"))
+        if value is None:
+            continue
+
+        try:
+            user_id = int(record.get("user_id", 0))
+        except (TypeError, ValueError):
+            user_id = 0
+        if user_id <= 0:
+            continue
+
+        nick = str(record.get("nick") or "未知")
+        display = str(metric.get("display") or value)
+        rows.append((value, user_id, nick, display))
+
+    rows.sort(key=lambda item: (-item[0], item[1]))
+
+    entries: list[LocalRankEntry] = []
+    last_value: int | None = None
+    current_rank = 0
+    for index, (value, user_id, nick, display) in enumerate(rows, 1):
+        if value != last_value:
+            current_rank = index
+            last_value = value
+
+        if len(entries) >= limit:
+            break
+
+        entries.append(
+            LocalRankEntry(
+                rank=current_rank,
+                user_id=user_id,
+                nick=nick,
+                value=value,
+                display=display,
+            )
+        )
+
+    return entries, len(rows)
+
+
 async def update_local_rank_cache(  # noqa: PLR0913
     *,
     player_id: int,
@@ -310,6 +394,15 @@ async def update_local_rank_cache(  # noqa: PLR0913
     peak_wild_score: int | None,
     peak_expert_score: int | None,
 ) -> LocalRankSummary:
+    if is_pet_kind_rank_anomaly_user(player_id):
+        path = plugin_config.seer_query_local_rank_path
+        async with _CACHE_LOCK:
+            cache = _read_cache(path)
+            players = cache.setdefault("players", {})
+            if players.pop(str(player_id), None) is not None:
+                _write_cache(path, cache)
+        return LocalRankSummary()
+
     current_metrics = _collect_metrics(
         more_info=more_info,
         unity_part_one=unity_part_one,
