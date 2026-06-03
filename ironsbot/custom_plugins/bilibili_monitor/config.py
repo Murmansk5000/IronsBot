@@ -15,7 +15,5 @@ class Config(BaseModel):
     bilibili_monitor_target_group_ids: list[int] = Field(default_factory=list)
     bilibili_monitor_target_user_ids: list[int] = Field(default_factory=list)
 
-    bilibili_monitor_admin_uids: list[int] = Field(default_factory=list)
-
 
 plugin_config = get_plugin_config(Config)
