@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
+from ironsbot.custom_plugins.superuser_policy import get_superuser_ids
 
 from .config import plugin_config
 
@@ -14,21 +15,7 @@ _notice_sending = False
 
 
 def _get_target_users() -> list[int]:
-    users = set(plugin_config.startup_notice_users)
-
-    superusers = getattr(
-        driver.config,
-        "superusers",
-        set(),
-    )
-
-    for user_id in superusers:
-        try:
-            users.add(int(user_id))
-        except (TypeError, ValueError):
-            continue
-
-    return sorted(users)
+    return sorted(get_superuser_ids())
 
 
 async def _wait_for_startup_services() -> None:

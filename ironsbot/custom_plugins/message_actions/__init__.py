@@ -3,7 +3,7 @@ import re
 from collections.abc import Iterable
 from typing import Literal, NamedTuple
 
-from nonebot import get_bot, get_driver, on_message, require
+from nonebot import get_bot, on_message, require
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
@@ -18,6 +18,12 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.utils.rule import no_reply
+from ironsbot.custom_plugins.superuser_policy import (
+    is_group_allowed_for_user,
+    is_private_user_allowed,
+    with_superuser_groups,
+    with_superusers,
+)
 
 from .config import (
     GroupCommandMessageAction,
@@ -336,25 +342,13 @@ async def finish_message_sequence(
     )
 
 
-def _is_superuser(user_id: int) -> bool:
-    superusers = getattr(get_driver().config, "superusers", set())
-    for uid in superusers:
-        try:
-            if int(uid) == user_id:
-                return True
-        except (TypeError, ValueError):
-            continue
-    return False
-
-
 def _private_action_allowed(
     event: PrivateMessageEvent,
     action: PrivateCommandMessageAction,
 ) -> bool:
-    return (
-        not action.allowed_user_ids
-        or event.user_id in action.allowed_user_ids
-        or _is_superuser(event.user_id)
+    return is_private_user_allowed(
+        event.user_id,
+        action.allowed_user_ids,
     )
 
 
@@ -380,7 +374,14 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
 
     text = normalize_command_text(event.get_plaintext())
     for action in plugin_config.message_action_group_commands:
-        if not action.enabled or event.group_id not in action.group_ids:
+        if not action.enabled:
+            continue
+
+        if not is_group_allowed_for_user(
+            event.user_id,
+            event.group_id,
+            action.group_ids,
+        ):
             continue
 
         if command_text_matches(text, action.commands):
@@ -426,7 +427,7 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
 async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
     await send_broadcast_message(
         task.message,
-        private_user_ids=task.user_ids,
+        private_user_ids=with_superusers(task.user_ids),
         action_name=f"私聊定时消息 {task.id or '<unnamed>'}",
     )
 
@@ -434,7 +435,7 @@ async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
 async def _send_group_schedule(task: GroupScheduledMessageAction) -> None:
     await send_broadcast_message(
         task.message,
-        group_ids=task.group_ids,
+        group_ids=with_superuser_groups(task.group_ids),
         group_at_user_ids=task.at_user_ids,
         action_name=f"群定时消息 {task.id or '<unnamed>'}",
     )

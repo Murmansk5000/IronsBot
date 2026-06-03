@@ -15,6 +15,7 @@ from ironsbot.custom_plugins.message_actions import (
     command_text_matches,
     finish_message_sequence,
 )
+from ironsbot.custom_plugins.superuser_policy import is_group_allowed_for_user
 
 require("ironsbot.plugins.get_seer_info")
 
@@ -36,13 +37,14 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
-    if not plugin_config.team_shortcut_group_ids:
-        return False
-
     if not plugin_config.team_shortcut_team_ids:
         return False
 
-    if event.group_id not in plugin_config.team_shortcut_group_ids:
+    if not is_group_allowed_for_user(
+        event.user_id,
+        event.group_id,
+        plugin_config.team_shortcut_group_ids,
+    ):
         return False
 
     return command_text_matches(

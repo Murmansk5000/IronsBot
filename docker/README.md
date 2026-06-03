@@ -113,6 +113,8 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | --- | --- |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
+| `SUPERUSER_GROUP_IDS` | QQ groups treated as enabled test/management groups by custom plugins. |
+| `SUPERUSER_BYPASS_GROUP_RESTRICTIONS` | Set `true` to let superusers use custom group commands outside enabled groups. Default `false`. |
 | `DB_SYNC_ON_STARTUP` | Whether to sync registered databases automatically on startup. Default is `false`; superusers can send `更新数据` or `数据更新`. |
 | `DB_SYNC_INTERVAL_ENABLED` | Whether to run scheduled database sync jobs. Default is `true`; set `false` for manual-only updates. |
 | `SEERAPI_SYNC_URL` | Remote SeerAPI database URL. |
@@ -125,18 +127,16 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `HEADLESS_SEER_PASSWORD` | Optional MD5 password for the headless Seer client. |
 | `MEETING_REPLY_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
 | `MEETING_REPLY_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
-| `MEETING_REPLY_GROUPS` | QQ groups allowed to trigger meeting replies. |
-| `BILIBILI_MONITOR_TARGET_GROUP_IDS` | QQ groups receiving Bilibili dynamic updates. |
-| `BILIBILI_MONITOR_ADMIN_UIDS` | QQ users allowed to run Bilibili monitor admin commands. |
+| `MEETING_REPLY_GROUPS` | QQ groups allowed to trigger meeting replies; `SUPERUSER_GROUP_IDS` are included automatically. |
+| `BILIBILI_MONITOR_TARGET_GROUP_IDS` | QQ groups receiving Bilibili dynamic updates; `SUPERUSER_GROUP_IDS` are included automatically. |
 | `BILIBILI_MONITOR_DATA_DIR` | Directory for Bilibili cookies and dynamic timestamp cache. Mount `/app/data` for persistence. |
 | `STARTUP_NOTICE_ENABLED` | Whether to notify superusers after bot startup. |
-| `STARTUP_NOTICE_USERS` | Extra QQ users receiving startup notices. |
 | `MESSAGE_ACTION_MENTION_GROUP_TRIGGER_USER` | Whether group text replies triggered by a user should start by mentioning that user. Default `false`. |
-| `MESSAGE_ACTION_PRIVATE_COMMANDS` | Generic private command replies. |
-| `MESSAGE_ACTION_PRIVATE_SCHEDULES` | Generic scheduled private messages. |
-| `MESSAGE_ACTION_GROUP_COMMANDS` | Generic group command replies, with optional `at_user_ids`. |
-| `MESSAGE_ACTION_GROUP_SCHEDULES` | Generic scheduled group messages, with optional `at_user_ids`. |
-| `TEAM_SHORTCUT_GROUP_IDS` | QQ team/guild groups where team shortcut commands are enabled. |
+| `MESSAGE_ACTION_PRIVATE_COMMANDS` | Generic private command replies; empty `allowed_user_ids` means `SUPERUSERS` only. |
+| `MESSAGE_ACTION_PRIVATE_SCHEDULES` | Generic scheduled private messages; empty `user_ids` sends to `SUPERUSERS`. |
+| `MESSAGE_ACTION_GROUP_COMMANDS` | Generic group command replies; empty `group_ids` means `SUPERUSER_GROUP_IDS` only. |
+| `MESSAGE_ACTION_GROUP_SCHEDULES` | Generic scheduled group messages; empty `group_ids` sends to `SUPERUSER_GROUP_IDS`. |
+| `TEAM_SHORTCUT_GROUP_IDS` | QQ team/guild groups where team shortcut commands are enabled; `SUPERUSER_GROUP_IDS` are included automatically. |
 | `TEAM_SHORTCUT_TEAM_IDS` | Team IDs queried by the team group shortcut command. |
 | `TEAM_SHORTCUT_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
 | `TEAM_SHORTCUT_RESOURCE_NOTICE_USER_IDS` | QQ users to mention when any configured team resource is below 1000. Use `[123456789]` or `123456789`. |
@@ -144,13 +144,15 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `AI_CHAT_API_KEY` | DeepSeek API key. Keep it private. |
 | `AI_CHAT_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
 | `AI_CHAT_MODEL` | Model name used by the configured AI chat provider. |
-| `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat outside group-wide allowlists. Private chats require this, admin access, or SUPERUSERS. |
-| `AI_CHAT_ALLOWED_GROUP_IDS` | QQ groups whose members may use AI chat by mentioning the bot. Empty means no group-wide access. |
+| `AI_CHAT_ALLOWED_USER_IDS` | QQ users allowed to use AI chat outside group-wide allowlists. Private chats require this or SUPERUSERS. |
+| `AI_CHAT_ALLOWED_GROUP_IDS` | QQ groups whose members may use AI chat by mentioning the bot; `SUPERUSER_GROUP_IDS` are included automatically. |
 
 List values should use JSON-like syntax, for example:
 
 ```env
 SUPERUSERS=["123456789"]
+SUPERUSER_GROUP_IDS=[686376929]
+SUPERUSER_BYPASS_GROUP_RESTRICTIONS=false
 MEETING_REPLY_GROUPS=[123456789]
 BILIBILI_MONITOR_TARGET_GROUP_IDS=[123456789,987654321]
 MESSAGE_ACTION_PRIVATE_SCHEDULES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]

@@ -13,6 +13,10 @@ from ironsbot.custom_plugins.message_actions import (
     command_text_matches,
     finish_event_reply,
 )
+from ironsbot.custom_plugins.superuser_policy import (
+    is_group_allowed_for_user,
+    is_private_user_allowed,
+)
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
@@ -22,10 +26,17 @@ MEETING_COMMANDS = ("开播", "会议")
 
 async def _is_meeting_command(event: MessageEvent) -> bool:
     if isinstance(event, GroupMessageEvent):
-        if event.group_id not in plugin_config.meeting_reply_groups:
+        if not is_group_allowed_for_user(
+            event.user_id,
+            event.group_id,
+            plugin_config.meeting_reply_groups,
+        ):
             return False
     elif isinstance(event, PrivateMessageEvent):
-        if event.user_id not in plugin_config.meeting_reply_users:
+        if not is_private_user_allowed(
+            event.user_id,
+            plugin_config.meeting_reply_users,
+        ):
             return False
     else:
         return False

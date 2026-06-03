@@ -21,12 +21,17 @@ from ironsbot.custom_plugins.message_actions import (
     send_broadcast_message,
     send_event_reply,
 )
+from ironsbot.custom_plugins.superuser_policy import (
+    get_superuser_ids,
+    is_group_allowed_for_user,
+    is_private_user_allowed,
+)
 from ironsbot.utils.rule import no_reply
 
-from .config import Config, get_ai_chat_admin_uids, plugin_config
+from .config import Config, plugin_config
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
-ADMIN_NOTICE_COOLDOWN_SECONDS = 10 * 60
+SUPERUSER_NOTICE_COOLDOWN_SECONDS = 10 * 60
 RESERVED_PRIVATE_COMMANDS = {
     "help",
     "帮助",
@@ -56,11 +61,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 _HISTORY: dict[str, list[dict[str, str]]] = {}
-_LAST_ADMIN_NOTICE_AT: dict[str, float] = {}
-
-
-def _is_admin(user_id: int) -> bool:
-    return user_id in get_ai_chat_admin_uids()
+_LAST_SUPERUSER_NOTICE_AT: dict[str, float] = {}
 
 
 def _get_first_bot():
@@ -72,30 +73,30 @@ def _get_first_bot():
     return list(bots.values())[0]
 
 
-async def _send_private_to_admins(message: str) -> None:
-    admin_uids = get_ai_chat_admin_uids()
+async def _send_private_to_superusers(message: str) -> None:
+    superuser_uids = get_superuser_ids()
 
-    if not admin_uids:
+    if not superuser_uids:
         logger.warning("AI聊天未配置管理员，无法发送异常提醒")
         return
 
     await send_broadcast_message(
         message,
-        private_user_ids=sorted(admin_uids),
+        private_user_ids=sorted(superuser_uids),
         bot=_get_first_bot(),
         action_name="AI聊天异常提醒",
     )
 
 
-async def _notify_admins_once(key: str, message: str) -> None:
+async def _notify_superusers_once(key: str, message: str) -> None:
     now = time.time()
-    last_notice_at = _LAST_ADMIN_NOTICE_AT.get(key, 0.0)
+    last_notice_at = _LAST_SUPERUSER_NOTICE_AT.get(key, 0.0)
 
-    if now - last_notice_at < ADMIN_NOTICE_COOLDOWN_SECONDS:
+    if now - last_notice_at < SUPERUSER_NOTICE_COOLDOWN_SECONDS:
         return
 
-    _LAST_ADMIN_NOTICE_AT[key] = now
-    await _send_private_to_admins(message)
+    _LAST_SUPERUSER_NOTICE_AT[key] = now
+    await _send_private_to_superusers(message)
 
 
 def _is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
@@ -107,15 +108,18 @@ def _is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
 
 
 def _is_allowed(event: MessageEvent) -> bool:
-    if _is_admin(event.user_id):
-        return True
-
     if isinstance(event, GroupMessageEvent):
-        allowed_group_ids = plugin_config.ai_chat_allowed_group_ids
-        return event.group_id in allowed_group_ids
+        return is_group_allowed_for_user(
+            event.user_id,
+            event.group_id,
+            plugin_config.ai_chat_allowed_group_ids,
+        )
 
     if isinstance(event, PrivateMessageEvent):
-        return event.user_id in plugin_config.ai_chat_allowed_user_ids
+        return is_private_user_allowed(
+            event.user_id,
+            plugin_config.ai_chat_allowed_user_ids,
+        )
 
     return False
 
@@ -278,7 +282,7 @@ async def _call_deepseek(prompt: str, history: list[dict[str, str]]) -> str:
             f"HTTP {response.status_code}, {error_detail}"
         )
 
-        await _notify_admins_once(
+        await _notify_superusers_once(
             f"http_{response.status_code}",
             "AI聊天接口异常。\n"
             f"类型：{error_title}\n"
@@ -294,7 +298,7 @@ async def _call_deepseek(prompt: str, history: list[dict[str, str]]) -> str:
     reply = _extract_reply(response.json())
 
     if not reply:
-        await _notify_admins_once(
+        await _notify_superusers_once(
             "empty_reply",
             "AI聊天接口返回了空内容。\n"
             f"模型：{plugin_config.ai_chat_model}\n"
@@ -329,7 +333,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         )
 
     if not plugin_config.ai_chat_api_key:
-        await _notify_admins_once(
+        await _notify_superusers_once(
             "missing_api_key",
             "AI聊天还没有配置 API Key。\n"
             "请在 Unraid 容器变量或 .env.prod 中设置 AI_CHAT_API_KEY。"
@@ -383,7 +387,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
 
     except httpx.TimeoutException:
         logger.warning("DeepSeek API 调用超时")
-        await _notify_admins_once(
+        await _notify_superusers_once(
             "timeout",
             "AI聊天接口响应超时。\n"
             f"接口：{plugin_config.ai_chat_base_url}\n"
@@ -399,7 +403,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
 
     except Exception as e:
         logger.error(f"AI聊天处理失败: {e}")
-        await _notify_admins_once(
+        await _notify_superusers_once(
             "unexpected",
             "AI聊天处理失败。\n"
             f"错误：{e}\n"

@@ -50,33 +50,15 @@ class PrivateCommandMessageAction(CommandMessageAction):
 class PrivateScheduledMessageAction(ScheduledMessageAction):
     user_ids: list[int] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def validate_enabled_private_schedule(self) -> Self:
-        if self.enabled and not self.user_ids:
-            raise ValueError("已启用的私聊定时消息动作必须配置 user_ids")
-        return self
-
 
 class GroupCommandMessageAction(CommandMessageAction):
     group_ids: list[int] = Field(default_factory=list)
     at_user_ids: list[int] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def validate_enabled_group_command(self) -> Self:
-        if self.enabled and not self.group_ids:
-            raise ValueError("已启用的群指令消息动作必须配置 group_ids")
-        return self
-
 
 class GroupScheduledMessageAction(ScheduledMessageAction):
     group_ids: list[int] = Field(default_factory=list)
     at_user_ids: list[int] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_enabled_group_schedule(self) -> Self:
-        if self.enabled and not self.group_ids:
-            raise ValueError("已启用的群定时消息动作必须配置 group_ids")
-        return self
 
 
 class Config(BaseModel):

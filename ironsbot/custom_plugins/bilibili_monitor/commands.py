@@ -20,6 +20,7 @@ from ironsbot.custom_plugins.message_actions import (
     normalize_command_text,
     send_event_reply,
 )
+from ironsbot.custom_plugins.superuser_policy import is_group_allowed_for_user
 
 # Session缓存
 DYNAMIC_CACHE_SESSION = {}
@@ -36,16 +37,17 @@ def _get_dynamic_session_key(event: MessageEvent) -> str:
 
 
 async def _is_dynamic_query_allowed(event: MessageEvent) -> bool:
-    from . import TARGET_GROUP_IDS, TARGET_USER_IDS, is_bili_admin
-
-    if is_bili_admin(event.user_id):
-        return True
+    from . import TARGET_GROUP_IDS, TARGET_USER_IDS, is_bili_superuser
 
     if isinstance(event, GroupMessageEvent):
-        return event.group_id in TARGET_GROUP_IDS
+        return is_group_allowed_for_user(
+            event.user_id,
+            event.group_id,
+            TARGET_GROUP_IDS,
+        )
 
     if isinstance(event, PrivateMessageEvent):
-        return event.user_id in TARGET_USER_IDS
+        return event.user_id in TARGET_USER_IDS or is_bili_superuser(event.user_id)
 
     return False
 
@@ -68,10 +70,25 @@ async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
 
 
 async def _is_update_dynamic_command(event: MessageEvent) -> bool:
-    return command_text_matches(
+    if not command_text_matches(
         event.get_plaintext(),
         DYNAMIC_UPDATE_COMMANDS,
-    )
+    ):
+        return False
+
+    from . import TARGET_GROUP_IDS, is_bili_superuser
+
+    if not is_bili_superuser(event.user_id):
+        return False
+
+    if isinstance(event, GroupMessageEvent):
+        return is_group_allowed_for_user(
+            event.user_id,
+            event.group_id,
+            TARGET_GROUP_IDS,
+        )
+
+    return isinstance(event, PrivateMessageEvent)
 
 
 async def _is_dynamic_select_command(event: MessageEvent) -> bool:
@@ -116,7 +133,7 @@ async def _(event: MessageEvent):
         BILI_UID,
         get_saved_cookie,
         is_bili_auth_invalid,
-        send_bili_login_qrcode_to_admins,
+        send_bili_login_qrcode_to_superusers,
         scan_and_swallow_all_long_strings,
     )
 
@@ -154,7 +171,7 @@ async def _(event: MessageEvent):
                 response.status_code,
                 res_json
             ):
-                await send_bili_login_qrcode_to_admins(
+                await send_bili_login_qrcode_to_superusers(
                     "用户查询动态时发现B站登录失效"
                 )
 
@@ -260,13 +277,13 @@ async def _(event: MessageEvent):
 
             reply_text += (
                 "-------------------------\n"
-                "💡 三分钟内有效"
+                "💡 两分钟内有效"
             )
 
             DYNAMIC_CACHE_SESSION[
                 session_key
             ] = {
-                "expire": time.time() + 180,
+                "expire": time.time() + 120,
                 "items": cached_items_queue,
             }
 
@@ -305,9 +322,9 @@ async def _(event: MessageEvent):
 
     user_id = event.user_id
 
-    from . import is_bili_admin
+    from . import is_bili_superuser
 
-    if not is_bili_admin(user_id):
+    if not is_bili_superuser(user_id):
 
         await finish_event_reply(
             update_dynamic_matcher,
@@ -434,9 +451,7 @@ async def _(event: MessageEvent):
             menu_mode=True
         )
 
-        del DYNAMIC_CACHE_SESSION[
-            session_key
-        ]
+        session_data["expire"] = time.time() + 120
 
         if final_message:
 
