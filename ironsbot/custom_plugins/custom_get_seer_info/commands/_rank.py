@@ -13,6 +13,8 @@ BOOK_RANK_SUB_KEY = 1
 ACHIEVE_RANK_KEY = 17
 ACHIEVE_RANK_SUB_KEY = 0
 
+PET_KIND_RANK_KEY = 158
+PET_KIND_RANK_SUB_KEY = 1
 COUNTERMARK_RANK_KEY = 159
 COUNTERMARK_RANK_SUB_KEY = 1
 OUTFIT_RANK_KEY = 160
@@ -29,6 +31,46 @@ EXPERT_PEAK_USER_RANK_KEY = 199
 ACHIEVE_SCORE_SEARCH_LIMIT = 30_000_000
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 PEAK_USER_SCORE_SEARCH_LIMIT = 100_000
+PET_KIND_RANK_ANOMALY_USER_IDS = frozenset(
+    (
+        389438787,
+        563101901,
+        75576625,
+        941831079,
+        129030222,
+        569440141,
+        962351895,
+        141312889,
+        674021793,
+        163443467,
+        206601225,
+        925171143,
+        810989428,
+        963527044,
+        961510772,
+        914692158,
+        962236717,
+        960755946,
+        930395179,
+        964791989,
+        960957048,
+        963833963,
+        963123185,
+        963190850,
+        960351788,
+        964035946,
+        963236961,
+        962883553,
+        961625369,
+        961392272,
+        51010611,
+    )
+)
+PET_KIND_RANK_ANOMALY_COUNT = len(PET_KIND_RANK_ANOMALY_USER_IDS)
+
+
+def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
+    return user_id in PET_KIND_RANK_ANOMALY_USER_IDS
 
 
 @dataclass(slots=True)
@@ -44,6 +86,7 @@ class RankLookupResult:
 @dataclass(slots=True)
 class BookBreakdownSummary:
     pet_kind_count: int = 0
+    pet_kind: RankLookupResult | None = None
     skin: RankLookupResult | None = None
     countermark: RankLookupResult | None = None
     outfit_suit: RankLookupResult | None = None
@@ -53,6 +96,7 @@ class BookBreakdownSummary:
     @classmethod
     def empty(cls) -> "BookBreakdownSummary":
         return cls(
+            pet_kind=RankLookupResult(title="精灵图鉴", score_name="精灵"),
             skin=RankLookupResult(title="皮肤图鉴", score_name="皮肤"),
             countermark=RankLookupResult(title="刻印图鉴", score_name="刻印"),
             outfit_suit=RankLookupResult(title="套装图鉴", score_name="套装"),
@@ -145,6 +189,26 @@ async def _fetch_rank_item(
         end=index,
     )
     return items[0] if items else None
+
+
+async def fetch_daily_rank_page(
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    start: int,
+    count: int,
+) -> list[Any]:
+    if count <= 0:
+        return []
+
+    return await _fetch_rank_page(
+        game,
+        key=key,
+        sub_key=sub_key,
+        start=start,
+        end=start + count - 1,
+    )
 
 
 def _datetime_to_sub_key(value: datetime) -> int:
@@ -335,6 +399,47 @@ async def _find_rank(  # noqa: PLR0913
     )
 
 
+async def _find_pet_kind_rank(
+    game: Any,
+    *,
+    user_id: int,
+    pet_kind_count: int,
+    search_limit: int,
+) -> RankLookupResult:
+    real_search_limit = max(0, search_limit)
+    raw_search_limit = real_search_limit + PET_KIND_RANK_ANOMALY_COUNT
+    result = RankLookupResult(
+        title="精灵图鉴",
+        score_name="精灵",
+        score=pet_kind_count or None,
+        searched_limit=real_search_limit,
+        queried=real_search_limit > 0,
+    )
+
+    if is_pet_kind_rank_anomaly_user(user_id):
+        result.rank = 0
+        if result.score is None:
+            result.score = 0
+        return result
+
+    if real_search_limit <= 0:
+        return result
+
+    raw_result = await _find_rank_by_linear_scan(
+        game,
+        user_id=user_id,
+        key=PET_KIND_RANK_KEY,
+        sub_key=PET_KIND_RANK_SUB_KEY,
+        limit=raw_search_limit,
+        page_size=max(1, min(plugin_config.seer_query_rank_page_size, 100)),
+        result=result,
+    )
+    raw_result.searched_limit = real_search_limit
+    if raw_result.rank is not None:
+        raw_result.rank = max(0, raw_result.rank - PET_KIND_RANK_ANOMALY_COUNT)
+    return raw_result
+
+
 async def _fetch_book_breakdown_summary(
     game: Any,
     user_id: int,
@@ -345,6 +450,12 @@ async def _fetch_book_breakdown_summary(
     limit = min(
         max(0, plugin_config.seer_query_rank_limit),
         BOOK_BREAKDOWN_SCAN_LIMIT,
+    )
+    pet_kind = await _find_pet_kind_rank(
+        game,
+        user_id=user_id,
+        pet_kind_count=pet_kind_count,
+        search_limit=limit,
     )
     skin = await _find_rank(
         game,
@@ -394,6 +505,7 @@ async def _fetch_book_breakdown_summary(
     )
     return BookBreakdownSummary(
         pet_kind_count=pet_kind_count,
+        pet_kind=pet_kind,
         skin=skin,
         countermark=countermark,
         outfit_suit=outfit_suit,
@@ -552,7 +664,7 @@ def format_book_breakdown(summary: BookBreakdownSummary) -> str:
     return "\n".join(
         (
             "【图鉴条目拆分】",
-            f"精灵图鉴：{summary.pet_kind_count}（暂未找到对应总榜）",
+            f"精灵图鉴：{_format_score_rank(summary.pet_kind)}",
             f"皮肤图鉴：{_format_score_rank(summary.skin)}",
             f"装扮图鉴：{outfit_text}",
             f"座驾图鉴：{_format_score_rank(summary.mount)}",
