@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
-    superuser_group_ids: list[int] = Field(default_factory=list)
-    superuser_bypass_group_restrictions: bool = False
+    admin_groups: list[int] = Field(default_factory=list)
+    admin_bypass_groups: bool = False
 
 
 plugin_config = get_plugin_config(Config)
@@ -27,8 +27,8 @@ def get_superuser_ids() -> set[int]:
     return user_ids
 
 
-def get_superuser_group_ids() -> list[int]:
-    return _unique_ints(plugin_config.superuser_group_ids)
+def get_admin_groups() -> list[int]:
+    return _unique_ints(plugin_config.admin_groups)
 
 
 def is_superuser(user_id: int) -> bool:
@@ -40,7 +40,7 @@ def with_superusers(user_ids: Iterable[int]) -> list[int]:
 
 
 def with_superuser_groups(group_ids: Iterable[int]) -> list[int]:
-    return _unique_ints([*group_ids, *get_superuser_group_ids()])
+    return _unique_ints([*group_ids, *get_admin_groups()])
 
 
 def is_private_user_allowed(user_id: int, user_ids: Iterable[int]) -> bool:
@@ -56,6 +56,6 @@ def is_group_allowed_for_user(
         return True
 
     return (
-        plugin_config.superuser_bypass_group_restrictions
+        plugin_config.admin_bypass_groups
         and is_superuser(user_id)
     )

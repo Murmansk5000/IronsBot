@@ -146,6 +146,6 @@ async def handle_team(matcher: Matcher, state: T_State) -> None:
     await matcher.finish(
         _format_team_info(
             team_info,
-            set(plugin_config.custom_get_seer_info_team_sections),
+            set(plugin_config.seer_query_team_sections),
         )
     )

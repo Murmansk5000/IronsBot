@@ -6,18 +6,18 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Config(BaseModel):
-    bilibili_monitor_uid: int = 1310714247
-    bilibili_monitor_uids: list[int] = Field(default_factory=list)
-    bilibili_monitor_data_dir: Path = Path("data/bilibili_monitor")
-    bilibili_monitor_check_interval_minutes: int = 5
-    bilibili_monitor_sleep_start_hour: int = 23
-    bilibili_monitor_sleep_end_hour: int = 7
-    bilibili_monitor_sleep_interval_minutes: int = 30
+    bili_uid: int = 1310714247
+    bili_uids: list[int] = Field(default_factory=list)
+    bili_data_dir: Path = Path("data/bilibili_monitor")
+    bili_check_minutes: int = 5
+    bili_sleep_start: int = 23
+    bili_sleep_end: int = 7
+    bili_sleep_minutes: int = 30
 
-    bilibili_monitor_target_group_ids: list[int] = Field(default_factory=list)
-    bilibili_monitor_target_user_ids: list[int] = Field(default_factory=list)
+    bili_groups: list[int] = Field(default_factory=list)
+    bili_users: list[int] = Field(default_factory=list)
 
-    @field_validator("bilibili_monitor_uids", mode="before")
+    @field_validator("bili_uids", mode="before")
     @classmethod
     def normalize_monitor_uids(cls, value: object) -> object:
         if value is None or value == "":

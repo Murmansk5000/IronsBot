@@ -12,24 +12,24 @@ def _unique_ints(values: list[int]) -> list[int]:
     return list(dict.fromkeys(values))
 
 
-BILI_UID = plugin_config.bilibili_monitor_uid
+BILI_UID = plugin_config.bili_uid
 BILI_UIDS = _unique_ints(
-    plugin_config.bilibili_monitor_uids
+    plugin_config.bili_uids
     or [BILI_UID]
 )
-CHECK_INTERVAL_MINUTES = plugin_config.bilibili_monitor_check_interval_minutes
-SLEEP_START_HOUR = plugin_config.bilibili_monitor_sleep_start_hour
-SLEEP_END_HOUR = plugin_config.bilibili_monitor_sleep_end_hour
-SLEEP_INTERVAL_MINUTES = plugin_config.bilibili_monitor_sleep_interval_minutes
+CHECK_INTERVAL_MINUTES = plugin_config.bili_check_minutes
+SLEEP_START_HOUR = plugin_config.bili_sleep_start
+SLEEP_END_HOUR = plugin_config.bili_sleep_end
+SLEEP_INTERVAL_MINUTES = plugin_config.bili_sleep_minutes
 
 TARGET_GROUP_IDS = list(
-    dict.fromkeys(with_superuser_groups(plugin_config.bilibili_monitor_target_group_ids))
+    dict.fromkeys(with_superuser_groups(plugin_config.bili_groups))
 )
 TARGET_USER_IDS = list(
-    dict.fromkeys(with_superusers(plugin_config.bilibili_monitor_target_user_ids))
+    dict.fromkeys(with_superusers(plugin_config.bili_users))
 )
 
-BILI_DATA_DIR = plugin_config.bilibili_monitor_data_dir
+BILI_DATA_DIR = plugin_config.bili_data_dir
 BILI_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CACHE_FILE = BILI_DATA_DIR / "last_dynamic_time.txt"
