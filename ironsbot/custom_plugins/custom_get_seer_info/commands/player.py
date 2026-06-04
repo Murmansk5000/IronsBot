@@ -8,19 +8,21 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
     command_reply_check,
+    command_text_matches,
     enter_event_reply_conversation,
 )
 from ironsbot.plugins.headless_seer.exception import SocketRecvError
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
+from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
 from ..config import plugin_config
 from ..group import matcher_group
 from ..packets import ensure_extended_packets
-from ._args import has_numeric_arg, parse_numeric_id
+from ._args import parse_numeric_id
 from ._client import get_game_client
 from ._errors import format_socket_recv_error
 from ._format import format_datetime, yes_no
@@ -45,15 +47,47 @@ from ._sequ_extra import (
 
 PLAYER_ID_KEY = "player_id"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
+PLAYER_PEAK_KEY = "_player_peak_message"
 METRIC_SEPARATOR = "\uFF5C"
+PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
+
+
+def _extract_player_arg(text_value: str) -> str | None:
+    stripped = text_value.strip()
+    folded = stripped.casefold()
+    for prefix in PLAYER_QUERY_PREFIXES:
+        if folded.startswith(prefix.casefold()):
+            return stripped[len(prefix) :].strip()
+    return None
+
+
+async def _is_player_id_query(event: Event, state: T_State) -> bool:
+    arg = _extract_player_arg(event.get_plaintext())
+    if arg is None or not arg.isdigit():
+        return False
+
+    state[BOT_COMMAND_ARG_KEY] = arg
+    return True
+
+
+async def _is_invalid_player_text_query(event: Event) -> bool:
+    arg = _extract_player_arg(event.get_plaintext())
+    return arg is not None and not arg.isdigit()
+
+
+player_invalid_text_matcher = matcher_group.on_message(
+    rule=Rule(_is_invalid_player_text_query) & no_reply(),
+)
 
 player_matcher = matcher_group.on_message(
-    rule=(
-        startswith_or_endswith(prefixes=("查询玩家信息", "米米号"), suffixes=())
-        & has_numeric_arg
-        & no_reply()
-    ),
+    rule=Rule(_is_player_id_query) & no_reply(),
 )
+
+
+@player_invalid_text_matcher.handle()
+async def block_invalid_player_text_query() -> None:
+    return
+
 
 PEAK_RANK_NAMES = {
     0: "学徒",
@@ -411,6 +445,7 @@ def _format_compact_player_info(  # noqa: PLR0913
     peak_rank_summary: PeakSeasonRankSummary,
     local_summary: LocalRankSummary,
     has_collection: bool,
+    has_peak: bool,
     show_peak: bool,
     extra_errors: list[str],
 ) -> str:
@@ -443,6 +478,9 @@ def _format_compact_player_info(  # noqa: PLR0913
 
     if has_collection:
         lines.extend(("", "回复“收集”查看收集与排行"))
+
+    if has_peak and not show_peak:
+        lines.extend(("", "回复“巅峰”查看巅峰之战"))
 
     if extra_errors:
         lines.extend(("", "【扩展数据提示】", "；".join(extra_errors)))
@@ -568,23 +606,46 @@ async def validate_player_id(
     )
 
 
-async def _handle_collection_reply(matcher: Matcher, state: T_State) -> None:
-    message = state.get(PLAYER_COLLECTION_KEY)
+async def _handle_detail_reply(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    text = event.get_plaintext()
+    if command_text_matches(text, ("收集",)):
+        message = state.get(PLAYER_COLLECTION_KEY)
+    elif command_text_matches(text, ("巅峰",)):
+        message = state.get(PLAYER_PEAK_KEY)
+    else:
+        message = None
+
     if not message:
         raise FinishedException
 
     await matcher.finish(message)
 
 
-async def _send_player_info_with_collection_prompt(
+async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     matcher: Matcher,
     event: Event,
     state: T_State,
     *,
     player_message: str,
-    collection_message: str,
+    collection_message: str = "",
+    peak_message: str = "",
 ) -> None:
-    state[PLAYER_COLLECTION_KEY] = collection_message
+    commands: list[str] = []
+
+    if collection_message:
+        state[PLAYER_COLLECTION_KEY] = collection_message
+        commands.append("收集")
+
+    if peak_message:
+        state[PLAYER_PEAK_KEY] = peak_message
+        commands.append("巅峰")
+
+    if not commands:
+        await matcher.finish(player_message)
 
     if not isinstance(event, MessageEvent):
         await matcher.finish(player_message)
@@ -592,9 +653,9 @@ async def _send_player_info_with_collection_prompt(
     await enter_event_reply_conversation(
         matcher,
         event,
-        namespace="custom_get_seer_info_player_collection",
-        handlers=[_handle_collection_reply],
-        reply_check=command_reply_check(("收集",)),
+        namespace="custom_get_seer_info_player_details",
+        handlers=[_handle_detail_reply],
+        reply_check=command_reply_check(tuple(commands)),
         prompt=player_message,
     )
 
@@ -768,17 +829,28 @@ async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
         peak_rank_summary=peak_rank_summary,
         local_summary=visible_local_rank_summary,
         has_collection=bool(collection_message),
-        show_peak=needs_peak_section,
+        has_peak=needs_peak_section,
+        show_peak=False,
         extra_errors=extra_errors,
     )
+    peak_message = (
+        _format_compact_peak_section(
+            unity_peak,
+            peak_rank_summary,
+            visible_local_rank_summary,
+        )
+        if needs_peak_section
+        else ""
+    )
 
-    if collection_message:
-        await _send_player_info_with_collection_prompt(
+    if collection_message or peak_message:
+        await _send_player_info_with_detail_prompt(
             matcher,
             event,
             state,
             player_message=player_message,
             collection_message=collection_message,
+            peak_message=peak_message,
         )
 
     await matcher.finish(player_message)
