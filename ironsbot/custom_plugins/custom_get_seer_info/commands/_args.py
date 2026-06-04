@@ -10,7 +10,12 @@ async def has_command_arg(state: T_State) -> bool:
     return bool(parse_string_arg(state).strip())
 
 
+async def has_numeric_command_arg(state: T_State) -> bool:
+    return parse_string_arg(state).strip().isdigit()
+
+
 has_arg = Rule(has_command_arg)
+has_numeric_arg = Rule(has_numeric_command_arg)
 
 
 async def parse_numeric_id(
