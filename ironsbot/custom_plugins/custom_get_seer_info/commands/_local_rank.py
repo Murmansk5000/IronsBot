@@ -64,6 +64,12 @@ class LocalRankEntry:
     display: str
 
 
+@dataclass(frozen=True, slots=True)
+class LocalRankCacheStats:
+    player_count: int
+    metric_counts: dict[str, int]
+
+
 def _metric_from_rank(result: RankLookupResult | None) -> int | None:
     if result is None:
         return None
@@ -381,6 +387,91 @@ def get_local_rank_entries(  # noqa: C901
     return entries, len(rows)
 
 
+def get_cached_player_ids() -> list[int]:
+    cache = _read_cache(plugin_config.seer_query_local_rank_path)
+    players = cache.get("players")
+    if not isinstance(players, dict):
+        return []
+
+    player_ids: list[int] = []
+    for player_id in players:
+        try:
+            value = int(player_id)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            player_ids.append(value)
+
+    return sorted(player_ids)
+
+
+def get_local_rank_cache_stats() -> LocalRankCacheStats:
+    cache = _read_cache(plugin_config.seer_query_local_rank_path)
+    players = cache.get("players")
+    if not isinstance(players, dict):
+        return LocalRankCacheStats(player_count=0, metric_counts={})
+
+    metric_counts = {spec.title: 0 for spec in _LOCAL_METRICS}
+    for record in players.values():
+        if not isinstance(record, dict):
+            continue
+
+        metrics = record.get("metrics")
+        if not isinstance(metrics, dict):
+            continue
+
+        for spec in _LOCAL_METRICS:
+            metric = metrics.get(spec.key)
+            if not isinstance(metric, dict):
+                continue
+            if _positive_int(metric.get("value")) is not None:
+                metric_counts[spec.title] += 1
+
+    return LocalRankCacheStats(
+        player_count=len(players),
+        metric_counts=metric_counts,
+    )
+
+
+async def upsert_local_rank_metrics(
+    *,
+    player_id: int,
+    nick: str,
+    current_metrics: dict[str, MetricValue],
+    peak_sub_key: int | None,
+) -> LocalRankSummary:
+    if is_pet_kind_rank_anomaly_user(player_id):
+        path = plugin_config.seer_query_local_rank_path
+        async with _CACHE_LOCK:
+            cache = _read_cache(path)
+            players = cache.setdefault("players", {})
+            if players.pop(str(player_id), None) is not None:
+                _write_cache(path, cache)
+        return LocalRankSummary()
+
+    path = plugin_config.seer_query_local_rank_path
+    async with _CACHE_LOCK:
+        cache = _read_cache(path)
+        players = cache.setdefault("players", {})
+        old_record = players.get(str(player_id))
+        old_metrics = {}
+        if isinstance(old_record, dict) and isinstance(old_record.get("metrics"), dict):
+            old_metrics = dict(old_record["metrics"])
+
+        players[str(player_id)] = {
+            "user_id": player_id,
+            "nick": nick,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "metrics": {**old_metrics, **current_metrics},
+        }
+        _write_cache(path, cache)
+        return _format_summary(
+            players=players,
+            current_metrics=current_metrics,
+            peak_sub_key=peak_sub_key,
+        )
+
+
 async def update_local_rank_cache(  # noqa: PLR0913
     *,
     player_id: int,
@@ -394,15 +485,6 @@ async def update_local_rank_cache(  # noqa: PLR0913
     peak_wild_score: int | None,
     peak_expert_score: int | None,
 ) -> LocalRankSummary:
-    if is_pet_kind_rank_anomaly_user(player_id):
-        path = plugin_config.seer_query_local_rank_path
-        async with _CACHE_LOCK:
-            cache = _read_cache(path)
-            players = cache.setdefault("players", {})
-            if players.pop(str(player_id), None) is not None:
-                _write_cache(path, cache)
-        return LocalRankSummary()
-
     current_metrics = _collect_metrics(
         more_info=more_info,
         unity_part_one=unity_part_one,
@@ -414,19 +496,9 @@ async def update_local_rank_cache(  # noqa: PLR0913
         peak_expert_score=peak_expert_score,
     )
 
-    path = plugin_config.seer_query_local_rank_path
-    async with _CACHE_LOCK:
-        cache = _read_cache(path)
-        players = cache.setdefault("players", {})
-        players[str(player_id)] = {
-            "user_id": player_id,
-            "nick": nick,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "metrics": current_metrics,
-        }
-        _write_cache(path, cache)
-        return _format_summary(
-            players=players,
-            current_metrics=current_metrics,
-            peak_sub_key=peak_sub_key,
-        )
+    return await upsert_local_rank_metrics(
+        player_id=player_id,
+        nick=nick,
+        current_metrics=current_metrics,
+        peak_sub_key=peak_sub_key,
+    )

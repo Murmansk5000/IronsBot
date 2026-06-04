@@ -5,12 +5,16 @@ from typing import Any
 
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
+from nonebot.permission import SUPERUSER
 
 from ironsbot.utils.rule import no_reply
 
+from ..config import plugin_config
 from ..group import matcher_group
+from ..packets import ensure_extended_packets
 from ._client import get_game_client
-from ._local_rank import get_local_rank_entries
+from ._local_rank import get_local_rank_cache_stats, get_local_rank_entries
+from ._local_rank_refresh import format_refresh_failures, refresh_local_rank_cache
 from ._rank import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
@@ -124,7 +128,16 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
             commands[name] = ("global", key)
 
     local_aliases = {
-        "精灵数量": ("精灵总数榜", "样本精灵总数榜", "机器人精灵总数榜"),
+        "精灵数量": (
+            "精灵总数榜",
+            "样本精灵数量榜",
+            "样本精灵总数榜",
+            "样品精灵数量榜",
+            "样品精灵总数榜",
+            "机器人精灵数量榜",
+            "机器人精灵总数榜",
+        ),
+        "精灵图鉴": ("样本精灵榜", "机器人精灵榜"),
         "已解锁图鉴": ("样本已解锁图鉴榜", "机器人已解锁图鉴榜", "解锁图鉴榜"),
         "成就数量": ("样本成就数量榜", "机器人成就数量榜"),
         "竞技段位": ("样本竞技段位榜", "机器人竞技段位榜", "样本竞技榜"),
@@ -143,7 +156,7 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
             *(f"样本{name}" for name in aliases.get(key, ())),
             *(f"机器人{name}" for name in aliases.get(key, ())),
         )
-        local_aliases.setdefault(key, names)
+        local_aliases[key] = (*local_aliases.get(key, ()), *names)
 
     for key, names in local_aliases.items():
         for name in names:
@@ -154,12 +167,56 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
 
 COMMANDS = _build_command_map()
 
+rank_help_matcher = matcher_group.on_fullmatch(
+    ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
+    rule=no_reply(),
+)
 rank_list_matcher = matcher_group.on_fullmatch(tuple(COMMANDS), rule=no_reply())
+rank_cache_status_matcher = matcher_group.on_fullmatch(
+    ("样本榜状态", "本地榜状态", "机器人样本状态"),
+    rule=no_reply(),
+    permission=SUPERUSER,
+)
+rank_cache_refresh_matcher = matcher_group.on_fullmatch(
+    ("更新样本榜", "刷新样本榜", "重建样本榜"),
+    rule=no_reply(),
+    permission=SUPERUSER,
+)
 
 
 def _now_text() -> str:
     now = datetime.now(timezone(timedelta(hours=8)))
     return now.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _build_rank_help_message() -> str:
+    return "\n".join(
+        [
+            "📊【可用榜单】",
+            "",
+            "【全服榜】",
+            "图鉴榜 / 成就榜",
+            "精灵图鉴榜 / 精灵种类榜",
+            "皮肤榜 / 套装榜 / 部件榜 / 座驾榜 / 刻印榜",
+            "",
+            "【机器人样本榜】",
+            "样本图鉴榜 / 样本成就榜",
+            "样本精灵榜（默认精灵图鉴/种类）",
+            "样本精灵数量榜 / 样本精灵总数榜",
+            "样本皮肤榜 / 样本套装榜 / 样本部件榜",
+            "样本座驾榜 / 样本刻印榜",
+            "样本已解锁图鉴榜 / 样本成就数量榜",
+            "",
+            "【巅峰样本榜】",
+            "样本竞技段位榜 / 样本竞技胜率榜",
+            "样本狂野段位榜 / 样本狂野胜率榜",
+            "样本专家段位榜 / 样本专家胜率榜",
+            "",
+            "【超级管理员维护】",
+            "样本榜状态",
+            "刷新样本榜 / 更新样本榜 / 重建样本榜",
+        ]
+    )
 
 
 def _format_global_line(
@@ -214,6 +271,11 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
     return "\n".join(lines)
 
 
+@rank_help_matcher.handle()
+async def handle_rank_help(matcher: Matcher) -> None:
+    await matcher.finish(_build_rank_help_message())
+
+
 @rank_list_matcher.handle()
 async def handle_rank_list(matcher: Matcher, event: Event) -> None:
     command = event.get_plaintext().strip()
@@ -223,3 +285,51 @@ async def handle_rank_list(matcher: Matcher, event: Event) -> None:
         await matcher.finish(await _build_global_rank_message(GLOBAL_RANKS[key]))
 
     await matcher.finish(_build_local_rank_message(LOCAL_RANKS[key]))
+
+
+@rank_cache_status_matcher.handle()
+async def handle_rank_cache_status(matcher: Matcher) -> None:
+    stats = get_local_rank_cache_stats()
+    lines = [
+        "📊【样本榜缓存状态】",
+        f"已缓存米米号：{stats.player_count} 个",
+        f"全服排行扫描上限：前 {plugin_config.seer_query_rank_limit} 名",
+        "巅峰样本：按当前赛季单独比较",
+        f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
+        "",
+        "可参与排行人数：",
+    ]
+    lines.extend(
+        f"{title}：{count}"
+        for title, count in stats.metric_counts.items()
+    )
+    await matcher.finish("\n".join(lines))
+
+
+@rank_cache_refresh_matcher.handle()
+async def handle_rank_cache_refresh(matcher: Matcher) -> None:
+    ensure_extended_packets()
+    before = get_local_rank_cache_stats()
+    if before.player_count <= 0:
+        await matcher.finish("❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。")
+
+    await matcher.send(
+        f"🔄 正在刷新样本榜缓存，共 {before.player_count} 个米米号。"
+        "这会逐个重新查询，可能需要一点时间。"
+    )
+    result = await refresh_local_rank_cache()
+    after = get_local_rank_cache_stats()
+
+    lines = [
+        "✅【样本榜缓存刷新完成】",
+        f"原缓存米米号：{result.total} 个",
+        f"成功刷新：{result.success} 个",
+        f"失败：{result.failed} 个",
+        f"当前缓存米米号：{after.player_count} 个",
+    ]
+    if result.failures:
+        lines.append("")
+        lines.append("失败示例：")
+        lines.extend(format_refresh_failures(result.failures))
+
+    await matcher.finish("\n".join(lines))
