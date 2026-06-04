@@ -5,12 +5,14 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.plugins.headless_seer.exception import SocketRecvError
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import plugin_config
 from ..group import matcher_group
 from ._args import has_arg, parse_numeric_id
 from ._client import get_game_client
+from ._errors import format_socket_recv_error
 from ._format import format_possible_datetime
 
 TEAM_ID_KEY = "team_id"
@@ -140,7 +142,9 @@ async def handle_team(matcher: Matcher, state: T_State) -> None:
         team_info = await game.get_team_info(team_id)
     except FinishedException:
         raise
-    except Exception as e:
+    except SocketRecvError as e:
+        await matcher.finish(f"❌ 战队 {team_id} {format_socket_recv_error(e)}")
+    except Exception as e:  # noqa: BLE001
         await matcher.finish(f"❌ 战队 {team_id} 查询失败：{e}")
 
     await matcher.finish(

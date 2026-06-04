@@ -133,7 +133,11 @@ async def _wait_dynamic_select(
 
 
 @dynamic_menu_matcher.handle()
-async def handle_dynamic_menu(event: MessageEvent, state: T_State) -> None:
+async def handle_dynamic_menu(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     try:
         await send_event_reply(
             dynamic_menu_matcher,
@@ -185,7 +189,7 @@ async def handle_dynamic_menu(event: MessageEvent, state: T_State) -> None:
 
         logger.info(f"user {event.user_id} fetched Bilibili dynamic menu")
         await enter_event_reply_conversation(
-            dynamic_menu_matcher,
+            matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
             handlers=[handle_dynamic_select],

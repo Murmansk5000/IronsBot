@@ -37,6 +37,7 @@ from ._rank import (
     fetch_daily_rank_page,
     get_current_peak_sub_key,
 )
+from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
@@ -323,41 +324,6 @@ def _now_text() -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _build_rank_help_message() -> str:
-    return "\n".join(
-        [
-            "📊【可用榜单】",
-            "",
-            "【全服榜】",
-            "图鉴榜 / 成就榜",
-            "精灵图鉴榜 / 精灵种类榜",
-            "皮肤榜 / 套装榜 / 部件榜 / 座驾榜 / 刻印榜",
-            "刻印攻击榜 / 刻印速度榜 / 所有刻印攻击榜",
-            "",
-            "【机器人样本榜】",
-            "样本图鉴榜 / 样本成就榜",
-            "样本精灵榜（默认精灵图鉴/种类）",
-            "样本精灵数量榜 / 样本精灵总数榜",
-            "样本皮肤榜 / 样本套装榜 / 样本部件榜",
-            "样本座驾榜 / 样本刻印榜",
-            "样本已解锁图鉴榜 / 样本成就数量榜",
-            "",
-            "【巅峰样本榜】",
-            "样本竞技段位榜 / 样本竞技胜率榜",
-            "样本狂野段位榜 / 样本狂野胜率榜",
-            "样本专家段位榜 / 样本专家胜率榜",
-            "样本竞技场次榜 / 样本狂野场次榜 / 样本专家场次榜",
-            "样本场次总榜（竞技+狂野+专家）",
-            "",
-            "【超级管理员维护】",
-            "/缓存情况、/缓存状态、/样本榜状态",
-            "/刷新样本榜、/更新样本榜、/重建样本榜",
-            "/缓存榜单 刻印榜 1-100",
-            "/缓存榜单 图鉴榜 1001-1100",
-        ]
-    )
-
-
 def _format_global_line(
     item: Any,
     *,
@@ -434,7 +400,7 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
 
 @rank_help_matcher.handle()
 async def handle_rank_help(matcher: Matcher) -> None:
-    await matcher.finish(_build_rank_help_message())
+    await matcher.finish(build_rank_help_message())
 
 
 @rank_list_matcher.handle()
