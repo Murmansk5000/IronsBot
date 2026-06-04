@@ -151,9 +151,9 @@ def _datetime_to_sub_key(value: datetime) -> int:
     return int(value.strftime("%Y%m%d"))
 
 
-def _get_current_peak_sub_key() -> int | None:
-    if plugin_config.custom_get_seer_info_peak_season_sub_key is not None:
-        return plugin_config.custom_get_seer_info_peak_season_sub_key
+def get_current_peak_sub_key() -> int | None:
+    if plugin_config.seer_query_peak_subkey is not None:
+        return plugin_config.seer_query_peak_subkey
 
     try:
         from seerapi_models import PeakSeasonORM
@@ -178,7 +178,7 @@ def _get_current_peak_sub_key() -> int | None:
         session_gen.close()
 
 
-async def _find_rank_by_linear_scan(
+async def _find_rank_by_linear_scan(  # noqa: PLR0913
     game: Any,
     *,
     user_id: int,
@@ -213,7 +213,7 @@ async def _find_rank_by_linear_scan(
     return result
 
 
-async def _find_rank_by_score(
+async def _find_rank_by_score(  # noqa: C901, PLR0913
     game: Any,
     *,
     user_id: int,
@@ -284,7 +284,7 @@ async def _find_rank_by_score(
     return result
 
 
-async def _find_rank(
+async def _find_rank(  # noqa: PLR0913
     game: Any,
     *,
     user_id: int,
@@ -296,9 +296,9 @@ async def _find_rank(
     search_limit: int | None = None,
     minimum_score_search_limit: int = 0,
 ) -> RankLookupResult:
-    configured_limit = max(0, plugin_config.custom_get_seer_info_rank_search_limit)
+    configured_limit = max(0, plugin_config.seer_query_rank_limit)
     limit = configured_limit if search_limit is None else max(0, search_limit)
-    page_size = max(1, min(plugin_config.custom_get_seer_info_rank_page_size, 100))
+    page_size = max(1, min(plugin_config.seer_query_rank_page_size, 100))
     if target_score is not None and target_score > 0:
         limit = max(limit, minimum_score_search_limit)
 
@@ -343,7 +343,7 @@ async def _fetch_book_breakdown_summary(
     skin_score: int | None = None,
 ) -> BookBreakdownSummary:
     limit = min(
-        max(0, plugin_config.custom_get_seer_info_rank_search_limit),
+        max(0, plugin_config.seer_query_rank_limit),
         BOOK_BREAKDOWN_SCAN_LIMIT,
     )
     skin = await _find_rank(
@@ -410,7 +410,7 @@ async def fetch_peak_season_rank_summary(
     wild_score: int | None = None,
     expert_score: int | None = None,
 ) -> PeakSeasonRankSummary:
-    sub_key = _get_current_peak_sub_key()
+    sub_key = get_current_peak_sub_key()
     if sub_key is None:
         return PeakSeasonRankSummary.empty()
 
@@ -451,7 +451,7 @@ async def fetch_peak_season_rank_summary(
     return summary
 
 
-async def fetch_player_rank_summary(
+async def fetch_player_rank_summary(  # noqa: PLR0913
     game: Any,
     user_id: int,
     *,
@@ -493,7 +493,11 @@ def format_rank_lookup(result: RankLookupResult) -> str:
         return f"{result.title}：未查询"
 
     if result.rank is None:
-        suffix = "" if result.score is None else f"（{result.score_name}：{result.score}）"
+        suffix = (
+            ""
+            if result.score is None
+            else f"（{result.score_name}：{result.score}）"
+        )
         return f"{result.title}：前 {result.searched_limit} 名未上榜{suffix}"
 
     return f"{result.title}：第 {result.rank} 名（{result.score_name}：{result.score}）"

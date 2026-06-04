@@ -83,20 +83,20 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             mention_sender=True,
         )
 
-    if not plugin_config.ai_chat_api_key:
+    if not plugin_config.ai_key:
         await notify_superusers_once(
             "missing_api_key",
             "AI聊天还没有配置 API Key。\n"
-            "请在 Unraid 容器变量或 .env.prod 中设置 AI_CHAT_API_KEY。",
+            "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
         )
         await finish_event_reply(
             ai_chat_matcher,
             event,
-            "AI聊天还没有配置 API Key。请先设置 AI_CHAT_API_KEY。",
+            "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
             mention_sender=True,
         )
 
-    if plugin_config.ai_chat_send_waiting_notice:
+    if plugin_config.ai_waiting_notice:
         await send_event_reply(
             ai_chat_matcher,
             event,
@@ -125,9 +125,9 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         await notify_superusers_once(
             "timeout",
             "AI聊天接口响应超时。\n"
-            f"接口：{plugin_config.ai_chat_base_url}\n"
-            f"超时时间：{plugin_config.ai_chat_timeout_seconds} 秒\n"
-            "请检查网络或适当调大 AI_CHAT_TIMEOUT_SECONDS。",
+            f"接口：{plugin_config.ai_base_url}\n"
+            f"超时时间：{plugin_config.ai_timeout} 秒\n"
+            "请检查网络或适当调大 AI_TIMEOUT。",
         )
         await finish_event_reply(
             ai_chat_matcher,
