@@ -14,6 +14,7 @@ from ironsbot.custom_plugins.message_actions import (
     command_reply_check,
     enter_event_reply_conversation,
 )
+from ironsbot.plugins.headless_seer.exception import SocketRecvError
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import plugin_config
@@ -21,6 +22,7 @@ from ..group import matcher_group
 from ..packets import ensure_extended_packets
 from ._args import has_numeric_arg, parse_numeric_id
 from ._client import get_game_client
+from ._errors import format_socket_recv_error
 from ._format import format_datetime, yes_no
 from ._local_rank import LocalRankSummary, update_local_rank_cache
 from ._rank import (
@@ -742,6 +744,8 @@ async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
 
     except FinishedException:
         raise
+    except SocketRecvError as e:
+        await matcher.finish(f"❌ 米米号 {player_id} {format_socket_recv_error(e)}")
     except Exception as e:  # noqa: BLE001
         await matcher.finish(f"❌ 米米号 {player_id} 查询失败：{e}")
 

@@ -84,7 +84,7 @@ class Config(BaseModel):
     seer_query_local_rank_max_players: int = Field(default=5000, ge=1)
     seer_query_cache_batch_limit: int = Field(default=100, ge=1)
     seer_query_local_rank_path: Path = Path(
-        "data/custom_get_seer_info/player_query_cache.json"
+        "data/custom_get_seer_info/player_query_cache.sqlite"
     )
     seer_query_player_sections: list[str] = Field(
         default_factory=lambda: list(PLAYER_SECTION_KEYS)

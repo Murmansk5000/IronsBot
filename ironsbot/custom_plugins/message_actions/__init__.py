@@ -1,4 +1,7 @@
+from nonebot.plugin import PluginMetadata
+
 from . import runtime as runtime
+from .config import Config
 from .conversations import (
     command_reply_check,
     enter_event_reply_conversation,
@@ -32,6 +35,18 @@ from .text import (
     command_text_matches,
     normalize_command_text,
     render_text,
+)
+
+__plugin_meta__ = PluginMetadata(
+    name="链接",
+    description="按配置回复固定链接/文本，也可定时向群或私聊发送消息",
+    usage=(
+        "【链接】\n"
+        "按 MSG_PRIVATE_COMMANDS / MSG_GROUP_COMMANDS 中配置的关键词回复固定文本。\n"
+        "常用场景：链接、活动、签到、信息聚合页等。\n"
+        "定时推送由 MSG_PRIVATE_SCHEDULES / MSG_GROUP_SCHEDULES 配置。"
+    ),
+    config=Config,
 )
 
 __all__ = [

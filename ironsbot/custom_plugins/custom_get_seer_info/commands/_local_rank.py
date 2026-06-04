@@ -1,13 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
-import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-from nonebot.log import logger
 
 from ..config import plugin_config
 from ._rank import PlayerRankSummary, RankLookupResult, is_pet_kind_rank_anomaly_user
@@ -221,17 +218,7 @@ def _max_cached_players() -> int:
 
 
 def _sqlite_cache_path() -> Path:
-    path = plugin_config.seer_query_local_rank_path
-    if path.suffix.lower() == ".json":
-        return path.with_suffix(".sqlite")
-    return path
-
-
-def _legacy_json_cache_path() -> Path:
-    path = plugin_config.seer_query_local_rank_path
-    if path.suffix.lower() == ".json":
-        return path
-    return path.with_suffix(".json")
+    return plugin_config.seer_query_local_rank_path
 
 
 def _connect_cache() -> sqlite3.Connection:
@@ -240,7 +227,6 @@ def _connect_cache() -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     _ensure_cache_schema(conn)
-    _import_legacy_json_cache(conn)
     return conn
 
 
@@ -274,32 +260,7 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
         ON metrics(metric_key, season_sub_key, value DESC, user_id)
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-        """
-    )
     conn.commit()
-
-
-def _metric_value_from_record(metric: object) -> MetricValue | None:
-    if not isinstance(metric, dict):
-        return None
-
-    value = _positive_int(metric.get("value"))
-    if value is None:
-        return None
-
-    season_sub_key = _positive_int(metric.get("season_sub_key"))
-    display = metric.get("display")
-    return _metric(
-        value,
-        season_sub_key=season_sub_key,
-        display=None if display in (None, "") else str(display),
-    )
 
 
 def _write_player_metrics(
@@ -345,75 +306,6 @@ def _write_player_metrics(
                 None if display in (None, "") else str(display),
             ),
         )
-
-
-def _import_legacy_json_cache(conn: sqlite3.Connection) -> None:  # noqa: C901, PLR0912
-    imported = conn.execute(
-        "SELECT value FROM meta WHERE key = 'legacy_json_imported'"
-    ).fetchone()
-    if imported is not None:
-        return
-
-    legacy_path = _legacy_json_cache_path()
-    if not legacy_path.exists():
-        conn.execute(
-            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
-            ("legacy_json_imported", "1"),
-        )
-        conn.commit()
-        return
-
-    try:
-        data = json.loads(legacy_path.read_text(encoding="utf-8"))
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"failed to import custom Seer JSON rank cache: {e}")
-        return
-
-    players = data.get("players") if isinstance(data, dict) else None
-    if not isinstance(players, dict):
-        return
-
-    imported_count = 0
-    for record in players.values():
-        if not isinstance(record, dict):
-            continue
-
-        try:
-            player_id = int(record.get("user_id", 0))
-        except (TypeError, ValueError):
-            continue
-        if player_id <= 0 or is_pet_kind_rank_anomaly_user(player_id):
-            continue
-
-        raw_metrics = record.get("metrics")
-        if not isinstance(raw_metrics, dict):
-            continue
-
-        metrics: dict[str, MetricValue] = {}
-        for key, metric in raw_metrics.items():
-            metric_value = _metric_value_from_record(metric)
-            if metric_value is not None:
-                metrics[str(key)] = metric_value
-
-        if not metrics:
-            continue
-
-        _write_player_metrics(
-            conn,
-            player_id=player_id,
-            nick=str(record.get("nick") or ""),
-            metrics=metrics,
-            updated_at=str(record.get("updated_at") or ""),
-        )
-        imported_count += 1
-
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
-        ("legacy_json_imported", "1"),
-    )
-    conn.commit()
-    if imported_count:
-        logger.info(f"imported {imported_count} custom Seer rank records from JSON")
 
 
 def _format_percent(value: float) -> str:
