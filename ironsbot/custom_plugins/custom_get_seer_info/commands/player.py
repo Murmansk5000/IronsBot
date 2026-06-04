@@ -8,6 +8,7 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
@@ -16,12 +17,12 @@ from ironsbot.custom_plugins.message_actions import (
     enter_event_reply_conversation,
 )
 from ironsbot.plugins.headless_seer.exception import SocketRecvError
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
+from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
 from ..config import plugin_config
 from ..group import matcher_group
 from ..packets import ensure_extended_packets
-from ._args import has_numeric_arg, parse_numeric_id
+from ._args import parse_numeric_id
 from ._client import get_game_client
 from ._errors import format_socket_recv_error
 from ._format import format_datetime, yes_no
@@ -48,14 +49,45 @@ PLAYER_ID_KEY = "player_id"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 METRIC_SEPARATOR = "\uFF5C"
+PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
+
+
+def _extract_player_arg(text_value: str) -> str | None:
+    stripped = text_value.strip()
+    folded = stripped.casefold()
+    for prefix in PLAYER_QUERY_PREFIXES:
+        if folded.startswith(prefix.casefold()):
+            return stripped[len(prefix) :].strip()
+    return None
+
+
+async def _is_player_id_query(event: Event, state: T_State) -> bool:
+    arg = _extract_player_arg(event.get_plaintext())
+    if arg is None or not arg.isdigit():
+        return False
+
+    state[BOT_COMMAND_ARG_KEY] = arg
+    return True
+
+
+async def _is_invalid_player_text_query(event: Event) -> bool:
+    arg = _extract_player_arg(event.get_plaintext())
+    return arg is not None and not arg.isdigit()
+
+
+player_invalid_text_matcher = matcher_group.on_message(
+    rule=Rule(_is_invalid_player_text_query) & no_reply(),
+)
 
 player_matcher = matcher_group.on_message(
-    rule=(
-        startswith_or_endswith(prefixes=("查询玩家信息", "米米号"), suffixes=())
-        & has_numeric_arg
-        & no_reply()
-    ),
+    rule=Rule(_is_player_id_query) & no_reply(),
 )
+
+
+@player_invalid_text_matcher.handle()
+async def block_invalid_player_text_query() -> None:
+    return
+
 
 PEAK_RANK_NAMES = {
     0: "学徒",

@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nonebot import get_plugin_config, require
+from nonebot import get_plugin_config, on_message, require
+from nonebot.adapters import Event
 from nonebot.log import logger
+from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -20,6 +23,7 @@ from ironsbot.custom_plugins.superuser_policy import (
     with_superuser_groups,
     with_superusers,
 )
+from ironsbot.utils.rule import no_reply
 
 require("ironsbot.plugins.seer_data")
 require("nonebot_plugin_apscheduler")
@@ -30,6 +34,12 @@ from ironsbot.plugins.db_sync.manager import db_manager
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 活动将在约 {lead_hours} 小时后结束\n{activity_list}"
+ADMIN_COMMAND_PREFIXES = ("/",)
+CURRENT_ACTIVITY_COMMANDS = ("当前活动", "活动列表", "活动时间")
+SECONDS_PER_MINUTE = 60
+MINUTES_PER_HOUR = 60
+HOURS_PER_DAY = 24
+MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR
 
 
 def _coerce_int_list(value: object) -> object:
@@ -55,6 +65,31 @@ def _unique_positive_ints(values: Iterable[int]) -> list[int]:
         for value in dict.fromkeys(values)
         if value > 0
     ]
+
+
+def _normalize_command_text(text_value: str) -> str:
+    return "".join(text_value.split()).lower()
+
+
+NORMALIZED_CURRENT_ACTIVITY_COMMANDS = {
+    _normalize_command_text(command)
+    for command in CURRENT_ACTIVITY_COMMANDS
+}
+
+
+def _strip_admin_command_prefix(text_value: str) -> str | None:
+    stripped = text_value.strip()
+    for prefix in ADMIN_COMMAND_PREFIXES:
+        if stripped.startswith(prefix):
+            return stripped[len(prefix) :].strip()
+    return None
+
+
+async def _is_current_activity_command(event: Event) -> bool:
+    command = _strip_admin_command_prefix(event.get_plaintext())
+    if command is None:
+        return False
+    return _normalize_command_text(command) in NORMALIZED_CURRENT_ACTIVITY_COMMANDS
 
 
 class Config(BaseModel):
@@ -100,13 +135,23 @@ __plugin_meta__ = PluginMetadata(
         "【活动结束提醒】\n"
         "按 ACTIVITY_REMINDER_LEAD_HOURS 配置提前提醒活动即将结束。\n"
         "目标群由 ACTIVITY_REMINDER_GROUPS 配置，ADMIN_GROUPS 自动包含；"
-        "目标用户由 ACTIVITY_REMINDER_USERS 配置，SUPERUSERS 自动包含。"
+        "目标用户由 ACTIVITY_REMINDER_USERS 配置，SUPERUSERS 自动包含。\n"
+        "超级管理员可发送 /当前活动、/活动列表、/活动时间 查看当前活动和剩余时间。"
     ),
     config=Config,
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
+class ActivityInfo:
+    activity_id: int
+    name: str
+    start_time: datetime | None
+    end_time: datetime
+    sort_order: int
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityReminder:
     activity_id: int
     name: str
@@ -185,13 +230,24 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
 
     try:
         session = next(gen)
-        rows = session.execute(
-            text(
-                "SELECT id, name, end_time, is_show, sort_order "
-                f"FROM activity {where_clause} "
-                "ORDER BY end_time, sort_order, id"
-            )
-        ).mappings().all()
+        try:
+            rows = session.execute(
+                text(
+                    "SELECT id, name, start_time, end_time, is_show, sort_order "
+                    f"FROM activity {where_clause} "
+                    "ORDER BY end_time, sort_order, id"
+                )
+            ).mappings().all()
+        except OperationalError as e:
+            if "start_time" not in str(e):
+                raise
+            rows = session.execute(
+                text(
+                    "SELECT id, name, end_time, is_show, sort_order "
+                    f"FROM activity {where_clause} "
+                    "ORDER BY end_time, sort_order, id"
+                )
+            ).mappings().all()
     except OperationalError as e:
         if "missing_table" not in _logged_warnings:
             logger.warning(
@@ -206,6 +262,94 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
     _logged_warnings.discard("missing_session")
     _logged_warnings.discard("missing_table")
     return list(rows)
+
+
+def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
+    activities: list[ActivityInfo] = []
+    for row in _load_activity_rows():
+        end_time = _parse_datetime(row.get("end_time"))
+        if end_time is None or end_time <= now:
+            continue
+
+        start_time = _parse_datetime(row.get("start_time"))
+        if start_time is not None and start_time > now:
+            continue
+
+        activities.append(
+            ActivityInfo(
+                activity_id=int(row["id"]),
+                name=str(row.get("name") or f"活动 {row['id']}"),
+                start_time=start_time,
+                end_time=end_time,
+                sort_order=int(row.get("sort_order") or 0),
+            )
+        )
+
+    return sorted(
+        activities,
+        key=lambda activity: (
+            activity.end_time,
+            activity.sort_order,
+            activity.activity_id,
+        ),
+    )
+
+
+def _format_remaining_time(delta: timedelta) -> str:
+    total_minutes = max(
+        0,
+        int(delta.total_seconds() // SECONDS_PER_MINUTE),
+    )
+    days, day_remainder = divmod(total_minutes, MINUTES_PER_DAY)
+    hours, minutes = divmod(day_remainder, MINUTES_PER_HOUR)
+
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}天")
+    if hours:
+        parts.append(f"{hours}小时")
+    if minutes or not parts:
+        parts.append(f"{minutes}分")
+    return "".join(parts)
+
+
+def _format_activity_period(activity: ActivityInfo) -> str:
+    end_text = f"{activity.end_time:%m-%d %H:%M}"
+    if activity.start_time is None:
+        return f"结束：{end_text}"
+    return f"{activity.start_time:%m-%d %H:%M} ~ {end_text}"
+
+
+def build_current_activity_message(
+    now: datetime | None = None,
+    *,
+    limit: int = 20,
+) -> str:
+    current_time = now or _now()
+    activities = _active_activity_infos(current_time)
+    if not activities:
+        return "📭 当前没有从活动中心读到正在进行的活动。"
+
+    shown_activities = activities[:limit]
+    lines = [
+        "📅【当前活动】",
+        f"截至 {current_time:%Y-%m-%d %H:%M}",
+        "",
+    ]
+    for index, activity in enumerate(shown_activities, start=1):
+        remaining_text = _format_remaining_time(activity.end_time - current_time)
+        period_text = _format_activity_period(activity)
+        lines.extend(
+            [
+                f"{index}. {activity.name}",
+                f"   持续：{period_text} | 剩余：{remaining_text}",
+            ]
+        )
+
+    hidden_count = len(activities) - len(shown_activities)
+    if hidden_count > 0:
+        lines.append(f"...还有 {hidden_count} 个活动未显示")
+    return "\n".join(lines)
 
 
 def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
@@ -368,6 +512,19 @@ async def schedule_activity_reminders() -> None:
         scheduled_count += len(lead_reminders)
 
     logger.info(f"activity reminder scheduled {scheduled_count} pending reminders")
+
+
+current_activity_matcher = on_message(
+    rule=Rule(_is_current_activity_command) & no_reply(),
+    permission=SUPERUSER,
+    priority=5,
+    block=True,
+)
+
+
+@current_activity_matcher.handle()
+async def handle_current_activity_query() -> None:
+    await current_activity_matcher.finish(build_current_activity_message())
 
 
 if plugin_config.activity_reminder:
