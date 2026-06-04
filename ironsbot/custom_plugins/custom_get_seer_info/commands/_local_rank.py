@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import json
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,10 +37,14 @@ _LOCAL_METRICS: tuple[_MetricSpec, ...] = (
     _MetricSpec("unlocked_book_entries", "已解锁图鉴条目"),
     _MetricSpec("peak_standard", "竞技赛季", season_limited=True),
     _MetricSpec("peak_standard_win_rate", "竞技胜率", season_limited=True),
+    _MetricSpec("peak_standard_matches", "竞技场次", season_limited=True),
     _MetricSpec("peak_wild", "狂野赛季", season_limited=True),
     _MetricSpec("peak_wild_win_rate", "狂野胜率", season_limited=True),
+    _MetricSpec("peak_wild_matches", "狂野场次", season_limited=True),
     _MetricSpec("peak_expert", "专家赛季", season_limited=True),
     _MetricSpec("peak_expert_win_rate", "专家胜率", season_limited=True),
+    _MetricSpec("peak_expert_matches", "专家场次", season_limited=True),
+    _MetricSpec("peak_total_matches", "巅峰总场次", season_limited=True),
 )
 
 _CACHE_LOCK = asyncio.Lock()
@@ -67,6 +72,7 @@ class LocalRankEntry:
 @dataclass(frozen=True, slots=True)
 class LocalRankCacheStats:
     player_count: int
+    max_players: int
     metric_counts: dict[str, int]
 
 
@@ -146,6 +152,11 @@ def _collect_metrics(  # noqa: PLR0913
     }
 
     if peak_sub_key is not None:
+        total_matches = (
+            unity_peak.current_j_all
+            + unity_peak.current_k_all
+            + unity_peak.current_z_all
+        )
         if unity_peak.current_j_all > 0:
             values["peak_standard"] = _metric(
                 _positive_int(peak_standard_score),
@@ -155,6 +166,11 @@ def _collect_metrics(  # noqa: PLR0913
                 unity_peak.current_j_win,
                 unity_peak.current_j_all,
                 season_sub_key=peak_sub_key,
+            )
+            values["peak_standard_matches"] = _metric(
+                _positive_int(unity_peak.current_j_all),
+                season_sub_key=peak_sub_key,
+                display=f"{unity_peak.current_j_all}场",
             )
         if unity_peak.current_k_all > 0:
             values["peak_wild"] = _metric(
@@ -166,6 +182,11 @@ def _collect_metrics(  # noqa: PLR0913
                 unity_peak.current_k_all,
                 season_sub_key=peak_sub_key,
             )
+            values["peak_wild_matches"] = _metric(
+                _positive_int(unity_peak.current_k_all),
+                season_sub_key=peak_sub_key,
+                display=f"{unity_peak.current_k_all}场",
+            )
         if unity_peak.current_z_all > 0:
             values["peak_expert"] = _metric(
                 _positive_int(peak_expert_score),
@@ -176,6 +197,17 @@ def _collect_metrics(  # noqa: PLR0913
                 unity_peak.current_z_all,
                 season_sub_key=peak_sub_key,
             )
+            values["peak_expert_matches"] = _metric(
+                _positive_int(unity_peak.current_z_all),
+                season_sub_key=peak_sub_key,
+                display=f"{unity_peak.current_z_all}场",
+            )
+        if total_matches > 0:
+            values["peak_total_matches"] = _metric(
+                _positive_int(total_matches),
+                season_sub_key=peak_sub_key,
+                display=f"{total_matches}场",
+            )
 
     return {
         key: value
@@ -184,39 +216,204 @@ def _collect_metrics(  # noqa: PLR0913
     }
 
 
-def _empty_cache() -> dict[str, Any]:
-    return {"version": 1, "players": {}}
+def _max_cached_players() -> int:
+    return max(1, plugin_config.seer_query_local_rank_max_players)
 
 
-def _read_cache(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return _empty_cache()
+def _sqlite_cache_path() -> Path:
+    path = plugin_config.seer_query_local_rank_path
+    if path.suffix.lower() == ".json":
+        return path.with_suffix(".sqlite")
+    return path
+
+
+def _legacy_json_cache_path() -> Path:
+    path = plugin_config.seer_query_local_rank_path
+    if path.suffix.lower() == ".json":
+        return path
+    return path.with_suffix(".json")
+
+
+def _connect_cache() -> sqlite3.Connection:
+    path = _sqlite_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    _ensure_cache_schema(conn)
+    _import_legacy_json_cache(conn)
+    return conn
+
+
+def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS players (
+            user_id INTEGER PRIMARY KEY,
+            nick TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS metrics (
+            user_id INTEGER NOT NULL,
+            metric_key TEXT NOT NULL,
+            value INTEGER NOT NULL,
+            season_sub_key INTEGER,
+            display TEXT,
+            PRIMARY KEY (user_id, metric_key),
+            FOREIGN KEY (user_id) REFERENCES players(user_id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_metrics_rank
+        ON metrics(metric_key, season_sub_key, value DESC, user_id)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+
+
+def _metric_value_from_record(metric: object) -> MetricValue | None:
+    if not isinstance(metric, dict):
+        return None
+
+    value = _positive_int(metric.get("value"))
+    if value is None:
+        return None
+
+    season_sub_key = _positive_int(metric.get("season_sub_key"))
+    display = metric.get("display")
+    return _metric(
+        value,
+        season_sub_key=season_sub_key,
+        display=None if display in (None, "") else str(display),
+    )
+
+
+def _write_player_metrics(
+    conn: sqlite3.Connection,
+    *,
+    player_id: int,
+    nick: str,
+    metrics: dict[str, MetricValue],
+    updated_at: str | None = None,
+) -> None:
+    timestamp = updated_at or datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO players(user_id, nick, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            nick = excluded.nick,
+            updated_at = excluded.updated_at
+        """,
+        (player_id, nick, timestamp),
+    )
+    for key, metric in metrics.items():
+        value = _positive_int(metric.get("value"))
+        if value is None:
+            continue
+
+        season_sub_key = metric.get("season_sub_key")
+        display = metric.get("display")
+        conn.execute(
+            """
+            INSERT INTO metrics(user_id, metric_key, value, season_sub_key, display)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, metric_key) DO UPDATE SET
+                value = excluded.value,
+                season_sub_key = excluded.season_sub_key,
+                display = excluded.display
+            """,
+            (
+                player_id,
+                key,
+                value,
+                season_sub_key if isinstance(season_sub_key, int) else None,
+                None if display in (None, "") else str(display),
+            ),
+        )
+
+
+def _import_legacy_json_cache(conn: sqlite3.Connection) -> None:  # noqa: C901, PLR0912
+    imported = conn.execute(
+        "SELECT value FROM meta WHERE key = 'legacy_json_imported'"
+    ).fetchone()
+    if imported is not None:
+        return
+
+    legacy_path = _legacy_json_cache_path()
+    if not legacy_path.exists():
+        conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+            ("legacy_json_imported", "1"),
+        )
+        conn.commit()
+        return
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(legacy_path.read_text(encoding="utf-8"))
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"failed to read custom Seer local rank cache: {e}")
-        return _empty_cache()
+        logger.warning(f"failed to import custom Seer JSON rank cache: {e}")
+        return
 
-    if not isinstance(data, dict):
-        return _empty_cache()
-
-    players = data.get("players")
+    players = data.get("players") if isinstance(data, dict) else None
     if not isinstance(players, dict):
-        data["players"] = {}
+        return
 
-    data["version"] = 1
-    return data
+    imported_count = 0
+    for record in players.values():
+        if not isinstance(record, dict):
+            continue
 
+        try:
+            player_id = int(record.get("user_id", 0))
+        except (TypeError, ValueError):
+            continue
+        if player_id <= 0 or is_pet_kind_rank_anomaly_user(player_id):
+            continue
 
-def _write_cache(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
+        raw_metrics = record.get("metrics")
+        if not isinstance(raw_metrics, dict):
+            continue
+
+        metrics: dict[str, MetricValue] = {}
+        for key, metric in raw_metrics.items():
+            metric_value = _metric_value_from_record(metric)
+            if metric_value is not None:
+                metrics[str(key)] = metric_value
+
+        if not metrics:
+            continue
+
+        _write_player_metrics(
+            conn,
+            player_id=player_id,
+            nick=str(record.get("nick") or ""),
+            metrics=metrics,
+            updated_at=str(record.get("updated_at") or ""),
+        )
+        imported_count += 1
+
+    conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+        ("legacy_json_imported", "1"),
     )
-    tmp_path.replace(path)
+    conn.commit()
+    if imported_count:
+        logger.info(f"imported {imported_count} custom Seer rank records from JSON")
 
 
 def _format_percent(value: float) -> str:
@@ -226,45 +423,51 @@ def _format_percent(value: float) -> str:
 
 def _format_local_rank(  # noqa: PLR0913
     *,
-    players: dict[str, Any],
+    conn: sqlite3.Connection,
     metric_key: str,
     title: str,
     current_value: int | None,
     display_value: object | None = None,
     season_sub_key: int | None = None,
+    include_current_record: bool = False,
 ) -> tuple[str, str] | None:
     if current_value is None:
         return None
 
-    values: list[int] = []
-    for record in players.values():
-        if not isinstance(record, dict):
-            continue
+    where = "metric_key = ? AND value IS NOT NULL"
+    params: list[object] = [metric_key]
+    if season_sub_key is None:
+        where += " AND season_sub_key IS NULL"
+    else:
+        where += " AND season_sub_key = ?"
+        params.append(season_sub_key)
 
-        metrics = record.get("metrics")
-        if not isinstance(metrics, dict):
-            continue
+    sample_count = int(
+        conn.execute(f"SELECT COUNT(*) FROM metrics WHERE {where}", params).fetchone()[
+            0
+        ]
+    )
+    greater_count = int(
+        conn.execute(
+            f"SELECT COUNT(*) FROM metrics WHERE {where} AND value > ?",
+            (*params, current_value),
+        ).fetchone()[0]
+    )
+    tie_count = int(
+        conn.execute(
+            f"SELECT COUNT(*) FROM metrics WHERE {where} AND value = ?",
+            (*params, current_value),
+        ).fetchone()[0]
+    )
 
-        metric = metrics.get(metric_key)
-        if not isinstance(metric, dict):
-            continue
+    if include_current_record:
+        sample_count += 1
+        tie_count += 1
 
-        if (
-            season_sub_key is not None
-            and metric.get("season_sub_key") != season_sub_key
-        ):
-            continue
-
-        value = _positive_int(metric.get("value"))
-        if value is not None:
-            values.append(value)
-
-    if not values:
+    if sample_count <= 0:
         return None
 
-    rank = 1 + sum(value > current_value for value in values)
-    tie_count = sum(value == current_value for value in values)
-    sample_count = len(values)
+    rank = 1 + greater_count
     percent_text = _format_percent(rank / sample_count * 100)
     sample_rank_text = f"样本前{percent_text}%"
     tie_text = f"，并列 {tie_count} 人" if tie_count > 1 else ""
@@ -279,9 +482,10 @@ def _format_local_rank(  # noqa: PLR0913
 
 def _format_summary(
     *,
-    players: dict[str, Any],
+    conn: sqlite3.Connection,
     current_metrics: dict[str, MetricValue],
     peak_sub_key: int | None,
+    include_current_record: bool = False,
 ) -> LocalRankSummary:
     lines = ["【机器人查询排行】"]
     sample_ranks: dict[str, str] = {}
@@ -293,12 +497,13 @@ def _format_summary(
         value = _positive_int(metric.get("value"))
         season_sub_key = peak_sub_key if spec.season_limited else None
         result = _format_local_rank(
-            players=players,
+            conn=conn,
             metric_key=spec.key,
             title=spec.title,
             current_value=value,
             display_value=metric.get("display"),
             season_sub_key=season_sub_key,
+            include_current_record=include_current_record,
         )
         if result is not None:
             line, rank_text = result
@@ -316,121 +521,197 @@ def _format_summary(
     )
 
 
-def get_local_rank_entries(  # noqa: C901
+def _get_metric_where(
+    metric_key: str,
+    season_sub_key: int | None,
+    *,
+    table_alias: str = "m",
+) -> tuple[str, list[object]]:
+    prefix = f"{table_alias}." if table_alias else ""
+    where = f"{prefix}metric_key = ? AND {prefix}value IS NOT NULL"
+    params: list[object] = [metric_key]
+    if season_sub_key is None:
+        where += f" AND {prefix}season_sub_key IS NULL"
+    else:
+        where += f" AND {prefix}season_sub_key = ?"
+        params.append(season_sub_key)
+    return where, params
+
+
+def _count_metric_rows(
+    conn: sqlite3.Connection,
+    metric_key: str,
+    season_sub_key: int | None,
+) -> int:
+    where, params = _get_metric_where(metric_key, season_sub_key, table_alias="")
+    return int(
+        conn.execute(f"SELECT COUNT(*) FROM metrics WHERE {where}", params).fetchone()[
+            0
+        ]
+    )
+
+
+def _get_local_rank_entries_sql(
+    metric_key: str,
+    *,
+    limit: int,
+    season_sub_key: int | None,
+) -> tuple[list[LocalRankEntry], int]:
+    where, params = _get_metric_where(metric_key, season_sub_key)
+    with _connect_cache() as conn:
+        sample_count = _count_metric_rows(conn, metric_key, season_sub_key)
+        rows = conn.execute(
+            f"""
+            SELECT m.value, p.user_id, p.nick, m.display
+            FROM metrics m
+            JOIN players p ON p.user_id = m.user_id
+            WHERE {where}
+            ORDER BY m.value DESC, p.user_id ASC
+            LIMIT ?
+            """,
+            (*params, max(0, limit)),
+        ).fetchall()
+
+        entries: list[LocalRankEntry] = []
+        last_value: int | None = None
+        current_rank = 0
+        for index, row in enumerate(rows, 1):
+            value = int(row["value"])
+            if value != last_value:
+                current_rank = index
+                last_value = value
+
+            entries.append(
+                LocalRankEntry(
+                    rank=current_rank,
+                    user_id=int(row["user_id"]),
+                    nick=str(row["nick"] or ""),
+                    value=value,
+                    display=str(row["display"] or value),
+                )
+            )
+
+        return entries, sample_count
+
+
+def _get_cached_player_ids_sql() -> list[int]:
+    with _connect_cache() as conn:
+        rows = conn.execute("SELECT user_id FROM players ORDER BY user_id").fetchall()
+    return [int(row["user_id"]) for row in rows]
+
+
+def _get_local_rank_cache_stats_sql() -> LocalRankCacheStats:
+    with _connect_cache() as conn:
+        player_count = int(conn.execute("SELECT COUNT(*) FROM players").fetchone()[0])
+        metric_counts = {
+            spec.title: _count_metric_rows(conn, spec.key, None)
+            for spec in _LOCAL_METRICS
+            if not spec.season_limited
+        }
+        for spec in _LOCAL_METRICS:
+            if spec.season_limited:
+                metric_counts[spec.title] = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*) FROM metrics
+                        WHERE metric_key = ?
+                          AND value IS NOT NULL
+                          AND season_sub_key IS NOT NULL
+                        """,
+                        (spec.key,),
+                    ).fetchone()[0]
+                )
+
+    return LocalRankCacheStats(
+        player_count=player_count,
+        max_players=_max_cached_players(),
+        metric_counts=metric_counts,
+    )
+
+
+def _can_cache_player_id_sql(player_id: int) -> bool:
+    if is_pet_kind_rank_anomaly_user(player_id):
+        return False
+
+    with _connect_cache() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM players WHERE user_id = ?",
+            (player_id,),
+        ).fetchone()
+        if exists is not None:
+            return True
+
+        player_count = int(conn.execute("SELECT COUNT(*) FROM players").fetchone()[0])
+        return player_count < _max_cached_players()
+
+
+async def _upsert_local_rank_metrics_sql(
+    *,
+    player_id: int,
+    nick: str,
+    current_metrics: dict[str, MetricValue],
+    peak_sub_key: int | None,
+) -> LocalRankSummary:
+    async with _CACHE_LOCK:
+        with _connect_cache() as conn:
+            if is_pet_kind_rank_anomaly_user(player_id):
+                conn.execute("DELETE FROM metrics WHERE user_id = ?", (player_id,))
+                conn.execute("DELETE FROM players WHERE user_id = ?", (player_id,))
+                conn.commit()
+                return LocalRankSummary()
+
+            exists = conn.execute(
+                "SELECT 1 FROM players WHERE user_id = ?",
+                (player_id,),
+            ).fetchone()
+            player_count = int(
+                conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+            )
+            if exists is None and player_count >= _max_cached_players():
+                return _format_summary(
+                    conn=conn,
+                    current_metrics=current_metrics,
+                    peak_sub_key=peak_sub_key,
+                    include_current_record=True,
+                )
+
+            _write_player_metrics(
+                conn,
+                player_id=player_id,
+                nick=nick,
+                metrics=current_metrics,
+            )
+            conn.commit()
+            return _format_summary(
+                conn=conn,
+                current_metrics=current_metrics,
+                peak_sub_key=peak_sub_key,
+            )
+
+
+def get_local_rank_entries(
     metric_key: str,
     *,
     limit: int = 20,
     season_sub_key: int | None = None,
 ) -> tuple[list[LocalRankEntry], int]:
-    cache = _read_cache(plugin_config.seer_query_local_rank_path)
-    players = cache.get("players")
-    if not isinstance(players, dict):
-        return [], 0
-
-    rows: list[tuple[int, int, str, str]] = []
-    for record in players.values():
-        if not isinstance(record, dict):
-            continue
-
-        metrics = record.get("metrics")
-        if not isinstance(metrics, dict):
-            continue
-
-        metric = metrics.get(metric_key)
-        if not isinstance(metric, dict):
-            continue
-
-        if (
-            season_sub_key is not None
-            and metric.get("season_sub_key") != season_sub_key
-        ):
-            continue
-
-        value = _positive_int(metric.get("value"))
-        if value is None:
-            continue
-
-        try:
-            user_id = int(record.get("user_id", 0))
-        except (TypeError, ValueError):
-            user_id = 0
-        if user_id <= 0:
-            continue
-
-        nick = str(record.get("nick") or "未知")
-        display = str(metric.get("display") or value)
-        rows.append((value, user_id, nick, display))
-
-    rows.sort(key=lambda item: (-item[0], item[1]))
-
-    entries: list[LocalRankEntry] = []
-    last_value: int | None = None
-    current_rank = 0
-    for index, (value, user_id, nick, display) in enumerate(rows, 1):
-        if value != last_value:
-            current_rank = index
-            last_value = value
-
-        if len(entries) >= limit:
-            break
-
-        entries.append(
-            LocalRankEntry(
-                rank=current_rank,
-                user_id=user_id,
-                nick=nick,
-                value=value,
-                display=display,
-            )
-        )
-
-    return entries, len(rows)
+    return _get_local_rank_entries_sql(
+        metric_key,
+        limit=limit,
+        season_sub_key=season_sub_key,
+    )
 
 
 def get_cached_player_ids() -> list[int]:
-    cache = _read_cache(plugin_config.seer_query_local_rank_path)
-    players = cache.get("players")
-    if not isinstance(players, dict):
-        return []
-
-    player_ids: list[int] = []
-    for player_id in players:
-        try:
-            value = int(player_id)
-        except (TypeError, ValueError):
-            continue
-        if value > 0:
-            player_ids.append(value)
-
-    return sorted(player_ids)
+    return _get_cached_player_ids_sql()
 
 
 def get_local_rank_cache_stats() -> LocalRankCacheStats:
-    cache = _read_cache(plugin_config.seer_query_local_rank_path)
-    players = cache.get("players")
-    if not isinstance(players, dict):
-        return LocalRankCacheStats(player_count=0, metric_counts={})
+    return _get_local_rank_cache_stats_sql()
 
-    metric_counts = {spec.title: 0 for spec in _LOCAL_METRICS}
-    for record in players.values():
-        if not isinstance(record, dict):
-            continue
 
-        metrics = record.get("metrics")
-        if not isinstance(metrics, dict):
-            continue
-
-        for spec in _LOCAL_METRICS:
-            metric = metrics.get(spec.key)
-            if not isinstance(metric, dict):
-                continue
-            if _positive_int(metric.get("value")) is not None:
-                metric_counts[spec.title] += 1
-
-    return LocalRankCacheStats(
-        player_count=len(players),
-        metric_counts=metric_counts,
-    )
+def can_cache_player_id(player_id: int) -> bool:
+    return _can_cache_player_id_sql(player_id)
 
 
 async def upsert_local_rank_metrics(
@@ -440,36 +721,12 @@ async def upsert_local_rank_metrics(
     current_metrics: dict[str, MetricValue],
     peak_sub_key: int | None,
 ) -> LocalRankSummary:
-    if is_pet_kind_rank_anomaly_user(player_id):
-        path = plugin_config.seer_query_local_rank_path
-        async with _CACHE_LOCK:
-            cache = _read_cache(path)
-            players = cache.setdefault("players", {})
-            if players.pop(str(player_id), None) is not None:
-                _write_cache(path, cache)
-        return LocalRankSummary()
-
-    path = plugin_config.seer_query_local_rank_path
-    async with _CACHE_LOCK:
-        cache = _read_cache(path)
-        players = cache.setdefault("players", {})
-        old_record = players.get(str(player_id))
-        old_metrics = {}
-        if isinstance(old_record, dict) and isinstance(old_record.get("metrics"), dict):
-            old_metrics = dict(old_record["metrics"])
-
-        players[str(player_id)] = {
-            "user_id": player_id,
-            "nick": nick,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "metrics": {**old_metrics, **current_metrics},
-        }
-        _write_cache(path, cache)
-        return _format_summary(
-            players=players,
-            current_metrics=current_metrics,
-            peak_sub_key=peak_sub_key,
-        )
+    return await _upsert_local_rank_metrics_sql(
+        player_id=player_id,
+        nick=nick,
+        current_metrics=current_metrics,
+        peak_sub_key=peak_sub_key,
+    )
 
 
 async def update_local_rank_cache(  # noqa: PLR0913

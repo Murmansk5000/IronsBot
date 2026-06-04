@@ -25,6 +25,7 @@ def trim_history(history: list[HistoryMessage]) -> list[HistoryMessage]:
 def build_messages(
     history: list[HistoryMessage],
     prompt: str,
+    memory: list[HistoryMessage] | None = None,
 ) -> list[HistoryMessage]:
     messages = [
         {
@@ -32,9 +33,34 @@ def build_messages(
             "content": plugin_config.ai_prompt,
         }
     ]
+    memory_text = format_memory(memory or [])
+    if memory_text:
+        messages.append(
+            {
+                "role": "system",
+                "content": memory_text,
+            }
+        )
     messages.extend(trim_history(history))
     messages.append({"role": "user", "content": prompt})
     return messages
+
+
+def format_memory(memory: list[HistoryMessage]) -> str:
+    if not memory:
+        return ""
+
+    lines = [
+        "以下是这个 QQ 用户过去和你对话时留下的长期记忆。",
+        "这些信息可能来自私聊或不同群聊，只能作为理解用户偏好和上下文的参考；如果和当前消息冲突，以当前消息为准。",
+    ]
+    for message in memory:
+        role = "用户" if message.get("role") == "user" else "助手"
+        content = message.get("content", "").strip()
+        if content:
+            lines.append(f"{role}：{content}")
+
+    return "\n".join(lines)
 
 
 def is_reset_prompt(prompt: str) -> bool:

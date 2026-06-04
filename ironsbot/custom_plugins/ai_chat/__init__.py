@@ -23,6 +23,7 @@ from .history import (
     is_reset_prompt,
     reset_history,
 )
+from .memory import append_user_memory, get_user_memory, reset_user_memory
 from .notifier import notify_superusers_once
 from .permissions import is_allowed, is_reserved_private_command
 
@@ -76,10 +77,11 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
     key = history_key(event)
     if is_reset_prompt(prompt):
         reset_history(key)
+        reset_user_memory(event.user_id)
         await finish_event_reply(
             ai_chat_matcher,
             event,
-            "已清空这段聊天上下文。",
+            "已清空这段聊天上下文和你的长期记忆。",
             mention_sender=True,
         )
 
@@ -105,11 +107,22 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         )
 
     history = get_history(key)
+    memory = get_user_memory(
+        event,
+        current_session_key=key,
+        has_short_history=bool(history),
+    )
 
     try:
-        reply = await call_ai_chat(prompt, history)
+        reply = await call_ai_chat(prompt, history, memory)
         if reply not in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
             append_turn(key, prompt, reply)
+            append_user_memory(
+                event,
+                session_key=key,
+                prompt=prompt,
+                reply=reply,
+            )
 
         await finish_event_reply(
             ai_chat_matcher,
@@ -135,7 +148,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             "AI接口响应超时，我已经通知超级管理员。",
             mention_sender=True,
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"AI chat failed: {e}")
         await notify_superusers_once(
             "unexpected",

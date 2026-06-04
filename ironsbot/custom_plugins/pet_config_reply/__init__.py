@@ -1,9 +1,13 @@
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
+from nonebot.params import Depends
 from nonebot.plugin import on_message
-from nonebot.adapters.onebot.v11 import MessageEvent
+from seerapi_models import PetORM
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.plugins.seer_data.db import GetPetData
+from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 pet_config_matcher = on_message(
@@ -17,9 +21,10 @@ pet_config_matcher = on_message(
 async def handle_pet_config_reply(
     matcher: Matcher,
     event: MessageEvent,
+    arg: str = Depends(parse_string_arg),
+    pets: tuple[PetORM, ...] = GetPetData(),
 ) -> None:
-    text = event.get_plaintext().strip()
-    if len(text) <= len("配置"):
+    if not arg or arg.isdigit() or not pets:
         raise FinishedException
 
     await finish_event_reply(

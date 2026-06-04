@@ -74,8 +74,15 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
 class Config(BaseModel):
     seer_query_rank_limit: int = Field(default=10000, ge=0)
     seer_query_rank_page_size: int = Field(default=100, ge=1)
+    seer_query_rank_page_cache: bool = True
+    seer_query_rank_page_cache_ttl_seconds: int = Field(default=3600, ge=0)
+    seer_query_rank_page_cache_path: Path = Path(
+        "data/custom_get_seer_info/rank_page_cache.sqlite"
+    )
     seer_query_peak_subkey: int | None = Field(default=None, ge=0)
     seer_query_local_rank: bool = True
+    seer_query_local_rank_max_players: int = Field(default=5000, ge=1)
+    seer_query_cache_batch_limit: int = Field(default=100, ge=1)
     seer_query_local_rank_path: Path = Path(
         "data/custom_get_seer_info/player_query_cache.json"
     )

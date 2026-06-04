@@ -1,3 +1,9 @@
+from . import runtime as runtime
+from .conversations import (
+    command_reply_check,
+    enter_event_reply_conversation,
+    event_conversation_session_id,
+)
 from .replies import (
     event_sender_at_user_ids,
     finish_event_reply,
@@ -28,15 +34,16 @@ from .text import (
     render_text,
 )
 
-from . import runtime as runtime
-
 __all__ = [
     "MessageTarget",
     "SendSummary",
     "TargetSendSummary",
     "broadcast_targets",
     "build_message",
+    "command_reply_check",
     "command_text_matches",
+    "enter_event_reply_conversation",
+    "event_conversation_session_id",
     "event_sender_at_user_ids",
     "finish_event_reply",
     "finish_matcher_message",

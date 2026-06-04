@@ -8,6 +8,7 @@ from ironsbot.custom_plugins.superuser_policy import (
 
 from .config import plugin_config
 
+
 def _unique_ints(values: list[int]) -> list[int]:
     return list(dict.fromkeys(values))
 
@@ -34,6 +35,7 @@ BILI_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CACHE_FILE = BILI_DATA_DIR / "last_dynamic_time.txt"
 CHECKPOINTS_FILE = BILI_DATA_DIR / "dynamic_checkpoints.json"
+DYNAMIC_HISTORY_DB_FILE = BILI_DATA_DIR / "dynamic_history.sqlite"
 COOKIE_CACHE_FILE = BILI_DATA_DIR / "bili_cookie_cache.txt"
 LEGACY_CACHE_FILE = Path(__file__).parent / "last_dynamic_time.txt"
 LEGACY_COOKIE_CACHE_FILE = Path(__file__).parent / "bili_cookie_cache.txt"

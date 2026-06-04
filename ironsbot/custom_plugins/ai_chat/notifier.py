@@ -15,7 +15,7 @@ def _get_first_bot():
     if not bots:
         return None
 
-    return list(bots.values())[0]
+    return next(iter(bots.values()))
 
 
 async def _send_private_to_superusers(message: str) -> None:
@@ -33,6 +33,9 @@ async def _send_private_to_superusers(message: str) -> None:
 
 
 async def notify_superusers_once(key: str, message: str) -> None:
+    if key == "missing_api_key":
+        return
+
     now = time.time()
     last_notice_at = _LAST_SUPERUSER_NOTICE_AT.get(key, 0.0)
     if now - last_notice_at < SUPERUSER_NOTICE_COOLDOWN_SECONDS:
