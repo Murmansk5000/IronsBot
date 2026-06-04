@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
 from collections.abc import Iterable
+from pathlib import Path
 
 from nonebot import get_plugin_config
 from pydantic import BaseModel, Field, field_validator
@@ -11,6 +12,7 @@ PLAYER_SECTION_KEYS: tuple[str, ...] = (
     "social",
     "collection",
     "rank",
+    "local_rank",
     "achievement",
     "peak",
     "titles",
@@ -64,7 +66,7 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
             normalized.append(section)
 
     if unknown:
-        raise ValueError(f"unknown sections: {', '.join(unknown)}")
+        raise ValueError(f"unknown sections: {', '.join(unknown)}")  # noqa: TRY003
 
     return normalized
 
@@ -72,7 +74,18 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
 class Config(BaseModel):
     seer_query_rank_limit: int = Field(default=10000, ge=0)
     seer_query_rank_page_size: int = Field(default=100, ge=1)
+    seer_query_rank_page_cache: bool = True
+    seer_query_rank_page_cache_ttl_seconds: int = Field(default=3600, ge=0)
+    seer_query_rank_page_cache_path: Path = Path(
+        "data/custom_get_seer_info/rank_page_cache.sqlite"
+    )
     seer_query_peak_subkey: int | None = Field(default=None, ge=0)
+    seer_query_local_rank: bool = True
+    seer_query_local_rank_max_players: int = Field(default=5000, ge=1)
+    seer_query_cache_batch_limit: int = Field(default=100, ge=1)
+    seer_query_local_rank_path: Path = Path(
+        "data/custom_get_seer_info/player_query_cache.json"
+    )
     seer_query_player_sections: list[str] = Field(
         default_factory=lambda: list(PLAYER_SECTION_KEYS)
     )
@@ -88,6 +101,13 @@ class Config(BaseModel):
     @classmethod
     def coerce_sections(cls, value: object) -> object:
         return _coerce_sections(value)
+
+    @field_validator("seer_query_peak_subkey", mode="before")
+    @classmethod
+    def empty_peak_subkey_as_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
 
     @field_validator("seer_query_player_sections")
     @classmethod
