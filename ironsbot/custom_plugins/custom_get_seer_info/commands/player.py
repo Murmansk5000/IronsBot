@@ -12,6 +12,7 @@ from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
     command_reply_check,
+    command_text_matches,
     enter_event_reply_conversation,
 )
 from ironsbot.plugins.headless_seer.exception import SocketRecvError
@@ -45,6 +46,7 @@ from ._sequ_extra import (
 
 PLAYER_ID_KEY = "player_id"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
+PLAYER_PEAK_KEY = "_player_peak_message"
 METRIC_SEPARATOR = "\uFF5C"
 
 player_matcher = matcher_group.on_message(
@@ -411,6 +413,7 @@ def _format_compact_player_info(  # noqa: PLR0913
     peak_rank_summary: PeakSeasonRankSummary,
     local_summary: LocalRankSummary,
     has_collection: bool,
+    has_peak: bool,
     show_peak: bool,
     extra_errors: list[str],
 ) -> str:
@@ -443,6 +446,9 @@ def _format_compact_player_info(  # noqa: PLR0913
 
     if has_collection:
         lines.extend(("", "回复“收集”查看收集与排行"))
+
+    if has_peak and not show_peak:
+        lines.extend(("", "回复“巅峰”查看巅峰之战"))
 
     if extra_errors:
         lines.extend(("", "【扩展数据提示】", "；".join(extra_errors)))
@@ -568,23 +574,46 @@ async def validate_player_id(
     )
 
 
-async def _handle_collection_reply(matcher: Matcher, state: T_State) -> None:
-    message = state.get(PLAYER_COLLECTION_KEY)
+async def _handle_detail_reply(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    text = event.get_plaintext()
+    if command_text_matches(text, ("收集",)):
+        message = state.get(PLAYER_COLLECTION_KEY)
+    elif command_text_matches(text, ("巅峰",)):
+        message = state.get(PLAYER_PEAK_KEY)
+    else:
+        message = None
+
     if not message:
         raise FinishedException
 
     await matcher.finish(message)
 
 
-async def _send_player_info_with_collection_prompt(
+async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     matcher: Matcher,
     event: Event,
     state: T_State,
     *,
     player_message: str,
-    collection_message: str,
+    collection_message: str = "",
+    peak_message: str = "",
 ) -> None:
-    state[PLAYER_COLLECTION_KEY] = collection_message
+    commands: list[str] = []
+
+    if collection_message:
+        state[PLAYER_COLLECTION_KEY] = collection_message
+        commands.append("收集")
+
+    if peak_message:
+        state[PLAYER_PEAK_KEY] = peak_message
+        commands.append("巅峰")
+
+    if not commands:
+        await matcher.finish(player_message)
 
     if not isinstance(event, MessageEvent):
         await matcher.finish(player_message)
@@ -592,9 +621,9 @@ async def _send_player_info_with_collection_prompt(
     await enter_event_reply_conversation(
         matcher,
         event,
-        namespace="custom_get_seer_info_player_collection",
-        handlers=[_handle_collection_reply],
-        reply_check=command_reply_check(("收集",)),
+        namespace="custom_get_seer_info_player_details",
+        handlers=[_handle_detail_reply],
+        reply_check=command_reply_check(tuple(commands)),
         prompt=player_message,
     )
 
@@ -768,17 +797,28 @@ async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
         peak_rank_summary=peak_rank_summary,
         local_summary=visible_local_rank_summary,
         has_collection=bool(collection_message),
-        show_peak=needs_peak_section,
+        has_peak=needs_peak_section,
+        show_peak=False,
         extra_errors=extra_errors,
     )
+    peak_message = (
+        _format_compact_peak_section(
+            unity_peak,
+            peak_rank_summary,
+            visible_local_rank_summary,
+        )
+        if needs_peak_section
+        else ""
+    )
 
-    if collection_message:
-        await _send_player_info_with_collection_prompt(
+    if collection_message or peak_message:
+        await _send_player_info_with_detail_prompt(
             matcher,
             event,
             state,
             player_message=player_message,
             collection_message=collection_message,
+            peak_message=peak_message,
         )
 
     await matcher.finish(player_message)
