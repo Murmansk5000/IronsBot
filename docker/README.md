@@ -133,7 +133,7 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `SEER_QUERY_RANK_PAGE_SIZE` | Ranking entries fetched per request for Mimi ID rank lookup. Default `100`; the 4481 ranking API should stay at 100 or less. |
 | `SEER_QUERY_PEAK_SUBKEY` | Optional peak season ranking subkey for custom Mimi ID queries. Leave empty to read the current season from SeerAPI data; set `YYYYMMDD` manually if season data is unavailable. |
 | `SEER_QUERY_LOCAL_RANK` | Enable local rankings among Mimi IDs queried by this bot. Defaults to `true`; tied scores are shown as tied ranks. |
-| `SEER_QUERY_LOCAL_RANK_PATH` | JSON cache file for local queried-player rankings. Defaults to `data/custom_get_seer_info/player_query_cache.json`; peak season metrics are compared only within the same season subkey. |
+| `SEER_QUERY_LOCAL_RANK_PATH` | SQLite cache file for local queried-player rankings. Defaults to `data/custom_get_seer_info/player_query_cache.sqlite`; peak season metrics are compared only within the same season subkey. |
 | `MEETING_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
 | `MEETING_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
 | `MEETING_GROUPS` | QQ groups allowed to trigger meeting replies; `ADMIN_GROUPS` are included automatically. |
@@ -170,7 +170,7 @@ SEER_QUERY_RANK_LIMIT=10000
 SEER_QUERY_RANK_PAGE_SIZE=100
 SEER_QUERY_PEAK_SUBKEY=
 SEER_QUERY_LOCAL_RANK=true
-SEER_QUERY_LOCAL_RANK_PATH=data/custom_get_seer_info/player_query_cache.json
+SEER_QUERY_LOCAL_RANK_PATH=data/custom_get_seer_info/player_query_cache.sqlite
 MEETING_GROUPS=[123456789]
 BILI_GROUPS=[123456789,987654321]
 MSG_PRIVATE_SCHEDULES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]

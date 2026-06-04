@@ -71,6 +71,13 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
     return normalized
 
 
+def _validate_sqlite_path(value: Path) -> Path:
+    if value.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+        raise ValueError("cache path must use .sqlite, .sqlite3, or .db")  # noqa: TRY003
+
+    return value
+
+
 class Config(BaseModel):
     seer_query_rank_limit: int = Field(default=10000, ge=0)
     seer_query_rank_page_size: int = Field(default=100, ge=1)
@@ -108,6 +115,14 @@ class Config(BaseModel):
         if value == "":
             return None
         return value
+
+    @field_validator(
+        "seer_query_rank_page_cache_path",
+        "seer_query_local_rank_path",
+    )
+    @classmethod
+    def validate_sqlite_cache_path(cls, value: Path) -> Path:
+        return _validate_sqlite_path(value)
 
     @field_validator("seer_query_player_sections")
     @classmethod
