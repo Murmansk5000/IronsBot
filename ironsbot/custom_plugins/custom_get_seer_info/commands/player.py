@@ -172,9 +172,19 @@ def _format_peak_rank_text(rank: int | None) -> str:
     return f"赛季榜第{rank}" if rank is not None else "赛季榜未上榜"
 
 
-def _format_local_rank_suffix(summary: LocalRankSummary, key: str) -> str:
+def _format_local_rank_suffix(
+    summary: LocalRankSummary,
+    key: str,
+    *,
+    label: str = "样本",
+) -> str:
     text = summary.sample_rank(key)
-    return f"（{text}）" if text else ""
+    if not text:
+        return ""
+
+    if text.startswith("样本"):
+        text = f"{label}{text.removeprefix('样本')}"
+    return f"（{text}）"
 
 
 def _format_peak_line(  # noqa: PLR0913
@@ -189,11 +199,12 @@ def _format_peak_line(  # noqa: PLR0913
     win_rate_key: str,
 ) -> str:
     win_rate_text = (
-        f"胜率{win_rate}{_format_local_rank_suffix(local_summary, win_rate_key)}"
+        f"胜率{win_rate}"
+        f"{_format_local_rank_suffix(local_summary, win_rate_key, label='样本胜率')}"
     )
     rank_text = (
         f"{_format_peak_rank_text(rank)}"
-        f"{_format_local_rank_suffix(local_summary, score_key)}"
+        f"{_format_local_rank_suffix(local_summary, score_key, label='样本段位')}"
     )
     return (
         f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
