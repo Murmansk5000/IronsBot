@@ -102,7 +102,10 @@ def format_plugin_list(bot: "Bot") -> str:
     for i, plugin in enumerate(plugins, 1):
         meta = plugin.metadata
         lines.append(f"{i}. {meta.name} — {meta.description}")  # type: ignore[union-attr]
-    lines.append("\n💬 输入序号查看详细帮助 · 输入 0 退出")
+    lines.append(
+        "\n💬 直接发送序号查看详细帮助 · 输入 0 退出\n"
+        "⚠️ 请勿 @ 机器人或回复这条消息；@ 会产生通知，回复消息机器人无法继续处理。"
+    )
     return "\n".join(lines)
 
 

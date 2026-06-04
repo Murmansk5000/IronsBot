@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ._client import get_game_client
-from ._local_rank import get_cached_player_ids, update_local_rank_cache
+from ._local_rank import (
+    can_cache_player_id,
+    get_cached_player_ids,
+    update_local_rank_cache,
+)
 from ._rank import (
     build_peak_rating_score,
     fetch_player_rank_summary,
@@ -27,6 +32,7 @@ class LocalRankRefreshFailure:
 class LocalRankRefreshResult:
     total: int
     success: int = 0
+    skipped_full: int = 0
     failures: list[LocalRankRefreshFailure] = field(default_factory=list)
 
     @property
@@ -34,8 +40,14 @@ class LocalRankRefreshResult:
         return len(self.failures)
 
 
-async def refresh_local_rank_cache() -> LocalRankRefreshResult:
-    player_ids = get_cached_player_ids()
+async def refresh_local_rank_cache(
+    player_ids: Sequence[int] | None = None,
+) -> LocalRankRefreshResult:
+    if player_ids is None:
+        player_ids = get_cached_player_ids()
+    else:
+        player_ids = list(dict.fromkeys(player_ids))
+
     result = LocalRankRefreshResult(total=len(player_ids))
     if not player_ids:
         return result
@@ -44,6 +56,10 @@ async def refresh_local_rank_cache() -> LocalRankRefreshResult:
     peak_sub_key = get_current_peak_sub_key()
 
     for player_id in player_ids:
+        if not can_cache_player_id(player_id):
+            result.skipped_full += 1
+            continue
+
         try:
             user_info, more_info = await asyncio.gather(
                 game.get_user_info(player_id),

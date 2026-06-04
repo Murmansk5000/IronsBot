@@ -17,7 +17,7 @@ def is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
     if not isinstance(event, PrivateMessageEvent):
         return False
 
-    normalized = "".join(prompt.split()).lower()
+    normalized = "".join(prompt.split()).lower().lstrip("/")
     return normalized in RESERVED_PRIVATE_COMMANDS
 
 

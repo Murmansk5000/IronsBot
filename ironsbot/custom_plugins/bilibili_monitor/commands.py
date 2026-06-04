@@ -1,27 +1,30 @@
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from nonebot.matcher import Matcher
 from nonebot.rule import Rule
+from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
     command_text_matches,
+    enter_event_reply_conversation,
     finish_event_reply,
-    normalize_command_text,
     send_event_reply,
 )
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
-from .cache import get_saved_cookie
+from .cache import get_saved_cookie, save_dynamic_history_item
 from .client import fetch_dynamic_feed
 from .parser import (
     dynamic_brief,
     find_target_dynamics,
     item_author_label,
+    item_author_mid,
+    item_author_name,
     item_pub_ts,
     parse_single_item,
 )
@@ -32,26 +35,21 @@ from .permissions import (
 )
 from .service import run_check_logic
 
-DYNAMIC_CACHE_SESSION: dict[str, dict[str, Any]] = {}
+DYNAMIC_ITEMS_KEY = "_bilibili_dynamic_items"
+DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
 DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
 DYNAMIC_MENU_TIMEOUT_SECONDS = 120
+ADMIN_COMMAND_PREFIX = "/"
 
 
-def _get_dynamic_session_key(event: MessageEvent) -> str:
-    group_id = getattr(event, "group_id", None)
-    if group_id is not None:
-        return f"{event.user_id}_{group_id}"
+def _strip_admin_command_prefix(text: str) -> str | None:
+    stripped = text.strip()
+    if not stripped.startswith(ADMIN_COMMAND_PREFIX):
+        return None
 
-    return f"{event.user_id}_private"
-
-
-async def _has_dynamic_menu_session(event: MessageEvent) -> bool:
-    if not is_dynamic_query_allowed(event):
-        return False
-
-    return _get_dynamic_session_key(event) in DYNAMIC_CACHE_SESSION
+    return stripped[len(ADMIN_COMMAND_PREFIX) :].strip()
 
 
 async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
@@ -65,8 +63,12 @@ async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
 
 
 async def _is_update_dynamic_command(event: MessageEvent) -> bool:
+    command = _strip_admin_command_prefix(event.get_plaintext())
+    if command is None:
+        return False
+
     if not command_text_matches(
-        event.get_plaintext(),
+        command,
         DYNAMIC_UPDATE_COMMANDS,
     ):
         return False
@@ -74,11 +76,8 @@ async def _is_update_dynamic_command(event: MessageEvent) -> bool:
     return is_dynamic_update_allowed(event)
 
 
-async def _is_dynamic_select_command(event: MessageEvent) -> bool:
-    if not await _has_dynamic_menu_session(event):
-        return False
-
-    return normalize_command_text(event.get_plaintext()) in DYNAMIC_SELECT_COMMANDS
+def _is_dynamic_select_reply(event: MessageEvent) -> bool:
+    return command_text_matches(event.get_plaintext(), DYNAMIC_SELECT_COMMANDS)
 
 
 dynamic_menu_matcher = on_message(
@@ -93,13 +92,6 @@ update_dynamic_matcher = on_message(
     block=True,
 )
 
-num_select_matcher = on_message(
-    rule=Rule(_is_dynamic_select_command),
-    priority=1,
-    block=True,
-)
-
-
 def _build_menu_text(menu_list: list[tuple[int, dict[str, Any]]]) -> str:
     reply_text = (
         "📋 【最新动态列表】\n"
@@ -108,7 +100,11 @@ def _build_menu_text(menu_list: list[tuple[int, dict[str, Any]]]) -> str:
     )
 
     for index, (pub_ts, item) in enumerate(menu_list, start=1):
-        time_str = datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d %H:%M:%S")
+        time_str = (
+            datetime.fromtimestamp(pub_ts, tz=timezone.utc)
+            .astimezone()
+            .strftime("%Y-%m-%d %H:%M:%S")
+        )
         reply_text += (
             f"【{index}】"
             f"⏰ {time_str}\n"
@@ -123,10 +119,21 @@ def _build_menu_text(menu_list: list[tuple[int, dict[str, Any]]]) -> str:
     )
 
 
-@dynamic_menu_matcher.handle()
-async def handle_dynamic_menu(event: MessageEvent) -> None:
-    session_key = _get_dynamic_session_key(event)
+async def _wait_dynamic_select(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await enter_event_reply_conversation(
+        matcher,
+        event,
+        namespace=DYNAMIC_CONVERSATION_NAMESPACE,
+        handlers=[handle_dynamic_select],
+        reply_check=_is_dynamic_select_reply,
+    )
 
+
+@dynamic_menu_matcher.handle()
+async def handle_dynamic_menu(event: MessageEvent, state: T_State) -> None:
     try:
         await send_event_reply(
             dynamic_menu_matcher,
@@ -163,22 +170,32 @@ async def handle_dynamic_menu(event: MessageEvent) -> None:
 
         target_dynamics.sort(key=lambda value: value[0], reverse=True)
         menu_list = target_dynamics[:10]
+        for pub_ts, item in menu_list:
+            author_mid = item_author_mid(item)
+            if author_mid:
+                save_dynamic_history_item(
+                    item,
+                    pub_ts=pub_ts,
+                    author_mid=author_mid,
+                    author_name=item_author_name(item),
+                    brief=dynamic_brief(item),
+                )
 
-        DYNAMIC_CACHE_SESSION[session_key] = {
-            "expire": time.time() + DYNAMIC_MENU_TIMEOUT_SECONDS,
-            "items": [item for _, item in menu_list],
-        }
+        state[DYNAMIC_ITEMS_KEY] = [item for _, item in menu_list]
 
         logger.info(f"user {event.user_id} fetched Bilibili dynamic menu")
-        await finish_event_reply(
+        await enter_event_reply_conversation(
             dynamic_menu_matcher,
             event,
-            Message(_build_menu_text(menu_list)),
+            namespace=DYNAMIC_CONVERSATION_NAMESPACE,
+            handlers=[handle_dynamic_select],
+            reply_check=_is_dynamic_select_reply,
+            prompt=Message(_build_menu_text(menu_list)),
         )
 
     except FinishedException:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Bilibili dynamic menu failed: {e}")
         await finish_event_reply(
             dynamic_menu_matcher,
@@ -220,7 +237,7 @@ async def handle_update_dynamic(event: MessageEvent) -> None:
 
     except FinishedException:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"manual Bilibili dynamic refresh failed: {e}")
         await finish_event_reply(
             update_dynamic_matcher,
@@ -229,26 +246,28 @@ async def handle_update_dynamic(event: MessageEvent) -> None:
         )
 
 
-@num_select_matcher.handle()
-async def handle_dynamic_select(event: MessageEvent) -> None:
-    session_key = _get_dynamic_session_key(event)
-    session_data = DYNAMIC_CACHE_SESSION.get(session_key)
-    if not session_data:
-        return
-
-    if time.time() > session_data["expire"]:
-        del DYNAMIC_CACHE_SESSION[session_key]
-        await finish_event_reply(
-            num_select_matcher,
-            event,
-            "⏰ 会话已超时，请重新发送“动态”。",
-        )
-
+async def handle_dynamic_select(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     try:
         select_num = int(event.get_plaintext().strip())
-        cached_items = session_data["items"]
+        cached_items = state.get(DYNAMIC_ITEMS_KEY, [])
+        if not cached_items:
+            await finish_event_reply(
+                matcher,
+                event,
+                "⏰ 会话已超时，请重新发送“动态”。",
+            )
+
         if select_num < 1 or select_num > len(cached_items):
-            return
+            await send_event_reply(
+                matcher,
+                event,
+                f"请输入 1~{len(cached_items)} 之间的数字。",
+            )
+            await _wait_dynamic_select(matcher, event)
 
         target_item = cached_items[select_num - 1]
         final_message = parse_single_item(
@@ -257,20 +276,21 @@ async def handle_dynamic_select(event: MessageEvent) -> None:
             menu_mode=True,
         )
 
-        session_data["expire"] = time.time() + DYNAMIC_MENU_TIMEOUT_SECONDS
         if final_message:
-            await finish_event_reply(
-                num_select_matcher,
+            await send_event_reply(
+                matcher,
                 event,
                 final_message,
             )
 
+        await _wait_dynamic_select(matcher, event)
+
     except FinishedException:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Bilibili dynamic number select failed: {e}")
         await finish_event_reply(
-            num_select_matcher,
+            matcher,
             event,
             "❌ 动态详情解析失败。",
         )

@@ -9,6 +9,7 @@ class Config(BaseModel):
     bili_uid: int = 1310714247
     bili_uids: list[int] = Field(default_factory=list)
     bili_data_dir: Path = Path("data/bilibili_monitor")
+    bili_history_max_items: int = Field(default=500, ge=1)
     bili_check_minutes: int = 5
     bili_sleep_start: int = 23
     bili_sleep_end: int = 7

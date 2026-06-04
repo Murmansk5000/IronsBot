@@ -7,6 +7,7 @@ from ironsbot.plugins.headless_seer.command_id import COMMAND_ID
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
 
 from ..config import plugin_config
+from ._rank_page_cache import get_cached_rank_page, save_rank_page
 
 BOOK_RANK_KEY = 156
 BOOK_RANK_SUB_KEY = 1
@@ -166,12 +167,23 @@ async def _fetch_rank_page(
     start: int,
     end: int,
 ) -> list[Any]:
+    cached_items = get_cached_rank_page(
+        key=key,
+        sub_key=sub_key,
+        start=start,
+        end=end,
+    )
+    if cached_items is not None:
+        return cached_items
+
     _head, rank_list = await game.send_and_wait(
         COMMAND_ID.GET_DAILY_RANK_INFO,
         DailyRankParam(key=key, sub_key=sub_key, start=start, end=end),
         timeout=15.0,
     )
-    return list(rank_list.rank_list)
+    items = list(rank_list.rank_list)
+    save_rank_page(key=key, sub_key=sub_key, start=start, end=end, items=items)
+    return items
 
 
 async def _fetch_rank_item(

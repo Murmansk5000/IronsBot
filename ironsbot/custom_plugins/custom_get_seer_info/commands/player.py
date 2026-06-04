@@ -5,11 +5,15 @@ from typing import Any
 
 from nonebot import logger
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
+from ironsbot.custom_plugins.message_actions import (
+    command_reply_check,
+    enter_event_reply_conversation,
+)
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import plugin_config
@@ -22,6 +26,7 @@ from ._local_rank import LocalRankSummary, update_local_rank_cache
 from ._rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
+    RankLookupResult,
     build_peak_rating_score,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
@@ -141,8 +146,14 @@ def _join_metric_parts(*parts: str) -> str:
     return METRIC_SEPARATOR.join(part for part in parts if part)
 
 
-def _global_rank_text(rank: int | None) -> str:
-    return f"全服第{rank}" if rank is not None else ""
+def _rank_lookup_text(result: RankLookupResult | None) -> str:
+    if result is None:
+        return ""
+    if result.rank is not None:
+        return f"全服第{result.rank}"
+    if result.queried and result.searched_limit > 0:
+        return f"全服未进入前{result.searched_limit}"
+    return ""
 
 
 def _sample_rank_text(summary: LocalRankSummary, key: str) -> str:
@@ -153,16 +164,15 @@ def _format_metric_line(
     title: str,
     value: int | None,
     *,
-    global_rank: int | None = None,
+    rank_result: RankLookupResult | None = None,
     local_summary: LocalRankSummary,
     local_key: str,
 ) -> str | None:
-    if value is None or value <= 0:
-        return None
+    value_text = str(value) if value is not None and value >= 0 else "暂无数据"
 
     metric_text = _join_metric_parts(
-        str(value),
-        _global_rank_text(global_rank),
+        value_text,
+        _rank_lookup_text(rank_result),
         _sample_rank_text(local_summary, local_key),
     )
     return f"{title}：{metric_text}"
@@ -192,12 +202,20 @@ def _format_peak_line(  # noqa: PLR0913
     *,
     current: str,
     history: str,
+    match_count: int,
     win_rate: str,
     rank: int | None,
     local_summary: LocalRankSummary,
     score_key: str,
     win_rate_key: str,
+    match_key: str,
 ) -> str:
+    match_text = ""
+    if match_count > 0:
+        match_text = (
+            f"场次{match_count}"
+            f"{_format_local_rank_suffix(local_summary, match_key, label='样本场次')}"
+        )
     win_rate_text = (
         f"胜率{win_rate}"
         f"{_format_local_rank_suffix(local_summary, win_rate_key, label='样本胜率')}"
@@ -208,7 +226,8 @@ def _format_peak_line(  # noqa: PLR0913
     )
     return (
         f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
-        f"{METRIC_SEPARATOR}{win_rate_text}{METRIC_SEPARATOR}{rank_text}"
+        f"{METRIC_SEPARATOR}"
+        f"{_join_metric_parts(match_text, win_rate_text, rank_text)}"
     )
 
 
@@ -230,6 +249,7 @@ def _format_compact_peak_section(
                     peak.history_j_rank,
                     peak.history_j_star,
                 ),
+                match_count=peak.current_j_all,
                 win_rate=_format_win_rate(
                     peak.current_j_win,
                     peak.current_j_all,
@@ -238,6 +258,7 @@ def _format_compact_peak_section(
                 local_summary=local_summary,
                 score_key="peak_standard",
                 win_rate_key="peak_standard_win_rate",
+                match_key="peak_standard_matches",
             ),
             _format_peak_line(
                 "狂野",
@@ -249,6 +270,7 @@ def _format_compact_peak_section(
                     peak.history_k_rank,
                     peak.history_k_star,
                 ),
+                match_count=peak.current_k_all,
                 win_rate=_format_win_rate(
                     peak.current_k_win,
                     peak.current_k_all,
@@ -257,11 +279,13 @@ def _format_compact_peak_section(
                 local_summary=local_summary,
                 score_key="peak_wild",
                 win_rate_key="peak_wild_win_rate",
+                match_key="peak_wild_matches",
             ),
             _format_peak_line(
                 "专家",
                 current=f"{peak.current_z_score}分",
                 history=f"{peak.history_z_score}分",
+                match_count=peak.current_z_all,
                 win_rate=_format_win_rate(
                     peak.current_z_win,
                     peak.current_z_all,
@@ -270,6 +294,7 @@ def _format_compact_peak_section(
                 local_summary=local_summary,
                 score_key="peak_expert",
                 win_rate_key="peak_expert_win_rate",
+                match_key="peak_expert_matches",
             ),
         ]
     )
@@ -286,20 +311,11 @@ def _format_collection_info(
     outfit_suit_score = (
         None if breakdown.outfit_suit is None else breakdown.outfit_suit.score
     )
-    outfit_suit_rank = (
-        None if breakdown.outfit_suit is None else breakdown.outfit_suit.rank
-    )
     outfit_part_score = (
         None if breakdown.outfit_part is None else breakdown.outfit_part.score
     )
-    outfit_part_rank = (
-        None if breakdown.outfit_part is None else breakdown.outfit_part.rank
-    )
     countermark_score = (
         None if breakdown.countermark is None else breakdown.countermark.score
-    )
-    countermark_rank = (
-        None if breakdown.countermark is None else breakdown.countermark.rank
     )
 
     metric_lines = [
@@ -312,56 +328,56 @@ def _format_collection_info(
         _format_metric_line(
             "图鉴积分",
             rank_summary.book.score,
-            global_rank=rank_summary.book.rank,
+            rank_result=rank_summary.book,
             local_summary=local_summary,
             local_key="book_score",
         ),
         _format_metric_line(
             "成就点数",
             getattr(more_info, "total_achieve", 0),
-            global_rank=rank_summary.achieve.rank,
+            rank_result=rank_summary.achieve,
             local_summary=local_summary,
             local_key="achievement_score",
         ),
         _format_metric_line(
             "精灵图鉴",
             unity_part_one.pet_kind_num,
-            global_rank=None if breakdown.pet_kind is None else breakdown.pet_kind.rank,
+            rank_result=breakdown.pet_kind,
             local_summary=local_summary,
             local_key="pet_kind_count",
         ),
         _format_metric_line(
             "皮肤图鉴",
             unity_part_one.skin_num,
-            global_rank=None if breakdown.skin is None else breakdown.skin.rank,
+            rank_result=breakdown.skin,
             local_summary=local_summary,
             local_key="skin_count",
         ),
         _format_metric_line(
             "套装图鉴",
             outfit_suit_score,
-            global_rank=outfit_suit_rank,
+            rank_result=breakdown.outfit_suit,
             local_summary=local_summary,
             local_key="outfit_suit_count",
         ),
         _format_metric_line(
             "部件图鉴",
             outfit_part_score,
-            global_rank=outfit_part_rank,
+            rank_result=breakdown.outfit_part,
             local_summary=local_summary,
             local_key="outfit_part_count",
         ),
         _format_metric_line(
             "座驾图鉴",
             None if breakdown.mount is None else breakdown.mount.score,
-            global_rank=None if breakdown.mount is None else breakdown.mount.rank,
+            rank_result=breakdown.mount,
             local_summary=local_summary,
             local_key="mount_count",
         ),
         _format_metric_line(
             "刻印图鉴",
             countermark_score,
-            global_rank=countermark_rank,
+            rank_result=breakdown.countermark,
             local_summary=local_summary,
             local_key="countermark_count",
         ),
@@ -568,24 +584,15 @@ async def _send_player_info_with_collection_prompt(
 ) -> None:
     state[PLAYER_COLLECTION_KEY] = collection_message
 
-    session_id = event.get_session_id()
-    version = prompt_session_manager.acquire(session_id)
+    if not isinstance(event, MessageEvent):
+        await matcher.finish(player_message)
 
-    def _is_collection_request(next_event: Event) -> bool:
-        return (
-            next_event.get_session_id() == session_id
-            and next_event.get_plaintext().strip() == "收集"
-        )
-
-    rule = prompt_session_manager.make_rule(
-        session_id,
-        version,
-        _is_collection_request,
-    )
-    await enter_prompt_loop(
+    await enter_event_reply_conversation(
         matcher,
+        event,
+        namespace="custom_get_seer_info_player_collection",
         handlers=[_handle_collection_reply],
-        rule=rule,
+        reply_check=command_reply_check(("收集",)),
         prompt=player_message,
     )
 
