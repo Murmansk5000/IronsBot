@@ -358,7 +358,7 @@ async def handle_player(matcher: Matcher, state: T_State) -> None:
     player_id: int = state[PLAYER_ID_KEY]
     game = get_game_client()
     extra_errors: list[str] = []
-    enabled_sections = set(plugin_config.custom_get_seer_info_player_sections)
+    enabled_sections = set(plugin_config.seer_query_player_sections)
 
     try:
         user_info, more_info = await asyncio.gather(

@@ -3,9 +3,9 @@ from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
-    startup_notice_enabled: bool = True
-    startup_notice_message: str = "机器人已开启。"
-    startup_notice_delay_seconds: float = Field(default=0.0, ge=0)
+    startup_notice: bool = True
+    startup_message: str = "机器人已开启。"
+    startup_delay: float = Field(default=0.0, ge=0)
 
 
 plugin_config = get_plugin_config(Config)

@@ -70,31 +70,31 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
 
 
 class Config(BaseModel):
-    custom_get_seer_info_rank_search_limit: int = Field(default=10000, ge=0)
-    custom_get_seer_info_rank_page_size: int = Field(default=100, ge=1)
-    custom_get_seer_info_peak_season_sub_key: int | None = Field(default=None, ge=0)
-    custom_get_seer_info_player_sections: list[str] = Field(
+    seer_query_rank_limit: int = Field(default=10000, ge=0)
+    seer_query_rank_page_size: int = Field(default=100, ge=1)
+    seer_query_peak_subkey: int | None = Field(default=None, ge=0)
+    seer_query_player_sections: list[str] = Field(
         default_factory=lambda: list(PLAYER_SECTION_KEYS)
     )
-    custom_get_seer_info_team_sections: list[str] = Field(
+    seer_query_team_sections: list[str] = Field(
         default_factory=lambda: list(TEAM_SECTION_KEYS)
     )
 
     @field_validator(
-        "custom_get_seer_info_player_sections",
-        "custom_get_seer_info_team_sections",
+        "seer_query_player_sections",
+        "seer_query_team_sections",
         mode="before",
     )
     @classmethod
     def coerce_sections(cls, value: object) -> object:
         return _coerce_sections(value)
 
-    @field_validator("custom_get_seer_info_player_sections")
+    @field_validator("seer_query_player_sections")
     @classmethod
     def normalize_player_sections(cls, value: list[str]) -> list[str]:
         return _normalize_sections(value, PLAYER_SECTION_KEYS)
 
-    @field_validator("custom_get_seer_info_team_sections")
+    @field_validator("seer_query_team_sections")
     @classmethod
     def normalize_team_sections(cls, value: list[str]) -> list[str]:
         return _normalize_sections(value, TEAM_SECTION_KEYS)

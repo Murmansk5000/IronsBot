@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 
 def normalize_command_text(text: str) -> str:
-    return "".join(text.split())
+    return "".join(text.split()).lower()
 
 
 def command_text_matches(text: str, commands: Iterable[str]) -> bool:

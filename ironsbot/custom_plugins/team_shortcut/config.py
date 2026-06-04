@@ -5,13 +5,13 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Config(BaseModel):
-    team_shortcut_group_ids: list[int] = Field(default_factory=list)
-    team_shortcut_team_ids: list[int] = Field(default_factory=list)
-    team_shortcut_commands: list[str] = Field(default_factory=lambda: ["战队"])
-    team_shortcut_resource_notice_user_ids: list[int] = Field(default_factory=list)
-    team_shortcut_resource_notice_message: str = "出来买资源，别逼我求你😡"
+    team_groups: list[int] = Field(default_factory=list)
+    team_ids: list[int] = Field(default_factory=list)
+    team_commands: list[str] = Field(default_factory=lambda: ["战队"])
+    team_resource_users: list[int] = Field(default_factory=list)
+    team_resource_message: str = "出来买资源，别逼我求你😡"
 
-    @field_validator("team_shortcut_resource_notice_user_ids", mode="before")
+    @field_validator("team_resource_users", mode="before")
     @classmethod
     def normalize_resource_notice_user_ids(cls, value: object) -> object:
         if value is None or value == "":
@@ -36,7 +36,7 @@ class Config(BaseModel):
 
         return value
 
-    @field_validator("team_shortcut_commands")
+    @field_validator("team_commands")
     @classmethod
     def normalize_commands(cls, value: list[str]) -> list[str]:
         commands: list[str] = []

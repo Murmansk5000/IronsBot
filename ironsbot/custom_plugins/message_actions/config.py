@@ -62,17 +62,17 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
 
 
 class Config(BaseModel):
-    message_action_mention_group_trigger_user: bool = False
-    message_action_private_commands: list[PrivateCommandMessageAction] = Field(
+    msg_at_trigger: bool = False
+    msg_private_commands: list[PrivateCommandMessageAction] = Field(
         default_factory=list
     )
-    message_action_private_schedules: list[PrivateScheduledMessageAction] = Field(
+    msg_private_schedules: list[PrivateScheduledMessageAction] = Field(
         default_factory=list
     )
-    message_action_group_commands: list[GroupCommandMessageAction] = Field(
+    msg_group_commands: list[GroupCommandMessageAction] = Field(
         default_factory=list
     )
-    message_action_group_schedules: list[GroupScheduledMessageAction] = Field(
+    msg_group_schedules: list[GroupScheduledMessageAction] = Field(
         default_factory=list
     )
 

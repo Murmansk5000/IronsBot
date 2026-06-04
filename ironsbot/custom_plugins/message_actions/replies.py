@@ -16,7 +16,7 @@ def event_sender_at_user_ids(
     if not isinstance(event, GroupMessageEvent):
         return ()
 
-    if mention_sender or plugin_config.message_action_mention_group_trigger_user:
+    if mention_sender or plugin_config.msg_at_trigger:
         return (event.user_id,)
 
     return ()

@@ -26,13 +26,13 @@ def is_allowed(event: MessageEvent) -> bool:
         return is_group_allowed_for_user(
             event.user_id,
             event.group_id,
-            plugin_config.ai_chat_allowed_group_ids,
+            plugin_config.ai_groups,
         )
 
     if isinstance(event, PrivateMessageEvent):
         return is_private_user_allowed(
             event.user_id,
-            plugin_config.ai_chat_allowed_user_ids,
+            plugin_config.ai_users,
         )
 
     return False
