@@ -18,6 +18,8 @@ from ironsbot.utils.rule import no_reply
 from ..group import matcher_group
 
 RANK_LIST_SIZE = 20
+FIVE_ANGLE_ATTR_COUNT = 5
+COUNTERMARK_STAT_KEYS = ("atk", "def_", "sp_atk", "sp_def", "spd", "hp")
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
 
@@ -40,6 +42,7 @@ class CountermarkStatRankItem:
     value: float
     total: float
     class_name: str
+    angle_count: int | None
 
 
 STAT_ALIASES: dict[str, StatSpec] = {
@@ -105,7 +108,7 @@ def _parse_countermark_stat_rank_command(
     if normalized in NON_STAT_COUNTERMARK_RANK_COMMANDS:
         return None
 
-    scope = "five"
+    scope = "all"
     stat_text = normalized
     for marker in ("所有", "全部", "全体"):
         if marker in stat_text:
@@ -169,6 +172,22 @@ def _mintmark_class_name(mintmark: MintmarkORM) -> str:
     return part.mintmark_class.name
 
 
+def _base_attr_count(attrs: SixAttributes) -> int:
+    return sum(
+        1
+        for key in COUNTERMARK_STAT_KEYS
+        if (getattr(attrs, key, 0) or 0) > 0
+    )
+
+
+def _mintmark_angle_count(mintmark: MintmarkORM) -> int | None:
+    part = mintmark.universal_part
+    if not isinstance(part, UniversalPartORM) or part.base_attr_value is None:
+        return None
+
+    return _base_attr_count(part.base_attr_value.to_model())
+
+
 def _format_number(value: float) -> str:
     return str(int(value)) if value.is_integer() else f"{value:.2f}".rstrip("0")
 
@@ -190,7 +209,8 @@ def _collect_rank_items(
     result: list[CountermarkStatRankItem] = []
     for mintmark in mintmarks:
         class_name = _mintmark_class_name(mintmark)
-        if command.scope == "five" and "五角" not in class_name:
+        angle_count = _mintmark_angle_count(mintmark)
+        if command.scope == "five" and angle_count != FIVE_ANGLE_ATTR_COUNT:
             continue
 
         attrs = _mark_attributes(mintmark)
@@ -208,6 +228,7 @@ def _collect_rank_items(
                 value=value,
                 total=float(attrs.total),
                 class_name=class_name,
+                angle_count=angle_count,
             )
         )
 
@@ -229,6 +250,9 @@ def _load_mintmarks(session: SeerAPISession) -> list[MintmarkORM]:
         ),
         selectinload(MintmarkORM.skill_part),
         selectinload(MintmarkORM.universal_part).selectinload(
+            UniversalPartORM.base_attr_value
+        ),
+        selectinload(MintmarkORM.universal_part).selectinload(
             UniversalPartORM.max_attr_value
         ),
         selectinload(MintmarkORM.universal_part).selectinload(
@@ -247,11 +271,13 @@ def _format_item_line(
     stat: StatSpec,
 ) -> str:
     class_text = f" | {item.class_name}" if item.class_name else ""
+    angle_text = f" | {item.angle_count}角" if item.angle_count else ""
     return (
         f"{index}. {item.mintmark.name}（{item.mintmark.id}）"
         f" {stat.title}{_format_number(item.value)}"
         f" | 总和{_format_number(item.total)}"
         f"{class_text}"
+        f"{angle_text}"
     )
 
 
@@ -263,15 +289,15 @@ def _build_stat_rank_message(
         return (
             "❌ 刻印数值榜需要指定属性。\n"
             f"可用属性：{AVAILABLE_STATS_TEXT}\n"
-            "例：刻印攻击榜 / 刻印速度榜 / 所有刻印攻击榜"
+            "例：刻印攻击榜 / 五角刻印速度榜 / 刻印总和榜"
         )
 
     scope_text = "五角刻印" if command.scope == "five" else "所有刻印"
     if not items:
         return (
             f"❌ 没有找到{scope_text}的{command.stat.title}数据。\n"
-            "如果你想看全部刻印，可以发送："
-            f"所有刻印{command.stat.title}榜"
+            "默认已查询全部刻印；如果只想看五角，可以发送："
+            f"五角刻印{command.stat.title}榜"
         )
 
     lines = [

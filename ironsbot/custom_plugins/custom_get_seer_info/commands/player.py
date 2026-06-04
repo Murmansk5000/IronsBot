@@ -27,6 +27,7 @@ from ._client import get_game_client
 from ._errors import format_socket_recv_error
 from ._format import format_datetime, yes_no
 from ._local_rank import LocalRankSummary, update_local_rank_cache
+from ._names import lookup_avatar_frame_names, lookup_avatar_head_names
 from ._rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
@@ -44,10 +45,12 @@ from ._sequ_extra import (
     fetch_unity_part_two,
     fetch_unity_peak,
 )
+from .autocard import format_autocard_public_info
 
 PLAYER_ID_KEY = "player_id"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
+PLAYER_AUTOCARD_KEY = "_player_autocard_message"
 METRIC_SEPARATOR = "\uFF5C"
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 
@@ -98,6 +101,7 @@ PEAK_RANK_NAMES = {
     5: "宇宙圣皇",
 }
 
+
 def _filter_blank_lines(lines: list[str]) -> list[str]:
     result: list[str] = []
     for line in lines:
@@ -134,6 +138,30 @@ def _format_team_text(user_info: Any, team_name: str) -> str:
 
     show_text = "展示" if getattr(user_info, "team_is_show", False) else "隐藏"
     return f"{team_name}（战队ID：{team_id}，{show_text}）"
+
+
+def _lookup_avatar_names(user_info: Any) -> tuple[dict[int, str], dict[int, str]]:
+    return (
+        lookup_avatar_head_names((getattr(user_info, "head_id", 0),)),
+        lookup_avatar_frame_names((getattr(user_info, "head_frame_id", 0),)),
+    )
+
+
+def _format_avatar_text(
+    user_info: Any,
+    *,
+    avatar_head_names: dict[int, str],
+    avatar_frame_names: dict[int, str],
+) -> str:
+    avatar_head = _format_id_name(
+        getattr(user_info, "head_id", 0),
+        avatar_head_names,
+    )
+    avatar_frame = _format_id_name(
+        getattr(user_info, "head_frame_id", 0),
+        avatar_frame_names,
+    )
+    return f"头像：{avatar_head}{METRIC_SEPARATOR}头像框：{avatar_frame}"
 
 
 def _format_online_text(online_info: Any | None) -> str:
@@ -440,6 +468,8 @@ def _format_compact_player_info(  # noqa: PLR0913
     more_info: Any,
     *,
     team_name: str,
+    avatar_head_names: dict[int, str],
+    avatar_frame_names: dict[int, str],
     online_info: Any | None,
     unity_peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
@@ -456,6 +486,11 @@ def _format_compact_player_info(  # noqa: PLR0913
         "【基础信息】",
         f"昵称：{user_info.nick}",
         f"VIP状态：{_format_vip(user_info)}",
+        _format_avatar_text(
+            user_info,
+            avatar_head_names=avatar_head_names,
+            avatar_frame_names=avatar_frame_names,
+        ),
         f"注册时间：{format_datetime(getattr(more_info, 'reg_time', 0))}",
         f"最后登录：{format_datetime(getattr(user_info, 'login_time', 0))}",
         f"最后离线：{format_datetime(getattr(user_info, 'last_offline_time', 0))}",
@@ -481,6 +516,8 @@ def _format_compact_player_info(  # noqa: PLR0913
 
     if has_peak and not show_peak:
         lines.extend(("", "回复“巅峰”查看巅峰之战"))
+
+    lines.extend(("", "回复“群星牌”查看群星牌公共资料"))
 
     if extra_errors:
         lines.extend(("", "【扩展数据提示】", "；".join(extra_errors)))
@@ -616,6 +653,8 @@ async def _handle_detail_reply(
         message = state.get(PLAYER_COLLECTION_KEY)
     elif command_text_matches(text, ("巅峰",)):
         message = state.get(PLAYER_PEAK_KEY)
+    elif command_text_matches(text, ("群星牌",)):
+        message = state.get(PLAYER_AUTOCARD_KEY)
     else:
         message = None
 
@@ -633,6 +672,7 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     player_message: str,
     collection_message: str = "",
     peak_message: str = "",
+    autocard_message: str = "",
 ) -> None:
     commands: list[str] = []
 
@@ -643,6 +683,10 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     if peak_message:
         state[PLAYER_PEAK_KEY] = peak_message
         commands.append("巅峰")
+
+    if autocard_message:
+        state[PLAYER_AUTOCARD_KEY] = autocard_message
+        commands.append("群星牌")
 
     if not commands:
         await matcher.finish(player_message)
@@ -685,6 +729,8 @@ async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
                 team_name = team_info.name
             except Exception:  # noqa: BLE001
                 team_name = str(user_info.team_id)
+
+        avatar_head_names, avatar_frame_names = _lookup_avatar_names(user_info)
 
         needs_unity_part_one = has_collection
         needs_unity_part_two = False
@@ -824,6 +870,8 @@ async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
         user_info,
         more_info,
         team_name=team_name,
+        avatar_head_names=avatar_head_names,
+        avatar_frame_names=avatar_frame_names,
         online_info=online_info,
         unity_peak=unity_peak,
         peak_rank_summary=peak_rank_summary,
@@ -842,15 +890,14 @@ async def handle_player(matcher: Matcher, event: Event, state: T_State) -> None:
         if needs_peak_section
         else ""
     )
+    autocard_message = format_autocard_public_info()
 
-    if collection_message or peak_message:
-        await _send_player_info_with_detail_prompt(
-            matcher,
-            event,
-            state,
-            player_message=player_message,
-            collection_message=collection_message,
-            peak_message=peak_message,
-        )
-
-    await matcher.finish(player_message)
+    await _send_player_info_with_detail_prompt(
+        matcher,
+        event,
+        state,
+        player_message=player_message,
+        collection_message=collection_message,
+        peak_message=peak_message,
+        autocard_message=autocard_message,
+    )
