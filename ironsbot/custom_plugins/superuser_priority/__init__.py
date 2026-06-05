@@ -88,6 +88,21 @@ async def wait_for_superuser_priority(event: Event | None) -> None:
     await _wait_until_no_superuser()
 
 
+async def release_superuser_priority(state: T_State) -> None:
+    """Release the priority gate early for long-running superuser jobs."""
+    if not plugin_config.superuser_priority:
+        return
+    if not state.get(STATE_ENTERED_KEY):
+        return
+    if not state.get(STATE_SUPERUSER_KEY):
+        return
+
+    async with _condition:
+        _state.superuser_active = max(0, _state.superuser_active - 1)
+        state[STATE_ENTERED_KEY] = False
+        _condition.notify_all()
+
+
 async def _enter_superuser_event() -> None:
     async with _condition:
         _state.superuser_waiting += 1
@@ -120,12 +135,12 @@ async def _wait_until_no_superuser_locked() -> None:
     while _has_superuser_pressure():
         remaining = deadline - loop.time()
         if remaining <= 0:
-            logger.warning("superuser priority wait timed out; normal event resumes")
+            logger.debug("superuser priority wait timed out; normal event resumes")
             return
         try:
             await asyncio.wait_for(_condition.wait(), timeout=remaining)
         except asyncio.TimeoutError:
-            logger.warning("superuser priority wait timed out; normal event resumes")
+            logger.debug("superuser priority wait timed out; normal event resumes")
             return
 
 

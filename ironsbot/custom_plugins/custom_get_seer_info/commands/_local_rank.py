@@ -2,12 +2,33 @@
 import asyncio
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from ..config import plugin_config
-from ._rank import PlayerRankSummary, RankLookupResult, is_pet_kind_rank_anomaly_user
+from ._rank import (
+    ACHIEVE_RANK_KEY,
+    ACHIEVE_RANK_SUB_KEY,
+    BOOK_RANK_KEY,
+    BOOK_RANK_SUB_KEY,
+    COUNTERMARK_RANK_KEY,
+    COUNTERMARK_RANK_SUB_KEY,
+    EXPERT_PEAK_USER_RANK_KEY,
+    MOUNT_RANK_SUB_KEY,
+    OUTFIT_PART_RANK_SUB_KEY,
+    OUTFIT_RANK_KEY,
+    OUTFIT_SUIT_RANK_SUB_KEY,
+    PET_KIND_RANK_KEY,
+    PET_KIND_RANK_SUB_KEY,
+    SKIN_RANK_KEY,
+    SKIN_RANK_SUB_KEY,
+    STANDARD_PEAK_USER_RANK_KEY,
+    WILD_PEAK_USER_RANK_KEY,
+    PlayerRankSummary,
+    RankLookupResult,
+    is_pet_kind_rank_anomaly_user,
+)
 from ._sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
 MetricValue = dict[str, int | str | None]
@@ -46,6 +67,21 @@ _LOCAL_METRICS: tuple[_MetricSpec, ...] = (
 
 _CACHE_LOCK = asyncio.Lock()
 PERCENT_FINE_THRESHOLD = 10
+_RANK_PAGE_METRIC_KEYS = {
+    (BOOK_RANK_KEY, BOOK_RANK_SUB_KEY): "book_score",
+    (ACHIEVE_RANK_KEY, ACHIEVE_RANK_SUB_KEY): "achievement_score",
+    (PET_KIND_RANK_KEY, PET_KIND_RANK_SUB_KEY): "pet_kind_count",
+    (COUNTERMARK_RANK_KEY, COUNTERMARK_RANK_SUB_KEY): "countermark_count",
+    (SKIN_RANK_KEY, SKIN_RANK_SUB_KEY): "skin_count",
+    (OUTFIT_RANK_KEY, OUTFIT_SUIT_RANK_SUB_KEY): "outfit_suit_count",
+    (OUTFIT_RANK_KEY, OUTFIT_PART_RANK_SUB_KEY): "outfit_part_count",
+    (OUTFIT_RANK_KEY, MOUNT_RANK_SUB_KEY): "mount_count",
+}
+_PEAK_RANK_PAGE_METRIC_KEYS = {
+    STANDARD_PEAK_USER_RANK_KEY: "peak_standard",
+    WILD_PEAK_USER_RANK_KEY: "peak_wild",
+    EXPERT_PEAK_USER_RANK_KEY: "peak_expert",
+}
 
 
 @dataclass(slots=True)
@@ -69,6 +105,7 @@ class LocalRankEntry:
 @dataclass(frozen=True, slots=True)
 class LocalRankCacheStats:
     player_count: int
+    total_player_count: int
     max_players: int
     metric_counts: dict[str, int]
 
@@ -241,6 +278,24 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    player_columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(players)").fetchall()
+    }
+    if "sample_enabled" not in player_columns:
+        conn.execute(
+            "ALTER TABLE players ADD COLUMN sample_enabled INTEGER NOT NULL DEFAULT 1"
+        )
+    if "sampled_at" not in player_columns:
+        conn.execute("ALTER TABLE players ADD COLUMN sampled_at TEXT")
+        conn.execute(
+            """
+            UPDATE players
+            SET sampled_at = updated_at
+            WHERE sample_enabled = 1
+              AND sampled_at IS NULL
+            """
+        )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS metrics (
@@ -256,6 +311,12 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         """
+        CREATE INDEX IF NOT EXISTS idx_players_sample
+        ON players(sample_enabled, user_id)
+        """
+    )
+    conn.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metrics_rank
         ON metrics(metric_key, season_sub_key, value DESC, user_id)
         """
@@ -263,24 +324,38 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _write_player_metrics(
+def _write_player_metrics(  # noqa: PLR0913
     conn: sqlite3.Connection,
     *,
     player_id: int,
     nick: str,
     metrics: dict[str, MetricValue],
     updated_at: str | None = None,
+    sample_enabled: bool = True,
 ) -> None:
     timestamp = updated_at or datetime.now(timezone.utc).isoformat()
+    sample_flag = 1 if sample_enabled else 0
+    sampled_at = timestamp if sample_enabled else None
     conn.execute(
         """
-        INSERT INTO players(user_id, nick, updated_at)
-        VALUES (?, ?, ?)
+        INSERT INTO players(user_id, nick, updated_at, sample_enabled, sampled_at)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             nick = excluded.nick,
-            updated_at = excluded.updated_at
+            updated_at = CASE
+                WHEN excluded.sample_enabled = 1 THEN excluded.updated_at
+                ELSE players.updated_at
+            END,
+            sample_enabled = CASE
+                WHEN excluded.sample_enabled = 1 THEN 1
+                ELSE players.sample_enabled
+            END,
+            sampled_at = CASE
+                WHEN excluded.sample_enabled = 1 THEN excluded.sampled_at
+                ELSE players.sampled_at
+            END
         """,
-        (player_id, nick, timestamp),
+        (player_id, nick, timestamp, sample_flag, sampled_at),
     )
     for key, metric in metrics.items():
         value = _positive_int(metric.get("value"))
@@ -326,28 +401,46 @@ def _format_local_rank(  # noqa: PLR0913
     if current_value is None:
         return None
 
-    where = "metric_key = ? AND value IS NOT NULL"
+    where = "m.metric_key = ? AND m.value IS NOT NULL AND p.sample_enabled = 1"
     params: list[object] = [metric_key]
     if season_sub_key is None:
-        where += " AND season_sub_key IS NULL"
+        where += " AND m.season_sub_key IS NULL"
     else:
-        where += " AND season_sub_key = ?"
+        where += " AND m.season_sub_key = ?"
         params.append(season_sub_key)
 
     sample_count = int(
-        conn.execute(f"SELECT COUNT(*) FROM metrics WHERE {where}", params).fetchone()[
-            0
-        ]
+        conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM metrics m
+            JOIN players p ON p.user_id = m.user_id
+            WHERE {where}
+            """,
+            params,
+        ).fetchone()[0]
     )
     greater_count = int(
         conn.execute(
-            f"SELECT COUNT(*) FROM metrics WHERE {where} AND value > ?",
+            f"""
+            SELECT COUNT(*)
+            FROM metrics m
+            JOIN players p ON p.user_id = m.user_id
+            WHERE {where}
+              AND m.value > ?
+            """,
             (*params, current_value),
         ).fetchone()[0]
     )
     tie_count = int(
         conn.execute(
-            f"SELECT COUNT(*) FROM metrics WHERE {where} AND value = ?",
+            f"""
+            SELECT COUNT(*)
+            FROM metrics m
+            JOIN players p ON p.user_id = m.user_id
+            WHERE {where}
+              AND m.value = ?
+            """,
             (*params, current_value),
         ).fetchone()[0]
     )
@@ -435,11 +528,18 @@ def _count_metric_rows(
     metric_key: str,
     season_sub_key: int | None,
 ) -> int:
-    where, params = _get_metric_where(metric_key, season_sub_key, table_alias="")
+    where, params = _get_metric_where(metric_key, season_sub_key)
     return int(
-        conn.execute(f"SELECT COUNT(*) FROM metrics WHERE {where}", params).fetchone()[
-            0
-        ]
+        conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM metrics m
+            JOIN players p ON p.user_id = m.user_id
+            WHERE {where}
+              AND p.sample_enabled = 1
+            """,
+            params,
+        ).fetchone()[0]
     )
 
 
@@ -458,6 +558,7 @@ def _get_local_rank_entries_sql(
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
             WHERE {where}
+              AND p.sample_enabled = 1
             ORDER BY m.value DESC, p.user_id ASC
             LIMIT ?
             """,
@@ -488,13 +589,53 @@ def _get_local_rank_entries_sql(
 
 def _get_cached_player_ids_sql() -> list[int]:
     with _connect_cache() as conn:
-        rows = conn.execute("SELECT user_id FROM players ORDER BY user_id").fetchall()
+        rows = conn.execute(
+            """
+            SELECT user_id
+            FROM players
+            WHERE sample_enabled = 1
+            ORDER BY user_id
+            """
+        ).fetchall()
+    return [int(row["user_id"]) for row in rows]
+
+
+def _get_refresh_candidate_player_ids_sql(
+    *,
+    limit: int,
+    max_age_hours: int,
+) -> list[int]:
+    params: list[object] = []
+    where = "sample_enabled = 1"
+    if max_age_hours > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        where += " AND updated_at <= ?"
+        params.append(cutoff.isoformat())
+
+    with _connect_cache() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT user_id
+            FROM players
+            WHERE {where}
+            ORDER BY updated_at ASC, user_id ASC
+            LIMIT ?
+            """,
+            (*params, max(0, limit)),
+        ).fetchall()
     return [int(row["user_id"]) for row in rows]
 
 
 def _get_local_rank_cache_stats_sql() -> LocalRankCacheStats:
     with _connect_cache() as conn:
-        player_count = int(conn.execute("SELECT COUNT(*) FROM players").fetchone()[0])
+        total_player_count = int(
+            conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+        )
+        player_count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM players WHERE sample_enabled = 1"
+            ).fetchone()[0]
+        )
         metric_counts = {
             spec.title: _count_metric_rows(conn, spec.key, None)
             for spec in _LOCAL_METRICS
@@ -516,6 +657,7 @@ def _get_local_rank_cache_stats_sql() -> LocalRankCacheStats:
 
     return LocalRankCacheStats(
         player_count=player_count,
+        total_player_count=total_player_count,
         max_players=_max_cached_players(),
         metric_counts=metric_counts,
     )
@@ -526,15 +668,73 @@ def _can_cache_player_id_sql(player_id: int) -> bool:
         return False
 
     with _connect_cache() as conn:
-        exists = conn.execute(
-            "SELECT 1 FROM players WHERE user_id = ?",
+        row = conn.execute(
+            "SELECT sample_enabled FROM players WHERE user_id = ?",
             (player_id,),
         ).fetchone()
-        if exists is not None:
+        if row is not None and int(row["sample_enabled"]) == 1:
             return True
 
-        player_count = int(conn.execute("SELECT COUNT(*) FROM players").fetchone()[0])
+        player_count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM players WHERE sample_enabled = 1"
+            ).fetchone()[0]
+        )
         return player_count < _max_cached_players()
+
+
+def _rank_page_metric(
+    *,
+    key: int,
+    sub_key: int,
+) -> tuple[str, int | None] | None:
+    metric_key = _RANK_PAGE_METRIC_KEYS.get((key, sub_key))
+    if metric_key is not None:
+        return metric_key, None
+
+    metric_key = _PEAK_RANK_PAGE_METRIC_KEYS.get(key)
+    if metric_key is not None:
+        return metric_key, sub_key
+
+    return None
+
+
+def upsert_rank_page_metrics(
+    *,
+    key: int,
+    sub_key: int,
+    items: list[object],
+) -> None:
+    metric_info = _rank_page_metric(key=key, sub_key=sub_key)
+    if metric_info is None or not items:
+        return
+
+    metric_key, season_sub_key = metric_info
+    with _connect_cache() as conn:
+        for item in items:
+            player_id = _positive_int(getattr(item, "id", None))
+            score = _positive_int(getattr(item, "score", None))
+            if player_id is None or score is None:
+                continue
+            if metric_key == "pet_kind_count" and is_pet_kind_rank_anomaly_user(
+                player_id
+            ):
+                continue
+
+            _write_player_metrics(
+                conn,
+                player_id=player_id,
+                nick=str(getattr(item, "nick", "")),
+                metrics={
+                    metric_key: _metric(
+                        score,
+                        season_sub_key=season_sub_key,
+                        display=str(score),
+                    )
+                },
+                sample_enabled=False,
+            )
+        conn.commit()
 
 
 async def _upsert_local_rank_metrics_sql(
@@ -552,14 +752,17 @@ async def _upsert_local_rank_metrics_sql(
                 conn.commit()
                 return LocalRankSummary()
 
-            exists = conn.execute(
-                "SELECT 1 FROM players WHERE user_id = ?",
+            row = conn.execute(
+                "SELECT sample_enabled FROM players WHERE user_id = ?",
                 (player_id,),
             ).fetchone()
             player_count = int(
-                conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+                conn.execute(
+                    "SELECT COUNT(*) FROM players WHERE sample_enabled = 1"
+                ).fetchone()[0]
             )
-            if exists is None and player_count >= _max_cached_players():
+            is_sampled = row is not None and int(row["sample_enabled"]) == 1
+            if not is_sampled and player_count >= _max_cached_players():
                 return _format_summary(
                     conn=conn,
                     current_metrics=current_metrics,
@@ -572,6 +775,7 @@ async def _upsert_local_rank_metrics_sql(
                 player_id=player_id,
                 nick=nick,
                 metrics=current_metrics,
+                sample_enabled=True,
             )
             conn.commit()
             return _format_summary(
@@ -596,6 +800,17 @@ def get_local_rank_entries(
 
 def get_cached_player_ids() -> list[int]:
     return _get_cached_player_ids_sql()
+
+
+def get_refresh_candidate_player_ids(
+    *,
+    limit: int,
+    max_age_hours: int,
+) -> list[int]:
+    return _get_refresh_candidate_player_ids_sql(
+        limit=limit,
+        max_age_hours=max_age_hours,
+    )
 
 
 def get_local_rank_cache_stats() -> LocalRankCacheStats:

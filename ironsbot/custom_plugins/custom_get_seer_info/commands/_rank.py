@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+from nonebot import logger
 
 from ironsbot.plugins.headless_seer.command_id import COMMAND_ID
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
 
 from ..config import plugin_config
-from ._rank_page_cache import get_cached_rank_page, save_rank_page
+from ._rank_page_cache import get_cached_rank_item, get_cached_rank_page, save_rank_page
 
 BOOK_RANK_KEY = 156
 BOOK_RANK_SUB_KEY = 1
@@ -32,6 +36,9 @@ EXPERT_PEAK_USER_RANK_KEY = 199
 ACHIEVE_SCORE_SEARCH_LIMIT = 30_000_000
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 PEAK_USER_SCORE_SEARCH_LIMIT = 100_000
+CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
+_RANK_WINDOW_REFRESH_KEYS: set[tuple[int, int, int, int]] = set()
+_RANK_WINDOW_REFRESH_TASKS: set[asyncio.Task[None]] = set()
 PET_KIND_RANK_ANOMALY_USER_IDS = frozenset(
     (
         389438787,
@@ -174,6 +181,9 @@ async def _fetch_rank_page(
         end=end,
     )
     if cached_items is not None:
+        from ._local_rank import upsert_rank_page_metrics
+
+        upsert_rank_page_metrics(key=key, sub_key=sub_key, items=cached_items)
         return cached_items
 
     _head, rank_list = await game.send_and_wait(
@@ -183,7 +193,116 @@ async def _fetch_rank_page(
     )
     items = list(rank_list.rank_list)
     save_rank_page(key=key, sub_key=sub_key, start=start, end=end, items=items)
+    from ._local_rank import upsert_rank_page_metrics
+
+    upsert_rank_page_metrics(key=key, sub_key=sub_key, items=items)
     return items
+
+
+def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:
+    page_start = center_index // page_size * page_size
+    first_page_start = max(
+        0,
+        page_start - CACHED_RANK_LOOKUP_WINDOW_PAGES * page_size,
+    )
+    last_page_start = page_start + CACHED_RANK_LOOKUP_WINDOW_PAGES * page_size
+    return list(range(first_page_start, last_page_start + 1, page_size))
+
+
+async def _refresh_cached_rank_window(
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    center_index: int,
+    page_size: int,
+) -> None:
+    for start in _rank_window_page_starts(
+        center_index=center_index,
+        page_size=page_size,
+    ):
+        await _fetch_rank_page(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=start + page_size - 1,
+        )
+        await asyncio.sleep(
+            min(plugin_config.seer_query_cache_refresh_interval_seconds, 0.5)
+        )
+
+
+def _schedule_cached_rank_window_refresh(  # noqa: PLR0913
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    center_index: int,
+    page_size: int,
+    fetched_at: float,
+) -> None:
+    ttl = plugin_config.seer_query_rank_page_cache_ttl_seconds
+    if ttl <= 0 or time.time() - fetched_at < ttl:
+        return
+
+    page_start = center_index // page_size * page_size
+    refresh_key = (key, sub_key, page_start, page_size)
+    if refresh_key in _RANK_WINDOW_REFRESH_KEYS:
+        return
+
+    async def run() -> None:
+        try:
+            await _refresh_cached_rank_window(
+                game,
+                key=key,
+                sub_key=sub_key,
+                center_index=center_index,
+                page_size=page_size,
+            )
+        finally:
+            _RANK_WINDOW_REFRESH_KEYS.discard(refresh_key)
+
+    task = asyncio.create_task(run())
+    _RANK_WINDOW_REFRESH_KEYS.add(refresh_key)
+    _RANK_WINDOW_REFRESH_TASKS.add(task)
+
+    def done_callback(done_task: asyncio.Task[None]) -> None:
+        _RANK_WINDOW_REFRESH_TASKS.discard(done_task)
+        try:
+            done_task.result()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"rank window background refresh failed: {e}")
+
+    task.add_done_callback(done_callback)
+
+
+async def _find_rank_by_cached_position(  # noqa: PLR0913
+    game: Any,
+    *,
+    user_id: int,
+    key: int,
+    sub_key: int,
+    page_size: int,
+    result: RankLookupResult,
+) -> RankLookupResult | None:
+    cached_item = get_cached_rank_item(key=key, sub_key=sub_key, user_id=user_id)
+    if cached_item is None:
+        return None
+
+    result.rank = cached_item.rank_index + 1
+    result.score = cached_item.score
+
+    _schedule_cached_rank_window_refresh(
+        game,
+        key=key,
+        sub_key=sub_key,
+        center_index=cached_item.rank_index,
+        page_size=page_size,
+        fetched_at=cached_item.fetched_at,
+    )
+
+    return result
 
 
 async def _fetch_rank_item(
@@ -388,6 +507,17 @@ async def _find_rank(  # noqa: PLR0913
     if limit <= 0:
         return result
 
+    cached_result = await _find_rank_by_cached_position(
+        game,
+        user_id=user_id,
+        key=key,
+        sub_key=sub_key,
+        page_size=page_size,
+        result=result,
+    )
+    if cached_result is not None:
+        return cached_result
+
     if target_score is not None and target_score > 0:
         return await _find_rank_by_score(
             game,
@@ -436,6 +566,22 @@ async def _find_pet_kind_rank(
 
     if real_search_limit <= 0:
         return result
+
+    cached_result = await _find_rank_by_cached_position(
+        game,
+        user_id=user_id,
+        key=PET_KIND_RANK_KEY,
+        sub_key=PET_KIND_RANK_SUB_KEY,
+        page_size=max(1, min(plugin_config.seer_query_rank_page_size, 100)),
+        result=result,
+    )
+    if cached_result is not None:
+        cached_result.searched_limit = real_search_limit
+        if cached_result.rank is not None:
+            cached_result.rank = max(
+                0, cached_result.rank - PET_KIND_RANK_ANOMALY_COUNT
+            )
+        return cached_result
 
     raw_result = await _find_rank_by_linear_scan(
         game,

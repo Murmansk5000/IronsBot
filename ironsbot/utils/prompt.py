@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: MIT
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from inspect import signature
 from typing import Any, Generic, TypeAlias, TypeVar, cast, overload
 
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.message import run_preprocessor
@@ -68,8 +70,22 @@ class Prompt(Generic[T]):
 
         return msg
 
+    def build_event_message(self, event: Event) -> str | Message:
+        text = self.build_message()
+        if not isinstance(event, GroupMessageEvent):
+            return text
+        if self.at_user_id is None:
+            self.at_user_id = event.user_id
+
+        message = Message()
+        message += MessageSegment.at(self.at_user_id)
+        message += MessageSegment.text(" ")
+        message += MessageSegment.text(text)
+        return message
+
 
 PROMPT_STATE_KEY = "prompt"
+RESOLVER_WITH_EVENT_PARAM_COUNT = 4
 PromptResolver: TypeAlias = Callable[[Any, Matcher, Any], Awaitable[None]]
 
 
@@ -114,7 +130,7 @@ async def enter_prompt(  # noqa: PLR0913
         matcher,
         handlers=[handler],
         rule=rule,
-        prompt=prompt.build_message(),
+        prompt=prompt.build_event_message(event),
     )
 
 
@@ -147,7 +163,10 @@ def _create_selection_handler(
         if (item := prompt.get_item(int(key_text))) is None:
             await matcher.finish("⚠️序号超出范围，已退出选择")
 
-        await resolver(item, matcher, session)
+        if len(signature(resolver).parameters) >= RESOLVER_WITH_EVENT_PARAM_COUNT:
+            await resolver(item, matcher, session, event)
+        else:
+            await resolver(item, matcher, session)
 
         rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
         await reject_with_rule(matcher, rule)

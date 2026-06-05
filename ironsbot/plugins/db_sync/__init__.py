@@ -10,6 +10,7 @@ import httpx
 from anyio import Path as AsyncPath
 from nonebot import get_driver, on_message, require
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
@@ -19,6 +20,7 @@ require("nonebot_plugin_apscheduler")
 
 from nonebot_plugin_apscheduler import scheduler
 
+from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
@@ -273,33 +275,39 @@ def load_cached_database(name: str) -> bool:
 
 
 @manual_sync_matcher.handle()
-async def _handle_manual_sync(matcher: Matcher) -> None:
+async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
     if not _registered_syncs:
-        await matcher.finish("当前没有已注册的远程同步数据库。")
+        await finish_event_reply(matcher, event, "当前没有已注册的远程同步数据库。")
 
     if is_sync_running():
-        await matcher.finish("⏳ 数据更新正在进行中，请稍后再试。")
+        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
 
     names = list(_registered_syncs)
-    await matcher.send(f"开始更新数据：{', '.join(names)}，请稍等。")
+    await send_event_reply(
+        matcher,
+        event,
+        f"开始更新数据：{', '.join(names)}，请稍等。",
+    )
 
     did_run, results = await run_sync_all_databases()
 
     if not did_run:
-        await matcher.finish("⏳ 数据更新正在进行中，请稍后再试。")
+        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
 
     failed = [name for name, ok in results.items() if not ok]
     succeeded = [name for name, ok in results.items() if ok]
 
     if failed:
-        await matcher.finish(
+        await finish_event_reply(
+            matcher,
+            event,
             "数据更新完成，但有失败项。\n"
             f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
             f"失败：{', '.join(failed)}\n"
             "请查看容器日志确认网络或下载错误。"
         )
 
-    await matcher.finish(f"数据更新完成：{', '.join(succeeded)}")
+    await finish_event_reply(matcher, event, f"数据更新完成：{', '.join(succeeded)}")
 
 
 @_driver.on_startup

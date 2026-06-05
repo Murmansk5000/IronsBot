@@ -84,12 +84,18 @@ class Config(BaseModel):
     seer_query_rank_page_cache: bool = True
     seer_query_rank_page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     seer_query_rank_page_cache_path: Path = Path(
-        "data/custom_get_seer_info/rank_page_cache.sqlite"
+        "data/custom_get_seer_info/player_query_cache.sqlite"
     )
     seer_query_peak_subkey: int | None = Field(default=None, ge=0)
     seer_query_local_rank: bool = True
     seer_query_local_rank_max_players: int = Field(default=5000, ge=1)
     seer_query_cache_batch_limit: int = Field(default=100, ge=1)
+    seer_query_cache_auto_refresh: bool = True
+    seer_query_cache_refresh_hour: int = Field(default=3, ge=0, le=23)
+    seer_query_cache_refresh_minute: int = Field(default=30, ge=0, le=59)
+    seer_query_cache_refresh_limit: int = Field(default=300, ge=1)
+    seer_query_cache_refresh_max_age_hours: int = Field(default=24, ge=0)
+    seer_query_cache_refresh_interval_seconds: float = Field(default=0.5, ge=0)
     seer_query_local_rank_path: Path = Path(
         "data/custom_get_seer_info/player_query_cache.sqlite"
     )
