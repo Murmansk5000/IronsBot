@@ -114,26 +114,25 @@ class BookBreakdownSummary:
 
     @property
     def outfit_count(self) -> int | None:
-        scores = (
-            None if self.outfit_suit is None else self.outfit_suit.score,
-            None if self.outfit_part is None else self.outfit_part.score,
-        )
-        if any(score is None for score in scores):
+        suit_score = None if self.outfit_suit is None else self.outfit_suit.score
+        part_score = None if self.outfit_part is None else self.outfit_part.score
+        if suit_score is None or part_score is None:
             return None
-        return int(scores[0]) + int(scores[1])
+        return int(suit_score) + int(part_score)
 
     @property
     def unlocked_count(self) -> int | None:
-        scores = (
+        scores: tuple[int | None, ...] = (
             self.pet_kind_count,
             None if self.skin is None else self.skin.score,
             None if self.countermark is None else self.countermark.score,
             self.outfit_count,
             None if self.mount is None else self.mount.score,
         )
-        if any(score is None for score in scores):
+        present_scores = [score for score in scores if score is not None]
+        if len(present_scores) != len(scores):
             return None
-        return sum(int(score) for score in scores)
+        return sum(present_scores)
 
 
 @dataclass(slots=True)
@@ -289,6 +288,26 @@ async def _find_rank_by_cached_position(  # noqa: PLR0913
     cached_item = get_cached_rank_item(key=key, sub_key=sub_key, user_id=user_id)
     if cached_item is None:
         return None
+
+    if cached_item.is_stale:
+        try:
+            await _refresh_cached_rank_window(
+                game,
+                key=key,
+                sub_key=sub_key,
+                center_index=cached_item.rank_index,
+                page_size=page_size,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"rank cache refresh before lookup failed: {e}")
+        else:
+            refreshed_item = get_cached_rank_item(
+                key=key,
+                sub_key=sub_key,
+                user_id=user_id,
+            )
+            if refreshed_item is not None:
+                cached_item = refreshed_item
 
     result.rank = cached_item.rank_index + 1
     result.score = cached_item.score

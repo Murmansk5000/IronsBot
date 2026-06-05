@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..config import plugin_config
 from ._rank import (
@@ -118,7 +119,7 @@ def _metric_from_rank(result: RankLookupResult | None) -> int | None:
 
 def _positive_int(value: object) -> int | None:
     try:
-        number = int(value)
+        number = int(cast("Any", value))
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
@@ -703,7 +704,7 @@ def upsert_rank_page_metrics(
     *,
     key: int,
     sub_key: int,
-    items: list[object],
+    items: Sequence[object],
 ) -> None:
     metric_info = _rank_page_metric(key=key, sub_key=sub_key)
     if metric_info is None or not items:

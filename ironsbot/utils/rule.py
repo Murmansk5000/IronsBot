@@ -82,9 +82,11 @@ class StartswithOrEndswithRule:
 
         state[STARTSWITH_KEY] = sw.group() if sw else ""
         state[ENDSWITH_KEY] = ew.group() if ew else ""
-        state[BOT_COMMAND_ARG_KEY] = text.replace(state[STARTSWITH_KEY], "").replace(
-            state[ENDSWITH_KEY], ""
-        )
+        arg_start = sw.end() if sw else 0
+        arg_end = len(text)
+        if ew and ew.start() >= arg_start:
+            arg_end = ew.start()
+        state[BOT_COMMAND_ARG_KEY] = text[arg_start:arg_end]
         return True
 
 

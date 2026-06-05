@@ -91,10 +91,14 @@ async def _is_invalid_player_text_query(event: Event) -> bool:
 
 player_invalid_text_matcher = matcher_group.on_message(
     rule=Rule(_is_invalid_player_text_query) & no_reply(),
+    priority=1,
+    block=True,
 )
 
 player_matcher = matcher_group.on_message(
     rule=Rule(_is_player_id_query) & no_reply(),
+    priority=1,
+    block=True,
 )
 
 
@@ -1008,6 +1012,7 @@ async def handle_player(
             format_player_query_error(player_id, e),
             mention_sender=True,
         )
+        return
     except Exception as e:  # noqa: BLE001
         await finish_event_reply(
             matcher,
@@ -1015,6 +1020,7 @@ async def handle_player(
             f"❌ 米米号 {player_id} 查询失败：{e}",
             mention_sender=True,
         )
+        return
 
     detail_task: asyncio.Task[PlayerDetailMessages] | None = None
     if has_collection or needs_peak_section or plugin_config.seer_query_local_rank:

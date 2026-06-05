@@ -84,7 +84,7 @@ class Config(BaseModel):
     seer_query_rank_page_cache: bool = True
     seer_query_rank_page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     seer_query_rank_page_cache_path: Path = Path(
-        "data/custom_get_seer_info/player_query_cache.sqlite"
+        "data/custom_get_seer_info/rank_page_cache.sqlite"
     )
     seer_query_peak_subkey: int | None = Field(default=None, ge=0)
     seer_query_local_rank: bool = True

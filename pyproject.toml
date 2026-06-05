@@ -41,6 +41,10 @@ nonebot-plugin-htmlkit = ["nonebot_plugin_htmlkit"]
 nonebot-plugin-apscheduler = ["nonebot_plugin_apscheduler"]
 nonebot-plugin-send-anything-anywhere = ["nonebot_plugin_saa"]
 nonebot-plugin-localstore = ["nonebot_plugin_localstore"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"

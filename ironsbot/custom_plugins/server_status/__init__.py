@@ -5,12 +5,13 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
-from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 import httpx
 from nonebot import get_plugin_config, logger
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.exception import FinishedException
+from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 from pydantic import BaseModel, Field, field_validator
@@ -30,10 +31,6 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
 )
 from ironsbot.utils.rule import no_reply
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.internal.matcher import Matcher
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
