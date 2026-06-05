@@ -74,6 +74,7 @@ MAINTENANCE_RANGE_PATTERN = re.compile(
 
 
 class Config(BaseModel):
+    server_status_broadcast: bool = False
     server_status_broadcast_groups: list[int] = Field(default_factory=list)
     server_status_broadcast_users: list[int] = Field(default_factory=list)
     server_status_broadcast_message: str = BROADCAST_MESSAGE
@@ -129,8 +130,9 @@ __plugin_meta__ = PluginMetadata(
 说明：
   无头客户端已登录游戏服务器时判定为已开服；公告只作为维护信息摘要。
   无头客户端未登录时，结合公告和登录状态提示可能原因。
-  如果查询结果判断为已开服，会向 SERVER_STATUS_BROADCAST_GROUPS
-  和 SERVER_STATUS_BROADCAST_USERS 配置的目标广播。
+  如果 SERVER_STATUS_BROADCAST=true，查询结果判断为已开服时会向
+  SERVER_STATUS_BROADCAST_GROUPS 和 SERVER_STATUS_BROADCAST_USERS
+  配置的目标广播。
   超级管理员可发送 /无头登录、/机器人登录、/重连机器人 手动触发无头客户端登录。""",
     config=Config,
     supported_adapters={"~onebot.v11"},
@@ -326,6 +328,10 @@ def _build_no_notice_reply(now: datetime, *, headless_status: HeadlessStatus) ->
 
 
 async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
+    if not plugin_config.server_status_broadcast:
+        logger.info("server status open broadcast skipped: disabled")
+        return
+
     if not _should_broadcast_opened(now):
         return
 
