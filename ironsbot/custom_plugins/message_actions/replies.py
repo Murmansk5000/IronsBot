@@ -4,7 +4,10 @@ from collections.abc import Iterable
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.matcher import Matcher
 
+from ironsbot.custom_plugins.superuser_priority import wait_for_superuser_priority
+
 from .config import plugin_config
+from .reply_limits import limit_message_by_reply_lines
 from .text import build_message
 
 
@@ -27,7 +30,10 @@ async def send_matcher_message(
     message: str | Message,
     *,
     at_user_ids: Iterable[int] = (),
+    event: MessageEvent | None = None,
 ) -> None:
+    await wait_for_superuser_priority(event)
+    message = limit_message_by_reply_lines(message, event=event)
     await matcher.send(build_message(message, at_user_ids=at_user_ids))
 
 
@@ -36,7 +42,10 @@ async def finish_matcher_message(
     message: str | Message,
     *,
     at_user_ids: Iterable[int] = (),
+    event: MessageEvent | None = None,
 ) -> None:
+    await wait_for_superuser_priority(event)
+    message = limit_message_by_reply_lines(message, event=event)
     await matcher.finish(build_message(message, at_user_ids=at_user_ids))
 
 
@@ -54,6 +63,7 @@ async def send_event_reply(
             event,
             mention_sender=mention_sender,
         ),
+        event=event,
     )
 
 
@@ -71,6 +81,7 @@ async def finish_event_reply(
             event,
             mention_sender=mention_sender,
         ),
+        event=event,
     )
 
 
@@ -95,6 +106,7 @@ async def finish_message_sequence(
             matcher,
             message,
             at_user_ids=at_user_ids,
+            event=event,
         )
         await asyncio.sleep(interval_seconds)
 
@@ -102,4 +114,5 @@ async def finish_message_sequence(
         matcher,
         messages[-1],
         at_user_ids=at_user_ids,
+        event=event,
     )

@@ -5,11 +5,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+    send_event_reply,
+)
 from ironsbot.utils.rule import no_reply
 
 from ..config import plugin_config
@@ -399,35 +404,57 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
 
 
 @rank_help_matcher.handle()
-async def handle_rank_help(matcher: Matcher) -> None:
-    await matcher.finish(build_rank_help_message())
+async def handle_rank_help(matcher: Matcher, event: MessageEvent) -> None:
+    await finish_event_reply(matcher, event, build_rank_help_message())
 
 
 @rank_list_matcher.handle()
-async def handle_rank_list(matcher: Matcher, state: T_State) -> None:
+async def handle_rank_list(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     command = state[RANK_LIST_COMMAND_KEY]
     kind, key = NORMALIZED_COMMANDS[command]
 
     if kind == "global":
-        await matcher.finish(await _build_global_rank_message(GLOBAL_RANKS[key]))
+        await finish_event_reply(
+            matcher,
+            event,
+            await _build_global_rank_message(GLOBAL_RANKS[key]),
+        )
 
-    await matcher.finish(_build_local_rank_message(LOCAL_RANKS[key]))
+    await finish_event_reply(
+        matcher,
+        event,
+        _build_local_rank_message(LOCAL_RANKS[key]),
+    )
 
 
 @rank_cache_batch_matcher.handle()
-async def handle_rank_cache_batch(matcher: Matcher, state: T_State) -> None:
+async def handle_rank_cache_batch(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     ensure_extended_packets()
     command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
     before = get_local_rank_cache_stats()
     if before.player_count >= before.max_players:
-        await matcher.finish(
+        await finish_event_reply(
+            matcher,
+            event,
             f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
             "请先调大 SEER_QUERY_LOCAL_RANK_MAX_PLAYERS。"
         )
 
     spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
     if not player_ids:
-        await matcher.finish(f"❌ 没有从{spec.title}拿到可缓存的米米号。")
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 没有从{spec.title}拿到可缓存的米米号。",
+        )
 
     truncated_text = ""
     if requested_count > len(player_ids):
@@ -435,7 +462,9 @@ async def handle_rank_cache_batch(matcher: Matcher, state: T_State) -> None:
             f"\n本次按 SEER_QUERY_CACHE_BATCH_LIMIT 只处理前 {len(player_ids)} 个。"
         )
 
-    await matcher.send(
+    await send_event_reply(
+        matcher,
+        event,
         f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
         f"\n实际拿到 {len(player_ids)} 个米米号。"
         f"\n当前缓存：{before.player_count}/{before.max_players}。"
@@ -459,11 +488,14 @@ async def handle_rank_cache_batch(matcher: Matcher, state: T_State) -> None:
         lines.append("失败示例：")
         lines.extend(format_refresh_failures(result.failures))
 
-    await matcher.finish("\n".join(lines))
+    await finish_event_reply(matcher, event, "\n".join(lines))
 
 
 @rank_cache_status_matcher.handle()
-async def handle_rank_cache_status(matcher: Matcher) -> None:
+async def handle_rank_cache_status(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
     stats = get_local_rank_cache_stats()
     lines = [
         "📊【样本榜缓存状态】",
@@ -479,17 +511,26 @@ async def handle_rank_cache_status(matcher: Matcher) -> None:
         f"{title}：{count}"
         for title, count in stats.metric_counts.items()
     )
-    await matcher.finish("\n".join(lines))
+    await finish_event_reply(matcher, event, "\n".join(lines))
 
 
 @rank_cache_refresh_matcher.handle()
-async def handle_rank_cache_refresh(matcher: Matcher) -> None:
+async def handle_rank_cache_refresh(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
     ensure_extended_packets()
     before = get_local_rank_cache_stats()
     if before.player_count <= 0:
-        await matcher.finish("❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。")
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。",
+        )
 
-    await matcher.send(
+    await send_event_reply(
+        matcher,
+        event,
         f"🔄 正在刷新样本榜缓存，共 {before.player_count} 个米米号。"
         "这会逐个重新查询，可能需要一点时间。"
     )
@@ -509,4 +550,4 @@ async def handle_rank_cache_refresh(matcher: Matcher) -> None:
         lines.append("失败示例：")
         lines.extend(format_refresh_failures(result.failures))
 
-    await matcher.finish("\n".join(lines))
+    await finish_event_reply(matcher, event, "\n".join(lines))

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
@@ -12,6 +13,7 @@ from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartO
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
+from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.utils.rule import no_reply
 
@@ -314,10 +316,15 @@ def _build_stat_rank_message(
 @countermark_stat_rank_matcher.handle()
 async def handle_countermark_stat_rank(
     matcher: Matcher,
+    event: MessageEvent,
     state: T_State,
     session: SeerAPISession,
 ) -> None:
     command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
     mintmarks = _load_mintmarks(session)
     items = _collect_rank_items(mintmarks, command)
-    await matcher.finish(_build_stat_rank_message(command, items))
+    await finish_event_reply(
+        matcher,
+        event,
+        _build_stat_rank_message(command, items),
+    )
