@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from typing import Any
 
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.plugins.headless_seer.exception import SocketRecvError
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
@@ -134,7 +136,11 @@ async def validate_team_id(
 
 
 @team_matcher.handle()
-async def handle_team(matcher: Matcher, state: T_State) -> None:
+async def handle_team(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     team_id: int = state[TEAM_ID_KEY]
     game = get_game_client()
 
@@ -143,11 +149,21 @@ async def handle_team(matcher: Matcher, state: T_State) -> None:
     except FinishedException:
         raise
     except SocketRecvError as e:
-        await matcher.finish(f"❌ 战队 {team_id} {format_socket_recv_error(e)}")
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 战队 {team_id} {format_socket_recv_error(e)}",
+        )
     except Exception as e:  # noqa: BLE001
-        await matcher.finish(f"❌ 战队 {team_id} 查询失败：{e}")
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 战队 {team_id} 查询失败：{e}",
+        )
 
-    await matcher.finish(
+    await finish_event_reply(
+        matcher,
+        event,
         _format_team_info(
             team_info,
             set(plugin_config.seer_query_team_sections),

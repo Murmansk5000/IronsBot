@@ -5,6 +5,7 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
+from .reply_limits import limit_message_by_reply_lines
 from .targets import (
     MessageTarget,
     SendSummary,
@@ -19,7 +20,7 @@ from .text import build_message
 def get_bot_or_none() -> Bot | None:
     try:
         return get_bot()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"message action failed to get bot: {e}")
         return None
 
@@ -41,8 +42,16 @@ async def send_target_messages(
     failed: list[MessageTarget] = []
 
     for target in deduped_targets:
-        rendered_message = build_message(
+        limited_message = limit_message_by_reply_lines(
             message,
+            group_id=(
+                target.target_id
+                if target.target_type == "group"
+                else None
+            ),
+        )
+        rendered_message = build_message(
+            limited_message,
             at_user_ids=(
                 target.at_user_ids
                 if target.target_type == "group"
@@ -67,7 +76,7 @@ async def send_target_messages(
             )
             succeeded.append(target)
             await asyncio.sleep(interval_seconds)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             failed.append(target)
             logger.warning(
                 f"{action_name} failed to send to {target.target_type} "
@@ -77,7 +86,7 @@ async def send_target_messages(
     return TargetSendSummary(succeeded, failed)
 
 
-async def send_broadcast_message(
+async def send_broadcast_message(  # noqa: PLR0913
     message: str | Message,
     *,
     private_user_ids: Iterable[int] = (),
@@ -121,7 +130,7 @@ async def send_private_messages(
     )
 
 
-async def send_group_messages(
+async def send_group_messages(  # noqa: PLR0913
     group_ids: Iterable[int],
     message: str | Message,
     *,

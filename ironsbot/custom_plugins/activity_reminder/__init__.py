@@ -10,16 +10,19 @@ from zoneinfo import ZoneInfo
 
 from nonebot import get_plugin_config, on_message, require
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
-from nonebot.typing import T_State
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from ironsbot.custom_plugins.message_actions import send_broadcast_message
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+    send_broadcast_message,
+)
 from ironsbot.custom_plugins.superuser_policy import (
     with_superuser_groups,
     with_superusers,
@@ -45,8 +48,9 @@ SOON_ENDING_ACTIVITY_COMMANDS = (
     "本周活动",
     "活动快结束",
 )
-ACTIVITY_QUERY_MODE_KEY = "_activity_query_mode"
 SOON_ENDING_THRESHOLD = timedelta(days=7)
+REMINDER_SEND_DELAY = timedelta(minutes=10)
+REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 SECONDS_PER_MINUTE = 60
 MINUTES_PER_HOUR = 60
 HOURS_PER_DAY = 24
@@ -90,8 +94,6 @@ NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS = {
     _normalize_command_text(command)
     for command in SOON_ENDING_ACTIVITY_COMMANDS
 }
-
-
 def _strip_admin_command_prefix(text_value: str) -> str | None:
     stripped = text_value.strip()
     for prefix in ADMIN_COMMAND_PREFIXES:
@@ -100,19 +102,22 @@ def _strip_admin_command_prefix(text_value: str) -> str | None:
     return None
 
 
-async def _is_activity_query_command(event: Event, state: T_State) -> bool:
+async def _is_current_activity_query_command(event: Event) -> bool:
     command = _strip_admin_command_prefix(event.get_plaintext())
     if command is None:
         return False
 
     normalized = _normalize_command_text(command)
-    if normalized in NORMALIZED_CURRENT_ACTIVITY_COMMANDS:
-        state[ACTIVITY_QUERY_MODE_KEY] = "all"
-        return True
-    if normalized in NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS:
-        state[ACTIVITY_QUERY_MODE_KEY] = "soon"
-        return True
-    return False
+    return normalized in NORMALIZED_CURRENT_ACTIVITY_COMMANDS
+
+
+async def _is_soon_ending_activity_query_command(event: Event) -> bool:
+    command = _strip_admin_command_prefix(event.get_plaintext())
+    if command is None:
+        return False
+
+    normalized = _normalize_command_text(command)
+    return normalized in NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS
 
 
 class Config(BaseModel):
@@ -352,6 +357,28 @@ def _format_activity_period(activity: ActivityInfo) -> str:
     return f"{activity.start_time:%m-%d %H:%M} ~ {end_text}"
 
 
+def _format_activity_line(
+    index: int,
+    activity: ActivityInfo,
+    remaining_text: str,
+    *,
+    soon_only: bool,
+) -> list[str]:
+    if soon_only:
+        return [
+            (
+                f"{index}. {activity.name}：结束时间："
+                f"{activity.end_time:%m-%d %H:%M} | 剩余：{remaining_text}"
+            )
+        ]
+
+    period_text = _format_activity_period(activity)
+    return [
+        f"{index}. {activity.name}",
+        f"   持续：{period_text} | 剩余：{remaining_text}",
+    ]
+
+
 def build_current_activity_message(
     now: datetime | None = None,
     *,
@@ -377,22 +404,16 @@ def build_current_activity_message(
         f"截至 {current_time:%Y-%m-%d %H:%M}",
         "",
     ]
-    if soon_only:
-        lines.extend(
-            [
-                "筛选：剩余时间不足 7 天",
-                "",
-            ]
-        )
 
     for index, activity in enumerate(shown_activities, start=1):
         remaining_text = _format_remaining_time(activity.end_time - current_time)
-        period_text = _format_activity_period(activity)
         lines.extend(
-            [
-                f"{index}. {activity.name}",
-                f"   持续：{period_text} | 剩余：{remaining_text}",
-            ]
+            _format_activity_line(
+                index,
+                activity,
+                remaining_text,
+                soon_only=soon_only,
+            )
         )
 
     hidden_count = len(activities) - len(shown_activities)
@@ -402,16 +423,18 @@ def build_current_activity_message(
 
 
 def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
-    grace = timedelta(minutes=plugin_config.activity_reminder_grace_minutes)
     reminders: list[ActivityReminder] = []
 
     for activity in _soon_ending_activity_infos(now):
         for lead_hours in plugin_config.activity_reminder_lead_hours:
-            target_time = activity.end_time - timedelta(hours=lead_hours)
-            if target_time + grace < now:
+            send_time = (
+                activity.end_time
+                - timedelta(hours=lead_hours)
+                + REMINDER_SEND_DELAY
+            )
+            if send_time < now:
                 continue
 
-            send_time = target_time if target_time > now else now + timedelta(seconds=5)
             reminders.append(
                 ActivityReminder(
                     activity_id=activity.activity_id,
@@ -502,11 +525,58 @@ def _group_by_send_time(
     return grouped
 
 
+def _current_activity_by_id(now: datetime) -> dict[int, ActivityInfo]:
+    return {
+        activity.activity_id: activity
+        for activity in _soon_ending_activity_infos(now)
+    }
+
+
+def _is_reminder_still_valid(
+    reminder: ActivityReminder,
+    *,
+    now: datetime,
+    activity_by_id: dict[int, ActivityInfo],
+) -> bool:
+    if now > reminder.send_time + REMINDER_DISPATCH_TOLERANCE:
+        return False
+
+    current_activity = activity_by_id.get(reminder.activity_id)
+    if current_activity is None:
+        return False
+
+    return current_activity.end_time == reminder.end_time
+
+
+def _filter_valid_reminders_before_send(
+    reminders: Iterable[ActivityReminder],
+    *,
+    now: datetime,
+) -> list[ActivityReminder]:
+    activity_by_id = _current_activity_by_id(now)
+    return [
+        reminder
+        for reminder in reminders
+        if _is_reminder_still_valid(
+            reminder,
+            now=now,
+            activity_by_id=activity_by_id,
+        )
+    ]
+
+
 async def send_activity_reminder(
     *,
     lead_hours: int,
     reminders: list[ActivityReminder],
 ) -> None:
+    reminders = _filter_valid_reminders_before_send(reminders, now=_now())
+    if not reminders:
+        logger.info(
+            f"activity ending reminder {lead_hours}h skipped: no valid reminders"
+        )
+        return
+
     target_groups = with_superuser_groups(plugin_config.activity_reminder_groups)
     target_users = with_superusers(plugin_config.activity_reminder_users)
     if not target_groups and not target_users:
@@ -559,18 +629,36 @@ async def schedule_activity_reminders() -> None:
 
 
 current_activity_matcher = on_message(
-    rule=Rule(_is_activity_query_command) & no_reply(),
+    rule=Rule(_is_current_activity_query_command) & no_reply(),
     permission=SUPERUSER,
+    priority=5,
+    block=True,
+)
+
+soon_ending_activity_matcher = on_message(
+    rule=Rule(_is_soon_ending_activity_query_command) & no_reply(),
     priority=5,
     block=True,
 )
 
 
 @current_activity_matcher.handle()
-async def handle_current_activity_query(state: T_State) -> None:
-    mode = state.get(ACTIVITY_QUERY_MODE_KEY)
-    await current_activity_matcher.finish(
-        build_current_activity_message(soon_only=mode == "soon")
+async def handle_current_activity_query(
+    event: MessageEvent,
+) -> None:
+    await finish_event_reply(
+        current_activity_matcher,
+        event,
+        build_current_activity_message(),
+    )
+
+
+@soon_ending_activity_matcher.handle()
+async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
+    await finish_event_reply(
+        soon_ending_activity_matcher,
+        event,
+        build_current_activity_message(soon_only=True),
     )
 
 

@@ -1,6 +1,10 @@
+from pathlib import Path
+
 from nonebot import get_plugin_config
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
+
+ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 
 
 class BaseMessageAction(BaseModel):
@@ -24,8 +28,8 @@ class CommandMessageAction(BaseMessageAction):
     @classmethod
     def normalize_commands(cls, value: list[str]) -> list[str]:
         commands: list[str] = []
-        for command in value:
-            command = command.strip()
+        for raw_command in value:
+            command = raw_command.strip()
             if command and command not in commands:
                 commands.append(command)
         return commands
@@ -33,7 +37,7 @@ class CommandMessageAction(BaseMessageAction):
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
         if self.enabled and not self.commands:
-            raise ValueError("已启用的指令消息动作必须配置 commands")
+            raise ValueError(ENABLED_COMMANDS_REQUIRED_ERROR)
         return self
 
 
@@ -63,6 +67,10 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
 
 class Config(BaseModel):
     msg_at_trigger: bool = False
+    msg_reply_default_lines: int = Field(default=0, ge=0)
+    msg_reply_min_lines: int = Field(default=5, ge=1)
+    msg_reply_max_lines: int = Field(default=80, ge=1)
+    msg_reply_limit_path: Path = Path("data/message_actions/reply_limits.sqlite")
     msg_private_commands: list[PrivateCommandMessageAction] = Field(
         default_factory=list
     )
