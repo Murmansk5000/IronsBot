@@ -33,7 +33,6 @@ from ._client import get_game_client
 from ._errors import format_player_query_error
 from ._format import format_datetime, yes_no
 from ._local_rank import LocalRankSummary, update_local_rank_cache
-from ._names import lookup_avatar_frame_names, lookup_avatar_head_names
 from ._rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
@@ -152,28 +151,13 @@ def _format_team_text(user_info: Any, team_name: str) -> str:
     return f"{team_name}（战队ID：{team_id}，{show_text}）"
 
 
-def _lookup_avatar_names(user_info: Any) -> tuple[dict[int, str], dict[int, str]]:
-    return (
-        lookup_avatar_head_names((getattr(user_info, "head_id", 0),)),
-        lookup_avatar_frame_names((getattr(user_info, "head_frame_id", 0),)),
-    )
-
-
-def _format_avatar_text(
-    user_info: Any,
-    *,
-    avatar_head_names: dict[int, str],
-    avatar_frame_names: dict[int, str],
+def _format_player_identity(
+    player_id: int,
+    nick: str | None = None,
 ) -> str:
-    avatar_head = _format_id_name(
-        getattr(user_info, "head_id", 0),
-        avatar_head_names,
-    )
-    avatar_frame = _format_id_name(
-        getattr(user_info, "head_frame_id", 0),
-        avatar_frame_names,
-    )
-    return f"头像：{avatar_head}{METRIC_SEPARATOR}头像框：{avatar_frame}"
+    if nick:
+        return f"米米号：{player_id}（{nick}）"
+    return f"米米号：{player_id}"
 
 
 def _format_online_text(online_info: Any | None) -> str:
@@ -311,10 +295,16 @@ def _format_compact_peak_section(
     peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
     local_summary: LocalRankSummary,
+    *,
+    player_id: int | None = None,
+    nick: str | None = None,
 ) -> str:
-    return "\n".join(
+    lines = ["【巅峰之战】"]
+    if player_id is not None:
+        lines.append(_format_player_identity(player_id, nick))
+
+    lines.extend(
         [
-            "【巅峰之战】",
             _format_peak_line(
                 "竞技",
                 current=_format_rank_star_compact(
@@ -374,6 +364,9 @@ def _format_compact_peak_section(
             ),
         ]
     )
+    return "\n".join(
+        lines
+    )
 
 
 def _format_collection_info(
@@ -382,6 +375,7 @@ def _format_collection_info(
     unity_part_one: UnityPartOneInfo,
     rank_summary: PlayerRankSummary,
     local_summary: LocalRankSummary,
+    player_identity: str,
 ) -> str:
     breakdown = rank_summary.breakdown
     outfit_suit_score = (
@@ -470,7 +464,7 @@ def _format_collection_info(
             local_key="achievement_count",
         ),
     ]
-    lines = ["📚【收集与排行】"]
+    lines = ["📚【收集与排行】", player_identity]
     lines.extend(line for line in metric_lines if line)
     return "\n".join(lines)
 
@@ -480,8 +474,6 @@ def _format_compact_player_info(  # noqa: PLR0913
     more_info: Any,
     *,
     team_name: str,
-    avatar_head_names: dict[int, str],
-    avatar_frame_names: dict[int, str],
     online_info: Any | None,
     unity_peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
@@ -498,11 +490,6 @@ def _format_compact_player_info(  # noqa: PLR0913
         "【基础信息】",
         f"昵称：{user_info.nick}",
         f"VIP状态：{_format_vip(user_info)}",
-        _format_avatar_text(
-            user_info,
-            avatar_head_names=avatar_head_names,
-            avatar_frame_names=avatar_frame_names,
-        ),
         f"注册时间：{format_datetime(getattr(more_info, 'reg_time', 0))}",
         f"最后登录：{format_datetime(getattr(user_info, 'login_time', 0))}",
         f"最后离线：{format_datetime(getattr(user_info, 'last_offline_time', 0))}",
@@ -662,7 +649,6 @@ async def _handle_detail_reply(
     if command_text_matches(text, ("收集",)):
         label = "收集与排行"
         message = await _get_player_detail_message(
-            matcher,
             state,
             PLAYER_COLLECTION_KEY,
             label,
@@ -670,7 +656,6 @@ async def _handle_detail_reply(
     elif command_text_matches(text, ("巅峰",)):
         label = "巅峰之战"
         message = await _get_player_detail_message(
-            matcher,
             state,
             PLAYER_PEAK_KEY,
             label,
@@ -698,16 +683,12 @@ def _store_player_detail_messages(
 
 
 async def _get_player_detail_message(
-    matcher: Matcher,
     state: T_State,
     key: str,
     label: str,
 ) -> str:
     task = state.get(PLAYER_DETAIL_TASK_KEY)
     if isinstance(task, asyncio.Task):
-        if not task.done():
-            await matcher.send(f"⏳ 正在获取{label}数据...")
-
         try:
             detail_messages = await task
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
@@ -733,7 +714,12 @@ async def _continue_player_detail_conversation(
 ) -> None:
     commands = tuple(state.get(PLAYER_DETAIL_COMMANDS_KEY) or ())
     if not commands:
-        await finish_event_reply(matcher, event, prompt)
+        await finish_event_reply(
+            matcher,
+            event,
+            prompt,
+            mention_sender=True,
+        )
 
     await enter_event_reply_conversation(
         matcher,
@@ -742,6 +728,7 @@ async def _continue_player_detail_conversation(
         handlers=[_handle_detail_reply],
         reply_check=command_reply_check(commands),
         prompt=prompt,
+        mention_sender=True,
     )
 
 
@@ -770,7 +757,12 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
 
     if not commands:
         if isinstance(event, MessageEvent):
-            await finish_event_reply(matcher, event, player_message)
+            await finish_event_reply(
+                matcher,
+                event,
+                player_message,
+                mention_sender=True,
+            )
         else:
             await matcher.finish(player_message)
 
@@ -784,6 +776,7 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
         handlers=[_handle_detail_reply],
         reply_check=command_reply_check(tuple(commands)),
         prompt=player_message,
+        mention_sender=True,
     )
 
 
@@ -941,6 +934,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             unity_part_one=unity_part_one,
             rank_summary=rank_summary,
             local_summary=visible_local_rank_summary,
+            player_identity=_format_player_identity(player_id, user_info.nick),
         )
         if has_collection
         else ""
@@ -950,6 +944,8 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             unity_peak,
             peak_rank_summary,
             visible_local_rank_summary,
+            player_id=player_id,
+            nick=user_info.nick,
         )
         if needs_peak_section
         else ""
@@ -1003,8 +999,6 @@ async def handle_player(
             except Exception:  # noqa: BLE001
                 team_name = str(user_info.team_id)
 
-        avatar_head_names, avatar_frame_names = _lookup_avatar_names(user_info)
-
     except FinishedException:
         raise
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
@@ -1012,12 +1006,14 @@ async def handle_player(
             matcher,
             event,
             format_player_query_error(player_id, e),
+            mention_sender=True,
         )
     except Exception as e:  # noqa: BLE001
         await finish_event_reply(
             matcher,
             event,
             f"❌ 米米号 {player_id} 查询失败：{e}",
+            mention_sender=True,
         )
 
     detail_task: asyncio.Task[PlayerDetailMessages] | None = None
@@ -1035,8 +1031,6 @@ async def handle_player(
         user_info,
         more_info,
         team_name=team_name,
-        avatar_head_names=avatar_head_names,
-        avatar_frame_names=avatar_frame_names,
         online_info=online_info,
         unity_peak=UnityPeakInfo(),
         peak_rank_summary=PeakSeasonRankSummary.empty(),

@@ -6,7 +6,6 @@ from nonebot.matcher import Matcher
 
 from ironsbot.custom_plugins.superuser_priority import wait_for_superuser_priority
 
-from .config import plugin_config
 from .reply_limits import limit_message_by_reply_lines
 from .text import build_message
 
@@ -16,13 +15,12 @@ def event_sender_at_user_ids(
     *,
     mention_sender: bool = False,
 ) -> tuple[int, ...]:
+    del mention_sender
+
     if not isinstance(event, GroupMessageEvent):
         return ()
 
-    if mention_sender or plugin_config.msg_at_trigger:
-        return (event.user_id,)
-
-    return ()
+    return (event.user_id,)
 
 
 async def send_matcher_message(

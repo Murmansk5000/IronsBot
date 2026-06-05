@@ -11,17 +11,23 @@ from zoneinfo import ZoneInfo
 import httpx
 from nonebot import get_plugin_config, logger
 from nonebot.exception import FinishedException
+from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 from pydantic import BaseModel, Field, field_validator
 
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_broadcast_message,
+    send_event_reply,
 )
 from ironsbot.custom_plugins.superuser_policy import (
     is_superuser,
     with_superuser_groups,
     with_superusers,
+)
+from ironsbot.plugins.headless_seer.exception import (
+    DisconnectedError,
+    NotLoggedInError,
 )
 from ironsbot.utils.rule import no_reply
 
@@ -32,12 +38,31 @@ if TYPE_CHECKING:
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
 COMMANDS = ("开服查询", "开服了吗")
+HEADLESS_LOGIN_COMMANDS = (
+    "无头登录",
+    "无头重连",
+    "重连无头",
+    "机器人登录",
+    "机器人重连",
+    "重连机器人",
+    "登录机器人",
+    "/无头登录",
+    "/无头重连",
+    "/重连无头",
+    "/机器人登录",
+    "/机器人重连",
+    "/重连机器人",
+    "/登录机器人",
+)
 DEFAULT_UPDATE_WEEKDAY = 4
 DEFAULT_START_TIME = time(hour=10)
 DEFAULT_END_TIME = time(hour=15)
 HTTP_TIMEOUT_SECONDS = 12.0
 NOTICE_MAINTENANCE_TYPE = 3
 BROADCAST_MESSAGE = "赛尔号已经开服了。"
+HEADLESS_CONFIG_MISSING_MESSAGE = (
+    "未配置 HEADLESS_SEER_USER_ID 或 HEADLESS_SEER_PASSWORD"
+)
 
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
 MAINTENANCE_RANGE_PATTERN = re.compile(
@@ -100,14 +125,16 @@ class Config(BaseModel):
 
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
-    description="查询赛尔号维护公告，并按周五更新窗口判断是否可能已开服",
+    description="查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服",
     usage="""命令：
   开服了吗 / 开服查询 — 查询当前是否仍有维护公告
 
 说明：
-  优先解析官方开服公告中的维护时间；没有公告时按周五 10:00-15:00 默认更新窗口兜底。
+  无头客户端已登录游戏服务器时判定为已开服；公告只作为维护信息摘要。
+  无头客户端未登录时，结合公告和登录状态提示可能原因。
   如果查询结果判断为已开服，会向 SERVER_STATUS_BROADCAST_GROUPS
-  和 SERVER_STATUS_BROADCAST_USERS 配置的目标广播。""",
+  和 SERVER_STATUS_BROADCAST_USERS 配置的目标广播。
+  超级管理员可发送 /无头登录、/机器人登录、/重连机器人 手动触发无头客户端登录。""",
     config=Config,
     supported_adapters={"~onebot.v11"},
 )
@@ -124,6 +151,12 @@ class OpenBroadcastState:
     last_at: datetime | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class HeadlessStatus:
+    connected: bool
+    reason: str = ""
+
+
 plugin_config = get_plugin_config(Config)
 _open_broadcast_state = OpenBroadcastState()
 
@@ -133,11 +166,19 @@ server_status_matcher = on_fullmatch(
     priority=1,
     block=True,
 )
+headless_login_matcher = on_fullmatch(
+    HEADLESS_LOGIN_COMMANDS,
+    rule=no_reply(),
+    permission=SUPERUSER,
+    priority=1,
+    block=True,
+)
 
 
 @server_status_matcher.handle()
 async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
     now = _now()
+    headless_status = _get_headless_status()
 
     try:
         notice_text = await fetch_server_notice_text()
@@ -145,10 +186,21 @@ async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
         raise
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("开服公告读取失败")
+        if headless_status.connected:
+            await _broadcast_opened(event, now=now)
         await finish_event_reply(
             matcher,
             event,
-            _build_fetch_failed_reply(now, e),
+            _build_fetch_failed_reply(now, e, headless_status=headless_status),
+        )
+        return
+
+    if headless_status.connected:
+        await _broadcast_opened(event, now=now)
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_open_reply(now, notice_text=notice_text),
         )
         return
 
@@ -156,15 +208,51 @@ async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
         await finish_event_reply(
             matcher,
             event,
-            _build_notice_reply(notice_text, now),
+            _build_notice_reply(
+                notice_text,
+            ),
         )
         return
 
-    await _broadcast_opened(event, now=now)
     await finish_event_reply(
         matcher,
         event,
-        _build_no_notice_reply(now),
+        _build_no_notice_reply(now, headless_status=headless_status),
+    )
+
+
+@headless_login_matcher.handle()
+async def handle_headless_login(matcher: Matcher, event: MessageEvent) -> None:
+    await send_event_reply(
+        matcher,
+        event,
+        "正在尝试登录无头米米号...",
+        mention_sender=True,
+    )
+
+    try:
+        user_id = await _login_headless_client()
+    except FinishedException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.opt(exception=True).warning("手动无头客户端登录失败")
+        await finish_event_reply(
+            matcher,
+            event,
+            (
+                "无头米米号登录失败。\n"
+                f"原因：{e}\n"
+                "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
+            ),
+            mention_sender=True,
+        )
+        return
+
+    await finish_event_reply(
+        matcher,
+        event,
+        f"无头米米号已登录：{user_id}",
+        mention_sender=True,
     )
 
 
@@ -190,34 +278,54 @@ async def fetch_server_notice_text() -> str | None:
     return None
 
 
-def _build_notice_reply(notice_text: str, now: datetime) -> str:
+def _build_open_reply(
+    now: datetime,
+    *,
+    notice_text: str | None = None,
+    notice_error: Exception | None = None,
+) -> str:
+    lines = ["开服了哦~（机器人已登录游戏服务器）"]
+    if notice_text:
+        lines.extend(("", _build_notice_summary(notice_text, now)))
+    if notice_error is not None:
+        lines.extend(
+            (
+                "",
+                f"公告读取失败：{notice_error.__class__.__name__}，但无头客户端已登录。",
+            )
+        )
+    return "\n".join(lines)
+
+
+def _build_notice_reply(notice_text: str) -> str:
+    return notice_text
+
+
+def _build_notice_summary(notice_text: str, now: datetime) -> str:
     window = _parse_maintenance_window(notice_text, now)
     if window is None:
-        return f"检测到维护公告，按官方公告为准：\n{notice_text}"
+        return f"检测到维护公告：{_short_notice_text(notice_text)}"
 
     if now < window.start:
-        status = "还没到公告维护时间。"
+        status = "还没到公告维护时间"
     elif now <= window.end:
-        status = f"维护中，预计 {_format_datetime(window.end)} 开服。"
+        status = f"维护中，预计 {_format_datetime(window.end)} 开服"
     else:
-        status = "公告仍在，但已超过公告结束时间，可能延迟开服。"
+        status = "公告仍在，但已超过公告结束时间，可能延迟开服"
 
     return (
-        f"{status}\n"
+        f"公告摘要：{status}\n"
         "公告时间："
-        f"{_format_datetime(window.start)} ~ {_format_datetime(window.end)}\n\n"
-        f"{notice_text}"
+        f"{_format_datetime(window.start)} ~ {_format_datetime(window.end)}\n"
+        f"公告内容：{_short_notice_text(notice_text)}"
     )
 
 
-def _build_no_notice_reply(now: datetime) -> str:
-    if _is_default_update_window(now):
-        return (
-            "没有读到维护公告，可能已经开服了哦~\n"
-            "当前仍在周五默认更新窗口（10:00-15:00），如果官方临时调整，以公告为准。"
-        )
+def _build_no_notice_reply(now: datetime, *, headless_status: HeadlessStatus) -> str:
+    if headless_status.connected:
+        return _build_open_reply(now)
 
-    return "开服了哦~"
+    return "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
 
 
 async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
@@ -283,15 +391,89 @@ def _is_open_broadcast_in_cooldown(now: datetime) -> bool:
     return now - _open_broadcast_state.last_at < timedelta(minutes=cooldown_minutes)
 
 
-def _build_fetch_failed_reply(now: datetime, error: Exception) -> str:
+def _build_fetch_failed_reply(
+    now: datetime,
+    error: Exception,
+    *,
+    headless_status: HeadlessStatus,
+) -> str:
     error_name = error.__class__.__name__
-    if _is_default_update_window(now):
-        return (
-            f"⚠️ 没读到开服公告（{error_name}）。\n"
-            "当前在周五默认更新窗口（10:00-15:00），建议稍后再试。"
+    if headless_status.connected:
+        return _build_open_reply(now, notice_error=error)
+
+    reason_text = _format_headless_unavailable_text(headless_status.reason)
+    return (
+        f"公告读取失败（{error_name}），机器人也没有登录游戏服务器，暂时不能确认已开服。\n"
+        f"{reason_text}\n"
+        "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
+    )
+
+
+def _get_headless_status() -> HeadlessStatus:
+    try:
+        from ironsbot.plugins.headless_seer.manager import client_manager
+
+        game = client_manager.get_client()
+    except (DisconnectedError, NotLoggedInError) as e:
+        return HeadlessStatus(connected=False, reason=str(e))
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).warning("开服查询检查无头客户端状态失败")
+        return HeadlessStatus(
+            connected=False,
+            reason="检查机器人登录状态失败",
         )
 
-    return f"开服了哦~（公告读取失败：{error_name}）"
+    if bool(getattr(game, "is_logged_in", False)):
+        return HeadlessStatus(connected=True)
+
+    return HeadlessStatus(
+        connected=False,
+        reason="无头客户端未处于已登录状态",
+    )
+
+
+def _format_headless_unavailable_text(reason: str) -> str:
+    reason = reason.strip() or "状态未知"
+    return f"机器人登录状态：{reason}。"
+
+
+async def _login_headless_client() -> int:
+    from ironsbot.plugins.headless_seer.config import plugin_config as headless_config
+    from ironsbot.plugins.headless_seer.manager import client_manager
+
+    try:
+        game = client_manager.get_client()
+        if game.is_logged_in:
+            return int(game.user_id)
+    except (DisconnectedError, NotLoggedInError):
+        client_manager.shutdown()
+
+    user_id = headless_config.headless_seer_user_id
+    password = headless_config.headless_seer_password
+    if user_id is None or not password:
+        raise RuntimeError(HEADLESS_CONFIG_MISSING_MESSAGE)
+
+    game = await client_manager.login(
+        user_id=user_id,
+        password=password,
+        login_server_url=headless_config.headless_seer_login_server_addr,
+        heartbeat_interval=headless_config.headless_seer_heartbeat_interval,
+        reconnect_retries=headless_config.headless_seer_reconnect_retries,
+        reconnect_delay=headless_config.headless_seer_reconnect_delay,
+        reconnect_delay_max=headless_config.headless_seer_reconnect_delay_max,
+    )
+    if not game.is_logged_in:
+        raise RuntimeError("登录未完成，已进入自动重连")
+
+    return user_id
+
+
+def _short_notice_text(text: str, *, max_chars: int = 120) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    summary = " ".join(lines) if lines else text.strip()
+    if len(summary) <= max_chars:
+        return summary
+    return f"{summary[:max_chars]}..."
 
 
 def _parse_maintenance_window(text: str, now: datetime) -> MaintenanceWindow | None:

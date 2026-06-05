@@ -15,6 +15,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
 from ironsbot.utils.rule import no_reply
 
 from ..config import plugin_config
@@ -470,6 +471,7 @@ async def handle_rank_cache_batch(
         f"\n当前缓存：{before.player_count}/{before.max_players}。"
         f"{truncated_text}"
     )
+    await release_superuser_priority(state)
     result = await refresh_local_rank_cache(player_ids)
     after = get_local_rank_cache_stats()
 
@@ -500,8 +502,11 @@ async def handle_rank_cache_status(
     lines = [
         "📊【样本榜缓存状态】",
         f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
+        f"总缓存玩家：{stats.total_player_count} 个（含全服榜单扫到但未计入样本的人）",
         f"全服排行扫描上限：前 {plugin_config.seer_query_rank_limit} 名",
         f"单次批量缓存上限：{plugin_config.seer_query_cache_batch_limit} 个",
+        f"单轮刷新上限：{plugin_config.seer_query_cache_refresh_limit} 个",
+        f"刷新过期时间：{plugin_config.seer_query_cache_refresh_max_age_hours} 小时",
         "巅峰样本：按当前赛季单独比较",
         f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
         "",
@@ -518,6 +523,7 @@ async def handle_rank_cache_status(
 async def handle_rank_cache_refresh(
     matcher: Matcher,
     event: MessageEvent,
+    state: T_State,
 ) -> None:
     ensure_extended_packets()
     before = get_local_rank_cache_stats()
@@ -531,15 +537,19 @@ async def handle_rank_cache_refresh(
     await send_event_reply(
         matcher,
         event,
-        f"🔄 正在刷新样本榜缓存，共 {before.player_count} 个米米号。"
-        "这会逐个重新查询，可能需要一点时间。"
+        "🔄 正在刷新样本榜缓存。"
+        f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
+        f"{plugin_config.seer_query_cache_refresh_limit} 个，"
+        "只刷新超过 "
+        f"{plugin_config.seer_query_cache_refresh_max_age_hours} 小时未更新的数据。"
     )
+    await release_superuser_priority(state)
     result = await refresh_local_rank_cache()
     after = get_local_rank_cache_stats()
 
     lines = [
         "✅【样本榜缓存刷新完成】",
-        f"原缓存米米号：{result.total} 个",
+        f"本轮候选米米号：{result.total} 个",
         f"成功刷新：{result.success} 个",
         f"缓存已满跳过：{result.skipped_full} 个",
         f"失败：{result.failed} 个",

@@ -12,9 +12,14 @@ from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.custom_plugins.message_actions import (
+    enter_event_reply_conversation,
+    event_conversation_session_id,
+    finish_event_reply,
+    send_event_reply,
+)
+from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
-from ironsbot.utils.prompt import Prompt, PromptItem, enter_prompt
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group
@@ -28,6 +33,8 @@ AUTOCARD_NATURE_FILE = "autocardNature.json"
 AUTOCARD_ROLE_FILE = "autocardRole.json"
 AUTOCARD_CACHE_TTL = timedelta(hours=12)
 AUTOCARD_PROMPT_MAX_ITEMS = 30
+AUTOCARD_PROMPT_NAMESPACE = "autocard"
+AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
 AUTOCARD_QUERY_SUFFIXES = ("群星牌",)
 AUTOCARD_HELP_ARGS = {"", "帮助", "查询", "资料", "说明"}
@@ -70,10 +77,6 @@ autocard_matcher = matcher_group.on_message(
 
 def _normalize_name(value: object) -> str:
     return AUTOCARD_NAME_STRIP_PATTERN.sub("", str(value)).casefold()
-
-
-def _null_prompt_session() -> None:
-    return None
 
 
 def _field(item: dict[str, Any], *names: str, default: Any = "") -> Any:
@@ -313,21 +316,89 @@ def _prompt_desc(dataset: AutocardDataset, kind: str, item: dict[str, Any]) -> s
     )
 
 
-async def _resolve_autocard_prompt(
-    item: PromptItem[AutocardPromptValue],
+def _is_autocard_prompt_reply(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip().isdigit()
+
+
+def _invalidate_autocard_prompt(event: MessageEvent) -> None:
+    prompt_session_manager.invalidate(
+        event_conversation_session_id(AUTOCARD_PROMPT_NAMESPACE, event)
+    )
+
+
+def _prompt_values(
+    matches: list[tuple[str, dict[str, Any]]],
+) -> tuple[AutocardPromptValue, ...]:
+    return tuple(
+        AutocardPromptValue(kind=kind, item_id=_int_field(item, "id"))
+        for kind, item in matches
+    )
+
+
+def _build_prompt_text(
+    dataset: AutocardDataset,
+    matches: list[tuple[str, dict[str, Any]]],
+) -> str:
+    lines = ["请问你想查询的群星牌资料是……"]
+    for index, (kind, item) in enumerate(matches, start=1):
+        desc = _prompt_desc(dataset, kind, item)
+        lines.append(f"{index}. {_entry_name(item)}（{desc}）")
+    lines.append("")
+    lines.append("💬 输入序号选择 · 输入 0 退出")
+    return "\n".join(lines)
+
+
+async def _enter_autocard_prompt(
     matcher: Matcher,
-    _: Any,
+    event: MessageEvent,
+    state: T_State,
+    values: tuple[AutocardPromptValue, ...],
+    prompt: str | None,
 ) -> None:
+    state[AUTOCARD_PROMPT_STATE_KEY] = values
+    await enter_event_reply_conversation(
+        matcher,
+        event,
+        namespace=AUTOCARD_PROMPT_NAMESPACE,
+        handlers=[_handle_autocard_prompt_reply],
+        reply_check=_is_autocard_prompt_reply,
+        prompt=prompt,
+    )
+
+
+async def _handle_autocard_prompt_reply(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    key_text = event.get_plaintext().strip()
+    if key_text == "0":
+        await finish_event_reply(matcher, event, "❌ 已退出群星牌选择")
+
+    values = tuple(state.get(AUTOCARD_PROMPT_STATE_KEY) or ())
+    if not values:
+        raise FinishedException
+
+    index = int(key_text)
+    if index < 1 or index > len(values):
+        await finish_event_reply(matcher, event, "⚠️ 序号超出范围，已退出群星牌选择")
+
+    value = values[index - 1]
     dataset = await _load_autocard_dataset()
-    if item.value.kind == "role":
-        data = _find_role_by_id(dataset, item.value.item_id)
+    if value.kind == "role":
+        data = _find_role_by_id(dataset, value.item_id)
     else:
-        data = _find_card_by_id(dataset, item.value.item_id)
+        data = _find_card_by_id(dataset, value.item_id)
 
     if data is None:
-        await matcher.finish("❌ 未找到该群星牌资料，这可能是缓存已过期。")
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 未找到该群星牌资料，这可能是缓存已过期。",
+        )
 
-    await matcher.send(_format_entry(dataset, item.value.kind, data))
+    await send_event_reply(matcher, event, _format_entry(dataset, value.kind, data))
+    await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
 
 
 @autocard_matcher.handle()
@@ -337,6 +408,8 @@ async def handle_autocard_query(
     state: T_State,
     arg: str = Depends(parse_string_arg),
 ) -> None:
+    _invalidate_autocard_prompt(event)
+
     query = _extract_query_arg(arg)
     if query in AUTOCARD_HELP_ARGS:
         await finish_event_reply(matcher, event, format_autocard_public_info())
@@ -365,22 +438,10 @@ async def handle_autocard_query(
             f"❌ 群星牌匹配超过 {AUTOCARD_PROMPT_MAX_ITEMS} 个，请换更精确的关键词。"
         )
 
-    prompt = Prompt(
-        title="请问你想查询的群星牌资料是……",
-        items=[
-            PromptItem(
-                name=_entry_name(item),
-                desc=_prompt_desc(dataset, kind, item),
-                value=AutocardPromptValue(kind=kind, item_id=_int_field(item, "id")),
-            )
-            for kind, item in matches
-        ],
-    )
-    await enter_prompt(
+    await _enter_autocard_prompt(
         matcher,
         event,
         state,
-        prompt,
-        _resolve_autocard_prompt,
-        session_dependency=Depends(_null_prompt_session),
+        _prompt_values(matches),
+        prompt=_build_prompt_text(dataset, matches),
     )

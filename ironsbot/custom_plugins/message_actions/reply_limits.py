@@ -16,7 +16,7 @@ from ironsbot.custom_plugins.superuser_policy import is_superuser
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
-from .text import normalize_command_text, render_text
+from .text import build_message, normalize_command_text, render_text
 
 COMMAND_PREFIXES = ("/",)
 REPLY_LINE_LIMIT_ARG_KEY = "_message_reply_line_limit_arg"
@@ -276,38 +276,52 @@ reply_line_limit_matcher = on_message(
 )
 
 
+async def _finish_reply_line_limit(
+    event: MessageEvent,
+    message: str | Message,
+) -> None:
+    at_user_ids = (event.user_id,) if isinstance(event, GroupMessageEvent) else ()
+    await reply_line_limit_matcher.finish(
+        build_message(message, at_user_ids=at_user_ids)
+    )
+
+
 @reply_line_limit_matcher.handle()
 async def handle_reply_line_limit_command(
     event: MessageEvent,
     state: T_State,
 ) -> None:
     if not isinstance(event, GroupMessageEvent):
-        await reply_line_limit_matcher.finish("请在群聊中设置本群回复行数。")
+        await _finish_reply_line_limit(event, "请在群聊中设置本群回复行数。")
 
     raw_arg = str(state.get(REPLY_LINE_LIMIT_ARG_KEY) or "").strip()
     current_limit = get_group_reply_line_limit(event.group_id)
     current_text = "不限制" if current_limit is None else f"{current_limit} 行"
 
     if not raw_arg:
-        await reply_line_limit_matcher.finish(
+        await _finish_reply_line_limit(
+            event,
             f"当前本群回复消息行数：{current_text}\n"
             "用法：/回复行数 20；发送 /回复行数 默认 可恢复默认。"
         )
 
     if not _can_manage_reply_line_limit(event):
-        await reply_line_limit_matcher.finish(
+        await _finish_reply_line_limit(
+            event,
             "只有本群群主、管理员或超级管理员可以修改回复行数。"
         )
 
     normalized_arg = normalize_command_text(raw_arg)
     if normalized_arg in REPLY_LINE_LIMIT_CLEAR_COMMANDS:
         clear_group_reply_line_limit(event.group_id)
-        await reply_line_limit_matcher.finish(
+        await _finish_reply_line_limit(
+            event,
             "已恢复本群回复消息行数默认设置。"
         )
 
     if not raw_arg.isdigit():
-        await reply_line_limit_matcher.finish(
+        await _finish_reply_line_limit(
+            event,
             "回复行数需要是数字，例如：/回复行数 20"
         )
 
@@ -315,7 +329,8 @@ async def handle_reply_line_limit_command(
     min_lines = plugin_config.msg_reply_min_lines
     max_allowed_lines = plugin_config.msg_reply_max_lines
     if max_lines < min_lines or max_lines > max_allowed_lines:
-        await reply_line_limit_matcher.finish(
+        await _finish_reply_line_limit(
+            event,
             f"回复行数范围是 {min_lines} ~ {max_allowed_lines}。"
         )
 
@@ -324,6 +339,7 @@ async def handle_reply_line_limit_command(
         max_lines,
         event.user_id,
     )
-    await reply_line_limit_matcher.finish(
+    await _finish_reply_line_limit(
+        event,
         f"已设置本群回复消息行数：{max_lines} 行。"
     )

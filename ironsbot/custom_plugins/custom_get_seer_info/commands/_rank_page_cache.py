@@ -16,6 +16,15 @@ class CachedRankItem:
     score: int
 
 
+@dataclass(frozen=True, slots=True)
+class CachedRankLookup:
+    id: int
+    nick: str
+    score: int
+    rank_index: int
+    fetched_at: float
+
+
 def _cache_path() -> Path:
     return plugin_config.seer_query_rank_page_cache_path
 
@@ -123,6 +132,55 @@ def get_cached_rank_page(
             ]
     except sqlite3.Error as e:
         logger.warning(f"failed to read Seer rank page cache: {e}")
+        return None
+
+
+def get_cached_rank_item(
+    *,
+    key: int,
+    sub_key: int,
+    user_id: int,
+) -> CachedRankLookup | None:
+    if not plugin_config.seer_query_rank_page_cache:
+        return None
+
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    i.nick,
+                    i.score,
+                    i.start_index,
+                    i.position,
+                    p.fetched_at
+                FROM items i
+                JOIN pages p
+                  ON p.key = i.key
+                 AND p.sub_key = i.sub_key
+                 AND p.start_index = i.start_index
+                 AND p.end_index = i.end_index
+                WHERE i.key = ?
+                  AND i.sub_key = ?
+                  AND i.user_id = ?
+                ORDER BY p.fetched_at DESC
+                LIMIT 1
+                """,
+                (key, sub_key, user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            nick, score, start_index, position, fetched_at = row
+            return CachedRankLookup(
+                id=user_id,
+                nick=str(nick),
+                score=int(score),
+                rank_index=int(start_index) + int(position),
+                fetched_at=float(fetched_at),
+            )
+    except sqlite3.Error as e:
+        logger.warning(f"failed to read cached Seer rank item: {e}")
         return None
 
 
