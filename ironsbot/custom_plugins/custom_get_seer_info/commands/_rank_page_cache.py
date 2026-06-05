@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import sqlite3
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,7 @@ class CachedRankLookup:
     score: int
     rank_index: int
     fetched_at: float
+    is_stale: bool = False
 
 
 def _cache_path() -> Path:
@@ -141,7 +143,7 @@ def get_cached_rank_item(
     sub_key: int,
     user_id: int,
 ) -> CachedRankLookup | None:
-    if not plugin_config.seer_query_rank_page_cache:
+    if not _is_cache_enabled():
         return None
 
     try:
@@ -172,12 +174,17 @@ def get_cached_rank_item(
                 return None
 
             nick, score, start_index, position, fetched_at = row
+            fetched_at_float = float(fetched_at)
+            is_stale = time.time() - fetched_at_float > (
+                plugin_config.seer_query_rank_page_cache_ttl_seconds
+            )
             return CachedRankLookup(
                 id=user_id,
                 nick=str(nick),
                 score=int(score),
                 rank_index=int(start_index) + int(position),
-                fetched_at=float(fetched_at),
+                fetched_at=fetched_at_float,
+                is_stale=is_stale,
             )
     except sqlite3.Error as e:
         logger.warning(f"failed to read cached Seer rank item: {e}")
@@ -190,7 +197,7 @@ def save_rank_page(
     sub_key: int,
     start: int,
     end: int,
-    items: list[object],
+    items: Sequence[object],
 ) -> None:
     if not _is_cache_enabled():
         return

@@ -3,11 +3,13 @@ import asyncio
 import os
 import tempfile
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import NamedTuple
 
 import httpx
 from anyio import Path as AsyncPath
+from anyio import to_thread
 from nonebot import get_driver, on_message, require
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -79,6 +81,30 @@ def _get_lock(name: str) -> asyncio.Lock:
     return _sync_locks[name]
 
 
+def _write_bytes_atomic(file_path: str, content: bytes) -> None:
+    target_path = Path(file_path)
+    parent = target_path.parent
+    if parent != Path():
+        parent.mkdir(parents=True, exist_ok=True)
+
+    tmp_dir = parent if parent != Path() else Path.cwd()
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target_path.name}.",
+        suffix=".tmp",
+        dir=str(tmp_dir),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as tmp_file:
+            tmp_file.write(content)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        tmp_path.replace(target_path)
+    finally:
+        with suppress(FileNotFoundError):
+            tmp_path.unlink()
+
+
 def is_sync_running() -> bool:
     return _sync_all_lock.locked() or any(
         _get_lock(name).locked()
@@ -143,7 +169,7 @@ def register_local_database(name: str, *, file_path: str) -> None:
     logger.info(f"已从本地文件 '{file_path}' 加载数据库 '{name}'（无自动同步）")
 
 
-async def sync_database(name: str) -> bool:  # noqa: C901, PLR0912
+async def sync_database(name: str) -> bool:  # noqa: C901
     """从远程 URL 下载 SQLite 数据库并导入到内存中。
 
     若注册时提供了 ``get_fingerprint``，会先获取远程指纹并与上次成功同步
@@ -192,10 +218,11 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0912
             cache_saved = True
             if entry.local_path:
                 try:
-                    cache_path = Path(entry.local_path)
-                    if cache_path.parent != Path():
-                        cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    await AsyncPath(entry.local_path).write_bytes(content_bytes)
+                    await to_thread.run_sync(
+                        _write_bytes_atomic,
+                        entry.local_path,
+                        content_bytes,
+                    )
                 except OSError:
                     cache_saved = False
                     logger.exception(
