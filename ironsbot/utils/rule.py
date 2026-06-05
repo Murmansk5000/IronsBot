@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+# ruff: noqa: FBT001, FBT002
 import re
 from typing import Literal
 
@@ -52,7 +53,7 @@ class StartswithOrEndswithRule:
     async def __call__(self, event: Event, state: T_State) -> bool:
         try:
             text = event.get_plaintext()
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
         flags = re.IGNORECASE if self.ignorecase else 0
@@ -81,9 +82,11 @@ class StartswithOrEndswithRule:
 
         state[STARTSWITH_KEY] = sw.group() if sw else ""
         state[ENDSWITH_KEY] = ew.group() if ew else ""
-        state[BOT_COMMAND_ARG_KEY] = text.replace(state[STARTSWITH_KEY], "").replace(
-            state[ENDSWITH_KEY], ""
-        )
+        arg_start = sw.end() if sw else 0
+        arg_end = len(text)
+        if ew and ew.start() >= arg_start:
+            arg_end = ew.start()
+        state[BOT_COMMAND_ARG_KEY] = text[arg_start:arg_end]
         return True
 
 
@@ -128,4 +131,36 @@ class NoReply:
 
 
 def no_reply() -> Rule:
-    return Rule(NoReply())
+    return Rule(NoReply()) & Rule(NoForeignAt())
+
+
+class NoForeignAt:
+    """仅匹配没有 @ 其他人的消息，避免 @别人 后面的文本误触发命令。"""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "NoForeignAt()"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, NoForeignAt)
+
+    def __hash__(self) -> int:
+        return hash(())
+
+    async def __call__(self, event: Event, _: T_State) -> bool:
+        message = getattr(event, "message", None)
+        self_id = getattr(event, "self_id", None)
+        if message is None or self_id is None:
+            return True
+
+        self_id_text = str(self_id)
+        for segment in message:
+            if getattr(segment, "type", None) != "at":
+                continue
+
+            target = str(getattr(segment, "data", {}).get("qq", ""))
+            if target != self_id_text:
+                return False
+
+        return True
