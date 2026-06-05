@@ -8,13 +8,6 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 
-@scheduler.scheduled_job(
-    "cron",
-    hour=plugin_config.seer_query_cache_refresh_hour,
-    minute=plugin_config.seer_query_cache_refresh_minute,
-    id="custom_get_seer_info_local_rank_refresh",
-    replace_existing=True,
-)
 async def _scheduled_local_rank_refresh() -> None:
     if not plugin_config.seer_query_cache_auto_refresh:
         return
@@ -27,3 +20,13 @@ async def _scheduled_local_rank_refresh() -> None:
         f"skipped_full={result.skipped_full}, "
         f"failed={result.failed}"
     )
+
+
+scheduler.add_job(
+    _scheduled_local_rank_refresh,
+    "cron",
+    hour=plugin_config.seer_query_cache_refresh_hour,
+    minute=plugin_config.seer_query_cache_refresh_minute,
+    id="custom_get_seer_info_local_rank_refresh",
+    replace_existing=True,
+)
