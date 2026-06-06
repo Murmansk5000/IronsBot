@@ -18,7 +18,6 @@ from ironsbot.custom_plugins.superuser_policy import (
 from ironsbot.utils.rule import no_reply
 
 from .config import (
-    GroupCommandMessageAction,
     GroupScheduledMessageAction,
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
@@ -104,9 +103,16 @@ group_command_matcher = on_message(
 
 
 @private_command_matcher.handle()
-async def handle_private_command(state: T_State) -> None:
+async def handle_private_command(
+    event: PrivateMessageEvent,
+    state: T_State,
+) -> None:
     action = state[PRIVATE_ACTION_KEY]
-    await finish_matcher_message(private_command_matcher, action.message)
+    await finish_matcher_message(
+        private_command_matcher,
+        action.message,
+        event=event,
+    )
 
 
 @group_command_matcher.handle()
@@ -120,6 +126,7 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
         group_command_matcher,
         action.message,
         at_user_ids=at_user_ids,
+        event=event,
     )
 
 

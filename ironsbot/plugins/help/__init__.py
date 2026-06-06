@@ -5,12 +5,19 @@
 """
 
 from nonebot.adapters import Bot, Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.message_actions import (
+    build_message,
+    event_sender_at_user_ids,
+    finish_event_reply,
+    send_event_reply,
+)
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
     prompt_session_manager,
@@ -40,6 +47,34 @@ help_cmd = on_fullmatch("帮助", rule=no_reply(), priority=1, block=True)
 _HELP_PROMPT_KEY = "_help_prompt_plugin_count"
 
 
+def _help_prompt_message(event: Event, text: str):
+    if not isinstance(event, MessageEvent):
+        return text
+    return build_message(text, at_user_ids=event_sender_at_user_ids(event))
+
+
+async def _finish_help_reply(
+    matcher: Matcher,
+    event: Event,
+    message: str,
+) -> None:
+    if isinstance(event, MessageEvent):
+        await finish_event_reply(matcher, event, message)
+        return
+    await matcher.finish(message)
+
+
+async def _send_help_reply(
+    matcher: Matcher,
+    event: Event,
+    message: str,
+) -> None:
+    if isinstance(event, MessageEvent):
+        await send_event_reply(matcher, event, message)
+        return
+    await matcher.send(message)
+
+
 def _is_digit_input(event: Event) -> bool:
     return event.get_plaintext().strip().isdigit()
 
@@ -53,7 +88,7 @@ async def handle_help(
 ) -> None:
     plugins = get_supported_plugins(bot)
     if not plugins:
-        await matcher.finish("当前没有可用的插件。")
+        await _finish_help_reply(matcher, event, "当前没有可用的插件。")
 
     state[_HELP_PROMPT_KEY] = len(plugins)
     session_id = event.get_session_id()
@@ -66,7 +101,7 @@ async def handle_help(
         matcher,
         handlers=[handler],
         rule=rule,
-        prompt=format_plugin_list(bot),
+        prompt=_help_prompt_message(event, format_plugin_list(bot)),
     )
 
 
@@ -86,7 +121,7 @@ def _create_selection_handler(
         key_text = event.get_plaintext().strip()
 
         if key_text == "0":
-            await matcher.finish("❌ 已退出帮助")
+            await _finish_help_reply(matcher, event, "❌ 已退出帮助")
 
         if not key_text.isdigit():
             raise FinishedException
@@ -95,13 +130,13 @@ def _create_selection_handler(
         plugin_count = state[_HELP_PROMPT_KEY]
 
         if index < 1 or index > plugin_count:
-            await matcher.finish("⚠️ 序号超出范围，已退出帮助")
+            await _finish_help_reply(matcher, event, "⚠️ 序号超出范围，已退出帮助")
 
         help_text = get_plugin_help_by_index(bot, index)
         if help_text:
-            await matcher.send(help_text)
+            await _send_help_reply(matcher, event, help_text)
         else:
-            await matcher.send("⚠️ 未能获取该插件的帮助信息")
+            await _send_help_reply(matcher, event, "⚠️ 未能获取该插件的帮助信息")
 
         rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
         await reject_with_rule(matcher, rule)
