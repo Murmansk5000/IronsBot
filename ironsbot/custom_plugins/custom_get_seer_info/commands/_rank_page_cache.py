@@ -27,6 +27,15 @@ class CachedRankLookup:
     is_stale: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class CachedRankPageSummary:
+    start_index: int
+    end_index: int
+    item_count: int
+    fetched_at: float
+    is_stale: bool = False
+
+
 def _cache_path() -> Path:
     return plugin_config.seer_query_rank_page_cache_path
 
@@ -189,6 +198,44 @@ def get_cached_rank_item(
     except sqlite3.Error as e:
         logger.warning(f"failed to read cached Seer rank item: {e}")
         return None
+
+
+def get_rank_page_cache_summary(
+    *,
+    key: int,
+    sub_key: int,
+) -> list[CachedRankPageSummary]:
+    if not _is_cache_enabled():
+        return []
+
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT start_index, end_index, fetched_at, item_count
+                FROM pages
+                WHERE key = ?
+                  AND sub_key = ?
+                ORDER BY start_index, end_index
+                """,
+                (key, sub_key),
+            ).fetchall()
+    except sqlite3.Error as e:
+        logger.warning(f"failed to read Seer rank page cache summary: {e}")
+        return []
+
+    now = time.time()
+    ttl = plugin_config.seer_query_rank_page_cache_ttl_seconds
+    return [
+        CachedRankPageSummary(
+            start_index=int(start_index),
+            end_index=int(end_index),
+            fetched_at=float(fetched_at),
+            item_count=int(item_count),
+            is_stale=ttl <= 0 or now - float(fetched_at) > ttl,
+        )
+        for start_index, end_index, fetched_at, item_count in rows
+    ]
 
 
 def save_rank_page(

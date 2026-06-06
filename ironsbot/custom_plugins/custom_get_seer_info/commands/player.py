@@ -17,7 +17,10 @@ from ironsbot.custom_plugins.message_actions import (
     command_text_matches,
     enter_event_reply_conversation,
     finish_event_reply,
+    peek_user_rate_limit,
+    penalize_user_rate_limit,
 )
+from ironsbot.custom_plugins.superuser_policy import is_superuser
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -58,6 +61,9 @@ PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
 METRIC_SEPARATOR = "\uFF5C"
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_DETAIL_NAMESPACE = "custom_get_seer_info_player_details"
+PLAYER_QUERY_SUCCESS_RATE_LIMIT_NAMESPACE = "custom_get_seer_info.player_query.success"
+PLAYER_QUERY_FAILURE_RATE_LIMIT_NAMESPACE = "custom_get_seer_info.player_query.failure"
+_PLAYER_QUERY_IN_PROGRESS: dict[int, int] = {}
 
 
 @dataclass(slots=True)
@@ -87,6 +93,69 @@ async def _is_player_id_query(event: Event, state: T_State) -> bool:
 async def _is_invalid_player_text_query(event: Event) -> bool:
     arg = _extract_player_arg(event.get_plaintext())
     return arg is not None and not arg.isdigit()
+
+
+def _player_rate_limit_remaining(user_id: int) -> int:
+    exempt = is_superuser(user_id)
+    success_limit = peek_user_rate_limit(
+        PLAYER_QUERY_SUCCESS_RATE_LIMIT_NAMESPACE,
+        user_id,
+        plugin_config.seer_query_player_rate_limit_seconds,
+        exempt=exempt,
+    )
+    failure_limit = peek_user_rate_limit(
+        PLAYER_QUERY_FAILURE_RATE_LIMIT_NAMESPACE,
+        user_id,
+        plugin_config.seer_query_player_failure_rate_limit_seconds,
+        exempt=exempt,
+    )
+    return max(
+        success_limit.remaining_seconds,
+        failure_limit.remaining_seconds,
+    )
+
+
+def _penalize_player_query_success(user_id: int) -> None:
+    penalize_user_rate_limit(
+        PLAYER_QUERY_SUCCESS_RATE_LIMIT_NAMESPACE,
+        user_id,
+        plugin_config.seer_query_player_rate_limit_seconds,
+        exempt=is_superuser(user_id),
+    )
+
+
+def _penalize_player_query_failure(user_id: int) -> None:
+    penalize_user_rate_limit(
+        PLAYER_QUERY_FAILURE_RATE_LIMIT_NAMESPACE,
+        user_id,
+        plugin_config.seer_query_player_failure_rate_limit_seconds,
+        exempt=is_superuser(user_id),
+    )
+
+
+def _player_query_in_progress_message(player_id: int) -> str:
+    return (
+        f"⏳ 正在查询米米号 {player_id}，请等当前查询完成。\n"
+        "米米号查询需要连接游戏服务器；收集、巅峰和全服排行数据会更慢，"
+        "排名越靠后可能查得越久，多人同时查询时也可能需要排队。"
+    )
+
+
+def _player_detail_pending_message(label: str) -> str:
+    return (
+        f"⏳ {label}还在查询中，请稍等后再试。\n"
+        "这部分需要拉取收集、全服榜或赛季榜数据，排名越靠后可能越慢，"
+        "多人同时查询时也可能需要排队。"
+    )
+
+
+def _set_player_query_in_progress(user_id: int, player_id: int) -> None:
+    if not is_superuser(user_id):
+        _PLAYER_QUERY_IN_PROGRESS[user_id] = player_id
+
+
+def _clear_player_query_in_progress(user_id: int) -> None:
+    _PLAYER_QUERY_IN_PROGRESS.pop(user_id, None)
 
 
 player_invalid_text_matcher = matcher_group.on_message(
@@ -633,15 +702,39 @@ async def _optional_extra(
 @player_matcher.handle()
 async def validate_player_id(
     matcher: Matcher,
+    event: MessageEvent,
     state: T_State,
 ) -> None:
-    state[PLAYER_ID_KEY] = await parse_numeric_id(
+    player_id = await parse_numeric_id(
         matcher,
         state,
         min_value=1,
         max_value=2_000_000_000,
         error_message="❌ 米米号无效，请输入纯数字米米号。",
     )
+    state[PLAYER_ID_KEY] = player_id
+    in_progress_player_id = _PLAYER_QUERY_IN_PROGRESS.get(event.user_id)
+    if in_progress_player_id is not None and not is_superuser(event.user_id):
+        await finish_event_reply(
+            matcher,
+            event,
+            _player_query_in_progress_message(in_progress_player_id),
+            mention_sender=True,
+        )
+
+    remaining = _player_rate_limit_remaining(event.user_id)
+    if remaining > 0:
+        await finish_event_reply(
+            matcher,
+            event,
+            (
+                f"⏳ 刚刚已经发起过米米号查询，请 {remaining} 秒后再试。\n"
+                "收集、巅峰和全服排行数据会更慢，排名越靠后可能查得越久，"
+                "多人同时查询时也可能需要排队。"
+            ),
+            mention_sender=True,
+        )
+    _set_player_query_in_progress(event.user_id, player_id)
 
 
 async def _handle_detail_reply(
@@ -693,8 +786,11 @@ async def _get_player_detail_message(
 ) -> str:
     task = state.get(PLAYER_DETAIL_TASK_KEY)
     if isinstance(task, asyncio.Task):
+        if not task.done():
+            return _player_detail_pending_message(label)
+
         try:
-            detail_messages = await task
+            detail_messages = task.result()
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
             state[PLAYER_DETAIL_TASK_KEY] = None
             return format_player_query_error(int(state.get(PLAYER_ID_KEY, 0)), e)
@@ -1006,6 +1102,8 @@ async def handle_player(
     except FinishedException:
         raise
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
+        _clear_player_query_in_progress(event.user_id)
+        _penalize_player_query_failure(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -1014,6 +1112,8 @@ async def handle_player(
         )
         return
     except Exception as e:  # noqa: BLE001
+        _clear_player_query_in_progress(event.user_id)
+        _penalize_player_query_failure(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -1047,6 +1147,8 @@ async def handle_player(
         extra_errors=extra_errors,
     )
 
+    _clear_player_query_in_progress(event.user_id)
+    _penalize_player_query_success(event.user_id)
     await _send_player_info_with_detail_prompt(
         matcher,
         event,

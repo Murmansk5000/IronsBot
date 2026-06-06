@@ -8,6 +8,13 @@ from .conversations import (
     enter_event_reply_conversation,
     event_conversation_session_id,
 )
+from .rate_limits import (
+    RateLimitResult,
+    check_user_rate_limit,
+    peek_user_rate_limit,
+    penalize_user_rate_limit,
+    rate_limiter,
+)
 from .replies import (
     event_sender_at_user_ids,
     finish_event_reply,
@@ -62,10 +69,12 @@ __plugin_meta__ = PluginMetadata(
 
 __all__ = [
     "MessageTarget",
+    "RateLimitResult",
     "SendSummary",
     "TargetSendSummary",
     "broadcast_targets",
     "build_message",
+    "check_user_rate_limit",
     "clear_group_reply_line_limit",
     "command_reply_check",
     "command_text_matches",
@@ -81,7 +90,10 @@ __all__ = [
     "limit_message_by_reply_lines",
     "limit_text_lines",
     "normalize_command_text",
+    "peek_user_rate_limit",
+    "penalize_user_rate_limit",
     "private_targets",
+    "rate_limiter",
     "render_text",
     "reply_limits",
     "reply_line_limit_for_target",
