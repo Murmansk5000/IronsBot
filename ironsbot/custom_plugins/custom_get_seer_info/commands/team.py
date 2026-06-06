@@ -8,6 +8,7 @@ from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.plugins.headless_seer.exception import SocketRecvError
+from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import plugin_config
@@ -126,6 +127,10 @@ async def validate_team_id(
     matcher: Matcher,
     state: T_State,
 ) -> None:
+    raw_arg = parse_string_arg(state).strip()
+    if not raw_arg.isdigit():
+        await matcher.finish("❌ 请发送“战队+数字战队ID”，例如：战队9410436。")
+
     state[TEAM_ID_KEY] = await parse_numeric_id(
         matcher,
         state,

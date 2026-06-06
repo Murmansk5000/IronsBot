@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: MIT
+import html
 import json
+import re
 import sqlite3
+import urllib.error
+import urllib.request
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -51,10 +55,63 @@ SOON_ENDING_ACTIVITY_COMMANDS = (
 SOON_ENDING_THRESHOLD = timedelta(days=7)
 REMINDER_SEND_DELAY = timedelta(minutes=10)
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
+UNITY_NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
+UNITY_NOTICE_TIMEOUT_SECONDS = 8
+UNITY_NOTICE_CACHE_TTL = timedelta(minutes=30)
+NOTICE_ACTIVITY_BLOCK_CHARS = 900
+NOTICE_ACTIVITY_LOOKBEHIND_CHARS = 80
+DAYS_PER_WEEK = 7
+DEFAULT_OFFER_WINDOW_WEEKS = 1
+LIMITED_OFFER_KEYWORDS = (
+    "优惠",
+    "特惠",
+    "折扣",
+    "降价",
+    "减免",
+    "恢复至原价",
+    "价格恢复",
+    "限时",
+)
+OFFER_WINDOW_KEYWORDS = (
+    "首周",
+    "第一周",
+    "首月",
+    "第一月",
+    "截止至",
+    "更新前",
+    "购买时间",
+    "价格恢复",
+    "恢复至原价",
+    "更新后恢复",
+    "回复至原价",
+)
 SECONDS_PER_MINUTE = 60
 MINUTES_PER_HOUR = 60
 HOURS_PER_DAY = 24
 MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR
+
+
+@dataclass(slots=True)
+class NoticeCache:
+    text: str = ""
+    expires_at: datetime | None = None
+
+
+_notice_cache = NoticeCache()
+
+CHINESE_NUMBER_MAP = {
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+}
 
 
 def _coerce_int_list(value: object) -> object:
@@ -94,6 +151,8 @@ NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS = {
     _normalize_command_text(command)
     for command in SOON_ENDING_ACTIVITY_COMMANDS
 }
+
+
 def _strip_admin_command_prefix(text_value: str) -> str | None:
     stripped = text_value.strip()
     for prefix in ADMIN_COMMAND_PREFIXES:
@@ -178,6 +237,9 @@ class ActivityInfo:
     start_time: datetime | None
     end_time: datetime
     sort_order: int
+    offer_label: str | None = None
+    offer_window_days: int | None = None
+    offer_end_time: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +249,15 @@ class ActivityReminder:
     end_time: datetime
     lead_hours: int
     send_time: datetime
+    end_label: str = "结束时间"
+    display_end_time: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityDeadline:
+    end_time: datetime
+    label: str
+    display_end_time: bool
 
 
 _logged_warnings: set[str] = set()
@@ -194,6 +265,342 @@ _logged_warnings: set[str] = set()
 
 def _now() -> datetime:
     return datetime.now(LOCAL_TZ)
+
+
+def _normalize_notice_text(text_value: str) -> str:
+    return html.unescape(
+        text_value
+        .replace("\\r", "\n")
+        .replace("\\n", "\n")
+        .replace("\\/", "/")
+    )
+
+
+def _fetch_unity_notice_text(now: datetime) -> str:
+    if (
+        _notice_cache.expires_at is not None
+        and _notice_cache.expires_at > now
+    ):
+        return _notice_cache.text
+
+    try:
+        request = urllib.request.Request(
+            UNITY_NOTICE_URL,
+            headers={"User-Agent": "IronsBot activity reminder"},
+        )
+        with urllib.request.urlopen(
+            request,
+            timeout=UNITY_NOTICE_TIMEOUT_SECONDS,
+        ) as response:
+            raw_text = response.read().decode("utf-8", "replace")
+    except (OSError, urllib.error.URLError) as e:
+        logger.warning(f"activity notice fetch failed: {e}")
+        _notice_cache.expires_at = now + timedelta(minutes=5)
+        return _notice_cache.text
+
+    _notice_cache.text = _normalize_notice_text(raw_text)
+    _notice_cache.expires_at = now + UNITY_NOTICE_CACHE_TTL
+    return _notice_cache.text
+
+
+def _activity_notice_blocks(activity_name: str, notice_text: str) -> list[str]:
+    escaped_name = re.escape(activity_name)
+    blocks: list[str] = []
+    for pattern in (
+        rf"◇\s*「{escaped_name}」",
+        rf"\b\d+(?:\.|\uFF0E)\s*{escaped_name}",
+        escaped_name,
+    ):
+        for match in re.finditer(pattern, notice_text):
+            start = max(0, match.start() - NOTICE_ACTIVITY_LOOKBEHIND_CHARS)
+            relative_match_start = match.start() - start
+            block = notice_text[
+                start : match.start() + NOTICE_ACTIVITY_BLOCK_CHARS
+            ]
+            next_item = re.search(
+                r"\n\s*\d+(?:\.|\uFF0E)\s*",
+                block[relative_match_start + 1 :],
+            )
+            if next_item is not None:
+                block = block[: relative_match_start + next_item.start() + 1]
+            blocks.append(block)
+        if blocks:
+            break
+    return blocks
+
+
+def _offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
+    if activity.start_time is None:
+        return []
+
+    notice_text = _fetch_unity_notice_text(now)
+    if not notice_text:
+        return []
+
+    return [
+        block
+        for block in _activity_notice_blocks(activity.name, notice_text)
+        if (
+            _block_has_limited_offer(block)
+            and (
+                _offer_window_from_block(block) is not None
+                or _parse_offer_deadline_with_hour(block, activity) is not None
+                or _block_has_offer_window(block)
+            )
+        )
+    ]
+
+
+def _parse_week_count(text_value: str) -> int | None:
+    if text_value.isdigit():
+        return int(text_value)
+    return CHINESE_NUMBER_MAP.get(text_value)
+
+
+def _datetime_from_match(
+    match: re.Match[str],
+    activity: ActivityInfo,
+    *,
+    default_hour: int,
+    default_minute: int = 0,
+) -> datetime | None:
+    if activity.start_time is None:
+        return None
+
+    year = int(match.groupdict().get("year") or activity.start_time.year)
+    month = int(match.group("month"))
+    day = int(match.group("day"))
+    hour_text = match.groupdict().get("hour")
+    minute_text = match.groupdict().get("minute")
+    hour = default_hour
+    if hour_text is not None:
+        hour = 0 if hour_text == "零" else int(hour_text)
+    minute = int(minute_text) if minute_text is not None else default_minute
+    second_text = match.groupdict().get("second")
+    second = int(second_text) if second_text is not None else 0
+    try:
+        if hour == HOURS_PER_DAY and minute == 0 and second == 0:
+            return datetime(
+                year,
+                month,
+                day,
+                0,
+                0,
+                tzinfo=LOCAL_TZ,
+            ) + timedelta(days=1)
+        return datetime(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            tzinfo=LOCAL_TZ,
+        )
+    except ValueError:
+        return None
+
+
+def _block_has_limited_offer(block: str) -> bool:
+    return any(keyword in block for keyword in LIMITED_OFFER_KEYWORDS)
+
+
+def _block_has_offer_window(block: str) -> bool:
+    return any(keyword in block for keyword in OFFER_WINDOW_KEYWORDS)
+
+
+def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR0911
+    if not _block_has_limited_offer(block):
+        return None
+
+    week_match = re.search(
+        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])周)",
+        block,
+    )
+    if week_match is not None:
+        week_count = _parse_week_count(week_match.group("count"))
+        if week_count is not None and week_count > 0:
+            return (
+                f"{week_match.group('label')}优惠",
+                week_count * DAYS_PER_WEEK,
+            )
+
+    day_match = re.search(
+        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])天)",
+        block,
+    )
+    if day_match is not None:
+        day_count = _parse_week_count(day_match.group("count"))
+        if day_count is not None and day_count > 0:
+            return f"{day_match.group('label')}优惠", day_count
+
+    if "首周" in block or "第一周" in block:
+        return (
+            "首周优惠",
+            DEFAULT_OFFER_WINDOW_WEEKS * DAYS_PER_WEEK,
+        )
+
+    month_match = re.search(
+        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])月)",
+        block,
+    )
+    if month_match is not None:
+        month_count = _parse_week_count(month_match.group("count"))
+        if month_count is not None and month_count > 0:
+            return f"{month_match.group('label')}优惠", month_count * 30
+
+    if "首月" in block or "第一月" in block:
+        return "首月优惠", 30
+
+    return None
+
+
+def _offer_window_from_blocks(blocks: list[str]) -> tuple[str, int] | None:
+    for block in blocks:
+        offer_window = _offer_window_from_block(block)
+        if offer_window is not None:
+            return offer_window
+    return None
+
+
+def _parse_offer_deadline_with_hour(  # noqa: PLR0911
+    block: str,
+    activity: ActivityInfo,
+) -> datetime | None:
+    if activity.start_time is None:
+        return None
+
+    match = re.search(
+        r"截止至\s*(?:(?P<year>\d{4})[.年])?"
+        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{1,2})"
+        r"(?::(?P<second>\d{1,2}))?",
+        block,
+    )
+    if match is not None:
+        return _datetime_from_match(match, activity, default_hour=0)
+
+    match = re.search(
+        r"截止至\s*(?:(?P<year>\d{4})[.年])?"
+        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"\s*(?P<hour>\d{1,2}|零)点"
+        r"(?:(?P<minute>\d{1,2})分)?前",
+        block,
+    )
+    if match is not None:
+        return _datetime_from_match(match, activity, default_hour=0)
+
+    match = re.search(
+        r"(?:(?P<year>\d{4})[.年])?"
+        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"\s*(?P<hour>\d{1,2}|零)?点?后(?:价格)?(?:恢复|回复)",
+        block,
+    )
+    if match is not None:
+        return _datetime_from_match(match, activity, default_hour=0)
+
+    match = re.search(
+        r"(?:(?P<year>\d{4})[.年])?"
+        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"\s*(?:更新前|更新后(?:价格)?(?:恢复|回复))",
+        block,
+    )
+    if match is not None:
+        return _datetime_from_match(match, activity, default_hour=10)
+
+    match = re.search(
+        r"(?:购买时间|生效时间|限时生效|活动时间)[：:，,\s]*"
+        r"(?:(?P<start_year>\d{4})[.年])?"
+        r"\d{1,2}月\d{1,2}日(?:更新后)?[-~至到]+"
+        r"(?:(?P<year>\d{4})[.年])?"
+        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"(?:(?P<hour>\d{1,2}|零)点)?(?:更新前)?",
+        block,
+    )
+    if match is not None:
+        return _datetime_from_match(match, activity, default_hour=10)
+
+    return None
+
+
+def _offer_end_time(
+    activity: ActivityInfo,
+    blocks: list[str],
+) -> datetime | None:
+    for block in blocks:
+        offer_end_time = _parse_offer_deadline_with_hour(block, activity)
+        if offer_end_time is not None and offer_end_time < activity.end_time:
+            return offer_end_time
+    return None
+
+
+def _fallback_offer_window_open(activity: ActivityInfo, now: datetime) -> bool:
+    fallback_end = _fallback_offer_window_end(activity)
+    if fallback_end is None:
+        return False
+    return activity.start_time <= now < fallback_end
+
+
+def _fallback_offer_window_end(activity: ActivityInfo) -> datetime | None:
+    if (
+        activity.offer_label is None
+        or activity.offer_window_days is None
+        or activity.start_time is None
+    ):
+        return None
+    return activity.start_time + timedelta(days=activity.offer_window_days)
+
+
+def _activity_deadline(
+    activity: ActivityInfo,
+    now: datetime,
+) -> ActivityDeadline | None:
+    if activity.offer_end_time is not None and activity.offer_end_time > now:
+        return ActivityDeadline(
+            end_time=activity.offer_end_time,
+            label=f"{activity.offer_label or '限时优惠'}截至",
+            display_end_time=True,
+        )
+
+    if now < activity.end_time and activity.end_time - now < SOON_ENDING_THRESHOLD:
+        return ActivityDeadline(
+            end_time=activity.end_time,
+            label="结束时间",
+            display_end_time=True,
+        )
+
+    fallback_end = (
+        None
+        if activity.offer_end_time is not None
+        else _fallback_offer_window_end(activity)
+    )
+    if (
+        fallback_end is not None
+        and activity.start_time is not None
+        and activity.start_time <= now < fallback_end
+    ):
+        return ActivityDeadline(
+            end_time=fallback_end,
+            label=activity.offer_label or "限时优惠",
+            display_end_time=False,
+        )
+
+    return None
+
+
+def _activity_is_soon_ending(activity: ActivityInfo, now: datetime) -> bool:
+    return _activity_deadline(activity, now) is not None
+
+
+def _activity_sort_end_time(
+    activity: ActivityInfo,
+    now: datetime | None = None,
+) -> datetime:
+    if now is not None:
+        deadline = _activity_deadline(activity, now)
+        if deadline is not None:
+            return deadline.end_time
+    return activity.offer_end_time or activity.end_time
 
 
 def _cache_path() -> Path:
@@ -304,20 +711,35 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
         if start_time is not None and start_time > now:
             continue
 
+        activity = ActivityInfo(
+            activity_id=int(row["id"]),
+            name=str(row.get("name") or f"活动 {row['id']}"),
+            start_time=start_time,
+            end_time=end_time,
+            sort_order=int(row.get("sort_order") or 0),
+        )
+        offer_blocks = _offer_blocks(activity, now)
+        offer_window = _offer_window_from_blocks(offer_blocks)
         activities.append(
             ActivityInfo(
-                activity_id=int(row["id"]),
-                name=str(row.get("name") or f"活动 {row['id']}"),
-                start_time=start_time,
-                end_time=end_time,
-                sort_order=int(row.get("sort_order") or 0),
+                activity_id=activity.activity_id,
+                name=activity.name,
+                start_time=activity.start_time,
+                end_time=activity.end_time,
+                sort_order=activity.sort_order,
+                offer_label=offer_window[0] if offer_window else None,
+                offer_window_days=offer_window[1] if offer_window else None,
+                offer_end_time=_offer_end_time(
+                    activity,
+                    offer_blocks,
+                ),
             )
         )
 
     return sorted(
         activities,
         key=lambda activity: (
-            activity.end_time,
+            _activity_sort_end_time(activity),
             activity.sort_order,
             activity.activity_id,
         ),
@@ -325,11 +747,19 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
 
 
 def _soon_ending_activity_infos(now: datetime) -> list[ActivityInfo]:
-    return [
+    activities = [
         activity
         for activity in _active_activity_infos(now)
-        if activity.end_time - now < SOON_ENDING_THRESHOLD
+        if _activity_is_soon_ending(activity, now)
     ]
+    return sorted(
+        activities,
+        key=lambda activity: (
+            _activity_sort_end_time(activity, now),
+            activity.sort_order,
+            activity.activity_id,
+        ),
+    )
 
 
 def _format_remaining_time(delta: timedelta) -> str:
@@ -360,22 +790,36 @@ def _format_activity_period(activity: ActivityInfo) -> str:
 def _format_activity_line(
     index: int,
     activity: ActivityInfo,
-    remaining_text: str,
+    current_time: datetime,
     *,
     soon_only: bool,
 ) -> list[str]:
     if soon_only:
+        deadline = _activity_deadline(activity, current_time)
+        if deadline is not None and deadline.display_end_time:
+            remaining_text = _format_remaining_time(
+                deadline.end_time - current_time
+            )
+            return [
+                (
+                    f"{index}. {activity.name}：{deadline.label}："
+                    f"{deadline.end_time:%m-%d %H:%M} | 剩余：{remaining_text}"
+                )
+            ]
+
+        period_text = _format_activity_period(activity)
+        offer_label = activity.offer_label or "限时优惠"
         return [
             (
-                f"{index}. {activity.name}：结束时间："
-                f"{activity.end_time:%m-%d %H:%M} | 剩余：{remaining_text}"
+                f"{index}. {activity.name}：{offer_label}见官方说明 | "
+                f"活动：{period_text}"
             )
         ]
 
     period_text = _format_activity_period(activity)
+    remaining_text = _format_remaining_time(activity.end_time - current_time)
     return [
-        f"{index}. {activity.name}",
-        f"   持续：{period_text} | 剩余：{remaining_text}",
+        f"{index}. {activity.name}：{period_text} | 剩余：{remaining_text}",
     ]
 
 
@@ -406,12 +850,11 @@ def build_current_activity_message(
     ]
 
     for index, activity in enumerate(shown_activities, start=1):
-        remaining_text = _format_remaining_time(activity.end_time - current_time)
         lines.extend(
             _format_activity_line(
                 index,
                 activity,
-                remaining_text,
+                current_time,
                 soon_only=soon_only,
             )
         )
@@ -426,9 +869,13 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
     reminders: list[ActivityReminder] = []
 
     for activity in _soon_ending_activity_infos(now):
+        deadline = _activity_deadline(activity, now)
+        if deadline is None:
+            continue
+
         for lead_hours in plugin_config.activity_reminder_lead_hours:
             send_time = (
-                activity.end_time
+                deadline.end_time
                 - timedelta(hours=lead_hours)
                 + REMINDER_SEND_DELAY
             )
@@ -439,9 +886,11 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
                 ActivityReminder(
                     activity_id=activity.activity_id,
                     name=activity.name,
-                    end_time=activity.end_time,
+                    end_time=deadline.end_time,
                     lead_hours=lead_hours,
                     send_time=send_time,
+                    end_label=deadline.label,
+                    display_end_time=deadline.display_end_time,
                 )
             )
 
@@ -493,10 +942,18 @@ def _mark_sent(reminders: Iterable[ActivityReminder]) -> None:
 
 
 def _format_activity_list(reminders: list[ActivityReminder]) -> str:
-    return "\n".join(
-        f"{index}. {reminder.name}：{reminder.end_time:%Y-%m-%d %H:%M}"
-        for index, reminder in enumerate(reminders, start=1)
-    )
+    lines: list[str] = []
+    for index, reminder in enumerate(reminders, start=1):
+        if reminder.display_end_time:
+            lines.append(
+                f"{index}. {reminder.name}：{reminder.end_label}："
+                f"{reminder.end_time:%Y-%m-%d %H:%M}"
+            )
+        else:
+            lines.append(
+                f"{index}. {reminder.name}：{reminder.end_label}见官方说明"
+            )
+    return "\n".join(lines)
 
 
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
@@ -545,7 +1002,13 @@ def _is_reminder_still_valid(
     if current_activity is None:
         return False
 
-    return current_activity.end_time == reminder.end_time
+    deadline = _activity_deadline(current_activity, now)
+    if deadline is None:
+        return False
+    return (
+        deadline.end_time == reminder.end_time
+        and deadline.display_end_time == reminder.display_end_time
+    )
 
 
 def _filter_valid_reminders_before_send(
