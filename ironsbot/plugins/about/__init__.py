@@ -2,9 +2,11 @@
 from typing import NoReturn
 
 from anyio import Path
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
+from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
 __plugin_meta__ = PluginMetadata(
@@ -26,10 +28,10 @@ VERSION_FILE_PATH = Path() / "__version__"
 
 
 @matcher.handle()
-async def handle_about(matcher: Matcher) -> NoReturn:
+async def handle_about(matcher: Matcher, event: MessageEvent) -> NoReturn:
     try:
         version = (await VERSION_FILE_PATH.read_text(encoding="utf-8")).strip()
     except FileNotFoundError:
         version = "❌未知版本（这是一个bug，请反馈给开发者）"
 
-    await matcher.finish(ABOUT_MESSAGE.format(version=version))
+    await finish_event_reply(matcher, event, ABOUT_MESSAGE.format(version=version))

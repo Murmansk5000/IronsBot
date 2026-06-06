@@ -8,6 +8,7 @@ from nonebot.matcher import Matcher
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
 from .replies import event_sender_at_user_ids
+from .reply_limits import limit_message_by_reply_lines
 from .text import build_message, command_text_matches
 
 EventReplyCheck = Callable[[MessageEvent], bool]
@@ -52,7 +53,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         None
         if prompt is None
         else build_message(
-            prompt,
+            limit_message_by_reply_lines(prompt, event=event),
             at_user_ids=event_sender_at_user_ids(
                 event,
                 mention_sender=mention_sender,
