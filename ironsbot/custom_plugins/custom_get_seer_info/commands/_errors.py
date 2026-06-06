@@ -9,7 +9,7 @@ from ironsbot.plugins.headless_seer.exception import (
 )
 from ironsbot.plugins.seer_data.db import ErrorCodeGetter
 
-SERVER_UNAVAILABLE_RESULT_CODES = {101105}
+PLAYER_NOT_FOUND_RESULT_CODES = {101105}
 SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE = (
     "查询需要连接赛尔号游戏服务器；当前服务器维护或未开放，请稍后再试。"
 )
@@ -36,11 +36,8 @@ def format_player_query_error(
 ) -> str:
     if isinstance(error, SocketRecvError):
         result_code = error.head.result
-        if result_code in SERVER_UNAVAILABLE_RESULT_CODES:
-            return (
-                f"❌ 米米号 {player_id} 暂时查不了："
-                f"{SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE}"
-            )
+        if result_code in PLAYER_NOT_FOUND_RESULT_CODES:
+            return f"❌ 米米号 {player_id} 不存在或用户信息不可查询。"
         return f"❌ 米米号 {player_id} {format_socket_recv_error(error)}"
 
     return (

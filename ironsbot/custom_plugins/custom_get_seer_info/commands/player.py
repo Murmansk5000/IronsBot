@@ -638,9 +638,9 @@ async def validate_player_id(
     state[PLAYER_ID_KEY] = await parse_numeric_id(
         matcher,
         state,
-        min_value=50000,
+        min_value=1,
         max_value=2_000_000_000,
-        error_message="❌ 米米号无效，请输入 50000 ~ 2000000000 之间的数字",
+        error_message="❌ 米米号无效，请输入纯数字米米号。",
     )
 
 
