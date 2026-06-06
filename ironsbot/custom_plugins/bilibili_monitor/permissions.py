@@ -6,10 +6,11 @@ from nonebot.adapters.onebot.v11 import (
 
 from ironsbot.custom_plugins.superuser_policy import (
     get_superuser_ids,
+    is_custom_feature_event_allowed,
     is_group_allowed_for_user,
 )
 
-from .state import TARGET_GROUP_IDS, TARGET_USER_IDS
+from .state import TARGET_GROUP_IDS
 
 
 def get_bili_superuser_uids() -> list[int]:
@@ -21,17 +22,7 @@ def is_bili_superuser(user_id: int) -> bool:
 
 
 def is_dynamic_query_allowed(event: MessageEvent) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return is_group_allowed_for_user(
-            event.user_id,
-            event.group_id,
-            TARGET_GROUP_IDS,
-        )
-
-    if isinstance(event, PrivateMessageEvent):
-        return event.user_id in TARGET_USER_IDS or is_bili_superuser(event.user_id)
-
-    return False
+    return is_custom_feature_event_allowed(event)
 
 
 def is_dynamic_update_allowed(event: MessageEvent) -> bool:

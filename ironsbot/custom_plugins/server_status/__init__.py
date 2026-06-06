@@ -14,6 +14,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
+from nonebot.rule import Rule
 from pydantic import BaseModel, Field, field_validator
 
 from ironsbot.custom_plugins.message_actions import (
@@ -22,6 +23,7 @@ from ironsbot.custom_plugins.message_actions import (
     send_event_reply,
 )
 from ironsbot.custom_plugins.superuser_policy import (
+    is_custom_feature_event_allowed,
     is_superuser,
     with_superuser_groups,
     with_superusers,
@@ -161,7 +163,7 @@ _open_broadcast_state = OpenBroadcastState()
 
 server_status_matcher = on_fullmatch(
     COMMANDS,
-    rule=no_reply(),
+    rule=Rule(is_custom_feature_event_allowed) & no_reply(),
     priority=1,
     block=True,
 )

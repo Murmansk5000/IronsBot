@@ -79,6 +79,8 @@ def _validate_sqlite_path(value: Path) -> Path:
 
 
 class Config(BaseModel):
+    seer_query_player_rate_limit_seconds: int = Field(default=60, ge=0)
+    seer_query_player_failure_rate_limit_seconds: int = Field(default=10, ge=0)
     seer_query_rank_limit: int = Field(default=10000, ge=0)
     seer_query_rank_page_size: int = Field(default=100, ge=1)
     seer_query_rank_page_cache: bool = True
@@ -98,6 +100,14 @@ class Config(BaseModel):
     seer_query_cache_refresh_interval_seconds: float = Field(default=0.5, ge=0)
     seer_query_local_rank_path: Path = Path(
         "data/custom_get_seer_info/player_query_cache.sqlite"
+    )
+    seer_query_skin_price: bool = True
+    seer_query_skin_price_cache_ttl_seconds: int = Field(default=86400, ge=0)
+    seer_query_skin_price_cache_path: Path = Path(
+        "data/custom_get_seer_info/skin_price_cache.json"
+    )
+    seer_query_config_package_base_url: str = (
+        "https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/"
     )
     seer_query_player_sections: list[str] = Field(
         default_factory=lambda: list(PLAYER_SECTION_KEYS)

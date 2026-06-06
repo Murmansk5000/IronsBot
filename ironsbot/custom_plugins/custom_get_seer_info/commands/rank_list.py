@@ -43,13 +43,17 @@ from ._rank import (
     fetch_daily_rank_page,
     get_current_peak_sub_key,
 )
+from ._rank_page_cache import CachedRankPageSummary, get_rank_page_cache_summary
 from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
+RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
+RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
 ADMIN_COMMAND_PREFIX = "/"
+MAX_CACHE_INTERVALS_SHOWN = 20
 
 
 def _normalize_command_text(text: str) -> str:
@@ -90,6 +94,11 @@ class RankCacheBatchCommand:
     rank_key: str
     start_rank: int
     end_rank: int
+
+
+@dataclass(frozen=True, slots=True)
+class RankPageCacheStatusCommand:
+    rank_key: str
 
 
 GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
@@ -294,6 +303,43 @@ async def _is_rank_cache_batch_command(event: Event, state: T_State) -> bool:
     state[RANK_CACHE_BATCH_COMMAND_KEY] = command
     return True
 
+
+def _parse_rank_page_cache_status_command(
+    text: str,
+) -> RankPageCacheStatusCommand | None:
+    stripped = _strip_admin_command_prefix(text)
+    if stripped is None:
+        return None
+
+    command = _normalize_command_text(stripped)
+    normalized_prefix = next(
+        (
+            _normalize_command_text(prefix)
+            for prefix in RANK_PAGE_CACHE_STATUS_PREFIXES
+            if command.startswith(_normalize_command_text(prefix))
+        ),
+        None,
+    )
+    if normalized_prefix is None:
+        return None
+
+    rank_name = command[len(normalized_prefix) :]
+    rank_command = NORMALIZED_COMMANDS.get(rank_name)
+    if rank_command is None or rank_command[0] != "global":
+        return None
+
+    return RankPageCacheStatusCommand(rank_key=rank_command[1])
+
+
+async def _is_rank_page_cache_status_command(event: Event, state: T_State) -> bool:
+    command = _parse_rank_page_cache_status_command(event.get_plaintext())
+    if command is None:
+        return False
+
+    state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY] = command
+    return True
+
+
 rank_help_matcher = matcher_group.on_fullmatch(
     ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
     rule=no_reply(),
@@ -321,6 +367,10 @@ rank_cache_refresh_matcher = matcher_group.on_fullmatch(
 )
 rank_cache_batch_matcher = matcher_group.on_message(
     rule=Rule(_is_rank_cache_batch_command) & no_reply(),
+    permission=SUPERUSER,
+)
+rank_page_cache_status_matcher = matcher_group.on_message(
+    rule=Rule(_is_rank_page_cache_status_command) & no_reply(),
     permission=SUPERUSER,
 )
 
@@ -380,6 +430,84 @@ async def _fetch_rank_batch_player_ids(
     )
     player_ids = [int(item.id) for item in items if int(item.id) > 0]
     return spec, player_ids, requested_count
+
+
+def _page_cache_rank_interval(
+    page: CachedRankPageSummary,
+    spec: GlobalRankSpec,
+) -> tuple[int, int] | None:
+    if page.item_count <= 0:
+        return None
+
+    start_rank = page.start_index + 1 + spec.rank_offset
+    end_rank = page.start_index + page.item_count + spec.rank_offset
+    return max(1, start_rank), max(1, end_rank)
+
+
+def _merge_rank_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(intervals):
+        if not merged or start > merged[-1][1] + 1:
+            merged.append((start, end))
+            continue
+
+        previous_start, previous_end = merged[-1]
+        merged[-1] = (previous_start, max(previous_end, end))
+    return merged
+
+
+def _format_rank_intervals(intervals: list[tuple[int, int]]) -> str:
+    if not intervals:
+        return "无"
+
+    shown = intervals[:MAX_CACHE_INTERVALS_SHOWN]
+    text = "、".join(
+        str(start) if start == end else f"{start}-{end}"
+        for start, end in shown
+    )
+    if len(intervals) > len(shown):
+        text += f"、...另 {len(intervals) - len(shown)} 段"
+    return text
+
+
+def _build_rank_page_cache_status_message(spec: GlobalRankSpec) -> str:
+    pages = get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
+    if not pages:
+        return f"📦【{spec.title}缓存】\n当前没有缓存区间。"
+
+    valid_pages = [page for page in pages if not page.is_stale]
+    stale_pages = [page for page in pages if page.is_stale]
+    valid_intervals = _merge_rank_intervals(
+        [
+            interval
+            for page in valid_pages
+            if (interval := _page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
+    stale_intervals = _merge_rank_intervals(
+        [
+            interval
+            for page in stale_pages
+            if (interval := _page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
+
+    valid_count = sum(page.item_count for page in valid_pages)
+    stale_count = sum(page.item_count for page in stale_pages)
+    lines = [
+        f"📦【{spec.title}缓存】",
+        f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
+        f"有效区间：{_format_rank_intervals(valid_intervals)}",
+    ]
+    if stale_pages:
+        lines.extend(
+            [
+                f"过期缓存：{len(stale_pages)} 段，{stale_count} 名",
+                f"过期区间：{_format_rank_intervals(stale_intervals)}",
+            ]
+        )
+    lines.append(f"TTL：{plugin_config.seer_query_rank_page_cache_ttl_seconds} 秒")
+    return "\n".join(lines)
 
 
 def _build_local_rank_message(spec: LocalRankSpec) -> str:
@@ -491,6 +619,21 @@ async def handle_rank_cache_batch(
         lines.extend(format_refresh_failures(result.failures))
 
     await finish_event_reply(matcher, event, "\n".join(lines))
+
+
+@rank_page_cache_status_matcher.handle()
+async def handle_rank_page_cache_status(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
+    spec = GLOBAL_RANKS[command.rank_key]
+    await finish_event_reply(
+        matcher,
+        event,
+        _build_rank_page_cache_status_message(spec),
+    )
 
 
 @rank_cache_status_matcher.handle()

@@ -50,7 +50,7 @@ class BufferReader:
 
     def _ensure(self, size: int) -> None:
         if not self.has_remaining(size):
-            raise ValueError(
+            raise ValueError(  # noqa: TRY003
                 "buffer underflow: "
                 f"need {size} bytes, remaining {self.remaining}, offset {self._offset}"
             )

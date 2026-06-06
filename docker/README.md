@@ -115,6 +115,8 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
 | `ADMIN_GROUPS` | QQ groups treated as enabled test/management groups by custom plugins. |
 | `ADMIN_BYPASS_GROUPS` | Set `true` to let superusers use custom group commands outside enabled groups. Default `false`. |
+| `CUSTOM_FEATURE_GROUPS` | QQ groups where general custom features are enabled, such as extended Seer queries, rankings, Autocard, fixed images, manual Bilibili dynamic queries, soon-ending activities, and server status. `ADMIN_GROUPS` are included automatically. Meeting, text/link replies, AI chat, Bilibili push targets, and team shortcuts use their own variables. |
+| `CUSTOM_FEATURE_USERS` | QQ users allowed to use general custom features in private chat. `SUPERUSERS` are included automatically. |
 | `DB_SYNC_ON_STARTUP` | Whether to sync registered databases automatically on startup. Default is `false`; superusers can send `更新数据` or `数据更新`. |
 | `DB_SYNC_INTERVAL_ENABLED` | Whether to run scheduled database sync jobs. Default is `true`; set `false` for manual-only updates. |
 | `SEERAPI_SYNC_URL` | Remote SeerAPI database URL. |
@@ -129,11 +131,17 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `SEER_LOGIN_NOTICE_MESSAGE` | Message template for the headless Seer login failure notice. Supports `{user_id}` and `{reason}`. |
 | `SEER_QUERY_PLAYER_SECTIONS` | Sections shown by custom Mimi ID queries. Use JSON list or comma-separated values. Supported: `basic`, `appearance`, `social`, `collection`, `rank`, `local_rank`, `achievement`, `peak`, `titles`, `pets`, `stages`, `battle`, `raw`. |
 | `SEER_QUERY_TEAM_SECTIONS` | Sections shown by custom team queries. Use JSON list or comma-separated values. Supported: `basic`, `resource`, `facilities`, `status`, `logo`, `text`. |
+| `SEER_QUERY_PLAYER_RATE_LIMIT_SECONDS` | Seconds between Mimi ID queries per normal QQ user. `SUPERUSERS` are exempt. Default `60`; set `0` to disable. |
+| `SEER_QUERY_PLAYER_FAILURE_RATE_LIMIT_SECONDS` | Seconds a normal QQ user must wait after a failed Mimi ID query. `SUPERUSERS` are exempt. Default `10`; set `0` to disable. |
 | `SEER_QUERY_RANK_LIMIT` | When querying a Mimi ID, scan this many top entries in the global book and achievement rankings. Default `10000`; set `0` to disable. |
 | `SEER_QUERY_RANK_PAGE_SIZE` | Ranking entries fetched per request for Mimi ID rank lookup. Default `100`; the 4481 ranking API should stay at 100 or less. |
 | `SEER_QUERY_PEAK_SUBKEY` | Optional peak season ranking subkey for custom Mimi ID queries. Leave empty to read the current season from SeerAPI data; set `YYYYMMDD` manually if season data is unavailable. |
 | `SEER_QUERY_LOCAL_RANK` | Enable local rankings among Mimi IDs queried by this bot. Defaults to `true`; tied scores are shown as tied ranks. |
 | `SEER_QUERY_LOCAL_RANK_PATH` | SQLite cache file for local queried-player rankings. Defaults to `data/custom_get_seer_info/player_query_cache.sqlite`; peak season metrics are compared only within the same season subkey. |
+| `SEER_QUERY_SKIN_PRICE` | Append official skin diamond price data to custom skin/illustration queries. Defaults to `true`. |
+| `SEER_QUERY_SKIN_PRICE_CACHE_TTL_SECONDS` | Seconds before the downloaded skin price config cache is considered stale. Defaults to `86400`. |
+| `SEER_QUERY_SKIN_PRICE_CACHE_PATH` | JSON cache file for parsed official skin price data. Defaults to `data/custom_get_seer_info/skin_price_cache.json`. |
+| `SEER_QUERY_CONFIG_PACKAGE_BASE_URL` | Official Unity ConfigPackage base URL used for skin prices and other custom config parsing. |
 | `MEETING_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
 | `MEETING_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
 | `MEETING_GROUPS` | QQ groups allowed to trigger meeting replies; `ADMIN_GROUPS` are included automatically. |
@@ -162,8 +170,12 @@ List values should use JSON-like syntax, for example:
 SUPERUSERS=["123456789"]
 ADMIN_GROUPS=[686376929]
 ADMIN_BYPASS_GROUPS=false
+CUSTOM_FEATURE_GROUPS=[686376929]
+CUSTOM_FEATURE_USERS=[]
 SEER_LOGIN_NOTICE=true
 SEER_LOGIN_NOTICE_MESSAGE="Headless Seer login did not complete.\nMimi ID: {user_id}\nStatus: {reason}\nFeatures that require Mimi login may be unavailable."
+SEER_QUERY_PLAYER_RATE_LIMIT_SECONDS=60
+SEER_QUERY_PLAYER_FAILURE_RATE_LIMIT_SECONDS=10
 SEER_QUERY_PLAYER_SECTIONS=["basic","appearance","social","collection","rank","local_rank","achievement","peak","titles","pets","stages","battle","raw"]
 SEER_QUERY_TEAM_SECTIONS=["basic","resource","facilities","status","logo","text"]
 SEER_QUERY_RANK_LIMIT=10000
@@ -171,6 +183,10 @@ SEER_QUERY_RANK_PAGE_SIZE=100
 SEER_QUERY_PEAK_SUBKEY=
 SEER_QUERY_LOCAL_RANK=true
 SEER_QUERY_LOCAL_RANK_PATH=data/custom_get_seer_info/player_query_cache.sqlite
+SEER_QUERY_SKIN_PRICE=true
+SEER_QUERY_SKIN_PRICE_CACHE_TTL_SECONDS=86400
+SEER_QUERY_SKIN_PRICE_CACHE_PATH=data/custom_get_seer_info/skin_price_cache.json
+SEER_QUERY_CONFIG_PACKAGE_BASE_URL=https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/
 MEETING_GROUPS=[123456789]
 BILI_GROUPS=[123456789,987654321]
 MSG_PRIVATE_SCHEDULES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot.plugin import PluginMetadata, on_fullmatch
+from nonebot.rule import Rule
 
 from ironsbot.custom_plugins.custom_get_seer_info.commands.rank_usage import (
     build_rank_help_message,
 )
+from ironsbot.custom_plugins.superuser_policy import is_custom_feature_event_allowed
 from ironsbot.utils.rule import no_reply
 
 __plugin_meta__ = PluginMetadata(
@@ -14,7 +16,7 @@ __plugin_meta__ = PluginMetadata(
 
 rank_help_entry = on_fullmatch(
     ("榜单", "排行榜"),
-    rule=no_reply(),
+    rule=Rule(is_custom_feature_event_allowed) & no_reply(),
     priority=2,
     block=True,
 )
