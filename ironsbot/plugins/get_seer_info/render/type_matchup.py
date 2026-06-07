@@ -32,22 +32,62 @@ class MatchupItemDict(TypedDict):
     multiplier: float
 
 
-async def render_type_matchup(target: TypeCombinationORM) -> bytes:
+def _is_custom_type_combination(target: TypeCombinationORM) -> bool:
+    return target.id < 0
+
+
+async def _resolve_custom_target_icons(
+    target: TypeCombinationORM,
+    *,
+    target_icon_data_uri: str | None,
+    target_icon_secondary_data_uri: str | None,
+) -> tuple[str, str | None]:
+    """自定义组合使用单属性图标；双属性时返回左右各半的两张图。"""
+    if target.secondary_id is None:
+        if target_icon_data_uri is not None:
+            return target_icon_data_uri, None
+        primary_bytes = await ElementTypeImageGetter.get_bytes(str(target.primary_id))
+        return to_data_uri(primary_bytes), None
+
+    if (
+        target_icon_data_uri is not None
+        and target_icon_secondary_data_uri is not None
+    ):
+        return target_icon_data_uri, target_icon_secondary_data_uri
+
+    primary_bytes, secondary_bytes = await asyncio.gather(
+        ElementTypeImageGetter.get_bytes(str(target.primary_id)),
+        ElementTypeImageGetter.get_bytes(str(target.secondary_id)),
+    )
+    return to_data_uri(primary_bytes), to_data_uri(secondary_bytes)
+
+
+async def render_type_matchup(
+    target: TypeCombinationORM,
+    *,
+    session: "Session | None" = None,
+    cache_key: str | None = None,
+    target_icon_data_uri: str | None = None,
+    target_icon_secondary_data_uri: str | None = None,
+) -> bytes:
     """渲染属性克制面板图片，返回 PNG 图片字节。
 
-    包含攻击效果和被攻击效果两个区域。
+    包含攻击效果和被攻击效果两个区域，支持自定义属性组合渲染。
     """
-    cached = render_cache.get("type_matchup", str(target.id))
+    resolved_cache_key = cache_key if cache_key is not None else str(target.id)
+    cached = render_cache.get("type_matchup", resolved_cache_key)
     if cached is not None:
         return cached
 
-    session = cast("Session | None", object_session(target))
-    assert session is not None
+    resolved_session = session
+    if resolved_session is None:
+        resolved_session = cast("Session | None", object_session(target))
+    assert resolved_session is not None
 
-    attack_table = calc_attack_table(session, target)
-    defense_table = calc_defense_table(session, target)
+    attack_table = calc_attack_table(resolved_session, target)
+    defense_table = calc_defense_table(resolved_session, target)
 
-    all_combo_ids: dict[int, None] = {target.id: None}
+    all_combo_ids: dict[int, None] = {}
     for combo, _ in attack_table:
         all_combo_ids.setdefault(combo.id, None)
     for combo, _ in defense_table:
@@ -61,6 +101,20 @@ async def render_type_matchup(target: TypeCombinationORM) -> bytes:
         cid: to_data_uri(data)
         for cid, data in zip(id_list, icon_bytes_list, strict=True)
     }
+    type_icon_secondary: str | None = None
+    if _is_custom_type_combination(target):
+        target_icon_data_uri, type_icon_secondary = await _resolve_custom_target_icons(
+            target,
+            target_icon_data_uri=target_icon_data_uri,
+            target_icon_secondary_data_uri=target_icon_secondary_data_uri,
+        )
+    else:
+        if target_icon_data_uri is None:
+            target_icon_data_uri = icon_map.get(target.id)
+        if target_icon_data_uri is None:
+            target_icon_data_uri = to_data_uri(
+                await ElementTypeImageGetter.get_bytes(str(target.id))
+            )
 
     attack_items: list[MatchupItemDict] = sorted(
         [
@@ -84,7 +138,8 @@ async def render_type_matchup(target: TypeCombinationORM) -> bytes:
         template_name="template.html.j2",
         templates={
             "type_name": target.name,
-            "type_icon": icon_map[target.id],
+            "type_icon": target_icon_data_uri,
+            "type_icon_secondary": type_icon_secondary,
             "attack_items": attack_items,
             "defense_items": defense_items,
             "cell_size": CELL_SIZE,
@@ -93,5 +148,5 @@ async def render_type_matchup(target: TypeCombinationORM) -> bytes:
         max_width=MAX_WIDTH,
         allow_refit=False,
     )
-    render_cache.put("type_matchup", str(target.id), result)
+    render_cache.put("type_matchup", resolved_cache_key, result)
     return result

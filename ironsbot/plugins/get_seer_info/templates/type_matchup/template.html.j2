@@ -38,6 +38,42 @@
             margin-right: 10px;
         }
 
+        .page-title-icon-dual {
+            position: relative;
+            width: 36px;
+            height: 36px;
+            margin-right: 10px;
+            border-radius: 6px;
+            overflow: hidden;
+            background-color: rgba(26, 58, 106, 0.6);
+            flex-shrink: 0;
+        }
+
+        .page-title-icon-slot {
+            position: absolute;
+            top: 0;
+            width: 18px;
+            height: 36px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .page-title-icon-slot--left {
+            left: 0;
+        }
+
+        .page-title-icon-slot--right {
+            right: 0;
+            border-left: 1px solid rgba(74, 138, 218, 0.45);
+        }
+
+        .page-title-icon-slot img {
+            display: block;
+            width: 16px;
+            height: 16px;
+            margin: 10px auto;
+        }
+
         .page-title-text {
             font-size: 24px;
             font-weight: bold;
@@ -160,7 +196,18 @@
 
     <div class="container">
         <div class="page-header">
+            {% if type_icon_secondary %}
+            <div class="page-title-icon-dual">
+                <div class="page-title-icon-slot page-title-icon-slot--left">
+                    <img src="{{ type_icon }}" />
+                </div>
+                <div class="page-title-icon-slot page-title-icon-slot--right">
+                    <img src="{{ type_icon_secondary }}" />
+                </div>
+            </div>
+            {% else %}
             <img class="page-title-icon" src="{{ type_icon }}" />
+            {% endif %}
             <span class="page-title-text">属性克制 · {{ type_name }}</span>
         </div>
 
