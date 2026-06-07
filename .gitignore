@@ -7,6 +7,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.codex/
 
 # C extensions
 *.so
@@ -140,3 +141,10 @@ dmypy.json
 .pytype/
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# Local custom plugin runtime data
+data/
+.vscode/
+ironsbot/custom_plugins/bilibili_monitor/bili_cookie_cache.txt
+ironsbot/custom_plugins/bilibili_monitor/bili_raw_response.json
+ironsbot/custom_plugins/bilibili_monitor/last_dynamic_time.txt

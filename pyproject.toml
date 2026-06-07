@@ -19,13 +19,15 @@ dependencies = [
     "nonebot-plugin-send-anything-anywhere>=0.7.1",
     "nonebot-plugin-localstore>=0.7.4",
     "pypinyin>=0.53.0",
+    "qrcode-terminal>=0.8",
+    "unitypy>=1.25.0",
 ]
 
 [project.optional-dependencies]
 dev = ["basedpyright", "pre-commit", "ruff"]
 
 [tool.nonebot]
-plugin_dirs = ["ironsbot/plugins"]
+plugin_dirs = ["ironsbot/custom_plugins"]
 builtin_plugins = []
 
 [tool.nonebot.adapters]
@@ -35,11 +37,20 @@ nonebot-adapter-onebot = [
 "@local" = []
 
 [tool.nonebot.plugins]
-"@local" = []
+"@local" = [
+    "ironsbot.plugins.db_sync",
+    "ironsbot.plugins.headless_seer",
+    "ironsbot.plugins.http_client",
+    "ironsbot.plugins.seer_data",
+]
 nonebot-plugin-htmlkit = ["nonebot_plugin_htmlkit"]
 nonebot-plugin-apscheduler = ["nonebot_plugin_apscheduler"]
 nonebot-plugin-send-anything-anywhere = ["nonebot_plugin_saa"]
 nonebot-plugin-localstore = ["nonebot_plugin_localstore"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"
@@ -123,6 +134,9 @@ allowed-confusables = [
     "）",
     "、",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"ironsbot/custom_plugins/custom_get_seer_info/_upstream/**" = ["ALL"]
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
