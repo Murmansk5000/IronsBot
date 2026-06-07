@@ -3,10 +3,11 @@ import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from ..config import plugin_config
 from ._client import get_game_client
 from ._local_rank import (
     can_cache_player_id,
-    get_cached_player_ids,
+    get_refresh_candidate_player_ids,
     update_local_rank_cache,
 )
 from ._rank import (
@@ -18,8 +19,6 @@ from ._sequ_extra import (
     fetch_unity_part_one,
     fetch_unity_peak,
 )
-
-REFRESH_INTERVAL_SECONDS = 0.2
 
 
 @dataclass(slots=True)
@@ -44,7 +43,10 @@ async def refresh_local_rank_cache(
     player_ids: Sequence[int] | None = None,
 ) -> LocalRankRefreshResult:
     if player_ids is None:
-        player_ids = get_cached_player_ids()
+        player_ids = get_refresh_candidate_player_ids(
+            limit=plugin_config.seer_query_cache_refresh_limit,
+            max_age_hours=plugin_config.seer_query_cache_refresh_max_age_hours,
+        )
     else:
         player_ids = list(dict.fromkeys(player_ids))
 
@@ -117,7 +119,7 @@ async def refresh_local_rank_cache(
         else:
             result.success += 1
 
-        await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+        await asyncio.sleep(plugin_config.seer_query_cache_refresh_interval_seconds)
 
     return result
 

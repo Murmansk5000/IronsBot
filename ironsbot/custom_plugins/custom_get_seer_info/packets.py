@@ -16,6 +16,7 @@ LEVEL_NAMES: tuple[str, ...] = (
     "ELEVEN",
     "TWELVE",
 )
+MAX_DECORATE_ITEMS = 5
 
 
 def _safe_read_uint32(reader: BufferReader, default: int = 0) -> int:
@@ -115,7 +116,7 @@ class ExtendedUserInfo:
         info.nick_bg = reader.read_uint32() or 33
 
         decorate: list[int] = []
-        while reader.has_remaining(4) and len(decorate) < 5:
+        while reader.has_remaining(4) and len(decorate) < MAX_DECORATE_ITEMS:
             decorate.append(reader.read_uint32())
         info.decorate_list = tuple(decorate)
         return info

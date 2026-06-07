@@ -5,11 +5,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+    send_event_reply,
+)
+from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
 from ironsbot.utils.rule import no_reply
 
 from ..config import plugin_config
@@ -37,13 +43,17 @@ from ._rank import (
     fetch_daily_rank_page,
     get_current_peak_sub_key,
 )
+from ._rank_page_cache import CachedRankPageSummary, get_rank_page_cache_summary
 from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
+RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
+RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
 ADMIN_COMMAND_PREFIX = "/"
+MAX_CACHE_INTERVALS_SHOWN = 20
 
 
 def _normalize_command_text(text: str) -> str:
@@ -84,6 +94,11 @@ class RankCacheBatchCommand:
     rank_key: str
     start_rank: int
     end_rank: int
+
+
+@dataclass(frozen=True, slots=True)
+class RankPageCacheStatusCommand:
+    rank_key: str
 
 
 GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
@@ -288,6 +303,43 @@ async def _is_rank_cache_batch_command(event: Event, state: T_State) -> bool:
     state[RANK_CACHE_BATCH_COMMAND_KEY] = command
     return True
 
+
+def _parse_rank_page_cache_status_command(
+    text: str,
+) -> RankPageCacheStatusCommand | None:
+    stripped = _strip_admin_command_prefix(text)
+    if stripped is None:
+        return None
+
+    command = _normalize_command_text(stripped)
+    normalized_prefix = next(
+        (
+            _normalize_command_text(prefix)
+            for prefix in RANK_PAGE_CACHE_STATUS_PREFIXES
+            if command.startswith(_normalize_command_text(prefix))
+        ),
+        None,
+    )
+    if normalized_prefix is None:
+        return None
+
+    rank_name = command[len(normalized_prefix) :]
+    rank_command = NORMALIZED_COMMANDS.get(rank_name)
+    if rank_command is None or rank_command[0] != "global":
+        return None
+
+    return RankPageCacheStatusCommand(rank_key=rank_command[1])
+
+
+async def _is_rank_page_cache_status_command(event: Event, state: T_State) -> bool:
+    command = _parse_rank_page_cache_status_command(event.get_plaintext())
+    if command is None:
+        return False
+
+    state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY] = command
+    return True
+
+
 rank_help_matcher = matcher_group.on_fullmatch(
     ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
     rule=no_reply(),
@@ -315,6 +367,10 @@ rank_cache_refresh_matcher = matcher_group.on_fullmatch(
 )
 rank_cache_batch_matcher = matcher_group.on_message(
     rule=Rule(_is_rank_cache_batch_command) & no_reply(),
+    permission=SUPERUSER,
+)
+rank_page_cache_status_matcher = matcher_group.on_message(
+    rule=Rule(_is_rank_page_cache_status_command) & no_reply(),
     permission=SUPERUSER,
 )
 
@@ -376,6 +432,84 @@ async def _fetch_rank_batch_player_ids(
     return spec, player_ids, requested_count
 
 
+def _page_cache_rank_interval(
+    page: CachedRankPageSummary,
+    spec: GlobalRankSpec,
+) -> tuple[int, int] | None:
+    if page.item_count <= 0:
+        return None
+
+    start_rank = page.start_index + 1 + spec.rank_offset
+    end_rank = page.start_index + page.item_count + spec.rank_offset
+    return max(1, start_rank), max(1, end_rank)
+
+
+def _merge_rank_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(intervals):
+        if not merged or start > merged[-1][1] + 1:
+            merged.append((start, end))
+            continue
+
+        previous_start, previous_end = merged[-1]
+        merged[-1] = (previous_start, max(previous_end, end))
+    return merged
+
+
+def _format_rank_intervals(intervals: list[tuple[int, int]]) -> str:
+    if not intervals:
+        return "无"
+
+    shown = intervals[:MAX_CACHE_INTERVALS_SHOWN]
+    text = "、".join(
+        str(start) if start == end else f"{start}-{end}"
+        for start, end in shown
+    )
+    if len(intervals) > len(shown):
+        text += f"、...另 {len(intervals) - len(shown)} 段"
+    return text
+
+
+def _build_rank_page_cache_status_message(spec: GlobalRankSpec) -> str:
+    pages = get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
+    if not pages:
+        return f"📦【{spec.title}缓存】\n当前没有缓存区间。"
+
+    valid_pages = [page for page in pages if not page.is_stale]
+    stale_pages = [page for page in pages if page.is_stale]
+    valid_intervals = _merge_rank_intervals(
+        [
+            interval
+            for page in valid_pages
+            if (interval := _page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
+    stale_intervals = _merge_rank_intervals(
+        [
+            interval
+            for page in stale_pages
+            if (interval := _page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
+
+    valid_count = sum(page.item_count for page in valid_pages)
+    stale_count = sum(page.item_count for page in stale_pages)
+    lines = [
+        f"📦【{spec.title}缓存】",
+        f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
+        f"有效区间：{_format_rank_intervals(valid_intervals)}",
+    ]
+    if stale_pages:
+        lines.extend(
+            [
+                f"过期缓存：{len(stale_pages)} 段，{stale_count} 名",
+                f"过期区间：{_format_rank_intervals(stale_intervals)}",
+            ]
+        )
+    lines.append(f"TTL：{plugin_config.seer_query_rank_page_cache_ttl_seconds} 秒")
+    return "\n".join(lines)
+
+
 def _build_local_rank_message(spec: LocalRankSpec) -> str:
     season_sub_key = get_current_peak_sub_key() if spec.season_limited else None
     entries, sample_count = get_local_rank_entries(
@@ -399,35 +533,57 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
 
 
 @rank_help_matcher.handle()
-async def handle_rank_help(matcher: Matcher) -> None:
-    await matcher.finish(build_rank_help_message())
+async def handle_rank_help(matcher: Matcher, event: MessageEvent) -> None:
+    await finish_event_reply(matcher, event, build_rank_help_message())
 
 
 @rank_list_matcher.handle()
-async def handle_rank_list(matcher: Matcher, state: T_State) -> None:
+async def handle_rank_list(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     command = state[RANK_LIST_COMMAND_KEY]
     kind, key = NORMALIZED_COMMANDS[command]
 
     if kind == "global":
-        await matcher.finish(await _build_global_rank_message(GLOBAL_RANKS[key]))
+        await finish_event_reply(
+            matcher,
+            event,
+            await _build_global_rank_message(GLOBAL_RANKS[key]),
+        )
 
-    await matcher.finish(_build_local_rank_message(LOCAL_RANKS[key]))
+    await finish_event_reply(
+        matcher,
+        event,
+        _build_local_rank_message(LOCAL_RANKS[key]),
+    )
 
 
 @rank_cache_batch_matcher.handle()
-async def handle_rank_cache_batch(matcher: Matcher, state: T_State) -> None:
+async def handle_rank_cache_batch(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     ensure_extended_packets()
     command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
     before = get_local_rank_cache_stats()
     if before.player_count >= before.max_players:
-        await matcher.finish(
+        await finish_event_reply(
+            matcher,
+            event,
             f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
             "请先调大 SEER_QUERY_LOCAL_RANK_MAX_PLAYERS。"
         )
 
     spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
     if not player_ids:
-        await matcher.finish(f"❌ 没有从{spec.title}拿到可缓存的米米号。")
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 没有从{spec.title}拿到可缓存的米米号。",
+        )
 
     truncated_text = ""
     if requested_count > len(player_ids):
@@ -435,12 +591,15 @@ async def handle_rank_cache_batch(matcher: Matcher, state: T_State) -> None:
             f"\n本次按 SEER_QUERY_CACHE_BATCH_LIMIT 只处理前 {len(player_ids)} 个。"
         )
 
-    await matcher.send(
+    await send_event_reply(
+        matcher,
+        event,
         f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
         f"\n实际拿到 {len(player_ids)} 个米米号。"
         f"\n当前缓存：{before.player_count}/{before.max_players}。"
         f"{truncated_text}"
     )
+    await release_superuser_priority(state)
     result = await refresh_local_rank_cache(player_ids)
     after = get_local_rank_cache_stats()
 
@@ -459,17 +618,38 @@ async def handle_rank_cache_batch(matcher: Matcher, state: T_State) -> None:
         lines.append("失败示例：")
         lines.extend(format_refresh_failures(result.failures))
 
-    await matcher.finish("\n".join(lines))
+    await finish_event_reply(matcher, event, "\n".join(lines))
+
+
+@rank_page_cache_status_matcher.handle()
+async def handle_rank_page_cache_status(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
+    spec = GLOBAL_RANKS[command.rank_key]
+    await finish_event_reply(
+        matcher,
+        event,
+        _build_rank_page_cache_status_message(spec),
+    )
 
 
 @rank_cache_status_matcher.handle()
-async def handle_rank_cache_status(matcher: Matcher) -> None:
+async def handle_rank_cache_status(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
     stats = get_local_rank_cache_stats()
     lines = [
         "📊【样本榜缓存状态】",
         f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
+        f"总缓存玩家：{stats.total_player_count} 个（含全服榜单扫到但未计入样本的人）",
         f"全服排行扫描上限：前 {plugin_config.seer_query_rank_limit} 名",
         f"单次批量缓存上限：{plugin_config.seer_query_cache_batch_limit} 个",
+        f"单轮刷新上限：{plugin_config.seer_query_cache_refresh_limit} 个",
+        f"刷新过期时间：{plugin_config.seer_query_cache_refresh_max_age_hours} 小时",
         "巅峰样本：按当前赛季单独比较",
         f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
         "",
@@ -479,26 +659,40 @@ async def handle_rank_cache_status(matcher: Matcher) -> None:
         f"{title}：{count}"
         for title, count in stats.metric_counts.items()
     )
-    await matcher.finish("\n".join(lines))
+    await finish_event_reply(matcher, event, "\n".join(lines))
 
 
 @rank_cache_refresh_matcher.handle()
-async def handle_rank_cache_refresh(matcher: Matcher) -> None:
+async def handle_rank_cache_refresh(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     ensure_extended_packets()
     before = get_local_rank_cache_stats()
     if before.player_count <= 0:
-        await matcher.finish("❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。")
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。",
+        )
 
-    await matcher.send(
-        f"🔄 正在刷新样本榜缓存，共 {before.player_count} 个米米号。"
-        "这会逐个重新查询，可能需要一点时间。"
+    await send_event_reply(
+        matcher,
+        event,
+        "🔄 正在刷新样本榜缓存。"
+        f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
+        f"{plugin_config.seer_query_cache_refresh_limit} 个，"
+        "只刷新超过 "
+        f"{plugin_config.seer_query_cache_refresh_max_age_hours} 小时未更新的数据。"
     )
+    await release_superuser_priority(state)
     result = await refresh_local_rank_cache()
     after = get_local_rank_cache_stats()
 
     lines = [
         "✅【样本榜缓存刷新完成】",
-        f"原缓存米米号：{result.total} 个",
+        f"本轮候选米米号：{result.total} 个",
         f"成功刷新：{result.success} 个",
         f"缓存已满跳过：{result.skipped_full} 个",
         f"失败：{result.failed} 个",
@@ -509,4 +703,4 @@ async def handle_rank_cache_refresh(matcher: Matcher) -> None:
         lines.append("失败示例：")
         lines.extend(format_refresh_failures(result.failures))
 
-    await matcher.finish("\n".join(lines))
+    await finish_event_reply(matcher, event, "\n".join(lines))

@@ -30,6 +30,18 @@
 - 一个 OneBot 实现端
 
 我们使用[NapCat](https://github.com/NapNeko/NapCatQQ)作为OneBot实现端为例。
+#### 构建本仓库镜像
+
+本版会从 `bot.py` 装配本仓库的自定义插件，不能用上游预制镜像代替。
+请先取得本仓库源码并检出要部署的版本，再在包含 `Dockerfile` 的仓库根目录执行：
+
+```bash
+docker build -t ironsbot:local .
+```
+
+下面的 Compose 示例使用这个本地镜像；构建完成后再创建独立的运行目录。
+账号、连接及权限变量仍以当前版本的 [`.env.example`](.env.example) 为准。
+
 #### 1. 创建工作目录
 
 ```bash
@@ -45,7 +57,7 @@ version: "3"
 
 services:
   ironsbot:
-    image: ghcr.io/nattsu39/ironsbot:latest
+    image: ironsbot:local
     environment:
       # === 赛尔号数据查询插件，可选择远程同步模式或本地回退模式 ===
       # 远程同步模式
@@ -119,6 +131,11 @@ ws://ironsbot:8080/onebot/v11/ws
 
 ### 在 Windows 上部署
 待补充
+
+## 使用入口
+
+服务启动并连通 OneBot 后，发送 `帮助` 查看本版已装配的功能。
+帮助只显示当前群或私聊来源获准使用的功能，不会因此开放未授权功能。
 
 ## 协议
 本项目采用**多协议**结构，详见 [LICENSING.md](LICENSING.md)：

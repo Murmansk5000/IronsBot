@@ -3,6 +3,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.custom_plugins.message_actions import (
@@ -15,6 +16,19 @@ from ironsbot.utils.rule import no_reply
 
 from .adapter import fetch_team_shortcut_result
 from .config import plugin_config
+
+RESOURCE_NOTICE_THRESHOLD = 1000
+
+__plugin_meta__ = PluginMetadata(
+    name="战队快捷",
+    description="在配置群里用短指令查询固定战队",
+    usage=(
+        "【战队快捷】\n"
+        "群聊发送 TEAM_COMMANDS 中配置的指令，默认：战队。\n"
+        "机器人会查询 TEAM_IDS 中配置的战队；"
+        "战队资源低于 1000 时可 @ TEAM_RESOURCE_USERS。"
+    ),
+)
 
 
 def _build_resource_notice() -> Message:
@@ -61,13 +75,13 @@ async def handle_team_shortcut(matcher: Matcher, event: MessageEvent) -> None:
             result = await fetch_team_shortcut_result(team_id)
         except FinishedException:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.exception(f"team shortcut query failed, team id {team_id}: {e}")
             replies.append(Message(f"战队 {team_id} 查询失败，请稍后再试。"))
             continue
 
         replies.append(Message(result.message))
-        if result.resource < 1000:
+        if result.resource < RESOURCE_NOTICE_THRESHOLD:
             resource_notice_needed = True
 
     if not replies:
