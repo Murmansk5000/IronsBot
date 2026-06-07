@@ -28,6 +28,7 @@ from .._upstream.render._common import (
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "pet_info"
 SHARED_PATH = UPSTREAM_TEMPLATES_PATH / "_shared"
+GENDER_ICON_PATH = UPSTREAM_TEMPLATES_PATH / "pet_info" / "images"
 
 STAT_BAR_MAX_WIDTH = 120
 STAT_MAX_VALUE = 200
@@ -170,6 +171,13 @@ def _pet_introduction(pet: PetORM) -> str:
     return encyclopedia.introduction.strip()
 
 
+def _gender_icon_data_uri(gender_id: int) -> str:
+    icon_path = GENDER_ICON_PATH / f"{gender_id}.png"
+    if not icon_path.exists():
+        icon_path = GENDER_ICON_PATH / "0.png"
+    return to_data_uri(icon_path.read_bytes())
+
+
 async def render_pet_info(pet: PetORM) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     cached = render_cache.get("custom_pet_info", str(pet.id))
@@ -285,7 +293,7 @@ async def render_pet_info(pet: PetORM) -> bytes:
             "pet_name": pet.name,
             "pet_id": pet.id,
             "pet_gender_id": pet.gender.id,
-            "pet_gender_icon": f"images/{pet.gender.id}.png",
+            "pet_gender_icon": _gender_icon_data_uri(pet.gender.id),
             "pet_type_id": pet.type.id,
             "pet_type_name": pet.type.name,
             "pet_head_img": to_data_uri(pet_head_bytes),
