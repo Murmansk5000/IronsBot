@@ -9,6 +9,9 @@ from .notifier import notify_superusers_once
 
 REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
 EMPTY_REPLY = "AI没有返回有效内容，请稍后再试。"
+HTTP_PAYMENT_REQUIRED = 402
+HTTP_TOO_MANY_REQUESTS = 429
+HTTP_BAD_REQUEST = 400
 
 
 def _extract_reply(data: dict[str, Any]) -> str:
@@ -50,19 +53,23 @@ def _api_error_title(status_code: int) -> str:
     if status_code in {401, 403}:
         return "密钥错误或没有接口权限"
 
-    if status_code == 402:
+    if status_code == HTTP_PAYMENT_REQUIRED:
         return "API额度不足或账户余额不足"
 
-    if status_code == 429:
+    if status_code == HTTP_TOO_MANY_REQUESTS:
         return "请求过于频繁或触发限流"
 
     return "接口返回异常"
 
 
-async def call_ai_chat(prompt: str, history: list[HistoryMessage]) -> str:
+async def call_ai_chat(
+    prompt: str,
+    history: list[HistoryMessage],
+    memory: list[HistoryMessage] | None = None,
+) -> str:
     payload = {
         "model": plugin_config.ai_model,
-        "messages": build_messages(history, prompt),
+        "messages": build_messages(history, prompt, memory),
         "temperature": plugin_config.ai_temperature,
         "max_tokens": plugin_config.ai_max_tokens,
         "stream": False,
@@ -89,7 +96,7 @@ async def call_ai_chat(prompt: str, history: list[HistoryMessage]) -> str:
             json=payload,
         )
 
-    if response.status_code >= 400:
+    if response.status_code >= HTTP_BAD_REQUEST:
         error_title = _api_error_title(response.status_code)
         error_detail = _extract_error_detail(response)
         logger.warning(
