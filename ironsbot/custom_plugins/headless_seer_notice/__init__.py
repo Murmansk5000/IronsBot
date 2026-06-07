@@ -1,50 +1,67 @@
+from nonebot import require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
+from nonebot.plugin import PluginMetadata
 
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
 from ironsbot.custom_plugins.superuser_policy import get_superuser_ids
-from ironsbot.plugins.headless_seer.config import plugin_config as headless_config
-from ironsbot.plugins.headless_seer.manager import client_manager
 
 from .config import plugin_config
+from .service import (
+    headless_is_configured,
+    headless_login_failure_reason,
+    headless_user_id_text,
+    login_headless_client,
+)
+from .state import mark_headless_available, mark_headless_unavailable
+
+require("nonebot_plugin_apscheduler")
+
+from nonebot_plugin_apscheduler import scheduler
+
+RECONNECT_JOB_PREFIX = "headless_reconnect_check"
+
+__plugin_meta__ = PluginMetadata(
+    name="自定义无头登录",
+    description="自定义无头登录状态检查、掉线播报和定时重连",
+    usage=(
+        "【自定义无头登录】\n"
+        "启动后检查 HEADLESS_SEER_USER_ID / HEADLESS_SEER_PASSWORD 是否登录成功。\n"
+        "登录状态从在线/离线发生变化时私聊 SUPERUSERS；正常维护窗口内不播报。\n"
+        "每天按 HEADLESS_RECONNECT_CHECK_TIMES 检查无头状态，掉线则尝试重连。\n"
+        "超级管理员可发送 /开服查询 触发开服查询和无头重连。"
+    ),
+)
 
 
-def _headless_is_configured() -> bool:
-    return (
-        headless_config.headless_seer_user_id is not None
-        and bool(headless_config.headless_seer_password)
-    )
-
-
-def _headless_login_failure_reason() -> str | None:
-    try:
-        client_manager.get_client()
-    except Exception as e:  # noqa: BLE001
-        return str(e)
-
-    return None
-
-
-def _build_notice_message(reason: str) -> Message:
-    user_id = headless_config.headless_seer_user_id or "未配置"
+def _build_startup_notice_message(reason: str) -> Message:
     return Message(
         plugin_config.seer_login_notice_message.format(
-            user_id=user_id,
+            user_id=headless_user_id_text(),
             reason=reason,
         )
     )
 
 
 async def _startup_check(bot: Bot) -> None:
-    if (
-        not plugin_config.seer_login_notice
-        or not _headless_is_configured()
-    ):
+    if not headless_is_configured():
         return
 
-    reason = _headless_login_failure_reason()
+    reason = headless_login_failure_reason()
     if reason is None:
+        await mark_headless_available(
+            source="启动检查",
+            notify=False,
+        )
+        return
+
+    await mark_headless_unavailable(
+        reason,
+        source="启动检查",
+        notify=False,
+    )
+    if not plugin_config.seer_login_notice:
         return
 
     target_users = sorted(get_superuser_ids())
@@ -53,7 +70,7 @@ async def _startup_check(bot: Bot) -> None:
         return
 
     await send_broadcast_message(
-        _build_notice_message(reason),
+        _build_startup_notice_message(reason),
         private_user_ids=target_users,
         bot=bot,
         action_name="headless seer failure notice",
@@ -61,4 +78,66 @@ async def _startup_check(bot: Bot) -> None:
     )
 
 
+async def _daily_reconnect_check(scheduled_time: str) -> None:
+    if not headless_is_configured():
+        logger.info("headless reconnect check skipped: not configured")
+        return
+
+    reason = headless_login_failure_reason()
+    if reason is None:
+        await mark_headless_available(
+            source=f"定时检测 {scheduled_time}",
+            notify=False,
+        )
+        return
+
+    await mark_headless_unavailable(
+        reason,
+        source=f"定时检测 {scheduled_time}",
+        notify=True,
+    )
+    try:
+        user_id = await login_headless_client()
+    except Exception as e:  # noqa: BLE001
+        logger.opt(exception=True).warning(
+            "headless reconnect check failed at {}",
+            scheduled_time,
+        )
+        await mark_headless_unavailable(
+            str(e),
+            source=f"定时重连 {scheduled_time}",
+            notify=True,
+        )
+        return
+
+    await mark_headless_available(
+        source=f"定时重连 {scheduled_time}",
+        user_id=user_id,
+        notify=True,
+    )
+
+
+def _register_reconnect_checks() -> None:
+    for scheduled_time in plugin_config.parsed_reconnect_check_times:
+        hour_text, minute_text = scheduled_time.split(":", maxsplit=1)
+        scheduler.add_job(
+            _daily_reconnect_check,
+            "cron",
+            id=f"{RECONNECT_JOB_PREFIX}:{scheduled_time}",
+            args=[scheduled_time],
+            replace_existing=True,
+            hour=int(hour_text),
+            minute=int(minute_text),
+            second=0,
+            timezone="Asia/Shanghai",
+        )
+
+    if plugin_config.parsed_reconnect_check_times:
+        logger.info(
+            "headless reconnect checks registered: {}",
+            ", ".join(plugin_config.parsed_reconnect_check_times),
+        )
+
+
 register_startup_check("headless_seer_login", _startup_check)
+_register_reconnect_checks()

@@ -3,19 +3,26 @@ import asyncio
 import os
 import tempfile
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
+from pathlib import Path
 from typing import NamedTuple
 
 import httpx
-from anyio import Path
-from nonebot import get_driver, on_command, require
+from anyio import Path as AsyncPath
+from anyio import to_thread
+from nonebot import get_driver, on_message, require
+from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
+from nonebot.rule import Rule
 
 require("nonebot_plugin_apscheduler")
 
 from nonebot_plugin_apscheduler import scheduler
 
+from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
@@ -37,11 +44,32 @@ _sync_all_lock = asyncio.Lock()
 _registered_syncs: dict[str, _SyncEntry] = {}
 _local_databases: set[str] = set()
 _fingerprints: dict[str, str] = {}
-manual_sync_matcher = on_command(
-    "更新数据",
-    aliases={"数据更新"},
+MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
+ADMIN_COMMAND_PREFIX = "/"
+
+
+def _normalize_command_text(text: str) -> str:
+    return "".join(text.split()).lower()
+
+
+NORMALIZED_MANUAL_SYNC_COMMANDS = {
+    _normalize_command_text(command)
+    for command in MANUAL_SYNC_COMMANDS
+}
+
+
+async def _is_manual_sync_command(event: Event) -> bool:
+    text = event.get_plaintext().strip()
+    if not text.startswith(ADMIN_COMMAND_PREFIX):
+        return False
+
+    command = _normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
+    return command in NORMALIZED_MANUAL_SYNC_COMMANDS
+
+
+manual_sync_matcher = on_message(
+    rule=Rule(_is_manual_sync_command) & no_reply(),
     permission=SUPERUSER,
-    rule=no_reply(),
     priority=5,
     block=True,
 )
@@ -51,6 +79,30 @@ def _get_lock(name: str) -> asyncio.Lock:
     if name not in _sync_locks:
         _sync_locks[name] = asyncio.Lock()
     return _sync_locks[name]
+
+
+def _write_bytes_atomic(file_path: str, content: bytes) -> None:
+    target_path = Path(file_path)
+    parent = target_path.parent
+    if parent != Path():
+        parent.mkdir(parents=True, exist_ok=True)
+
+    tmp_dir = parent if parent != Path() else Path.cwd()
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target_path.name}.",
+        suffix=".tmp",
+        dir=str(tmp_dir),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as tmp_file:
+            tmp_file.write(content)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        tmp_path.replace(target_path)
+    finally:
+        with suppress(FileNotFoundError):
+            tmp_path.unlink()
 
 
 def is_sync_running() -> bool:
@@ -107,7 +159,7 @@ def register_local_database(name: str, *, file_path: str) -> None:
         logger.warning(f"数据库 '{name}' 已注册，跳过重复注册")
         return
 
-    if not os.path.exists(file_path):
+    if not Path(file_path).exists():
         logger.warning(f"本地文件 '{file_path}' 不存在，跳过注册 {name}")
         return
 
@@ -117,7 +169,7 @@ def register_local_database(name: str, *, file_path: str) -> None:
     logger.info(f"已从本地文件 '{file_path}' 加载数据库 '{name}'（无自动同步）")
 
 
-async def sync_database(name: str) -> bool:
+async def sync_database(name: str) -> bool:  # noqa: C901
     """从远程 URL 下载 SQLite 数据库并导入到内存中。
 
     若注册时提供了 ``get_fingerprint``，会先获取远程指纹并与上次成功同步
@@ -130,7 +182,7 @@ async def sync_database(name: str) -> bool:
     async with _get_lock(name):
         fd, tmp_name = tempfile.mkstemp(suffix=".sqlite")
         os.close(fd)
-        tmp_path = Path(tmp_name)
+        tmp_path = AsyncPath(tmp_name)
 
         try:
             async with httpx.AsyncClient(
@@ -166,10 +218,11 @@ async def sync_database(name: str) -> bool:
             cache_saved = True
             if entry.local_path:
                 try:
-                    cache_dir = os.path.dirname(entry.local_path)
-                    if cache_dir:
-                        os.makedirs(cache_dir, exist_ok=True)
-                    await Path(entry.local_path).write_bytes(content_bytes)
+                    await to_thread.run_sync(
+                        _write_bytes_atomic,
+                        entry.local_path,
+                        content_bytes,
+                    )
                 except OSError:
                     cache_saved = False
                     logger.exception(
@@ -181,7 +234,6 @@ async def sync_database(name: str) -> bool:
 
             size_mb = len(content) / (1024 * 1024)
             logger.info(f"数据库 '{name}' 已同步到内存，源文件大小: {size_mb:.2f} MB")
-            return cache_saved
 
         except httpx.HTTPError:
             logger.exception(f"数据库 '{name}' 同步失败（HTTP 错误）")
@@ -189,6 +241,8 @@ async def sync_database(name: str) -> bool:
         except (OSError, ValueError):
             logger.exception(f"数据库 '{name}' 同步失败（文件或导入错误）")
             return False
+        else:
+            return cache_saved
         finally:
             await tmp_path.unlink(missing_ok=True)
 
@@ -234,46 +288,53 @@ async def run_sync_all_databases() -> tuple[bool, dict[str, bool]]:
 
 def load_cached_database(name: str) -> bool:
     entry = _registered_syncs.get(name)
-    if not entry or not entry.local_path or not os.path.exists(entry.local_path):
+    if not entry or not entry.local_path or not Path(entry.local_path).exists():
         return False
 
     try:
         db_manager.load_from_file(name, entry.local_path)
         logger.info(f"已从本地缓存加载数据库 '{name}': {entry.local_path}")
-        return True
     except (OSError, ValueError):
         logger.exception(f"数据库 '{name}' 本地缓存加载失败: {entry.local_path}")
         return False
+    else:
+        return True
 
 
 @manual_sync_matcher.handle()
-async def _handle_manual_sync(matcher: Matcher) -> None:
+async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
     if not _registered_syncs:
-        await matcher.finish("当前没有已注册的远程同步数据库。")
+        await finish_event_reply(matcher, event, "当前没有已注册的远程同步数据库。")
 
     if is_sync_running():
-        await matcher.finish("⏳ 数据更新正在进行中，请稍后再试。")
+        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
 
     names = list(_registered_syncs)
-    await matcher.send(f"开始更新数据：{', '.join(names)}，请稍等。")
+    await send_event_reply(
+        matcher,
+        event,
+        f"开始更新数据：{', '.join(names)}，请稍等。",
+    )
 
     did_run, results = await run_sync_all_databases()
 
     if not did_run:
-        await matcher.finish("⏳ 数据更新正在进行中，请稍后再试。")
+        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
 
     failed = [name for name, ok in results.items() if not ok]
     succeeded = [name for name, ok in results.items() if ok]
 
     if failed:
-        await matcher.finish(
+        await finish_event_reply(
+            matcher,
+            event,
             "数据更新完成，但有失败项。\n"
             f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
             f"失败：{', '.join(failed)}\n"
             "请查看容器日志确认网络或下载错误。"
         )
 
-    await matcher.finish(f"数据更新完成：{', '.join(succeeded)}")
+    await finish_event_reply(matcher, event, f"数据更新完成：{', '.join(succeeded)}")
 
 
 @_driver.on_startup
@@ -293,7 +354,7 @@ async def _on_startup() -> None:
     # Keep startup sync behind a switch. Set DB_SYNC_ON_STARTUP=true to restore
     # the old behavior if automatic refresh is needed again.
     if not plugin_config.db_sync_on_startup:
-        logger.info("启动时数据库同步已关闭，可由超级管理员发送“更新数据”手动同步")
+        logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
         return
 
     async with _sync_all_lock:
