@@ -6,43 +6,46 @@
 
 Custom Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer game information queries, with personal custom plugins and Unraid deployment templates.
 
-This image is based on the upstream project [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot). The fork keeps upstream updates while adding local custom plugins and deployment conveniences.
+This image is built from [Murmansk5000/IronsBot](https://github.com/Murmansk5000/IronsBot). User-facing features are provided by custom plugins, while upstream IronsBot code is retained only where it is needed as data, rendering, protocol, or infrastructure code.
 
 ## Images
 
 ```text
 docker.io/murmansk5000/ironsbot:latest
-docker.io/murmansk5000/ironsbot:<upstream-version>.<fork-revision>
+docker.io/murmansk5000/ironsbot:<base-version>.<custom-revision>
 docker.io/murmansk5000/ironsbot:sha-xxxxxxx
 ghcr.io/murmansk5000/ironsbot:latest
-ghcr.io/murmansk5000/ironsbot:<upstream-version>.<fork-revision>
+ghcr.io/murmansk5000/ironsbot:<base-version>.<custom-revision>
 ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 ```
 
-`latest` tracks the `main` branch of this fork.
+`latest` tracks the `main` branch of this repository.
 
 ## Version Tags And Changelog
 
-This fork keeps Docker `latest` available, and also publishes extra tags so you can see exactly which custom build you are running.
+This repository keeps Docker `latest` available, and also publishes extra tags so you can see exactly which custom build you are running.
 
 - `latest`: the newest `main` build, suitable for normal Unraid updates.
-- `<upstream-version>.<fork-revision>`: upstream IronsBot version plus this fork's custom revision.
+- `<base-version>.<custom-revision>`: IronsBot base version plus this repository's custom revision.
 - `sha-xxxxxxx`: the exact Git commit used to build the image.
 
-For example, `0.5.1.26` means the image is based on upstream `0.5.1` with the 26th fork revision after upstream tag `v0.5.1`. If upstream later becomes `0.5.2` or `0.6.0`, this fork will publish tags such as `0.5.2.1` or `0.6.0.1`.
+For example, `0.6.0.3` means the image is based on IronsBot `0.6.0` with the 3rd custom revision after that base version.
 
 Recent changes are tracked in the GitHub commit history and in the Unraid template notes. On Docker Hub, check the tag list for the newest upstream-based version tag and `sha-xxxxxxx` tag.
 
 ## Included Custom Plugins
 
 - `ai_chat`: chat with DeepSeek through mentions or authorized private messages.
-- `sendpic_custom`: reply with fixed local images by command keywords.
+- `custom_sendpic`: reply with fixed local images by command keywords.
+- `custom_help`: show only features enabled for the current group or private user.
+- `custom_about`: show the current IronsBot project information.
 - `meeting_reply`: reply with Tencent Meeting information from environment variables.
 - `message_actions`: generic private/group command replies and scheduled messages.
 - `bilibili_monitor`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
 - `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.
+- `scheduled_restart`: restart the bot container at configured daily times through environment variables.
 
 All group IDs, user IDs, team IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
 
@@ -115,8 +118,14 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
 | `ADMIN_GROUPS` | QQ groups treated as enabled test/management groups by custom plugins. |
 | `ADMIN_BYPASS_GROUPS` | Set `true` to let superusers use custom group commands outside enabled groups. Default `false`. |
-| `CUSTOM_FEATURE_GROUPS` | QQ groups where general custom features are enabled, such as extended Seer queries, rankings, Autocard, fixed images, manual Bilibili dynamic queries, soon-ending activities, and server status. `ADMIN_GROUPS` are included automatically. Meeting, text/link replies, AI chat, Bilibili push targets, and team shortcuts use their own variables. |
+| `CUSTOM_FEATURE_GROUPS` | QQ groups where general custom features are enabled, such as extended Seer queries, rankings, Autocard, fixed images, manual Bilibili dynamic queries, soon-ending activities, and ordinary `开服了吗`. `ADMIN_GROUPS` are included automatically. Meeting, text/link replies, AI chat, Bilibili push targets, team shortcuts, and admin server status use their own variables. |
 | `CUSTOM_FEATURE_USERS` | QQ users allowed to use general custom features in private chat. `SUPERUSERS` are included automatically. |
+| `CUSTOM_PUSH_GROUPS` | Extra QQ groups receiving custom group broadcasts, separate from command permissions. These are added to feature-specific push targets such as `BILI_GROUPS`, `ACTIVITY_REMINDER_GROUPS`, `SERVER_STATUS_BROADCAST_GROUPS`, and `MSG_GROUP_SCHEDULES`. |
+| `CUSTOM_PUSH_EXCLUDE_GROUPS` | QQ groups that must not receive custom group broadcasts, even when listed in feature-specific push targets or `ADMIN_GROUPS`. This does not affect manual commands. |
+| `BOT_RESTART_ENABLED` | Enable scheduled bot container restart. The bot exits at the configured time; Docker/Unraid restart policy should start it again. |
+| `BOT_RESTART_TIMES` | Daily restart times in Asia/Shanghai time. Use comma-separated `HH:MM` values, for example `04:30,16:10,23:55`. JSON lists like `["04:30","16:10"]` are also accepted. |
+| `BOT_RESTART_GRACE_SECONDS` | Seconds to wait after the restart job triggers before terminating the bot process. |
+| `BOT_RESTART_SIGNAL_PARENT` | Signal the parent gunicorn process instead of only the worker. Keep `true` in Docker/Unraid so the whole container exits and restarts. |
 | `DB_SYNC_ON_STARTUP` | Whether to sync registered databases automatically on startup. Default is `false`; superusers can send `更新数据` or `数据更新`. |
 | `DB_SYNC_INTERVAL_ENABLED` | Whether to run scheduled database sync jobs. Default is `true`; set `false` for manual-only updates. |
 | `SEERAPI_SYNC_URL` | Remote SeerAPI database URL. |
@@ -127,8 +136,16 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `ALIAS_LOCAL_PATH` | Local alias database cache/fallback path. Use `/app/data` persistence for Docker. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for features that require login. |
 | `HEADLESS_SEER_PASSWORD` | Optional MD5 password for the headless Seer client. |
+| `HEADLESS_SEER_HEARTBEAT_INTERVAL` | Seconds between headless client heartbeat checks. Lower values detect dropped game connections faster. |
+| `HEADLESS_SEER_RECONNECT_RETRIES` | Headless client reconnect retry count. Use `-1` for infinite retries, `0` to disable automatic reconnect, or a positive number for limited retries. |
+| `HEADLESS_SEER_RECONNECT_DELAY` | Initial seconds to wait before the headless client reconnects. |
+| `HEADLESS_SEER_RECONNECT_DELAY_MAX` | Maximum reconnect backoff seconds for the headless client. |
 | `SEER_LOGIN_NOTICE` | Notify `SUPERUSERS` by private message when the configured headless Seer login is unavailable after startup. Default `true`. |
 | `SEER_LOGIN_NOTICE_MESSAGE` | Message template for the headless Seer login failure notice. Supports `{user_id}` and `{reason}`. |
+| `HEADLESS_STATE_NOTICE` | Notify `SUPERUSERS` when the headless Mimi login changes between online and offline. Normal maintenance windows are muted. |
+| `HEADLESS_STATE_OFFLINE_MESSAGE` | Message template for headless offline state changes. Supports `{user_id}`, `{reason}`, and `{source}`. |
+| `HEADLESS_STATE_ONLINE_MESSAGE` | Message template for headless online state changes. Supports `{user_id}` and `{source}`. |
+| `HEADLESS_RECONNECT_CHECK_TIMES` | Daily Asia/Shanghai times to check headless status and reconnect if offline. Use comma-separated `HH:MM` values or JSON list; default `00:01,00:02`. |
 | `SEER_QUERY_PLAYER_SECTIONS` | Sections shown by custom Mimi ID queries. Use JSON list or comma-separated values. Supported: `basic`, `appearance`, `social`, `collection`, `rank`, `local_rank`, `achievement`, `peak`, `titles`, `pets`, `stages`, `battle`, `raw`. |
 | `SEER_QUERY_TEAM_SECTIONS` | Sections shown by custom team queries. Use JSON list or comma-separated values. Supported: `basic`, `resource`, `facilities`, `status`, `logo`, `text`. |
 | `SEER_QUERY_PLAYER_RATE_LIMIT_SECONDS` | Seconds between Mimi ID queries per normal QQ user. `SUPERUSERS` are exempt. Default `60`; set `0` to disable. |
@@ -141,6 +158,7 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `SEER_QUERY_SKIN_PRICE` | Append official skin diamond price data to custom skin/illustration queries. Defaults to `true`. |
 | `SEER_QUERY_SKIN_PRICE_CACHE_TTL_SECONDS` | Seconds before the downloaded skin price config cache is considered stale. Defaults to `86400`. |
 | `SEER_QUERY_SKIN_PRICE_CACHE_PATH` | JSON cache file for parsed official skin price data. Defaults to `data/custom_get_seer_info/skin_price_cache.json`. |
+| `SEER_QUERY_MINTMARK_QUALITY_PATH` | Optional parsed official `mintmark.json` path. When set, custom countermark stat rankings use its `Quality` field as the angle count; otherwise they infer angles from base attributes. |
 | `SEER_QUERY_CONFIG_PACKAGE_BASE_URL` | Official Unity ConfigPackage base URL used for skin prices and other custom config parsing. |
 | `MEETING_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
 | `MEETING_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
@@ -158,6 +176,8 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `TEAM_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
 | `TEAM_RESOURCE_USERS` | QQ users to mention when any configured team resource is below 1000. Use `[123456789]` or `123456789`. |
 | `TEAM_RESOURCE_MESSAGE` | Message sent after the mention when team resources are low. |
+| `AI_INTENT_ACTIONS_ENABLED` | Enable AI-gated message actions. Messages are first filtered by keywords, then AI decides whether to run the configured action. |
+| `AI_INTENT_ACTIONS` | JSON list of AI intent actions. Supported actions: `message`, `team_shortcut`. The default `join_team` action watches for `战队`, asks AI whether the sender wants to join a team, and sends the configured `TEAM_IDS` team info when matched. |
 | `AI_KEY` | DeepSeek API key. Keep it private. |
 | `AI_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
 | `AI_MODEL` | Model name used by the configured AI chat provider. |
@@ -172,8 +192,18 @@ ADMIN_GROUPS=[686376929]
 ADMIN_BYPASS_GROUPS=false
 CUSTOM_FEATURE_GROUPS=[686376929]
 CUSTOM_FEATURE_USERS=[]
+CUSTOM_PUSH_GROUPS=[]
+CUSTOM_PUSH_EXCLUDE_GROUPS=[]
+BOT_RESTART_ENABLED=false
+BOT_RESTART_TIMES=04:30
+BOT_RESTART_GRACE_SECONDS=10
+BOT_RESTART_SIGNAL_PARENT=true
 SEER_LOGIN_NOTICE=true
 SEER_LOGIN_NOTICE_MESSAGE="Headless Seer login did not complete.\nMimi ID: {user_id}\nStatus: {reason}\nFeatures that require Mimi login may be unavailable."
+HEADLESS_STATE_NOTICE=true
+HEADLESS_STATE_OFFLINE_MESSAGE="Headless Mimi login went offline.\nMimi ID: {user_id}\nStatus: {reason}\nSource: {source}"
+HEADLESS_STATE_ONLINE_MESSAGE="Headless Mimi login recovered.\nMimi ID: {user_id}\nSource: {source}"
+HEADLESS_RECONNECT_CHECK_TIMES=00:01,00:02
 SEER_QUERY_PLAYER_RATE_LIMIT_SECONDS=60
 SEER_QUERY_PLAYER_FAILURE_RATE_LIMIT_SECONDS=10
 SEER_QUERY_PLAYER_SECTIONS=["basic","appearance","social","collection","rank","local_rank","achievement","peak","titles","pets","stages","battle","raw"]
@@ -186,6 +216,7 @@ SEER_QUERY_LOCAL_RANK_PATH=data/custom_get_seer_info/player_query_cache.sqlite
 SEER_QUERY_SKIN_PRICE=true
 SEER_QUERY_SKIN_PRICE_CACHE_TTL_SECONDS=86400
 SEER_QUERY_SKIN_PRICE_CACHE_PATH=data/custom_get_seer_info/skin_price_cache.json
+SEER_QUERY_MINTMARK_QUALITY_PATH=
 SEER_QUERY_CONFIG_PACKAGE_BASE_URL=https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/
 MEETING_GROUPS=[123456789]
 BILI_GROUPS=[123456789,987654321]
@@ -196,6 +227,8 @@ TEAM_IDS=[1234567,7654321]
 TEAM_COMMANDS=["战队"]
 TEAM_RESOURCE_USERS=[123456789]
 TEAM_RESOURCE_MESSAGE=出来买资源，别逼我求你😡
+AI_INTENT_ACTIONS_ENABLED=true
+AI_INTENT_ACTIONS=[{"id":"join_team","keywords":["战队"],"action":"team_shortcut","intent":"Judge whether the QQ group message means the sender wants to join, apply for, or find a Seer team/guild. Answer yes only when the sender is asking to join a team, asking whether they can enter the team, or asking for the team info for joining. Answer no when the message only queries team data, discusses team resources, asks someone to buy resources, or casually mentions teams.","include_team_resource_notice":false}]
 AI_USERS=[123456789]
 ```
 
@@ -226,7 +259,7 @@ Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an i
 
 ## Unraid
 
-This fork includes a Community Applications-ready Unraid template:
+This repository includes a Community Applications-ready Unraid template:
 
 - IronsBot template: `templates/ironsbot.xml`
 - CA profile: `ca_profile.xml`

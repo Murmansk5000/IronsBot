@@ -1,15 +1,17 @@
 # 自定义插件目录
 
-这个目录用于放置 fork 里的本地自定义插件。原项目插件保留在
-`ironsbot/plugins`，自己的功能放在这里，方便后续同步上游时减少冲突。
+这个目录用于放置 IronsBot 的自定义插件。用户可触发的功能应优先放在
+`ironsbot/custom_plugins`；`ironsbot/plugins` 只保留基础设施或上游/vendor 代码。
 
-项目已经在 `pyproject.toml` 中配置：
+运行入口 `bot.py` 会按显式顺序加载外部插件、基础设施插件和自定义插件；
+`pyproject.toml` 中也保留了自定义插件目录配置，供工具识别：
 
 ```toml
-plugin_dirs = ["ironsbot/plugins", "ironsbot/custom_plugins"]
+plugin_dirs = ["ironsbot/custom_plugins"]
 ```
 
-因此每个带有 `__init__.py` 的子目录都会被 NoneBot 自动加载。
+新增可运行插件后，需要把模块名加入 `bot.py` 的 `CUSTOM_PLUGINS` 列表，避免
+NoneBot 无序加载导致依赖插件先后顺序不稳定。
 
 ## 当前插件
 
@@ -17,12 +19,15 @@ plugin_dirs = ["ironsbot/plugins", "ironsbot/custom_plugins"]
 ironsbot/custom_plugins/
   ai_chat/           # 接入 DeepSeek API，群聊 @机器人 或授权私聊触发
   bilibili_monitor/   # 监控指定 B 站账号动态，推送到配置的群/用户
+  custom_about/       # 新版关于页
+  custom_get_seer_info/ # 自定义赛尔号查询、榜单、群星牌、活动入口
+  custom_help/        # 按当前群/私聊权限显示可用功能
+  custom_sendpic/     # 本地固定关键词发图
   message_actions/    # 通用文本消息动作：指令回复、定时发送、批量推送、事件回复
   meeting_reply/      # 回复“开播/会议”的腾讯会议信息
   pet_config_reply/   # 对“精灵名 + 配置”提示暂不支持配置查询
   startup_notice/     # 机器人启动并连接后私聊通知超级管理员
   team_shortcut/      # 给战队群使用：群内短指令触发预设战队查询
-  sendpic_custom/     # 本地固定关键词发图
 ```
 
 ## 新增插件

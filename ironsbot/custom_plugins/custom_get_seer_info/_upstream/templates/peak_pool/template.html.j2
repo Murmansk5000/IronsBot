@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style type="text/css">
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        body {
+            background-color: #1a3a6a;
+            color: #ffffff;
+            font-family: "Microsoft YaHei", "Source Han Sans SC", "Source Han Sans CN", sans-serif;
+        }
+
+        .container {
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffffff;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+            padding-bottom: 12px;
+            border-bottom: 2px solid #4a8ada;
+            margin-bottom: 20px;
+        }
+
+        .pool-section {
+            background-color: #2a5a9a;
+            padding: 18px;
+            margin-bottom: 16px;
+            border-radius: 4px;
+            border: 1px solid #4a8ada;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .pool-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .pool-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .pool-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            font-size: 13px;
+            color: #ffffff;
+            background-color: #4a8ada;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-left: 8px;
+        }
+
+        .pet-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: flex-start;
+        }
+
+        {% include "pet_cell.css" %}
+
+        .footer {
+            background-color: #1a3a6a;
+            padding: 15px 32px;
+            text-align: center;
+            font-size: 13px;
+            color: #a0c0e0;
+            border-top: 1px solid #4a8ada;
+        }
+    </style>
+</head>
+
+<body>
+    {% from "pet_cell_macro.html.j2" import pet_cell %}
+    <div class="container">
+        <div class="page-title">当前{{ pool_type }}</div>
+
+        {% for pool in pools %}
+        <div class="pool-section">
+            <div class="pool-header">
+                <div>
+                    <span class="pool-title">池 #{{ pool.id }}</span>
+                    <span class="pool-badge">携带上限: {{ pool.count }}</span>
+                </div>
+            </div>
+            <div class="pet-grid">
+                {% for pet in pool.pets %}
+                {{ pet_cell(id=pet.id, name=pet.name, head_img=pet.head_img, type_icon=pet.type_icon) }}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="footer">IronsBot · 开源赛尔号信息查询机器人<br>项目链接：https://github.com/Nattsu39/IronsBot</div>
+    </div>
+</body>
+
+</html>

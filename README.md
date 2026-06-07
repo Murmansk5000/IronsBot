@@ -1,140 +1,169 @@
-<div align="center">
-
+<p align="center">
+  <img src="icon.png" width="128" alt="IronsBot icon">
+</p>
 
 # IronsBot
-赛尔号信息查询机器人👊🤖🔥
 
-[![Python](https://img.shields.io/badge/python->=3.10-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-GPL--3.0%20%2F%20MIT-blue.svg)](LICENSING.md)
-[![SeerAPI](https://img.shields.io/badge/SeerAPI-v104-blue.svg)](https://github.com/SeerAPI)
-</div>
+IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
-> 本项目原作是 [**@火火**] 开发的西塔伦Bot，谨以此项目向 [**@火火**] 致敬，感谢他为赛尔号玩家社区所做的贡献，愿火种永存。
-> 
-> 本项目继承了西塔伦Bot的数据查询功能，不包含配置投稿/推荐功能，这些功能请查看[这个链接（目前还没有）]()获取更多信息。
->
-> 本项目中headless_seer插件的session获取与登录数据包构建函数来源于 [@oldml](https://github.com/oldml) 的项目 [saixiaoxi](https://github.com/oldml/saixiaoxi)，在此表示感谢。
+当前主线已经转为自定义插件架构：用户可触发的功能由 `ironsbot/custom_plugins` 提供；原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
 
-## 部署
-与西塔伦Bot不同，本项目不提供托管服务，用户需要自行部署。
+## 功能
 
-硬性需求：
-- 一台可运行操作系统并可以访问网络的计算机
-- 一个QQ账号
+- 自定义米米号查询：基础信息先返回，收集与巅峰通过二级回复查看。
+- 自定义战队查询：支持快捷战队、资源不足提醒和战队详情展示。
+- 精灵、技能、魂印、皮肤、刻印、套装、部件、称号、属性、异常状态查询。
+- 全服榜、样本榜、巅峰榜、刻印数值榜与缓存状态查询。
+- 群星牌公开资料查询。
+- B站动态监控与历史动态点播。
+- 当前活动、快结束活动和活动结束提醒。
+- 固定图片、固定文本、会议回复、通用指令回复和定时消息。
+- AI 聊天与 AI 意图动作。
+- 无头赛尔号登录状态检查、重连、启动通知和管理员开服查询。
+- Unraid Community Applications 模板与 Docker 镜像。
 
+## 镜像
 
-### 在 Linux 上部署（推荐）
-
-#### 前置要求
-
-- [Docker Engine](https://docs.docker.com/engine/install/) 和 [Docker Compose](https://docs.docker.com/compose/install/)
-- 一个 OneBot 实现端
-
-我们使用[NapCat](https://github.com/NapNeko/NapCatQQ)作为OneBot实现端为例。
-#### 1. 创建工作目录
-
-```bash
-mkdir -p ~/ironsbot && cd ~/ironsbot
+```text
+docker.io/murmansk5000/ironsbot:latest
+ghcr.io/murmansk5000/ironsbot:latest
 ```
 
-#### 2. 创建 docker-compose.yml
+`latest` 指向 `main` 的最新构建。构建还会发布精确版本 tag：
 
-创建 `docker-compose.yml` 文件，将以下示例配置粘贴进去，并根据注释修改对应的值：
+- `<base-version>.<revision>`：例如 `0.6.0.3`
+- `sha-xxxxxxx`：精确到 Git commit
 
-```yaml
-version: "3"
+## 快速部署
 
-services:
-  ironsbot:
-    image: ghcr.io/nattsu39/ironsbot:latest
-    environment:
-      # === 赛尔号数据查询插件，可选择远程同步模式或本地回退模式 ===
-      # 远程同步模式
-      SEERAPI_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite"
-      ALIAS_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/aliases-data.sqlite"
+### Unraid
 
-      # 本地回退模式
-      SEERAPI_LOCAL_PATH: "seerapi-data.sqlite"
-      ALIAS_LOCAL_PATH: "aliases-data.sqlite"
+在 Community Applications 中搜索 `ironsbot` 并安装，至少确认：
 
-      # --- 可选配置（以下均为默认值） ---
-      # SEERAPI_SYNC_INTERVAL_MINUTES: "60"  # 数据同步间隔（分钟）
-      # ALIAS_SYNC_INTERVAL_MINUTES: "60"
+- `Repository`: `murmansk5000/ironsbot:latest`
+- `WebSocket Port`: `8085`
+- `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
+- `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 一致
+- `SUPERUSERS`: 超级管理员 QQ，例如 `["123456789"]`
 
-      # === 表情包插件，当缺少时相关命令将被禁用 ===
-      # MEMES_CNB_TOKEN: "你的CNB令牌"
-      # MEMES_CNB_REPO: "Nattsu39/tudou"
+NapCat 反向 WebSocket：
 
-      # === 机器人配置（必填） ===
-      ONEBOT_ACCESS_TOKEN: "你的OneBot token" # 设置OneBot的访问令牌，用于NapCat连接机器人，注意不要泄露给他人
-
-      # --- 机器人配置（以下均为默认值，按需修改） ---
-      # HOST: "0.0.0.0"
-      # PORT: "8080"                  # 修改后需同步更新上方 ports 映射
-      # COMMAND_START: '[""]'
-      # SUPERUSERS: '[]'
-
-    restart: always
-
-  napcat:
-    image: mlikiowa/napcat-docker:latest
-    container_name: napcat
-    restart: always
-    mac_address: 02:42:ac:11:00:02 # 自行设置
-
-    environment:
-      - NAPCAT_UID=${NAPCAT_UID}
-      - NAPCAT_GID=${NAPCAT_GID}
-    
-    ports:
-      - 6099:6099
-
-    volumes:
-      - ./napcat/config:/app/napcat/config
-      - ./ntqq:/app/.config/QQ
+```text
+ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 ```
 
-完整的变量说明请参考仓库中的 [`.env.example`](.env.example)。
+如果 NapCat 和 IronsBot 在同一个 Docker 自定义网络里，也可以使用：
 
-#### 3. 启动服务
-
-```bash
-docker compose up -d
-```
-
-查看日志确认启动成功：
-
-```bash
-docker compose logs -f
-```
-
-#### 4. 初始化 NapCat
-
-在启动 NapCat 后，在 NapCat 容器日志中找到NapCat的登录token，并访问 `http://[你的服务器ip]:6099/webui`，输入token并登录机器人的QQ号。
-
-在 NapCat 的`网络配置`中，新建一个`WebSocket 客户端`，将`URL`设置为：
-```
+```text
 ws://ironsbot:8080/onebot/v11/ws
 ```
-并设置名称，token一栏填写之前设置的OneBot token，最后点击`保存`并启用即可。
 
-### 在 Windows 上部署
-待补充
+### Docker Compose
 
-## 协议
-本项目采用**多协议**结构，详见 [LICENSING.md](LICENSING.md)：
+```yaml
+services:
+  ironsbot:
+    image: murmansk5000/ironsbot:latest
+    container_name: ironsbot
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./ironsbot-data:/app/data
+    environment:
+      ENVIRONMENT: "prod"
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      ONEBOT_ACCESS_TOKEN: "change-me"
+      SUPERUSERS: '["123456789"]'
+      DB_SYNC_ON_STARTUP: "false"
+      DB_SYNC_INTERVAL_ENABLED: "true"
+      SEERAPI_LOCAL_PATH: "data/seerapi-data.sqlite"
+      ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
+    restart: always
+```
 
-- **整机 / 完整仓库 / Docker 镜像**：作为"组合作品"对外分发时整体须遵守 **GPL-3.0-or-later**。
-- **`get_seer_info`、`headless_seer` 两个插件**：**GPL-3.0-or-later**（见各自目录下的 `LICENSE`）。
-- **其余全部代码**（其他插件、`ironsbot/utils`、`bot.py`、`docker/` 等）：**MIT**（见根目录 [LICENSE](LICENSE)）。
+完整变量说明见 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-也就是说，非插件模块可被单独提取并以 MIT 协议复用；但只要分发包含上述两个 GPL 插件的整机，整体仍受 GPL-3.0 约束。每个源文件顶部均带有 `SPDX-License-Identifier` 标识其协议归属。
+## 插件架构
 
-其中 `headless_seer` 的 session 获取与登录数据包构建函数改写自 [@oldml](https://github.com/oldml) 的 [saixiaoxi](https://github.com/oldml/saixiaoxi)（MIT），出处声明见 [`ironsbot/plugins/headless_seer/NOTICE`](ironsbot/plugins/headless_seer/NOTICE)。
+用户功能集中在 `ironsbot/custom_plugins`：
 
-## ❤️ 特别鸣谢
-- [@oldml](https://github.com/oldml)
-- [@聿聿](https://github.com/WhY15w)
-- [@火火](https://github.com/Yogurt114514)
-- [@星空](https://github.com/sptsaixiaoxi)
+| 插件 | 作用 |
+| --- | --- |
+| `custom_get_seer_info` | 自定义赛尔号查询、榜单、群星牌、活动相关入口。 |
+| `custom_help` | 按当前群/私聊权限显示可用功能。 |
+| `custom_about` | 新版关于页。 |
+| `custom_sendpic` | 固定关键词发图。 |
+| `message_actions` | 通用文本回复、定时消息、事件回复和批量发送。 |
+| `bilibili_monitor` | B站动态监控与点播。 |
+| `meeting_reply` | 腾讯会议回复。 |
+| `team_shortcut` | 战队群快捷查询与资源提醒。 |
+| `activity_reminder` | 当前活动、快结束活动和活动结束提醒。 |
+| `server_status` | 开服查询与管理员服务器状态指令。 |
+| `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
+| `ai_chat` | AI 聊天。 |
+| `ai_intent_actions` | AI 判定后触发文本或战队动作。 |
+| `scheduled_restart` | 每日定时重启机器人进程。 |
 
-[**@火火**]: https://github.com/Yogurt114514
+原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
+
+## 常用变量
+
+```env
+ONEBOT_ACCESS_TOKEN=change-me
+SUPERUSERS=["123456789"]
+ADMIN_GROUPS=[]
+ADMIN_BYPASS_GROUPS=false
+CUSTOM_FEATURE_GROUPS=[]
+CUSTOM_FEATURE_USERS=[]
+CUSTOM_PUSH_GROUPS=[]
+CUSTOM_PUSH_EXCLUDE_GROUPS=[]
+```
+
+核心规则：
+
+- `SUPERUSERS` 是最高权限用户。
+- `ADMIN_GROUPS` 是测试/管理群，会自动被大多数自定义功能视为启用。
+- `ADMIN_BYPASS_GROUPS=false` 时，超级管理员在未启用功能的群里也不能绕过群限制。
+- `CUSTOM_FEATURE_GROUPS` / `CUSTOM_FEATURE_USERS` 控制通用自定义功能。
+- 会议、AI、B站推送、战队快捷、文本回复等功能有自己的细分变量。
+
+## 数据与缓存
+
+建议把 `/app/data` 持久化。这里会保存：
+
+- SeerAPI / alias SQLite 缓存
+- B站 Cookie 与动态状态
+- 米米号样本排行 SQLite
+- 全服榜页 SQLite 缓存
+- 皮肤价格、渲染缓存等运行数据
+
+`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
+
+## 本地开发
+
+```powershell
+uv sync
+uv run ruff check
+uv run python -m compileall -q ironsbot
+uv run python bot.py
+```
+
+## README 说明
+
+原作者/上游叙事版本已保留为 [README.old.md](README.old.md)。当前 `README.md` 只描述本仓库现在维护的 IronsBot 自定义版。
+
+## 鸣谢
+
+- 上游项目：[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
+- SeerAPI：[SeerAPI](https://github.com/SeerAPI)
+- 无头登录参考：[oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)
+- Unity 配置解析参考：[WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
+- 感谢赛尔号玩家社区的资料整理与测试反馈。
+
+## 许可证
+
+本仓库采用多许可证结构，详见 [LICENSING.md](LICENSING.md)。
+
+- 包含 GPL 插件/代码的完整仓库和 Docker 镜像整体按 GPL-3.0-or-later 分发。
+- 可独立复用的自定义插件与工具代码按各文件 SPDX 声明执行。

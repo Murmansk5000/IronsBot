@@ -1,8 +1,9 @@
 from nonebot.plugin import PluginMetadata
 
-from .config import Config, filter_enabled_configs
 from . import fixed_images as fixed_images
+from .config import Config, filter_enabled_configs
 from .matchers import matcher_group as matcher_group
+
 
 def _format_command_names(command: str, aliases: set[str]) -> str:
     names = [command, *sorted(aliases)]

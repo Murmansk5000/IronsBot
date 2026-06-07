@@ -1,0 +1,148 @@
+/* ========== 技能卡片 ========== */
+.sk-card {
+    background-color: #2a5a9a;
+    padding: 15px;
+    margin-bottom: 12px;
+    border-left: 4px solid #4a8ada;
+    border-radius: 0 4px 4px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.sk-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.sk-type-icon {
+    width: 32px;
+    height: 32px;
+    vertical-align: middle;
+    margin-right: 12px;
+}
+
+.sk-name {
+    font-size: 23px;
+    font-weight: bold;
+    color: #ffffff;
+    vertical-align: middle;
+}
+
+.sk-badges {
+    display: inline-block;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.sk-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 13px;
+    color: #ffffff;
+    margin-left: 5px;
+    border-radius: 3px;
+}
+
+.b-phys {
+    background-color: #d04848;
+}
+
+.b-spec {
+    background-color: #8848c0;
+}
+
+.b-stat {
+    background-color: #38a868;
+}
+
+.b-lv {
+    background-color: #546878;
+}
+
+.b-hit {
+    background-color: #c08030;
+}
+
+.b-spc {
+    background-color: #d09030;
+}
+
+.b-adv {
+    background-color: #8868b8;
+}
+
+.b-5th {
+    background-color: #38b8d0;
+}
+
+.sk-stats {
+    font-size: 15px;
+    color: #ffffff;
+    margin-bottom: 10px;
+    background-color: #1a3a6a;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+.sk-desc {
+    font-size: 14px;
+    color: #a0c0e0;
+    line-height: 1.6;
+    margin-top: 8px;
+}
+
+.sk-efx {
+    margin-top: 10px;
+    padding-left: 12px;
+    border-left: 3px solid #ffffff;
+}
+
+.sk-hide-effect {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-left: 3px solid #c08030;
+    border-radius: 0 4px 4px 0;
+    font-size: 17px;
+    color: #e0d0b0;
+    line-height: 1.6;
+}
+
+.sk-hide-effect-label {
+    color: #c08030;
+    font-weight: bold;
+    margin-right: 6px;
+}
+
+.sk-ef {
+    font-size: 18px;
+    color: #ffffff;
+    padding: 4px 0;
+    line-height: 1.6;
+}
+
+/* ========== 技能分组标签 ========== */
+.grp-lbl {
+    font-size: 18px;
+    font-weight: bold;
+    padding: 10px 0;
+    border-bottom: 2px solid #4a8ada;
+    margin-top: 25px;
+    margin-bottom: 15px;
+}
+
+.g-spc {
+    color: #ffc060;
+}
+
+.g-adv {
+    color: #c8a8e8;
+}
+
+.g-5th {
+    color: #60e0ff;
+}
+
+.g-lv {
+    color: #f4f4f4;
+}

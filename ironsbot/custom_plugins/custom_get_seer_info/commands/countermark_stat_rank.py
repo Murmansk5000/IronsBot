@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+from pathlib import Path
 
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
@@ -17,12 +21,16 @@ from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.utils.rule import no_reply
 
+from ..config import plugin_config
 from ..group import matcher_group
 
 RANK_LIST_SIZE = 20
 FIVE_ANGLE_ATTR_COUNT = 5
-COUNTERMARK_STAT_KEYS = ("atk", "def_", "sp_atk", "sp_def", "spd", "hp")
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
+DEFAULT_MINTMARK_QUALITY_PATHS = (
+    Path("data/custom_get_seer_info/mintmark.json"),
+    Path("data/mintmark.json"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,20 +182,118 @@ def _mintmark_class_name(mintmark: MintmarkORM) -> str:
     return part.mintmark_class.name
 
 
-def _base_attr_count(attrs: SixAttributes) -> int:
-    return sum(
-        1
-        for key in COUNTERMARK_STAT_KEYS
-        if (getattr(attrs, key, 0) or 0) > 0
-    )
+def _coerce_quality(value: object) -> int | None:
+    try:
+        quality = int(value)
+    except (TypeError, ValueError):
+        return None
+
+    return quality if quality > 0 else None
+
+
+def _object_quality(obj: object | None) -> int | None:
+    if obj is None:
+        return None
+
+    return _coerce_quality(getattr(obj, "quality", None))
+
+
+def _configured_mintmark_quality_paths() -> list[Path]:
+    configured = plugin_config.seer_query_mintmark_quality_path
+    paths: list[Path] = []
+    if configured is not None:
+        paths.append(configured)
+
+    paths.extend(DEFAULT_MINTMARK_QUALITY_PATHS)
+    return paths
+
+
+def _resolve_path(path: Path) -> Path:
+    return path if path.is_absolute() else Path.cwd() / path
+
+
+def _mintmark_records(data: object) -> list[object]:
+    if isinstance(data, list):
+        return data
+
+    if not isinstance(data, dict):
+        return []
+
+    for container_key, item_key in (
+        ("MintMarks", "MintMark"),
+        ("mint_marks", "mint_mark"),
+    ):
+        container = data.get(container_key)
+        if isinstance(container, dict):
+            records = container.get(item_key)
+            if isinstance(records, list):
+                return records
+
+    records = data.get("MintMark") or data.get("mint_mark")
+    return records if isinstance(records, list) else []
+
+
+@lru_cache(maxsize=1)
+def _load_mintmark_quality_map() -> dict[int, int]:
+    configured = plugin_config.seer_query_mintmark_quality_path
+    for raw_path in _configured_mintmark_quality_paths():
+        path = _resolve_path(raw_path)
+        if not path.exists():
+            if configured is not None and raw_path == configured:
+                logger.warning("mintmark quality config not found: {}", path)
+            continue
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            logger.exception("failed to load mintmark quality config: {}", path)
+            continue
+
+        quality_map: dict[int, int] = {}
+        for record in _mintmark_records(data):
+            if not isinstance(record, dict):
+                continue
+            mintmark_id = _coerce_quality(
+                record.get("ID")
+                if "ID" in record
+                else record.get("id")
+            )
+            quality = _coerce_quality(
+                record.get("Quality")
+                if "Quality" in record
+                else record.get("quality")
+            )
+            if mintmark_id is None or quality is None:
+                continue
+            quality_map[mintmark_id] = quality
+
+        if quality_map:
+            logger.info(
+                "loaded mintmark quality config: {} rows from {}",
+                len(quality_map),
+                path,
+            )
+            return quality_map
+
+    return {}
+
+
+def _configured_mintmark_quality(mintmark: MintmarkORM) -> int | None:
+    return _load_mintmark_quality_map().get(mintmark.id)
 
 
 def _mintmark_angle_count(mintmark: MintmarkORM) -> int | None:
-    part = mintmark.universal_part
-    if not isinstance(part, UniversalPartORM) or part.base_attr_value is None:
-        return None
+    for quality in (
+        _object_quality(mintmark),
+        _object_quality(mintmark.ability_part),
+        _object_quality(mintmark.skill_part),
+        _object_quality(mintmark.universal_part),
+        _configured_mintmark_quality(mintmark),
+    ):
+        if quality is not None:
+            return quality
 
-    return _base_attr_count(part.base_attr_value.to_model())
+    return None
 
 
 def _format_number(value: float) -> str:
