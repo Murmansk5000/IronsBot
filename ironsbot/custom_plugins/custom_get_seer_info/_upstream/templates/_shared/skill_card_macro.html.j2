@@ -1,0 +1,63 @@
+{% macro skill_card(skill, type_icons) %}
+<div class="sk-card">
+    <div class="sk-header">
+        {% if skill.category_id == 4 %}
+        <img class="sk-type-icon" src="{{ type_icons['prop'] }}" />
+        {% else %}
+        <img class="sk-type-icon" src="{{ type_icons[skill.type_id] }}" />
+        {% endif %}
+        <span class="sk-name">{{ skill.name }}</span>
+        <div class="sk-badges">
+            {% if skill.category_id == 1 %}
+            <span class="sk-badge b-phys">{{ skill.category_name }}</span>
+            {% elif skill.category_id == 2 %}
+            <span class="sk-badge b-spec">{{ skill.category_name }}</span>
+            {% else %}
+            <span class="sk-badge b-stat">{{ skill.category_name }}</span>
+            {% endif %}
+            {% if skill.learning_level and not skill.is_fifth and not skill.is_special%}
+            <span class="sk-badge b-lv">Lv.{{ skill.learning_level }}</span>
+            {% endif %}
+            {% if skill.is_fifth and skill.is_advanced %}
+            <span class="sk-badge b-adv">觉醒</span>
+            {% endif %}
+            {% if skill.activation_item %}
+            <span class="sk-badge b-spc">激活道具: {{ skill.activation_item }}</span>
+            {% endif %}
+            {% if skill.friend_bonus %}
+            <span class="sk-badge b-spc">伙伴加成</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="sk-stats">
+        威力: <strong>{{ skill.power }}</strong>
+        &nbsp;&nbsp;|&nbsp;&nbsp; PP: <strong>{{ skill.max_pp }}</strong>
+        &nbsp;&nbsp;|&nbsp;&nbsp; 命中率: <strong>{{ skill.accuracy }}{% if skill.accuracy != "必中" %}%{% endif
+            %}</strong>
+        {% if skill.priority != 0 %}
+        &nbsp;&nbsp;|&nbsp;&nbsp; 优先级: <strong>{{ "+" if skill.priority > 0 else "" }}{{ skill.priority }}</strong>
+        {% endif %}
+        {% if skill.crit_rate is not none %}
+        &nbsp;&nbsp;|&nbsp;&nbsp; 暴击率: <strong>{{ skill.crit_rate }}%</strong>
+        {% endif %}
+    </div>
+    {% if skill.effects %}
+    <div class="sk-efx">
+        {% for ef in skill.effects %}
+        <div class="sk-ef">
+            · {{ ef.info }} <span style="font-size: 15px; color: #a0c0e0; opacity: 0.8;">(ID: {{
+                ef.id }})</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if skill.hide_effect_desc %}
+    <div class="sk-hide-effect">
+        <span class="sk-hide-effect-label">隐藏效果:</span>{{ skill.hide_effect_desc }}
+    </div>
+    {% endif %}
+    {% if skill.info %}
+    <div class="sk-desc">{{ skill.info }}</div>
+    {% endif %}
+</div>
+{% endmacro %}

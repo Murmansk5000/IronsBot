@@ -1,16 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from typing import Any
 
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.plugins.headless_seer.exception import SocketRecvError
+from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import plugin_config
 from ..group import matcher_group
 from ._args import has_arg, parse_numeric_id
 from ._client import get_game_client
+from ._errors import format_socket_recv_error
 from ._format import format_possible_datetime
 
 TEAM_ID_KEY = "team_id"
@@ -122,6 +127,10 @@ async def validate_team_id(
     matcher: Matcher,
     state: T_State,
 ) -> None:
+    raw_arg = parse_string_arg(state).strip()
+    if not raw_arg.isdigit():
+        await matcher.finish("❌ 请发送“战队+数字战队ID”，例如：战队9410436。")
+
     state[TEAM_ID_KEY] = await parse_numeric_id(
         matcher,
         state,
@@ -132,7 +141,11 @@ async def validate_team_id(
 
 
 @team_matcher.handle()
-async def handle_team(matcher: Matcher, state: T_State) -> None:
+async def handle_team(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
     team_id: int = state[TEAM_ID_KEY]
     game = get_game_client()
 
@@ -140,10 +153,22 @@ async def handle_team(matcher: Matcher, state: T_State) -> None:
         team_info = await game.get_team_info(team_id)
     except FinishedException:
         raise
-    except Exception as e:
-        await matcher.finish(f"❌ 战队 {team_id} 查询失败：{e}")
+    except SocketRecvError as e:
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 战队 {team_id} {format_socket_recv_error(e)}",
+        )
+    except Exception as e:  # noqa: BLE001
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 战队 {team_id} 查询失败：{e}",
+        )
 
-    await matcher.finish(
+    await finish_event_reply(
+        matcher,
+        event,
         _format_team_info(
             team_info,
             set(plugin_config.seer_query_team_sections),
