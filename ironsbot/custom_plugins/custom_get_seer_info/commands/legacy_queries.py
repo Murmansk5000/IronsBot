@@ -12,23 +12,34 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
-from seerapi_models import PetSkinORM
+from nonebot_plugin_saa import Image, MessageFactory
+from seerapi_models import PetORM, PetSkinORM
 from sqlmodel import select
 
-from ironsbot.plugins.get_seer_info.commands import cloth as upstream_cloth
-from ironsbot.plugins.get_seer_info.commands import effect as upstream_effect
-from ironsbot.plugins.get_seer_info.commands import mintmark as upstream_mintmark
-from ironsbot.plugins.get_seer_info.commands import other as upstream_other
-from ironsbot.plugins.get_seer_info.commands import peak as upstream_peak
-from ironsbot.plugins.get_seer_info.commands import pet as upstream_pet
-from ironsbot.plugins.get_seer_info.commands import type as upstream_type
-from ironsbot.plugins.get_seer_info.depends import SeerAPISession
-from ironsbot.plugins.get_seer_info.prompt import Prompt, PromptItem, enter_prompt
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
+from .._upstream.commands import cloth as upstream_cloth
+from .._upstream.commands import effect as upstream_effect
+from .._upstream.commands import mintmark as upstream_mintmark
+from .._upstream.commands import other as upstream_other
+from .._upstream.commands import peak as upstream_peak
+from .._upstream.commands import pet as upstream_pet
+from .._upstream.commands import type as upstream_type
+from .._upstream.depends import (
+    GetPetData,
+    PetDataGetter,
+    SeerAPISession,
+)
+from .._upstream.prompt import (
+    Prompt,
+    PromptItem,
+    enter_prompt,
+    simple_prompt_resolver,
+)
 from ..group import matcher_group
+from ..render import render_pet_info
 from ._skin_price import format_skin_price_lines
 
 pet_image_matcher = matcher_group.on_message(
@@ -103,7 +114,54 @@ pet_info_matcher = matcher_group.on_message(
     )
     & no_reply()
 )
-pet_info_matcher.handle()(upstream_pet.handle_pet_info)
+
+
+@pet_info_matcher.handle()
+async def _handle_pet_info(
+    matcher: Matcher,
+    state: T_State,
+    event: Event,
+    arg: str = Depends(parse_string_arg),
+    pets: tuple[PetORM, ...] = GetPetData(),
+) -> None:
+    if not pets:
+        raise FinishedException
+
+    if len(pets) == 1:
+        msg = await _build_pet_info_message(pets[0])
+        await msg.finish()
+
+    if len(pets) > upstream_pet.PROMPT_MAX_ITEMS:
+        if len(arg) == 1:
+            for pet in pets:
+                if pet.name == arg:
+                    msg = await _build_pet_info_message(pet)
+                    await msg.finish()
+
+        await matcher.finish(
+            f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词！"
+        )
+
+    prompt = Prompt(
+        title="请问你想查询的精灵是……",
+        items=[
+            PromptItem(name=pet.name, desc=str(pet.id), value=pet.id) for pet in pets
+        ],
+    )
+    await enter_prompt(
+        matcher,
+        event,
+        state,
+        prompt,
+        simple_prompt_resolver(PetDataGetter, _build_pet_info_message, "精灵"),
+    )
+
+
+async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
+    pic_bytes = await render_pet_info(pet)
+    msg = MessageFactory()
+    msg += Image(pic_bytes)
+    return msg
 
 mintmark_matcher = matcher_group.on_message(
     rule=startswith_or_endswith("刻印") & no_reply()

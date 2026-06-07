@@ -12,6 +12,10 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
+)
 from ironsbot.custom_plugins.message_actions import (
     command_reply_check,
     command_text_matches,
@@ -1090,6 +1094,7 @@ async def handle_player(
                 extra_errors,
             ),
         )
+        await mark_headless_available(source="米米号查询", user_id=int(game.user_id))
 
         team_name = "无"
         if getattr(user_info, "team_id", 0) > 0:
@@ -1102,6 +1107,8 @@ async def handle_player(
     except FinishedException:
         raise
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
+        if isinstance(e, (NotLoggedInError, DisconnectedError)):
+            await mark_headless_unavailable(str(e), source="米米号查询")
         _clear_player_query_in_progress(event.user_id)
         _penalize_player_query_failure(event.user_id)
         await finish_event_reply(

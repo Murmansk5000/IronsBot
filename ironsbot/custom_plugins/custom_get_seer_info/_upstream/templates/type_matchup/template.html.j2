@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <!-- prettier-ignore -->
+    <style type="text/css">
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        body {
+            background-color: #1a3a6a;
+            color: #ffffff;
+            font-family: "Microsoft YaHei", "Source Han Sans SC", "Source Han Sans CN", sans-serif;
+        }
+
+        .container {
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #4a8ada;
+            margin-bottom: 20px;
+        }
+
+        .page-title-icon {
+            width: 36px;
+            height: 36px;
+            margin-right: 10px;
+        }
+
+        .page-title-text {
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .section {
+            background-color: #2a5a9a;
+            padding: 16px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            border: 1px solid #4a8ada;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .section-hint {
+            font-size: 11px;
+            color: #8ab4e8;
+        }
+
+        .matchup-grid {
+            display: flex;
+            flex-wrap: wrap;
+            margin: 0 -{{ (cell_gap / 2)|int }}px;
+        }
+
+        .matchup-cell {
+            width: {{ cell_size }}px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 {{ (cell_gap / 2)|int }}px {{ cell_gap + 8 }}px;
+        }
+
+        .matchup-icon-wrap {
+            width: {{ cell_size }}px;
+            height: {{ cell_size }}px;
+            border-radius: 8px;
+            background-color: rgba(26, 58, 106, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .matchup-icon {
+            width: {{ (cell_size * 0.82)|int }}px;
+            height: {{ (cell_size * 0.82)|int }}px;
+            object-fit: contain;
+        }
+
+        .matchup-mult {
+            margin-top: 5px;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 1px 6px;
+            border-radius: 3px;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .matchup-mult.mult-strong {
+            background-color: #cc2a2a;
+            color: #ffffff;
+        }
+
+        .matchup-mult.mult-effective {
+            background-color: #b04040;
+            color: #ffffff;
+        }
+
+        .matchup-mult.mult-neutral {
+            background-color: rgba(255, 255, 255, 0.18);
+            color: #c0d0e8;
+        }
+
+        .matchup-mult.mult-weak {
+            background-color: #0098a8;
+            color: #ffffff;
+        }
+
+        .matchup-mult.mult-immune {
+            background-color: #444444;
+            color: #999999;
+        }
+
+        .footer {
+            padding: 15px 32px;
+            text-align: center;
+            font-size: 13px;
+            color: #a0c0e0;
+            border-top: 1px solid #4a8ada;
+        }
+    </style>
+</head>
+
+<body>
+    {% macro mult_cls(m) -%}
+        {%- if m >= 2 -%}mult-strong
+        {%- elif m > 1 -%}mult-effective
+        {%- elif m == 1 -%}mult-neutral
+        {%- elif m > 0 -%}mult-weak
+        {%- else -%}mult-immune
+        {%- endif -%}
+    {%- endmacro %}
+
+    <div class="container">
+        <div class="page-header">
+            <img class="page-title-icon" src="{{ type_icon }}" />
+            <span class="page-title-text">属性克制 · {{ type_name }}</span>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-title">⚔️ 攻击效果 </span>
+                <span class="section-hint">红色克制 · 青色微弱 · 灰色无效</span>
+            </div>
+            <div class="matchup-grid">
+                {% for item in attack_items %}
+                <div class="matchup-cell">
+                    <div class="matchup-icon-wrap">
+                        <img class="matchup-icon" src="{{ item.icon }}" />
+                    </div>
+                    <span class="matchup-mult {{ mult_cls(item.multiplier) }}">{{ item.multiplier }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <span class="section-title">🛡️ 被攻击效果 </span>
+                <span class="section-hint">红色克制 · 青色微弱 · 灰色无效</span>
+            </div>
+            <div class="matchup-grid">
+                {% for item in defense_items %}
+                <div class="matchup-cell">
+                    <div class="matchup-icon-wrap">
+                        <img class="matchup-icon" src="{{ item.icon }}" />
+                    </div>
+                    <span class="matchup-mult {{ mult_cls(item.multiplier) }}">{{ item.multiplier }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="footer">IronsBot · 开源赛尔号信息查询机器人<br>项目链接：https://github.com/Nattsu39/IronsBot</div>
+    </div>
+</body>
+
+</html>

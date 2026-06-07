@@ -1,0 +1,12 @@
+{% macro pet_cell(id, name, head_img, type_icon="", long_threshold=7, xlong_threshold=9) %}
+<div class="pet-cell">
+    <img class="pet-head-icon" src="{{ head_img }}" />
+    <div class="pet-top-bar">
+        {% if type_icon %}<img class="pet-type-icon" src="{{ type_icon }}" />{% endif %}
+        <span class="pet-id">{{ id }}</span>
+    </div>
+    <div
+        class="pet-name{% if name|length > xlong_threshold %} name-xlong{% elif name|length > long_threshold %} name-long{% endif %}">
+        {{ name }}</div>
+</div>
+{% endmacro %}

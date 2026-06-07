@@ -106,6 +106,7 @@ class Config(BaseModel):
     seer_query_skin_price_cache_path: Path = Path(
         "data/custom_get_seer_info/skin_price_cache.json"
     )
+    seer_query_mintmark_quality_path: Path | None = None
     seer_query_config_package_base_url: str = (
         "https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/"
     )
@@ -128,6 +129,13 @@ class Config(BaseModel):
     @field_validator("seer_query_peak_subkey", mode="before")
     @classmethod
     def empty_peak_subkey_as_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
+
+    @field_validator("seer_query_mintmark_quality_path", mode="before")
+    @classmethod
+    def empty_mintmark_quality_path_as_none(cls, value: object) -> object:
         if value == "":
             return None
         return value

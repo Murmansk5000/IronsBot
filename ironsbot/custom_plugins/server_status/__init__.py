@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
+import signal
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -10,13 +13,16 @@ from zoneinfo import ZoneInfo
 import httpx
 from nonebot import get_plugin_config, logger
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
-from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
-from nonebot.rule import Rule
 from pydantic import BaseModel, Field, field_validator
 
+from ironsbot.custom_plugins.headless_seer_notice.service import login_headless_client
+from ironsbot.custom_plugins.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
+)
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_broadcast_message,
@@ -36,32 +42,18 @@ from ironsbot.utils.rule import no_reply
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
-COMMANDS = ("开服查询", "开服了吗")
-HEADLESS_LOGIN_COMMANDS = (
-    "无头登录",
-    "无头重连",
-    "重连无头",
-    "机器人登录",
-    "机器人重连",
-    "重连机器人",
-    "登录机器人",
-    "/无头登录",
-    "/无头重连",
-    "/重连无头",
-    "/机器人登录",
-    "/机器人重连",
-    "/重连机器人",
-    "/登录机器人",
-)
+NORMAL_SERVER_STATUS_COMMAND = "开服了吗"
+DISABLED_BARE_ADMIN_COMMAND = "开服查询"
+ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
+BOT_RESTART_COMMAND = "/机器人重启"
 DEFAULT_UPDATE_WEEKDAY = 4
 DEFAULT_START_TIME = time(hour=10)
 DEFAULT_END_TIME = time(hour=15)
 HTTP_TIMEOUT_SECONDS = 12.0
 NOTICE_MAINTENANCE_TYPE = 3
 BROADCAST_MESSAGE = "赛尔号已经开服了。"
-HEADLESS_CONFIG_MISSING_MESSAGE = (
-    "未配置 HEADLESS_SEER_USER_ID 或 HEADLESS_SEER_PASSWORD"
-)
+BOT_RESTART_DELAY_SECONDS = 1.0
+PARENT_EXIT_WAIT_SECONDS = 5.0
 
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
 MAINTENANCE_RANGE_PATTERN = re.compile(
@@ -127,15 +119,17 @@ __plugin_meta__ = PluginMetadata(
     name="开服查询",
     description="查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服",
     usage="""命令：
-  开服了吗 / 开服查询 — 查询当前是否仍有维护公告
+  开服了吗 — 普通用户查询当前是否仍有维护公告
+  /开服查询 — 超级管理员查询，并在无头未登录时尝试重连
+  /机器人重启 — 超级管理员重启机器人进程
 
 说明：
+  裸的“开服查询”已停用，避免和管理员命令混淆。
   无头客户端已登录游戏服务器时判定为已开服；公告只作为维护信息摘要。
   无头客户端未登录时，结合公告和登录状态提示可能原因。
   如果 SERVER_STATUS_BROADCAST=true，查询结果判断为已开服时会向
   SERVER_STATUS_BROADCAST_GROUPS 和 SERVER_STATUS_BROADCAST_USERS
-  配置的目标广播。
-  超级管理员可发送 /无头登录、/机器人登录、/重连机器人 手动触发无头客户端登录。""",
+  配置的目标广播。""",
     config=Config,
     supported_adapters={"~onebot.v11"},
 )
@@ -161,14 +155,27 @@ class HeadlessStatus:
 plugin_config = get_plugin_config(Config)
 _open_broadcast_state = OpenBroadcastState()
 
-server_status_matcher = on_fullmatch(
-    COMMANDS,
-    rule=Rule(is_custom_feature_event_allowed) & no_reply(),
+normal_server_status_matcher = on_fullmatch(
+    NORMAL_SERVER_STATUS_COMMAND,
+    rule=no_reply(),
+    priority=0,
+    block=True,
+)
+disabled_bare_admin_status_matcher = on_fullmatch(
+    DISABLED_BARE_ADMIN_COMMAND,
+    rule=no_reply(),
+    priority=0,
+    block=True,
+)
+admin_server_status_matcher = on_fullmatch(
+    ADMIN_SERVER_STATUS_COMMAND,
+    rule=no_reply(),
+    permission=SUPERUSER,
     priority=1,
     block=True,
 )
-headless_login_matcher = on_fullmatch(
-    HEADLESS_LOGIN_COMMANDS,
+bot_restart_matcher = on_fullmatch(
+    BOT_RESTART_COMMAND,
     rule=no_reply(),
     permission=SUPERUSER,
     priority=1,
@@ -176,15 +183,21 @@ headless_login_matcher = on_fullmatch(
 )
 
 
-@server_status_matcher.handle()
-async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
+@normal_server_status_matcher.handle()
+async def handle_normal_server_status(matcher: Matcher, event: MessageEvent) -> None:
+    if not is_custom_feature_event_allowed(event):
+        logger.info("normal server status command ignored: custom feature not allowed")
+        return
+
     now = _now()
     headless_status = _get_headless_status()
+    if headless_status.connected:
+        await mark_headless_available(source="开服了吗")
+    else:
+        await mark_headless_unavailable(headless_status.reason, source="开服了吗")
 
     try:
         notice_text = await fetch_server_notice_text()
-    except FinishedException:
-        raise
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("开服公告读取失败")
         if headless_status.connected:
@@ -193,6 +206,7 @@ async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
             matcher,
             event,
             _build_fetch_failed_reply(now, e, headless_status=headless_status),
+            mention_sender=True,
         )
         return
 
@@ -202,6 +216,7 @@ async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
             matcher,
             event,
             _build_open_reply(now, notice_text=notice_text),
+            mention_sender=True,
         )
         return
 
@@ -209,42 +224,7 @@ async def handle_server_status(matcher: Matcher, event: MessageEvent) -> None:
         await finish_event_reply(
             matcher,
             event,
-            _build_notice_reply(
-                notice_text,
-            ),
-        )
-        return
-
-    await finish_event_reply(
-        matcher,
-        event,
-        _build_no_notice_reply(now, headless_status=headless_status),
-    )
-
-
-@headless_login_matcher.handle()
-async def handle_headless_login(matcher: Matcher, event: MessageEvent) -> None:
-    await send_event_reply(
-        matcher,
-        event,
-        "正在尝试登录无头米米号...",
-        mention_sender=True,
-    )
-
-    try:
-        user_id = await _login_headless_client()
-    except FinishedException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=True).warning("手动无头客户端登录失败")
-        await finish_event_reply(
-            matcher,
-            event,
-            (
-                "无头米米号登录失败。\n"
-                f"原因：{e}\n"
-                "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
-            ),
+            _build_notice_reply(notice_text),
             mention_sender=True,
         )
         return
@@ -252,9 +232,79 @@ async def handle_headless_login(matcher: Matcher, event: MessageEvent) -> None:
     await finish_event_reply(
         matcher,
         event,
-        f"无头米米号已登录：{user_id}",
+        _build_no_notice_reply(now, headless_status=headless_status),
         mention_sender=True,
     )
+
+
+@disabled_bare_admin_status_matcher.handle()
+async def handle_disabled_bare_admin_status() -> None:
+    logger.info("bare server status command ignored: admin command is /开服查询")
+
+
+@admin_server_status_matcher.handle()
+async def handle_admin_server_status(matcher: Matcher, event: MessageEvent) -> None:
+    now = _now()
+    lines = ["🛠【管理员开服查询】"]
+    headless_status = _get_headless_status()
+    if headless_status.connected:
+        await mark_headless_available(source="/开服查询")
+        lines.append("无头状态：已登录游戏服务器。")
+    else:
+        await mark_headless_unavailable(headless_status.reason, source="/开服查询")
+        lines.append(f"无头状态：未登录（{headless_status.reason}）。")
+        try:
+            user_id = await login_headless_client()
+        except Exception as e:  # noqa: BLE001
+            logger.opt(exception=True).warning("管理员开服查询触发无头重连失败")
+            headless_status = HeadlessStatus(connected=False, reason=str(e))
+            await mark_headless_unavailable(str(e), source="/开服查询重连")
+            lines.append(f"重连结果：失败：{e}")
+        else:
+            headless_status = HeadlessStatus(connected=True)
+            await mark_headless_available(source="/开服查询重连", user_id=user_id)
+            lines.append(f"重连结果：已登录米米号 {user_id}。")
+
+    try:
+        notice_text = await fetch_server_notice_text()
+    except Exception as e:  # noqa: BLE001
+        logger.opt(exception=True).warning("管理员开服查询读取公告失败")
+        if headless_status.connected:
+            await _broadcast_opened(event, now=now)
+        lines.extend(
+            (
+                "",
+                _build_fetch_failed_reply(now, e, headless_status=headless_status),
+            )
+        )
+    else:
+        lines.append("")
+        if headless_status.connected:
+            await _broadcast_opened(event, now=now)
+            lines.append(_build_open_reply(now, notice_text=notice_text))
+        elif notice_text:
+            lines.append(_build_notice_reply(notice_text))
+        else:
+            lines.append(_build_no_notice_reply(now, headless_status=headless_status))
+
+    await finish_event_reply(
+        matcher,
+        event,
+        "\n".join(lines),
+        mention_sender=True,
+    )
+
+
+@bot_restart_matcher.handle()
+async def handle_bot_restart(matcher: Matcher, event: MessageEvent) -> None:
+    await send_event_reply(
+        matcher,
+        event,
+        "正在重启机器人进程，Docker/Unraid 会按重启策略把容器拉起来。",
+        mention_sender=True,
+    )
+    await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
+    await _restart_bot_process()
 
 
 async def fetch_server_notice_text() -> str | None:
@@ -442,35 +492,24 @@ def _format_headless_unavailable_text(reason: str) -> str:
     return f"机器人登录状态：{reason}。"
 
 
-async def _login_headless_client() -> int:
-    from ironsbot.plugins.headless_seer.config import plugin_config as headless_config
-    from ironsbot.plugins.headless_seer.manager import client_manager
-
-    try:
-        game = client_manager.get_client()
-        if game.is_logged_in:
-            return int(game.user_id)
-    except (DisconnectedError, NotLoggedInError):
-        client_manager.shutdown()
-
-    user_id = headless_config.headless_seer_user_id
-    password = headless_config.headless_seer_password
-    if user_id is None or not password:
-        raise RuntimeError(HEADLESS_CONFIG_MISSING_MESSAGE)
-
-    game = await client_manager.login(
-        user_id=user_id,
-        password=password,
-        login_server_url=headless_config.headless_seer_login_server_addr,
-        heartbeat_interval=headless_config.headless_seer_heartbeat_interval,
-        reconnect_retries=headless_config.headless_seer_reconnect_retries,
-        reconnect_delay=headless_config.headless_seer_reconnect_delay,
-        reconnect_delay_max=headless_config.headless_seer_reconnect_delay_max,
+async def _restart_bot_process() -> None:
+    current_pid = os.getpid()
+    parent_pid = os.getppid()
+    target_pid = parent_pid if parent_pid > 0 else current_pid
+    logger.warning(
+        "admin requested bot restart: current_pid={}, target_pid={}",
+        current_pid,
+        target_pid,
     )
-    if not game.is_logged_in:
-        raise RuntimeError("登录未完成，已进入自动重连")
-
-    return user_id
+    os.kill(target_pid, signal.SIGTERM)
+    if target_pid != current_pid:
+        await asyncio.sleep(PARENT_EXIT_WAIT_SECONDS)
+        logger.warning(
+            "bot restart parent did not stop current worker yet; "
+            "sending SIGTERM to current_pid={}",
+            current_pid,
+        )
+        os.kill(current_pid, signal.SIGTERM)
 
 
 def _short_notice_text(text: str, *, max_chars: int = 120) -> str:

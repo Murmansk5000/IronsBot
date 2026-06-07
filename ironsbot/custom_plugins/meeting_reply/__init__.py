@@ -7,6 +7,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.custom_plugins.message_actions import (
@@ -22,6 +23,16 @@ from ironsbot.utils.rule import no_reply
 from .config import plugin_config
 
 MEETING_COMMANDS = ("开播", "会议")
+
+__plugin_meta__ = PluginMetadata(
+    name="会议回复",
+    description="按配置回复腾讯会议信息",
+    usage=(
+        "【会议回复】\n"
+        "群聊或私聊发送：开播 / 会议\n"
+        "生效范围由 MEETING_GROUPS 和 MEETING_USERS 配置；SUPERUSERS 默认可用。"
+    ),
+)
 
 
 async def _is_meeting_command(event: MessageEvent) -> bool:

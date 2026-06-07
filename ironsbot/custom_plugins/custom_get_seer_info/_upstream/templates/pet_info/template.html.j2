@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style type="text/css">
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a3a6a;
+            /* 更亮的蓝色背景 */
+            color: #ffffff;
+            /* 默认文字白色 */
+            font-family: "Microsoft YaHei", "Source Han Sans SC", "Source Han Sans CN", sans-serif;
+        }
+
+        .container {
+            width: 1200px;
+        }
+
+        /* ========== 精灵名称与信息 ========== */
+        .pet-info-header {
+            margin-bottom: 15px;
+            border-spacing: 0;
+        }
+
+        .pet-head-cell {
+            width: 64px;
+            vertical-align: middle;
+            padding-right: 12px;
+        }
+
+        .pet-head-icon {
+            width: 64px;
+            height: 64px;
+        }
+
+        .pet-text-cell {
+            vertical-align: middle;
+        }
+
+        .pet-name {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffffff;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .pet-meta {
+            font-size: 15px;
+            color: #c0d8f0;
+            margin-top: 4px;
+        }
+
+        .pet-meta-type-icon {
+            width: 22px;
+            height: 22px;
+            vertical-align: middle;
+        }
+
+        .pet-gender-icon {
+            width: 20px;
+            height: 20px;
+            vertical-align: middle;
+        }
+
+        /* ========== 两栏布局 ========== */
+        .content-table {
+            width: 100%;
+            border-spacing: 0;
+        }
+
+        .left-col {
+            width: 420px;
+            padding: 20px 15px 20px 20px;
+            vertical-align: top;
+        }
+
+        .right-col {
+            padding: 20px 20px 20px 15px;
+            vertical-align: top;
+        }
+
+        /* ========== 精灵立绘 ========== */
+        .pet-img-box {
+            text-align: center;
+            background-color: #204a8a;
+            /* 亮蓝色立绘框 */
+            padding: 15px;
+            border: 1px solid #4a8ada;
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .pet-img {
+            width: 380px;
+        }
+
+        /* ========== 分区标题 ========== */
+        .section {
+            margin-top: 20px;
+        }
+
+        .sec-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #ffffff;
+            /* 标题白色 */
+            padding-bottom: 8px;
+            border-bottom: 2px solid #4a8ada;
+            margin-bottom: 15px;
+        }
+
+        /* ========== 种族值面板 ========== */
+        .stats-container {
+            background-color: #2a5a9a;
+            /* 亮蓝色背景 */
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #4a8ada;
+        }
+
+        .stats-grid {
+            width: 100%;
+            border-spacing: 0;
+        }
+
+        .stats-grid td {
+            padding: 6px 4px;
+            font-size: 17px;
+        }
+
+        .s-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2px 8px;
+        }
+
+        .s-label {
+            color: #c0e0ff;
+            /* 浅蓝色标签 */
+            font-weight: bold;
+        }
+
+        .s-value {
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        .s-adv {
+            color: #c8a8e8;
+            font-weight: bold;
+        }
+
+        .s-total-box {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid #4a8ada;
+            text-align: center;
+            font-size: 18px;
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        /* ========== 魂印卡片 ========== */
+        .sm-item {
+            background-color: #2a5a9a;
+            /* 亮蓝色背景 */
+            padding: 15px;
+            margin-bottom: 12px;
+            border-left: 4px solid #ffffff;
+            /* 白色左边框 */
+            border-radius: 0 4px 4px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .sm-tags {
+            margin-bottom: 8px;
+        }
+
+        .sm-desc {
+            font-size: 18px;
+            color: #ffffff;
+            line-height: 1.7;
+        }
+
+        .sm-glossaries {
+            margin-top: 12px;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sm-glossary {
+            font-size: 17px;
+            line-height: 1.6;
+            padding: 4px 0;
+        }
+
+        .sm-glossary-name {
+            color: #60e0ff;
+            font-weight: bold;
+            margin-right: 4px;
+        }
+
+        .sm-glossary-desc {
+            color: #e0f0ff;
+        }
+
+        /* ========== 刻印卡片 ========== */
+        .mm-item {
+            background-color: #2a5a9a;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #60e0ff;
+            border-radius: 0 4px 4px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .mm-icon {
+            width: 56px;
+            height: 56px;
+            flex-shrink: 0;
+            border-radius: 4px;
+            /* border: 1px solid rgba(255, 255, 255, 0.15); */
+        }
+
+        .mm-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .mm-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #60e0ff;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .mm-desc {
+            font-size: 16px;
+            color: #e0f0ff;
+            line-height: 1.6;
+        }
+
+        .mm-skill-tags {
+            display: inline-flex;
+            gap: 5px;
+            margin-left: 8px;
+        }
+
+        .mm-skill-tag {
+            display: inline-block;
+            padding: 1px 8px;
+            font-size: 13px;
+            font-weight: normal;
+            color: #ffffff;
+            background-color: #3a6aaa;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* ========== 通用标签 ========== */
+        .tag {
+            display: inline-block;
+            padding: 2px 10px;
+            font-size: 13px;
+            color: #ffffff;
+            background-color: #4a8ada;
+            margin-right: 6px;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .t-str {
+            background-color: #d08030;
+        }
+
+        .t-adv {
+            background-color: #8868b8;
+        }
+
+        .t-spc {
+            background-color: #d09030;
+        }
+
+        .t-5th {
+            background-color: #28a8b8;
+        }
+
+        .t-pve {
+            background-color: #48a838;
+        }
+
+        .t-npve {
+            background-color: #a05848;
+        }
+
+        {% include "skill_card.css" %}
+
+        /* ========== 底部 ========== */
+        .footer {
+            background-color: #1a3a6a;
+            padding: 15px 32px;
+            text-align: center;
+            font-size: 13px;
+            color: #a0c0e0;
+            border-top: 1px solid #4a8ada;
+        }
+    </style>
+</head>
+
+<body>
+
+    {% from "skill_card_macro.html.j2" import skill_card %}
+
+    <div class="container">
+        {# ===== 两栏内容 ===== #}
+        <table class="content-table">
+            <tr>
+                {# ----- 左栏：名称 + 立绘 + 种族值 + 魂印 ----- #}
+                <td class="left-col">
+                    <table class="pet-info-header">
+                        <tr>
+                            <td class="pet-head-cell">
+                                <img class="pet-head-icon" src="{{ pet_head_img }}" />
+                            </td>
+                            <td class="pet-text-cell">
+                                <div class="pet-name">{{ pet_name }}</div>
+                                <div class="pet-meta">
+                                    ID: {{ pet_id }}
+                                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                                    <img class="pet-meta-type-icon" src="{{ type_icons[pet_type_id] }}" />
+                                    {{ pet_type_name }}
+                                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                                    <img class="pet-gender-icon" src="{{ pet_gender_icon }}" />
+                                    {% set gender_label = {
+                                    1: "雄性",
+                                    2: "雌性"
+                                    }.get(pet_gender_id, "无性别") %}
+                                    {{ gender_label }}
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                    <div class="pet-img-box">
+                        <img class="pet-img" src="{{ pet_body_img }}" />
+                    </div>
+
+                    <div class="section">
+                        <div class="sec-title">种族值{% if advance_stats %}<span class="s-adv">/觉醒后</span>{% endif %}</div>
+                        <div class="stats-container">
+                            <table class="stats-grid">
+                                <tr>
+                                    <td>
+                                        <div class="s-item"><span class="s-label">攻击</span><span class="s-value">{{
+                                                stats.atk }}{% if advance_stats %}<span class="s-adv">/{{
+                                                    advance_stats.atk }}</span>{% endif %}</span></div>
+                                    </td>
+                                    <td>
+                                        <div class="s-item"><span class="s-label">防御</span><span class="s-value">{{
+                                                stats.def_ }}{% if advance_stats %}<span class="s-adv">/{{
+                                                    advance_stats.def_ }}</span>{% endif %}</span></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="s-item"><span class="s-label">特攻</span><span class="s-value">{{
+                                                stats.sp_atk }}{% if advance_stats %}<span class="s-adv">/{{
+                                                    advance_stats.sp_atk }}</span>{% endif %}</span></div>
+                                    </td>
+                                    <td>
+                                        <div class="s-item"><span class="s-label">特防</span><span class="s-value">{{
+                                                stats.sp_def }}{% if advance_stats %}<span class="s-adv">/{{
+                                                    advance_stats.sp_def }}</span>{% endif %}</span></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="s-item"><span class="s-label">速度</span><span class="s-value">{{
+                                                stats.spd }}{% if advance_stats %}<span class="s-adv">/{{
+                                                    advance_stats.spd }}</span>{% endif %}</span></div>
+                                    </td>
+                                    <td>
+                                        <div class="s-item"><span class="s-label">体力</span><span class="s-value">{{
+                                                stats.hp }}{% if advance_stats %}<span class="s-adv">/{{
+                                                    advance_stats.hp }}</span>{% endif %}</span></div>
+                                    </td>
+                                </tr>
+                            </table>
+                            <div class="s-total-box">
+                                总和: {{ stats.total }}{% if advance_stats %}<span class="s-adv">/{{ advance_stats.total
+                                    }}</span>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if soulmarks %}
+                    <div class="section">
+                        <div class="sec-title">魂印</div>
+                        {% for sm in soulmarks %}
+                        <div class="sm-item">
+                            {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
+                            <div class="sm-tags">
+                                {% for t in sm.tags %}
+                                <span class="tag">{{ t }}</span>
+                                {% endfor %}
+                                {% if sm.intensified %}
+                                <span class="tag t-str">强化</span>
+                                {% endif %}
+                                {% if sm.is_adv %}
+                                <span class="tag t-adv">觉醒</span>
+                                {% endif %}
+                                <!--
+                                {% if sm.pve_effective == true %}
+                                <span class="tag t-pve">PVE生效</span>
+                                {% elif sm.pve_effective == false %}
+                                <span class="tag t-npve">PVE无效</span>
+                                {% endif %}
+                                -->
+                            </div>
+                            {% endif %}
+                            <div class="sm-desc">{{ sm.desc }}</div>
+                            {% if sm.glossaries %}
+                            <div class="sm-glossaries">
+                                {% for g in sm.glossaries %}
+                                <div class="sm-glossary">
+                                    <span class="sm-glossary-name">{{ g.name }}:</span>
+                                    <span class="sm-glossary-desc">{{ g.desc }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if skill_marks %}
+                    <div class="section">
+                        <div class="sec-title">刻印</div>
+                        {% for mm in skill_marks %}
+                        <div class="mm-item">
+                            <img class="mm-icon" src="{{ mm.icon }}" />
+                            <div class="mm-content">
+                                <div class="mm-name">
+                                    {{ mm.name }}
+                                    {% if mm.skills %}
+                                    <span class="mm-skill-tags">
+                                        {% for sk in mm.skills %}
+                                        <span class="mm-skill-tag">{{ sk }}</span>
+                                        {% endfor %}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                <div class="mm-desc">{{ mm.desc }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </td>
+
+                {# ----- 右栏：技能列表 ----- #}
+                <td class="right-col">
+                    {% if fifth_skills %}
+                    <div class="grp-lbl g-5th">第五技能</div>
+                    {% for skill in fifth_skills %}
+                    {{ skill_card(skill, type_icons) }}
+                    {% endfor %}
+                    {% endif %}
+
+                    {% if advanced_skills %}
+                    <div class="grp-lbl g-adv">神谕觉醒</div>
+                    {% for skill in advanced_skills %}
+                    {{ skill_card(skill, type_icons) }}
+                    {% endfor %}
+                    {% endif %}
+
+                    {% if special_skills %}
+                    <div class="grp-lbl g-spc">特训技能</div>
+                    {% for skill in special_skills %}
+                    {{ skill_card(skill, type_icons) }}
+                    {% endfor %}
+                    {% endif %}
+                    <div class="grp-lbl g-lv">基础技能</div>
+                    {% for skill in level_skills %}
+                    {{ skill_card(skill, type_icons) }}
+                    {% endfor %}
+                </td>
+            </tr>
+        </table>
+
+        <div class="footer">IronsBot · 开源赛尔号信息查询机器人<br>项目链接：https://github.com/Nattsu39/IronsBot</div>
+    </div>
+</body>
+
+</html>
