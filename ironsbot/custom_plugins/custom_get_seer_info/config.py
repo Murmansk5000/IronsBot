@@ -71,7 +71,16 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
     return normalized
 
 
+def _validate_sqlite_path(value: Path) -> Path:
+    if value.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+        raise ValueError("cache path must use .sqlite, .sqlite3, or .db")  # noqa: TRY003
+
+    return value
+
+
 class Config(BaseModel):
+    seer_query_player_rate_limit_seconds: int = Field(default=60, ge=0)
+    seer_query_player_failure_rate_limit_seconds: int = Field(default=10, ge=0)
     seer_query_rank_limit: int = Field(default=10000, ge=0)
     seer_query_rank_page_size: int = Field(default=100, ge=1)
     seer_query_rank_page_cache: bool = True
@@ -83,8 +92,23 @@ class Config(BaseModel):
     seer_query_local_rank: bool = True
     seer_query_local_rank_max_players: int = Field(default=5000, ge=1)
     seer_query_cache_batch_limit: int = Field(default=100, ge=1)
+    seer_query_cache_auto_refresh: bool = True
+    seer_query_cache_refresh_hour: int = Field(default=3, ge=0, le=23)
+    seer_query_cache_refresh_minute: int = Field(default=30, ge=0, le=59)
+    seer_query_cache_refresh_limit: int = Field(default=300, ge=1)
+    seer_query_cache_refresh_max_age_hours: int = Field(default=24, ge=0)
+    seer_query_cache_refresh_interval_seconds: float = Field(default=0.5, ge=0)
     seer_query_local_rank_path: Path = Path(
-        "data/custom_get_seer_info/player_query_cache.json"
+        "data/custom_get_seer_info/player_query_cache.sqlite"
+    )
+    seer_query_skin_price: bool = True
+    seer_query_skin_price_cache_ttl_seconds: int = Field(default=86400, ge=0)
+    seer_query_skin_price_cache_path: Path = Path(
+        "data/custom_get_seer_info/skin_price_cache.json"
+    )
+    seer_query_mintmark_quality_path: Path | None = None
+    seer_query_config_package_base_url: str = (
+        "https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/"
     )
     seer_query_player_sections: list[str] = Field(
         default_factory=lambda: list(PLAYER_SECTION_KEYS)
@@ -108,6 +132,21 @@ class Config(BaseModel):
         if value == "":
             return None
         return value
+
+    @field_validator("seer_query_mintmark_quality_path", mode="before")
+    @classmethod
+    def empty_mintmark_quality_path_as_none(cls, value: object) -> object:
+        if value == "":
+            return None
+        return value
+
+    @field_validator(
+        "seer_query_rank_page_cache_path",
+        "seer_query_local_rank_path",
+    )
+    @classmethod
+    def validate_sqlite_cache_path(cls, value: Path) -> Path:
+        return _validate_sqlite_path(value)
 
     @field_validator("seer_query_player_sections")
     @classmethod

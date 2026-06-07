@@ -28,6 +28,7 @@ from ironsbot.custom_plugins.message_actions import (
     send_broadcast_message,
 )
 from ironsbot.custom_plugins.superuser_policy import (
+    is_custom_feature_event_allowed,
     with_superuser_groups,
     with_superusers,
 )
@@ -1099,7 +1100,11 @@ current_activity_matcher = on_message(
 )
 
 soon_ending_activity_matcher = on_message(
-    rule=Rule(_is_soon_ending_activity_query_command) & no_reply(),
+    rule=(
+        Rule(is_custom_feature_event_allowed)
+        & Rule(_is_soon_ending_activity_query_command)
+        & no_reply()
+    ),
     priority=5,
     block=True,
 )

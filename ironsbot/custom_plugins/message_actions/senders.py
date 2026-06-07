@@ -5,6 +5,8 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
+from ironsbot.custom_plugins.superuser_policy import with_custom_push_groups
+
 from .reply_limits import limit_message_by_reply_lines
 from .targets import (
     MessageTarget,
@@ -99,7 +101,7 @@ async def send_broadcast_message(  # noqa: PLR0913
     return await send_target_messages(
         broadcast_targets(
             private_user_ids=private_user_ids,
-            group_ids=group_ids,
+            group_ids=with_custom_push_groups(group_ids),
             group_at_user_ids=group_at_user_ids,
         ),
         message,
