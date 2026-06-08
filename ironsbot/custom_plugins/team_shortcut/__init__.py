@@ -6,12 +6,12 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.custom_plugins.feature_policy import is_group_feature_allowed
 from ironsbot.custom_plugins.message_actions import (
     build_message,
     command_text_matches,
     finish_message_sequence,
 )
-from ironsbot.custom_plugins.superuser_policy import is_group_allowed_for_user
 from ironsbot.utils.rule import no_reply
 
 from .adapter import fetch_team_shortcut_result
@@ -45,10 +45,10 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
     if not plugin_config.team_ids:
         return False
 
-    if not is_group_allowed_for_user(
+    if not is_group_feature_allowed(
         event.user_id,
         event.group_id,
-        plugin_config.team_groups,
+        "team",
     ):
         return False
 

@@ -10,19 +10,20 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.custom_plugins.feature_policy import (
+    is_group_feature_allowed,
+    is_private_feature_allowed,
+)
 from ironsbot.custom_plugins.message_actions import (
     command_text_matches,
     finish_event_reply,
-)
-from ironsbot.custom_plugins.superuser_policy import (
-    is_group_allowed_for_user,
-    is_private_user_allowed,
 )
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
 
 MEETING_COMMANDS = ("开播", "会议")
+TENCENT_MEETING_NUMBER_DIGITS = 10
 
 __plugin_meta__ = PluginMetadata(
     name="会议回复",
@@ -30,23 +31,24 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "【会议回复】\n"
         "群聊或私聊发送：开播 / 会议\n"
-        "生效范围由 MEETING_GROUPS 和 MEETING_USERS 配置；SUPERUSERS 默认可用。"
+        "Access is controlled by FEATURE_GROUP_POLICY / FEATURE_USER_POLICY "
+        "feature: meeting."
     ),
 )
 
 
 async def _is_meeting_command(event: MessageEvent) -> bool:
     if isinstance(event, GroupMessageEvent):
-        if not is_group_allowed_for_user(
+        if not is_group_feature_allowed(
             event.user_id,
             event.group_id,
-            plugin_config.meeting_groups,
+            "meeting",
         ):
             return False
     elif isinstance(event, PrivateMessageEvent):
-        if not is_private_user_allowed(
+        if not is_private_feature_allowed(
             event.user_id,
-            plugin_config.meeting_users,
+            "meeting",
         ):
             return False
     else:
@@ -68,7 +70,7 @@ def build_meeting_reply() -> str:
     if not digits:
         return ""
 
-    if len(digits) == 10:
+    if len(digits) == TENCENT_MEETING_NUMBER_DIGITS:
         meeting_number = f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
     else:
         meeting_number = raw_number

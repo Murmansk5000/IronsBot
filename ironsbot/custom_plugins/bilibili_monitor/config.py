@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Config(BaseModel):
-    bili_uid: int = 1310714247
     bili_uids: list[int] = Field(default_factory=list)
     bili_data_dir: Path = Path("data/bilibili_monitor")
     bili_history_max_items: int = Field(default=500, ge=1)
@@ -14,9 +13,6 @@ class Config(BaseModel):
     bili_sleep_start: int = 23
     bili_sleep_end: int = 7
     bili_sleep_minutes: int = 30
-
-    bili_groups: list[int] = Field(default_factory=list)
-    bili_users: list[int] = Field(default_factory=list)
 
     @field_validator("bili_uids", mode="before")
     @classmethod

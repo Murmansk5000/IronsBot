@@ -10,7 +10,14 @@ ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 co
 class BaseMessageAction(BaseModel):
     id: str = ""
     enabled: bool = True
+    feature: str = "text"
     message: str
+
+    @field_validator("feature")
+    @classmethod
+    def normalize_feature(cls, value: str) -> str:
+        feature = value.strip()
+        return feature or "text"
 
     @field_validator("message")
     @classmethod
@@ -48,20 +55,19 @@ class ScheduledMessageAction(BaseMessageAction):
 
 
 class PrivateCommandMessageAction(CommandMessageAction):
-    allowed_user_ids: list[int] = Field(default_factory=list)
+    pass
 
 
 class PrivateScheduledMessageAction(ScheduledMessageAction):
-    user_ids: list[int] = Field(default_factory=list)
+    feature: str = "text_push"
 
 
 class GroupCommandMessageAction(CommandMessageAction):
-    group_ids: list[int] = Field(default_factory=list)
     at_user_ids: list[int] = Field(default_factory=list)
 
 
 class GroupScheduledMessageAction(ScheduledMessageAction):
-    group_ids: list[int] = Field(default_factory=list)
+    feature: str = "text_push"
     at_user_ids: list[int] = Field(default_factory=list)
 
 

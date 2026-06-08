@@ -12,7 +12,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.superuser_policy import is_superuser
+from ironsbot.custom_plugins.feature_policy import is_superuser
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config

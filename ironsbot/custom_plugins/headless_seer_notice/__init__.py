@@ -3,9 +3,9 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.custom_plugins.feature_policy import get_superuser_ids
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
-from ironsbot.custom_plugins.superuser_policy import get_superuser_ids
 
 from .config import plugin_config
 from .service import (

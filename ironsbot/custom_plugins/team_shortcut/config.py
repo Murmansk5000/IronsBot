@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Config(BaseModel):
-    team_groups: list[int] = Field(default_factory=list)
     team_ids: list[int] = Field(default_factory=list)
     team_commands: list[str] = Field(default_factory=lambda: ["战队"])
     team_resource_users: list[int] = Field(default_factory=list)
@@ -40,8 +39,8 @@ class Config(BaseModel):
     @classmethod
     def normalize_commands(cls, value: list[str]) -> list[str]:
         commands: list[str] = []
-        for command in value:
-            command = command.strip()
+        for raw_command in value:
+            command = raw_command.strip()
             if command and command not in commands:
                 commands.append(command)
         return commands

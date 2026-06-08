@@ -2,9 +2,14 @@
 from typing import Any
 
 from nonebot import MatcherGroup
+from nonebot.adapters import Event
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.superuser_policy import is_custom_feature_event_allowed
+from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
+
+
+async def is_seer_event_allowed(event: Event) -> bool:
+    return is_event_feature_allowed(event, "seer")
 
 
 class CustomFeatureMatcherGroup(MatcherGroup):
@@ -25,5 +30,5 @@ class CustomFeatureMatcherGroup(MatcherGroup):
 matcher_group = CustomFeatureMatcherGroup(
     block=True,
     priority=2,
-    rule=Rule(is_custom_feature_event_allowed),
+    rule=Rule(is_seer_event_allowed),
 )

@@ -19,8 +19,6 @@ class Config(BaseModel):
     ai_reset_commands: list[str] = Field(
         default_factory=lambda: ["清空聊天", "重置聊天", "清空上下文"]
     )
-    ai_groups: list[int] = Field(default_factory=list)
-    ai_users: list[int] = Field(default_factory=list)
     ai_history_turns: int = Field(default=6, ge=0, le=20)
     ai_memory: bool = True
     ai_memory_path: Path = Path("data/ai_chat/memory.sqlite")
