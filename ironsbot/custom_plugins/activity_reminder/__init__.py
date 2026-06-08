@@ -29,6 +29,7 @@ from ironsbot.custom_plugins.message_actions import (
 )
 from ironsbot.custom_plugins.superuser_policy import (
     is_custom_feature_event_allowed,
+    with_custom_push_users,
     with_superuser_groups,
     with_superusers,
 )
@@ -172,9 +173,8 @@ async def _is_current_activity_query_command(event: Event) -> bool:
 
 
 async def _is_soon_ending_activity_query_command(event: Event) -> bool:
-    command = _strip_admin_command_prefix(event.get_plaintext())
-    if command is None:
-        return False
+    text_value = event.get_plaintext().strip()
+    command = _strip_admin_command_prefix(text_value) or text_value
 
     normalized = _normalize_command_text(command)
     return normalized in NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS
@@ -225,7 +225,7 @@ __plugin_meta__ = PluginMetadata(
         "目标群由 ACTIVITY_REMINDER_GROUPS 配置，ADMIN_GROUPS 自动包含；"
         "目标用户由 ACTIVITY_REMINDER_USERS 配置，SUPERUSERS 自动包含。\n"
         "超级管理员可发送 /当前活动、/活动列表、/活动时间 查看当前活动和剩余时间；"
-        "发送 /快结束活动 查看不足 7 天结束的活动。"
+        "发送 快结束活动 查看不足 7 天结束的活动。"
     ),
     config=Config,
 )
@@ -1042,7 +1042,9 @@ async def send_activity_reminder(
         return
 
     target_groups = with_superuser_groups(plugin_config.activity_reminder_groups)
-    target_users = with_superusers(plugin_config.activity_reminder_users)
+    target_users = with_custom_push_users(
+        with_superusers(plugin_config.activity_reminder_users)
+    )
     if not target_groups and not target_users:
         logger.warning("activity reminder skipped: no target groups or users")
         return

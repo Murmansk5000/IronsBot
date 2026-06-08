@@ -7,11 +7,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from ironsbot.custom_plugins.superuser_policy import (
     get_custom_push_groups,
+    get_custom_push_users,
     is_custom_feature_event_allowed,
     is_group_allowed_for_user,
     is_private_user_allowed,
     is_superuser,
     with_custom_push_groups,
+    with_custom_push_users,
     with_superuser_groups,
     with_superusers,
 )
@@ -312,6 +314,7 @@ def _activity_visible(event: Event) -> bool:
                 event.user_id,
                 visibility_config.activity_reminder_users,
             )
+            or event.user_id in get_custom_push_users()
             or is_superuser(event.user_id)
         )
 
@@ -346,7 +349,7 @@ def _message_actions_visible(event: Event) -> bool:
             user_id
             for action in visibility_config.msg_private_schedules
             if action.enabled
-            for user_id in with_superusers(action.user_ids)
+            for user_id in with_custom_push_users(with_superusers(action.user_ids))
         }
 
     return False

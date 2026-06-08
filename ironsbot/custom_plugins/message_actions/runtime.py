@@ -12,6 +12,7 @@ from nonebot.typing import T_State
 from ironsbot.custom_plugins.superuser_policy import (
     is_group_allowed_for_user,
     is_private_user_allowed,
+    with_custom_push_users,
     with_superuser_groups,
     with_superusers,
 )
@@ -133,7 +134,7 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
 async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
     await send_broadcast_message(
         task.message,
-        private_user_ids=with_superusers(task.user_ids),
+        private_user_ids=with_custom_push_users(with_superusers(task.user_ids)),
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
     )
 

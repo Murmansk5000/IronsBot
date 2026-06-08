@@ -12,7 +12,9 @@ class Config(BaseModel):
     custom_feature_groups: list[int] = Field(default_factory=list)
     custom_feature_users: list[int] = Field(default_factory=list)
     custom_push_groups: list[int] = Field(default_factory=list)
+    custom_push_users: list[int] = Field(default_factory=list)
     custom_push_exclude_groups: list[int] = Field(default_factory=list)
+    custom_push_exclude_users: list[int] = Field(default_factory=list)
 
 
 plugin_config = get_plugin_config(Config)
@@ -54,8 +56,16 @@ def get_custom_push_groups() -> list[int]:
     return _unique_ints(plugin_config.custom_push_groups)
 
 
+def get_custom_push_users() -> list[int]:
+    return _unique_ints(plugin_config.custom_push_users)
+
+
 def get_custom_push_exclude_groups() -> list[int]:
     return _unique_ints(plugin_config.custom_push_exclude_groups)
+
+
+def get_custom_push_exclude_users() -> list[int]:
+    return _unique_ints(plugin_config.custom_push_exclude_users)
 
 
 def is_superuser(user_id: int) -> bool:
@@ -76,6 +86,15 @@ def with_custom_push_groups(group_ids: Iterable[int]) -> list[int]:
         group_id
         for group_id in _unique_ints([*group_ids, *get_custom_push_groups()])
         if group_id not in excluded_group_ids
+    ]
+
+
+def with_custom_push_users(user_ids: Iterable[int]) -> list[int]:
+    excluded_user_ids = set(get_custom_push_exclude_users())
+    return [
+        user_id
+        for user_id in _unique_ints([*user_ids, *get_custom_push_users()])
+        if user_id not in excluded_user_ids
     ]
 
 
