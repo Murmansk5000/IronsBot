@@ -11,7 +11,7 @@ from nonebot.params import CommandArg, Depends
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
-from ironsbot.custom_plugins.superuser_policy import is_custom_feature_event_allowed
+from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
@@ -55,7 +55,7 @@ def create_image_command(
     matcher = group.on_command(
         config.command,
         aliases=set(config.aliases),
-        rule=Rule(is_custom_feature_event_allowed) & no_reply(),
+        rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
     )
     template = config.message_template
 

@@ -11,7 +11,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 from pydantic import BaseModel, Field
 
-from ironsbot.custom_plugins.superuser_policy import is_superuser
+from ironsbot.custom_plugins.feature_policy import is_superuser
 
 
 class Config(BaseModel):

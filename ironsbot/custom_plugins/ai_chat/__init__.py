@@ -1,4 +1,4 @@
-import httpx
+﻿import httpx
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
@@ -7,6 +7,10 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.feature_policy import (
+    group_has_feature,
+    is_superuser,
+)
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
@@ -62,6 +66,31 @@ ai_chat_matcher = on_message(
 )
 
 
+def _can_show_admin_notice(event: MessageEvent) -> bool:
+    if is_superuser(event.user_id):
+        return True
+
+    if isinstance(event, GroupMessageEvent):
+        return group_has_feature(event.group_id, "admin_notice")
+
+    return False
+
+
+async def _finish_admin_notice_or_silent(
+    event: MessageEvent,
+    message: str,
+) -> None:
+    if not _can_show_admin_notice(event):
+        raise FinishedException
+
+    await finish_event_reply(
+        ai_chat_matcher,
+        event,
+        message,
+        mention_sender=True,
+    )
+
+
 @ai_chat_matcher.handle()
 async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
     prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
@@ -90,11 +119,9 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             "AI聊天还没有配置 API Key。\n"
             "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
         )
-        await finish_event_reply(
-            ai_chat_matcher,
+        await _finish_admin_notice_or_silent(
             event,
             "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
-            mention_sender=True,
         )
 
     if plugin_config.ai_waiting_notice:
@@ -114,6 +141,9 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
 
     try:
         reply = await call_ai_chat(prompt, history, memory)
+        if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
+            await _finish_admin_notice_or_silent(event, reply)
+
         if reply not in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
             append_turn(key, prompt, reply)
             append_user_memory(
@@ -141,11 +171,9 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             f"超时时间：{plugin_config.ai_timeout} 秒\n"
             "请检查网络或适当调大 AI_TIMEOUT。",
         )
-        await finish_event_reply(
-            ai_chat_matcher,
+        await _finish_admin_notice_or_silent(
             event,
             "AI接口响应超时，我已经通知超级管理员。",
-            mention_sender=True,
         )
     except Exception as e:  # noqa: BLE001
         logger.error(f"AI chat failed: {e}")
@@ -155,9 +183,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             f"错误：{e}\n"
             "请查看容器日志确认具体原因。",
         )
-        await finish_event_reply(
-            ai_chat_matcher,
+        await _finish_admin_notice_or_silent(
             event,
             "AI聊天出错了，我已经通知超级管理员。",
-            mention_sender=True,
         )

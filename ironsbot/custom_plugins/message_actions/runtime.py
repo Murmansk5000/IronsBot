@@ -9,12 +9,12 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.superuser_policy import (
-    is_group_allowed_for_user,
-    is_private_user_allowed,
-    with_custom_push_users,
-    with_superuser_groups,
-    with_superusers,
+from ironsbot.custom_plugins.feature_policy import (
+    groups_for_feature,
+    is_group_feature_allowed,
+    is_private_feature_allowed,
+    users_for_feature,
+    users_with_superusers,
 )
 from ironsbot.utils.rule import no_reply
 
@@ -45,9 +45,9 @@ def _private_action_allowed(
     event: PrivateMessageEvent,
     action: PrivateCommandMessageAction,
 ) -> bool:
-    return is_private_user_allowed(
+    return is_private_feature_allowed(
         event.user_id,
-        action.allowed_user_ids,
+        action.feature,
     )
 
 
@@ -76,10 +76,10 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
         if not action.enabled:
             continue
 
-        if not is_group_allowed_for_user(
+        if not is_group_feature_allowed(
             event.user_id,
             event.group_id,
-            action.group_ids,
+            action.feature,
         ):
             continue
 
@@ -134,7 +134,7 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
 async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
     await send_broadcast_message(
         task.message,
-        private_user_ids=with_custom_push_users(with_superusers(task.user_ids)),
+        private_user_ids=users_with_superusers(users_for_feature(task.feature)),
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
     )
 
@@ -142,7 +142,7 @@ async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
 async def _send_group_schedule(task: GroupScheduledMessageAction) -> None:
     await send_broadcast_message(
         task.message,
-        group_ids=with_superuser_groups(task.group_ids),
+        group_ids=groups_for_feature(task.feature),
         group_at_user_ids=task.at_user_ids,
         action_name=f"group scheduled message {task.id or '<unnamed>'}",
     )

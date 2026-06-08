@@ -116,120 +116,27 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | --- | --- |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
-| `ADMIN_GROUPS` | QQ groups treated as enabled test/management groups by custom plugins. |
-| `ADMIN_BYPASS_GROUPS` | Set `true` to let superusers use custom group commands outside enabled groups. Default `false`. |
-| `CUSTOM_FEATURE_GROUPS` | QQ groups where general custom features are enabled, such as extended Seer queries, rankings, Autocard, fixed images, manual Bilibili dynamic queries, soon-ending activities, and ordinary `开服了吗`. `ADMIN_GROUPS` are included automatically. Meeting, text/link replies, AI chat, Bilibili push targets, team shortcuts, and admin server status use their own variables. |
-| `CUSTOM_FEATURE_USERS` | QQ users allowed to use general custom features in private chat. `SUPERUSERS` are included automatically. |
-| `CUSTOM_PUSH_GROUPS` | Extra QQ groups receiving custom group broadcasts, separate from command permissions. These are added to feature-specific push targets such as `BILI_GROUPS`, `ACTIVITY_REMINDER_GROUPS`, `SERVER_STATUS_BROADCAST_GROUPS`, and `MSG_GROUP_SCHEDULES`. |
-| `CUSTOM_PUSH_EXCLUDE_GROUPS` | QQ groups that must not receive custom group broadcasts, even when listed in feature-specific push targets or `ADMIN_GROUPS`. This does not affect manual commands. |
-| `BOT_RESTART_ENABLED` | Enable scheduled bot container restart. The bot exits at the configured time; Docker/Unraid restart policy should start it again. |
-| `BOT_RESTART_TIMES` | Daily restart times in Asia/Shanghai time. Use comma-separated `HH:MM` values, for example `04:30,16:10,23:55`. JSON lists like `["04:30","16:10"]` are also accepted. |
-| `BOT_RESTART_GRACE_SECONDS` | Seconds to wait after the restart job triggers before terminating the bot process. |
-| `BOT_RESTART_SIGNAL_PARENT` | Signal the parent gunicorn process instead of only the worker. Keep `true` in Docker/Unraid so the whole container exits and restarts. |
-| `DB_SYNC_ON_STARTUP` | Whether to sync registered databases automatically on startup. Default is `false`; superusers can send `更新数据` or `数据更新`. |
-| `DB_SYNC_INTERVAL_ENABLED` | Whether to run scheduled database sync jobs. Default is `true`; set `false` for manual-only updates. |
-| `SEERAPI_SYNC_URL` | Remote SeerAPI database URL. |
-| `SEERAPI_FINGERPRINT_URL` | SHA256 fingerprint URL for SeerAPI database updates. |
-| `SEERAPI_LOCAL_PATH` | Local SeerAPI database cache/fallback path. Use `/app/data` persistence for Docker. |
-| `ALIAS_SYNC_URL` | Remote alias database URL. |
-| `ALIAS_FINGERPRINT_URL` | SHA256 fingerprint URL for alias database updates. |
-| `ALIAS_LOCAL_PATH` | Local alias database cache/fallback path. Use `/app/data` persistence for Docker. |
-| `HEADLESS_SEER_USER_ID` | Optional Seer account ID for features that require login. |
-| `HEADLESS_SEER_PASSWORD` | Optional MD5 password for the headless Seer client. |
-| `HEADLESS_SEER_HEARTBEAT_INTERVAL` | Seconds between headless client heartbeat checks. Lower values detect dropped game connections faster. |
-| `HEADLESS_SEER_RECONNECT_RETRIES` | Headless client reconnect retry count. Use `-1` for infinite retries, `0` to disable automatic reconnect, or a positive number for limited retries. |
-| `HEADLESS_SEER_RECONNECT_DELAY` | Initial seconds to wait before the headless client reconnects. |
-| `HEADLESS_SEER_RECONNECT_DELAY_MAX` | Maximum reconnect backoff seconds for the headless client. |
-| `SEER_LOGIN_NOTICE` | Notify `SUPERUSERS` by private message when the configured headless Seer login is unavailable after startup. Default `true`. |
-| `SEER_LOGIN_NOTICE_MESSAGE` | Message template for the headless Seer login failure notice. Supports `{user_id}` and `{reason}`. |
-| `HEADLESS_STATE_NOTICE` | Notify `SUPERUSERS` when the headless Mimi login changes between online and offline. Normal maintenance windows are muted. |
-| `HEADLESS_STATE_OFFLINE_MESSAGE` | Message template for headless offline state changes. Supports `{user_id}`, `{reason}`, and `{source}`. |
-| `HEADLESS_STATE_ONLINE_MESSAGE` | Message template for headless online state changes. Supports `{user_id}` and `{source}`. |
-| `HEADLESS_RECONNECT_CHECK_TIMES` | Daily Asia/Shanghai times to check headless status and reconnect if offline. Use comma-separated `HH:MM` values or JSON list; default `00:01,00:02`. |
-| `SEER_QUERY_PLAYER_SECTIONS` | Sections shown by custom Mimi ID queries. Use JSON list or comma-separated values. Supported: `basic`, `appearance`, `social`, `collection`, `rank`, `local_rank`, `achievement`, `peak`, `titles`, `pets`, `stages`, `battle`, `raw`. |
-| `SEER_QUERY_TEAM_SECTIONS` | Sections shown by custom team queries. Use JSON list or comma-separated values. Supported: `basic`, `resource`, `facilities`, `status`, `logo`, `text`. |
-| `SEER_QUERY_PLAYER_RATE_LIMIT_SECONDS` | Seconds between Mimi ID queries per normal QQ user. `SUPERUSERS` are exempt. Default `60`; set `0` to disable. |
-| `SEER_QUERY_PLAYER_FAILURE_RATE_LIMIT_SECONDS` | Seconds a normal QQ user must wait after a failed Mimi ID query. `SUPERUSERS` are exempt. Default `10`; set `0` to disable. |
-| `SEER_QUERY_RANK_LIMIT` | When querying a Mimi ID, scan this many top entries in the global book and achievement rankings. Default `10000`; set `0` to disable. |
-| `SEER_QUERY_RANK_PAGE_SIZE` | Ranking entries fetched per request for Mimi ID rank lookup. Default `100`; the 4481 ranking API should stay at 100 or less. |
-| `SEER_QUERY_PEAK_SUBKEY` | Optional peak season ranking subkey for custom Mimi ID queries. Leave empty to read the current season from SeerAPI data; set `YYYYMMDD` manually if season data is unavailable. |
-| `SEER_QUERY_LOCAL_RANK` | Enable local rankings among Mimi IDs queried by this bot. Defaults to `true`; tied scores are shown as tied ranks. |
-| `SEER_QUERY_LOCAL_RANK_PATH` | SQLite cache file for local queried-player rankings. Defaults to `data/custom_get_seer_info/player_query_cache.sqlite`; peak season metrics are compared only within the same season subkey. |
-| `SEER_QUERY_SKIN_PRICE` | Append official skin diamond price data to custom skin/illustration queries. Defaults to `true`. |
-| `SEER_QUERY_SKIN_PRICE_CACHE_TTL_SECONDS` | Seconds before the downloaded skin price config cache is considered stale. Defaults to `86400`. |
-| `SEER_QUERY_SKIN_PRICE_CACHE_PATH` | JSON cache file for parsed official skin price data. Defaults to `data/custom_get_seer_info/skin_price_cache.json`. |
-| `SEER_QUERY_MINTMARK_QUALITY_PATH` | Optional parsed official `mintmark.json` path. When set, custom countermark stat rankings use its `Quality` field as the angle count; otherwise they infer angles from base attributes. |
-| `SEER_QUERY_CONFIG_PACKAGE_BASE_URL` | Official Unity ConfigPackage base URL used for skin prices and other custom config parsing. |
-| `MEETING_NUMBER` | Tencent Meeting number. The plugin generates the meeting link automatically. |
-| `MEETING_TEMPLATE` | Reply template. Supports `{meeting_number}`, `{meeting_digits}`, `{meeting_url}`. |
-| `MEETING_GROUPS` | QQ groups allowed to trigger meeting replies; `ADMIN_GROUPS` are included automatically. |
-| `BILI_GROUPS` | QQ groups receiving Bilibili dynamic updates; `ADMIN_GROUPS` are included automatically. |
-| `BILI_DATA_DIR` | Directory for Bilibili cookies and dynamic timestamp cache. Mount `/app/data` for persistence. |
-| `STARTUP_NOTICE` | Whether to notify superusers after bot startup. |
-| `MSG_AT_TRIGGER` | Whether group text replies triggered by a user should start by mentioning that user. Default `false`. |
-| `MSG_PRIVATE_COMMANDS` | Generic private command replies; empty `allowed_user_ids` means `SUPERUSERS` only. |
-| `MSG_PRIVATE_SCHEDULES` | Generic scheduled private messages; empty `user_ids` sends to `SUPERUSERS`. |
-| `MSG_GROUP_COMMANDS` | Generic group command replies; empty `group_ids` means `ADMIN_GROUPS` only. |
-| `MSG_GROUP_SCHEDULES` | Generic scheduled group messages; empty `group_ids` sends to `ADMIN_GROUPS`. |
-| `TEAM_GROUPS` | QQ team/guild groups where team shortcut commands are enabled; `ADMIN_GROUPS` are included automatically. |
-| `TEAM_IDS` | Team IDs queried by the team group shortcut command. |
-| `TEAM_COMMANDS` | Exact team group shortcut commands, default `["战队"]`. |
-| `TEAM_RESOURCE_USERS` | QQ users to mention when any configured team resource is below 1000. Use `[123456789]` or `123456789`. |
-| `TEAM_RESOURCE_MESSAGE` | Message sent after the mention when team resources are low. |
-| `AI_INTENT_ACTIONS_ENABLED` | Enable AI-gated message actions. Messages are first filtered by keywords, then AI decides whether to run the configured action. |
-| `AI_INTENT_ACTIONS` | JSON list of AI intent actions. Supported actions: `message`, `team_shortcut`. The default `join_team` action watches for `战队`, asks AI whether the sender wants to join a team, and sends the configured `TEAM_IDS` team info when matched. |
-| `AI_KEY` | DeepSeek API key. Keep it private. |
-| `AI_BASE_URL` | OpenAI-compatible API base URL. For relay/NewAPI services, usually use the `/v1` endpoint. |
-| `AI_MODEL` | Model name used by the configured AI chat provider. |
-| `AI_USERS` | QQ users allowed to use AI chat outside group-wide allowlists. Private chats require this or SUPERUSERS. |
-| `AI_GROUPS` | QQ groups whose members may use AI chat by mentioning the bot; `ADMIN_GROUPS` are included automatically. |
+| `GROUP_ALIASES` | JSON object mapping friendly group names to QQ group IDs. |
+| `USER_ALIASES` | JSON object mapping friendly user names to QQ IDs. |
+| `FEATURE_GROUP_POLICY` | JSON object mapping group aliases or numeric group IDs to enabled features. |
+| `FEATURE_USER_POLICY` | JSON object mapping user aliases or numeric QQ IDs to enabled private/push features. |
+| `FEATURE_SUPERUSER_BYPASS` | Set `true` to let superusers use group features in groups not listed in policy. Default `false`. |
+| `AI_ACTION_TEMPLATES` | Optional reusable AI action templates. Built-ins include `join_team` and `keyword_info`. |
+| `AI_INTENT_ACTIONS` | AI-gated actions. Each item can use `template`, `keywords`, `intent`, and an action such as `team_shortcut`, `message`, or `ai_reply`. |
 
-List values should use JSON-like syntax, for example:
+Common feature names include `all`, `custom`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use custom feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
 
 ```env
 SUPERUSERS=["123456789"]
-ADMIN_GROUPS=[686376929]
-ADMIN_BYPASS_GROUPS=false
-CUSTOM_FEATURE_GROUPS=[686376929]
-CUSTOM_FEATURE_USERS=[]
-CUSTOM_PUSH_GROUPS=[]
-CUSTOM_PUSH_EXCLUDE_GROUPS=[]
-BOT_RESTART_ENABLED=false
-BOT_RESTART_TIMES=04:30
-BOT_RESTART_GRACE_SECONDS=10
-BOT_RESTART_SIGNAL_PARENT=true
-SEER_LOGIN_NOTICE=true
-SEER_LOGIN_NOTICE_MESSAGE="Headless Seer login did not complete.\nMimi ID: {user_id}\nStatus: {reason}\nFeatures that require Mimi login may be unavailable."
-HEADLESS_STATE_NOTICE=true
-HEADLESS_STATE_OFFLINE_MESSAGE="Headless Mimi login went offline.\nMimi ID: {user_id}\nStatus: {reason}\nSource: {source}"
-HEADLESS_STATE_ONLINE_MESSAGE="Headless Mimi login recovered.\nMimi ID: {user_id}\nSource: {source}"
-HEADLESS_RECONNECT_CHECK_TIMES=00:01,00:02
-SEER_QUERY_PLAYER_RATE_LIMIT_SECONDS=60
-SEER_QUERY_PLAYER_FAILURE_RATE_LIMIT_SECONDS=10
-SEER_QUERY_PLAYER_SECTIONS=["basic","appearance","social","collection","rank","local_rank","achievement","peak","titles","pets","stages","battle","raw"]
-SEER_QUERY_TEAM_SECTIONS=["basic","resource","facilities","status","logo","text"]
-SEER_QUERY_RANK_LIMIT=10000
-SEER_QUERY_RANK_PAGE_SIZE=100
-SEER_QUERY_PEAK_SUBKEY=
-SEER_QUERY_LOCAL_RANK=true
-SEER_QUERY_LOCAL_RANK_PATH=data/custom_get_seer_info/player_query_cache.sqlite
-SEER_QUERY_SKIN_PRICE=true
-SEER_QUERY_SKIN_PRICE_CACHE_TTL_SECONDS=86400
-SEER_QUERY_SKIN_PRICE_CACHE_PATH=data/custom_get_seer_info/skin_price_cache.json
-SEER_QUERY_MINTMARK_QUALITY_PATH=
-SEER_QUERY_CONFIG_PACKAGE_BASE_URL=https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/
-MEETING_GROUPS=[123456789]
-BILI_GROUPS=[123456789,987654321]
-MSG_PRIVATE_SCHEDULES=[{"id":"morning","user_ids":[123456789],"hour":8,"minute":30,"message":"早上好"}]
-MSG_GROUP_COMMANDS=[{"id":"notice","group_ids":[123456789],"commands":["买资源"],"at_user_ids":[987654321],"message":"出来买资源"},{"id":"seerinfo","group_ids":[123456789],"commands":["xm","xrym","雷小伊","重聚"],"message":"https://seerinfo.yuyuqaq.cn/"}]
-TEAM_GROUPS=[123456789]
-TEAM_IDS=[1234567,7654321]
-TEAM_COMMANDS=["战队"]
-TEAM_RESOURCE_USERS=[123456789]
-TEAM_RESOURCE_MESSAGE=出来买资源，别逼我求你😡
-AI_INTENT_ACTIONS_ENABLED=true
-AI_INTENT_ACTIONS=[{"id":"join_team","keywords":["战队"],"action":"team_shortcut","intent":"Judge whether the QQ group message means the sender wants to join, apply for, or find a Seer team/guild. Answer yes only when the sender is asking to join a team, asking whether they can enter the team, or asking for the team info for joining. Answer no when the message only queries team data, discusses team resources, asks someone to buy resources, or casually mentions teams.","include_team_resource_notice":false}]
-AI_USERS=[123456789]
+GROUP_ALIASES={"admin":686376929,"main":123456789}
+USER_ALIASES={"owner":123456789}
+FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_link","bili_query","bili_push","ai"]}
+FEATURE_USER_POLICY={"owner":["all"]}
+FEATURE_SUPERUSER_BYPASS=false
+BILI_UIDS=[1310714247]
+MSG_GROUP_COMMANDS=[{"id":"notice","feature":"activity_link","commands":["link"],"message":"activity link"}]
+MSG_GROUP_SCHEDULES=[{"id":"night","feature":"activity_link_push","hour":23,"minute":0,"message":"good night"}]
+AI_INTENT_ACTIONS=[{"template":"join_team"},{"id":"event_help","template":"keyword_info","keywords":["event","activity"],"intent":"The user is asking about Seer events or activity links."}]
 ```
 
 ## Team Group Shortcut
@@ -248,7 +155,8 @@ This is the same kind of output as the built-in `战队<team_id>` query, but the
 Configure it at runtime:
 
 ```env
-TEAM_GROUPS=[123456789]
+FEATURE_GROUP_POLICY={"team_group":["team"]}
+GROUP_ALIASES={"team_group":123456789}
 TEAM_IDS=[1234567,7654321]
 TEAM_COMMANDS=["战队"]
 TEAM_RESOURCE_USERS=[123456789]

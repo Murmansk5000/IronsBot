@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
 import signal
@@ -18,6 +17,13 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 from pydantic import BaseModel, Field, field_validator
 
+from ironsbot.custom_plugins.feature_policy import (
+    groups_for_feature,
+    is_event_feature_allowed,
+    is_superuser,
+    users_for_feature,
+    users_with_superusers,
+)
 from ironsbot.custom_plugins.headless_seer_notice.service import login_headless_client
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
@@ -27,13 +33,6 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_broadcast_message,
     send_event_reply,
-)
-from ironsbot.custom_plugins.superuser_policy import (
-    is_custom_feature_event_allowed,
-    is_superuser,
-    with_custom_push_users,
-    with_superuser_groups,
-    with_superusers,
 )
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
@@ -70,44 +69,8 @@ MAINTENANCE_RANGE_PATTERN = re.compile(
 
 class Config(BaseModel):
     server_status_broadcast: bool = False
-    server_status_broadcast_groups: list[int] = Field(default_factory=list)
-    server_status_broadcast_users: list[int] = Field(default_factory=list)
     server_status_broadcast_message: str = BROADCAST_MESSAGE
     server_status_broadcast_cooldown_minutes: int = Field(default=1440, ge=0)
-
-    @field_validator(
-        "server_status_broadcast_groups",
-        "server_status_broadcast_users",
-        mode="before",
-    )
-    @classmethod
-    def coerce_int_list(cls, value: object) -> object:
-        if value is None or value == "":
-            return []
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return []
-            if stripped.startswith("["):
-                return json.loads(stripped)
-            return [
-                int(part.strip())
-                for part in stripped.split(",")
-                if part.strip()
-            ]
-        return value
-
-    @field_validator(
-        "server_status_broadcast_groups",
-        "server_status_broadcast_users",
-    )
-    @classmethod
-    def normalize_int_list(cls, value: list[int]) -> list[int]:
-        result: list[int] = []
-        for item in value:
-            if item > 0 and item not in result:
-                result.append(item)
-        return result
 
     @field_validator("server_status_broadcast_message")
     @classmethod
@@ -129,7 +92,8 @@ __plugin_meta__ = PluginMetadata(
   无头客户端已登录游戏服务器时判定为已开服；公告只作为维护信息摘要。
   无头客户端未登录时，结合公告和登录状态提示可能原因。
   如果 SERVER_STATUS_BROADCAST=true，查询结果判断为已开服时会向
-  SERVER_STATUS_BROADCAST_GROUPS 和 SERVER_STATUS_BROADCAST_USERS
+  Broadcast targets use FEATURE_GROUP_POLICY / FEATURE_USER_POLICY
+  feature: server_status_push.
   配置的目标广播。""",
     config=Config,
     supported_adapters={"~onebot.v11"},
@@ -186,7 +150,7 @@ bot_restart_matcher = on_fullmatch(
 
 @normal_server_status_matcher.handle()
 async def handle_normal_server_status(matcher: Matcher, event: MessageEvent) -> None:
-    if not is_custom_feature_event_allowed(event):
+    if not is_event_feature_allowed(event, "server_status_query"):
         logger.info("normal server status command ignored: custom feature not allowed")
         return
 
@@ -388,10 +352,8 @@ async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
     if not _should_broadcast_opened(now):
         return
 
-    group_ids = with_superuser_groups(plugin_config.server_status_broadcast_groups)
-    user_ids = with_custom_push_users(
-        with_superusers(plugin_config.server_status_broadcast_users)
-    )
+    group_ids = groups_for_feature("server_status_push")
+    user_ids = users_with_superusers(users_for_feature("server_status_push"))
     if not group_ids and not user_ids:
         logger.info("server status open broadcast skipped: no targets")
         return

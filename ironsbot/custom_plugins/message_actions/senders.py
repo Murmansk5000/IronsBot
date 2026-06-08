@@ -1,20 +1,15 @@
-import asyncio
+﻿import asyncio
 from collections.abc import Iterable
 
 from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.superuser_policy import with_custom_push_groups
-
 from .reply_limits import limit_message_by_reply_lines
 from .targets import (
     MessageTarget,
-    SendSummary,
     TargetSendSummary,
     broadcast_targets,
-    group_targets,
-    private_targets,
 )
 from .text import build_message
 
@@ -101,54 +96,11 @@ async def send_broadcast_message(  # noqa: PLR0913
     return await send_target_messages(
         broadcast_targets(
             private_user_ids=private_user_ids,
-            group_ids=with_custom_push_groups(group_ids),
+            group_ids=group_ids,
             group_at_user_ids=group_at_user_ids,
         ),
         message,
         bot=bot,
         action_name=action_name,
         interval_seconds=interval_seconds,
-    )
-
-
-async def send_private_messages(
-    user_ids: Iterable[int],
-    message: str | Message,
-    *,
-    bot: Bot | None = None,
-    action_name: str = "message action",
-    interval_seconds: float = 1.5,
-) -> SendSummary:
-    summary = await send_target_messages(
-        private_targets(user_ids),
-        message,
-        bot=bot,
-        action_name=action_name,
-        interval_seconds=interval_seconds,
-    )
-    return SendSummary(
-        [target.target_id for target in summary.succeeded],
-        [target.target_id for target in summary.failed],
-    )
-
-
-async def send_group_messages(  # noqa: PLR0913
-    group_ids: Iterable[int],
-    message: str | Message,
-    *,
-    bot: Bot | None = None,
-    at_user_ids: Iterable[int] = (),
-    action_name: str = "message action",
-    interval_seconds: float = 1.5,
-) -> SendSummary:
-    summary = await send_target_messages(
-        group_targets(group_ids, at_user_ids=at_user_ids),
-        message,
-        bot=bot,
-        action_name=action_name,
-        interval_seconds=interval_seconds,
-    )
-    return SendSummary(
-        [target.target_id for target in summary.succeeded],
-        [target.target_id for target in summary.failed],
     )

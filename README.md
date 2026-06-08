@@ -107,26 +107,21 @@ services:
 
 原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
 
-## 常用变量
+## Common Variables
 
 ```env
 ONEBOT_ACCESS_TOKEN=change-me
 SUPERUSERS=["123456789"]
-ADMIN_GROUPS=[]
-ADMIN_BYPASS_GROUPS=false
-CUSTOM_FEATURE_GROUPS=[]
-CUSTOM_FEATURE_USERS=[]
-CUSTOM_PUSH_GROUPS=[]
-CUSTOM_PUSH_EXCLUDE_GROUPS=[]
+GROUP_ALIASES={"admin":686376929,"main":123456789}
+USER_ALIASES={"owner":123456789}
+FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","image","rank","meeting","text","text_push","bili_query","bili_push","activity_query","activity_push","server_status_query","server_status_push","team","ai","ai_intent"]}
+FEATURE_USER_POLICY={"owner":["all"]}
+FEATURE_SUPERUSER_BYPASS=false
+AI_ACTION_TEMPLATES={}
+AI_INTENT_ACTIONS=[{"template":"join_team"}]
 ```
 
-核心规则：
-
-- `SUPERUSERS` 是最高权限用户。
-- `ADMIN_GROUPS` 是测试/管理群，会自动被大多数自定义功能视为启用。
-- `ADMIN_BYPASS_GROUPS=false` 时，超级管理员在未启用功能的群里也不能绕过群限制。
-- `CUSTOM_FEATURE_GROUPS` / `CUSTOM_FEATURE_USERS` 控制通用自定义功能。
-- 会议、AI、B站推送、战队快捷、文本回复等功能有自己的细分变量。
+Group and user IDs are written once in aliases, then features are enabled from `FEATURE_GROUP_POLICY` / `FEATURE_USER_POLICY`. Push and query permissions are separate features, such as `bili_query` and `bili_push`. Admin-only notices use `admin_notice`; it is intentionally not included by `all`. Message actions use their own `feature` field, for example `activity_link` or `seerinfo`. AI-gated actions can reuse `AI_ACTION_TEMPLATES`, so adding a new keyword analysis flow usually only needs env changes.
 
 ## 数据与缓存
 

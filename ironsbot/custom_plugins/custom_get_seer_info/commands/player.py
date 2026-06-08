@@ -12,6 +12,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.custom_plugins.feature_policy import is_superuser
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
@@ -24,7 +25,6 @@ from ironsbot.custom_plugins.message_actions import (
     peek_user_rate_limit,
     penalize_user_rate_limit,
 )
-from ironsbot.custom_plugins.superuser_policy import is_superuser
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,

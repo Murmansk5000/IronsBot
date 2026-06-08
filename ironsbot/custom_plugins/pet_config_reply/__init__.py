@@ -6,15 +6,15 @@ from nonebot.plugin import on_message
 from nonebot.rule import Rule
 from seerapi_models import PetORM
 
+from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
 from ironsbot.custom_plugins.message_actions import finish_event_reply
-from ironsbot.custom_plugins.superuser_policy import is_custom_feature_event_allowed
 from ironsbot.plugins.seer_data.db import GetPetData
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 pet_config_matcher = on_message(
     rule=(
-        Rule(is_custom_feature_event_allowed)
+        Rule(lambda event: is_event_feature_allowed(event, "seer"))
         & startswith_or_endswith(prefixes=(), suffixes=("配置",))
         & no_reply()
     ),

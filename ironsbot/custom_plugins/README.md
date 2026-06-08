@@ -86,7 +86,7 @@ from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
-    my_plugin_groups: list[int] = Field(default_factory=list)
+    my_plugin_enabled: bool = True
 
 
 plugin_config = get_plugin_config(Config)
@@ -97,19 +97,14 @@ plugin_config = get_plugin_config(Config)
 示例：
 
 ```env
-ADMIN_GROUPS=[686376929]
-ADMIN_BYPASS_GROUPS=false
+GROUP_ALIASES={"admin":686376929,"main":123456789}
+FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_query","bili_query","bili_push","team","ai","ai_intent"]}
 
 MEETING_NUMBER=1234567890
 MEETING_TEMPLATE="腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}"
-MEETING_GROUPS=[123456789,987654321]
-MEETING_USERS=[123456789]
 
-BILI_UID=1310714247              # 旧版单账号 UID；UIDS 为空时使用
 BILI_UIDS=[1310714247,123456789] # 多账号订阅动态；非空时优先使用这个列表
 BILI_DATA_DIR=data/bilibili_monitor
-BILI_GROUPS=[123456789]
-BILI_USERS=[123456789]
 
 STARTUP_NOTICE=true
 STARTUP_MESSAGE=机器人已开启。
@@ -121,14 +116,14 @@ MSG_PRIVATE_COMMANDS=[
   {
     "id": "activity_link_private",
     "commands": ["签到", "活动", "链接"],
-    "allowed_user_ids": [123456789],
+    "feature": "activity_link",
     "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
   }
 ]
 MSG_PRIVATE_SCHEDULES=[
   {
     "id": "morning",
-    "user_ids": [123456789, 987654321],
+    "feature": "activity_link_push",
     "hour": 8,
     "minute": 30,
     "message": "早上好"
@@ -137,7 +132,7 @@ MSG_PRIVATE_SCHEDULES=[
 MSG_GROUP_COMMANDS=[
   {
     "id": "activity_link_group",
-    "group_ids": [123456789],
+    "feature": "activity_link",
     "commands": ["签到", "活动", "链接"],
     "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
   }
@@ -145,22 +140,21 @@ MSG_GROUP_COMMANDS=[
 MSG_GROUP_SCHEDULES=[
   {
     "id": "activity_link_daily",
-    "group_ids": [123456789],
+    "feature": "activity_link",
     "hour": 23,
     "minute": 0,
     "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
   }
 ]
 
-TEAM_GROUPS=[]
 TEAM_IDS=[]
 TEAM_COMMANDS=["战队"]
 TEAM_RESOURCE_USERS=[]
 TEAM_RESOURCE_MESSAGE=出来买资源，别逼我求你😡
 
 AI_KEY=sk-...
-AI_USERS=[123456789]
-AI_GROUPS=[123456789]
+AI_ACTION_TEMPLATES={"keyword_info":{"action":"ai_reply","reply_prompt":"Keywords: {keywords}\nMessage: {message}\nReply briefly."}}
+AI_INTENT_ACTIONS=[{"template":"join_team"},{"id":"custom_keyword","template":"keyword_info","keywords":["keyword"]}]
 ```
 
 ## 本地开发与部署

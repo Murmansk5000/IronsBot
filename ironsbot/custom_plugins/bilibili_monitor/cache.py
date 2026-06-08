@@ -1,39 +1,11 @@
 import json
 import sqlite3
 import time
-from pathlib import Path
 
 from nonebot.log import logger
 
 from .config import plugin_config
-from .state import (
-    BILI_UID,
-    CACHE_FILE,
-    CHECKPOINTS_FILE,
-    COOKIE_CACHE_FILE,
-    DYNAMIC_HISTORY_DB_FILE,
-    LEGACY_CACHE_FILE,
-    LEGACY_COOKIE_CACHE_FILE,
-)
-
-
-def _migrate_legacy_cache_file(legacy_file: Path, cache_file: Path) -> None:
-    if cache_file.exists() or not legacy_file.exists():
-        return
-
-    try:
-        cache_file.write_text(
-            legacy_file.read_text(encoding="utf-8"),
-            encoding="utf-8",
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"failed to migrate Bilibili cache {legacy_file.name}: {e}")
-
-
-def migrate_legacy_cache_files() -> None:
-    _migrate_legacy_cache_file(LEGACY_CACHE_FILE, CACHE_FILE)
-    _migrate_legacy_cache_file(LEGACY_COOKIE_CACHE_FILE, COOKIE_CACHE_FILE)
-    _migrate_legacy_checkpoints_to_sqlite()
+from .state import COOKIE_CACHE_FILE, DYNAMIC_HISTORY_DB_FILE
 
 
 def _connect() -> sqlite3.Connection:
@@ -74,16 +46,6 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def _read_legacy_last_saved_time() -> int:
-    if not CACHE_FILE.exists():
-        return 0
-
-    try:
-        return int(CACHE_FILE.read_text(encoding="utf-8").strip())
-    except Exception:  # noqa: BLE001
-        return 0
-
-
 def get_last_saved_times() -> dict[int, int]:
     try:
         with _connect() as conn:
@@ -95,15 +57,6 @@ def get_last_saved_times() -> dict[int, int]:
                 return checkpoints
     except sqlite3.Error as e:
         logger.warning(f"failed to read Bilibili checkpoints from SQLite: {e}")
-
-    legacy_checkpoints = _read_legacy_checkpoints()
-    if legacy_checkpoints:
-        save_last_saved_times(legacy_checkpoints)
-        return legacy_checkpoints
-
-    legacy_time = _read_legacy_last_saved_time()
-    if legacy_time > 0:
-        return {BILI_UID: legacy_time}
 
     return {}
 
@@ -129,24 +82,6 @@ def save_last_saved_times(checkpoints: dict[int, int]) -> None:
     except sqlite3.Error as e:
         logger.warning(f"failed to write Bilibili checkpoints to SQLite: {e}")
 
-    if cleaned:
-        latest_time = max(cleaned.values())
-        CACHE_FILE.write_text(str(latest_time), encoding="utf-8")
-
-
-def get_last_saved_time(uid: int | None = None) -> int:
-    checkpoints = get_last_saved_times()
-    if uid is not None:
-        return checkpoints.get(uid, 0)
-
-    return max(checkpoints.values(), default=0)
-
-
-def save_last_time(pub_time: int, uid: int | None = None) -> None:
-    checkpoints = get_last_saved_times()
-    checkpoints[uid or BILI_UID] = pub_time
-    save_last_saved_times(checkpoints)
-
 
 def get_saved_cookie() -> str:
     if not COOKIE_CACHE_FILE.exists():
@@ -157,42 +92,6 @@ def get_saved_cookie() -> str:
 
 def save_new_cookie(cookie_str: str) -> None:
     COOKIE_CACHE_FILE.write_text(cookie_str, encoding="utf-8")
-
-
-def _read_legacy_checkpoints() -> dict[int, int]:
-    if not CHECKPOINTS_FILE.exists():
-        return {}
-
-    try:
-        data = json.loads(CHECKPOINTS_FILE.read_text(encoding="utf-8"))
-        return {
-            int(uid): int(pub_time)
-            for uid, pub_time in data.items()
-            if int(pub_time) > 0
-        }
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"failed to read legacy Bilibili checkpoints: {e}")
-        return {}
-
-
-def _migrate_legacy_checkpoints_to_sqlite() -> None:
-    try:
-        with _connect() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM checkpoints").fetchone()
-            if row is not None and int(row[0]) > 0:
-                return
-    except sqlite3.Error as e:
-        logger.warning(f"failed to inspect Bilibili SQLite checkpoints: {e}")
-        return
-
-    checkpoints = _read_legacy_checkpoints()
-    if not checkpoints:
-        legacy_time = _read_legacy_last_saved_time()
-        if legacy_time > 0:
-            checkpoints = {BILI_UID: legacy_time}
-
-    if checkpoints:
-        save_last_saved_times(checkpoints)
 
 
 def _dynamic_id(item: dict) -> str:
