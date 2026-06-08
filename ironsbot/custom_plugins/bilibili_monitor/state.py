@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 from ironsbot.custom_plugins.superuser_policy import (
+    with_custom_push_users,
     with_superuser_groups,
     with_superusers,
 )
@@ -27,7 +28,7 @@ TARGET_GROUP_IDS = list(
     dict.fromkeys(with_superuser_groups(plugin_config.bili_groups))
 )
 TARGET_USER_IDS = list(
-    dict.fromkeys(with_superusers(plugin_config.bili_users))
+    dict.fromkeys(with_custom_push_users(with_superusers(plugin_config.bili_users)))
 )
 
 BILI_DATA_DIR = plugin_config.bili_data_dir

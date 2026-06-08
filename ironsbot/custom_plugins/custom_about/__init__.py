@@ -20,10 +20,14 @@ ABOUT_MESSAGE = """
 🤖 IronsBot
 版本：{version}
 项目：https://github.com/Murmansk5000/IronsBot
+上游作者：Nattsu39
+上游项目：https://github.com/Nattsu39/IronsBot
 
 这是一个面向 QQ / OneBot v11 的自定义赛尔号机器人，当前版本以自定义插件为主：
 米米号与战队查询、B站动态、活动提醒、榜单、群星牌、
 固定图片/文本回复、AI 聊天和 Unraid 友好部署。
+
+感谢原作者 Nattsu39 开源 IronsBot，为本项目提供了核心基础与参考。
 """.strip()
 
 VERSION_FILE_PATH = AsyncPath("__version__")

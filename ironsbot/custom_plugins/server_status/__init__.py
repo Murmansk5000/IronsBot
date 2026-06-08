@@ -31,6 +31,7 @@ from ironsbot.custom_plugins.message_actions import (
 from ironsbot.custom_plugins.superuser_policy import (
     is_custom_feature_event_allowed,
     is_superuser,
+    with_custom_push_users,
     with_superuser_groups,
     with_superusers,
 )
@@ -388,7 +389,9 @@ async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
         return
 
     group_ids = with_superuser_groups(plugin_config.server_status_broadcast_groups)
-    user_ids = with_superusers(plugin_config.server_status_broadcast_users)
+    user_ids = with_custom_push_users(
+        with_superusers(plugin_config.server_status_broadcast_users)
+    )
     if not group_ids and not user_ids:
         logger.info("server status open broadcast skipped: no targets")
         return
