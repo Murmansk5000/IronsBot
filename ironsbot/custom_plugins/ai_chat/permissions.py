@@ -4,12 +4,11 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.custom_plugins.superuser_policy import (
-    is_group_allowed_for_user,
-    is_private_user_allowed,
+from ironsbot.custom_plugins.feature_policy import (
+    is_group_feature_allowed,
+    is_private_feature_allowed,
 )
 
-from .config import plugin_config
 from .constants import RESERVED_PRIVATE_COMMANDS
 
 
@@ -23,16 +22,16 @@ def is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
 
 def is_allowed(event: MessageEvent) -> bool:
     if isinstance(event, GroupMessageEvent):
-        return is_group_allowed_for_user(
+        return is_group_feature_allowed(
             event.user_id,
             event.group_id,
-            plugin_config.ai_groups,
+            "ai",
         )
 
     if isinstance(event, PrivateMessageEvent):
-        return is_private_user_allowed(
+        return is_private_feature_allowed(
             event.user_id,
-            plugin_config.ai_users,
+            "ai",
         )
 
     return False

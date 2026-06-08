@@ -5,8 +5,17 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field, field_validator
 
+from ironsbot.custom_plugins.ai_chat.config import plugin_config as ai_config
+from ironsbot.custom_plugins.ai_intent_actions.config import (
+    AiIntentAction,
+    get_configured_actions,
+    plugin_config as ai_intent_config,
+)
+
 from ironsbot.custom_plugins.feature_policy import (
     is_event_feature_allowed,
+    is_group_feature_allowed,
+    is_private_feature_allowed,
 )
 from ironsbot.custom_plugins.superuser_policy import (
     get_custom_push_groups,
@@ -56,16 +65,6 @@ def _coerce_model_list(value: object) -> object:
     return value
 
 
-class VisibilityAiIntentAction(BaseModel):
-    enabled: bool = True
-    group_ids: list[int] = Field(default_factory=list)
-    user_ids: list[int] = Field(default_factory=list)
-    action: str = "team_shortcut"
-
-    @field_validator("group_ids", "user_ids", mode="before")
-    @classmethod
-    def normalize_int_list(cls, value: object) -> object:
-        return _coerce_int_list(value)
 
 
 class VisibilityPrivateCommand(BaseModel):
@@ -108,18 +107,11 @@ class VisibilityGroupSchedule(BaseModel):
         return _coerce_int_list(value)
 
 
-def _default_ai_intent_actions() -> list[VisibilityAiIntentAction]:
-    return [VisibilityAiIntentAction(action="team_shortcut")]
 
 
 class VisibilityConfig(BaseModel):
-    ai_key: str = ""
     ai_groups: list[int] = Field(default_factory=list)
     ai_users: list[int] = Field(default_factory=list)
-    ai_intent_actions_enabled: bool = True
-    ai_intent_actions: list[VisibilityAiIntentAction] = Field(
-        default_factory=_default_ai_intent_actions
-    )
     activity_reminder_groups: list[int] = Field(default_factory=list)
     activity_reminder_users: list[int] = Field(default_factory=list)
     meeting_groups: list[int] = Field(default_factory=list)
@@ -147,7 +139,6 @@ class VisibilityConfig(BaseModel):
         return _coerce_int_list(value)
 
     @field_validator(
-        "ai_intent_actions",
         "msg_private_commands",
         "msg_private_schedules",
         "msg_group_commands",
@@ -248,54 +239,49 @@ def _bili_visible(event: Event) -> bool:
 
 def _ai_chat_allowed(event: Event) -> bool:
     if isinstance(event, GroupMessageEvent):
-        return is_group_allowed_for_user(
+        return is_group_feature_allowed(
             event.user_id,
             event.group_id,
-            visibility_config.ai_groups,
+            "ai",
         )
 
     if isinstance(event, PrivateMessageEvent):
-        return is_private_user_allowed(event.user_id, visibility_config.ai_users)
+        return is_private_feature_allowed(
+            event.user_id,
+            "ai",
+        )
 
     return False
 
 
 def _ai_chat_visible(event: Event) -> bool:
     return isinstance(event, (GroupMessageEvent, PrivateMessageEvent)) and (
-        bool(visibility_config.ai_key) and _ai_chat_allowed(event)
+        bool(ai_config.ai_key) and _ai_chat_allowed(event)
     )
 
 
 def _ai_intent_visible(event: Event) -> bool:
     if (
         not isinstance(event, (GroupMessageEvent, PrivateMessageEvent))
-        or not visibility_config.ai_intent_actions_enabled
-        or not visibility_config.ai_key
+        or not ai_intent_config.ai_intent_actions_enabled
+        or not ai_config.ai_key
     ):
         return False
 
     return any(
         action.enabled and _ai_intent_action_visible(event, action)
-        for action in visibility_config.ai_intent_actions
+        for action in get_configured_actions()
     )
 
-
-def _ai_intent_action_visible(
-    event: Event,
-    action: VisibilityAiIntentAction,
-) -> bool:
+def _ai_intent_action_visible(event: Event, action: AiIntentAction) -> bool:
     if isinstance(event, GroupMessageEvent):
-        group_ids = action.group_ids or (
-            visibility_config.team_groups
-            if action.action == "team_shortcut"
-            else []
+        return is_group_feature_allowed(
+            event.user_id,
+            event.group_id,
+            action.feature,
         )
-        return is_group_allowed_for_user(event.user_id, event.group_id, group_ids)
 
-    if isinstance(event, PrivateMessageEvent):
-        return is_private_user_allowed(event.user_id, action.user_ids)
-
-    return False
+    return is_private_feature_allowed(event.user_id, action.feature)
 
 
 def _activity_visible(event: Event) -> bool:
