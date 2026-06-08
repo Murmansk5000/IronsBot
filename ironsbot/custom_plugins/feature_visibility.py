@@ -5,6 +5,9 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field, field_validator
 
+from ironsbot.custom_plugins.feature_policy import (
+    is_event_feature_allowed,
+)
 from ironsbot.custom_plugins.superuser_policy import (
     get_custom_push_groups,
     is_custom_feature_event_allowed,
@@ -380,10 +383,10 @@ def _team_shortcut_visible(event: Event) -> bool:
 
 def _server_status_visible(event: Event) -> bool:
     if isinstance(event, GroupMessageEvent):
-        return is_custom_feature_event_allowed(event) or is_superuser(event.user_id)
+        return is_event_feature_allowed(event, "server_status_query") or is_superuser(event.user_id)
 
     if isinstance(event, PrivateMessageEvent):
-        return is_custom_feature_event_allowed(event) or is_superuser(event.user_id)
+        return is_event_feature_allowed(event, "server_status_query") or is_superuser(event.user_id)
 
     return False
 
