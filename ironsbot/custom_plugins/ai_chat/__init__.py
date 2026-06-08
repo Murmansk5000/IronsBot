@@ -3,6 +3,7 @@ from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
@@ -11,10 +12,12 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.utils.rule import no_reply
 
 from .client import EMPTY_REPLY, REQUEST_FAILED_REPLY, call_ai_chat
 from .config import Config, plugin_config
 from .constants import AI_CHAT_PROMPT_KEY
+from .diagnostics import is_ai_test_command, test_ai_api
 from .history import (
     append_turn,
     get_history,
@@ -34,13 +37,21 @@ __plugin_meta__ = PluginMetadata(
         "群聊中 @机器人 并附带问题\n"
         "私聊中直接发送问题\n"
         "@机器人 清空聊天\n"
+        "超级管理员发送 /AI测试 测试当前 AI API 是否可用\n"
         "回复机器人消息也可以继续对话"
     ),
     config=Config,
 )
 
 
+async def _ai_test_rule(event: MessageEvent) -> bool:
+    return is_ai_test_command(event.get_plaintext())
+
+
 async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
+    if is_ai_test_command(event.get_plaintext()):
+        return False
+
     if not is_allowed(event):
         return False
 
@@ -55,11 +66,64 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
     return True
 
 
+ai_test_matcher = on_message(
+    rule=Rule(_ai_test_rule) & no_reply(),
+    permission=SUPERUSER,
+    priority=0,
+    block=True,
+)
+
 ai_chat_matcher = on_message(
     rule=Rule(_ai_chat_rule),
     priority=6,
     block=True,
 )
+
+
+@ai_test_matcher.handle()
+async def handle_ai_test(event: MessageEvent) -> None:
+    if not plugin_config.ai_key:
+        await finish_event_reply(
+            ai_test_matcher,
+            event,
+            "AI API 测试失败：未配置 AI_KEY。",
+            mention_sender=True,
+        )
+
+    result = await test_ai_api()
+    status = result.status_code if result.status_code is not None else "无"
+    if result.ok:
+        await finish_event_reply(
+            ai_test_matcher,
+            event,
+            "\n".join(
+                [
+                    "AI API 测试成功。",
+                    f"接口：{plugin_config.ai_base_url}",
+                    f"模型：{plugin_config.ai_model}",
+                    f"HTTP：{status}",
+                    f"耗时：{result.elapsed_ms} ms",
+                    f"回复：{result.reply[:80]}",
+                ]
+            ),
+            mention_sender=True,
+        )
+
+    await finish_event_reply(
+        ai_test_matcher,
+        event,
+        "\n".join(
+            [
+                "AI API 测试失败。",
+                f"接口：{plugin_config.ai_base_url}",
+                f"模型：{plugin_config.ai_model}",
+                f"HTTP：{status}",
+                f"耗时：{result.elapsed_ms} ms",
+                f"错误：{result.error}",
+            ]
+        ),
+        mention_sender=True,
+    )
 
 
 @ai_chat_matcher.handle()
