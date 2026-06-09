@@ -101,18 +101,7 @@ class Config(BaseModel):
     seer_query_local_rank_path: Path = Path(
         "data/custom_get_seer_info/player_query_cache.sqlite"
     )
-    seer_query_extra_data_path: Path = Path(
-        "data/custom_get_seer_info/custom_seer_data.sqlite"
-    )
     seer_query_skin_price: bool = True
-    seer_query_skin_price_cache_ttl_seconds: int = Field(default=86400, ge=0)
-    seer_query_skin_price_cache_path: Path = Path(
-        "data/custom_get_seer_info/skin_price_cache.json"
-    )
-    seer_query_mintmark_quality_path: Path | None = None
-    seer_query_config_package_base_url: str = (
-        "https://newseer.61.com/Assets/StandaloneWindows64/ConfigPackage/"
-    )
     seer_query_player_sections: list[str] = Field(
         default_factory=lambda: list(PLAYER_SECTION_KEYS)
     )
@@ -136,17 +125,9 @@ class Config(BaseModel):
             return None
         return value
 
-    @field_validator("seer_query_mintmark_quality_path", mode="before")
-    @classmethod
-    def empty_mintmark_quality_path_as_none(cls, value: object) -> object:
-        if value == "":
-            return None
-        return value
-
     @field_validator(
         "seer_query_rank_page_cache_path",
         "seer_query_local_rank_path",
-        "seer_query_extra_data_path",
     )
     @classmethod
     def validate_sqlite_cache_path(cls, value: Path) -> Path:

@@ -70,11 +70,11 @@ services:
       SUPERUSERS: '["123456789"]'
       DB_SYNC_ON_STARTUP: "false"
       DB_SYNC_INTERVAL_ENABLED: "true"
-      SEERAPI_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite"
-      SEERAPI_FINGERPRINT_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256"
-      SEERAPI_LOCAL_PATH: "data/seerapi-data.sqlite"
-      ALIAS_SYNC_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite"
-      ALIAS_FINGERPRINT_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+      SEERAPI_SYNC_URL: "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
+      SEERAPI_FINGERPRINT_URL: "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
+      SEERAPI_LOCAL_PATH: "data/ironsbot-data.sqlite"
+      ALIAS_SYNC_URL: "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite"
+      ALIAS_FINGERPRINT_URL: "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
       ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
     restart: always
 

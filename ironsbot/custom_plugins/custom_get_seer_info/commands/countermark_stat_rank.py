@@ -1,22 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
-import json
-import sqlite3
-import struct
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-import httpx
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 from seerapi_models import MintmarkORM
 from seerapi_models.common import SixAttributes
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
@@ -24,32 +19,14 @@ from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.utils.rule import no_reply
 
-from ..config import plugin_config
 from ..group import matcher_group
-from ._skin_price import (
-    PACKAGE_NAME,
-    _BytesReader,
-    _extract_text_assets,
-    _find_config_bundle,
-)
 
 RANK_LIST_SIZE = 20
 FIVE_ANGLE_ATTR_COUNT = 5
 FIVE_ANGLE_MARKERS = ("五角", "5角", "５角")
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
-DEFAULT_MINTMARK_QUALITY_PATHS = (
-    Path("data/custom_get_seer_info/mintmark.json"),
-    Path("data/mintmark.json"),
-    Path("../seer-unity-config-parser/json/mintmark.json"),
-    Path("seer-unity-config-parser/json/mintmark.json"),
-)
-MINTMARK_ID_KEYS = ("ID", "id")
 MINTMARK_QUALITY_KEYS = ("Quality", "quality")
-MINTMARK_BYTES_NAME = "mintmark.bytes"
 MINTMARK_QUALITY_TABLE = "mintmark_quality"
-
-_MINTMARK_QUALITY_MAP: dict[int, int] | None = None
-_MINTMARK_QUALITY_LOCK = asyncio.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,307 +207,28 @@ def _object_quality(obj: object | None) -> int | None:
     return None
 
 
-def _configured_mintmark_quality_paths() -> list[Path]:
-    configured = plugin_config.seer_query_mintmark_quality_path
-    paths: list[Path] = []
-    if configured is not None:
-        paths.append(configured)
-
-    paths.extend(DEFAULT_MINTMARK_QUALITY_PATHS)
-    return paths
-
-
-def _resolve_path(path: Path) -> Path:
-    return path if path.is_absolute() else Path.cwd() / path
-
-
-def _extra_data_path() -> Path:
-    return _resolve_path(plugin_config.seer_query_extra_data_path)
-
-
-def _connect_extra_data() -> sqlite3.Connection:
-    path = _extra_data_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {MINTMARK_QUALITY_TABLE} (
-            mintmark_id INTEGER PRIMARY KEY,
-            quality INTEGER NOT NULL,
-            source TEXT NOT NULL,
-            updated_at REAL NOT NULL
-        )
-        """
-    )
-    return conn
-
-
-def _load_mintmark_quality_db() -> dict[int, int]:
-    path = _extra_data_path()
-    if not path.exists():
-        return {}
-
+def _load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
     try:
-        with _connect_extra_data() as conn:
-            rows = conn.execute(
+        rows = session.exec(
+            text(
                 f"SELECT mintmark_id, quality FROM {MINTMARK_QUALITY_TABLE}"
-            ).fetchall()
-    except sqlite3.DatabaseError:
-        logger.exception("failed to load mintmark quality cache: {}", path)
+            )
+        ).all()
+    except SQLAlchemyError:
         return {}
 
     quality_map: dict[int, int] = {}
     for row in rows:
-        mintmark_id = _coerce_quality(row["mintmark_id"])
-        quality = _coerce_quality(row["quality"])
+        mapping = row._mapping if hasattr(row, "_mapping") else None
+        if mapping is not None:
+            mintmark_id = _coerce_quality(mapping["mintmark_id"])
+            quality = _coerce_quality(mapping["quality"])
+        else:
+            mintmark_id = _coerce_quality(row[0])
+            quality = _coerce_quality(row[1])
         if mintmark_id is not None and quality is not None:
             quality_map[mintmark_id] = quality
-
-    if quality_map:
-        logger.info(
-            "loaded mintmark quality cache: {} rows from {}",
-            len(quality_map),
-            path,
-        )
     return quality_map
-
-
-def _write_mintmark_quality_db(
-    quality_map: dict[int, int],
-    *,
-    source: str,
-) -> None:
-    if not quality_map:
-        return
-
-    path = _extra_data_path()
-    now = datetime.now(timezone.utc).timestamp()
-    try:
-        with _connect_extra_data() as conn:
-            conn.executemany(
-                f"""
-                INSERT INTO {MINTMARK_QUALITY_TABLE}
-                    (mintmark_id, quality, source, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(mintmark_id) DO UPDATE SET
-                    quality = excluded.quality,
-                    source = excluded.source,
-                    updated_at = excluded.updated_at
-                """,
-                [
-                    (mintmark_id, quality, source, now)
-                    for mintmark_id, quality in quality_map.items()
-                ],
-            )
-            conn.commit()
-    except sqlite3.DatabaseError:
-        logger.exception("failed to write mintmark quality cache: {}", path)
-
-
-def _mintmark_records(data: object) -> list[object]:
-    if isinstance(data, list):
-        return data
-
-    if not isinstance(data, dict):
-        return []
-
-    for container_key, item_key in (
-        ("MintMarks", "MintMark"),
-        ("mint_marks", "mint_mark"),
-    ):
-        container = data.get(container_key)
-        if isinstance(container, dict):
-            records = container.get(item_key)
-            if isinstance(records, list):
-                return records
-
-    records = data.get("MintMark") or data.get("mint_mark")
-    return records if isinstance(records, list) else []
-
-
-def _load_mintmark_quality_json_map() -> dict[int, int]:
-    configured = plugin_config.seer_query_mintmark_quality_path
-    for raw_path in _configured_mintmark_quality_paths():
-        path = _resolve_path(raw_path)
-        if not path.exists():
-            if configured is not None and raw_path == configured:
-                logger.warning("mintmark quality config not found: {}", path)
-            continue
-
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            logger.exception("failed to load mintmark quality config: {}", path)
-            continue
-
-        quality_map: dict[int, int] = {}
-        for record in _mintmark_records(data):
-            if not isinstance(record, dict):
-                continue
-            mintmark_id = next(
-                (
-                    coerced_id
-                    for key in MINTMARK_ID_KEYS
-                    if (coerced_id := _coerce_quality(record.get(key))) is not None
-                ),
-                None,
-            )
-            quality = next(
-                (
-                    coerced_quality
-                    for key in MINTMARK_QUALITY_KEYS
-                    if (coerced_quality := _coerce_quality(record.get(key)))
-                    is not None
-                ),
-                None,
-            )
-            if mintmark_id is None or quality is None:
-                continue
-            quality_map[mintmark_id] = quality
-
-        if quality_map:
-            logger.info(
-                "loaded mintmark quality config: {} rows from {}",
-                len(quality_map),
-                path,
-            )
-            return quality_map
-
-    return {}
-
-
-def _skip_optional_int_array(reader: _BytesReader) -> None:
-    if not reader.read_bool():
-        return
-
-    count = reader.read_i32()
-    for _ in range(count):
-        reader.read_i32()
-
-
-def _parse_mintmark_quality_item(reader: _BytesReader) -> tuple[int | None, int | None]:
-    _skip_optional_int_array(reader)  # Arg
-    _skip_optional_int_array(reader)  # BaseAttriValue
-    reader.read_i32()  # Connect
-    reader.read_text()  # Des
-    reader.read_text()  # EffectDes
-    _skip_optional_int_array(reader)  # ExtraAttriValue
-    reader.read_i32()  # Grade
-    reader.read_i32()  # Hide
-    mintmark_id = _coerce_quality(reader.read_i32())  # ID
-    reader.read_i32()  # Level
-    reader.read_i32()  # Max
-    _skip_optional_int_array(reader)  # MaxAttriValue
-    reader.read_i32()  # MintmarkClass
-    _skip_optional_int_array(reader)  # MonsterID
-    _skip_optional_int_array(reader)  # MoveID
-    quality = _coerce_quality(reader.read_i32())  # Quality
-    reader.read_i32()  # Rare
-    reader.read_i32()  # Rarity
-    reader.read_i32()  # TotalConsume
-    reader.read_i32()  # Type
-    return mintmark_id, quality
-
-
-def _parse_mintmark_quality_bytes(data: bytes) -> dict[int, int]:
-    if not data:
-        return {}
-
-    reader = _BytesReader(data)
-    if not reader.read_bool():
-        return {}
-
-    quality_map: dict[int, int] = {}
-    if reader.read_bool():
-        count = reader.read_i32()
-        for _ in range(count):
-            mintmark_id, quality = _parse_mintmark_quality_item(reader)
-            if mintmark_id is not None and quality is not None:
-                quality_map[mintmark_id] = quality
-
-    if reader.read_bool():
-        class_count = reader.read_i32()
-        for _ in range(class_count):
-            reader.read_text()
-            reader.read_i32()
-
-    return quality_map
-
-
-def _parse_mintmark_quality_bundle(bundle_data: bytes) -> dict[int, int]:
-    text_assets = _extract_text_assets(bundle_data, {MINTMARK_BYTES_NAME})
-    return _parse_mintmark_quality_bytes(text_assets.get(MINTMARK_BYTES_NAME, b""))
-
-
-async def _fetch_mintmark_quality_map() -> dict[int, int]:
-    base_url = plugin_config.seer_query_config_package_base_url.rstrip("/") + "/"
-    timeout = httpx.Timeout(60.0, connect=15.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        version_url = f"{base_url}PackageManifest_{PACKAGE_NAME}.version"
-        version_response = await client.get(version_url)
-        version_response.raise_for_status()
-        version = version_response.text.strip()
-
-        manifest_url = f"{base_url}PackageManifest_{PACKAGE_NAME}_{version}.bytes"
-        manifest_response = await client.get(manifest_url)
-        manifest_response.raise_for_status()
-        bundle = _find_config_bundle(manifest_response.content)
-
-        bundle_response = await client.get(f"{base_url}{bundle.file_hash}")
-        bundle_response.raise_for_status()
-
-    quality_map = await asyncio.to_thread(
-        _parse_mintmark_quality_bundle,
-        bundle_response.content,
-    )
-    if quality_map:
-        logger.info(
-            "fetched mintmark quality config version {}: {} rows",
-            version,
-            len(quality_map),
-        )
-    return quality_map
-
-
-async def _ensure_mintmark_quality_map(*, fetch_remote: bool) -> dict[int, int]:
-    global _MINTMARK_QUALITY_MAP  # noqa: PLW0603
-
-    if not _MINTMARK_QUALITY_MAP:
-        async with _MINTMARK_QUALITY_LOCK:
-            if not _MINTMARK_QUALITY_MAP:
-                quality_map = _load_mintmark_quality_db()
-                if not quality_map:
-                    quality_map = _load_mintmark_quality_json_map()
-                    if quality_map:
-                        _write_mintmark_quality_db(
-                            quality_map,
-                            source="mintmark.json",
-                        )
-                if not quality_map and fetch_remote:
-                    try:
-                        quality_map = await _fetch_mintmark_quality_map()
-                    except (
-                        AttributeError,
-                        ImportError,
-                        KeyError,
-                        OSError,
-                        TypeError,
-                        ValueError,
-                        httpx.HTTPError,
-                        struct.error,
-                    ):
-                        logger.exception("failed to fetch mintmark quality config")
-                        quality_map = {}
-                    if quality_map:
-                        _write_mintmark_quality_db(
-                            quality_map,
-                            source="ConfigPackage",
-                        )
-                if quality_map:
-                    _MINTMARK_QUALITY_MAP = quality_map
-
-    return _MINTMARK_QUALITY_MAP or {}
 
 
 def _configured_mintmark_quality(
@@ -689,9 +387,15 @@ async def handle_countermark_stat_rank(
     session: SeerAPISession,
 ) -> None:
     command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
-    quality_map = await _ensure_mintmark_quality_map(
-        fetch_remote=command.scope == "five",
-    )
+    quality_map = _load_mintmark_quality_session(session)
+    if command.scope == "five" and not quality_map:
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。",
+        )
+        return
+
     mintmarks = _load_mintmarks(session)
     items = _collect_rank_items(mintmarks, command, quality_map)
     await finish_event_reply(

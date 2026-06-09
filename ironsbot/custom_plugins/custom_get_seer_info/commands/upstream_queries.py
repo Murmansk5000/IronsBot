@@ -7,16 +7,21 @@ handlers and renderers, while registering at the custom plugin priority so they
 win before the original matchers.
 """
 
+from httpx import HTTPStatusError, RequestError
 from nonebot.adapters import Event
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
-from nonebot_plugin_saa import Image, MessageFactory
+from nonebot_plugin_saa import Image, MessageFactory, Text
 from seerapi_models import PetORM, PetSkinORM
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
+from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
+from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
@@ -92,7 +97,8 @@ async def _build_pet_image_message(
     if model is None:
         return msg
 
-    msg += await format_skin_price_lines(
+    msg += format_skin_price_lines(
+        session,
         model.id,
         existing_card_price=model.card_price,
     )
@@ -263,8 +269,66 @@ peak_user_matcher = matcher_group.on_fullmatch(
 )
 peak_user_matcher.handle()(upstream_peak.handle_peak_user)
 
+DEFAULT_WEEKLY_PREVIEW_IMAGE_URL = (
+    "https://cnb.cool/HurryWang/seer-unity-preview-img-dumper-cnb/-/git/raw/"
+    "master/img/preview.png"
+)
+DEFAULT_WEEKLY_PREVIEW_SOURCE_URL = (
+    "https://github.com/WhY15w/seer-unity-preview-img-dumper"
+)
+
+
+def _load_weekly_preview_metadata(session: SQLModelSession) -> dict[str, str]:
+    try:
+        rows = session.execute(
+            text(
+                """
+                SELECT key, value
+                FROM ironsbot_metadata
+                WHERE key IN (:image_url_key, :source_url_key)
+                """
+            ),
+            {
+                "image_url_key": "weekly_preview_image_url",
+                "source_url_key": "weekly_preview_source_url",
+            },
+        ).all()
+    except SQLAlchemyError:
+        return {}
+
+    return {str(row[0]): str(row[1]) for row in rows}
+
+
+def _load_weekly_preview_links(session: SQLModelSession) -> tuple[str, str]:
+    metadata = _load_weekly_preview_metadata(session)
+    image_url = (
+        metadata.get("weekly_preview_image_url") or DEFAULT_WEEKLY_PREVIEW_IMAGE_URL
+    )
+    source_url = (
+        metadata.get("weekly_preview_source_url") or DEFAULT_WEEKLY_PREVIEW_SOURCE_URL
+    )
+    return image_url, source_url
+
+
+async def _fetch_weekly_preview_image(image_url: str):
+    try:
+        response = await get_http_origin_client().get(image_url)
+        response.raise_for_status()
+        return Image(response.content)
+    except (HTTPStatusError, RequestError):
+        return await PreviewImageGetter.get("")
+
+
 preview_matcher = matcher_group.on_fullmatch("下周预告", rule=no_reply())
-preview_matcher.handle()(upstream_other.handle_preview)
+
+
+@preview_matcher.handle()
+async def _handle_preview(session: SeerAPISession) -> None:
+    image_url, source_url = _load_weekly_preview_links(session)
+    msg = MessageFactory()
+    msg += await _fetch_weekly_preview_image(image_url)
+    msg += Text(f"\n预告图来自 {source_url}")
+    await msg.finish()
 
 data_version_matcher = matcher_group.on_fullmatch("数据版本", rule=no_reply())
 data_version_matcher.handle()(upstream_other.handle_data_version)

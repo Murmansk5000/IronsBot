@@ -76,7 +76,8 @@ def build_meeting_reply() -> str:
         meeting_number = raw_number
 
     meeting_url = f"https://meeting.tencent.com/p/{digits}"
-    return plugin_config.meeting_template.format(
+    template = plugin_config.meeting_template.replace("\\n", "\n")
+    return template.format(
         meeting_number=meeting_number,
         meeting_digits=digits,
         meeting_url=meeting_url,
