@@ -6,8 +6,8 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import on_fullmatch
 from nonebot.rule import Rule
 
+from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
 from ironsbot.custom_plugins.message_actions import finish_event_reply
-from ironsbot.custom_plugins.superuser_policy import is_custom_feature_event_allowed
 from ironsbot.utils.rule import no_reply
 
 IMAGE_DIR = Path(__file__).parent / "image"
@@ -25,7 +25,7 @@ IMAGE_COMMANDS = {
 for command, filename in IMAGE_COMMANDS.items():
     matcher = on_fullmatch(
         command,
-        rule=Rule(is_custom_feature_event_allowed) & no_reply(),
+        rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
         priority=1,
         block=True,
     )
