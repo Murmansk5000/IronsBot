@@ -144,6 +144,10 @@ dmypy.json
 
 # Local custom plugin runtime data
 data/
+/aliases-data.sqlite
+/aliases-data.sqlite.sha256
+/ironsbot-data.sqlite
+/ironsbot-data.sqlite.sha256
 .vscode/
 ironsbot/custom_plugins/bilibili_monitor/bili_cookie_cache.txt
 ironsbot/custom_plugins/bilibili_monitor/bili_raw_response.json

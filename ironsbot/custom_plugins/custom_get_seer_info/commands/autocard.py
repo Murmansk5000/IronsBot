@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
+import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import httpx
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.custom_plugins.message_actions import (
     enter_event_reply_conversation,
@@ -18,20 +18,13 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group
 
-AUTOCARD_CONFIG_BASE_URLS = (
-    "https://raw.githubusercontent.com/WhY15w/seer-unity-config-parser/main/json",
-    "https://cdn.jsdelivr.net/gh/WhY15w/seer-unity-config-parser@main/json",
-)
-AUTOCARD_CONTENT_FILE = "autocardContent.json"
-AUTOCARD_NATURE_FILE = "autocardNature.json"
-AUTOCARD_ROLE_FILE = "autocardRole.json"
-AUTOCARD_CACHE_TTL = timedelta(hours=12)
 AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
@@ -39,6 +32,8 @@ AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
 AUTOCARD_QUERY_SUFFIXES = ("群星牌",)
 AUTOCARD_HELP_ARGS = {"", "帮助", "查询", "资料", "说明"}
 AUTOCARD_NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
+AUTOCARD_MISSING_TABLE_MESSAGE = "数据库缺少群星牌表，请先更新 IronsBot 数据库。"
+AUTOCARD_EMPTY_DATA_MESSAGE = "数据库没有群星牌数据，请先更新 IronsBot 数据库。"
 
 CARD_TYPE_NAMES = {
     1: "精灵牌",
@@ -53,17 +48,12 @@ class AutocardDataset:
     cards: tuple[dict[str, Any], ...]
     roles: tuple[dict[str, Any], ...]
     natures: dict[int, str]
-    fetched_at: datetime
 
 
 @dataclass(slots=True, frozen=True)
 class AutocardPromptValue:
     kind: str
     item_id: int
-
-
-_autocard_cache: AutocardDataset | None = None
-_autocard_cache_lock = asyncio.Lock()
 
 
 autocard_matcher = matcher_group.on_message(
@@ -113,54 +103,43 @@ def _extract_query_arg(arg: str) -> str:
     return query
 
 
-async def _fetch_json_file(filename: str) -> dict[str, Any]:
-    last_error: Exception | None = None
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-        for base_url in AUTOCARD_CONFIG_BASE_URLS:
-            try:
-                response = await client.get(f"{base_url}/{filename}")
-                response.raise_for_status()
-                return response.json()
-            except Exception as e:  # noqa: BLE001, PERF203
-                last_error = e
+def _load_autocard_dataset(session: SeerAPISession) -> AutocardDataset:
+    try:
+        cards = _load_json_rows(session, "autocard_card")
+        roles = _load_json_rows(session, "autocard_role")
+        nature_rows = _load_json_rows(session, "autocard_nature")
+    except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError) as e:
+        raise RuntimeError(AUTOCARD_MISSING_TABLE_MESSAGE) from e
 
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError(f"无法获取群星牌配置：{filename}")
+    if not cards and not roles:
+        raise RuntimeError(AUTOCARD_EMPTY_DATA_MESSAGE)
+
+    natures = {
+        _int_field(row, "id"): str(_field(row, "name"))
+        for row in nature_rows
+    }
+    return AutocardDataset(
+        cards=cards,
+        roles=roles,
+        natures=natures,
+    )
 
 
-async def _load_autocard_dataset() -> AutocardDataset:
-    global _autocard_cache  # noqa: PLW0603
-    now = datetime.now(tz=timezone.utc)
-    if (
-        _autocard_cache is not None
-        and now - _autocard_cache.fetched_at < AUTOCARD_CACHE_TTL
-    ):
-        return _autocard_cache
-
-    async with _autocard_cache_lock:
-        if (
-            _autocard_cache is not None
-            and now - _autocard_cache.fetched_at < AUTOCARD_CACHE_TTL
-        ):
-            return _autocard_cache
-
-        content_json, nature_json, role_json = await asyncio.gather(
-            _fetch_json_file(AUTOCARD_CONTENT_FILE),
-            _fetch_json_file(AUTOCARD_NATURE_FILE),
-            _fetch_json_file(AUTOCARD_ROLE_FILE),
-        )
-        natures = {
-            _int_field(row, "id"): str(_field(row, "name"))
-            for row in nature_json.get("data", [])
-        }
-        _autocard_cache = AutocardDataset(
-            cards=tuple(content_json.get("data", [])),
-            roles=tuple(role_json.get("data", [])),
-            natures=natures,
-            fetched_at=now,
-        )
-        return _autocard_cache
+def _load_json_rows(
+    session: SeerAPISession,
+    table_name: str,
+) -> tuple[dict[str, Any], ...]:
+    rows = session.exec(
+        text(f"SELECT raw_json FROM {table_name} ORDER BY id")
+    ).all()
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        mapping = row._mapping if hasattr(row, "_mapping") else None
+        raw_json = mapping["raw_json"] if mapping is not None else row[0]
+        item = json.loads(str(raw_json))
+        if isinstance(item, dict):
+            result.append(item)
+    return tuple(result)
 
 
 def format_autocard_public_info() -> str:
@@ -370,6 +349,7 @@ async def _handle_autocard_prompt_reply(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    session: SeerAPISession,
 ) -> None:
     key_text = event.get_plaintext().strip()
     if key_text == "0":
@@ -384,7 +364,7 @@ async def _handle_autocard_prompt_reply(
         await finish_event_reply(matcher, event, "⚠️ 序号超出范围，已退出群星牌选择")
 
     value = values[index - 1]
-    dataset = await _load_autocard_dataset()
+    dataset = _load_autocard_dataset(session)
     if value.kind == "role":
         data = _find_role_by_id(dataset, value.item_id)
     else:
@@ -394,7 +374,7 @@ async def _handle_autocard_prompt_reply(
         await finish_event_reply(
             matcher,
             event,
-            "❌ 未找到该群星牌资料，这可能是缓存已过期。",
+            "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。",
         )
 
     await send_event_reply(matcher, event, _format_entry(dataset, value.kind, data))
@@ -406,6 +386,7 @@ async def handle_autocard_query(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    session: SeerAPISession,
     arg: str = Depends(parse_string_arg),
 ) -> None:
     _invalidate_autocard_prompt(event)
@@ -415,7 +396,7 @@ async def handle_autocard_query(
         await finish_event_reply(matcher, event, format_autocard_public_info())
 
     try:
-        dataset = await _load_autocard_dataset()
+        dataset = _load_autocard_dataset(session)
     except Exception as e:  # noqa: BLE001
         await finish_event_reply(
             matcher,

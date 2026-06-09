@@ -77,7 +77,7 @@ services:
       SUPERUSERS: '["123456789"]'
       DB_SYNC_ON_STARTUP: "false"
       DB_SYNC_INTERVAL_ENABLED: "true"
-      SEERAPI_LOCAL_PATH: "data/seerapi-data.sqlite"
+      SEERAPI_LOCAL_PATH: "data/ironsbot-data.sqlite"
       ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
     restart: always
 ```
@@ -153,7 +153,7 @@ uv run python bot.py
 - 上游项目：[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
 - SeerAPI：[SeerAPI](https://github.com/SeerAPI)
 - 无头登录参考：[oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)
-- Unity 配置解析参考：[WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
+- Unity 配置解析源：[Murmansk5000/seer-unity-config-parser](https://github.com/Murmansk5000/seer-unity-config-parser)，感谢原项目 [WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
 - 感谢赛尔号玩家社区的资料整理与测试反馈。
 
 ## 许可证
