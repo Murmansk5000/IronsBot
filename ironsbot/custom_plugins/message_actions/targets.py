@@ -2,11 +2,6 @@ from collections.abc import Iterable
 from typing import Literal, NamedTuple
 
 
-class SendSummary(NamedTuple):
-    succeeded: list[int]
-    failed: list[int]
-
-
 class MessageTarget(NamedTuple):
     target_type: Literal["private", "group"]
     target_id: int
