@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import asyncio
 import json
+import sqlite3
+import struct
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from pathlib import Path
 
+import httpx
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
@@ -23,14 +26,30 @@ from ironsbot.utils.rule import no_reply
 
 from ..config import plugin_config
 from ..group import matcher_group
+from ._skin_price import (
+    PACKAGE_NAME,
+    _BytesReader,
+    _extract_text_assets,
+    _find_config_bundle,
+)
 
 RANK_LIST_SIZE = 20
 FIVE_ANGLE_ATTR_COUNT = 5
+FIVE_ANGLE_MARKERS = ("五角", "5角", "５角")
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 DEFAULT_MINTMARK_QUALITY_PATHS = (
     Path("data/custom_get_seer_info/mintmark.json"),
     Path("data/mintmark.json"),
+    Path("../seer-unity-config-parser/json/mintmark.json"),
+    Path("seer-unity-config-parser/json/mintmark.json"),
 )
+MINTMARK_ID_KEYS = ("ID", "id")
+MINTMARK_QUALITY_KEYS = ("Quality", "quality")
+MINTMARK_BYTES_NAME = "mintmark.bytes"
+MINTMARK_QUALITY_TABLE = "mintmark_quality"
+
+_MINTMARK_QUALITY_MAP: dict[int, int] | None = None
+_MINTMARK_QUALITY_LOCK = asyncio.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,9 +148,10 @@ def _parse_countermark_stat_rank_command(
     if has_all_marker:
         scope = "all"
 
-    if "五角" in stat_text:
-        scope = "five"
-        stat_text = stat_text.replace("五角", "")
+    for marker in FIVE_ANGLE_MARKERS:
+        if marker in stat_text:
+            scope = "five"
+            stat_text = stat_text.replace(marker, "")
 
     for marker in ("排行榜", "排行", "数值", "属性", "刻印", "榜"):
         stat_text = stat_text.replace(marker, "")
@@ -195,7 +215,19 @@ def _object_quality(obj: object | None) -> int | None:
     if obj is None:
         return None
 
-    return _coerce_quality(getattr(obj, "quality", None))
+    for key in MINTMARK_QUALITY_KEYS:
+        quality = _coerce_quality(getattr(obj, key, None))
+        if quality is not None:
+            return quality
+
+    if hasattr(obj, "model_dump"):
+        dumped = obj.model_dump()
+        for key in MINTMARK_QUALITY_KEYS:
+            quality = _coerce_quality(dumped.get(key))
+            if quality is not None:
+                return quality
+
+    return None
 
 
 def _configured_mintmark_quality_paths() -> list[Path]:
@@ -210,6 +242,90 @@ def _configured_mintmark_quality_paths() -> list[Path]:
 
 def _resolve_path(path: Path) -> Path:
     return path if path.is_absolute() else Path.cwd() / path
+
+
+def _extra_data_path() -> Path:
+    return _resolve_path(plugin_config.seer_query_extra_data_path)
+
+
+def _connect_extra_data() -> sqlite3.Connection:
+    path = _extra_data_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {MINTMARK_QUALITY_TABLE} (
+            mintmark_id INTEGER PRIMARY KEY,
+            quality INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """
+    )
+    return conn
+
+
+def _load_mintmark_quality_db() -> dict[int, int]:
+    path = _extra_data_path()
+    if not path.exists():
+        return {}
+
+    try:
+        with _connect_extra_data() as conn:
+            rows = conn.execute(
+                f"SELECT mintmark_id, quality FROM {MINTMARK_QUALITY_TABLE}"
+            ).fetchall()
+    except sqlite3.DatabaseError:
+        logger.exception("failed to load mintmark quality cache: {}", path)
+        return {}
+
+    quality_map: dict[int, int] = {}
+    for row in rows:
+        mintmark_id = _coerce_quality(row["mintmark_id"])
+        quality = _coerce_quality(row["quality"])
+        if mintmark_id is not None and quality is not None:
+            quality_map[mintmark_id] = quality
+
+    if quality_map:
+        logger.info(
+            "loaded mintmark quality cache: {} rows from {}",
+            len(quality_map),
+            path,
+        )
+    return quality_map
+
+
+def _write_mintmark_quality_db(
+    quality_map: dict[int, int],
+    *,
+    source: str,
+) -> None:
+    if not quality_map:
+        return
+
+    path = _extra_data_path()
+    now = datetime.now(timezone.utc).timestamp()
+    try:
+        with _connect_extra_data() as conn:
+            conn.executemany(
+                f"""
+                INSERT INTO {MINTMARK_QUALITY_TABLE}
+                    (mintmark_id, quality, source, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(mintmark_id) DO UPDATE SET
+                    quality = excluded.quality,
+                    source = excluded.source,
+                    updated_at = excluded.updated_at
+                """,
+                [
+                    (mintmark_id, quality, source, now)
+                    for mintmark_id, quality in quality_map.items()
+                ],
+            )
+            conn.commit()
+    except sqlite3.DatabaseError:
+        logger.exception("failed to write mintmark quality cache: {}", path)
 
 
 def _mintmark_records(data: object) -> list[object]:
@@ -233,8 +349,7 @@ def _mintmark_records(data: object) -> list[object]:
     return records if isinstance(records, list) else []
 
 
-@lru_cache(maxsize=1)
-def _load_mintmark_quality_map() -> dict[int, int]:
+def _load_mintmark_quality_json_map() -> dict[int, int]:
     configured = plugin_config.seer_query_mintmark_quality_path
     for raw_path in _configured_mintmark_quality_paths():
         path = _resolve_path(raw_path)
@@ -253,15 +368,22 @@ def _load_mintmark_quality_map() -> dict[int, int]:
         for record in _mintmark_records(data):
             if not isinstance(record, dict):
                 continue
-            mintmark_id = _coerce_quality(
-                record.get("ID")
-                if "ID" in record
-                else record.get("id")
+            mintmark_id = next(
+                (
+                    coerced_id
+                    for key in MINTMARK_ID_KEYS
+                    if (coerced_id := _coerce_quality(record.get(key))) is not None
+                ),
+                None,
             )
-            quality = _coerce_quality(
-                record.get("Quality")
-                if "Quality" in record
-                else record.get("quality")
+            quality = next(
+                (
+                    coerced_quality
+                    for key in MINTMARK_QUALITY_KEYS
+                    if (coerced_quality := _coerce_quality(record.get(key)))
+                    is not None
+                ),
+                None,
             )
             if mintmark_id is None or quality is None:
                 continue
@@ -278,17 +400,156 @@ def _load_mintmark_quality_map() -> dict[int, int]:
     return {}
 
 
-def _configured_mintmark_quality(mintmark: MintmarkORM) -> int | None:
-    return _load_mintmark_quality_map().get(mintmark.id)
+def _skip_optional_int_array(reader: _BytesReader) -> None:
+    if not reader.read_bool():
+        return
+
+    count = reader.read_i32()
+    for _ in range(count):
+        reader.read_i32()
 
 
-def _mintmark_angle_count(mintmark: MintmarkORM) -> int | None:
+def _parse_mintmark_quality_item(reader: _BytesReader) -> tuple[int | None, int | None]:
+    _skip_optional_int_array(reader)  # Arg
+    _skip_optional_int_array(reader)  # BaseAttriValue
+    reader.read_i32()  # Connect
+    reader.read_text()  # Des
+    reader.read_text()  # EffectDes
+    _skip_optional_int_array(reader)  # ExtraAttriValue
+    reader.read_i32()  # Grade
+    reader.read_i32()  # Hide
+    mintmark_id = _coerce_quality(reader.read_i32())  # ID
+    reader.read_i32()  # Level
+    reader.read_i32()  # Max
+    _skip_optional_int_array(reader)  # MaxAttriValue
+    reader.read_i32()  # MintmarkClass
+    _skip_optional_int_array(reader)  # MonsterID
+    _skip_optional_int_array(reader)  # MoveID
+    quality = _coerce_quality(reader.read_i32())  # Quality
+    reader.read_i32()  # Rare
+    reader.read_i32()  # Rarity
+    reader.read_i32()  # TotalConsume
+    reader.read_i32()  # Type
+    return mintmark_id, quality
+
+
+def _parse_mintmark_quality_bytes(data: bytes) -> dict[int, int]:
+    if not data:
+        return {}
+
+    reader = _BytesReader(data)
+    if not reader.read_bool():
+        return {}
+
+    quality_map: dict[int, int] = {}
+    if reader.read_bool():
+        count = reader.read_i32()
+        for _ in range(count):
+            mintmark_id, quality = _parse_mintmark_quality_item(reader)
+            if mintmark_id is not None and quality is not None:
+                quality_map[mintmark_id] = quality
+
+    if reader.read_bool():
+        class_count = reader.read_i32()
+        for _ in range(class_count):
+            reader.read_text()
+            reader.read_i32()
+
+    return quality_map
+
+
+def _parse_mintmark_quality_bundle(bundle_data: bytes) -> dict[int, int]:
+    text_assets = _extract_text_assets(bundle_data, {MINTMARK_BYTES_NAME})
+    return _parse_mintmark_quality_bytes(text_assets.get(MINTMARK_BYTES_NAME, b""))
+
+
+async def _fetch_mintmark_quality_map() -> dict[int, int]:
+    base_url = plugin_config.seer_query_config_package_base_url.rstrip("/") + "/"
+    timeout = httpx.Timeout(60.0, connect=15.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        version_url = f"{base_url}PackageManifest_{PACKAGE_NAME}.version"
+        version_response = await client.get(version_url)
+        version_response.raise_for_status()
+        version = version_response.text.strip()
+
+        manifest_url = f"{base_url}PackageManifest_{PACKAGE_NAME}_{version}.bytes"
+        manifest_response = await client.get(manifest_url)
+        manifest_response.raise_for_status()
+        bundle = _find_config_bundle(manifest_response.content)
+
+        bundle_response = await client.get(f"{base_url}{bundle.file_hash}")
+        bundle_response.raise_for_status()
+
+    quality_map = await asyncio.to_thread(
+        _parse_mintmark_quality_bundle,
+        bundle_response.content,
+    )
+    if quality_map:
+        logger.info(
+            "fetched mintmark quality config version {}: {} rows",
+            version,
+            len(quality_map),
+        )
+    return quality_map
+
+
+async def _ensure_mintmark_quality_map(*, fetch_remote: bool) -> dict[int, int]:
+    global _MINTMARK_QUALITY_MAP  # noqa: PLW0603
+
+    if not _MINTMARK_QUALITY_MAP:
+        async with _MINTMARK_QUALITY_LOCK:
+            if not _MINTMARK_QUALITY_MAP:
+                quality_map = _load_mintmark_quality_db()
+                if not quality_map:
+                    quality_map = _load_mintmark_quality_json_map()
+                    if quality_map:
+                        _write_mintmark_quality_db(
+                            quality_map,
+                            source="mintmark.json",
+                        )
+                if not quality_map and fetch_remote:
+                    try:
+                        quality_map = await _fetch_mintmark_quality_map()
+                    except (
+                        AttributeError,
+                        ImportError,
+                        KeyError,
+                        OSError,
+                        TypeError,
+                        ValueError,
+                        httpx.HTTPError,
+                        struct.error,
+                    ):
+                        logger.exception("failed to fetch mintmark quality config")
+                        quality_map = {}
+                    if quality_map:
+                        _write_mintmark_quality_db(
+                            quality_map,
+                            source="ConfigPackage",
+                        )
+                if quality_map:
+                    _MINTMARK_QUALITY_MAP = quality_map
+
+    return _MINTMARK_QUALITY_MAP or {}
+
+
+def _configured_mintmark_quality(
+    mintmark: MintmarkORM,
+    quality_map: dict[int, int],
+) -> int | None:
+    return quality_map.get(mintmark.id)
+
+
+def _mintmark_angle_count(
+    mintmark: MintmarkORM,
+    quality_map: dict[int, int],
+) -> int | None:
     for quality in (
         _object_quality(mintmark),
         _object_quality(mintmark.ability_part),
         _object_quality(mintmark.skill_part),
         _object_quality(mintmark.universal_part),
-        _configured_mintmark_quality(mintmark),
+        _configured_mintmark_quality(mintmark, quality_map),
     ):
         if quality is not None:
             return quality
@@ -310,6 +571,7 @@ def _get_stat_value(attrs: SixAttributes, stat: StatSpec) -> float:
 def _collect_rank_items(
     mintmarks: list[MintmarkORM],
     command: CountermarkStatRankCommand,
+    quality_map: dict[int, int],
 ) -> list[CountermarkStatRankItem]:
     if command.stat is None:
         return []
@@ -317,7 +579,7 @@ def _collect_rank_items(
     result: list[CountermarkStatRankItem] = []
     for mintmark in mintmarks:
         class_name = _mintmark_class_name(mintmark)
-        angle_count = _mintmark_angle_count(mintmark)
+        angle_count = _mintmark_angle_count(mintmark, quality_map)
         if command.scope == "five" and angle_count != FIVE_ANGLE_ATTR_COUNT:
             continue
 
@@ -397,7 +659,7 @@ def _build_stat_rank_message(
         return (
             "❌ 刻印数值榜需要指定属性。\n"
             f"可用属性：{AVAILABLE_STATS_TEXT}\n"
-            "例：刻印攻击榜 / 五角刻印速度榜 / 刻印总和榜"
+            "例：刻印攻击榜 / 五角刻印速度榜 / 5角刻印速度榜 / 刻印总和榜"
         )
 
     scope_text = "五角刻印" if command.scope == "five" else "所有刻印"
@@ -405,7 +667,7 @@ def _build_stat_rank_message(
         return (
             f"❌ 没有找到{scope_text}的{command.stat.title}数据。\n"
             "默认已查询全部刻印；如果只想看五角，可以发送："
-            f"五角刻印{command.stat.title}榜"
+            f"五角刻印{command.stat.title}榜 或 5角刻印{command.stat.title}榜"
         )
 
     lines = [
@@ -427,8 +689,11 @@ async def handle_countermark_stat_rank(
     session: SeerAPISession,
 ) -> None:
     command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
+    quality_map = await _ensure_mintmark_quality_map(
+        fetch_remote=command.scope == "five",
+    )
     mintmarks = _load_mintmarks(session)
-    items = _collect_rank_items(mintmarks, command)
+    items = _collect_rank_items(mintmarks, command, quality_map)
     await finish_event_reply(
         matcher,
         event,

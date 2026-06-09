@@ -1080,6 +1080,7 @@ async def schedule_activity_reminders() -> None:
             id=_reminder_job_id(lead_hours, send_time),
             replace_existing=True,
             run_date=send_time,
+            misfire_grace_time=300,
         )
         scheduled_count += len(lead_reminders)
 
@@ -1131,6 +1132,7 @@ if plugin_config.activity_reminder:
         id="activity_reminder_startup_scan",
         replace_existing=True,
         next_run_time=_now() + timedelta(seconds=30),
+        misfire_grace_time=300,
     )
     scheduler.add_job(
         schedule_activity_reminders,
@@ -1140,4 +1142,5 @@ if plugin_config.activity_reminder:
         hour=0,
         minute=0,
         second=0,
+        misfire_grace_time=300,
     )
