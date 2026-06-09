@@ -1,5 +1,5 @@
 from nonebot import get_plugin_config
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class Config(BaseModel):
@@ -9,8 +9,6 @@ class Config(BaseModel):
         "腾讯会议号：{meeting_number}\n"
         "点击链接直接加入：{meeting_url}"
     )
-    meeting_groups: list[int] = Field(default_factory=list)
-    meeting_users: list[int] = Field(default_factory=list)
 
 
 plugin_config = get_plugin_config(Config)

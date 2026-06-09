@@ -5,8 +5,8 @@ from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
 
+from ironsbot.custom_plugins.feature_policy import get_superuser_ids
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
-from ironsbot.custom_plugins.superuser_policy import get_superuser_ids
 
 from .config import plugin_config
 from .service import headless_user_id_text

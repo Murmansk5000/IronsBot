@@ -34,13 +34,10 @@ from .reply_limits import (
 from .senders import (
     get_bot_or_none,
     send_broadcast_message,
-    send_group_messages,
-    send_private_messages,
     send_target_messages,
 )
 from .targets import (
     MessageTarget,
-    SendSummary,
     TargetSendSummary,
     broadcast_targets,
     group_targets,
@@ -70,7 +67,6 @@ __plugin_meta__ = PluginMetadata(
 __all__ = [
     "MessageTarget",
     "RateLimitResult",
-    "SendSummary",
     "TargetSendSummary",
     "broadcast_targets",
     "build_message",
@@ -100,9 +96,7 @@ __all__ = [
     "runtime",
     "send_broadcast_message",
     "send_event_reply",
-    "send_group_messages",
     "send_matcher_message",
-    "send_private_messages",
     "send_target_messages",
     "set_group_reply_line_limit",
 ]

@@ -23,14 +23,15 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from ironsbot.custom_plugins.feature_policy import (
+    groups_for_feature,
+    is_event_feature_allowed,
+    users_for_feature,
+    users_with_superusers,
+)
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_broadcast_message,
-)
-from ironsbot.custom_plugins.superuser_policy import (
-    is_custom_feature_event_allowed,
-    with_superuser_groups,
-    with_superusers,
 )
 from ironsbot.utils.rule import no_reply
 
@@ -170,9 +171,8 @@ async def _is_current_activity_query_command(event: Event) -> bool:
 
 
 async def _is_soon_ending_activity_query_command(event: Event) -> bool:
-    command = _strip_admin_command_prefix(event.get_plaintext())
-    if command is None:
-        return False
+    text_value = event.get_plaintext().strip()
+    command = _strip_admin_command_prefix(text_value) or text_value
 
     normalized = _normalize_command_text(command)
     return normalized in NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS
@@ -180,8 +180,6 @@ async def _is_soon_ending_activity_query_command(event: Event) -> bool:
 
 class Config(BaseModel):
     activity_reminder: bool = True
-    activity_reminder_groups: list[int] = Field(default_factory=list)
-    activity_reminder_users: list[int] = Field(default_factory=list)
     activity_reminder_lead_hours: list[int] = Field(
         default_factory=lambda: [11, 1]
     )
@@ -193,8 +191,6 @@ class Config(BaseModel):
     activity_reminder_message: str = DEFAULT_MESSAGE_TEMPLATE
 
     @field_validator(
-        "activity_reminder_groups",
-        "activity_reminder_users",
         "activity_reminder_lead_hours",
         mode="before",
     )
@@ -203,8 +199,6 @@ class Config(BaseModel):
         return _coerce_int_list(value)
 
     @field_validator(
-        "activity_reminder_groups",
-        "activity_reminder_users",
         "activity_reminder_lead_hours",
     )
     @classmethod
@@ -220,10 +214,10 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "【活动结束提醒】\n"
         "按 ACTIVITY_REMINDER_LEAD_HOURS 配置提前提醒活动即将结束。\n"
-        "目标群由 ACTIVITY_REMINDER_GROUPS 配置，ADMIN_GROUPS 自动包含；"
-        "目标用户由 ACTIVITY_REMINDER_USERS 配置，SUPERUSERS 自动包含。\n"
+        "Target groups use FEATURE_GROUP_POLICY feature: activity_push.\n"
+        "Target users use FEATURE_USER_POLICY feature: activity_push.\n"
         "超级管理员可发送 /当前活动、/活动列表、/活动时间 查看当前活动和剩余时间；"
-        "发送 /快结束活动 查看不足 7 天结束的活动。"
+        "发送 快结束活动 查看不足 7 天结束的活动。"
     ),
     config=Config,
 )
@@ -1035,8 +1029,8 @@ async def send_activity_reminder(
         )
         return
 
-    target_groups = with_superuser_groups(plugin_config.activity_reminder_groups)
-    target_users = with_superusers(plugin_config.activity_reminder_users)
+    target_groups = groups_for_feature("activity_push")
+    target_users = users_with_superusers(users_for_feature("activity_push"))
     if not target_groups and not target_users:
         logger.warning("activity reminder skipped: no target groups or users")
         return
@@ -1080,6 +1074,7 @@ async def schedule_activity_reminders() -> None:
             id=_reminder_job_id(lead_hours, send_time),
             replace_existing=True,
             run_date=send_time,
+            misfire_grace_time=300,
         )
         scheduled_count += len(lead_reminders)
 
@@ -1095,7 +1090,7 @@ current_activity_matcher = on_message(
 
 soon_ending_activity_matcher = on_message(
     rule=(
-        Rule(is_custom_feature_event_allowed)
+        Rule(lambda event: is_event_feature_allowed(event, "activity_query"))
         & Rule(_is_soon_ending_activity_query_command)
         & no_reply()
     ),
@@ -1131,6 +1126,7 @@ if plugin_config.activity_reminder:
         id="activity_reminder_startup_scan",
         replace_existing=True,
         next_run_time=_now() + timedelta(seconds=30),
+        misfire_grace_time=300,
     )
     scheduler.add_job(
         schedule_activity_reminders,
@@ -1140,4 +1136,5 @@ if plugin_config.activity_reminder:
         hour=0,
         minute=0,
         second=0,
+        misfire_grace_time=300,
     )
