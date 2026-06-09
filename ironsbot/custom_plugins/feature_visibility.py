@@ -232,12 +232,6 @@ def plugin_visible_for_event(  # noqa: C901, PLR0911
             or _any_feature_visible(event, ("activity_query", "activity_push"))
         )
 
-    if module_name.startswith((
-        "ironsbot.custom_plugins.custom_sendpic",
-        "ironsbot.custom_plugins.pet_config_reply",
-    )):
-        return is_custom_feature_event_allowed(event)
-
     for module_prefix, features in FEATURE_MODULE_PREFIXES:
         if module_name.startswith(module_prefix):
             return _any_feature_visible(event, features)
