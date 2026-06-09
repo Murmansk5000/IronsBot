@@ -101,6 +101,9 @@ class Config(BaseModel):
     seer_query_local_rank_path: Path = Path(
         "data/custom_get_seer_info/player_query_cache.sqlite"
     )
+    seer_query_extra_data_path: Path = Path(
+        "data/custom_get_seer_info/custom_seer_data.sqlite"
+    )
     seer_query_skin_price: bool = True
     seer_query_skin_price_cache_ttl_seconds: int = Field(default=86400, ge=0)
     seer_query_skin_price_cache_path: Path = Path(
@@ -143,6 +146,7 @@ class Config(BaseModel):
     @field_validator(
         "seer_query_rank_page_cache_path",
         "seer_query_local_rank_path",
+        "seer_query_extra_data_path",
     )
     @classmethod
     def validate_sqlite_cache_path(cls, value: Path) -> Path:
