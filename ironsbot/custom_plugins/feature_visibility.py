@@ -198,6 +198,9 @@ def plugin_visible_for_event(  # noqa: C901, PLR0911, PLR0912
     if plugin_name in ALWAYS_VISIBLE_NAMES:
         return True
 
+    if module_name.startswith("ironsbot.custom_plugins.rank_help"):
+        return is_event_feature_allowed(event, "rank")
+
     if plugin_name in CUSTOM_FEATURE_NAMES:
         return custom_feature_visible(event)
 
