@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -6,6 +7,7 @@ from nonebot import require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
+from ironsbot.custom_plugins.common.time_config import minute_of_day
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
 
@@ -20,19 +22,18 @@ from .cache import (
 from .client import fetch_dynamic_feed
 from .parser import (
     dynamic_brief,
+    dynamic_suppression_reason,
     find_target_dynamics,
     item_author_mid,
     item_author_name,
     parse_single_item,
 )
 from .state import (
-    CHECK_INTERVAL_MINUTES,
-    SLEEP_END_HOUR,
-    SLEEP_INTERVAL_MINUTES,
-    SLEEP_START_HOUR,
-    TARGET_GROUP_IDS,
-    TARGET_USER_IDS,
+    BILI_CONFIG,
+    MONITORED_UIDS,
+    BiliPushTargets,
     check_lock,
+    push_targets_for_uid,
 )
 
 require("nonebot_plugin_apscheduler")
@@ -43,24 +44,43 @@ DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 DynamicItem = tuple[int, dict[str, Any]]
 
 
-def _should_skip_for_sleep_window(
-    now: datetime,
-    *,
-    is_startup_check: bool,
-) -> bool:
-    if not (now.hour >= SLEEP_START_HOUR or now.hour < SLEEP_END_HOUR):
-        return False
+@dataclass(slots=True)
+class AutoCheckState:
+    last_checked_at: datetime | None = None
 
-    return (
-        not is_startup_check
-        and now.minute % SLEEP_INTERVAL_MINUTES != 0
-    )
+
+_auto_check_state = AutoCheckState()
+
+
+def _window_contains(now: datetime, *, start: str, end: str) -> bool:
+    current = now.hour * 60 + now.minute
+    error_message = "BILI_CONFIG.polling.windows time must use HH:MM"
+    start_minute = minute_of_day(start, error_message=error_message)
+    end_minute = minute_of_day(end, error_message=error_message)
+    if start_minute <= end_minute:
+        return start_minute <= current < end_minute
+    return current >= start_minute or current < end_minute
+
+
+def _current_interval_minutes(now: datetime) -> int:
+    for window in BILI_CONFIG.polling.windows:
+        if _window_contains(now, start=window.start, end=window.end):
+            return window.minutes
+    return BILI_CONFIG.polling.default_minutes
+
+
+def _auto_check_due(now: datetime) -> bool:
+    if _auto_check_state.last_checked_at is None:
+        return True
+    interval = _current_interval_minutes(now)
+    elapsed = now - _auto_check_state.last_checked_at
+    return elapsed.total_seconds() >= interval * 60
 
 
 async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) -> bool:
     if is_bili_auth_invalid(response.status_code, res_json):
         await send_bili_login_qrcode_to_superusers(
-            "自动检查动态时发现B站登录失效"
+            "自动检查动态时发现 B 站登录失效"
         )
         return False
 
@@ -112,6 +132,47 @@ def _initialize_missing_checkpoints(
     return checkpoint_changed
 
 
+async def _send_dynamic_push(
+    bot: Bot,
+    item: dict[str, Any],
+    pub_ts: int,
+    targets: BiliPushTargets,
+) -> None:
+    if targets.full_group_ids or targets.full_user_ids:
+        full_message = parse_single_item(item, pub_ts, mode="full")
+        if full_message:
+            await send_broadcast_message(
+                full_message,
+                group_ids=targets.full_group_ids,
+                private_user_ids=targets.full_user_ids,
+                bot=bot,
+                action_name="Bilibili dynamic push",
+                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            )
+
+    if targets.link_group_ids or targets.link_user_ids:
+        link_message = parse_single_item(item, pub_ts, mode="link")
+        if link_message:
+            await send_broadcast_message(
+                link_message,
+                group_ids=targets.link_group_ids,
+                private_user_ids=targets.link_user_ids,
+                bot=bot,
+                action_name="Bilibili dynamic link push",
+                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            )
+
+
+def _mark_checkpoint(
+    checkpoints: dict[int, int],
+    author_mid: int,
+    pub_ts: int,
+) -> bool:
+    old_value = checkpoints.get(author_mid, 0)
+    checkpoints[author_mid] = max(old_value, pub_ts)
+    return checkpoints[author_mid] != old_value
+
+
 async def _push_new_dynamics(
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
@@ -125,19 +186,39 @@ async def _push_new_dynamics(
 
         last_saved_time = checkpoints.get(author_mid, 0)
         should_push = pub_ts > last_saved_time
+        suppression_reason = dynamic_suppression_reason(
+            item,
+            BILI_CONFIG.filters.suppress_push_patterns,
+        )
         save_dynamic_history_item(
             item,
             pub_ts=pub_ts,
             author_mid=author_mid,
             author_name=item_author_name(item),
             brief=dynamic_brief(item),
-            pushed=should_push,
+            suppressed=bool(suppression_reason),
+            suppression_reason=suppression_reason,
         )
         if not should_push:
             continue
 
-        message = parse_single_item(item, pub_ts)
-        if not message:
+        if suppression_reason:
+            logger.info(
+                "Bilibili dynamic push suppressed for "
+                f"{item_author_name(item)} ({author_mid}): {suppression_reason}"
+            )
+            if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+                checkpoint_changed = True
+            continue
+
+        targets = push_targets_for_uid(author_mid)
+        if not targets.has_targets:
+            logger.info(
+                "Bilibili dynamic saved without push target for "
+                f"{item_author_name(item)} ({author_mid})"
+            )
+            if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+                checkpoint_changed = True
             continue
 
         bot = bot or get_first_bot()
@@ -145,33 +226,30 @@ async def _push_new_dynamics(
             logger.warning("no bot online for Bilibili dynamic push")
             return checkpoint_changed
 
-        await send_broadcast_message(
-            message,
-            group_ids=TARGET_GROUP_IDS,
-            private_user_ids=TARGET_USER_IDS,
-            bot=bot,
-            action_name="Bilibili dynamic push",
-            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+        await _send_dynamic_push(bot, item, pub_ts, targets)
+        save_dynamic_history_item(
+            item,
+            pub_ts=pub_ts,
+            author_mid=author_mid,
+            author_name=item_author_name(item),
+            brief=dynamic_brief(item),
+            pushed=True,
         )
-        checkpoints[author_mid] = max(checkpoints.get(author_mid, 0), pub_ts)
-        checkpoint_changed = True
+        if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+            checkpoint_changed = True
 
     return checkpoint_changed
 
 
-async def _do_check_logic(*, is_startup_check: bool = False) -> None:
-    now = datetime.now(timezone.utc).astimezone()
-    if _should_skip_for_sleep_window(now, is_startup_check=is_startup_check):
-        logger.info(f"Bilibili monitor skipped in sleep window: {now:%H:%M}")
-        return
-
+async def _do_check_logic() -> None:
     try:
         response, res_json = await fetch_dynamic_feed(get_saved_cookie())
         if not await _is_valid_dynamic_response(response, res_json):
             return
 
         valid_dynamics = find_target_dynamics(
-            res_json.get("data", {}).get("items", [])
+            res_json.get("data", {}).get("items", []),
+            MONITORED_UIDS,
         )
         if not valid_dynamics:
             return
@@ -193,18 +271,27 @@ async def _do_check_logic(*, is_startup_check: bool = False) -> None:
         logger.error(f"Bilibili monitor check failed: {e}")
 
 
-async def run_check_logic(*, is_startup_check: bool = False) -> bool:
+async def run_check_logic(
+    *,
+    is_startup_check: bool = False,
+    force: bool = False,
+) -> bool:
     if check_lock.locked():
         logger.info("Bilibili dynamic check is already running")
         return False
 
     async with check_lock:
-        await _do_check_logic(is_startup_check=is_startup_check)
+        now = datetime.now(timezone.utc).astimezone()
+        if not is_startup_check and not force and not _auto_check_due(now):
+            return False
+
+        await _do_check_logic()
+        _auto_check_state.last_checked_at = now
 
     return True
 
 
-@scheduler.scheduled_job("interval", minutes=CHECK_INTERVAL_MINUTES)
+@scheduler.scheduled_job("interval", minutes=1)
 async def auto_check_job() -> None:
     await run_check_logic()
 
