@@ -13,10 +13,10 @@ from ironsbot.custom_plugins.common.time_config import normalize_daily_time
 
 INVALID_INTERVAL_TIME_ERROR = "BILI_CONFIG.polling.windows time must use HH:MM"
 DEFAULT_SUPPRESS_PATTERNS = [
-    "恭喜.*获得",
-    "记得及时查看私信通知",
-    "中奖",
-    "抽奖结果",
+    "\u606d\u559c.*\u83b7\u5f97",
+    "\u8bb0\u5f97\u53ca\u65f6\u67e5\u770b\u79c1\u4fe1\u901a\u77e5",
+    "\u4e2d\u5956",
+    "\u62bd\u5956\u7ed3\u679c",
 ]
 
 

@@ -161,9 +161,8 @@ Configure it at runtime:
 FEATURE_GROUP_POLICY={"team_group":["team"]}
 GROUP_ALIASES={"team_group":123456789}
 TEAM_IDS=[1234567,7654321]
-TEAM_COMMANDS=["战队"]
 TEAM_RESOURCE_USERS=[123456789]
-TEAM_RESOURCE_MESSAGE=出来买资源，别逼我求你😡
+TEAM_CONFIG={"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}
 ```
 
 Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an ignored `.env.prod` file. Do not commit them to GitHub.
