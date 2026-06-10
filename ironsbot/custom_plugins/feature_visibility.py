@@ -5,15 +5,6 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field, field_validator
 
-from ironsbot.custom_plugins.ai_chat.config import plugin_config as ai_config
-from ironsbot.custom_plugins.ai_intent_actions.config import (
-    AiIntentAction,
-    get_configured_actions,
-    plugin_config as ai_intent_config,
-)
-
-from ironsbot.custom_plugins.superuser_policy import is_custom_feature_event_allowed
-
 from ironsbot.custom_plugins.feature_policy import (
     is_event_feature_allowed,
     is_group_feature_allowed,
@@ -84,6 +75,8 @@ class VisibilityMessageSchedule(VisibilityMessageAction):
 
 
 class VisibilityConfig(BaseModel):
+    ai_key: str = ""
+    ai_intent_actions_enabled: bool = True
     msg_private_commands: list[VisibilityMessageAction] = Field(default_factory=list)
     msg_private_schedules: list[VisibilityMessageSchedule] = Field(default_factory=list)
     msg_group_commands: list[VisibilityMessageAction] = Field(default_factory=list)
@@ -170,21 +163,16 @@ def _team_shortcut_visible(event: Event) -> bool:
 
 
 def _ai_chat_visible(event: Event) -> bool:
-    return bool(ai_config.ai_key) and _feature_visible(event, "ai")
+    return bool(visibility_config.ai_key) and _feature_visible(event, "ai")
 
 
 def _ai_intent_visible(event: Event) -> bool:
-    if (
-        not isinstance(event, (GroupMessageEvent, PrivateMessageEvent))
-        or not ai_intent_config.ai_intent_actions_enabled
-        or not ai_config.ai_key
-    ):
-        return False
-
-    return any(
-        action.enabled and _ai_intent_action_visible(event, action)
-        for action in get_configured_actions()
+    return (
+        bool(visibility_config.ai_key)
+        and visibility_config.ai_intent_actions_enabled
+        and _feature_visible(event, "ai_intent")
     )
+
 
 def _superuser_visible(event: Event) -> bool:
     user_id = getattr(event, "user_id", None)
@@ -220,50 +208,8 @@ def plugin_visible_for_event(  # noqa: C901, PLR0911
     if module_name.startswith("ironsbot.custom_plugins.headless_seer_notice"):
         return _superuser_visible(event)
 
-    if module_name.startswith("ironsbot.custom_plugins.bilibili_monitor"):
-        return _bili_visible(event)
-
-    if module_name.startswith("ironsbot.custom_plugins.server_status"):
-        return _server_status_visible(event)
-
-    if module_name.startswith("ironsbot.custom_plugins.activity_reminder"):
-        return isinstance(event, (GroupMessageEvent, PrivateMessageEvent)) and (
-            _superuser_visible(event)
-            or _any_feature_visible(event, ("activity_query", "activity_push"))
-        )
-
     for module_prefix, features in FEATURE_MODULE_PREFIXES:
         if module_name.startswith(module_prefix):
             return _any_feature_visible(event, features)
 
     return False
-
-
-def _ai_intent_action_visible(event: Event, action: AiIntentAction) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            action.feature,
-        )
-
-    return is_private_feature_allowed(event.user_id, action.feature)
-
-
-
-def _bili_visible(event: Event) -> bool:
-    return isinstance(event, (GroupMessageEvent, PrivateMessageEvent)) and (
-        is_custom_feature_event_allowed(event)
-    )
-
-
-
-def _server_status_visible(event: Event) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return is_event_feature_allowed(event, "server_status_query") or is_superuser(event.user_id)
-
-    if isinstance(event, PrivateMessageEvent):
-        return is_event_feature_allowed(event, "server_status_query") or is_superuser(event.user_id)
-
-    return False
-
