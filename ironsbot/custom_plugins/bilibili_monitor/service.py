@@ -30,11 +30,10 @@ from .parser import (
 )
 from .state import (
     BILI_CONFIG,
-    LINK_ONLY_GROUP_IDS,
-    LINK_ONLY_USER_IDS,
-    TARGET_GROUP_IDS,
-    TARGET_USER_IDS,
+    MONITORED_UIDS,
+    BiliPushTargets,
     check_lock,
+    push_targets_for_uid,
 )
 
 require("nonebot_plugin_apscheduler")
@@ -133,55 +132,31 @@ def _initialize_missing_checkpoints(
     return checkpoint_changed
 
 
-def _split_push_targets() -> tuple[list[int], list[int], list[int], list[int]]:
-    link_group_set = set(LINK_ONLY_GROUP_IDS)
-    link_user_set = set(LINK_ONLY_USER_IDS)
-    default_link = BILI_CONFIG.push.default_mode == "link"
-
-    full_groups: list[int] = []
-    link_groups: list[int] = []
-    for group_id in TARGET_GROUP_IDS:
-        if default_link or group_id in link_group_set:
-            link_groups.append(group_id)
-        else:
-            full_groups.append(group_id)
-
-    full_users: list[int] = []
-    link_users: list[int] = []
-    for user_id in TARGET_USER_IDS:
-        if default_link or user_id in link_user_set:
-            link_users.append(user_id)
-        else:
-            full_users.append(user_id)
-
-    return full_groups, link_groups, full_users, link_users
-
-
 async def _send_dynamic_push(
     bot: Bot,
     item: dict[str, Any],
     pub_ts: int,
+    targets: BiliPushTargets,
 ) -> None:
-    full_groups, link_groups, full_users, link_users = _split_push_targets()
-    if full_groups or full_users:
+    if targets.full_group_ids or targets.full_user_ids:
         full_message = parse_single_item(item, pub_ts, mode="full")
         if full_message:
             await send_broadcast_message(
                 full_message,
-                group_ids=full_groups,
-                private_user_ids=full_users,
+                group_ids=targets.full_group_ids,
+                private_user_ids=targets.full_user_ids,
                 bot=bot,
                 action_name="Bilibili dynamic push",
                 interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             )
 
-    if link_groups or link_users:
+    if targets.link_group_ids or targets.link_user_ids:
         link_message = parse_single_item(item, pub_ts, mode="link")
         if link_message:
             await send_broadcast_message(
                 link_message,
-                group_ids=link_groups,
-                private_user_ids=link_users,
+                group_ids=targets.link_group_ids,
+                private_user_ids=targets.link_user_ids,
                 bot=bot,
                 action_name="Bilibili dynamic link push",
                 interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
@@ -236,12 +211,22 @@ async def _push_new_dynamics(
                 checkpoint_changed = True
             continue
 
+        targets = push_targets_for_uid(author_mid)
+        if not targets.has_targets:
+            logger.info(
+                "Bilibili dynamic saved without push target for "
+                f"{item_author_name(item)} ({author_mid})"
+            )
+            if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+                checkpoint_changed = True
+            continue
+
         bot = bot or get_first_bot()
         if not bot:
             logger.warning("no bot online for Bilibili dynamic push")
             return checkpoint_changed
 
-        await _send_dynamic_push(bot, item, pub_ts)
+        await _send_dynamic_push(bot, item, pub_ts, targets)
         save_dynamic_history_item(
             item,
             pub_ts=pub_ts,
@@ -263,7 +248,8 @@ async def _do_check_logic() -> None:
             return
 
         valid_dynamics = find_target_dynamics(
-            res_json.get("data", {}).get("items", [])
+            res_json.get("data", {}).get("items", []),
+            MONITORED_UIDS,
         )
         if not valid_dynamics:
             return

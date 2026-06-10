@@ -102,7 +102,7 @@ FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activit
 
 MEETING_CONFIG={"number":"1234567890","template":"腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}","commands":["开播","会议"]}
 
-BILI_CONFIG={"uids":[1310714247,123456789],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","link_only_groups":[],"link_only_users":[]},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
+BILI_CONFIG={"uids":[1310714247,123456789],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","groups":{"main":{"uids":[1310714247],"mode":"full","uid_modes":{"123456789":"link"}}},"users":{}},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
 
 STARTUP_CONFIG={"enabled":true,"message":"机器人已开启。","delay":0}
 HEADLESS_NOTICE_CONFIG={"login_notice":true,"state_notice":true,"reconnect_check_times":"00:01,00:02"}

@@ -1,3 +1,4 @@
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -6,18 +7,31 @@ from pydantic import BaseModel, Field, field_validator
 
 from ironsbot.custom_plugins.common.config_utils import (
     int_list,
+    json_object,
     nested_json_config,
     string_list,
 )
 from ironsbot.custom_plugins.common.time_config import normalize_daily_time
 
+BiliPushMode = Literal["full", "link"]
+
 INVALID_INTERVAL_TIME_ERROR = "BILI_CONFIG.polling.windows time must use HH:MM"
 DEFAULT_SUPPRESS_PATTERNS = [
-    "\u606d\u559c.*\u83b7\u5f97",
-    "\u8bb0\u5f97\u53ca\u65f6\u67e5\u770b\u79c1\u4fe1\u901a\u77e5",
-    "\u4e2d\u5956",
-    "\u62bd\u5956\u7ed3\u679c",
+    "恭喜.*获得",
+    "记得及时查看私信通知",
+    "中奖",
+    "抽奖结果",
 ]
+
+
+def _normalize_mode(value: object) -> object:
+    if value is None or value == "":
+        return value
+    mode = str(value).strip().lower()
+    if mode not in {"full", "link"}:
+        msg = "BILI_CONFIG push mode must be full or link"
+        raise ValueError(msg)
+    return mode
 
 
 class BiliIntervalWindow(BaseModel):
@@ -48,15 +62,64 @@ class BiliPollingConfig(BaseModel):
     )
 
 
-class BiliPushConfig(BaseModel):
-    default_mode: Literal["full", "link"] = "full"
-    link_only_groups: list[str] = Field(default_factory=list)
-    link_only_users: list[str] = Field(default_factory=list)
+class BiliPushTargetConfig(BaseModel):
+    uids: list[int] = Field(default_factory=list)
+    mode: BiliPushMode | None = None
+    uid_modes: dict[int, BiliPushMode] = Field(default_factory=dict)
 
-    @field_validator("link_only_groups", "link_only_users", mode="before")
+    @field_validator("uids", mode="before")
     @classmethod
-    def normalize_refs(cls, value: object) -> object:
-        return string_list(value)
+    def normalize_uids(cls, value: object) -> object:
+        return int_list(value)
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def normalize_mode(cls, value: object) -> object:
+        return _normalize_mode(value)
+
+    @field_validator("uid_modes", mode="before")
+    @classmethod
+    def normalize_uid_modes(cls, value: object) -> object:
+        parsed = json_object(value, name="BILI_CONFIG.push uid_modes")
+        result: dict[int, BiliPushMode] = {}
+        for raw_uid, raw_mode in parsed.items():
+            uid = int(raw_uid)
+            mode = _normalize_mode(raw_mode)
+            if mode in {"full", "link"}:
+                result[uid] = mode
+        return result
+
+
+class BiliPushConfig(BaseModel):
+    default_mode: BiliPushMode = "full"
+    groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
+    users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
+
+    @field_validator("default_mode", mode="before")
+    @classmethod
+    def normalize_default_mode(cls, value: object) -> object:
+        return _normalize_mode(value)
+
+    @field_validator("groups", "users", mode="before")
+    @classmethod
+    def normalize_targets(cls, value: object) -> object:
+        parsed = json_object(value, name="BILI_CONFIG.push targets")
+        result: dict[str, object] = {}
+        for raw_ref, raw_config in parsed.items():
+            ref = str(raw_ref).strip()
+            if not ref:
+                continue
+
+            if raw_config is None or raw_config == "":
+                result[ref] = {}
+            elif (
+                isinstance(raw_config, Iterable)
+                and not isinstance(raw_config, str | bytes | Mapping)
+            ):
+                result[ref] = {"uids": list(raw_config)}
+            else:
+                result[ref] = raw_config
+        return result
 
 
 class BiliFilterConfig(BaseModel):

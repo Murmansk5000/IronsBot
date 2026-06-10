@@ -1,12 +1,10 @@
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from typing import Any, Literal
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
-
-from .state import MONITORED_UIDS
 
 MIN_DYNAMIC_TEXT_LENGTH = 15
 MAX_DYNAMIC_CONTENT_CHARS = 500
@@ -70,12 +68,15 @@ def dynamic_url(item: dict[str, Any]) -> str:
 
 def find_target_dynamics(
     items: list[dict[str, Any]],
+    target_uids: Iterable[int],
 ) -> list[tuple[int, dict[str, Any]]]:
     target_dynamics: list[tuple[int, dict[str, Any]]] = []
-    target_uids = set(MONITORED_UIDS)
+    uid_set = {int(uid) for uid in target_uids if int(uid) > 0}
+    if not uid_set:
+        return target_dynamics
 
     for item in items:
-        if item_author_mid(item) not in target_uids:
+        if item_author_mid(item) not in uid_set:
             continue
 
         pub_ts = item_pub_ts(item)

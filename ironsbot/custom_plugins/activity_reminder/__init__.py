@@ -234,6 +234,9 @@ class ActivityInfoCache:
 
 _logged_warnings: set[str] = set()
 _activity_info_cache = ActivityInfoCache()
+_ACTIVITY_REQUIRED_COLUMNS = frozenset(
+    {"id", "name", "end_time", "is_show", "sort_order"}
+)
 
 
 def _now() -> datetime:
@@ -326,7 +329,9 @@ def _offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
     ]
 
 
-def _parse_week_count(text_value: str) -> int | None:
+def _parse_week_count(text_value: str | None) -> int | None:
+    if text_value is None:
+        return 1
     if text_value.isdigit():
         return int(text_value)
     return CHINESE_NUMBER_MAP.get(text_value)
@@ -620,12 +625,26 @@ def _parse_datetime(value: Any) -> datetime | None:
     return parsed.astimezone(LOCAL_TZ)
 
 
+def _warn_activity_data_unavailable(key: str, reason: str) -> None:
+    if key in _logged_warnings:
+        return
+
+    logger.warning(f"activity reminder skipped: {reason}")
+    _logged_warnings.add(key)
+
+
+def _activity_table_columns(session: Any) -> set[str]:
+    rows = session.execute(text("PRAGMA table_info(activity)")).mappings().all()
+    return {str(row["name"]) for row in rows if row.get("name") is not None}
+
+
 def _load_activity_rows() -> list[Mapping[str, Any]]:
     gen = db_manager.get_session(SEERAPI_DB_NAME)
     if gen is None:
-        if "missing_session" not in _logged_warnings:
-            logger.warning("activity reminder skipped: SeerAPI database not ready")
-            _logged_warnings.add("missing_session")
+        _warn_activity_data_unavailable(
+            "missing_session",
+            "SeerAPI database not ready",
+        )
         return []
 
     where_clause = "WHERE end_time IS NOT NULL"
@@ -634,37 +653,55 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
 
     try:
         session = next(gen)
-        try:
-            rows = session.execute(
-                text(
-                    "SELECT id, name, start_time, end_time, is_show, sort_order "
-                    f"FROM activity {where_clause} "
-                    "ORDER BY end_time, sort_order, id"
-                )
-            ).mappings().all()
-        except OperationalError as e:
-            if "start_time" not in str(e):
-                raise
-            rows = session.execute(
-                text(
-                    "SELECT id, name, end_time, is_show, sort_order "
-                    f"FROM activity {where_clause} "
-                    "ORDER BY end_time, sort_order, id"
-                )
-            ).mappings().all()
-    except OperationalError as e:
-        if "missing_table" not in _logged_warnings:
-            logger.warning(
-                "activity reminder skipped: activity table unavailable: "
-                f"{e}"
+        columns = _activity_table_columns(session)
+        if not columns:
+            _warn_activity_data_unavailable(
+                "missing_table",
+                (
+                    "activity table missing in SeerAPI database; run /更新数据 "
+                    "after the data release is available, or set "
+                    "ACTIVITY_CONFIG.enabled=false"
+                ),
             )
-            _logged_warnings.add("missing_table")
+            return []
+
+        missing_columns = _ACTIVITY_REQUIRED_COLUMNS - columns
+        if missing_columns:
+            _warn_activity_data_unavailable(
+                "invalid_schema",
+                (
+                    "activity table schema is missing columns: "
+                    f"{', '.join(sorted(missing_columns))}"
+                ),
+            )
+            return []
+
+        select_column_names = ["id", "name"]
+        if "start_time" in columns:
+            select_column_names.append("start_time")
+        select_column_names.extend(["end_time", "is_show", "sort_order"])
+
+        rows = session.execute(
+            text(
+                f"SELECT {', '.join(select_column_names)} "
+                f"FROM activity {where_clause} "
+                "ORDER BY end_time, sort_order, id"
+            )
+        ).mappings().all()
+    except OperationalError as e:
+        logger.opt(exception=True).debug("activity reminder query failed")
+        _warn_activity_data_unavailable(
+            "query_failed",
+            f"activity table query failed: {e.__class__.__name__}",
+        )
         return []
     finally:
         gen.close()
 
     _logged_warnings.discard("missing_session")
     _logged_warnings.discard("missing_table")
+    _logged_warnings.discard("invalid_schema")
+    _logged_warnings.discard("query_failed")
     return list(rows)
 
 
@@ -700,8 +737,20 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
             end_time=end_time,
             sort_order=int(row.get("sort_order") or 0),
         )
-        offer_blocks = _offer_blocks(activity, now)
-        offer_window = _offer_window_from_blocks(offer_blocks)
+        try:
+            offer_blocks = _offer_blocks(activity, now)
+            offer_window = _offer_window_from_blocks(offer_blocks)
+            offer_end_time = _offer_end_time(
+                activity,
+                offer_blocks,
+            )
+        except Exception:  # noqa: BLE001
+            logger.opt(exception=True).warning(
+                "activity reminder offer parsing failed for "
+                f"activity {activity.activity_id}: {activity.name}"
+            )
+            offer_window = None
+            offer_end_time = None
         activities.append(
             ActivityInfo(
                 activity_id=activity.activity_id,
@@ -711,10 +760,7 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
                 sort_order=activity.sort_order,
                 offer_label=offer_window[0] if offer_window else None,
                 offer_window_days=offer_window[1] if offer_window else None,
-                offer_end_time=_offer_end_time(
-                    activity,
-                    offer_blocks,
-                ),
+                offer_end_time=offer_end_time,
             )
         )
 
@@ -1066,7 +1112,12 @@ async def schedule_activity_reminders() -> None:
     if not plugin_config.activity_config.enabled:
         return
 
-    reminders = _filter_unsent(_build_scheduled_reminders(_now()))
+    try:
+        reminders = _filter_unsent(_build_scheduled_reminders(_now()))
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).warning("activity reminder scan failed")
+        return
+
     if not reminders:
         logger.info("activity reminder scan found no pending reminders")
         return
