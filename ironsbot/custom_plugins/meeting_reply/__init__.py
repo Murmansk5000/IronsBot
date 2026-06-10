@@ -22,15 +22,14 @@ from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
 
-MEETING_COMMANDS = ("开播", "会议")
 TENCENT_MEETING_NUMBER_DIGITS = 10
 
 __plugin_meta__ = PluginMetadata(
-    name="会议回复",
-    description="按配置回复腾讯会议信息",
+    name="\u4f1a\u8bae\u56de\u590d",
+    description="\u6309\u914d\u7f6e\u56de\u590d\u817e\u8baf\u4f1a\u8bae\u4fe1\u606f",
     usage=(
-        "【会议回复】\n"
-        "群聊或私聊发送：开播 / 会议\n"
+        "\u3010\u4f1a\u8bae\u56de\u590d\u3011\n"
+        "群聊或私聊发送 MEETING_CONFIG.commands 中配置的口令。\n"
         "Access is controlled by FEATURE_GROUP_POLICY / FEATURE_USER_POLICY "
         "feature: meeting."
     ),
@@ -54,7 +53,10 @@ async def _is_meeting_command(event: MessageEvent) -> bool:
     else:
         return False
 
-    return command_text_matches(event.get_plaintext(), MEETING_COMMANDS)
+    return command_text_matches(
+        event.get_plaintext(),
+        plugin_config.meeting_config.commands,
+    )
 
 
 meeting_matcher = on_message(
@@ -65,7 +67,7 @@ meeting_matcher = on_message(
 
 
 def build_meeting_reply() -> str:
-    raw_number = plugin_config.meeting_number.strip()
+    raw_number = plugin_config.meeting_config.number.strip()
     digits = re.sub(r"\D", "", raw_number)
     if not digits:
         return ""
@@ -76,7 +78,7 @@ def build_meeting_reply() -> str:
         meeting_number = raw_number
 
     meeting_url = f"https://meeting.tencent.com/p/{digits}"
-    template = plugin_config.meeting_template.replace("\\n", "\n")
+    template = plugin_config.meeting_config.template.replace("\\n", "\n")
     return template.format(
         meeting_number=meeting_number,
         meeting_digits=digits,

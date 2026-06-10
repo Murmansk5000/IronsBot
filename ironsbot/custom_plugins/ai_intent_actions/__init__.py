@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from nonebot import on_message
@@ -32,7 +33,6 @@ from ironsbot.utils.rule import no_reply
 from .config import AiIntentAction, Config, get_configured_actions, plugin_config
 
 ACTION_KEY = "_ai_intent_action"
-TEAM_RESOURCE_NOTICE_THRESHOLD = 1000
 
 
 class _TemplateContext(dict[str, str]):
@@ -63,7 +63,7 @@ def _contains_any_keyword(text: str, keywords: list[str]) -> bool:
 def _excluded_by_command(text: str, action: AiIntentAction) -> bool:
     exclude_commands = list(action.exclude_commands)
     if action.action == "team_shortcut":
-        exclude_commands.extend(team_config.team_commands)
+        exclude_commands.extend(team_config.team_config.commands)
 
     return bool(exclude_commands) and command_text_matches(text, exclude_commands)
 
@@ -159,7 +159,7 @@ ai_intent_action_matcher = on_message(
 
 def _build_resource_notice() -> Message:
     return build_message(
-        team_config.team_resource_message,
+        team_config.team_config.resource_message,
         at_user_ids=team_config.team_resource_users,
     )
 
@@ -182,7 +182,10 @@ async def _handle_team_shortcut_action(
     resource_notice_needed = False
     for team_id in team_ids:
         try:
-            result = await fetch_team_shortcut_result(team_id)
+            result = await asyncio.wait_for(
+                fetch_team_shortcut_result(team_id),
+                timeout=team_config.team_config.query_timeout_seconds,
+            )
         except FinishedException:
             raise
         except Exception as e:  # noqa: BLE001
@@ -193,7 +196,7 @@ async def _handle_team_shortcut_action(
             continue
 
         replies.append(Message(result.message))
-        if result.resource < TEAM_RESOURCE_NOTICE_THRESHOLD:
+        if result.resource < team_config.team_config.resource_threshold:
             resource_notice_needed = True
 
     if not replies:

@@ -8,9 +8,6 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.custom_get_seer_info.config import (
-    plugin_config as seer_query_plugin_config,
-)
 from ironsbot.custom_plugins.feature_policy import is_group_feature_allowed
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
@@ -30,23 +27,21 @@ from ironsbot.utils.rule import no_reply
 from .adapter import fetch_team_shortcut_result
 from .config import plugin_config
 
-RESOURCE_NOTICE_THRESHOLD = 1000
-
 __plugin_meta__ = PluginMetadata(
     name="战队快捷",
     description="在配置群里用短指令查询固定战队",
     usage=(
         "【战队快捷】\n"
-        "群聊发送 TEAM_COMMANDS 中配置的指令，默认：战队。\n"
+        "群聊发送 TEAM_CONFIG.commands 中配置的指令，默认：战队。\n"
         "机器人会查询 TEAM_IDS 中配置的战队；"
-        "战队资源低于 1000 时可 @ TEAM_RESOURCE_USERS。"
+        "战队资源低于 TEAM_CONFIG.resource_threshold 时可 @ TEAM_RESOURCE_USERS。"
     ),
 )
 
 
 def _build_resource_notice() -> Message:
     return build_message(
-        plugin_config.team_resource_message,
+        plugin_config.team_config.resource_message,
         at_user_ids=plugin_config.team_resource_users,
     )
 
@@ -67,7 +62,7 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
 
     return command_text_matches(
         event.get_plaintext(),
-        plugin_config.team_commands,
+        plugin_config.team_config.commands,
     )
 
 
@@ -87,7 +82,7 @@ async def handle_team_shortcut(matcher: Matcher, event: MessageEvent) -> None:
         try:
             result = await asyncio.wait_for(
                 fetch_team_shortcut_result(team_id),
-                timeout=seer_query_plugin_config.seer_query_config.team.timeout_seconds,
+                timeout=plugin_config.team_config.query_timeout_seconds,
             )
             await mark_headless_available(source="战队快捷")
         except FinishedException:
@@ -110,7 +105,7 @@ async def handle_team_shortcut(matcher: Matcher, event: MessageEvent) -> None:
             continue
 
         replies.append(Message(result.message))
-        if result.resource < RESOURCE_NOTICE_THRESHOLD:
+        if result.resource < plugin_config.team_config.resource_threshold:
             resource_notice_needed = True
 
     if not replies:

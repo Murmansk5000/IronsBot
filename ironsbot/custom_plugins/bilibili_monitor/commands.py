@@ -40,7 +40,7 @@ from .permissions import (
     is_dynamic_update_allowed,
 )
 from .service import run_check_logic
-from .state import BILI_CONFIG
+from .state import BILI_CONFIG, query_uids_for_event
 
 DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
@@ -92,11 +92,11 @@ update_dynamic_matcher = on_message(
 
 
 def _build_menu_text(records: list[DynamicHistoryRecord]) -> str:
-    reply_text = (
-        "📋 【最新动态列表】\n"
-        "👉 发送数字查看详情\n"
-        "-------------------------\n"
-    )
+    lines = [
+        "📋 【最新动态列表】",
+        "👉 发送数字查看详情",
+        "-------------------------",
+    ]
 
     for index, record in enumerate(records, start=1):
         time_str = (
@@ -105,17 +105,21 @@ def _build_menu_text(records: list[DynamicHistoryRecord]) -> str:
             .strftime("%Y-%m-%d %H:%M:%S")
         )
         suppressed_tag = "（未推送）" if record.suppressed else ""
-        reply_text += (
-            f"【{index}】 ⏰ {time_str}{suppressed_tag}\n"
-            f"👤 {record.author_name}（UID：{record.uid}）\n"
-            f"📝 {record.brief}\n"
+        lines.extend(
+            [
+                f"【{index}】 ⏰ {time_str}{suppressed_tag}",
+                f"👤 {record.author_name}（UID：{record.uid}）",
+                f"📝 {record.brief}",
+            ]
         )
 
-    return (
-        reply_text
-        + "-------------------------\n"
-        + "💡 两分钟内有效"
+    lines.extend(
+        [
+            "-------------------------",
+            "💡 两分钟内有效",
+        ]
     )
+    return "\n".join(lines)
 
 
 async def _wait_dynamic_select(
@@ -159,6 +163,14 @@ async def handle_dynamic_menu(
     state: T_State,
 ) -> None:
     try:
+        query_uids = query_uids_for_event(event)
+        if not query_uids:
+            await finish_event_reply(
+                dynamic_menu_matcher,
+                event,
+                "📭 当前会话没有配置可查询的 B 站账号。",
+            )
+
         await send_event_reply(
             dynamic_menu_matcher,
             event,
@@ -177,25 +189,12 @@ async def handle_dynamic_menu(
             )
 
         items = res_json.get("data", {}).get("items", [])
-        if not items:
-            await finish_event_reply(
-                dynamic_menu_matcher,
-                event,
-                "📭 没有动态数据。",
-            )
+        if items:
+            target_dynamics = find_target_dynamics(items, query_uids)
+            target_dynamics.sort(key=lambda value: value[0], reverse=True)
+            _save_fetched_dynamics(target_dynamics)
 
-        target_dynamics = find_target_dynamics(items)
-        if not target_dynamics:
-            await finish_event_reply(
-                dynamic_menu_matcher,
-                event,
-                "📭 近期没有公开动态。",
-            )
-
-        target_dynamics.sort(key=lambda value: value[0], reverse=True)
-        _save_fetched_dynamics(target_dynamics)
-
-        records = list_dynamic_history(limit=10)
+        records = list_dynamic_history(limit=10, uids=query_uids)
         if not records:
             await finish_event_reply(
                 dynamic_menu_matcher,
@@ -205,7 +204,9 @@ async def handle_dynamic_menu(
 
         state[DYNAMIC_IDS_KEY] = [record.dynamic_id for record in records]
 
-        logger.info(f"user {event.user_id} fetched Bilibili dynamic menu")
+        logger.info(
+            f"user {event.user_id} fetched Bilibili dynamic menu for {query_uids}"
+        )
         await enter_event_reply_conversation(
             matcher,
             event,

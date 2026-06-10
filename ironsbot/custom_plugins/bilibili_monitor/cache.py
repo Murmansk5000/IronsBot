@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -233,6 +234,7 @@ def list_dynamic_history(
     *,
     limit: int = 10,
     uid: int | None = None,
+    uids: Iterable[int] | None = None,
 ) -> list[DynamicHistoryRecord]:
     query = (
         "SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json, "
@@ -240,7 +242,19 @@ def list_dynamic_history(
         "FROM dynamics"
     )
     params: list[int] = []
-    if uid is not None:
+    uid_list = []
+    if uids is not None:
+        uid_list = list(
+            dict.fromkeys(int(raw_uid) for raw_uid in uids if int(raw_uid) > 0)
+        )
+        if not uid_list:
+            return []
+
+    if uid_list:
+        placeholders = ",".join("?" for _ in uid_list)
+        query += f" WHERE uid IN ({placeholders})"
+        params.extend(uid_list)
+    elif uid is not None:
         query += " WHERE uid = ?"
         params.append(int(uid))
     query += " ORDER BY pub_ts DESC, updated_at DESC LIMIT ?"

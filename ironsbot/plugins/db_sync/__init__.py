@@ -139,7 +139,7 @@ def register_database(
         sync_url, sync_interval_minutes, get_fingerprint, local_path
     )
 
-    if plugin_config.db_sync_interval_enabled:
+    if plugin_config.data_sync_config.interval_enabled:
         scheduler.add_job(
             run_sync_database,
             "interval",
@@ -351,9 +351,8 @@ async def _on_startup() -> None:
     for name in _registered_syncs:
         load_cached_database(name)
 
-    # Keep startup sync behind a switch. Set DB_SYNC_ON_STARTUP=true to restore
-    # the old behavior if automatic refresh is needed again.
-    if not plugin_config.db_sync_on_startup:
+    # Keep startup sync behind a switch to avoid slow container startup.
+    if not plugin_config.data_sync_config.on_startup:
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
         return
 

@@ -68,14 +68,7 @@ services:
       PORT: "8080"
       ONEBOT_ACCESS_TOKEN: "change-me"
       SUPERUSERS: '["123456789"]'
-      DB_SYNC_ON_STARTUP: "false"
-      DB_SYNC_INTERVAL_ENABLED: "true"
-      SEERAPI_SYNC_URL: "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
-      SEERAPI_FINGERPRINT_URL: "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
-      SEERAPI_LOCAL_PATH: "data/ironsbot-data.sqlite"
-      ALIAS_SYNC_URL: "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite"
-      ALIAS_FINGERPRINT_URL: "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
-      ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
+      DATA_SYNC_CONFIG: '{"on_startup":false,"interval_enabled":true,"sources":{"seerapi":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256","interval_minutes":60,"local_path":"data/ironsbot-data.sqlite"},"aliases":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256","interval_minutes":60,"local_path":"data/aliases-data.sqlite"}}}'
     restart: always
 
   napcat:
@@ -121,7 +114,7 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `FEATURE_GROUP_POLICY` | JSON object mapping group aliases or numeric group IDs to enabled features. |
 | `FEATURE_USER_POLICY` | JSON object mapping user aliases or numeric QQ IDs to enabled private/push features. |
 | `FEATURE_SUPERUSER_BYPASS` | Set `true` to let superusers use group features in groups not listed in policy. Default `true`. |
-| `BILI_CONFIG` | Bilibili monitor JSON config: monitored UIDs, data directory, history size, default interval, and special interval windows. |
+| `BILI_CONFIG` | Bilibili monitor JSON config: monitored UIDs, SQLite history storage, polling windows, explicit push targets, per-UID full/link mode, and suppressed push patterns. |
 | `MSG_CONFIG` | Generic text reply and scheduled text JSON config: reply line limits, private/group commands, and private/group schedules. |
 | `ACTIVITY_CONFIG` | Activity reminder JSON config: enable switch, lead hours, grace minutes, visible-only filter, cache path, and message template. |
 | `STARTUP_CONFIG` | Startup notice JSON config: enable switch, message, and extra delay after services are ready. |
@@ -139,7 +132,7 @@ USER_ALIASES={"owner":123456789}
 FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_link","bili_query","bili_push","ai_chat"]}
 FEATURE_USER_POLICY={"owner":["all"]}
 FEATURE_SUPERUSER_BYPASS=true
-BILI_CONFIG={"uids":[1310714247],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","link_only_groups":[],"link_only_users":[]},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
+BILI_CONFIG={"uids":[1310714247],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","groups":{"main":{"uids":[1310714247],"mode":"full"}},"users":{}},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
 MSG_CONFIG={"reply":{"default_lines":-1,"min_lines":5,"max_lines":80,"limit_path":"data/message_actions/reply_limits.sqlite"},"group_commands":[{"id":"notice","feature":"activity_link","commands":["link"],"message":"activity link"}],"group_schedules":[{"id":"night","feature":"activity_link_push","hour":23,"minute":0,"message":"good night"}]}
 ACTIVITY_CONFIG={"enabled":true,"lead_hours":[11,1],"grace_minutes":15,"only_shown":true,"cache_path":"data/activity_reminder/sent.sqlite","message":"⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"}
 STARTUP_CONFIG={"enabled":true,"message":"机器人已开启。","delay":0}
@@ -168,9 +161,8 @@ Configure it at runtime:
 FEATURE_GROUP_POLICY={"team_group":["team"]}
 GROUP_ALIASES={"team_group":123456789}
 TEAM_IDS=[1234567,7654321]
-TEAM_COMMANDS=["战队"]
 TEAM_RESOURCE_USERS=[123456789]
-TEAM_RESOURCE_MESSAGE=出来买资源，别逼我求你😡
+TEAM_CONFIG={"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}
 ```
 
 Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an ignored `.env.prod` file. Do not commit them to GitHub.

@@ -67,30 +67,34 @@ def _register(
         register_local_database(name, file_path=local_path)
 
 
-async def _get_seerapi_fingerprint(client: httpx.AsyncClient) -> str:
-    response = await client.get(plugin_config.seerapi_fingerprint_url)
-    return response.text
+def _fingerprint_getter(url: str) -> GetFingerprintFn | None:
+    if not url:
+        return None
+
+    async def _get_fingerprint(client: httpx.AsyncClient) -> str:
+        response = await client.get(url)
+        return response.text
+
+    return _get_fingerprint
 
 
-async def _get_alias_fingerprint(client: httpx.AsyncClient) -> str:
-    response = await client.get(plugin_config.alias_fingerprint_url)
-    return response.text
+def _register_source(name: str) -> None:
+    source = plugin_config.data_sync_config.sources.get(name)
+    if source is None:
+        logger.warning(f"数据源 '{name}' 未在 DATA_SYNC_CONFIG.sources 中配置")
+        return
+
+    _register(
+        name,
+        source.url,
+        source.interval_minutes,
+        source.local_path,
+        _fingerprint_getter(source.fingerprint_url),
+    )
 
 
-_register(
-    _SEERAPI_DB,
-    plugin_config.seerapi_sync_url,
-    plugin_config.seerapi_sync_interval_minutes,
-    plugin_config.seerapi_local_path,
-    _get_seerapi_fingerprint if plugin_config.seerapi_fingerprint_url else None,
-)
-_register(
-    _ALIAS_DB,
-    plugin_config.alias_sync_url,
-    plugin_config.alias_sync_interval_minutes,
-    plugin_config.alias_local_path,
-    _get_alias_fingerprint if plugin_config.alias_fingerprint_url else None,
-)
+_register_source(_SEERAPI_DB)
+_register_source(_ALIAS_DB)
 
 _PINYIN_FTS_TABLE = "pinyin_fts"
 
