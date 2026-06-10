@@ -15,7 +15,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+    normalize_command_text,
+)
 from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.utils.rule import no_reply
 
@@ -72,12 +75,8 @@ STAT_ALIASES: dict[str, StatSpec] = {
 AVAILABLE_STATS_TEXT = "攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 总和"
 
 
-def _normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
 NON_STAT_COUNTERMARK_RANK_COMMANDS = {
-    _normalize_command_text(command)
+    normalize_command_text(command)
     for command in (
         "刻印榜",
         "刻印图鉴榜",
@@ -108,7 +107,7 @@ def _strip_single_all_marker(text: str) -> tuple[str, bool]:
 def _parse_countermark_stat_rank_command(
     text: str,
 ) -> CountermarkStatRankCommand | None:
-    normalized = _normalize_command_text(text)
+    normalized = normalize_command_text(text)
     if not normalized.endswith("榜") or "刻印" not in normalized:
         return None
     if normalized in NON_STAT_COUNTERMARK_RANK_COMMANDS:

@@ -27,7 +27,7 @@ dependencies = [
 dev = ["basedpyright", "pre-commit", "ruff"]
 
 [tool.nonebot]
-plugin_dirs = ["ironsbot/custom_plugins"]
+plugin_dirs = []
 builtin_plugins = []
 
 [tool.nonebot.adapters]

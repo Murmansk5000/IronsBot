@@ -10,12 +10,11 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
-from nonebot import get_plugin_config, logger
+from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
-from pydantic import BaseModel, Field, field_validator
 
 from ironsbot.custom_plugins.feature_policy import (
     groups_for_feature,
@@ -40,6 +39,8 @@ from ironsbot.plugins.headless_seer.exception import (
 )
 from ironsbot.utils.rule import no_reply
 
+from .config import Config, plugin_config
+
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
 NORMAL_SERVER_STATUS_COMMAND = "开服了吗"
@@ -51,7 +52,6 @@ DEFAULT_START_TIME = time(hour=10)
 DEFAULT_END_TIME = time(hour=15)
 HTTP_TIMEOUT_SECONDS = 12.0
 NOTICE_MAINTENANCE_TYPE = 3
-BROADCAST_MESSAGE = "赛尔号已经开服了。"
 BOT_RESTART_DELAY_SECONDS = 1.0
 PARENT_EXIT_WAIT_SECONDS = 5.0
 
@@ -67,18 +67,6 @@ MAINTENANCE_RANGE_PATTERN = re.compile(
 )
 
 
-class Config(BaseModel):
-    server_status_broadcast: bool = False
-    server_status_broadcast_message: str = BROADCAST_MESSAGE
-    server_status_broadcast_cooldown_minutes: int = Field(default=1440, ge=0)
-
-    @field_validator("server_status_broadcast_message")
-    @classmethod
-    def normalize_broadcast_message(cls, value: str) -> str:
-        message = value.strip()
-        return message or BROADCAST_MESSAGE
-
-
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
     description="查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服",
@@ -91,7 +79,7 @@ __plugin_meta__ = PluginMetadata(
   裸的“开服查询”已停用，避免和管理员命令混淆。
   无头客户端已登录游戏服务器时判定为已开服；公告只作为维护信息摘要。
   无头客户端未登录时，结合公告和登录状态提示可能原因。
-  如果 SERVER_STATUS_BROADCAST=true，查询结果判断为已开服时会向
+  如果 SERVER_STATUS_CONFIG.broadcast=true，查询结果判断为已开服时会向
   Broadcast targets use FEATURE_GROUP_POLICY / FEATURE_USER_POLICY
   feature: server_status_push.
   配置的目标广播。""",
@@ -117,7 +105,6 @@ class HeadlessStatus:
     reason: str = ""
 
 
-plugin_config = get_plugin_config(Config)
 _open_broadcast_state = OpenBroadcastState()
 
 normal_server_status_matcher = on_fullmatch(
@@ -345,7 +332,7 @@ def _build_no_notice_reply(now: datetime, *, headless_status: HeadlessStatus) ->
 
 
 async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
-    if not plugin_config.server_status_broadcast:
+    if not plugin_config.server_status_config.broadcast:
         logger.info("server status open broadcast skipped: disabled")
         return
 
@@ -367,7 +354,7 @@ async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
         return
 
     summary = await send_broadcast_message(
-        plugin_config.server_status_broadcast_message,
+        plugin_config.server_status_config.broadcast_message,
         group_ids=group_ids,
         private_user_ids=user_ids,
         action_name="server status open broadcast",
@@ -404,7 +391,9 @@ def _is_open_broadcast_in_cooldown(now: datetime) -> bool:
     if _open_broadcast_state.last_at is None:
         return False
 
-    cooldown_minutes = plugin_config.server_status_broadcast_cooldown_minutes
+    cooldown_minutes = (
+        plugin_config.server_status_config.broadcast_cooldown_minutes
+    )
     if cooldown_minutes <= 0:
         return False
 

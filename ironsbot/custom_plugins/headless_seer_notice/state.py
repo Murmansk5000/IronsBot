@@ -105,7 +105,8 @@ async def _record_headless_state(
         )
         return
 
-    if not plugin_config.headless_state_notice:
+    notice_config = plugin_config.headless_notice_config
+    if not notice_config.state_notice:
         logger.info("headless state notice disabled")
         return
 
@@ -130,9 +131,9 @@ async def _send_headless_state_notice(
         return
 
     message_template = (
-        plugin_config.headless_state_online_message
+        plugin_config.headless_notice_config.state_online_message
         if connected
-        else plugin_config.headless_state_offline_message
+        else plugin_config.headless_notice_config.state_offline_message
     )
     message = message_template.format(
         user_id=user_id or headless_user_id_text(),

@@ -14,7 +14,6 @@ from ironsbot.custom_plugins.ai_chat.client import (
     REQUEST_FAILED_REPLY,
     call_ai_chat,
 )
-from ironsbot.custom_plugins.ai_chat.config import plugin_config as ai_config
 from ironsbot.custom_plugins.feature_policy import (
     is_group_feature_allowed,
     is_private_feature_allowed,
@@ -47,7 +46,7 @@ __plugin_meta__ = PluginMetadata(
         "【AI意图动作】\n"
         "默认规则：消息包含“战队”时，请 AI 判断发送者是否想加入战队。\n"
         "若判断为是，则发送 TEAM_IDS 配置的战队信息。\n"
-        "可通过 AI_INTENT_ACTIONS 配置更多关键词、判定意图和动作。"
+        "可通过 AI_CONFIG.intent_actions 配置更多关键词、判定意图和动作。"
     ),
     config=Config,
 )
@@ -115,11 +114,11 @@ def _reply_is_yes(reply: str) -> bool:
 
 
 async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
-    if not plugin_config.ai_intent_actions_enabled:
+    if not plugin_config.ai_config.intent_actions_enabled:
         return False
 
     text = event.get_plaintext().strip()
-    if not text or not ai_config.ai_key:
+    if not text or not plugin_config.ai_key:
         return False
 
     for action in get_configured_actions():

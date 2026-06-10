@@ -26,7 +26,7 @@ from .config import (
 )
 from .replies import event_sender_at_user_ids, finish_matcher_message
 from .senders import send_broadcast_message
-from .text import command_text_matches, normalize_command_text
+from .text import command_text_matches
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -55,8 +55,8 @@ async def _match_private_command(event: MessageEvent, state: T_State) -> bool:
     if not isinstance(event, PrivateMessageEvent):
         return False
 
-    text = normalize_command_text(event.get_plaintext())
-    for action in plugin_config.msg_private_commands:
+    text = event.get_plaintext()
+    for action in plugin_config.msg_config.private_commands:
         if not action.enabled or not _private_action_allowed(event, action):
             continue
 
@@ -71,8 +71,8 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
-    text = normalize_command_text(event.get_plaintext())
-    for action in plugin_config.msg_group_commands:
+    text = event.get_plaintext()
+    for action in plugin_config.msg_config.group_commands:
         if not action.enabled:
             continue
 
@@ -199,13 +199,13 @@ def _register_group_schedule(
 
 
 for _index, _task in enumerate(
-    plugin_config.msg_private_schedules,
+    plugin_config.msg_config.private_schedules,
     start=1,
 ):
     _register_private_schedule(_index, _task)
 
 for _index, _task in enumerate(
-    plugin_config.msg_group_schedules,
+    plugin_config.msg_config.group_schedules,
     start=1,
 ):
     _register_group_schedule(_index, _task)

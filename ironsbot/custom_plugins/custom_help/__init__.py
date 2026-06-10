@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -15,6 +14,7 @@ from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 from pydantic import BaseModel, Field, field_validator
 
+from ironsbot.custom_plugins.common.config_utils import string_list
 from ironsbot.custom_plugins.feature_visibility import plugin_visible_for_event
 from ironsbot.custom_plugins.message_actions import (
     build_message,
@@ -50,22 +50,7 @@ class Config(BaseModel):
     @field_validator("help_ignored_plugins", mode="before")
     @classmethod
     def normalize_ignored_plugins(cls, value: object) -> object:
-        if value is None or value == "":
-            return []
-
-        if isinstance(value, str):
-            text = value.strip()
-            if not text:
-                return []
-            if text.startswith("["):
-                return json.loads(text)
-            return [
-                item.strip()
-                for item in text.split(",")
-                if item.strip()
-            ]
-
-        return value
+        return string_list(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,14 +235,14 @@ def _create_selection_handler(
 
         key_text = event.get_plaintext().strip()
         if key_text == "0":
-            await _finish_help_reply(matcher, event, "❌ 已退出帮助")
+            await _finish_help_reply(matcher, event, "✅ 已退出帮助。")
 
         if not key_text.isdigit():
             raise FinishedException
 
         index = int(key_text)
         if index < 1 or index > len(entries):
-            await _finish_help_reply(matcher, event, "⚠️ 序号超出范围，已退出帮助")
+            await _finish_help_reply(matcher, event, "⚠️ 序号超出范围，已退出帮助。")
 
         await _send_help_reply(
             matcher,

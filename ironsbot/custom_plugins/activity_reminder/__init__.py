@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MIT
+import asyncio
 import html
-import json
 import re
 import sqlite3
 import urllib.error
 import urllib.request
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,10 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from ironsbot.custom_plugins.common.config_utils import (
+    nested_json_config,
+    positive_int_list,
+)
 from ironsbot.custom_plugins.feature_policy import (
     groups_for_feature,
     is_event_feature_allowed,
@@ -31,7 +35,9 @@ from ironsbot.custom_plugins.feature_policy import (
 )
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
+    normalize_command_text,
     send_broadcast_message,
+    strip_command_prefix,
 )
 from ironsbot.utils.rule import no_reply
 
@@ -44,7 +50,6 @@ from ironsbot.plugins.db_sync.manager import db_manager
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-ADMIN_COMMAND_PREFIXES = ("/",)
 CURRENT_ACTIVITY_COMMANDS = ("当前活动", "活动列表", "活动时间")
 SOON_ENDING_ACTIVITY_COMMANDS = (
     "快结束活动",
@@ -60,6 +65,7 @@ REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 UNITY_NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
 UNITY_NOTICE_TIMEOUT_SECONDS = 8
 UNITY_NOTICE_CACHE_TTL = timedelta(minutes=30)
+ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 NOTICE_ACTIVITY_BLOCK_CHARS = 900
 NOTICE_ACTIVITY_LOOKBEHIND_CHARS = 80
 DAYS_PER_WEEK = 7
@@ -116,96 +122,61 @@ CHINESE_NUMBER_MAP = {
 }
 
 
-def _coerce_int_list(value: object) -> object:
-    if not isinstance(value, str):
-        return value
-
-    raw = value.strip()
-    if not raw:
-        return []
-
-    if raw.startswith("["):
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return value
-
-    return [item.strip() for item in raw.split(",") if item.strip()]
-
-
-def _unique_positive_ints(values: Iterable[int]) -> list[int]:
-    return [
-        value
-        for value in dict.fromkeys(values)
-        if value > 0
-    ]
-
-
-def _normalize_command_text(text_value: str) -> str:
-    return "".join(text_value.split()).lower()
-
-
 NORMALIZED_CURRENT_ACTIVITY_COMMANDS = {
-    _normalize_command_text(command)
+    normalize_command_text(command)
     for command in CURRENT_ACTIVITY_COMMANDS
 }
 NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS = {
-    _normalize_command_text(command)
+    normalize_command_text(command)
     for command in SOON_ENDING_ACTIVITY_COMMANDS
 }
 
 
-def _strip_admin_command_prefix(text_value: str) -> str | None:
-    stripped = text_value.strip()
-    for prefix in ADMIN_COMMAND_PREFIXES:
-        if stripped.startswith(prefix):
-            return stripped[len(prefix) :].strip()
-    return None
-
-
 async def _is_current_activity_query_command(event: Event) -> bool:
-    command = _strip_admin_command_prefix(event.get_plaintext())
+    command = strip_command_prefix(event.get_plaintext())
     if command is None:
         return False
 
-    normalized = _normalize_command_text(command)
+    normalized = normalize_command_text(command)
     return normalized in NORMALIZED_CURRENT_ACTIVITY_COMMANDS
 
 
 async def _is_soon_ending_activity_query_command(event: Event) -> bool:
     text_value = event.get_plaintext().strip()
-    command = _strip_admin_command_prefix(text_value) or text_value
+    command = strip_command_prefix(text_value) or text_value
 
-    normalized = _normalize_command_text(command)
+    normalized = normalize_command_text(command)
     return normalized in NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS
 
 
-class Config(BaseModel):
-    activity_reminder: bool = True
-    activity_reminder_lead_hours: list[int] = Field(
+class ActivityConfig(BaseModel):
+    enabled: bool = True
+    lead_hours: list[int] = Field(
         default_factory=lambda: [11, 1]
     )
-    activity_reminder_grace_minutes: int = Field(default=15, ge=1)
-    activity_reminder_only_shown: bool = True
-    activity_reminder_cache_path: Path = Path(
+    grace_minutes: int = Field(default=15, ge=1)
+    only_shown: bool = True
+    cache_path: Path = Path(
         "data/activity_reminder/sent.sqlite"
     )
-    activity_reminder_message: str = DEFAULT_MESSAGE_TEMPLATE
+    message: str = DEFAULT_MESSAGE_TEMPLATE
 
     @field_validator(
-        "activity_reminder_lead_hours",
+        "lead_hours",
         mode="before",
     )
     @classmethod
     def coerce_int_list(cls, value: object) -> object:
-        return _coerce_int_list(value)
+        return positive_int_list(value)
 
-    @field_validator(
-        "activity_reminder_lead_hours",
-    )
+
+class Config(BaseModel):
+    activity_config: ActivityConfig = Field(default_factory=ActivityConfig)
+
+    @field_validator("activity_config", mode="before")
     @classmethod
-    def normalize_int_list(cls, value: list[int]) -> list[int]:
-        return _unique_positive_ints(value)
+    def normalize_activity_config(cls, value: object) -> object:
+        return nested_json_config(value, ActivityConfig, name="ACTIVITY_CONFIG")
 
 
 plugin_config = get_plugin_config(Config)
@@ -215,10 +186,10 @@ __plugin_meta__ = PluginMetadata(
     description="从 SeerAPI 活动数据读取结束时间，提前提醒活动即将结束",
     usage=(
         "【活动结束提醒】\n"
-        "按 ACTIVITY_REMINDER_LEAD_HOURS 配置提前提醒活动即将结束。\n"
+        "按 ACTIVITY_CONFIG.lead_hours 配置提前提醒活动即将结束。\n"
         "Target groups use FEATURE_GROUP_POLICY feature: activity_push.\n"
         "Target users use FEATURE_USER_POLICY feature: activity_push.\n"
-        "超级管理员可发送 /当前活动、/活动列表、/活动时间 查看当前活动和剩余时间；"
+        "超级管理员可发 /当前活动、活动列表、活动时间 查看当前活动和剩余时间；"
         "发送 快结束活动 查看不足 7 天结束的活动。"
     ),
     config=Config,
@@ -255,7 +226,14 @@ class ActivityDeadline:
     display_end_time: bool
 
 
+@dataclass(slots=True)
+class ActivityInfoCache:
+    items: list[ActivityInfo] = field(default_factory=list)
+    expires_at: datetime | None = None
+
+
 _logged_warnings: set[str] = set()
+_activity_info_cache = ActivityInfoCache()
 
 
 def _now() -> datetime:
@@ -331,6 +309,8 @@ def _offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
     notice_text = _fetch_unity_notice_text(now)
     if not notice_text:
         return []
+    if activity.name not in notice_text:
+        return []
 
     return [
         block
@@ -369,7 +349,7 @@ def _datetime_from_match(
     minute_text = match.groupdict().get("minute")
     hour = default_hour
     if hour_text is not None:
-        hour = 0 if hour_text == "零" else int(hour_text)
+        hour = 0 if hour_text == "24" else int(hour_text)
     minute = int(minute_text) if minute_text is not None else default_minute
     second_text = match.groupdict().get("second")
     second = int(second_text) if second_text is not None else 0
@@ -409,7 +389,7 @@ def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR
         return None
 
     week_match = re.search(
-        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])周)",
+        r"(?P<label>(?:首|第(?P<count>\d+|[一二两三四五六七八九十])个?)周)",
         block,
     )
     if week_match is not None:
@@ -421,7 +401,7 @@ def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR
             )
 
     day_match = re.search(
-        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])天)",
+        r"(?P<label>(?:首|第(?P<count>\d+|[一二两三四五六七八九十])个?)天)",
         block,
     )
     if day_match is not None:
@@ -436,7 +416,7 @@ def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR
         )
 
     month_match = re.search(
-        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])月)",
+        r"(?P<label>(?:首|第(?P<count>\d+|[一二两三四五六七八九十])个?)月)",
         block,
     )
     if month_match is not None:
@@ -467,7 +447,7 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"截止至\s*(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
         r"\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{1,2})"
         r"(?::(?P<second>\d{1,2}))?",
         block,
@@ -477,9 +457,9 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"截止至\s*(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
-        r"\s*(?P<hour>\d{1,2}|零)点"
-        r"(?:(?P<minute>\d{1,2})分)?前",
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
+        r"\s*(?P<hour>\d{1,2}|24)点?"
+        r"(?:(?P<minute>\d{1,2})分)?",
         block,
     )
     if match is not None:
@@ -487,8 +467,8 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
-        r"\s*(?P<hour>\d{1,2}|零)?点?后(?:价格)?(?:恢复|回复)",
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
+        r"\s*(?P<hour>\d{1,2}|24)?点?(?:价格)?(?:恢复|回复)",
         block,
     )
     if match is not None:
@@ -496,7 +476,7 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
         r"\s*(?:更新前|更新后(?:价格)?(?:恢复|回复))",
         block,
     )
@@ -504,12 +484,12 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
         return _datetime_from_match(match, activity, default_hour=10)
 
     match = re.search(
-        r"(?:购买时间|生效时间|限时生效|活动时间)[：:，,\s]*"
+        r"(?:购买时间|生效时间|限时生效|活动时间)[：:\s]*"
         r"(?:(?P<start_year>\d{4})[.年])?"
-        r"\d{1,2}月\d{1,2}日(?:更新后)?[-~至到]+"
+        r"\d{1,2}月\d{1,2}日?(?:更新前)?[-~至到]+"
         r"(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
-        r"(?:(?P<hour>\d{1,2}|零)点)?(?:更新前)?",
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
+        r"(?:(?P<hour>\d{1,2}|24)点?)?(?:更新前)?",
         block,
     )
     if match is not None:
@@ -527,13 +507,6 @@ def _offer_end_time(
         if offer_end_time is not None and offer_end_time < activity.end_time:
             return offer_end_time
     return None
-
-
-def _fallback_offer_window_open(activity: ActivityInfo, now: datetime) -> bool:
-    fallback_end = _fallback_offer_window_end(activity)
-    if fallback_end is None:
-        return False
-    return activity.start_time <= now < fallback_end
 
 
 def _fallback_offer_window_end(activity: ActivityInfo) -> datetime | None:
@@ -599,7 +572,7 @@ def _activity_sort_end_time(
 
 
 def _cache_path() -> Path:
-    path = plugin_config.activity_reminder_cache_path
+    path = plugin_config.activity_config.cache_path
     if not path.is_absolute():
         path = Path.cwd() / path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -656,7 +629,7 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
         return []
 
     where_clause = "WHERE end_time IS NOT NULL"
-    if plugin_config.activity_reminder_only_shown:
+    if plugin_config.activity_config.only_shown:
         where_clause += " AND COALESCE(is_show, 0) != 0"
 
     try:
@@ -696,6 +669,20 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
 
 
 def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
+    if (
+        _activity_info_cache.expires_at is not None
+        and _activity_info_cache.expires_at > now
+    ):
+        return [
+            activity
+            for activity in _activity_info_cache.items
+            if activity.end_time > now
+            and (
+                activity.start_time is None
+                or activity.start_time <= now
+            )
+        ]
+
     activities: list[ActivityInfo] = []
     for row in _load_activity_rows():
         end_time = _parse_datetime(row.get("end_time"))
@@ -731,7 +718,7 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
             )
         )
 
-    return sorted(
+    sorted_activities = sorted(
         activities,
         key=lambda activity: (
             _activity_sort_end_time(activity),
@@ -739,6 +726,9 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
             activity.activity_id,
         ),
     )
+    _activity_info_cache.items = sorted_activities
+    _activity_info_cache.expires_at = now + ACTIVITY_INFO_CACHE_TTL
+    return list(sorted_activities)
 
 
 def _soon_ending_activity_infos(now: datetime) -> list[ActivityInfo]:
@@ -797,7 +787,7 @@ def _format_activity_line(
             )
             return [
                 (
-                    f"{index}. {activity.name}：{deadline.label}："
+                    f"{index}. {activity.name}：{deadline.label}时间："
                     f"{deadline.end_time:%m-%d %H:%M} | 剩余：{remaining_text}"
                 )
             ]
@@ -868,13 +858,14 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
         if deadline is None:
             continue
 
-        for lead_hours in plugin_config.activity_reminder_lead_hours:
-            send_time = (
+        for lead_hours in plugin_config.activity_config.lead_hours:
+            planned_send_time = (
                 deadline.end_time
                 - timedelta(hours=lead_hours)
                 + REMINDER_SEND_DELAY
             )
-            if send_time < now:
+            send_time = _effective_reminder_send_time(planned_send_time, now)
+            if send_time is None:
                 continue
 
             reminders.append(
@@ -890,6 +881,20 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
             )
 
     return reminders
+
+
+def _effective_reminder_send_time(
+    planned_send_time: datetime,
+    now: datetime,
+) -> datetime | None:
+    if planned_send_time >= now:
+        return planned_send_time
+
+    grace = timedelta(minutes=plugin_config.activity_config.grace_minutes)
+    if now <= planned_send_time + grace:
+        return now
+
+    return None
 
 
 def _reminder_key(reminder: ActivityReminder) -> tuple[int, str, int]:
@@ -941,7 +946,7 @@ def _format_activity_list(reminders: list[ActivityReminder]) -> str:
     for index, reminder in enumerate(reminders, start=1):
         if reminder.display_end_time:
             lines.append(
-                f"{index}. {reminder.name}：{reminder.end_label}："
+                f"{index}. {reminder.name}：{reminder.end_label}时间："
                 f"{reminder.end_time:%Y-%m-%d %H:%M}"
             )
         else:
@@ -953,7 +958,7 @@ def _format_activity_list(reminders: list[ActivityReminder]) -> str:
 
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
     try:
-        return plugin_config.activity_reminder_message.format(
+        return plugin_config.activity_config.message.format(
             lead_hours=lead_hours,
             activity_count=len(reminders),
             activity_list=_format_activity_list(reminders),
@@ -1058,7 +1063,7 @@ def _reminder_job_id(lead_hours: int, send_time: datetime) -> str:
 
 
 async def schedule_activity_reminders() -> None:
-    if not plugin_config.activity_reminder:
+    if not plugin_config.activity_config.enabled:
         return
 
     reminders = _filter_unsent(_build_scheduled_reminders(_now()))
@@ -1080,7 +1085,10 @@ async def schedule_activity_reminders() -> None:
             id=_reminder_job_id(lead_hours, send_time),
             replace_existing=True,
             run_date=send_time,
-            misfire_grace_time=300,
+            misfire_grace_time=(
+                plugin_config.activity_config.grace_minutes
+                * SECONDS_PER_MINUTE
+            ),
         )
         scheduled_count += len(lead_reminders)
 
@@ -1112,7 +1120,7 @@ async def handle_current_activity_query(
     await finish_event_reply(
         current_activity_matcher,
         event,
-        build_current_activity_message(),
+        await asyncio.to_thread(build_current_activity_message),
     )
 
 
@@ -1121,11 +1129,11 @@ async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
     await finish_event_reply(
         soon_ending_activity_matcher,
         event,
-        build_current_activity_message(soon_only=True),
+        await asyncio.to_thread(build_current_activity_message, soon_only=True),
     )
 
 
-if plugin_config.activity_reminder:
+if plugin_config.activity_config.enabled:
     scheduler.add_job(
         schedule_activity_reminders,
         "date",

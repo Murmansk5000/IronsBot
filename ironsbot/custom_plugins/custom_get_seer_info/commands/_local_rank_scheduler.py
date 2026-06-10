@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot import logger, require
 
 from ..config import plugin_config
@@ -9,7 +9,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 
 async def _scheduled_local_rank_refresh() -> None:
-    if not plugin_config.seer_query_cache_auto_refresh:
+    if not plugin_config.seer_query_config.local_rank.auto_refresh:
         return
 
     result = await refresh_local_rank_cache()
@@ -25,8 +25,8 @@ async def _scheduled_local_rank_refresh() -> None:
 scheduler.add_job(
     _scheduled_local_rank_refresh,
     "cron",
-    hour=plugin_config.seer_query_cache_refresh_hour,
-    minute=plugin_config.seer_query_cache_refresh_minute,
+    hour=plugin_config.seer_query_config.local_rank.refresh_hour,
+    minute=plugin_config.seer_query_config.local_rank.refresh_minute,
     id="custom_get_seer_info_local_rank_refresh",
     replace_existing=True,
 )
