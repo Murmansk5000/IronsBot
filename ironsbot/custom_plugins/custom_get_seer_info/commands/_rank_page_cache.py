@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import sqlite3
 import time
 from collections.abc import Sequence
@@ -37,7 +37,7 @@ class CachedRankPageSummary:
 
 
 def _cache_path() -> Path:
-    return plugin_config.seer_query_rank_page_cache_path
+    return plugin_config.seer_query_config.rank.page_cache_path
 
 
 def _connect() -> sqlite3.Connection:
@@ -85,8 +85,8 @@ def _connect() -> sqlite3.Connection:
 
 def _is_cache_enabled() -> bool:
     return (
-        plugin_config.seer_query_rank_page_cache
-        and plugin_config.seer_query_rank_page_cache_ttl_seconds > 0
+        plugin_config.seer_query_config.rank.page_cache
+        and plugin_config.seer_query_config.rank.page_cache_ttl_seconds > 0
     )
 
 
@@ -118,7 +118,7 @@ def get_cached_rank_page(
 
             fetched_at, item_count = row
             if time.time() - float(fetched_at) > (
-                plugin_config.seer_query_rank_page_cache_ttl_seconds
+                plugin_config.seer_query_config.rank.page_cache_ttl_seconds
             ):
                 return None
 
@@ -185,7 +185,7 @@ def get_cached_rank_item(
             nick, score, start_index, position, fetched_at = row
             fetched_at_float = float(fetched_at)
             is_stale = time.time() - fetched_at_float > (
-                plugin_config.seer_query_rank_page_cache_ttl_seconds
+                plugin_config.seer_query_config.rank.page_cache_ttl_seconds
             )
             return CachedRankLookup(
                 id=user_id,
@@ -225,7 +225,7 @@ def get_rank_page_cache_summary(
         return []
 
     now = time.time()
-    ttl = plugin_config.seer_query_rank_page_cache_ttl_seconds
+    ttl = plugin_config.seer_query_config.rank.page_cache_ttl_seconds
     return [
         CachedRankPageSummary(
             start_index=int(start_index),

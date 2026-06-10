@@ -124,7 +124,7 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
             "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
         )
 
-    if plugin_config.ai_waiting_notice:
+    if plugin_config.ai_config.waiting_notice:
         await send_event_reply(
             ai_chat_matcher,
             event,
@@ -167,9 +167,9 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         await notify_superusers_once(
             "timeout",
             "AI聊天接口响应超时。\n"
-            f"接口：{plugin_config.ai_base_url}\n"
-            f"超时时间：{plugin_config.ai_timeout} 秒\n"
-            "请检查网络或适当调大 AI_TIMEOUT。",
+            f"接口：{plugin_config.ai_config.base_url}\n"
+            f"超时时间：{plugin_config.ai_config.timeout} 秒\n"
+            "请检查网络或适当调大 AI_CONFIG.timeout。",
         )
         await _finish_admin_notice_or_silent(
             event,

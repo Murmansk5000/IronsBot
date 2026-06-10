@@ -10,7 +10,7 @@ from .history import HistoryMessage
 
 
 def _memory_path() -> Path:
-    return plugin_config.ai_memory_path
+    return plugin_config.ai_config.memory_path
 
 
 def _connect() -> sqlite3.Connection:
@@ -43,7 +43,8 @@ def _connect() -> sqlite3.Connection:
 
 
 def _is_memory_enabled() -> bool:
-    return plugin_config.ai_memory and plugin_config.ai_memory_turns > 0
+    config = plugin_config.ai_config
+    return config.memory and config.memory_turns > 0
 
 
 def _event_context(event: MessageEvent) -> tuple[str, int]:
@@ -119,7 +120,7 @@ def get_user_memory(
     if not _is_memory_enabled():
         return []
 
-    message_limit = plugin_config.ai_memory_turns * 2
+    message_limit = plugin_config.ai_config.memory_turns * 2
     sql = (
         "SELECT role, content "
         "FROM messages "
@@ -148,7 +149,7 @@ def get_user_memory(
 
 
 def _trim_memory_chars(messages: list[HistoryMessage]) -> list[HistoryMessage]:
-    max_chars = plugin_config.ai_memory_max_chars
+    max_chars = plugin_config.ai_config.memory_max_chars
     used = 0
     selected: list[HistoryMessage] = []
 

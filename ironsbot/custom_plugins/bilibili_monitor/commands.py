@@ -14,18 +14,24 @@ from ironsbot.custom_plugins.message_actions import (
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,
+    strip_command_prefix,
 )
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
-from .cache import get_saved_cookie, save_dynamic_history_item
+from .cache import (
+    DynamicHistoryRecord,
+    get_dynamic_history_item,
+    get_saved_cookie,
+    list_dynamic_history,
+    save_dynamic_history_item,
+)
 from .client import fetch_dynamic_feed
 from .parser import (
     dynamic_brief,
+    dynamic_suppression_reason,
     find_target_dynamics,
-    item_author_label,
     item_author_mid,
     item_author_name,
-    item_pub_ts,
     parse_single_item,
 )
 from .permissions import (
@@ -34,22 +40,14 @@ from .permissions import (
     is_dynamic_update_allowed,
 )
 from .service import run_check_logic
+from .state import BILI_CONFIG
 
-DYNAMIC_ITEMS_KEY = "_bilibili_dynamic_items"
+DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
 DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
 DYNAMIC_MENU_TIMEOUT_SECONDS = 120
-ADMIN_COMMAND_PREFIX = "/"
-
-
-def _strip_admin_command_prefix(text: str) -> str | None:
-    stripped = text.strip()
-    if not stripped.startswith(ADMIN_COMMAND_PREFIX):
-        return None
-
-    return stripped[len(ADMIN_COMMAND_PREFIX) :].strip()
 
 
 async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
@@ -63,7 +61,7 @@ async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
 
 
 async def _is_update_dynamic_command(event: MessageEvent) -> bool:
-    command = _strip_admin_command_prefix(event.get_plaintext())
+    command = strip_command_prefix(event.get_plaintext())
     if command is None:
         return False
 
@@ -92,24 +90,25 @@ update_dynamic_matcher = on_message(
     block=True,
 )
 
-def _build_menu_text(menu_list: list[tuple[int, dict[str, Any]]]) -> str:
+
+def _build_menu_text(records: list[DynamicHistoryRecord]) -> str:
     reply_text = (
         "📋 【最新动态列表】\n"
         "👉 发送数字查看详情\n"
         "-------------------------\n"
     )
 
-    for index, (pub_ts, item) in enumerate(menu_list, start=1):
+    for index, record in enumerate(records, start=1):
         time_str = (
-            datetime.fromtimestamp(pub_ts, tz=timezone.utc)
+            datetime.fromtimestamp(record.pub_ts, tz=timezone.utc)
             .astimezone()
             .strftime("%Y-%m-%d %H:%M:%S")
         )
+        suppressed_tag = "（未推送）" if record.suppressed else ""
         reply_text += (
-            f"【{index}】"
-            f"⏰ {time_str}\n"
-            f"👤 {item_author_label(item)}\n"
-            f"📑 {dynamic_brief(item)}\n"
+            f"【{index}】 ⏰ {time_str}{suppressed_tag}\n"
+            f"👤 {record.author_name}（UID：{record.uid}）\n"
+            f"📝 {record.brief}\n"
         )
 
     return (
@@ -132,6 +131,27 @@ async def _wait_dynamic_select(
     )
 
 
+def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) -> None:
+    for pub_ts, item in target_dynamics:
+        author_mid = item_author_mid(item)
+        if not author_mid:
+            continue
+
+        suppression_reason = dynamic_suppression_reason(
+            item,
+            BILI_CONFIG.filters.suppress_push_patterns,
+        )
+        save_dynamic_history_item(
+            item,
+            pub_ts=pub_ts,
+            author_mid=author_mid,
+            author_name=item_author_name(item),
+            brief=dynamic_brief(item),
+            suppressed=bool(suppression_reason),
+            suppression_reason=suppression_reason,
+        )
+
+
 @dynamic_menu_matcher.handle()
 async def handle_dynamic_menu(
     matcher: Matcher,
@@ -142,18 +162,18 @@ async def handle_dynamic_menu(
         await send_event_reply(
             dynamic_menu_matcher,
             event,
-            "🔄 正在拉取B站动态...",
+            "🔄 正在拉取 B 站动态...",
         )
 
         response, res_json = await fetch_dynamic_feed(get_saved_cookie())
         if is_bili_auth_invalid(response.status_code, res_json):
             await send_bili_login_qrcode_to_superusers(
-                "用户查询动态时发现B站登录失效"
+                "用户查询动态时发现 B 站登录失效"
             )
             await finish_event_reply(
                 dynamic_menu_matcher,
                 event,
-                "⚠️ Cookie已失效。",
+                "⚠️ B 站 Cookie 已失效，请超级管理员重新登录。",
             )
 
         items = res_json.get("data", {}).get("items", [])
@@ -161,7 +181,7 @@ async def handle_dynamic_menu(
             await finish_event_reply(
                 dynamic_menu_matcher,
                 event,
-                "📥 没有动态数据。",
+                "📭 没有动态数据。",
             )
 
         target_dynamics = find_target_dynamics(items)
@@ -169,23 +189,21 @@ async def handle_dynamic_menu(
             await finish_event_reply(
                 dynamic_menu_matcher,
                 event,
-                "📥 近期没有公开动态。",
+                "📭 近期没有公开动态。",
             )
 
         target_dynamics.sort(key=lambda value: value[0], reverse=True)
-        menu_list = target_dynamics[:10]
-        for pub_ts, item in menu_list:
-            author_mid = item_author_mid(item)
-            if author_mid:
-                save_dynamic_history_item(
-                    item,
-                    pub_ts=pub_ts,
-                    author_mid=author_mid,
-                    author_name=item_author_name(item),
-                    brief=dynamic_brief(item),
-                )
+        _save_fetched_dynamics(target_dynamics)
 
-        state[DYNAMIC_ITEMS_KEY] = [item for _, item in menu_list]
+        records = list_dynamic_history(limit=10)
+        if not records:
+            await finish_event_reply(
+                dynamic_menu_matcher,
+                event,
+                "📭 没有可展示的历史动态。",
+            )
+
+        state[DYNAMIC_IDS_KEY] = [record.dynamic_id for record in records]
 
         logger.info(f"user {event.user_id} fetched Bilibili dynamic menu")
         await enter_event_reply_conversation(
@@ -194,7 +212,7 @@ async def handle_dynamic_menu(
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
             handlers=[handle_dynamic_select],
             reply_check=_is_dynamic_select_reply,
-            prompt=Message(_build_menu_text(menu_list)),
+            prompt=Message(_build_menu_text(records)),
         )
 
     except FinishedException:
@@ -214,7 +232,7 @@ async def handle_update_dynamic(event: MessageEvent) -> None:
         await finish_event_reply(
             update_dynamic_matcher,
             event,
-            "⛔ 仅超级管理员可用。",
+            "❌ 仅超级管理员可用。",
         )
 
     try:
@@ -225,7 +243,7 @@ async def handle_update_dynamic(event: MessageEvent) -> None:
             "⚡ 正在刷新动态...",
         )
 
-        did_run = await run_check_logic(is_startup_check=True)
+        did_run = await run_check_logic(is_startup_check=True, force=True)
         if not did_run:
             await finish_event_reply(
                 update_dynamic_matcher,
@@ -257,27 +275,36 @@ async def handle_dynamic_select(
 ) -> None:
     try:
         select_num = int(event.get_plaintext().strip())
-        cached_items = state.get(DYNAMIC_ITEMS_KEY, [])
-        if not cached_items:
+        cached_ids = state.get(DYNAMIC_IDS_KEY, [])
+        if not cached_ids:
             await finish_event_reply(
                 matcher,
                 event,
-                "⏰ 会话已超时，请重新发送“动态”。",
+                "⏳ 会话已超时，请重新发送“动态”。",
             )
 
-        if select_num < 1 or select_num > len(cached_items):
+        if select_num < 1 or select_num > len(cached_ids):
             await send_event_reply(
                 matcher,
                 event,
-                f"请输入 1~{len(cached_items)} 之间的数字。",
+                f"请输入 1~{len(cached_ids)} 之间的数字。",
             )
             await _wait_dynamic_select(matcher, event)
 
-        target_item = cached_items[select_num - 1]
+        dynamic_id = str(cached_ids[select_num - 1])
+        record = get_dynamic_history_item(dynamic_id)
+        if record is None:
+            await finish_event_reply(
+                matcher,
+                event,
+                "❌ 没找到这条历史动态，请重新发送“动态”。",
+            )
+
         final_message = parse_single_item(
-            target_item,
-            item_pub_ts(target_item),
+            record.item,
+            record.pub_ts,
             menu_mode=True,
+            mode="full",
         )
 
         if final_message:

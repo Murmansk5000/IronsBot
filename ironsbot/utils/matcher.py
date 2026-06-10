@@ -7,6 +7,7 @@
 
 from typing import TYPE_CHECKING, Any, TypeAlias
 
+from nonebot.adapters import Event
 from nonebot.consts import REJECT_CACHE_TARGET, REJECT_TARGET
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher, current_bot, current_event, current_handler
@@ -15,7 +16,7 @@ from nonebot.rule import Rule
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
+    from nonebot.adapters import Message, MessageSegment, MessageTemplate
 
 T_Message: TypeAlias = "str | Message | MessageSegment | MessageTemplate"
 
@@ -50,7 +51,7 @@ class PromptSessionManager:
         """创建绑定版本号的 Rule。版本不匹配时返回 False。"""
         versions = self._versions
 
-        def _check(event: Any) -> bool:
+        def _check(event: Event) -> bool:
             if versions.get(session_id) != version:
                 return False
             return content_check(event)

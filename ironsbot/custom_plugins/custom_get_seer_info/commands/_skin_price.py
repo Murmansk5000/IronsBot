@@ -9,8 +9,6 @@ from nonebot.log import logger
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ..config import plugin_config
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -49,9 +47,6 @@ def format_skin_price_lines(
     *,
     existing_card_price: int | None = None,
 ) -> str:
-    if not plugin_config.seer_query_skin_price:
-        return ""
-
     try:
         shop_price = _load_shop_price(session, skin_id)
         store_prices = _load_store_prices(session, skin_id)

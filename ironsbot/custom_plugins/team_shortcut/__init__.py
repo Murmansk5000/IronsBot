@@ -1,3 +1,5 @@
+﻿import asyncio
+
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.exception import FinishedException
@@ -6,11 +8,22 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.custom_plugins.custom_get_seer_info.config import (
+    plugin_config as seer_query_plugin_config,
+)
 from ironsbot.custom_plugins.feature_policy import is_group_feature_allowed
+from ironsbot.custom_plugins.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
+)
 from ironsbot.custom_plugins.message_actions import (
     build_message,
     command_text_matches,
     finish_message_sequence,
+)
+from ironsbot.plugins.headless_seer.exception import (
+    DisconnectedError,
+    NotLoggedInError,
 )
 from ironsbot.utils.rule import no_reply
 
@@ -72,9 +85,25 @@ async def handle_team_shortcut(matcher: Matcher, event: MessageEvent) -> None:
 
     for team_id in plugin_config.team_ids:
         try:
-            result = await fetch_team_shortcut_result(team_id)
+            result = await asyncio.wait_for(
+                fetch_team_shortcut_result(team_id),
+                timeout=seer_query_plugin_config.seer_query_config.team.timeout_seconds,
+            )
+            await mark_headless_available(source="战队快捷")
         except FinishedException:
             raise
+        except (NotLoggedInError, DisconnectedError) as e:
+            await mark_headless_unavailable(str(e), source="战队快捷")
+            replies.append(
+                Message(
+                    f"战队 {team_id} 暂时查不了："
+                    "需要连接赛尔号游戏服务器，当前可能在维护、未开放或无头客户端未登录。"
+                )
+            )
+            continue
+        except TimeoutError:
+            replies.append(Message(f"战队 {team_id} 查询超时，请稍后再试。"))
+            continue
         except Exception as e:  # noqa: BLE001
             logger.exception(f"team shortcut query failed, team id {team_id}: {e}")
             replies.append(Message(f"战队 {team_id} 查询失败，请稍后再试。"))

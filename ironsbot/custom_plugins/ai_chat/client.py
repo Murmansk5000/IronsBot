@@ -28,7 +28,7 @@ def _extract_reply(data: dict[str, Any]) -> str:
 
 
 def _truncate_reply(text: str) -> str:
-    max_chars = plugin_config.ai_max_reply_chars
+    max_chars = plugin_config.ai_config.max_reply_chars
     if len(text) <= max_chars:
         return text
 
@@ -67,16 +67,17 @@ async def call_ai_chat(
     history: list[HistoryMessage],
     memory: list[HistoryMessage] | None = None,
 ) -> str:
+    config = plugin_config.ai_config
     payload = {
-        "model": plugin_config.ai_model,
+        "model": config.model,
         "messages": build_messages(history, prompt, memory),
-        "temperature": plugin_config.ai_temperature,
-        "max_tokens": plugin_config.ai_max_tokens,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
         "stream": False,
         "thinking": {
             "type": (
                 "enabled"
-                if plugin_config.ai_thinking
+                if config.thinking
                 else "disabled"
             )
         },
@@ -87,11 +88,11 @@ async def call_ai_chat(
     }
 
     async with httpx.AsyncClient(
-        timeout=plugin_config.ai_timeout,
+        timeout=config.timeout,
         follow_redirects=True,
     ) as client:
         response = await client.post(
-            f"{plugin_config.ai_base_url}/chat/completions",
+            f"{config.base_url}/chat/completions",
             headers=headers,
             json=payload,
         )
@@ -108,8 +109,8 @@ async def call_ai_chat(
             "AI聊天接口异常。\n"
             f"类型：{error_title}\n"
             f"HTTP：{response.status_code}\n"
-            f"模型：{plugin_config.ai_model}\n"
-            f"接口：{plugin_config.ai_base_url}\n"
+            f"模型：{config.model}\n"
+            f"接口：{config.base_url}\n"
             f"详情：{error_detail}\n"
             "请检查 AI_KEY、账户额度、模型名和网络连接。",
         )
@@ -120,7 +121,7 @@ async def call_ai_chat(
         await notify_superusers_once(
             "empty_reply",
             "AI聊天接口返回了空内容。\n"
-            f"模型：{plugin_config.ai_model}\n"
+            f"模型：{config.model}\n"
             "请检查模型配置或稍后重试。",
         )
         return EMPTY_REPLY

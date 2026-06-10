@@ -9,11 +9,8 @@ from .conversations import (
     event_conversation_session_id,
 )
 from .rate_limits import (
-    RateLimitResult,
-    check_user_rate_limit,
     peek_user_rate_limit,
     penalize_user_rate_limit,
-    rate_limiter,
 )
 from .replies import (
     event_sender_at_user_ids,
@@ -48,6 +45,7 @@ from .text import (
     command_text_matches,
     normalize_command_text,
     render_text,
+    strip_command_prefix,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -55,8 +53,8 @@ __plugin_meta__ = PluginMetadata(
     description="按配置回复固定文本/链接，也可定时向群或私聊发送文本",
     usage=(
         "【文本发送】\n"
-        "按 MSG_PRIVATE_COMMANDS / MSG_GROUP_COMMANDS 中配置的关键词回复固定文本。\n"
-        "按 MSG_PRIVATE_SCHEDULES / MSG_GROUP_SCHEDULES 配置定时文本推送。\n"
+        "按 MSG_CONFIG 中配置的关键词回复固定文本。\n"
+        "按 MSG_CONFIG 中配置的定时任务推送文本。\n"
         "常用场景：签到链接、活动链接、信息聚合页、群公告等。\n"
         "群主、管理员、超级管理员可发送 /回复行数 20 设置本群回复消息行数，防止刷屏。\n"
         "信息聚合页示例：xm / xrym / 雷小伊 / 重聚 -> https://seerinfo.yuyuqaq.cn/"
@@ -66,11 +64,9 @@ __plugin_meta__ = PluginMetadata(
 
 __all__ = [
     "MessageTarget",
-    "RateLimitResult",
     "TargetSendSummary",
     "broadcast_targets",
     "build_message",
-    "check_user_rate_limit",
     "clear_group_reply_line_limit",
     "command_reply_check",
     "command_text_matches",
@@ -89,7 +85,6 @@ __all__ = [
     "peek_user_rate_limit",
     "penalize_user_rate_limit",
     "private_targets",
-    "rate_limiter",
     "render_text",
     "reply_limits",
     "reply_line_limit_for_target",
@@ -99,4 +94,5 @@ __all__ = [
     "send_matcher_message",
     "send_target_messages",
     "set_group_reply_line_limit",
+    "strip_command_prefix",
 ]

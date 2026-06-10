@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import time
 from dataclasses import dataclass
@@ -227,9 +227,8 @@ async def _refresh_cached_rank_window(
             start=start,
             end=start + page_size - 1,
         )
-        await asyncio.sleep(
-            min(plugin_config.seer_query_cache_refresh_interval_seconds, 0.5)
-        )
+        interval = plugin_config.seer_query_config.local_rank.refresh_interval_seconds
+        await asyncio.sleep(min(interval, 0.5))
 
 
 def _schedule_cached_rank_window_refresh(  # noqa: PLR0913
@@ -241,7 +240,7 @@ def _schedule_cached_rank_window_refresh(  # noqa: PLR0913
     page_size: int,
     fetched_at: float,
 ) -> None:
-    ttl = plugin_config.seer_query_rank_page_cache_ttl_seconds
+    ttl = plugin_config.seer_query_config.rank.page_cache_ttl_seconds
     if ttl <= 0 or time.time() - fetched_at < ttl:
         return
 
@@ -366,8 +365,8 @@ def _datetime_to_sub_key(value: datetime) -> int:
 
 
 def get_current_peak_sub_key() -> int | None:
-    if plugin_config.seer_query_peak_subkey is not None:
-        return plugin_config.seer_query_peak_subkey
+    if plugin_config.seer_query_config.rank.peak_subkey is not None:
+        return plugin_config.seer_query_config.rank.peak_subkey
 
     try:
         from seerapi_models import PeakSeasonORM
@@ -510,9 +509,9 @@ async def _find_rank(  # noqa: PLR0913
     search_limit: int | None = None,
     minimum_score_search_limit: int = 0,
 ) -> RankLookupResult:
-    configured_limit = max(0, plugin_config.seer_query_rank_limit)
+    configured_limit = max(0, plugin_config.seer_query_config.rank.limit)
     limit = configured_limit if search_limit is None else max(0, search_limit)
-    page_size = max(1, min(plugin_config.seer_query_rank_page_size, 100))
+    page_size = max(1, min(plugin_config.seer_query_config.rank.page_size, 100))
     if target_score is not None and target_score > 0:
         limit = max(limit, minimum_score_search_limit)
 
@@ -591,7 +590,7 @@ async def _find_pet_kind_rank(
         user_id=user_id,
         key=PET_KIND_RANK_KEY,
         sub_key=PET_KIND_RANK_SUB_KEY,
-        page_size=max(1, min(plugin_config.seer_query_rank_page_size, 100)),
+        page_size=max(1, min(plugin_config.seer_query_config.rank.page_size, 100)),
         result=result,
     )
     if cached_result is not None:
@@ -608,7 +607,7 @@ async def _find_pet_kind_rank(
         key=PET_KIND_RANK_KEY,
         sub_key=PET_KIND_RANK_SUB_KEY,
         limit=raw_search_limit,
-        page_size=max(1, min(plugin_config.seer_query_rank_page_size, 100)),
+        page_size=max(1, min(plugin_config.seer_query_config.rank.page_size, 100)),
         result=result,
     )
     raw_result.searched_limit = real_search_limit
@@ -625,7 +624,7 @@ async def _fetch_book_breakdown_summary(
     skin_score: int | None = None,
 ) -> BookBreakdownSummary:
     limit = min(
-        max(0, plugin_config.seer_query_rank_limit),
+        max(0, plugin_config.seer_query_config.rank.limit),
         BOOK_BREAKDOWN_SCAN_LIMIT,
     )
     pet_kind = await _find_pet_kind_rank(

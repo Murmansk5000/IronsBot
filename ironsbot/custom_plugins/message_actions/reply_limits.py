@@ -16,9 +16,13 @@ from ironsbot.custom_plugins.feature_policy import is_superuser
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
-from .text import build_message, normalize_command_text, render_text
+from .text import (
+    build_message,
+    normalize_command_text,
+    render_text,
+    strip_command_prefix,
+)
 
-COMMAND_PREFIXES = ("/",)
 REPLY_LINE_LIMIT_ARG_KEY = "_message_reply_line_limit_arg"
 REPLY_LINE_LIMIT_COMMANDS = (
     "回复行数",
@@ -26,13 +30,13 @@ REPLY_LINE_LIMIT_COMMANDS = (
     "设置回复行数",
     "设置消息行数",
 )
-REPLY_LINE_LIMIT_CLEAR_COMMANDS = {"默认", "清除", "重置", "不限", "无限", "0"}
+REPLY_LINE_LIMIT_CLEAR_COMMANDS = {"默认", "清除", "重置", "不限", "无限", "-1"}
 TEXT_SEND_APIS = {"send_msg", "send_group_msg", "send_private_msg"}
 TEXT_ONLY_SEGMENT_TYPES = {"text", "at"}
 
 
 def _cache_path() -> Path:
-    path = plugin_config.msg_reply_limit_path
+    path = plugin_config.msg_config.reply.limit_path
     if not path.is_absolute():
         path = Path.cwd() / path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,12 +60,12 @@ def _connect_cache() -> sqlite3.Connection:
 
 
 def _default_reply_line_limit() -> int | None:
-    value = plugin_config.msg_reply_default_lines
-    if value <= 0:
+    value = plugin_config.msg_config.reply.default_lines
+    if value < 0:
         return None
     return max(
-        plugin_config.msg_reply_min_lines,
-        min(value, plugin_config.msg_reply_max_lines),
+        plugin_config.msg_config.reply.min_lines,
+        min(value, plugin_config.msg_config.reply.max_lines),
     )
 
 
@@ -113,14 +117,6 @@ def clear_group_reply_line_limit(group_id: int) -> None:
         conn.commit()
 
 
-def _strip_command_prefix(text: str) -> str | None:
-    stripped = text.strip()
-    for prefix in COMMAND_PREFIXES:
-        if stripped.startswith(prefix):
-            return stripped[len(prefix) :].strip()
-    return None
-
-
 def _parse_reply_line_limit_arg(command: str) -> str | None:
     stripped = command.strip()
     for prefix in sorted(REPLY_LINE_LIMIT_COMMANDS, key=len, reverse=True):
@@ -130,7 +126,7 @@ def _parse_reply_line_limit_arg(command: str) -> str | None:
 
 
 async def _is_reply_line_limit_command(event: Event, state: T_State) -> bool:
-    command = _strip_command_prefix(event.get_plaintext())
+    command = strip_command_prefix(event.get_plaintext())
     if command is None:
         return False
 
@@ -182,12 +178,12 @@ def limit_text_lines(text: str, max_lines: int | None) -> str:
 
 
 def limit_message_by_reply_lines(
-    message: str | Message,
+    message: str | Message | MessageSegment,
     *,
     event: MessageEvent | None = None,
     group_id: int | None = None,
-) -> str | Message:
-    if isinstance(message, Message):
+) -> str | Message | MessageSegment:
+    if isinstance(message, (Message, MessageSegment)):
         return message
 
     max_lines = (
@@ -302,7 +298,7 @@ async def handle_reply_line_limit_command(
         await _finish_reply_line_limit(
             event,
             f"当前本群回复消息行数：{current_text}\n"
-            "用法：/回复行数 20；发送 /回复行数 默认 可恢复默认。"
+            "用法：/回复行数 20；发送 /回复行数 -1 可恢复默认。"
         )
 
     if not _can_manage_reply_line_limit(event):
@@ -326,8 +322,8 @@ async def handle_reply_line_limit_command(
         )
 
     max_lines = int(raw_arg)
-    min_lines = plugin_config.msg_reply_min_lines
-    max_allowed_lines = plugin_config.msg_reply_max_lines
+    min_lines = plugin_config.msg_config.reply.min_lines
+    max_allowed_lines = plugin_config.msg_config.reply.max_lines
     if max_lines < min_lines or max_lines > max_allowed_lines:
         await _finish_reply_line_limit(
             event,

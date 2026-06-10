@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: MIT
-import json
 from collections.abc import Iterable, Mapping
-from typing import Any
 
 from nonebot import get_driver, get_plugin_config
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from pydantic import BaseModel, Field, field_validator
+
+from ironsbot.custom_plugins.common.config_utils import (
+    json_object,
+    string_list,
+    unique_items,
+)
 
 KNOWN_FEATURES = frozenset(
     {
@@ -16,6 +20,9 @@ KNOWN_FEATURES = frozenset(
         "meeting",
         "text",
         "text_push",
+        "activity_link",
+        "activity_link_push",
+        "seerinfo",
         "bili_query",
         "bili_push",
         "activity_query",
@@ -23,7 +30,7 @@ KNOWN_FEATURES = frozenset(
         "server_status_query",
         "server_status_push",
         "team",
-        "ai",
+        "ai_chat",
         "ai_intent",
         "admin_notice",
     }
@@ -44,33 +51,22 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
     "bili": frozenset({"bili_query", "bili_push"}),
     "activity": frozenset({"activity_query", "activity_push"}),
     "server_status": frozenset({"server_status_query", "server_status_push"}),
-    "message": frozenset({"text", "text_push"}),
+    "text": frozenset({"text", "activity_link", "seerinfo"}),
+    "text_push": frozenset({"text_push", "activity_link_push"}),
+    "message": frozenset(
+        {
+            "text",
+            "text_push",
+            "activity_link",
+            "activity_link_push",
+            "seerinfo",
+        }
+    ),
 }
 
 
-def _coerce_mapping(value: object) -> dict[str, Any]:
-    if value is None or value == "":
-        return {}
-
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return {}
-        parsed = json.loads(text)
-        if not isinstance(parsed, Mapping):
-            msg = "feature policy values must be JSON objects"
-            raise TypeError(msg)
-        return dict(parsed)
-
-    if isinstance(value, Mapping):
-        return dict(value)
-
-    msg = "feature policy values must be mappings"
-    raise TypeError(msg)
-
-
 def _coerce_int_mapping(value: object) -> dict[str, int]:
-    parsed = _coerce_mapping(value)
+    parsed = json_object(value, name="feature policy aliases")
     result: dict[str, int] = {}
     for raw_key, raw_value in parsed.items():
         key = str(raw_key).strip()
@@ -81,27 +77,13 @@ def _coerce_int_mapping(value: object) -> dict[str, int]:
 
 
 def _coerce_policy_mapping(value: object) -> dict[str, list[str]]:
-    parsed = _coerce_mapping(value)
+    parsed = json_object(value, name="feature policy")
     result: dict[str, list[str]] = {}
     for raw_key, raw_features in parsed.items():
         key = str(raw_key).strip()
         if not key:
             continue
-        if isinstance(raw_features, str):
-            features = [
-                item.strip()
-                for item in raw_features.split(",")
-                if item.strip()
-            ]
-        elif isinstance(raw_features, Iterable):
-            features = [
-                str(item).strip()
-                for item in raw_features
-                if str(item).strip()
-            ]
-        else:
-            features = []
-        result[key] = list(dict.fromkeys(features))
+        result[key] = string_list(raw_features)
     return result
 
 
@@ -110,7 +92,7 @@ class FeaturePolicyConfig(BaseModel):
     user_aliases: dict[str, int] = Field(default_factory=dict)
     feature_group_policy: dict[str, list[str]] = Field(default_factory=dict)
     feature_user_policy: dict[str, list[str]] = Field(default_factory=dict)
-    feature_superuser_bypass: bool = False
+    feature_superuser_bypass: bool = True
 
     @field_validator("group_aliases", "user_aliases", mode="before")
     @classmethod
@@ -127,7 +109,7 @@ policy_config = get_plugin_config(FeaturePolicyConfig)
 
 
 def _unique_ints(values: Iterable[int]) -> list[int]:
-    return list(dict.fromkeys(values))
+    return unique_items(values)
 
 
 def _coerce_int(value: object) -> int | None:
@@ -183,6 +165,26 @@ def _ids_for_feature(
         if resolved_id is not None and resolved_id > 0:
             ids.append(resolved_id)
     return _unique_ints(ids)
+
+
+def _resolve_policy_refs(
+    refs: Iterable[object],
+    aliases: Mapping[str, int],
+) -> list[int]:
+    ids: list[int] = []
+    for raw_ref in refs:
+        resolved_id = _resolve_policy_id(str(raw_ref), aliases)
+        if resolved_id is not None and resolved_id > 0:
+            ids.append(resolved_id)
+    return _unique_ints(ids)
+
+
+def resolve_group_refs(refs: Iterable[object]) -> list[int]:
+    return _resolve_policy_refs(refs, policy_config.group_aliases)
+
+
+def resolve_user_refs(refs: Iterable[object]) -> list[int]:
+    return _resolve_policy_refs(refs, policy_config.user_aliases)
 
 
 def groups_for_feature(feature: str) -> list[int]:

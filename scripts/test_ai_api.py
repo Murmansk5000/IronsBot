@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from ironsbot.custom_plugins.common.config_utils import json_object
 from ironsbot.utils.ai_api_diagnostics import (
     AiApiSettings,
     check_ai_api,
@@ -23,10 +24,6 @@ from ironsbot.utils.ai_api_diagnostics import (
 
 DEFAULT_ENV_FILE = ".env.dev"
 QUOTE_PAIR_MIN_LENGTH = 2
-
-
-def _parse_bool(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _strip_env_value(value: str) -> str:
@@ -59,20 +56,41 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def _float_env(env: dict[str, str], key: str, default: float) -> float:
+def _json_env(env: dict[str, str], key: str) -> dict:
+    raw_value = env.get(key, "").strip()
+    if not raw_value:
+        return {}
+
     try:
-        return float(env.get(key, default))
+        return json_object(raw_value, name=key)
+    except (TypeError, ValueError):
+        return {}
+
+
+def _float_config(config: dict, key: str, default: float) -> float:
+    try:
+        return float(config.get(key) or default)
     except (TypeError, ValueError):
         return default
 
 
+def _bool_config(config: dict, key: str, *, default: bool = False) -> bool:
+    value = config.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _build_settings(env: dict[str, str]) -> AiApiSettings:
+    ai_config = _json_env(env, "AI_CONFIG")
     return AiApiSettings(
         api_key=env.get("AI_KEY", ""),
-        base_url=env.get("AI_BASE_URL", "https://api.deepseek.com"),
-        model=env.get("AI_MODEL", "deepseek-v4-flash"),
-        timeout=_float_env(env, "AI_TIMEOUT", 45.0),
-        thinking=_parse_bool(env.get("AI_THINKING", "false")),
+        base_url=str(ai_config.get("base_url") or "https://api.deepseek.com"),
+        model=str(ai_config.get("model") or "deepseek-v4-pro"),
+        timeout=_float_config(ai_config, "timeout", 45.0),
+        thinking=_bool_config(ai_config, "thinking"),
     )
 
 
@@ -97,7 +115,7 @@ async def _main() -> int:
 
     settings = _build_settings(_merged_env(REPO_ROOT / args.env))
     result = await check_ai_api(settings)
-    status = result.status_code if result.status_code is not None else "无"
+    status = result.status_code if result.status_code is not None else "未知"
 
     if result.ok:
         _write_lines(

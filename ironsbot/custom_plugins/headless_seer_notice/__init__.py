@@ -3,11 +3,12 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.custom_plugins.common.time_config import daily_time_parts
 from ironsbot.custom_plugins.feature_policy import get_superuser_ids
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
 
-from .config import plugin_config
+from .config import INVALID_RECONNECT_TIME_ERROR, plugin_config
 from .service import (
     headless_is_configured,
     headless_login_failure_reason,
@@ -29,7 +30,8 @@ __plugin_meta__ = PluginMetadata(
         "【自定义无头登录】\n"
         "启动后检查 HEADLESS_SEER_USER_ID / HEADLESS_SEER_PASSWORD 是否登录成功。\n"
         "登录状态从在线/离线发生变化时私聊 SUPERUSERS；正常维护窗口内不播报。\n"
-        "每天按 HEADLESS_RECONNECT_CHECK_TIMES 检查无头状态，掉线则尝试重连。\n"
+        "每天按 HEADLESS_NOTICE_CONFIG.reconnect_check_times "
+        "检查无头状态，掉线则尝试重连。\n"
         "超级管理员可发送 /开服查询 触发开服查询和无头重连。"
     ),
 )
@@ -37,7 +39,7 @@ __plugin_meta__ = PluginMetadata(
 
 def _build_startup_notice_message(reason: str) -> Message:
     return Message(
-        plugin_config.seer_login_notice_message.format(
+        plugin_config.headless_notice_config.login_notice_message.format(
             user_id=headless_user_id_text(),
             reason=reason,
         )
@@ -61,7 +63,7 @@ async def _startup_check(bot: Bot) -> None:
         source="启动检查",
         notify=False,
     )
-    if not plugin_config.seer_login_notice:
+    if not plugin_config.headless_notice_config.login_notice:
         return
 
     target_users = sorted(get_superuser_ids())
@@ -118,24 +120,28 @@ async def _daily_reconnect_check(scheduled_time: str) -> None:
 
 
 def _register_reconnect_checks() -> None:
-    for scheduled_time in plugin_config.parsed_reconnect_check_times:
-        hour_text, minute_text = scheduled_time.split(":", maxsplit=1)
+    reconnect_times = plugin_config.headless_notice_config.parsed_reconnect_check_times
+    for scheduled_time in reconnect_times:
+        hour, minute = daily_time_parts(
+            scheduled_time,
+            error_message=INVALID_RECONNECT_TIME_ERROR,
+        )
         scheduler.add_job(
             _daily_reconnect_check,
             "cron",
             id=f"{RECONNECT_JOB_PREFIX}:{scheduled_time}",
             args=[scheduled_time],
             replace_existing=True,
-            hour=int(hour_text),
-            minute=int(minute_text),
+            hour=hour,
+            minute=minute,
             second=0,
             timezone="Asia/Shanghai",
         )
 
-    if plugin_config.parsed_reconnect_check_times:
+    if reconnect_times:
         logger.info(
             "headless reconnect checks registered: {}",
-            ", ".join(plugin_config.parsed_reconnect_check_times),
+            ", ".join(reconnect_times),
         )
 
 

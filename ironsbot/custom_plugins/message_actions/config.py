@@ -4,6 +4,12 @@ from nonebot import get_plugin_config
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
 
+from ironsbot.custom_plugins.common.config_utils import (
+    int_list,
+    nested_json_config,
+    string_list,
+)
+
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 
 
@@ -31,15 +37,10 @@ class BaseMessageAction(BaseModel):
 class CommandMessageAction(BaseMessageAction):
     commands: list[str] = Field(default_factory=list)
 
-    @field_validator("commands")
+    @field_validator("commands", mode="before")
     @classmethod
-    def normalize_commands(cls, value: list[str]) -> list[str]:
-        commands: list[str] = []
-        for raw_command in value:
-            command = raw_command.strip()
-            if command and command not in commands:
-                commands.append(command)
-        return commands
+    def normalize_commands(cls, value: object) -> object:
+        return string_list(value)
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
@@ -65,30 +66,53 @@ class PrivateScheduledMessageAction(ScheduledMessageAction):
 class GroupCommandMessageAction(CommandMessageAction):
     at_user_ids: list[int] = Field(default_factory=list)
 
+    @field_validator("at_user_ids", mode="before")
+    @classmethod
+    def normalize_at_user_ids(cls, value: object) -> object:
+        return int_list(value)
+
 
 class GroupScheduledMessageAction(ScheduledMessageAction):
     feature: str = "text_push"
     at_user_ids: list[int] = Field(default_factory=list)
 
+    @field_validator("at_user_ids", mode="before")
+    @classmethod
+    def normalize_at_user_ids(cls, value: object) -> object:
+        return int_list(value)
+
+
+class ReplyLineConfig(BaseModel):
+    default_lines: int = Field(default=-1, ge=-1)
+    min_lines: int = Field(default=5, ge=1)
+    max_lines: int = Field(default=80, ge=1)
+    limit_path: Path = Path("data/message_actions/reply_limits.sqlite")
+
+    @model_validator(mode="after")
+    def validate_line_range(self) -> Self:
+        if self.min_lines > self.max_lines:
+            msg = "reply.min_lines must be less than or equal to reply.max_lines"
+            raise ValueError(msg)
+        return self
+
+
+class MessageActionsConfig(BaseModel):
+    reply: ReplyLineConfig = Field(default_factory=ReplyLineConfig)
+    private_commands: list[PrivateCommandMessageAction] = Field(default_factory=list)
+    private_schedules: list[PrivateScheduledMessageAction] = Field(
+        default_factory=list
+    )
+    group_commands: list[GroupCommandMessageAction] = Field(default_factory=list)
+    group_schedules: list[GroupScheduledMessageAction] = Field(default_factory=list)
+
 
 class Config(BaseModel):
-    msg_at_trigger: bool = False
-    msg_reply_default_lines: int = Field(default=0, ge=0)
-    msg_reply_min_lines: int = Field(default=5, ge=1)
-    msg_reply_max_lines: int = Field(default=80, ge=1)
-    msg_reply_limit_path: Path = Path("data/message_actions/reply_limits.sqlite")
-    msg_private_commands: list[PrivateCommandMessageAction] = Field(
-        default_factory=list
-    )
-    msg_private_schedules: list[PrivateScheduledMessageAction] = Field(
-        default_factory=list
-    )
-    msg_group_commands: list[GroupCommandMessageAction] = Field(
-        default_factory=list
-    )
-    msg_group_schedules: list[GroupScheduledMessageAction] = Field(
-        default_factory=list
-    )
+    msg_config: MessageActionsConfig = Field(default_factory=MessageActionsConfig)
+
+    @field_validator("msg_config", mode="before")
+    @classmethod
+    def normalize_msg_config(cls, value: object) -> object:
+        return nested_json_config(value, MessageActionsConfig, name="MSG_CONFIG")
 
 
 plugin_config = get_plugin_config(Config)

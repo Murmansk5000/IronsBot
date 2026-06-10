@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 
 from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message
@@ -14,8 +15,15 @@ from ironsbot.custom_plugins.startup_ready import ensure_startup_ready
 from .config import plugin_config
 
 driver = get_driver()
-_notice_sent = False
-_notice_sending = False
+
+
+@dataclass(slots=True)
+class NoticeState:
+    sent: bool = False
+    sending: bool = False
+
+
+_state = NoticeState()
 
 
 def _get_target_users() -> list[int]:
@@ -28,16 +36,14 @@ def _get_target_groups() -> list[int]:
 
 @driver.on_bot_connect
 async def send_startup_notice(bot: Bot) -> None:
-    global _notice_sent, _notice_sending
-
     if (
-        _notice_sent
-        or _notice_sending
-        or not plugin_config.startup_notice
+        _state.sent
+        or _state.sending
+        or not plugin_config.startup_config.enabled
     ):
         return
 
-    _notice_sending = True
+    _state.sending = True
 
     try:
         target_users = _get_target_users()
@@ -48,11 +54,11 @@ async def send_startup_notice(bot: Bot) -> None:
 
         await ensure_startup_ready(bot)
 
-        if plugin_config.startup_delay > 0:
-            await asyncio.sleep(plugin_config.startup_delay)
+        if plugin_config.startup_config.delay > 0:
+            await asyncio.sleep(plugin_config.startup_config.delay)
 
         summary = await send_broadcast_message(
-            Message(plugin_config.startup_message),
+            Message(plugin_config.startup_config.message),
             private_user_ids=target_users,
             group_ids=target_groups,
             bot=bot,
@@ -61,9 +67,9 @@ async def send_startup_notice(bot: Bot) -> None:
         )
 
         if summary.succeeded:
-            _notice_sent = True
+            _state.sent = True
             logger.info(f"startup notice sent to {len(summary.succeeded)} users")
 
     finally:
-        if not _notice_sent:
-            _notice_sending = False
+        if not _state.sent:
+            _state.sending = False

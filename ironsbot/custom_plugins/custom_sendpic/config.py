@@ -5,6 +5,8 @@ from nonebot import get_plugin_config, require
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
 
+from ironsbot.custom_plugins.common.config_utils import string_list
+
 require("nonebot_plugin_localstore")
 
 from nonebot_plugin_localstore import get_data_dir
@@ -24,6 +26,16 @@ class PicConfig(BaseModel):
     help_message: str | None = None
     message_template: str = DEFAULT_MESSAGE_TEMPLATE
 
+    @field_validator("id", "command", "image_dir", "image_filename_template")
+    @classmethod
+    def normalize_required_strings(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def normalize_aliases(cls, value: object) -> object:
+        return string_list(value)
+
 
 class Config(BaseModel):
     sendpic_cnb_token: str | None = None
@@ -31,6 +43,11 @@ class Config(BaseModel):
     sendpic_local_root: Path = get_data_dir("sendpic")
     sendpic_configs: list[PicConfig] = Field(default_factory=list)
     sendpic_enabled_ids: frozenset[str] = Field(default_factory=frozenset)
+
+    @field_validator("sendpic_enabled_ids", mode="before")
+    @classmethod
+    def normalize_enabled_ids(cls, value: object) -> object:
+        return string_list(value)
 
     @field_validator("sendpic_configs")
     @classmethod
@@ -49,7 +66,7 @@ class Config(BaseModel):
             if pic.backend == "cnb" and (
                 not self.sendpic_cnb_token or not self.sendpic_cnb_repo
             ):
-                raise ValueError(
+                raise ValueError(  # noqa: TRY003
                     f"CNB 相关配置未设置，而命令【{pic.command}】需要该配置"
                 )
         return self

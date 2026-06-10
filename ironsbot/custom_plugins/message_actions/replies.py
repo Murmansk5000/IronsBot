@@ -1,7 +1,12 @@
 import asyncio
 from collections.abc import Iterable
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.matcher import Matcher
 
 from ironsbot.custom_plugins.superuser_priority import wait_for_superuser_priority
@@ -25,7 +30,7 @@ def event_sender_at_user_ids(
 
 async def send_matcher_message(
     matcher: Matcher,
-    message: str | Message,
+    message: str | Message | MessageSegment,
     *,
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
@@ -37,7 +42,7 @@ async def send_matcher_message(
 
 async def finish_matcher_message(
     matcher: Matcher,
-    message: str | Message,
+    message: str | Message | MessageSegment,
     *,
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
@@ -50,7 +55,7 @@ async def finish_matcher_message(
 async def send_event_reply(
     matcher: Matcher,
     event: MessageEvent,
-    message: str | Message,
+    message: str | Message | MessageSegment,
     *,
     mention_sender: bool = False,
 ) -> None:
@@ -68,7 +73,7 @@ async def send_event_reply(
 async def finish_event_reply(
     matcher: Matcher,
     event: MessageEvent,
-    message: str | Message,
+    message: str | Message | MessageSegment,
     *,
     mention_sender: bool = False,
 ) -> None:
@@ -85,7 +90,7 @@ async def finish_event_reply(
 
 async def finish_message_sequence(
     matcher: Matcher,
-    messages: list[str | Message],
+    messages: list[str | Message | MessageSegment],
     *,
     event: MessageEvent | None = None,
     mention_sender: bool = False,
