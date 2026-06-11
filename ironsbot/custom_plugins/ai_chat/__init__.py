@@ -21,7 +21,9 @@ from ironsbot.services.ai.chat import (
 )
 from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.history import is_reset_prompt
+from ironsbot.services.ai.mentions import mentions_or_replies_to_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
+from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -29,8 +31,6 @@ from ironsbot.shared.plugin_system import (
 )
 
 from .config import Config, get_ai_config
-from .mentions import mentions_or_replies_to_bot
-from .permissions import is_allowed, is_reserved_private_command
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 

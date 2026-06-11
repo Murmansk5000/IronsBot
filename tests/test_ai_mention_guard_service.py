@@ -1,18 +1,4 @@
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-
-_SERVICE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "custom_plugins"
-    / "ai_mention_guard"
-    / "service.py"
-)
-_SPEC = spec_from_file_location("ai_mention_guard_service_for_test", _SERVICE_PATH)
-assert _SPEC is not None and _SPEC.loader is not None
-_SERVICE = module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_SERVICE)
-GuardReplyLimiter = _SERVICE.GuardReplyLimiter
+from ironsbot.services.ai.mention_guard import GuardReplyLimiter
 
 
 def test_guard_reply_limiter_caps_messages_per_window() -> None:

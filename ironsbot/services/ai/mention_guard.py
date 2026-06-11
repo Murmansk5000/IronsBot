@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
+from ironsbot.services.ai.mentions import mentions_or_replies_to_bot
+from ironsbot.services.ai.permissions import is_allowed as is_ai_allowed
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -37,9 +40,6 @@ class GuardReplyLimiter:
 
 
 async def should_guard_non_ai_group_mention(event: MessageEvent) -> bool:
-    from ironsbot.custom_plugins.ai_chat.mentions import mentions_or_replies_to_bot
-    from ironsbot.custom_plugins.ai_chat.permissions import is_allowed as is_ai_allowed
-
     if not isinstance(event, GroupMessageEvent):
         return False
 
