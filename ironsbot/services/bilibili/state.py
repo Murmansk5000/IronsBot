@@ -196,16 +196,6 @@ def dynamic_history_db_file() -> Path:
 def cookie_cache_file() -> Path:
     return bili_storage_dir() / "bili_cookie_cache.txt"
 
-AUTH_INVALID_CODES = {-101, -401, -403, 412}
-LOGIN_QR_EXPIRE_SECONDS = 180
-LOGIN_COOKIE_KEYS = {
-    "SESSDATA",
-    "bili_jct",
-    "DedeUserID",
-    "DedeUserID__ckMd5",
-    "sid",
-}
-
 check_lock = asyncio.Lock()
 
 

@@ -8,6 +8,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_last_saved_times,
     get_saved_cookie,
@@ -31,7 +32,7 @@ from ironsbot.services.bilibili.state import (
 )
 from ironsbot.shared.config.time import minute_of_day
 
-from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
+from .auth import send_bili_login_qrcode_to_superusers
 from .bot_access import get_first_bot
 from .config import get_bili_config
 

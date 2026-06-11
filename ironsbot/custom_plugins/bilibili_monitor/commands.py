@@ -14,6 +14,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     DynamicHistoryRecord,
     get_dynamic_history_item,
@@ -43,7 +44,7 @@ from ironsbot.shared.plugin_system import (
     register_plugin,
 )
 
-from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
+from .auth import send_bili_login_qrcode_to_superusers
 from .config import get_bili_config
 from .service import run_check_logic
 

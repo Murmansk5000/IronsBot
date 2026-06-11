@@ -2,19 +2,17 @@ import asyncio
 import base64
 import time
 from io import BytesIO
-from urllib.parse import parse_qsl, urlparse
 
 import httpx
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
+from ironsbot.services.bilibili.auth import (
+    LOGIN_QR_EXPIRE_SECONDS,
+    extract_bili_login_cookie,
+)
 from ironsbot.services.bilibili.cache import save_new_cookie
 from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
-from ironsbot.services.bilibili.state import (
-    AUTH_INVALID_CODES,
-    LOGIN_COOKIE_KEYS,
-    LOGIN_QR_EXPIRE_SECONDS,
-)
 
 from .bot_access import get_first_bot
 from .config import get_bili_config
@@ -31,44 +29,9 @@ def is_bili_login_required() -> bool:
     return _bili_login_required
 
 
-def is_bili_auth_invalid(
-    status_code: int,
-    data: dict | None = None,
-) -> bool:
-    if status_code in {401, 403}:
-        return True
-
-    if not isinstance(data, dict):
-        return False
-
-    return data.get("code") in AUTH_INVALID_CODES
-
-
 def _set_bili_login_required(required: bool) -> None:
     global _bili_login_required
     _bili_login_required = required
-
-
-def _extract_bili_login_cookie(
-    response: httpx.Response,
-    login_url: str = "",
-) -> str:
-    cookies: dict[str, str] = {
-        key: value
-        for key, value in response.cookies.items()
-        if value
-    }
-
-    if login_url:
-        query_items = parse_qsl(
-            urlparse(login_url).query,
-            keep_blank_values=False,
-        )
-        for key, value in query_items:
-            if key in LOGIN_COOKIE_KEYS and value:
-                cookies[key] = value
-
-    return "; ".join(f"{key}={value}" for key, value in cookies.items())
 
 
 async def _send_private_to_superusers(
@@ -256,7 +219,7 @@ async def _poll_bili_login(
                 poll_code = poll_data.get("code")
 
                 if poll_code == 0:
-                    new_cookie = _extract_bili_login_cookie(
+                    new_cookie = extract_bili_login_cookie(
                         poll_res,
                         poll_data.get("url", ""),
                     )
