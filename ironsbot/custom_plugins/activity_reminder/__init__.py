@@ -15,6 +15,7 @@ from nonebot.rule import Rule
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from ironsbot.services.activity.catalog import build_active_activity_infos
 from ironsbot.services.activity.commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
@@ -28,11 +29,6 @@ from ironsbot.services.activity.models import (
     ActivityInfo,
     ActivityInfoCache,
     ActivityReminder,
-)
-from ironsbot.services.activity.notice import (
-    offer_blocks,
-    offer_end_time,
-    offer_window_from_blocks,
 )
 from ironsbot.services.activity.planning import (
     activity_deadline,
@@ -141,30 +137,6 @@ def _activity_sort_end_time(
     )
 
 
-def _parse_datetime(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        parsed = value
-    elif isinstance(value, (int, float)):
-        parsed = datetime.fromtimestamp(value, tz=LOCAL_TZ)
-    elif isinstance(value, str):
-        text_value = value.strip()
-        if not text_value:
-            return None
-        try:
-            parsed = datetime.fromisoformat(text_value.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                parsed = datetime.fromisoformat(text_value.replace("T", " "))
-            except ValueError:
-                return None
-    else:
-        return None
-
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=LOCAL_TZ)
-    return parsed.astimezone(LOCAL_TZ)
-
-
 def _warn_activity_data_unavailable(key: str, reason: str) -> None:
     if key in _logged_warnings:
         return
@@ -260,58 +232,7 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
             )
         ]
 
-    activities: list[ActivityInfo] = []
-    for row in _load_activity_rows():
-        end_time = _parse_datetime(row.get("end_time"))
-        if end_time is None or end_time <= now:
-            continue
-
-        start_time = _parse_datetime(row.get("start_time"))
-        if start_time is not None and start_time > now:
-            continue
-
-        activity = ActivityInfo(
-            activity_id=int(row["id"]),
-            name=str(row.get("name") or f"活动 {row['id']}"),
-            start_time=start_time,
-            end_time=end_time,
-            sort_order=int(row.get("sort_order") or 0),
-        )
-        try:
-            activity_offer_blocks = offer_blocks(activity, now)
-            offer_window = offer_window_from_blocks(activity_offer_blocks)
-            activity_offer_end_time = offer_end_time(
-                activity,
-                activity_offer_blocks,
-            )
-        except Exception:  # noqa: BLE001
-            logger.opt(exception=True).warning(
-                "activity reminder offer parsing failed for "
-                f"activity {activity.activity_id}: {activity.name}"
-            )
-            offer_window = None
-            activity_offer_end_time = None
-        activities.append(
-            ActivityInfo(
-                activity_id=activity.activity_id,
-                name=activity.name,
-                start_time=activity.start_time,
-                end_time=activity.end_time,
-                sort_order=activity.sort_order,
-                offer_label=offer_window[0] if offer_window else None,
-                offer_window_days=offer_window[1] if offer_window else None,
-                offer_end_time=activity_offer_end_time,
-            )
-        )
-
-    sorted_activities = sorted(
-        activities,
-        key=lambda activity: (
-            _activity_sort_end_time(activity),
-            activity.sort_order,
-            activity.activity_id,
-        ),
-    )
+    sorted_activities = build_active_activity_infos(_load_activity_rows(), now)
     _activity_info_cache.items = sorted_activities
     _activity_info_cache.expires_at = now + ACTIVITY_INFO_CACHE_TTL
     return list(sorted_activities)
