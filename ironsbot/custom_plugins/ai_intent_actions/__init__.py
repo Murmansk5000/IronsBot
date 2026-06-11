@@ -1,8 +1,7 @@
 import asyncio
-import re
 
 from nonebot import on_message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
@@ -15,20 +14,26 @@ from ironsbot.custom_plugins.message_actions import (
     finish_message_sequence,
 )
 from ironsbot.custom_plugins.team_shortcut.adapter import fetch_team_shortcut_result
-from ironsbot.services.ai.client import call_ai_chat
+from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.constants import (
     EMPTY_REPLY,
     REQUEST_FAILED_REPLY,
 )
-from ironsbot.shared.features import (
-    is_group_feature_allowed,
-    is_private_feature_allowed,
+from ironsbot.services.ai.intent import (
+    AiIntentAction,
+    build_intent_prompt,
+    contains_any_keyword,
+    excluded_by_command,
+    format_action_template,
+    get_ai_intent_config,
+    get_configured_actions,
+    get_team_ids,
+    get_team_resource_users,
+    get_team_shortcut_config,
+    is_action_allowed,
+    reply_is_yes,
 )
-from ironsbot.shared.messaging.text import (
-    build_message,
-    command_text_matches,
-    normalize_command_text,
-)
+from ironsbot.shared.messaging.text import build_message
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -36,24 +41,11 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from .config import (
-    AiIntentAction,
-    Config,
-    get_ai_config,
-    get_ai_key,
-    get_configured_actions,
-    get_team_ids,
-    get_team_resource_users,
-    get_team_shortcut_config,
-)
+from .config import Config
 
 ACTION_KEY = "_ai_intent_action"
 AI_INTENT_PLUGIN_NAME = "ai_intent"
 
-
-class _TemplateContext(dict[str, str]):
-    def __missing__(self, key: str) -> str:
-        return "{" + key + "}"
 
 __plugin_meta__ = PluginMetadata(
     name="AI意图动作",
@@ -68,69 +60,8 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def _contains_any_keyword(text: str, keywords: list[str]) -> bool:
-    normalized = normalize_command_text(text)
-    return any(
-        normalize_command_text(keyword) in normalized
-        for keyword in keywords
-    )
-
-
-def _excluded_by_command(text: str, action: AiIntentAction) -> bool:
-    exclude_commands = list(action.exclude_commands)
-    if action.action == "team_shortcut":
-        exclude_commands.extend(get_team_shortcut_config().commands)
-
-    return bool(exclude_commands) and command_text_matches(text, exclude_commands)
-
-
-def _is_action_allowed(event: MessageEvent, action: AiIntentAction) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            action.feature,
-        )
-
-    return is_private_feature_allowed(event.user_id, action.feature)
-
-
-def _format_action_template(action: AiIntentAction, template: str, text: str) -> str:
-    return template.format_map(
-        _TemplateContext(
-            action_id=action.id or action.template or "unnamed",
-            feature=action.feature,
-            intent=action.intent,
-            keywords=", ".join(action.keywords),
-            message=text,
-        )
-    )
-
-
-def _build_intent_prompt(action: AiIntentAction, text: str) -> str:
-    return _format_action_template(action, action.classifier_prompt, text)
-
-
-def _reply_is_yes(reply: str) -> bool:
-    normalized = reply.strip().lower()
-    first_line = re.sub(
-        r"^[\s.\u3002:\uff1a,\uff0c\"'`]+|"
-        r"[\s.\u3002:\uff1a,\uff0c\"'`]+$",
-        "",
-        normalized.splitlines()[0],
-    )
-    return first_line in {
-        "yes",
-        "y",
-        "true",
-        "\u662f",
-        "\u5bf9",
-        "\u7b26\u5408",
-    }
-
-
 async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
-    if not get_ai_config().intent_actions_enabled:
+    if not get_ai_intent_config().intent_actions_enabled:
         return False
 
     text = event.get_plaintext().strip()
@@ -140,14 +71,14 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
     for action in get_configured_actions():
         if (
             not action.enabled
-            or not _is_action_allowed(event, action)
-            or not _contains_any_keyword(text, action.keywords)
-            or _excluded_by_command(text, action)
+            or not is_action_allowed(event, action)
+            or not contains_any_keyword(text, action.keywords)
+            or excluded_by_command(text, action)
         ):
             continue
 
         try:
-            reply = await call_ai_chat(_build_intent_prompt(action, text), [])
+            reply = await call_ai_chat(build_intent_prompt(action, text), [])
         except Exception as e:  # noqa: BLE001
             logger.warning(f"AI intent action failed to classify {action.id}: {e}")
             return False
@@ -159,7 +90,7 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
             f"AI intent action {action.id or '<unnamed>'} classified "
             f"{event.user_id}: {reply!r}"
         )
-        if _reply_is_yes(reply):
+        if reply_is_yes(reply):
             state[ACTION_KEY] = action
             return True
 
@@ -230,7 +161,7 @@ async def _handle_ai_reply_action(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    prompt = _format_action_template(
+    prompt = format_action_template(
         action,
         action.reply_prompt,
         event.get_plaintext().strip(),
