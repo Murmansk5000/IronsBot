@@ -36,7 +36,7 @@ from ironsbot.utils.rule import no_reply
 if TYPE_CHECKING:
     from nonebot.plugin import Plugin
 
-    from ironsbot.shared.config.config import HelpConfig
+    from ironsbot.config.models.runtime import HelpConfig
 
 DEFAULT_IGNORED_PLUGINS = [
     "发图",

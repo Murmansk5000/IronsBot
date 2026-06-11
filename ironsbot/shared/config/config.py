@@ -15,6 +15,15 @@ from pydantic import (
 from typing_extensions import Self
 
 from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.runtime import (
+    DataSyncConfig,
+    HeadlessNoticeConfig,
+    HelpConfig,
+    RestartConfig,
+    ServerStatusConfig,
+    StartupConfig,
+    SuperuserPriorityConfig,
+)
 from ironsbot.shared.config.parsing import (
     int_list,
     json_array,
@@ -25,8 +34,6 @@ from ironsbot.shared.config.parsing import (
 )
 from ironsbot.shared.config.time import (
     normalize_daily_time,
-    normalized_daily_time_csv,
-    normalized_daily_times,
 )
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
@@ -36,16 +43,6 @@ ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 co
 INVALID_INTERVAL_TIME_ERROR = (
     "APP_CONFIG.bilibili.polling.windows time must use HH:MM"
 )
-INVALID_RESTART_TIME_ERROR = (
-    "APP_CONFIG.runtime.restart.times must contain daily HH:MM times, "
-    'for example "04:30,16:10" or ["04:30","16:10"]'
-)
-INVALID_RECONNECT_TIME_ERROR = (
-    "APP_CONFIG.runtime.headless_notice.reconnect_check_times must contain "
-    "daily HH:MM times, "
-    'for example "00:01,00:02" or ["00:01","00:02"]'
-)
-
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
@@ -119,10 +116,8 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "logo",
     "text",
 )
-DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 DEFAULT_SENDPIC_MESSAGE_TEMPLATE = "{image}"
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
-IRONS_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
 
 KNOWN_FEATURES = frozenset(
     {
@@ -740,104 +735,6 @@ class MeetingConfig(BaseModel):
         return string_list(value)
 
 
-class StartupConfig(BaseModel):
-    enabled: bool = True
-    message: str = "机器人已开启。"
-    delay: float = Field(default=0.0, ge=0)
-
-
-class ServerStatusConfig(BaseModel):
-    broadcast: bool = False
-    broadcast_message: str = DEFAULT_BROADCAST_MESSAGE
-    broadcast_cooldown_minutes: int = Field(default=1440, ge=0)
-
-    @field_validator("broadcast_message")
-    @classmethod
-    def normalize_broadcast_message(cls, value: str) -> str:
-        message = value.strip()
-        return message or DEFAULT_BROADCAST_MESSAGE
-
-
-class RestartConfig(BaseModel):
-    enabled: bool = False
-    times: str = "04:30"
-    grace_seconds: float = Field(default=10.0, ge=0)
-    signal_parent: bool = True
-
-    @field_validator("times", mode="before")
-    @classmethod
-    def normalize_restart_times(cls, value: object) -> str:
-        return normalized_daily_time_csv(
-            value,
-            error_message=INVALID_RESTART_TIME_ERROR,
-        )
-
-    @model_validator(mode="after")
-    def validate_restart_times(self) -> Self:
-        if self.enabled and not self.parsed_restart_times:
-            raise ValueError(INVALID_RESTART_TIME_ERROR)
-        return self
-
-    @property
-    def parsed_restart_times(self) -> list[str]:
-        return normalized_daily_times(
-            self.times,
-            error_message=INVALID_RESTART_TIME_ERROR,
-        )
-
-
-class HeadlessNoticeConfig(BaseModel):
-    login_notice: bool = True
-    login_notice_message: str = (
-        "无头米米号登录未成功。\n"
-        "米米号：{user_id}\n"
-        "状态：{reason}\n"
-        "依赖米米号登录的功能可能不可用；请检查账号、MD5密码、网络或赛尔号服务器状态。"
-    )
-    state_notice: bool = True
-    state_offline_message: str = (
-        "无头米米号已掉线。\n"
-        "米米号：{user_id}\n"
-        "状态：{reason}\n"
-        "来源：{source}"
-    )
-    state_online_message: str = (
-        "无头米米号已恢复登录。\n"
-        "米米号：{user_id}\n"
-        "来源：{source}"
-    )
-    reconnect_check_times: str = "00:01,00:02"
-
-    @field_validator("reconnect_check_times", mode="before")
-    @classmethod
-    def normalize_reconnect_times(cls, value: object) -> str:
-        return normalized_daily_time_csv(
-            value,
-            error_message=INVALID_RECONNECT_TIME_ERROR,
-        )
-
-    @property
-    def parsed_reconnect_check_times(self) -> list[str]:
-        return normalized_daily_times(
-            self.reconnect_check_times,
-            error_message=INVALID_RECONNECT_TIME_ERROR,
-        )
-
-
-class HelpConfig(BaseModel):
-    ignored_plugins: list[str] = Field(default_factory=list)
-
-    @field_validator("ignored_plugins", mode="before")
-    @classmethod
-    def normalize_ignored_plugins(cls, value: object) -> object:
-        return string_list(value)
-
-
-class SuperuserPriorityConfig(BaseModel):
-    enabled: bool = True
-    wait_timeout_seconds: float = Field(default=300.0, ge=0)
-
-
 class RenderConfig(BaseModel):
     cache_dir: Path | None = Path("render_cache")
     cache_max_size_mb: int = Field(default=200, gt=0)
@@ -914,40 +811,6 @@ class ModulesConfig(BaseModel):
     priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     sendpic: SendpicConfig = Field(default_factory=SendpicConfig)
-
-
-class DataSourceConfig(BaseModel):
-    url: str
-    fingerprint_url: str = ""
-    interval_minutes: int = Field(default=60, gt=0)
-    local_path: str
-
-
-class DataSyncConfig(BaseModel):
-    on_startup: bool = False
-    interval_enabled: bool = True
-    sources: dict[str, DataSourceConfig] = Field(
-        default_factory=lambda: {
-            "seerapi": DataSourceConfig(
-                url=f"{IRONS_DATA_RELEASE}/ironsbot-data-latest/ironsbot-data.sqlite",
-                fingerprint_url=(
-                    f"{IRONS_DATA_RELEASE}/ironsbot-data-latest/"
-                    "ironsbot-data.sqlite.sha256"
-                ),
-                interval_minutes=60,
-                local_path="data/ironsbot-data.sqlite",
-            ),
-            "aliases": DataSourceConfig(
-                url=f"{IRONS_DATA_RELEASE}/alias-db-latest/aliases-data.sqlite",
-                fingerprint_url=(
-                    f"{IRONS_DATA_RELEASE}/alias-db-latest/"
-                    "aliases-data.sqlite.sha256"
-                ),
-                interval_minutes=60,
-                local_path="data/aliases-data.sqlite",
-            ),
-        }
-    )
 
 
 class FeaturePolicyConfig(BaseModel):
