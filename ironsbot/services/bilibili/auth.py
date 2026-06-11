@@ -1,12 +1,15 @@
 import base64
 from dataclasses import dataclass
 from io import BytesIO
+from typing import Literal
 from urllib.parse import parse_qsl, urlparse
 
 import httpx
 
 AUTH_INVALID_CODES = {-101, -401, -403, 412}
 LOGIN_QR_EXPIRE_SECONDS = 180
+LOGIN_QR_POLL_SUCCESS_CODE = 0
+LOGIN_QR_POLL_EXPIRED_CODE = 86038
 LOGIN_COOKIE_KEYS = {
     "SESSDATA",
     "bili_jct",
@@ -15,12 +18,20 @@ LOGIN_COOKIE_KEYS = {
     "sid",
 }
 
+BiliLoginPollStatus = Literal["confirmed", "expired", "pending"]
+
 
 @dataclass(frozen=True, slots=True)
 class LoginQrMessageParts:
     tip_text: str
     image_base64: str = ""
     image_error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class LoginQrRequest:
+    url: str
+    qrcode_key: str
 
 
 def is_bili_auth_invalid(
@@ -60,6 +71,37 @@ def extract_bili_login_cookie(
         )
 
     return "; ".join(f"{key}={value}" for key, value in cookies.items())
+
+
+def has_complete_bili_login_cookie(cookie: str) -> bool:
+    return "SESSDATA=" in cookie
+
+
+def parse_bili_login_qrcode_response(data: object) -> LoginQrRequest:
+    if not isinstance(data, dict) or data.get("code") != 0:
+        msg = f"Bilibili QR request failed: {data}"
+        raise ValueError(msg)
+
+    qr_data = data.get("data", {})
+    if not isinstance(qr_data, dict):
+        msg = "Bilibili QR response is incomplete"
+        raise TypeError(msg)
+
+    qr_url = str(qr_data.get("url") or "").strip()
+    qrcode_key = str(qr_data.get("qrcode_key") or "").strip()
+    if not qr_url or not qrcode_key:
+        msg = "Bilibili QR response is incomplete"
+        raise ValueError(msg)
+
+    return LoginQrRequest(url=qr_url, qrcode_key=qrcode_key)
+
+
+def classify_bili_login_poll_code(code: object) -> BiliLoginPollStatus:
+    if code == LOGIN_QR_POLL_SUCCESS_CODE:
+        return "confirmed"
+    if code == LOGIN_QR_POLL_EXPIRED_CODE:
+        return "expired"
+    return "pending"
 
 
 def build_bili_login_qrcode_tip(qr_url: str) -> str:

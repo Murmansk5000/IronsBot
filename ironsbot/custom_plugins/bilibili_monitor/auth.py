@@ -8,7 +8,10 @@ from nonebot.log import logger
 from ironsbot.services.bilibili.auth import (
     LOGIN_QR_EXPIRE_SECONDS,
     build_bili_login_qrcode_message_parts,
+    classify_bili_login_poll_code,
     extract_bili_login_cookie,
+    has_complete_bili_login_cookie,
+    parse_bili_login_qrcode_response,
 )
 from ironsbot.services.bilibili.cache import save_new_cookie
 from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
@@ -101,28 +104,20 @@ async def request_bili_login_qrcode(
             "x/passport-login/web/qrcode/generate"
         )
 
-    result = response.json()
-    if result.get("code") != 0:
-        raise RuntimeError(f"Bilibili QR request failed: {result}")
+    qr_request = parse_bili_login_qrcode_response(response.json())
 
-    qr_data = result.get("data", {})
-    qr_url = qr_data.get("url")
-    qrcode_key = qr_data.get("qrcode_key")
-    if not qr_url or not qrcode_key:
-        raise RuntimeError("Bilibili QR response is incomplete")
-
-    _login_qr_url = qr_url
-    _login_qrcode_key = qrcode_key
+    _login_qr_url = qr_request.url
+    _login_qrcode_key = qr_request.qrcode_key
     _login_expires_at = now + LOGIN_QR_EXPIRE_SECONDS
     _login_poll_task = asyncio.create_task(
         _poll_bili_login(
             bot=bot,
-            qrcode_key=qrcode_key,
+            qrcode_key=qr_request.qrcode_key,
             requester_id=requester_id,
         )
     )
 
-    return _build_login_qrcode_message(qr_url)
+    return _build_login_qrcode_message(qr_request.url)
 
 
 async def send_bili_login_qrcode_to_superusers(
@@ -203,15 +198,17 @@ async def _poll_bili_login(
                     params={"qrcode_key": qrcode_key},
                 )
                 poll_data = poll_res.json().get("data", {})
-                poll_code = poll_data.get("code")
+                poll_status = classify_bili_login_poll_code(
+                    poll_data.get("code")
+                )
 
-                if poll_code == 0:
+                if poll_status == "confirmed":
                     new_cookie = extract_bili_login_cookie(
                         poll_res,
                         poll_data.get("url", ""),
                     )
 
-                    if "SESSDATA=" not in new_cookie:
+                    if not has_complete_bili_login_cookie(new_cookie):
                         await _send_private_to_superusers(
                             "B站扫码已确认，但没有取得完整登录Cookie。"
                             "下次检测到登录失效时会重新发送二维码。",
@@ -229,7 +226,7 @@ async def _poll_bili_login(
                     )
                     return
 
-                if poll_code == 86038:
+                if poll_status == "expired":
                     break
 
             logger.info("Bilibili login QR expired")
