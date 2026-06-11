@@ -57,7 +57,7 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
     "ironsbot.custom_plugins.message_actions.runtime:setup_message_actions_runtime",
     "ironsbot.custom_plugins.headless_seer_notice:setup_headless_notice_runtime",
-    "ironsbot.custom_plugins.scheduled_restart:setup_scheduled_restart_runtime",
+    "ironsbot.custom_plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
     "ironsbot.custom_plugins.startup_ready:setup_startup_ready_runtime",
     "ironsbot.custom_plugins.startup_notice:setup_startup_notice_runtime",
     "ironsbot.custom_plugins.bilibili_monitor.service:setup_bilibili_monitor_runtime",
