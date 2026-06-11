@@ -1,4 +1,4 @@
-from nonebot import require
+from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
@@ -8,7 +8,7 @@ from ironsbot.custom_plugins.startup_ready import register_startup_check
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 
-from .config import INVALID_RECONNECT_TIME_ERROR, plugin_config
+from .config import INVALID_RECONNECT_TIME_ERROR, Config, get_headless_notice_config
 from .service import (
     headless_is_configured,
     headless_login_failure_reason,
@@ -22,6 +22,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 RECONNECT_JOB_PREFIX = "headless_reconnect_check"
+driver = get_driver()
 
 __plugin_meta__ = PluginMetadata(
     name="自定义无头登录",
@@ -30,16 +31,18 @@ __plugin_meta__ = PluginMetadata(
         "【自定义无头登录】\n"
         "启动后检查 HEADLESS_SEER_USER_ID / HEADLESS_SEER_PASSWORD 是否登录成功。\n"
         "登录状态从在线/离线发生变化时私聊 SUPERUSERS；正常维护窗口内不播报。\n"
-        "每天按 MODULES.headless_notice.reconnect_check_times "
+        "每天按 runtime.headless_notice.reconnect_check_times "
         "检查无头状态，掉线则尝试重连。\n"
         "超级管理员可发送 /开服查询 触发开服查询和无头重连。"
     ),
+    config=Config,
 )
 
 
 def _build_startup_notice_message(reason: str) -> Message:
+    notice_config = get_headless_notice_config()
     return Message(
-        plugin_config.headless_notice_config.login_notice_message.format(
+        notice_config.login_notice_message.format(
             user_id=headless_user_id_text(),
             reason=reason,
         )
@@ -63,7 +66,7 @@ async def _startup_check(bot: Bot) -> None:
         source="启动检查",
         notify=False,
     )
-    if not plugin_config.headless_notice_config.login_notice:
+    if not get_headless_notice_config().login_notice:
         return
 
     target_users = sorted(get_superuser_ids())
@@ -120,7 +123,7 @@ async def _daily_reconnect_check(scheduled_time: str) -> None:
 
 
 def _register_reconnect_checks() -> None:
-    reconnect_times = plugin_config.headless_notice_config.parsed_reconnect_check_times
+    reconnect_times = get_headless_notice_config().parsed_reconnect_check_times
     for scheduled_time in reconnect_times:
         hour, minute = daily_time_parts(
             scheduled_time,
@@ -146,4 +149,8 @@ def _register_reconnect_checks() -> None:
 
 
 register_startup_check("headless_seer_login", _startup_check)
-_register_reconnect_checks()
+
+
+@driver.on_startup
+async def register_reconnect_checks() -> None:
+    _register_reconnect_checks()

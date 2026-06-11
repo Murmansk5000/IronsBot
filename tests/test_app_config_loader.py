@@ -22,6 +22,7 @@ DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_REPLY_MAX_LINES = 80
 DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
+DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -82,6 +83,8 @@ def test_small_plugin_config_accessors_read_app_config(
     clear_app_config_cache()
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
     monkeypatch.setenv("AI_KEY", "sk-test")
+    monkeypatch.setenv("HEADLESS_SEER_USER_ID", str(HEADLESS_USER_ID))
+    monkeypatch.setenv("HEADLESS_SEER_PASSWORD", "md5")
 
     ai_chat_config = _load_module_from_path(
         "ai_chat_config_for_app_config_test",
@@ -102,6 +105,14 @@ def test_small_plugin_config_accessors_read_app_config(
     bili_config = _load_module_from_path(
         "bilibili_monitor_config_for_app_config_test",
         ROOT / "ironsbot" / "custom_plugins" / "bilibili_monitor" / "config.py",
+    )
+    headless_config = _load_module_from_path(
+        "headless_seer_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "headless_seer" / "config.py",
+    )
+    headless_notice_config = _load_module_from_path(
+        "headless_seer_notice_config_for_app_config_test",
+        ROOT / "ironsbot" / "custom_plugins" / "headless_seer_notice" / "config.py",
     )
     meeting_config = _load_module_from_path(
         "meeting_reply_config_for_app_config_test",
@@ -135,6 +146,15 @@ def test_small_plugin_config_accessors_read_app_config(
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
+        assert (
+            headless_config.get_headless_config().heartbeat_interval
+            == DEFAULT_HEADLESS_HEARTBEAT_INTERVAL
+        )
+        assert (
+            headless_config.get_headless_credentials().headless_seer_user_id
+            == HEADLESS_USER_ID
+        )
+        assert headless_notice_config.get_headless_notice_config().login_notice
         assert (
             message_config.get_message_config().reply.max_lines
             == DEFAULT_REPLY_MAX_LINES

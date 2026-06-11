@@ -8,7 +8,7 @@ from nonebot.log import logger
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.shared.features import get_superuser_ids
 
-from .config import plugin_config
+from .config import get_headless_notice_config
 from .service import headless_user_id_text
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -105,7 +105,7 @@ async def _record_headless_state(
         )
         return
 
-    notice_config = plugin_config.headless_notice_config
+    notice_config = get_headless_notice_config()
     if not notice_config.state_notice:
         logger.info("headless state notice disabled")
         return
@@ -130,10 +130,11 @@ async def _send_headless_state_notice(
         logger.warning("headless state notice has no superusers")
         return
 
+    notice_config = get_headless_notice_config()
     message_template = (
-        plugin_config.headless_notice_config.state_online_message
+        notice_config.state_online_message
         if connected
-        else plugin_config.headless_notice_config.state_offline_message
+        else notice_config.state_offline_message
     )
     message = message_template.format(
         user_id=user_id or headless_user_id_text(),

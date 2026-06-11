@@ -1,15 +1,18 @@
+from ironsbot.config import AppConfig, get_app_config
 from ironsbot.shared.config.config import (
     INVALID_RECONNECT_TIME_ERROR,
-    Config,
     HeadlessNoticeConfig,
-    get_shared_config,
 )
 
-plugin_config = get_shared_config()
+Config = AppConfig
+
+
+def get_headless_notice_config() -> HeadlessNoticeConfig:
+    return get_app_config().runtime.headless_notice
 
 __all__ = [
     "INVALID_RECONNECT_TIME_ERROR",
     "Config",
     "HeadlessNoticeConfig",
-    "plugin_config",
+    "get_headless_notice_config",
 ]
