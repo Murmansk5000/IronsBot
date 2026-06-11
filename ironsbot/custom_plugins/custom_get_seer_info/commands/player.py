@@ -37,7 +37,11 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
-from ..config import plugin_config
+from ..config import (
+    get_local_rank_config,
+    get_player_query_config,
+    get_team_query_config,
+)
 from ..group import matcher_group
 from ..packets import ensure_extended_packets
 from ._args import parse_numeric_id
@@ -73,12 +77,11 @@ METRIC_SEPARATOR = "\uFF5C"
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_DETAIL_NAMESPACE = "custom_get_seer_info_player_details"
 PLAYER_PLUGIN_NAME = "seer_player"
-QUERY_CONFIG = plugin_config.seer_query_config
 PLAYER_QUERY_GUARD = QueryGuard(
     success_namespace="custom_get_seer_info.player_query.success",
     failure_namespace="custom_get_seer_info.player_query.failure",
-    success_cooldown=lambda: QUERY_CONFIG.player.rate_limit_seconds,
-    failure_cooldown=lambda: QUERY_CONFIG.player.failure_rate_limit_seconds,
+    success_cooldown=lambda: get_player_query_config().rate_limit_seconds,
+    failure_cooldown=lambda: get_player_query_config().failure_rate_limit_seconds,
 )
 
 
@@ -772,7 +775,8 @@ class PlayerQueryPlugin:
         ensure_extended_packets()
         player_id: int = state[PLAYER_ID_KEY]
         extra_errors: list[str] = []
-        enabled_sections = set(plugin_config.seer_query_config.player.sections)
+        player_config = get_player_query_config()
+        enabled_sections = set(player_config.sections)
         show_local_rank = "local_rank" in enabled_sections
         has_collection = bool(
             {"collection", "rank", "local_rank", "achievement"} & enabled_sections
@@ -795,7 +799,7 @@ class PlayerQueryPlugin:
                         extra_errors,
                     ),
                 ),
-                timeout=plugin_config.seer_query_config.player.timeout_seconds,
+                timeout=player_config.timeout_seconds,
             )
             await mark_headless_available(
                 source="米米号查询",
@@ -809,14 +813,14 @@ class PlayerQueryPlugin:
                         game.get_team_info(user_info.team_id),
                         timeout=min(
                             5.0,
-                            plugin_config.seer_query_config.team.timeout_seconds,
+                            get_team_query_config().timeout_seconds,
                         ),
                     )
                     team_name = team_info.name
                 except Exception:  # noqa: BLE001
                     team_name = str(user_info.team_id)
 
-            if has_collection or needs_peak_section or QUERY_CONFIG.local_rank.enabled:
+            if has_collection or needs_peak_section or get_local_rank_config().enabled:
                 detail_task = _create_player_detail_task(
                     player_id=player_id,
                     user_info=user_info,
@@ -1160,7 +1164,7 @@ def _create_player_detail_task(  # noqa: PLR0913
                 needs_peak_section=needs_peak_section,
                 show_local_rank=show_local_rank,
             ),
-            timeout=plugin_config.seer_query_config.player.detail_timeout_seconds,
+            timeout=get_player_query_config().detail_timeout_seconds,
         )
     )
     task.add_done_callback(_log_unrequested_player_detail_task_error)
@@ -1178,7 +1182,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
 ) -> PlayerDetailMessages:
     game = get_game_client()
     extra_errors: list[str] = []
-    needs_local_rank = plugin_config.seer_query_config.local_rank.enabled
+    needs_local_rank = get_local_rank_config().enabled
     needs_unity_part_one = has_collection
     needs_unity_peak = needs_peak_section
     needs_rank_summary = has_collection or needs_local_rank

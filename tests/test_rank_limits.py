@@ -26,24 +26,26 @@ def _patch_rank_config(
     *,
     online_limit: int = ONLINE_LIMIT,
 ) -> None:
+    rank_config = SimpleNamespace(
+        limit=10000,
+        online_limit=online_limit,
+        page_size=100,
+        page_cache=True,
+        page_cache_ttl_seconds=3600,
+        allow_stale_cache=True,
+        refresh_stale_cache=True,
+        peak_subkey=None,
+    )
+    local_rank_config = SimpleNamespace(refresh_interval_seconds=0)
     monkeypatch.setattr(
         _rank,
-        "plugin_config",
-        SimpleNamespace(
-            seer_query_config=SimpleNamespace(
-                rank=SimpleNamespace(
-                    limit=10000,
-                    online_limit=online_limit,
-                    page_size=100,
-                    page_cache=True,
-                    page_cache_ttl_seconds=3600,
-                    allow_stale_cache=True,
-                    refresh_stale_cache=True,
-                    peak_subkey=None,
-                ),
-                local_rank=SimpleNamespace(refresh_interval_seconds=0),
-            )
-        ),
+        "get_rank_query_config",
+        lambda: rank_config,
+    )
+    monkeypatch.setattr(
+        _rank,
+        "get_local_rank_config",
+        lambda: local_rank_config,
     )
 
 

@@ -23,6 +23,7 @@ SUPERUSER_ID = 123456789
 DEFAULT_REPLY_MAX_LINES = 80
 DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
+DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -191,5 +192,26 @@ def test_small_plugin_config_accessors_read_app_config(
         assert "aliases" in seer_data_config.get_data_sync_config().sources
         assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled
         assert team_shortcut_config.get_team_shortcut_config().commands == ["战队"]
+    finally:
+        clear_app_config_cache()
+
+
+def test_seer_plugin_config_accessors_read_app_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_app_config_cache()
+    monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
+
+    custom_seer_config = _load_module_from_path(
+        "custom_get_seer_info_config_for_app_config_test",
+        ROOT / "ironsbot" / "custom_plugins" / "custom_get_seer_info" / "config.py",
+    )
+
+    try:
+        assert (
+            custom_seer_config.get_player_query_config().timeout_seconds
+            == DEFAULT_PLAYER_TIMEOUT_SECONDS
+        )
+        assert custom_seer_config.get_local_rank_config().enabled
     finally:
         clear_app_config_cache()

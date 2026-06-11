@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from ..config import plugin_config
+from ..config import get_local_rank_config
 from ._rank import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
@@ -252,11 +252,11 @@ def _collect_metrics(  # noqa: PLR0913
 
 
 def _max_cached_players() -> int:
-    return max(1, plugin_config.seer_query_config.local_rank.max_players)
+    return max(1, get_local_rank_config().max_players)
 
 
 def _sqlite_cache_path() -> Path:
-    return plugin_config.seer_query_config.local_rank.path
+    return get_local_rank_config().path
 
 
 def _connect_cache() -> sqlite3.Connection:

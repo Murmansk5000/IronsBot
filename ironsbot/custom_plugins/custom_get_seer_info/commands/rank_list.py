@@ -24,7 +24,7 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from ..config import plugin_config
+from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
 from ..group import matcher_group
 from ..packets import ensure_extended_packets
 from ._client import get_game_client
@@ -418,7 +418,7 @@ async def _fetch_rank_batch_player_ids(
 ) -> tuple[GlobalRankSpec, list[int], int]:
     spec = GLOBAL_RANKS[command.rank_key]
     requested_count = command.end_rank - command.start_rank + 1
-    count = min(requested_count, plugin_config.seer_query_config.local_rank.batch_limit)
+    count = min(requested_count, get_local_rank_config().batch_limit)
     raw_start = _batch_raw_start(spec, command.start_rank)
     items = await fetch_daily_rank_page(
         get_game_client(),
@@ -505,7 +505,7 @@ def _build_rank_page_cache_status_message(spec: GlobalRankSpec) -> str:
                 f"过期区间：{_format_rank_intervals(stale_intervals)}",
             ]
         )
-    ttl = plugin_config.seer_query_config.rank.page_cache_ttl_seconds
+    ttl = get_rank_query_config().page_cache_ttl_seconds
     lines.append(f"TTL：{ttl} 秒")
     return "\n".join(lines)
 
@@ -600,7 +600,7 @@ class RankListPlugin:
                 matcher,
                 event,
                 f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
-                "请先调大 MODULES.seer.local_rank.max_players。",
+                "请先调大 seer.local_rank.max_players。",
             )
 
         spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
@@ -614,7 +614,7 @@ class RankListPlugin:
         truncated_text = ""
         if requested_count > len(player_ids):
             truncated_text = (
-                "\n本次按 MODULES.seer.local_rank.batch_limit "
+                "\n本次按 seer.local_rank.batch_limit "
                 f"只处理前 {len(player_ids)} 个。"
             )
 
@@ -669,7 +669,7 @@ class RankListPlugin:
         event: MessageEvent,
     ) -> None:
         stats = get_local_rank_cache_stats()
-        query_config = plugin_config.seer_query_config
+        query_config = get_seer_config()
         lines = [
             "📊【样本榜缓存状态】",
             f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
@@ -710,9 +710,9 @@ class RankListPlugin:
             event,
             "🔄 正在刷新样本榜缓存。"
             f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
-            f"{plugin_config.seer_query_config.local_rank.refresh_limit} 个，"
+            f"{get_local_rank_config().refresh_limit} 个，"
             "只刷新超过 "
-            f"{plugin_config.seer_query_config.local_rank.refresh_max_age_hours} "
+            f"{get_local_rank_config().refresh_max_age_hours} "
             "小时未更新的数据。",
         )
         await release_superuser_priority(state)
