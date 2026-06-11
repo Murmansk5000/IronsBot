@@ -34,6 +34,15 @@ class LoginQrRequest:
     qrcode_key: str
 
 
+@dataclass(slots=True)
+class BiliLoginRuntimeState:
+    required: bool = False
+    last_notice_at: float = 0.0
+    qrcode_key: str = ""
+    qr_url: str = ""
+    expires_at: float = 0.0
+
+
 def is_bili_auth_invalid(
     status_code: int,
     data: dict | None = None,
@@ -102,6 +111,74 @@ def classify_bili_login_poll_code(code: object) -> BiliLoginPollStatus:
     if code == LOGIN_QR_POLL_EXPIRED_CODE:
         return "expired"
     return "pending"
+
+
+def mark_bili_login_required(
+    state: BiliLoginRuntimeState,
+    *,
+    required: bool,
+) -> None:
+    state.required = required
+
+
+def is_bili_login_qr_reusable(
+    state: BiliLoginRuntimeState,
+    *,
+    now: float,
+    poll_task_running: bool,
+) -> bool:
+    return bool(
+        state.qr_url
+        and state.expires_at > now
+        and poll_task_running
+    )
+
+
+def store_bili_login_qr_request(
+    state: BiliLoginRuntimeState,
+    request: LoginQrRequest,
+    *,
+    now: float,
+    expires_in_seconds: float = LOGIN_QR_EXPIRE_SECONDS,
+) -> None:
+    state.qr_url = request.url
+    state.qrcode_key = request.qrcode_key
+    state.expires_at = now + expires_in_seconds
+
+
+def clear_bili_login_qr_if_matches(
+    state: BiliLoginRuntimeState,
+    qrcode_key: str,
+) -> bool:
+    if state.qrcode_key != qrcode_key:
+        return False
+
+    state.qrcode_key = ""
+    state.qr_url = ""
+    state.expires_at = 0.0
+    return True
+
+
+def should_send_bili_login_notice(
+    state: BiliLoginRuntimeState,
+    *,
+    now: float,
+    cooldown_seconds: float,
+    force: bool = False,
+) -> bool:
+    return force or now - state.last_notice_at >= cooldown_seconds
+
+
+def mark_bili_login_notice_sent(
+    state: BiliLoginRuntimeState,
+    *,
+    now: float,
+) -> None:
+    state.last_notice_at = now
+
+
+def reset_bili_login_notice_cooldown(state: BiliLoginRuntimeState) -> None:
+    state.last_notice_at = 0.0
 
 
 def build_bili_login_reason_detail(reason: str = "") -> str:

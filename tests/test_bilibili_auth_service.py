@@ -2,6 +2,8 @@ import httpx
 import pytest
 
 from ironsbot.services.bilibili.auth import (
+    BiliLoginRuntimeState,
+    LoginQrRequest,
     build_bili_login_cookie_incomplete_text,
     build_bili_login_notice_text,
     build_bili_login_poll_error_text,
@@ -11,10 +13,17 @@ from ironsbot.services.bilibili.auth import (
     build_bili_login_reason_detail,
     build_bili_login_success_text,
     classify_bili_login_poll_code,
+    clear_bili_login_qr_if_matches,
     extract_bili_login_cookie,
     has_complete_bili_login_cookie,
     is_bili_auth_invalid,
+    is_bili_login_qr_reusable,
+    mark_bili_login_notice_sent,
+    mark_bili_login_required,
     parse_bili_login_qrcode_response,
+    reset_bili_login_notice_cooldown,
+    should_send_bili_login_notice,
+    store_bili_login_qr_request,
 )
 
 
@@ -84,6 +93,79 @@ def test_classify_bili_login_poll_code() -> None:
     assert classify_bili_login_poll_code(86038) == "expired"
     assert classify_bili_login_poll_code(86101) == "pending"
     assert classify_bili_login_poll_code(None) == "pending"
+
+
+def test_bili_login_runtime_state_tracks_required_and_qr_cache() -> None:
+    state = BiliLoginRuntimeState()
+    expected_expires_at = 130.0
+    request = LoginQrRequest(
+        url="https://passport.example.test/qr",
+        qrcode_key="qr-key",
+    )
+
+    mark_bili_login_required(state, required=True)
+    assert state.required
+
+    store_bili_login_qr_request(
+        state,
+        request,
+        now=100.0,
+        expires_in_seconds=30.0,
+    )
+    assert state.qr_url == request.url
+    assert state.qrcode_key == request.qrcode_key
+    assert state.expires_at == expected_expires_at
+    assert is_bili_login_qr_reusable(
+        state,
+        now=120.0,
+        poll_task_running=True,
+    )
+    assert not is_bili_login_qr_reusable(
+        state,
+        now=131.0,
+        poll_task_running=True,
+    )
+    assert not is_bili_login_qr_reusable(
+        state,
+        now=120.0,
+        poll_task_running=False,
+    )
+
+    assert not clear_bili_login_qr_if_matches(state, "other-key")
+    assert state.qrcode_key == "qr-key"
+
+    assert clear_bili_login_qr_if_matches(state, "qr-key")
+    assert state.qr_url == ""
+    assert state.qrcode_key == ""
+    assert state.expires_at == 0.0
+
+
+def test_bili_login_runtime_state_tracks_notice_cooldown() -> None:
+    state = BiliLoginRuntimeState(last_notice_at=100.0)
+    notice_sent_at = 150.0
+
+    assert not should_send_bili_login_notice(
+        state,
+        now=120.0,
+        cooldown_seconds=30.0,
+    )
+    assert should_send_bili_login_notice(
+        state,
+        now=120.0,
+        cooldown_seconds=30.0,
+        force=True,
+    )
+    assert should_send_bili_login_notice(
+        state,
+        now=130.0,
+        cooldown_seconds=30.0,
+    )
+
+    mark_bili_login_notice_sent(state, now=notice_sent_at)
+    assert state.last_notice_at == notice_sent_at
+
+    reset_bili_login_notice_cooldown(state)
+    assert state.last_notice_at == 0.0
 
 
 def test_bili_login_notice_text_builders_include_optional_reason() -> None:

@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
 from ironsbot.services.bilibili.auth import (
-    LOGIN_QR_EXPIRE_SECONDS,
+    BiliLoginRuntimeState,
     build_bili_login_cookie_incomplete_text,
     build_bili_login_notice_text,
     build_bili_login_poll_error_text,
@@ -14,9 +14,16 @@ from ironsbot.services.bilibili.auth import (
     build_bili_login_qrcode_request_failed_text,
     build_bili_login_success_text,
     classify_bili_login_poll_code,
+    clear_bili_login_qr_if_matches,
     extract_bili_login_cookie,
     has_complete_bili_login_cookie,
+    is_bili_login_qr_reusable,
+    mark_bili_login_notice_sent,
+    mark_bili_login_required,
     parse_bili_login_qrcode_response,
+    reset_bili_login_notice_cooldown,
+    should_send_bili_login_notice,
+    store_bili_login_qr_request,
 )
 from ironsbot.services.bilibili.cache import save_new_cookie
 from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
@@ -24,21 +31,16 @@ from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
 from .bot_access import get_first_bot
 from .config import get_bili_config
 
-_bili_login_required = False
-_last_login_notice_at = 0.0
+_login_state = BiliLoginRuntimeState()
 _login_poll_task: asyncio.Task[None] | None = None
-_login_qrcode_key = ""
-_login_qr_url = ""
-_login_expires_at = 0.0
 
 
 def is_bili_login_required() -> bool:
-    return _bili_login_required
+    return _login_state.required
 
 
 def _set_bili_login_required(required: bool) -> None:
-    global _bili_login_required
-    _bili_login_required = required
+    mark_bili_login_required(_login_state, required=required)
 
 
 async def _send_private_to_superusers(
@@ -82,19 +84,18 @@ async def request_bili_login_qrcode(
     bot: Bot,
     requester_id: int | None = None,
 ) -> Message:
-    global _login_expires_at
     global _login_poll_task
-    global _login_qr_url
-    global _login_qrcode_key
 
     now = time.time()
-    if (
-        _login_qr_url
-        and _login_expires_at > now
-        and _login_poll_task
-        and not _login_poll_task.done()
+    poll_task_running = bool(
+        _login_poll_task and not _login_poll_task.done()
+    )
+    if is_bili_login_qr_reusable(
+        _login_state,
+        now=now,
+        poll_task_running=poll_task_running,
     ):
-        return _build_login_qrcode_message(_login_qr_url)
+        return _build_login_qrcode_message(_login_state.qr_url)
 
     if _login_poll_task and not _login_poll_task.done():
         _login_poll_task.cancel()
@@ -110,10 +111,11 @@ async def request_bili_login_qrcode(
         )
 
     qr_request = parse_bili_login_qrcode_response(response.json())
-
-    _login_qr_url = qr_request.url
-    _login_qrcode_key = qr_request.qrcode_key
-    _login_expires_at = now + LOGIN_QR_EXPIRE_SECONDS
+    store_bili_login_qr_request(
+        _login_state,
+        qr_request,
+        now=now,
+    )
     _login_poll_task = asyncio.create_task(
         _poll_bili_login(
             bot=bot,
@@ -129,16 +131,14 @@ async def send_bili_login_qrcode_to_superusers(
     reason: str = "",
     force: bool = False,
 ) -> None:
-    global _last_login_notice_at
-
     _set_bili_login_required(True)
     now = time.time()
 
-    if (
-        not force
-        and now
-        - _last_login_notice_at
-        < get_bili_config().login_notice_cooldown_seconds
+    if not should_send_bili_login_notice(
+        _login_state,
+        now=now,
+        cooldown_seconds=get_bili_config().login_notice_cooldown_seconds,
+        force=force,
     ):
         return
 
@@ -149,10 +149,10 @@ async def send_bili_login_qrcode_to_superusers(
 
     try:
         qr_message = await request_bili_login_qrcode(bot)
-        _last_login_notice_at = now
+        mark_bili_login_notice_sent(_login_state, now=now)
     except Exception as e:
         logger.error(f"Bilibili QR request failed: {e}")
-        _last_login_notice_at = now
+        mark_bili_login_notice_sent(_login_state, now=now)
         await _send_private_to_superusers(
             build_bili_login_qrcode_request_failed_text(reason),
             bot=bot,
@@ -173,11 +173,7 @@ async def _poll_bili_login(
     qrcode_key: str,
     requester_id: int | None = None,
 ) -> None:
-    global _last_login_notice_at
-    global _login_expires_at
     global _login_poll_task
-    global _login_qr_url
-    global _login_qrcode_key
 
     try:
         async with httpx.AsyncClient(
@@ -225,7 +221,7 @@ async def _poll_bili_login(
                     break
 
             logger.info("Bilibili login QR expired")
-            _last_login_notice_at = 0.0
+            reset_bili_login_notice_cooldown(_login_state)
 
     except asyncio.CancelledError:
         raise
@@ -237,10 +233,7 @@ async def _poll_bili_login(
             user_ids=[requester_id] if requester_id else None,
         )
     finally:
-        if _login_qrcode_key == qrcode_key:
-            _login_qrcode_key = ""
-            _login_qr_url = ""
-            _login_expires_at = 0.0
+        clear_bili_login_qr_if_matches(_login_state, qrcode_key)
 
         if _login_poll_task is asyncio.current_task():
             _login_poll_task = None
