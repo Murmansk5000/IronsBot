@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from pytest import MonkeyPatch
 
-from ironsbot.custom_plugins.bilibili_monitor import service
+from ironsbot.custom_plugins.bilibili_monitor import runtime as bili_runtime
 
 
 class FakeDriver:
@@ -20,20 +20,20 @@ def test_bilibili_monitor_runtime_setup_registers_startup_once(
     registered_state = False
     registered_checks: list[tuple[str, object]] = []
     monkeypatch.setitem(
-        service._bilibili_monitor_runtime_state,
+        bili_runtime._bilibili_monitor_runtime_state,
         "registered",
         registered_state,
     )
     monkeypatch.setattr(
-        service,
+        bili_runtime,
         "register_startup_check",
         lambda name, check: registered_checks.append((name, check)),
     )
     driver = FakeDriver()
     scheduler = object()
 
-    service._setup_bilibili_monitor_runtime(driver, scheduler)
-    service._setup_bilibili_monitor_runtime(driver, scheduler)
+    bili_runtime._setup_bilibili_monitor_runtime(driver, scheduler)
+    bili_runtime._setup_bilibili_monitor_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
-    assert registered_checks == [("bilibili_monitor", service._startup_check)]
+    assert registered_checks == [("bilibili_monitor", bili_runtime._startup_check)]
