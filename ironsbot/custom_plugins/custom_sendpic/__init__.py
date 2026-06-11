@@ -3,7 +3,7 @@ from nonebot.plugin import PluginMetadata
 from ironsbot.shared.config.sendpic import enabled_pic_configs
 
 from . import fixed_images as fixed_images
-from .config import Config, plugin_config
+from .config import Config, get_sendpic_config
 from .matchers import matcher_group as matcher_group
 
 
@@ -14,7 +14,7 @@ def _format_command_names(command: str, aliases: set[str]) -> str:
 
 def _format_config_command_help() -> list[str]:
     lines: list[str] = []
-    for config in enabled_pic_configs(plugin_config.sendpic_config):
+    for config in enabled_pic_configs(get_sendpic_config()):
         if config.help_message:
             lines.append(config.help_message)
             continue
