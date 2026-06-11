@@ -15,12 +15,12 @@ from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
 from ironsbot.custom_plugins.message_actions import (
-    build_message,
     event_sender_at_user_ids,
     finish_event_reply,
     send_event_reply,
 )
 from ironsbot.shared.features.visibility import plugin_visible_for_event
+from ironsbot.shared.messaging.text import build_message
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

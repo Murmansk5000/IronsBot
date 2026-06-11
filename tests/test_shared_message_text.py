@@ -1,4 +1,5 @@
 from ironsbot.shared.messaging.text import (
+    build_message,
     command_text_matches,
     normalize_command_text,
     render_text,
@@ -22,3 +23,12 @@ def test_command_text_matches_normalized_commands() -> None:
 
 def test_render_text_expands_escaped_newlines() -> None:
     assert render_text("a\\nb") == "a\nb"
+
+
+def test_build_message_renders_mentions_and_text() -> None:
+    message = build_message("a\\nb", at_user_ids=[1, 1, 2])
+
+    assert [segment.type for segment in message] == ["at", "text", "at", "text", "text"]
+    assert message[0].data["qq"] == "1"
+    assert message[2].data["qq"] == "2"
+    assert message[-1].data["text"] == "a\nb"

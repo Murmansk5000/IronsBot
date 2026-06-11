@@ -12,16 +12,13 @@ from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.custom_plugins.message_actions import (
-    build_message,
-    finish_message_sequence,
-)
+from ironsbot.custom_plugins.message_actions import finish_message_sequence
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
 from ironsbot.shared.features import is_group_feature_allowed
-from ironsbot.shared.messaging.text import command_text_matches
+from ironsbot.shared.messaging.text import build_message, command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

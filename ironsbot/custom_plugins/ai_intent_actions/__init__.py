@@ -16,7 +16,6 @@ from ironsbot.custom_plugins.ai_chat.constants import (
     REQUEST_FAILED_REPLY,
 )
 from ironsbot.custom_plugins.message_actions import (
-    build_message,
     finish_event_reply,
     finish_message_sequence,
 )
@@ -25,7 +24,11 @@ from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
-from ironsbot.shared.messaging.text import command_text_matches, normalize_command_text
+from ironsbot.shared.messaging.text import (
+    build_message,
+    command_text_matches,
+    normalize_command_text,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
