@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from nonebot import logger
 from nonebot.adapters import Event  # noqa: TC002
@@ -10,14 +11,19 @@ from nonebot.message import event_postprocessor, event_preprocessor
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.shared.config.config import Config, get_shared_config
+from ironsbot.config import AppConfig, get_app_config
 from ironsbot.shared.features import is_superuser
+
+if TYPE_CHECKING:
+    from ironsbot.shared.config.config import SuperuserPriorityConfig
+
+Config = AppConfig
 
 __plugin_meta__ = PluginMetadata(
     name="超级管理员优先级",
     description="超级管理员事件优先处理，普通用户事件在超级管理员活跃时等待",
     usage=(
-        "启用 SUPERUSER_PRIORITY 后，超级管理员消息会优先放行；"
+        "启用 runtime.priority.enabled 后，超级管理员消息会优先放行；"
         "普通用户新事件会在超级管理员等待或执行期间暂停。"
     ),
     config=Config,
@@ -35,14 +41,17 @@ class PriorityState:
     normal_active: int = 0
 
 
-plugin_config = get_shared_config()
 _state = PriorityState()
 _condition = asyncio.Condition()
 
 
+def _priority_config() -> SuperuserPriorityConfig:
+    return get_app_config().runtime.priority
+
+
 @event_preprocessor
 async def _enter_priority_gate(event: Event, state: T_State) -> None:
-    if not plugin_config.superuser_priority:
+    if not _priority_config().enabled:
         return
 
     is_priority_user = _is_superuser_event(event)
@@ -58,7 +67,7 @@ async def _enter_priority_gate(event: Event, state: T_State) -> None:
 
 @event_postprocessor
 async def _leave_priority_gate(_event: Event, state: T_State) -> None:
-    if not plugin_config.superuser_priority:
+    if not _priority_config().enabled:
         return
     if not state.get(STATE_ENTERED_KEY):
         return
@@ -74,7 +83,7 @@ async def _leave_priority_gate(_event: Event, state: T_State) -> None:
 
 async def wait_for_superuser_priority(event: Event | None) -> None:
     """Checkpoint for long custom handlers before they send a response."""
-    if not plugin_config.superuser_priority or event is None:
+    if not _priority_config().enabled or event is None:
         return
     if _is_superuser_event(event):
         return
@@ -84,7 +93,7 @@ async def wait_for_superuser_priority(event: Event | None) -> None:
 
 async def release_superuser_priority(state: T_State) -> None:
     """Release the priority gate early for long-running superuser jobs."""
-    if not plugin_config.superuser_priority:
+    if not _priority_config().enabled:
         return
     if not state.get(STATE_ENTERED_KEY):
         return
@@ -118,7 +127,7 @@ async def _wait_until_no_superuser() -> None:
 
 
 async def _wait_until_no_superuser_locked() -> None:
-    timeout = plugin_config.superuser_priority_wait_timeout_seconds
+    timeout = _priority_config().wait_timeout_seconds
     if timeout <= 0:
         while _has_superuser_pressure():
             await _condition.wait()

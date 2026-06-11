@@ -115,6 +115,10 @@ def test_small_plugin_config_accessors_read_app_config(
         "server_status_config_for_app_config_test",
         ROOT / "ironsbot" / "custom_plugins" / "server_status" / "config.py",
     )
+    scheduled_restart_config = _load_module_from_path(
+        "scheduled_restart_config_for_app_config_test",
+        ROOT / "ironsbot" / "custom_plugins" / "scheduled_restart" / "config.py",
+    )
     startup_config = _load_module_from_path(
         "startup_notice_config_for_app_config_test",
         ROOT / "ironsbot" / "custom_plugins" / "startup_notice" / "config.py",
@@ -142,5 +146,7 @@ def test_small_plugin_config_accessors_read_app_config(
         assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
         assert startup_config.get_startup_config().message == "机器人已开启。"
         assert not server_status_config.get_server_status_config().broadcast
+        assert not scheduled_restart_config.get_restart_config().enabled
+        assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled
     finally:
         clear_app_config_cache()

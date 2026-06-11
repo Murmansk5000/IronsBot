@@ -3,12 +3,12 @@ import os
 import signal
 from zoneinfo import ZoneInfo
 
-from nonebot import logger, require
+from nonebot import get_driver, logger, require
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.shared.config.time import daily_time_parts
 
-from .config import INVALID_RESTART_TIME_ERROR, Config, plugin_config
+from .config import INVALID_RESTART_TIME_ERROR, Config, get_restart_config
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 JOB_ID = "scheduled_bot_restart"
@@ -18,8 +18,8 @@ __plugin_meta__ = PluginMetadata(
     name="定时重启",
     description="按环境变量配置每日固定时间重启机器人容器。",
     usage=(
-        "设置 MODULES.restart.enabled=true 后启用。\n"
-        'MODULES={"restart":{"enabled":true,"times":"04:30,16:10"}} '
+        "设置 runtime.restart.enabled=true 后启用。\n"
+        "runtime.restart.times 配置为 04:30,16:10 "
         "时每天在这些时间点重启。"
     ),
     config=Config,
@@ -28,9 +28,11 @@ __plugin_meta__ = PluginMetadata(
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
+driver = get_driver()
+
 
 def _target_pid() -> int:
-    if not plugin_config.bot_restart_config.signal_parent:
+    if not get_restart_config().signal_parent:
         return os.getpid()
 
     parent_pid = os.getppid()
@@ -41,7 +43,7 @@ def _target_pid() -> int:
 
 
 async def _scheduled_restart(scheduled_time: str) -> None:
-    grace_seconds = plugin_config.bot_restart_config.grace_seconds
+    grace_seconds = get_restart_config().grace_seconds
     if grace_seconds > 0:
         logger.warning(
             "scheduled bot restart {} will signal process in {:.1f}s",
@@ -71,7 +73,7 @@ async def _scheduled_restart(scheduled_time: str) -> None:
 
 
 def _register_restart_job() -> None:
-    restart_config = plugin_config.bot_restart_config
+    restart_config = get_restart_config()
     if not restart_config.enabled:
         logger.info("scheduled bot restart disabled")
         return
@@ -101,4 +103,6 @@ def _register_restart_job() -> None:
     )
 
 
-_register_restart_job()
+@driver.on_startup
+async def register_restart_job() -> None:
+    _register_restart_job()

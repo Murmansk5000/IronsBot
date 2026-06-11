@@ -1,15 +1,18 @@
+from ironsbot.config import AppConfig, get_app_config
 from ironsbot.shared.config.config import (
     INVALID_RESTART_TIME_ERROR,
-    Config,
     RestartConfig,
-    get_shared_config,
 )
 
-plugin_config = get_shared_config()
+Config = AppConfig
+
+
+def get_restart_config() -> RestartConfig:
+    return get_app_config().runtime.restart
 
 __all__ = [
     "INVALID_RESTART_TIME_ERROR",
     "Config",
     "RestartConfig",
-    "plugin_config",
+    "get_restart_config",
 ]
