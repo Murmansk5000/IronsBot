@@ -43,6 +43,7 @@ def test_example_config_parses() -> None:
     assert config.message.meeting.commands == ["开播", "会议"]
     assert config.seer.team_shortcut.team_ids == []
     assert config.runtime.data_sync.sources["seerapi"].local_path
+    assert config.runtime.help.ignored_plugins == []
 
 
 def test_dev_and_prod_configs_parse() -> None:

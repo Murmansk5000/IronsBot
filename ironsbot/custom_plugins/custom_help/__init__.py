@@ -13,13 +13,13 @@ from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.config import AppConfig, get_app_config
 from ironsbot.custom_plugins.message_actions import (
     build_message,
     event_sender_at_user_ids,
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.config.config import Config, get_shared_config
 from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -36,6 +36,8 @@ from ironsbot.utils.rule import no_reply
 if TYPE_CHECKING:
     from nonebot.plugin import Plugin
 
+    from ironsbot.shared.config.config import HelpConfig
+
 DEFAULT_IGNORED_PLUGINS = [
     "发图",
     "HTTP 缓存客户端",
@@ -47,6 +49,7 @@ DEFAULT_IGNORED_PLUGINS = [
 ]
 HELP_ENTRIES_KEY = "_custom_help_entries"
 HELP_PLUGIN_NAME = "custom_help"
+Config = AppConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +60,9 @@ class HelpEntry:
     usage: str
 
 
-plugin_config = get_shared_config()
+def get_help_config() -> HelpConfig:
+    return get_app_config().runtime.help
+
 
 __plugin_meta__ = PluginMetadata(
     name="帮助",
@@ -83,7 +88,7 @@ def _plugin_key(plugin: "Plugin") -> str:
 def _ignored_plugin_names() -> set[str]:
     return {
         *DEFAULT_IGNORED_PLUGINS,
-        *plugin_config.help_ignored_plugins,
+        *get_help_config().ignored_plugins,
     }
 
 
