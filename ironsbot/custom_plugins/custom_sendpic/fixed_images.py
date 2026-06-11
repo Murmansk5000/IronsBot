@@ -3,7 +3,6 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import on_fullmatch
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -30,6 +29,8 @@ class FixedImagePlugin:
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        from ironsbot.custom_plugins.message_actions import finish_event_reply
+
         filename = str(context.data["filename"])
         image_segment = build_fixed_image_segment(IMAGE_DIR, filename)
         matcher = context.matcher
