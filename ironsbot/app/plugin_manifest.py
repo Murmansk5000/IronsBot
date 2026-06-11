@@ -57,6 +57,7 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.scheduled_restart:setup_scheduled_restart_runtime",
     "ironsbot.custom_plugins.startup_ready:setup_startup_ready_runtime",
     "ironsbot.custom_plugins.startup_notice:setup_startup_notice_runtime",
+    "ironsbot.custom_plugins.bilibili_monitor.service:setup_bilibili_monitor_runtime",
 )
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (

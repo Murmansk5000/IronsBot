@@ -8,8 +8,6 @@ import httpx
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.message_actions import send_broadcast_message
-
 from .bot_access import get_first_bot
 from .cache import save_new_cookie
 from .config import get_bili_config
@@ -77,6 +75,8 @@ async def _send_private_to_superusers(
     bot: Bot | None = None,
     user_ids: list[int] | None = None,
 ) -> None:
+    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+
     target_user_ids = user_ids or get_bili_superuser_uids()
 
     if not target_user_ids:
