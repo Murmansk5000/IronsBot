@@ -3,16 +3,16 @@
 这个目录用于放置 IronsBot 的自定义插件。用户可触发的功能应优先放在
 `ironsbot/custom_plugins`；`ironsbot/plugins` 只保留基础设施或上游/vendor 代码。
 
-运行入口 `bot.py` 会按显式顺序加载外部插件、基础设施插件和自定义插件。
+运行入口 `bot.py` 委托 `ironsbot/app/bootstrap.py`，并按
+`ironsbot/app/plugin_manifest.py` 中的显式顺序加载外部插件、基础设施插件和自定义插件。
 `pyproject.toml` 不再扫描整个自定义插件目录，避免空目录、试验代码或遗留插件被误加载：
 
 ```toml
 plugin_dirs = []
 ```
 
-新增可运行插件后，需要把模块名加入
-`ironsbot/app/plugin_manifest.py`，并在 bootstrap 切换完成前同步维护 `bot.py`
-里的加载列表，避免 NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入显式加载列表的目录只会被视为普通代码。
+新增可运行插件后，需要把模块名加入 `ironsbot/app/plugin_manifest.py`，
+避免 NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入显式加载列表的目录只会被视为普通代码。
 
 ## 当前插件
 
