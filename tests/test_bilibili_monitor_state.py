@@ -3,7 +3,7 @@ import importlib
 import nonebot
 import pytest
 
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     BiliConfig,
 )
