@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
 from nonebot.log import logger
 
@@ -15,6 +16,30 @@ if TYPE_CHECKING:
     from .models import ActivityInfo, ActivityReminder
 
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
+ActivityReminderDeliveryStatus = Literal["skip_empty", "skip_no_targets", "send"]
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityReminderTargets:
+    group_ids: tuple[int, ...] = ()
+    private_user_ids: tuple[int, ...] = ()
+
+    @property
+    def has_targets(self) -> bool:
+        return bool(self.group_ids or self.private_user_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityReminderDelivery:
+    status: ActivityReminderDeliveryStatus
+    message: str = ""
+    group_ids: tuple[int, ...] = ()
+    private_user_ids: tuple[int, ...] = ()
+    action_name: str = ""
+
+    @property
+    def should_send(self) -> bool:
+        return self.status == "send"
 
 
 def format_reminder_message(
@@ -36,6 +61,34 @@ def format_reminder_message(
             lead_hours=lead_hours,
             activity_list=format_activity_list(reminders),
         )
+
+
+def build_reminder_delivery(
+    lead_hours: int,
+    reminders: list[ActivityReminder],
+    targets: ActivityReminderTargets,
+    *,
+    template: str,
+    fallback_template: str = DEFAULT_MESSAGE_TEMPLATE,
+) -> ActivityReminderDelivery:
+    if not reminders:
+        return ActivityReminderDelivery(status="skip_empty")
+
+    if not targets.has_targets:
+        return ActivityReminderDelivery(status="skip_no_targets")
+
+    return ActivityReminderDelivery(
+        status="send",
+        message=format_reminder_message(
+            lead_hours,
+            reminders,
+            template=template,
+            fallback_template=fallback_template,
+        ),
+        group_ids=targets.group_ids,
+        private_user_ids=targets.private_user_ids,
+        action_name=f"activity ending reminder {lead_hours}h",
+    )
 
 
 def filter_reminders_before_send(

@@ -17,7 +17,10 @@ from ironsbot.services.activity.commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
 )
-from ironsbot.services.activity.delivery import format_reminder_message
+from ironsbot.services.activity.delivery import (
+    ActivityReminderTargets,
+    build_reminder_delivery,
+)
 from ironsbot.services.activity.models import (
     ActivityInfo,
     ActivityInfoCache,
@@ -148,15 +151,6 @@ def build_current_activity_message(
     )
 
 
-def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
-    return format_reminder_message(
-        lead_hours,
-        reminders,
-        template=get_activity_config().message,
-        fallback_template=DEFAULT_MESSAGE_TEMPLATE,
-    )
-
-
 async def send_activity_reminder(
     *,
     lead_hours: int,
@@ -176,18 +170,27 @@ async def send_activity_reminder(
         )
         return
 
-    target_groups = groups_for_feature("activity_push")
-    target_users = users_with_superusers(users_for_feature("activity_push"))
-    if not target_groups and not target_users:
+    delivery = build_reminder_delivery(
+        lead_hours,
+        reminders,
+        ActivityReminderTargets(
+            group_ids=tuple(groups_for_feature("activity_push")),
+            private_user_ids=tuple(
+                users_with_superusers(users_for_feature("activity_push"))
+            ),
+        ),
+        template=get_activity_config().message,
+        fallback_template=DEFAULT_MESSAGE_TEMPLATE,
+    )
+    if delivery.status == "skip_no_targets":
         logger.warning("activity reminder skipped: no target groups or users")
         return
 
-    message = _format_message(lead_hours, reminders)
     summary = await send_broadcast_message(
-        message,
-        group_ids=target_groups,
-        private_user_ids=target_users,
-        action_name=f"activity ending reminder {lead_hours}h",
+        delivery.message,
+        group_ids=delivery.group_ids,
+        private_user_ids=delivery.private_user_ids,
+        action_name=delivery.action_name,
         interval_seconds=1.2,
     )
     if summary.succeeded:

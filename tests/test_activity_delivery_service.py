@@ -2,12 +2,16 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from ironsbot.services.activity.delivery import (
+    ActivityReminderTargets,
+    build_reminder_delivery,
     filter_reminders_before_send,
     format_reminder_message,
 )
 from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+GROUP_ID = 686376929
+USER_ID = 1621582661
 
 
 def dt(
@@ -61,6 +65,45 @@ def test_format_reminder_message_falls_back_on_bad_template() -> None:
 
     assert message.startswith("提前 1 小时")
     assert "活动 1" in message
+
+
+def test_build_reminder_delivery_skips_empty_or_targetless_payload() -> None:
+    assert (
+        build_reminder_delivery(
+            1,
+            [],
+            ActivityReminderTargets(group_ids=(GROUP_ID,)),
+            template="{activity_list}",
+        ).status
+        == "skip_empty"
+    )
+    assert (
+        build_reminder_delivery(
+            1,
+            [_reminder()],
+            ActivityReminderTargets(),
+            template="{activity_list}",
+        ).status
+        == "skip_no_targets"
+    )
+
+
+def test_build_reminder_delivery_builds_send_payload() -> None:
+    delivery = build_reminder_delivery(
+        1,
+        [_reminder()],
+        ActivityReminderTargets(
+            group_ids=(GROUP_ID,),
+            private_user_ids=(USER_ID,),
+        ),
+        template="{activity_count} 个活动：\n{activity_list}",
+    )
+
+    assert delivery.should_send
+    assert delivery.message.startswith("1 个活动：")
+    assert delivery.group_ids == (GROUP_ID,)
+    assert delivery.private_user_ids == (USER_ID,)
+    assert delivery.action_name == "activity ending reminder 1h"
 
 
 def test_filter_reminders_before_send_keeps_current_valid_reminders() -> None:
