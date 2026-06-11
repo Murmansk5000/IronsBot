@@ -11,6 +11,14 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.services.ai.chat import (
+    build_ai_chat_context,
+    can_show_admin_notice,
+    get_ai_chat_key,
+    is_ai_error_reply,
+    record_successful_ai_reply,
+    reset_ai_chat_context,
+)
 from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.history import is_reset_prompt
 from ironsbot.services.ai.notifier import notify_superusers_once
@@ -23,14 +31,6 @@ from ironsbot.shared.plugin_system import (
 from .config import Config, get_ai_config
 from .mentions import mentions_or_replies_to_bot
 from .permissions import is_allowed, is_reserved_private_command
-from .service import (
-    build_ai_chat_context,
-    can_show_admin_notice,
-    get_ai_chat_key,
-    is_ai_error_reply,
-    record_successful_ai_reply,
-    reset_ai_chat_context,
-)
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 

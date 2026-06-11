@@ -12,7 +12,7 @@ try:
 except ValueError:
     nonebot.init()
 
-service = pytest.importorskip("ironsbot.custom_plugins.ai_chat.service")
+service = pytest.importorskip("ironsbot.services.ai.chat")
 constants = pytest.importorskip("ironsbot.services.ai.constants")
 
 
