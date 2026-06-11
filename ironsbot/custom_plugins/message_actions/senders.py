@@ -1,26 +1,23 @@
-﻿import asyncio
 from collections.abc import Iterable
 
-from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
-from nonebot.log import logger
 
+from ironsbot.shared.messaging import senders as shared_senders
 from ironsbot.shared.messaging.targets import (
     MessageTarget,
     TargetSendSummary,
-    broadcast_targets,
 )
 
 from .reply_limits import limit_message_by_reply_lines
-from .text import build_message
+
+get_bot_or_none = shared_senders.get_bot_or_none
 
 
-def get_bot_or_none() -> Bot | None:
-    try:
-        return get_bot()
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"message action failed to get bot: {e}")
-        return None
+def _limit_message_for_target(
+    message: str | Message,
+    group_id: int | None,
+) -> str | Message:
+    return limit_message_by_reply_lines(message, group_id=group_id)
 
 
 async def send_target_messages(
@@ -31,57 +28,14 @@ async def send_target_messages(
     action_name: str = "message action",
     interval_seconds: float = 1.5,
 ) -> TargetSendSummary:
-    deduped_targets = list(dict.fromkeys(targets))
-    bot = bot or get_bot_or_none()
-    if not bot:
-        return TargetSendSummary([], deduped_targets)
-
-    succeeded: list[MessageTarget] = []
-    failed: list[MessageTarget] = []
-
-    for target in deduped_targets:
-        limited_message = limit_message_by_reply_lines(
-            message,
-            group_id=(
-                target.target_id
-                if target.target_type == "group"
-                else None
-            ),
-        )
-        rendered_message = build_message(
-            limited_message,
-            at_user_ids=(
-                target.at_user_ids
-                if target.target_type == "group"
-                else ()
-            ),
-        )
-
-        try:
-            if target.target_type == "private":
-                await bot.send_private_msg(
-                    user_id=target.target_id,
-                    message=rendered_message,
-                )
-            else:
-                await bot.send_group_msg(
-                    group_id=target.target_id,
-                    message=rendered_message,
-                )
-
-            logger.info(
-                f"{action_name} sent to {target.target_type} {target.target_id}"
-            )
-            succeeded.append(target)
-            await asyncio.sleep(interval_seconds)
-        except Exception as e:  # noqa: BLE001
-            failed.append(target)
-            logger.warning(
-                f"{action_name} failed to send to {target.target_type} "
-                f"{target.target_id}: {e}"
-            )
-
-    return TargetSendSummary(succeeded, failed)
+    return await shared_senders.send_target_messages(
+        targets,
+        message,
+        bot=bot,
+        action_name=action_name,
+        interval_seconds=interval_seconds,
+        message_limiter=_limit_message_for_target,
+    )
 
 
 async def send_broadcast_message(  # noqa: PLR0913
@@ -94,14 +48,13 @@ async def send_broadcast_message(  # noqa: PLR0913
     action_name: str = "message action",
     interval_seconds: float = 1.5,
 ) -> TargetSendSummary:
-    return await send_target_messages(
-        broadcast_targets(
-            private_user_ids=private_user_ids,
-            group_ids=group_ids,
-            group_at_user_ids=group_at_user_ids,
-        ),
+    return await shared_senders.send_broadcast_message(
         message,
+        private_user_ids=private_user_ids,
+        group_ids=group_ids,
+        group_at_user_ids=group_at_user_ids,
         bot=bot,
         action_name=action_name,
         interval_seconds=interval_seconds,
+        message_limiter=_limit_message_for_target,
     )
