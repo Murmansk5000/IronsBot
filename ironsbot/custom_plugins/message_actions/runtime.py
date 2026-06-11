@@ -14,6 +14,7 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
+from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -27,7 +28,7 @@ from .config import (
     PrivateScheduledMessageAction,
     get_message_config,
 )
-from .replies import event_sender_at_user_ids, finish_matcher_message
+from .replies import finish_matcher_message
 from .runtime_service import (
     build_schedule_job_id,
     build_schedule_trigger_kwargs,

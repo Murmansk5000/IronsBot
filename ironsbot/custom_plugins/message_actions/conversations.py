@@ -5,9 +5,9 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.matcher import Matcher
 
+from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
-from .replies import event_sender_at_user_ids
 from .reply_limits import limit_message_by_reply_lines
 from .text import build_message, command_text_matches
 
