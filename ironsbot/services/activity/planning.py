@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from .models import ActivityDeadline, ActivityReminder
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     from .models import ActivityInfo
 
@@ -109,7 +110,7 @@ def effective_reminder_send_time(
     return None
 
 
-def build_scheduled_reminders(
+def build_scheduled_reminders(  # noqa: PLR0913
     activities: Iterable[ActivityInfo],
     now: datetime,
     *,

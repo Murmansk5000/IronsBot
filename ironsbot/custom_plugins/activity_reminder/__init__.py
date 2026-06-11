@@ -22,6 +22,25 @@ from nonebot.rule import Rule
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from ironsbot.services.activity.formatting import (
+    format_activity_line,
+    format_activity_list,
+)
+from ironsbot.services.activity.models import (
+    ActivityDeadline,
+    ActivityInfo,
+    ActivityInfoCache,
+    ActivityReminder,
+)
+from ironsbot.services.activity.planning import (
+    activity_deadline,
+    activity_is_soon_ending,
+    activity_sort_end_time,
+    build_scheduled_reminders,
+    filter_valid_reminders,
+    group_by_send_time,
+    reminder_key,
+)
 from ironsbot.shared.features import (
     groups_for_feature,
     is_event_feature_allowed,
@@ -40,25 +59,6 @@ from .commands import (
     is_soon_ending_activity_query_text,
 )
 from .config import Config, get_activity_config
-from .formatting import (
-    format_activity_line,
-    format_activity_list,
-)
-from .models import (
-    ActivityDeadline,
-    ActivityInfo,
-    ActivityInfoCache,
-    ActivityReminder,
-)
-from .planning import (
-    activity_deadline,
-    activity_is_soon_ending,
-    activity_sort_end_time,
-    build_scheduled_reminders,
-    filter_valid_reminders,
-    group_by_send_time,
-    reminder_key,
-)
 
 require("ironsbot.plugins.seer_data")
 
