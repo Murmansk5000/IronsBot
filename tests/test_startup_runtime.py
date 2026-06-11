@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from pytest import MonkeyPatch
 
-from ironsbot.custom_plugins import startup_ready
+from ironsbot.custom_plugins import startup_ready, startup_ready_runtime
 from ironsbot.custom_plugins.startup_notice.runtime import (
     _setup_startup_notice_runtime,
     _startup_notice_runtime_state,
@@ -27,14 +27,14 @@ def test_startup_ready_runtime_setup_registers_bot_connect_once(
 ) -> None:
     registered_state = False
     monkeypatch.setitem(
-        startup_ready._startup_ready_runtime_state,
+        startup_ready_runtime._startup_ready_runtime_state,
         "registered",
         registered_state,
     )
     driver = FakeDriver()
 
-    startup_ready._setup_startup_ready_runtime(driver)
-    startup_ready._setup_startup_ready_runtime(driver)
+    startup_ready_runtime._setup_startup_ready_runtime(driver)
+    startup_ready_runtime._setup_startup_ready_runtime(driver)
 
     assert driver.bot_connect_handlers == [
         startup_ready.run_registered_startup_checks
