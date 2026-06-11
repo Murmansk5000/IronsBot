@@ -7,7 +7,7 @@ from pathlib import Path
 
 from nonebot.log import logger
 
-from ..config import plugin_config
+from ..config import get_rank_query_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,7 @@ class CachedRankPageSummary:
 
 
 def _cache_path() -> Path:
-    return plugin_config.seer_query_config.rank.page_cache_path
+    return get_rank_query_config().page_cache_path
 
 
 def _connect() -> sqlite3.Connection:
@@ -84,10 +84,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def _is_cache_enabled() -> bool:
-    return (
-        plugin_config.seer_query_config.rank.page_cache
-        and plugin_config.seer_query_config.rank.page_cache_ttl_seconds > 0
-    )
+    return get_rank_query_config().page_cache
 
 
 def get_cached_rank_page(
@@ -96,6 +93,7 @@ def get_cached_rank_page(
     sub_key: int,
     start: int,
     end: int,
+    allow_stale: bool | None = None,
 ) -> list[CachedRankItem] | None:
     if not _is_cache_enabled():
         return None
@@ -117,9 +115,15 @@ def get_cached_rank_page(
                 return None
 
             fetched_at, item_count = row
-            if time.time() - float(fetched_at) > (
-                plugin_config.seer_query_config.rank.page_cache_ttl_seconds
-            ):
+            rank_config = get_rank_query_config()
+            ttl = rank_config.page_cache_ttl_seconds
+            is_stale = ttl <= 0 or time.time() - float(fetched_at) > ttl
+            stale_allowed = (
+                rank_config.allow_stale_cache
+                if allow_stale is None
+                else allow_stale
+            )
+            if is_stale and not stale_allowed:
                 return None
 
             rows = conn.execute(
@@ -151,6 +155,7 @@ def get_cached_rank_item(
     key: int,
     sub_key: int,
     user_id: int,
+    allow_stale: bool | None = None,
 ) -> CachedRankLookup | None:
     if not _is_cache_enabled():
         return None
@@ -184,9 +189,16 @@ def get_cached_rank_item(
 
             nick, score, start_index, position, fetched_at = row
             fetched_at_float = float(fetched_at)
-            is_stale = time.time() - fetched_at_float > (
-                plugin_config.seer_query_config.rank.page_cache_ttl_seconds
+            rank_config = get_rank_query_config()
+            ttl = rank_config.page_cache_ttl_seconds
+            is_stale = ttl <= 0 or time.time() - fetched_at_float > ttl
+            stale_allowed = (
+                rank_config.allow_stale_cache
+                if allow_stale is None
+                else allow_stale
             )
+            if is_stale and not stale_allowed:
+                return None
             return CachedRankLookup(
                 id=user_id,
                 nick=str(nick),
@@ -225,7 +237,7 @@ def get_rank_page_cache_summary(
         return []
 
     now = time.time()
-    ttl = plugin_config.seer_query_config.rank.page_cache_ttl_seconds
+    ttl = get_rank_query_config().page_cache_ttl_seconds
     return [
         CachedRankPageSummary(
             start_index=int(start_index),

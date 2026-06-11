@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from nonebot import get_driver
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
-from ironsbot.shared.config.config import get_shared_config
+from ironsbot.config import get_app_config, load_secrets_config
 from ironsbot.shared.features.registry import features_for_module
 
 from .service import (
@@ -14,11 +15,6 @@ from .service import (
     is_group_feature_allowed,
     is_private_feature_allowed,
     is_superuser,
-)
-
-ORIGINAL_PLUGIN_MODULE_PREFIXES = (
-    "ironsbot.plugins.about",
-    "ironsbot.plugins.help",
 )
 
 HIDDEN_MODULE_PREFIXES = (
@@ -52,8 +48,18 @@ def _any_feature_visible(event: Event, features: tuple[str, ...]) -> bool:
     return any(_feature_visible(event, feature) for feature in features)
 
 
+def _ai_key_configured() -> bool:
+    if load_secrets_config().ai_key.strip():
+        return True
+
+    try:
+        return bool(str(getattr(get_driver().config, "ai_key", "") or "").strip())
+    except ValueError:
+        return False
+
+
 def _message_actions_visible(event: Event) -> bool:
-    msg_config = get_shared_config().msg_config
+    msg_config = get_app_config().message
     if isinstance(event, GroupMessageEvent):
         return any(
             action.enabled
@@ -78,23 +84,21 @@ def _message_actions_visible(event: Event) -> bool:
 
 
 def _team_shortcut_visible(event: Event) -> bool:
-    config = get_shared_config()
     return (
-        bool(config.team_ids)
+        bool(get_app_config().seer.team_shortcut.team_ids)
         and isinstance(event, GroupMessageEvent)
         and is_group_feature_allowed(event.user_id, event.group_id, "team")
     )
 
 
 def _ai_chat_visible(event: Event) -> bool:
-    return bool(get_shared_config().ai_key) and _feature_visible(event, "ai_chat")
+    return _ai_key_configured() and _feature_visible(event, "ai_chat")
 
 
 def _ai_intent_visible(event: Event) -> bool:
-    config = get_shared_config()
     return (
-        bool(config.ai_key)
-        and config.ai_config.intent_actions_enabled
+        _ai_key_configured()
+        and get_app_config().ai.intent_actions_enabled
         and _feature_visible(event, "ai_intent")
     )
 
@@ -132,9 +136,6 @@ def plugin_visible_for_event(
     module_name: str,
     event: Event,
 ) -> bool:
-    if _module_startswith(module_name, ORIGINAL_PLUGIN_MODULE_PREFIXES):
-        return False
-
     if _module_startswith(module_name, HIDDEN_MODULE_PREFIXES):
         return False
 

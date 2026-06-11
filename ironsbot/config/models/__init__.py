@@ -1,41 +1,32 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
 
-from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.config.models.ai import AiConfig
-from ironsbot.config.models.bilibili import BilibiliConfig
-from ironsbot.config.models.deployment import DeploymentConfig
-from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.message import MessageConfig
-from ironsbot.config.models.runtime import RuntimeConfig
-from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
-from ironsbot.config.models.seer import SeerConfig
-
-
-class AppConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    feature: FeatureConfig = Field(default_factory=FeatureConfig)
-    ai: AiConfig = Field(default_factory=AiConfig)
-    bilibili: BilibiliConfig = Field(default_factory=BilibiliConfig)
-    activity: ActivityConfig = Field(default_factory=ActivityConfig)
-    message: MessageConfig = Field(default_factory=MessageConfig)
-    seer: SeerConfig = Field(default_factory=SeerConfig)
-    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+_EXPORTS = {
+    "ActivityConfig": ("ironsbot.config.models.activity", "ActivityConfig"),
+    "AiConfig": ("ironsbot.config.models.ai", "AiConfig"),
+    "AppConfig": ("ironsbot.config.models.app", "AppConfig"),
+    "BilibiliConfig": ("ironsbot.config.models.bilibili", "BilibiliConfig"),
+    "CredentialsConfig": ("ironsbot.config.models.secrets", "CredentialsConfig"),
+    "DeploymentConfig": ("ironsbot.config.models.deployment", "DeploymentConfig"),
+    "FeatureConfig": ("ironsbot.config.models.feature", "FeatureConfig"),
+    "MessageConfig": ("ironsbot.config.models.message", "MessageConfig"),
+    "RuntimeConfig": ("ironsbot.config.models.runtime", "RuntimeConfig"),
+    "SecretsConfig": ("ironsbot.config.models.secrets", "SecretsConfig"),
+    "SeerConfig": ("ironsbot.config.models.seer", "SeerConfig"),
+}
 
 
-__all__ = [
-    "ActivityConfig",
-    "AiConfig",
-    "AppConfig",
-    "BilibiliConfig",
-    "CredentialsConfig",
-    "DeploymentConfig",
-    "FeatureConfig",
-    "MessageConfig",
-    "RuntimeConfig",
-    "SecretsConfig",
-    "SeerConfig",
-]
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+
+    module_name, attr_name = _EXPORTS[name]
+    module = __import__(module_name, fromlist=[attr_name])
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
+
+
+__all__ = list(_EXPORTS)

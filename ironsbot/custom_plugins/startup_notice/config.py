@@ -1,5 +1,5 @@
 from ironsbot.config import get_app_config
-from ironsbot.shared.config.config import StartupConfig
+from ironsbot.config.models.runtime import StartupConfig
 
 
 def get_startup_config() -> StartupConfig:

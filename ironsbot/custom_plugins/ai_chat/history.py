@@ -1,6 +1,6 @@
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from .config import plugin_config
+from .config import get_ai_config
 
 HistoryMessage = dict[str, str]
 
@@ -15,10 +15,11 @@ def history_key(event: MessageEvent) -> str:
 
 
 def trim_history(history: list[HistoryMessage]) -> list[HistoryMessage]:
-    if plugin_config.ai_config.history_turns <= 0:
+    config = get_ai_config()
+    if config.history_turns <= 0:
         return []
 
-    max_messages = plugin_config.ai_config.history_turns * 2
+    max_messages = config.history_turns * 2
     return history[-max_messages:]
 
 
@@ -30,7 +31,7 @@ def build_messages(
     messages = [
         {
             "role": "system",
-            "content": plugin_config.ai_config.prompt,
+            "content": get_ai_config().prompt,
         }
     ]
     memory_text = format_memory(memory or [])
@@ -67,7 +68,7 @@ def is_reset_prompt(prompt: str) -> bool:
     normalized = "".join(prompt.split())
     return any(
         normalized == "".join(command.split())
-        for command in plugin_config.ai_config.reset_commands
+        for command in get_ai_config().reset_commands
     )
 
 

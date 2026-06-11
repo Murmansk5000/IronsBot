@@ -3,7 +3,7 @@ import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from ..config import plugin_config
+from ..config import get_local_rank_config, get_player_query_config
 from ._client import get_game_client
 from ._local_rank import (
     can_cache_player_id,
@@ -42,11 +42,12 @@ class LocalRankRefreshResult:
 async def refresh_local_rank_cache(
     player_ids: Sequence[int] | None = None,
 ) -> LocalRankRefreshResult:
-    query_config = plugin_config.seer_query_config
+    local_rank_config = get_local_rank_config()
+    player_config = get_player_query_config()
     if player_ids is None:
         player_ids = get_refresh_candidate_player_ids(
-            limit=query_config.local_rank.refresh_limit,
-            max_age_hours=query_config.local_rank.refresh_max_age_hours,
+            limit=local_rank_config.refresh_limit,
+            max_age_hours=local_rank_config.refresh_max_age_hours,
         )
     else:
         player_ids = list(dict.fromkeys(player_ids))
@@ -70,7 +71,7 @@ async def refresh_local_rank_cache(
                     peak_sub_key=peak_sub_key,
                     player_id=player_id,
                 ),
-                timeout=query_config.player.detail_timeout_seconds,
+                timeout=player_config.detail_timeout_seconds,
             )
         except asyncio.TimeoutError:
             result.failures.append(
@@ -89,7 +90,7 @@ async def refresh_local_rank_cache(
         else:
             result.success += 1
 
-        await asyncio.sleep(query_config.local_rank.refresh_interval_seconds)
+        await asyncio.sleep(local_rank_config.refresh_interval_seconds)
 
     return result
 

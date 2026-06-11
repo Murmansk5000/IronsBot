@@ -4,21 +4,16 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply
-from ironsbot.shared.config.config import get_shared_config
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
     register_plugin,
 )
 
+from .config import get_ai_config
 from .service import GuardReplyLimiter, should_guard_non_ai_group_mention
 
-plugin_config = get_shared_config()
-ai_config = plugin_config.ai_config
-_guard_reply_limiter = GuardReplyLimiter(
-    window_seconds=ai_config.mention_guard_reply_window_seconds,
-    max_per_window=ai_config.mention_guard_reply_max_per_window,
-)
+_guard_reply_limiter: GuardReplyLimiter | None = None
 AI_MENTION_GUARD_PLUGIN_NAME = "ai_mention_guard"
 
 __plugin_meta__ = PluginMetadata(
@@ -33,6 +28,24 @@ __plugin_meta__ = PluginMetadata(
 
 async def _is_non_ai_group_at_guarded_user(event: MessageEvent) -> bool:
     return await should_guard_non_ai_group_mention(event)
+
+
+def _get_guard_reply_limiter() -> GuardReplyLimiter:
+    global _guard_reply_limiter  # noqa: PLW0603
+
+    config = get_ai_config()
+    if (
+        _guard_reply_limiter is None
+        or _guard_reply_limiter.window_seconds
+        != config.mention_guard_reply_window_seconds
+        or _guard_reply_limiter.max_per_window
+        != config.mention_guard_reply_max_per_window
+    ):
+        _guard_reply_limiter = GuardReplyLimiter(
+            window_seconds=config.mention_guard_reply_window_seconds,
+            max_per_window=config.mention_guard_reply_max_per_window,
+        )
+    return _guard_reply_limiter
 
 
 mention_guard_matcher = on_message(
@@ -52,13 +65,13 @@ class AiMentionGuardPlugin:
         event: GroupMessageEvent,
         context: PluginContext,
     ) -> None:
-        if not _guard_reply_limiter.can_send(event.group_id):
+        if not _get_guard_reply_limiter().can_send(event.group_id):
             return
 
         await finish_event_reply(
             context.matcher or mention_guard_matcher,
             event,
-            ai_config.mention_guard_message,
+            get_ai_config().mention_guard_message,
             mention_sender=True,
         )
 

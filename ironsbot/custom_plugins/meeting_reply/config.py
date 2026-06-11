@@ -1,5 +1,5 @@
 from ironsbot.config import get_app_config
-from ironsbot.shared.config.config import MeetingConfig
+from ironsbot.config.models.message import MeetingConfig
 
 
 def get_meeting_config() -> MeetingConfig:

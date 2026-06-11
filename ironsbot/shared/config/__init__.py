@@ -1,6 +1,8 @@
-from .config import Config, get_shared_config
+# SPDX-License-Identifier: MIT
+"""Shared configuration schema helpers.
 
-__all__ = [
-    "Config",
-    "get_shared_config",
-]
+Import concrete schema modules directly. The package no longer re-exports
+legacy NoneBot config entrypoints.
+"""
+
+__all__: list[str] = []
