@@ -51,6 +51,7 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
 )
 
 RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.db_sync:setup_db_sync_runtime",
     "ironsbot.plugins.http_client:setup_http_client_runtime",
     "ironsbot.plugins.headless_seer:setup_headless_seer_runtime",
     "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
