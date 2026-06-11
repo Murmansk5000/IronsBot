@@ -1,43 +1,16 @@
-import sys
-import types
 from datetime import datetime, timedelta, timezone
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
 
-PACKAGE_NAME = "activity_reminder_formatting_for_test"
-ROOT = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "custom_plugins"
-    / "activity_reminder"
+from ironsbot.services.activity.formatting import (
+    format_activity_line,
+    format_activity_list,
+    format_activity_period,
+    format_remaining_time,
 )
-
-package = types.ModuleType(PACKAGE_NAME)
-package.__path__ = [str(ROOT)]
-sys.modules[PACKAGE_NAME] = package
-
-_MODELS_SPEC = spec_from_file_location(f"{PACKAGE_NAME}.models", ROOT / "models.py")
-assert _MODELS_SPEC is not None and _MODELS_SPEC.loader is not None
-_MODELS = module_from_spec(_MODELS_SPEC)
-sys.modules[_MODELS_SPEC.name] = _MODELS
-_MODELS_SPEC.loader.exec_module(_MODELS)
-
-_FORMATTING_SPEC = spec_from_file_location(
-    f"{PACKAGE_NAME}.formatting",
-    ROOT / "formatting.py",
+from ironsbot.services.activity.models import (
+    ActivityDeadline,
+    ActivityInfo,
+    ActivityReminder,
 )
-assert _FORMATTING_SPEC is not None and _FORMATTING_SPEC.loader is not None
-_FORMATTING = module_from_spec(_FORMATTING_SPEC)
-sys.modules[_FORMATTING_SPEC.name] = _FORMATTING
-_FORMATTING_SPEC.loader.exec_module(_FORMATTING)
-
-ActivityDeadline = _MODELS.ActivityDeadline
-ActivityInfo = _MODELS.ActivityInfo
-ActivityReminder = _MODELS.ActivityReminder
-format_activity_line = _FORMATTING.format_activity_line
-format_activity_list = _FORMATTING.format_activity_list
-format_activity_period = _FORMATTING.format_activity_period
-format_remaining_time = _FORMATTING.format_remaining_time
 
 
 def dt(
