@@ -1,8 +1,12 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from pytest import MonkeyPatch
+
+from ironsbot.services.activity import delivery as delivery_service
 from ironsbot.services.activity.delivery import (
     ActivityReminderTargets,
+    activity_reminder_targets,
     build_reminder_delivery,
     filter_reminders_before_send,
     format_reminder_message,
@@ -12,6 +16,7 @@ from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GROUP_ID = 686376929
 USER_ID = 1621582661
+SUPERUSER_ID = 10000
 
 
 def dt(
@@ -104,6 +109,31 @@ def test_build_reminder_delivery_builds_send_payload() -> None:
     assert delivery.group_ids == (GROUP_ID,)
     assert delivery.private_user_ids == (USER_ID,)
     assert delivery.action_name == "activity ending reminder 1h"
+
+
+def test_activity_reminder_targets_resolves_feature_targets(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        delivery_service,
+        "groups_for_feature",
+        lambda feature: [GROUP_ID] if feature == "custom_activity" else [],
+    )
+    monkeypatch.setattr(
+        delivery_service,
+        "users_for_feature",
+        lambda feature: [USER_ID] if feature == "custom_activity" else [],
+    )
+    monkeypatch.setattr(
+        delivery_service,
+        "users_with_superusers",
+        lambda users: [*users, SUPERUSER_ID],
+    )
+
+    targets = activity_reminder_targets("custom_activity")
+
+    assert targets.group_ids == (GROUP_ID,)
+    assert targets.private_user_ids == (USER_ID, SUPERUSER_ID)
 
 
 def test_filter_reminders_before_send_keeps_current_valid_reminders() -> None:

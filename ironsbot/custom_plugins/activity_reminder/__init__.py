@@ -18,7 +18,7 @@ from ironsbot.services.activity.commands import (
     is_soon_ending_activity_query_text,
 )
 from ironsbot.services.activity.delivery import (
-    ActivityReminderTargets,
+    activity_reminder_targets,
     build_reminder_delivery,
 )
 from ironsbot.services.activity.models import (
@@ -40,12 +40,7 @@ from ironsbot.services.activity.scheduler import (
     schedule_reminder_jobs,
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
-from ironsbot.shared.features import (
-    groups_for_feature,
-    is_event_feature_allowed,
-    users_for_feature,
-    users_with_superusers,
-)
+from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -173,12 +168,7 @@ async def send_activity_reminder(
     delivery = build_reminder_delivery(
         lead_hours,
         reminders,
-        ActivityReminderTargets(
-            group_ids=tuple(groups_for_feature("activity_push")),
-            private_user_ids=tuple(
-                users_with_superusers(users_for_feature("activity_push"))
-            ),
-        ),
+        activity_reminder_targets(),
         template=get_activity_config().message,
         fallback_template=DEFAULT_MESSAGE_TEMPLATE,
     )
