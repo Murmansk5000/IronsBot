@@ -1,5 +1,18 @@
 from collections.abc import Callable
 
+import nonebot
+
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
+try:
+    nonebot.load_plugin("ironsbot.plugins.http_client")
+except RuntimeError as e:
+    if "Plugin already exists" not in str(e):
+        raise
+
 from ironsbot.plugins import http_client
 
 

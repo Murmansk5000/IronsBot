@@ -58,10 +58,6 @@ from ironsbot.utils.rule import no_reply
 
 from .config import Config, get_activity_config
 
-require("ironsbot.plugins.seer_data")
-
-from ironsbot.plugins.db_sync.manager import db_manager
-
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_REMINDER_PLUGIN_NAME = "activity_reminder"
@@ -136,9 +132,16 @@ def _activity_sort_end_time(
     )
 
 
+def _activity_db_session_factory() -> Any:
+    require("ironsbot.plugins.seer_data")
+    from ironsbot.plugins.db_sync.manager import db_manager
+
+    return db_manager.get_session
+
+
 def _load_activity_rows() -> list[Mapping[str, Any]]:
     return load_activity_rows(
-        db_manager.get_session,
+        _activity_db_session_factory(),
         database_name=SEERAPI_DB_NAME,
         only_shown=get_activity_config().only_shown,
     )

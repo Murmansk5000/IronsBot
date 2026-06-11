@@ -2,7 +2,19 @@ import asyncio
 from collections.abc import Callable
 from types import SimpleNamespace
 
+import nonebot
 from pytest import MonkeyPatch
+
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
+try:
+    nonebot.load_plugin("ironsbot.plugins.db_sync")
+except RuntimeError as e:
+    if "Plugin already exists" not in str(e):
+        raise
 
 from ironsbot.plugins import db_sync
 
