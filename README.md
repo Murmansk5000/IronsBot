@@ -69,17 +69,20 @@ services:
       - "8085:8080"
     volumes:
       - ./ironsbot-data:/app/data
+      - ./ironsbot-config:/config:ro
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
       PORT: "8080"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
       SUPERUSERS: '["123456789"]'
-      DATA_SYNC_CONFIG: '{"on_startup":false,"interval_enabled":true,"sources":{"seerapi":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256","interval_minutes":60,"local_path":"data/ironsbot-data.sqlite"},"aliases":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256","interval_minutes":60,"local_path":"data/aliases-data.sqlite"}}}'
     restart: always
 ```
 
-完整变量说明见 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
+把 [config.prod.toml](config.prod.toml) 或 [config.example.toml](config.example.toml)
+复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
+[docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
 ## 插件架构
 
@@ -104,20 +107,48 @@ services:
 
 原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
 
-## Common Variables
+## 配置方式
+
+行为配置写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
+
+- secrets：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、可选 `SENDPIC_CNB_TOKEN`
+- credentials：`HEADLESS_SEER_USER_ID`、`HEADLESS_SEER_PASSWORD`
+- deployment runtime：`ENVIRONMENT`、`DRIVER`、`HOST`、`PORT`、`LOG_LEVEL`、`COMMAND_START`、`SUPERUSERS`、`APP_CONFIG_PATH`
+
+示例环境变量：
 
 ```env
+APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 SUPERUSERS=["123456789"]
-GROUP_ALIASES={"admin":686376929,"main":123456789}
-USER_ALIASES={"owner":123456789}
-FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","image","rank","meeting","text","text_push","bili_query","bili_push","activity_query","activity_push","server_status_query","server_status_push","team","ai_chat","ai_intent"]}
-FEATURE_USER_POLICY={"owner":["all"]}
-FEATURE_SUPERUSER_BYPASS=true
-MODULES={"bilibili":{"push":{"groups":{"main":{"uids":[1310714247],"mode":"full"}}}}}
+AI_KEY=
+HEADLESS_SEER_USER_ID=
+HEADLESS_SEER_PASSWORD=
 ```
 
-Group and user IDs are written once in aliases, then features are enabled from `FEATURE_GROUP_POLICY` / `FEATURE_USER_POLICY`. Push and query permissions are separate features, such as `bili_query` and `bili_push`. Bilibili pushes must also be explicitly listed in `MODULES.bilibili.push.groups/users`; each target can subscribe to selected UIDs and choose `full` or `link`. Admin-only notices use `admin_notice`; it is intentionally not included by `all`. Message actions use their own `feature` field, for example `activity_link` or `seerinfo`. Module defaults live in `ironsbot/shared/config/config.py`; `MODULES` is only a single advanced override point.
+示例 TOML：
+
+```toml
+[feature]
+group_aliases = { admin = 686376929, main = 123456789 }
+user_aliases = { owner = 123456789 }
+group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "activity_query", "activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent"] }
+user_policy = { owner = ["all"] }
+superuser_bypass = true
+
+[bilibili.push]
+groups = { main = { uids = [1310714247], mode = "full" } }
+
+[seer.team_shortcut]
+team_ids = [1234567]
+resource_users = [123456789]
+```
+
+配置字段、默认值、中英文说明和示例集中维护在
+[config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
+例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
+`all` 里。消息动作可以使用自己的 feature 名，例如 `activity_link` 或
+`seerinfo`。
 
 ## 数据与缓存
 

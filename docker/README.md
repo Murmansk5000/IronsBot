@@ -39,15 +39,15 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `custom_sendpic`: reply with fixed local images by command keywords.
 - `custom_help`: show only features enabled for the current group or private user.
 - `custom_about`: show the current IronsBot project information.
-- `meeting_reply`: reply with Tencent Meeting information from environment variables.
+- `meeting_reply`: reply with Tencent Meeting information from APP_CONFIG.
 - `message_actions`: generic private/group command replies and scheduled messages.
 - `bilibili_monitor`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
 - `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.
-- `scheduled_restart`: restart the bot container at configured daily times through environment variables.
+- `scheduled_restart`: restart the bot container at configured daily times from APP_CONFIG.
 
-All group IDs, user IDs, team IDs, tokens, meeting numbers, and private reply text should be configured at runtime through environment variables or an Unraid template. They are intentionally not baked into the image.
+Behavior values such as group IDs, user IDs, team IDs, meeting numbers, feature policies, Bilibili subscriptions, and private reply text belong in a mounted TOML config file. Environment variables are reserved for secrets, credentials, and deployment runtime knobs. They are intentionally not baked into the image.
 
 ## Quick Start With Docker Compose
 
@@ -62,13 +62,14 @@ services:
       - "8085:8080"
     volumes:
       - ./ironsbot-data:/app/data
+      - ./ironsbot-config:/config:ro
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
       PORT: "8080"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
       SUPERUSERS: '["123456789"]'
-      DATA_SYNC_CONFIG: '{"on_startup":false,"interval_enabled":true,"sources":{"seerapi":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256","interval_minutes":60,"local_path":"data/ironsbot-data.sqlite"},"aliases":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256","interval_minutes":60,"local_path":"data/aliases-data.sqlite"}}}'
     restart: always
 
   napcat:
@@ -89,6 +90,9 @@ services:
     restart: always
 ```
 
+Create `./ironsbot-config/ironsbot.toml` by copying `config.prod.toml` or
+`config.example.toml` from the repository, then edit behavior values there.
+
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 
 ```text
@@ -103,30 +107,47 @@ ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 
 The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 
-## Common Environment Variables
+## Configuration
+
+Behavior config is file-based:
+
+- Mount a directory containing `ironsbot.toml` to `/config`.
+- Set `APP_CONFIG_PATH=/config/ironsbot.toml`.
+- Use `config.example.toml` for all fields, defaults, English descriptions, Chinese descriptions, and examples.
+
+```env
+APP_CONFIG_PATH=/config/ironsbot.toml
+ONEBOT_ACCESS_TOKEN=change-me
+SUPERUSERS=["123456789"]
+AI_KEY=
+HEADLESS_SEER_USER_ID=
+HEADLESS_SEER_PASSWORD=
+SENDPIC_CNB_TOKEN=
+```
 
 | Variable | Description |
 | --- | --- |
+| `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
-| `GROUP_ALIASES` | JSON object mapping friendly group names to QQ group IDs. |
-| `USER_ALIASES` | JSON object mapping friendly user names to QQ IDs. |
-| `FEATURE_GROUP_POLICY` | JSON object mapping group aliases or numeric group IDs to enabled features. |
-| `FEATURE_USER_POLICY` | JSON object mapping user aliases or numeric QQ IDs to enabled private/push features. |
-| `FEATURE_SUPERUSER_BYPASS` | Set `true` to let superusers use group features in groups not listed in policy. Default `true`. |
-| `MODULES` | Optional advanced JSON override for module defaults from `ironsbot/shared/config/config.py`, such as Bilibili subscriptions or AI tuning. |
-| `AI_KEY` | AI chat API key. Kept separate from `MODULES` so it can be masked. |
+| `AI_KEY` | AI chat API key. |
+| `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
+| `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
+| `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
+| `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
 
 Common feature names include `all`, `custom`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use custom feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
 
-```env
-SUPERUSERS=["123456789"]
-GROUP_ALIASES={"admin":686376929,"main":123456789}
-USER_ALIASES={"owner":123456789}
-FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_link","bili_query","bili_push","ai_chat"]}
-FEATURE_USER_POLICY={"owner":["all"]}
-FEATURE_SUPERUSER_BYPASS=true
-MODULES={"bilibili":{"push":{"groups":{"main":{"uids":[1310714247],"mode":"full"}}}}}
+```toml
+[feature]
+group_aliases = { admin = 686376929, main = 123456789 }
+user_aliases = { owner = 123456789 }
+group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "activity_link", "bili_query", "bili_push", "ai_chat"] }
+user_policy = { owner = ["all"] }
+superuser_bypass = true
+
+[bilibili.push]
+groups = { main = { uids = [1310714247], mode = "full" } }
 ```
 
 ## Team Group Shortcut
@@ -142,17 +163,23 @@ Bot replies: team info for each configured team ID
 
 This is the same kind of output as the built-in `战队<team_id>` query, but the group member does not need to remember the team IDs.
 
-Configure it at runtime:
+Configure it in `ironsbot.toml`:
 
-```env
-FEATURE_GROUP_POLICY={"team_group":["team"]}
-GROUP_ALIASES={"team_group":123456789}
-TEAM_IDS=[1234567,7654321]
-TEAM_RESOURCE_USERS=[123456789]
-MODULES={"team":{"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}}
+```toml
+[feature]
+group_aliases = { team_group = 123456789 }
+group_policy = { team_group = ["team"] }
+
+[seer.team_shortcut]
+team_ids = [1234567, 7654321]
+resource_users = [123456789]
+commands = ["战队"]
+resource_threshold = 1000
+query_timeout_seconds = 20
+resource_message = "出来买资源，别逼我求你😡"
 ```
 
-Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an ignored `.env.prod` file. Do not commit them to GitHub.
+Keep real QQ group IDs and team IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Do not commit them to GitHub.
 
 ## Unraid
 
@@ -167,7 +194,7 @@ Template URLs:
 https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml
 ```
 
-The Unraid template exposes the runtime variables as editable fields, including group IDs, team shortcut IDs, meeting number, OneBot token, and Bilibili monitor settings.
+The Unraid template exposes a minimal variable set and mounts a config directory. Put behavior settings in `/config/ironsbot.toml`; keep only tokens, credentials, and deployment runtime knobs as environment variables.
 
 ## Privacy Notes
 
@@ -175,8 +202,9 @@ Do not put private QQ IDs, group IDs, team IDs, meeting links, meeting numbers, 
 
 Use one of these instead:
 
-- Docker Compose environment variables
-- Unraid container variables
+- a mounted TOML config outside the repository, such as `/config/ironsbot.toml`
+- Docker Compose environment variables for secrets and credentials
+- Unraid container variables for secrets and credentials
 - ignored local files such as `.env.prod`
 - Docker / Unraid secret management where available
 

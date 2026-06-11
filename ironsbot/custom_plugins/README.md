@@ -10,8 +10,9 @@
 plugin_dirs = []
 ```
 
-新增可运行插件后，需要把模块名加入 `bot.py` 的 `CUSTOM_PLUGINS` 列表，避免
-NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入 `bot.py` 的目录只会被视为普通代码。
+新增可运行插件后，需要把模块名加入
+`ironsbot/app/plugin_manifest.py`，并在 bootstrap 切换完成前同步维护 `bot.py`
+里的加载列表，避免 NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入显式加载列表的目录只会被视为普通代码。
 
 ## 当前插件
 
@@ -41,7 +42,7 @@ ironsbot/custom_plugins/my_plugin/
 ```
 
 固定文本指令、定时私聊、定时群发优先不要写插件，直接用
-`MODULES.message` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
+`APP_CONFIG` 的 `[message]` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
 最终发送走 `message_actions`。
 
 最小业务命令示例：
@@ -78,35 +79,50 @@ async def handle_ping(matcher: Matcher, event: MessageEvent) -> None:
 不要把 QQ 号、群号、账号、密码、Cookie、token 写死在代码里。公开仓库里只保留空
 默认值或无敏感的示例值。
 
-模块配置统一写在 `ironsbot/shared/config/config.py`，插件自己的 `config.py`
-只保留轻量代理或兼容导出，不再各自调用 `get_plugin_config`。
+行为配置统一写在 `ironsbot/config/models/` 的 APP_CONFIG schema 里，并由
+`APP_CONFIG_PATH` 指向的 TOML 文件提供。插件自己的 `config.py` 只保留轻量访问函数，
+不再各自调用 NoneBot 的 `get_plugin_config`，也不要新增旧的大 JSON 兼容入口。
 
 推荐写法：
 
 ```python
-from ironsbot.shared.config.config import Config, get_shared_config
+from ironsbot.config.loader import get_app_config
 
-plugin_config = get_shared_config()
-my_plugin_config = plugin_config.modules.my_plugin
+def get_my_plugin_config():
+    return get_app_config().message
 ```
 
-新增模块配置时，先在 shared config 里加 Pydantic schema，再从插件侧代理引用。
+新增模块配置时，先在 `ironsbot/config/models/` 里加 Pydantic schema 和默认值，
+再从插件侧通过访问函数引用。导入插件时只允许创建 metadata 和薄 matcher；数据库打开、
+目录创建、目标解析、网络请求、scheduler 注册和长任务都放到显式生命周期函数里。
 
-然后在 `.env.dev`、`.env.prod`、Unraid 模板变量或 Docker 环境变量中只填
-密钥、账号、群号、战队号和功能策略；确实要覆盖模块默认值时使用 `MODULES`
-写局部覆盖。
+`.env.dev`、`.env.prod`、Unraid 模板变量或 Docker 环境变量只保留密钥、账号凭据和部署运行参数。
+群号、战队号、功能策略、B站订阅、消息动作等行为配置写入 TOML。
 
-示例：
+环境变量示例：
 
 ```env
-GROUP_ALIASES={"admin":686376929,"main":123456789}
-FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_query","bili_query","bili_push","team","ai_chat","ai_intent"]}
-TEAM_IDS=[]
-TEAM_RESOURCE_USERS=[]
-
+APP_CONFIG_PATH=/config/ironsbot.toml
+ONEBOT_ACCESS_TOKEN=change-me
+SUPERUSERS=["123456789"]
 AI_KEY=sk-...
+HEADLESS_SEER_USER_ID=12345678
+HEADLESS_SEER_PASSWORD=...
+```
 
-MODULES={"bilibili":{"push":{"groups":{"main":{"uids":[1310714247,123456789],"mode":"full","uid_modes":{"123456789":"link"}}}}}}
+TOML 示例：
+
+```toml
+[feature]
+group_aliases = { admin = 686376929, main = 123456789 }
+group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "activity_query", "bili_query", "bili_push", "team", "ai_chat", "ai_intent"] }
+
+[seer.team_shortcut]
+team_ids = [1234567]
+resource_users = [123456789]
+
+[bilibili.push]
+groups = { main = { uids = [1310714247, 123456789], mode = "full", uid_modes = { "123456789" = "link" } } }
 ```
 
 ## 本地开发与部署
