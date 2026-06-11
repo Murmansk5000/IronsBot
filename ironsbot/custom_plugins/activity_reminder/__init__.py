@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -17,23 +17,19 @@ from ironsbot.services.activity.commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
 )
-from ironsbot.services.activity.delivery import (
-    filter_reminders_before_send,
-    format_reminder_message,
-)
+from ironsbot.services.activity.delivery import format_reminder_message
 from ironsbot.services.activity.models import (
     ActivityInfo,
     ActivityInfoCache,
     ActivityReminder,
 )
-from ironsbot.services.activity.planning import (
-    build_scheduled_reminders,
-)
 from ironsbot.services.activity.query import (
     ActivityQuerySource,
     active_activity_infos,
     build_activity_query_message,
+    scheduled_reminders,
     soon_ending_activity_infos,
+    valid_reminders_before_send,
 )
 from ironsbot.services.activity.repository import load_activity_rows
 from ironsbot.services.activity.scheduler import (
@@ -152,37 +148,12 @@ def build_current_activity_message(
     )
 
 
-def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
-    return build_scheduled_reminders(
-        _soon_ending_activity_infos(now),
-        now,
-        lead_hours=get_activity_config().lead_hours,
-        reminder_send_delay=REMINDER_SEND_DELAY,
-        grace=timedelta(minutes=get_activity_config().grace_minutes),
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
-    )
-
-
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
     return format_reminder_message(
         lead_hours,
         reminders,
         template=get_activity_config().message,
         fallback_template=DEFAULT_MESSAGE_TEMPLATE,
-    )
-
-
-def _filter_valid_reminders_before_send(
-    reminders: Iterable[ActivityReminder],
-    *,
-    now: datetime,
-) -> list[ActivityReminder]:
-    return filter_reminders_before_send(
-        reminders,
-        now=now,
-        current_activities=_soon_ending_activity_infos(now),
-        dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
     )
 
 
@@ -193,7 +164,12 @@ async def send_activity_reminder(
 ) -> None:
     from ironsbot.custom_plugins.message_actions import send_broadcast_message
 
-    reminders = _filter_valid_reminders_before_send(reminders, now=_now())
+    reminders = valid_reminders_before_send(
+        _activity_query_source,
+        reminders,
+        now=_now(),
+        dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
+    )
     if not reminders:
         logger.info(
             f"activity ending reminder {lead_hours}h skipped: no valid reminders"
@@ -229,7 +205,15 @@ async def schedule_activity_reminders() -> None:
         return
 
     try:
-        reminders = filter_unsent(_build_scheduled_reminders(_now()))
+        reminders = filter_unsent(
+            scheduled_reminders(
+                _activity_query_source,
+                _now(),
+                lead_hours=config.lead_hours,
+                reminder_send_delay=REMINDER_SEND_DELAY,
+                grace=timedelta(minutes=config.grace_minutes),
+            )
+        )
     except Exception:  # noqa: BLE001
         logger.opt(exception=True).warning("activity reminder scan failed")
         return

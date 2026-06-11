@@ -1,22 +1,24 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from .catalog import build_active_activity_infos
+from .delivery import filter_reminders_before_send
 from .formatting import format_activity_line
 from .planning import (
     activity_deadline,
     activity_is_soon_ending,
     activity_sort_end_time,
+    build_scheduled_reminders,
 )
 
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
 
-    from .models import ActivityInfo, ActivityInfoCache
+    from .models import ActivityInfo, ActivityInfoCache, ActivityReminder
 
 LoadActivityRows = Callable[[], list[Mapping[str, Any]]]
 
@@ -129,3 +131,37 @@ def build_activity_query_message(
         lines.append(f"...还有 {hidden_count} 个活动未显示")
 
     return "\n".join(lines)
+
+
+def scheduled_reminders(
+    source: ActivityQuerySource,
+    now: datetime,
+    *,
+    lead_hours: Iterable[int],
+    reminder_send_delay: timedelta,
+    grace: timedelta,
+) -> list[ActivityReminder]:
+    return build_scheduled_reminders(
+        soon_ending_activity_infos(source, now),
+        now,
+        lead_hours=lead_hours,
+        reminder_send_delay=reminder_send_delay,
+        grace=grace,
+        soon_ending_threshold=source.soon_ending_threshold,
+    )
+
+
+def valid_reminders_before_send(
+    source: ActivityQuerySource,
+    reminders: Iterable[ActivityReminder],
+    *,
+    now: datetime,
+    dispatch_tolerance: timedelta,
+) -> list[ActivityReminder]:
+    return filter_reminders_before_send(
+        reminders,
+        now=now,
+        current_activities=soon_ending_activity_infos(source, now),
+        dispatch_tolerance=dispatch_tolerance,
+        soon_ending_threshold=source.soon_ending_threshold,
+    )

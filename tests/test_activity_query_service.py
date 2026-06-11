@@ -5,10 +5,15 @@ from typing import Any
 from pytest import MonkeyPatch
 
 from ironsbot.services.activity import query
-from ironsbot.services.activity.models import ActivityInfo, ActivityInfoCache
+from ironsbot.services.activity.models import (
+    ActivityInfo,
+    ActivityInfoCache,
+    ActivityReminder,
+)
 
 ACTIVITY_ID_ONE = 1
 ACTIVITY_ID_TWO = 2
+EXPECTED_SEND_MINUTE = 10
 
 
 def dt(
@@ -49,6 +54,30 @@ def _second_rows() -> list[Mapping[str, Any]]:
     return [{"id": ACTIVITY_ID_TWO}]
 
 
+def _query_source(
+    cache: ActivityInfoCache,
+    load_rows: query.LoadActivityRows = _empty_rows,
+    *,
+    cache_ttl: timedelta | None = None,
+) -> query.ActivityQuerySource:
+    return query.ActivityQuerySource(
+        cache=cache,
+        load_rows=load_rows,
+        cache_ttl=cache_ttl or timedelta(minutes=1),
+        soon_ending_threshold=timedelta(days=7),
+    )
+
+
+def _reminder() -> ActivityReminder:
+    return ActivityReminder(
+        activity_id=ACTIVITY_ID_ONE,
+        name="银河斗技场",
+        end_time=dt(2026, 6, 12, 10),
+        lead_hours=1,
+        send_time=dt(2026, 6, 12, 9),
+    )
+
+
 def test_active_activity_infos_reuses_cache_and_filters_against_now(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -67,12 +96,7 @@ def test_active_activity_infos_reuses_cache_and_filters_against_now(
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
-    source = query.ActivityQuerySource(
-        cache=cache,
-        load_rows=_first_rows,
-        cache_ttl=timedelta(days=2),
-        soon_ending_threshold=timedelta(days=7),
-    )
+    source = _query_source(cache, _first_rows, cache_ttl=timedelta(days=2))
 
     first = query.active_activity_infos(
         source,
@@ -112,12 +136,7 @@ def test_build_activity_query_message_renders_current_activity(
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
-    source = query.ActivityQuerySource(
-        cache=cache,
-        load_rows=_empty_rows,
-        cache_ttl=timedelta(minutes=1),
-        soon_ending_threshold=timedelta(days=7),
-    )
+    source = _query_source(cache)
 
     message = query.build_activity_query_message(
         source,
@@ -146,12 +165,7 @@ def test_build_activity_query_message_handles_empty_soon_ending_list(
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
-    source = query.ActivityQuerySource(
-        cache=cache,
-        load_rows=_empty_rows,
-        cache_ttl=timedelta(minutes=1),
-        soon_ending_threshold=timedelta(days=7),
-    )
+    source = _query_source(cache)
 
     message = query.build_activity_query_message(
         source,
@@ -160,3 +174,58 @@ def test_build_activity_query_message_handles_empty_soon_ending_list(
     )
 
     assert message == query.EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
+
+
+def test_scheduled_reminders_uses_query_source_activities(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    cache = ActivityInfoCache()
+
+    def fake_build_active_activity_infos(
+        _rows: Iterable[Mapping[str, Any]],
+        _now: datetime,
+    ) -> list[ActivityInfo]:
+        return [_activity()]
+
+    monkeypatch.setattr(
+        query,
+        "build_active_activity_infos",
+        fake_build_active_activity_infos,
+    )
+
+    reminders = query.scheduled_reminders(
+        _query_source(cache),
+        dt(2026, 6, 12, 8, 50),
+        lead_hours=[1],
+        reminder_send_delay=timedelta(minutes=EXPECTED_SEND_MINUTE),
+        grace=timedelta(minutes=15),
+    )
+
+    assert len(reminders) == 1
+    assert reminders[0].send_time == dt(2026, 6, 12, 9, EXPECTED_SEND_MINUTE)
+
+
+def test_valid_reminders_before_send_filters_against_current_query(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    cache = ActivityInfoCache()
+    reminder = _reminder()
+
+    def fake_build_active_activity_infos(
+        _rows: Iterable[Mapping[str, Any]],
+        _now: datetime,
+    ) -> list[ActivityInfo]:
+        return [_activity()]
+
+    monkeypatch.setattr(
+        query,
+        "build_active_activity_infos",
+        fake_build_active_activity_infos,
+    )
+
+    assert query.valid_reminders_before_send(
+        _query_source(cache),
+        [reminder],
+        now=dt(2026, 6, 12, 9),
+        dispatch_tolerance=timedelta(minutes=1),
+    ) == [reminder]
