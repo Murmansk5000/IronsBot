@@ -1,6 +1,7 @@
 import asyncio
 import os
 import signal
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from nonebot import get_driver, logger, require
@@ -24,12 +25,6 @@ __plugin_meta__ = PluginMetadata(
     ),
     config=Config,
 )
-
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
-
-driver = get_driver()
-
 
 def _target_pid() -> int:
     if not get_restart_config().signal_parent:
@@ -72,7 +67,10 @@ async def _scheduled_restart(scheduled_time: str) -> None:
         os.kill(current_pid, signal.SIGTERM)
 
 
-def _register_restart_job() -> None:
+_scheduled_restart_runtime_state = {"registered": False}
+
+
+def _register_restart_job(scheduler: Any) -> None:
     restart_config = get_restart_config()
     if not restart_config.enabled:
         logger.info("scheduled bot restart disabled")
@@ -103,6 +101,19 @@ def _register_restart_job() -> None:
     )
 
 
-@driver.on_startup
-async def register_restart_job() -> None:
-    _register_restart_job()
+def _setup_scheduled_restart_runtime(driver: Any, scheduler: Any) -> None:
+    if _scheduled_restart_runtime_state["registered"]:
+        return
+
+    @driver.on_startup
+    async def register_restart_job() -> None:
+        _register_restart_job(scheduler)
+
+    _scheduled_restart_runtime_state["registered"] = True
+
+
+def setup_scheduled_restart_runtime() -> None:
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
+
+    _setup_scheduled_restart_runtime(get_driver(), scheduler)

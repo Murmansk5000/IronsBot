@@ -52,6 +52,7 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
 
 RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
+    "ironsbot.custom_plugins.scheduled_restart:setup_scheduled_restart_runtime",
 )
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
