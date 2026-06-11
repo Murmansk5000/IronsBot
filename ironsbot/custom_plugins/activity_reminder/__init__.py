@@ -22,6 +22,10 @@ from nonebot.rule import Rule
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from ironsbot.services.activity.commands import (
+    is_current_activity_query_text,
+    is_soon_ending_activity_query_text,
+)
 from ironsbot.services.activity.formatting import (
     format_activity_line,
     format_activity_list,
@@ -54,10 +58,6 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from .commands import (
-    is_current_activity_query_text,
-    is_soon_ending_activity_query_text,
-)
 from .config import Config, get_activity_config
 
 require("ironsbot.plugins.seer_data")

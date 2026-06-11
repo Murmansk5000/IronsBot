@@ -1,24 +1,11 @@
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-
 from ironsbot.config.models.activity import (
     DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS,
     ActivityConfig,
 )
-
-_COMMANDS_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "custom_plugins"
-    / "activity_reminder"
-    / "commands.py"
+from ironsbot.services.activity.commands import (
+    is_current_activity_query_text,
+    is_soon_ending_activity_query_text,
 )
-_SPEC = spec_from_file_location("activity_reminder_commands_for_test", _COMMANDS_PATH)
-assert _SPEC is not None and _SPEC.loader is not None
-_COMMANDS = module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_COMMANDS)
-is_current_activity_query_text = _COMMANDS.is_current_activity_query_text
-is_soon_ending_activity_query_text = _COMMANDS.is_soon_ending_activity_query_text
 
 
 def test_activity_notice_timeout_lives_in_activity_config() -> None:
