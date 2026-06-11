@@ -7,7 +7,12 @@ from nonebot.log import logger
 
 from ironsbot.services.bilibili.auth import (
     LOGIN_QR_EXPIRE_SECONDS,
+    build_bili_login_cookie_incomplete_text,
+    build_bili_login_notice_text,
+    build_bili_login_poll_error_text,
     build_bili_login_qrcode_message_parts,
+    build_bili_login_qrcode_request_failed_text,
+    build_bili_login_success_text,
     classify_bili_login_poll_code,
     extract_bili_login_cookie,
     has_complete_bili_login_cookie,
@@ -148,24 +153,15 @@ async def send_bili_login_qrcode_to_superusers(
     except Exception as e:
         logger.error(f"Bilibili QR request failed: {e}")
         _last_login_notice_at = now
-        detail = f"\n原因：{reason}" if reason else ""
         await _send_private_to_superusers(
-            "B站动态监控登录已失效。"
-            f"{detail}\n"
-            "二维码申请失败，请稍后重试。\n"
-            "其他机器人功能会继续正常运行。",
+            build_bili_login_qrcode_request_failed_text(reason),
             bot=bot,
         )
         return
 
-    detail = f"\n原因：{reason}" if reason else ""
     await _send_private_to_superusers(
         Message([
-            MessageSegment.text(
-                "B站动态监控登录已失效。"
-                f"{detail}\n"
-                "其他机器人功能会继续正常运行。\n"
-            ),
+            MessageSegment.text(build_bili_login_notice_text(reason)),
             *qr_message,
         ]),
         bot=bot,
@@ -210,8 +206,7 @@ async def _poll_bili_login(
 
                     if not has_complete_bili_login_cookie(new_cookie):
                         await _send_private_to_superusers(
-                            "B站扫码已确认，但没有取得完整登录Cookie。"
-                            "下次检测到登录失效时会重新发送二维码。",
+                            build_bili_login_cookie_incomplete_text(),
                             bot=bot,
                             user_ids=[requester_id] if requester_id else None,
                         )
@@ -221,7 +216,7 @@ async def _poll_bili_login(
                     _set_bili_login_required(False)
                     logger.info("Bilibili cookie refreshed")
                     await _send_private_to_superusers(
-                        "B站登录成功，Cookie已刷新。",
+                        build_bili_login_success_text(),
                         bot=bot,
                     )
                     return
@@ -237,8 +232,7 @@ async def _poll_bili_login(
     except Exception as e:
         logger.error(f"Bilibili QR polling failed: {e}")
         await _send_private_to_superusers(
-            "B站扫码登录过程中发生错误。"
-            "下次检测到登录失效时会重新发送二维码。",
+            build_bili_login_poll_error_text(),
             bot=bot,
             user_ids=[requester_id] if requester_id else None,
         )

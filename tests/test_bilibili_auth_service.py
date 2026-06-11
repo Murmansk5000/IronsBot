@@ -2,8 +2,14 @@ import httpx
 import pytest
 
 from ironsbot.services.bilibili.auth import (
+    build_bili_login_cookie_incomplete_text,
+    build_bili_login_notice_text,
+    build_bili_login_poll_error_text,
     build_bili_login_qrcode_message_parts,
+    build_bili_login_qrcode_request_failed_text,
     build_bili_login_qrcode_tip,
+    build_bili_login_reason_detail,
+    build_bili_login_success_text,
     classify_bili_login_poll_code,
     extract_bili_login_cookie,
     has_complete_bili_login_cookie,
@@ -78,6 +84,26 @@ def test_classify_bili_login_poll_code() -> None:
     assert classify_bili_login_poll_code(86038) == "expired"
     assert classify_bili_login_poll_code(86101) == "pending"
     assert classify_bili_login_poll_code(None) == "pending"
+
+
+def test_bili_login_notice_text_builders_include_optional_reason() -> None:
+    assert build_bili_login_reason_detail("") == ""
+    assert build_bili_login_reason_detail("自动检查") == "\n原因：自动检查"
+
+    notice = build_bili_login_notice_text("自动检查")
+    assert "B站动态监控登录已失效" in notice
+    assert "原因：自动检查" in notice
+    assert "其他机器人功能会继续正常运行" in notice
+
+    failed = build_bili_login_qrcode_request_failed_text("用户查询")
+    assert "原因：用户查询" in failed
+    assert "二维码申请失败" in failed
+
+
+def test_bili_login_static_notice_texts() -> None:
+    assert "完整登录Cookie" in build_bili_login_cookie_incomplete_text()
+    assert "Cookie已刷新" in build_bili_login_success_text()
+    assert "扫码登录过程中发生错误" in build_bili_login_poll_error_text()
 
 
 def test_build_bili_login_qrcode_tip_includes_login_url() -> None:

@@ -104,6 +104,45 @@ def classify_bili_login_poll_code(code: object) -> BiliLoginPollStatus:
     return "pending"
 
 
+def build_bili_login_reason_detail(reason: str = "") -> str:
+    return f"\n原因：{reason}" if reason else ""
+
+
+def build_bili_login_notice_text(reason: str = "") -> str:
+    return (
+        "B站动态监控登录已失效。"
+        f"{build_bili_login_reason_detail(reason)}\n"
+        "其他机器人功能会继续正常运行。\n"
+    )
+
+
+def build_bili_login_qrcode_request_failed_text(reason: str = "") -> str:
+    return (
+        "B站动态监控登录已失效。"
+        f"{build_bili_login_reason_detail(reason)}\n"
+        "二维码申请失败，请稍后重试。\n"
+        "其他机器人功能会继续正常运行。"
+    )
+
+
+def build_bili_login_cookie_incomplete_text() -> str:
+    return (
+        "B站扫码已确认，但没有取得完整登录Cookie。"
+        "下次检测到登录失效时会重新发送二维码。"
+    )
+
+
+def build_bili_login_success_text() -> str:
+    return "B站登录成功，Cookie已刷新。"
+
+
+def build_bili_login_poll_error_text() -> str:
+    return (
+        "B站扫码登录过程中发生错误。"
+        "下次检测到登录失效时会重新发送二维码。"
+    )
+
+
 def build_bili_login_qrcode_tip(qr_url: str) -> str:
     return (
         "B站登录已失效，需要重新登录。\n"
