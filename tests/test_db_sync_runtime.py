@@ -17,6 +17,7 @@ except RuntimeError as e:
         raise
 
 from ironsbot.plugins import db_sync
+from ironsbot.plugins.db_sync import runtime as db_sync_runtime
 
 
 class FakeDriver:
@@ -40,12 +41,16 @@ def test_db_sync_runtime_setup_registers_startup_once(
     monkeypatch: MonkeyPatch,
 ) -> None:
     registered_state = False
-    monkeypatch.setitem(db_sync._db_sync_runtime_state, "registered", registered_state)
+    monkeypatch.setitem(
+        db_sync_runtime._db_sync_runtime_state,
+        "registered",
+        registered_state,
+    )
     driver = FakeDriver()
     scheduler = FakeScheduler()
 
-    db_sync._setup_db_sync_runtime(driver, scheduler)
-    db_sync._setup_db_sync_runtime(driver, scheduler)
+    db_sync_runtime._setup_db_sync_runtime(driver, scheduler)
+    db_sync_runtime._setup_db_sync_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
 
@@ -89,12 +94,12 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
     monkeypatch.setattr(db_sync, "_prepared_databases", set())
     monkeypatch.setattr(db_sync.db_manager, "register", registered_engines.append)
     monkeypatch.setattr(
-        db_sync,
+        db_sync_runtime,
         "get_data_sync_config",
         lambda: SimpleNamespace(interval_enabled=True, on_startup=False),
     )
 
-    asyncio.run(db_sync._start_db_sync_runtime(scheduler))
+    asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
 
     assert registered_engines == ["unit"]
     assert scheduler.jobs == [
