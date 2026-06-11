@@ -1,7 +1,7 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.activity import (
     DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS,
     ActivityConfig,
 )

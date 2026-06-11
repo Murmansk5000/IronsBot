@@ -7,7 +7,6 @@ from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
 from ironsbot.shared.config.time import minute_of_day
 
@@ -36,11 +35,6 @@ from .state import (
     push_targets_for_uid,
 )
 
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
-
-driver = get_driver()
-
 HTTP_OK = 200
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 DynamicItem = tuple[int, dict[str, Any]]
@@ -52,6 +46,7 @@ class AutoCheckState:
 
 
 _auto_check_state = AutoCheckState()
+_bilibili_monitor_runtime_state = {"registered": False}
 
 
 def _window_contains(now: datetime, *, start: str, end: str) -> bool:
@@ -141,6 +136,8 @@ async def _send_dynamic_push(
     pub_ts: int,
     targets: BiliPushTargets,
 ) -> None:
+    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+
     if targets.full_group_ids or targets.full_user_ids:
         full_message = parse_single_item(item, pub_ts, mode="full")
         if full_message:
@@ -298,8 +295,7 @@ async def auto_check_job() -> None:
     await run_check_logic()
 
 
-@driver.on_startup
-async def register_bili_auto_check_job() -> None:
+async def register_bili_auto_check_job(scheduler: Any) -> None:
     scheduler.add_job(
         auto_check_job,
         "interval",
@@ -315,4 +311,21 @@ async def _startup_check(bot: Bot) -> None:
     await run_check_logic(is_startup_check=True)
 
 
-register_startup_check("bilibili_monitor", _startup_check)
+def _setup_bilibili_monitor_runtime(driver: Any, scheduler: Any) -> None:
+    if _bilibili_monitor_runtime_state["registered"]:
+        return
+
+    register_startup_check("bilibili_monitor", _startup_check)
+
+    @driver.on_startup
+    async def _register_bili_auto_check_on_startup() -> None:
+        await register_bili_auto_check_job(scheduler)
+
+    _bilibili_monitor_runtime_state["registered"] = True
+
+
+def setup_bilibili_monitor_runtime() -> None:
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
+
+    _setup_bilibili_monitor_runtime(get_driver(), scheduler)

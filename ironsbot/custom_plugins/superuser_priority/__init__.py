@@ -15,7 +15,7 @@ from ironsbot.config import AppConfig, get_app_config
 from ironsbot.shared.features import is_superuser
 
 if TYPE_CHECKING:
-    from ironsbot.shared.config.config import SuperuserPriorityConfig
+    from ironsbot.config.models.runtime import SuperuserPriorityConfig
 
 Config = AppConfig
 

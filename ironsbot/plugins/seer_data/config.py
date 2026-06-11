@@ -1,5 +1,5 @@
 from ironsbot.config import AppConfig, get_app_config
-from ironsbot.shared.config.config import DataSyncConfig
+from ironsbot.config.models.runtime import DataSyncConfig
 
 Config = AppConfig
 

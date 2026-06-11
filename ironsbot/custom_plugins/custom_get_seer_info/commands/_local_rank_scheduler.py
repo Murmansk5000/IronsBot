@@ -1,16 +1,16 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
+from typing import Any
+
 from nonebot import get_driver, logger, require
 
 from ..config import get_local_rank_config
-from ._local_rank_refresh import refresh_local_rank_cache
 
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
-
-driver = get_driver()
+_local_rank_scheduler_runtime_state = {"registered": False}
 
 
 async def _scheduled_local_rank_refresh() -> None:
+    from ._local_rank_refresh import refresh_local_rank_cache
+
     if not get_local_rank_config().auto_refresh:
         return
 
@@ -23,8 +23,8 @@ async def _scheduled_local_rank_refresh() -> None:
         f"failed={result.failed}"
     )
 
-@driver.on_startup
-async def register_local_rank_refresh_job() -> None:
+
+def register_local_rank_refresh_job(scheduler: Any) -> None:
     local_rank_config = get_local_rank_config()
     scheduler.add_job(
         _scheduled_local_rank_refresh,
@@ -34,3 +34,21 @@ async def register_local_rank_refresh_job() -> None:
         id="custom_get_seer_info_local_rank_refresh",
         replace_existing=True,
     )
+
+
+def _setup_local_rank_scheduler_runtime(driver: Any, scheduler: Any) -> None:
+    if _local_rank_scheduler_runtime_state["registered"]:
+        return
+
+    @driver.on_startup
+    async def _register_local_rank_refresh_job_on_startup() -> None:
+        register_local_rank_refresh_job(scheduler)
+
+    _local_rank_scheduler_runtime_state["registered"] = True
+
+
+def setup_local_rank_scheduler_runtime() -> None:
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
+
+    _setup_local_rank_scheduler_runtime(get_driver(), scheduler)

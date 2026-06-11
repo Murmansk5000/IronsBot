@@ -7,7 +7,6 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.common.query_guard import QueryGuard
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
@@ -18,6 +17,7 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

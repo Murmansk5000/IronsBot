@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Callable
 from contextlib import suppress
@@ -13,13 +13,11 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.common.query_guard import QueryGuard
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
 from ironsbot.custom_plugins.message_actions import (
-    command_reply_check,
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,
@@ -29,7 +27,9 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
-from ironsbot.shared.messages.text import command_text_matches
+from ironsbot.shared.messaging.conversations import command_reply_check
+from ironsbot.shared.messaging.query_guard import QueryGuard
+from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

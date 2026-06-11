@@ -5,11 +5,9 @@ from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.shared.features import get_superuser_ids
 
 from .config import get_headless_notice_config
-from .service import headless_user_id_text
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 DAILY_QUIET_START = time(hour=23, minute=55)
@@ -125,6 +123,10 @@ async def _send_headless_state_notice(
     source: str,
     user_id: int | None,
 ) -> None:
+    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+
+    from .service import headless_user_id_text
+
     target_users = sorted(get_superuser_ids())
     if not target_users:
         logger.warning("headless state notice has no superusers")

@@ -14,7 +14,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.messages.text import command_text_matches, strip_command_prefix
+from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

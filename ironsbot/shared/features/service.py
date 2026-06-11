@@ -13,8 +13,6 @@ from ironsbot.config.models.feature import (
     FEATURE_ALIASES,
     KNOWN_FEATURES,
     FeatureConfig,
-)
-from ironsbot.shared.config.config import (
     unique_ints,
 )
 

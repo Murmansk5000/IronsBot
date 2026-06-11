@@ -1,5 +1,5 @@
 from ironsbot.config import AppConfig, get_app_config
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.runtime import (
     INVALID_RESTART_TIME_ERROR,
     RestartConfig,
 )

@@ -1,3 +1,5 @@
+from typing import Any
+
 from nonebot import get_driver, on_message, require
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -14,6 +16,7 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
+from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -27,7 +30,7 @@ from .config import (
     PrivateScheduledMessageAction,
     get_message_config,
 )
-from .replies import event_sender_at_user_ids, finish_matcher_message
+from .replies import finish_matcher_message
 from .runtime_service import (
     build_schedule_job_id,
     build_schedule_trigger_kwargs,
@@ -35,14 +38,10 @@ from .runtime_service import (
 )
 from .senders import send_broadcast_message
 
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
-
-driver = get_driver()
-
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
 MESSAGE_PLUGIN_NAME = "message"
+_message_actions_runtime_state = {"registered": False}
 
 
 def _private_action_allowed(
@@ -203,6 +202,7 @@ async def _send_group_schedule(task: GroupScheduledMessageAction) -> None:
 
 
 def _register_private_schedule(
+    scheduler: Any,
     index: int,
     task: PrivateScheduledMessageAction,
 ) -> None:
@@ -220,6 +220,7 @@ def _register_private_schedule(
 
 
 def _register_group_schedule(
+    scheduler: Any,
     index: int,
     task: GroupScheduledMessageAction,
 ) -> None:
@@ -236,11 +237,28 @@ def _register_group_schedule(
     )
 
 
-@driver.on_startup
-async def register_message_schedules() -> None:
+async def register_message_schedules(scheduler: Any) -> None:
     config = get_message_config()
     for index, task in enumerate(config.private_schedules, start=1):
-        _register_private_schedule(index, task)
+        _register_private_schedule(scheduler, index, task)
 
     for index, task in enumerate(config.group_schedules, start=1):
-        _register_group_schedule(index, task)
+        _register_group_schedule(scheduler, index, task)
+
+
+def _setup_message_actions_runtime(driver: Any, scheduler: Any) -> None:
+    if _message_actions_runtime_state["registered"]:
+        return
+
+    @driver.on_startup
+    async def _register_message_schedules_on_startup() -> None:
+        await register_message_schedules(scheduler)
+
+    _message_actions_runtime_state["registered"] = True
+
+
+def setup_message_actions_runtime() -> None:
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
+
+    _setup_message_actions_runtime(get_driver(), scheduler)

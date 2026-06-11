@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from ironsbot.shared.messages.text import normalize_command_text, strip_command_prefix
+from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
 
 CURRENT_ACTIVITY_COMMANDS = ("当前活动", "活动列表", "活动时间")
 SOON_ENDING_ACTIVITY_COMMANDS = (

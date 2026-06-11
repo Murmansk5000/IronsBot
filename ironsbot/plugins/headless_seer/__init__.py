@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from typing import Any
+
 from nonebot import get_driver, logger
 
 from .config import get_headless_config, get_headless_credentials
 from .manager import client_manager
 
-_driver = get_driver()
+_headless_seer_runtime_state = {"registered": False}
 
 
-@_driver.on_startup
-async def _on_startup() -> None:
+async def _login_headless_seer_on_startup() -> None:
     credentials = get_headless_credentials()
     if (
         credentials.headless_seer_user_id is None
@@ -32,6 +33,18 @@ async def _on_startup() -> None:
         logger.opt(exception=True).error("无头客户端登录失败")
 
 
-@_driver.on_shutdown
-async def _on_shutdown() -> None:
+async def _shutdown_headless_seer() -> None:
     client_manager.shutdown()
+
+
+def _setup_headless_seer_runtime(driver: Any) -> None:
+    if _headless_seer_runtime_state["registered"]:
+        return
+
+    driver.on_startup(_login_headless_seer_on_startup)
+    driver.on_shutdown(_shutdown_headless_seer)
+    _headless_seer_runtime_state["registered"] = True
+
+
+def setup_headless_seer_runtime() -> None:
+    _setup_headless_seer_runtime(get_driver())

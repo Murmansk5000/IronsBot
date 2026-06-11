@@ -12,6 +12,17 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.shared.messaging.reply_limits import (
+    TEXT_SEND_APIS,
+    build_reply_line_limit_decision,
+    can_manage_reply_line_limit,
+    group_id_for_send_api,
+    limit_onebot_message,
+    parse_reply_line_limit_arg,
+)
+from ironsbot.shared.messaging.reply_limits import (
+    limit_text_lines as service_limit_text_lines,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -20,17 +31,6 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from .config import get_reply_config
-from .reply_limit_service import (
-    TEXT_SEND_APIS,
-    build_reply_line_limit_decision,
-    can_manage_reply_line_limit,
-    group_id_for_send_api,
-    limit_onebot_message,
-    parse_reply_line_limit_arg,
-)
-from .reply_limit_service import (
-    limit_text_lines as service_limit_text_lines,
-)
 from .text import (
     build_message,
     strip_command_prefix,
@@ -172,6 +172,9 @@ def limit_message_by_reply_lines(
     return limit_text_lines(message, max_lines)
 
 
+_reply_line_limit_api_hook_state = {"registered": False}
+
+
 def _limit_onebot_message(
     message: object,
     *,
@@ -181,7 +184,6 @@ def _limit_onebot_message(
     return limit_onebot_message(message, max_lines=max_lines)
 
 
-@Bot.on_calling_api
 async def _limit_reply_lines_before_send(
     bot: Bot,  # noqa: ARG001
     api: str,
@@ -198,6 +200,14 @@ async def _limit_reply_lines_before_send(
         message,
         group_id=group_id_for_send_api(api, data),
     )
+
+
+def setup_reply_line_limit_api_hook() -> None:
+    if _reply_line_limit_api_hook_state["registered"]:
+        return
+
+    Bot.on_calling_api(_limit_reply_lines_before_send)
+    _reply_line_limit_api_hook_state["registered"] = True
 
 
 reply_line_limit_matcher = on_message(

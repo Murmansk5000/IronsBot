@@ -50,6 +50,20 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.startup_notice",
 )
 
+RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.http_client:setup_http_client_runtime",
+    "ironsbot.plugins.headless_seer:setup_headless_seer_runtime",
+    "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
+    "ironsbot.custom_plugins.message_actions.runtime:setup_message_actions_runtime",
+    "ironsbot.custom_plugins.headless_seer_notice:setup_headless_notice_runtime",
+    "ironsbot.custom_plugins.scheduled_restart:setup_scheduled_restart_runtime",
+    "ironsbot.custom_plugins.startup_ready:setup_startup_ready_runtime",
+    "ironsbot.custom_plugins.startup_notice:setup_startup_notice_runtime",
+    "ironsbot.custom_plugins.bilibili_monitor.service:setup_bilibili_monitor_runtime",
+    "ironsbot.custom_plugins.activity_reminder:setup_activity_reminder_runtime",
+    "ironsbot.custom_plugins.custom_get_seer_info.commands._local_rank_scheduler:setup_local_rank_scheduler_runtime",
+)
+
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
     PluginGroup("external", EXTERNAL_PLUGINS),
     PluginGroup("custom_core", CUSTOM_CORE_PLUGINS),
@@ -74,6 +88,10 @@ class PluginManifestError(ValueError):
     @classmethod
     def duplicate_modules(cls, modules: list[str]) -> PluginManifestError:
         return cls(f"plugin manifest contains duplicate modules: {', '.join(modules)}")
+
+    @classmethod
+    def invalid_setup_ref(cls, setup_ref: str) -> PluginManifestError:
+        return cls(f"runtime setup reference must use module:function: {setup_ref}")
 
 
 def iter_plugin_modules() -> tuple[str, ...]:
@@ -104,6 +122,16 @@ def validate_plugin_manifest() -> None:
     if duplicates:
         raise PluginManifestError.duplicate_modules(duplicates)
 
+    for setup_ref in RUNTIME_SETUP_CALLS:
+        module_name, separator, function_name = setup_ref.partition(":")
+        if (
+            not separator
+            or not module_name.strip()
+            or not function_name.strip()
+            or ":" in function_name
+        ):
+            raise PluginManifestError.invalid_setup_ref(setup_ref)
+
 
 __all__ = [
     "CUSTOM_CORE_PLUGINS",
@@ -111,6 +139,7 @@ __all__ = [
     "EXTERNAL_PLUGINS",
     "INFRASTRUCTURE_PLUGINS",
     "PLUGIN_GROUPS",
+    "RUNTIME_SETUP_CALLS",
     "PluginGroup",
     "PluginManifestError",
     "iter_plugin_modules",

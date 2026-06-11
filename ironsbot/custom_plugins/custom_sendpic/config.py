@@ -3,11 +3,11 @@ from pathlib import Path
 from nonebot import get_driver
 
 from ironsbot.config import AppConfig, get_app_config, load_secrets_config
-from ironsbot.config.models.message import SendpicBehaviorConfig
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.message import (
     DEFAULT_SENDPIC_MESSAGE_TEMPLATE,
     PicConfig,
     SendpicBackendType,
+    SendpicBehaviorConfig,
 )
 
 BackendType = SendpicBackendType
