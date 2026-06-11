@@ -15,7 +15,6 @@ from ironsbot.custom_plugins.message_actions import (
 )
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
-    get_dynamic_history_item,
     get_saved_cookie,
     list_dynamic_history,
     save_dynamic_history_snapshot,
@@ -23,12 +22,11 @@ from ironsbot.services.bilibili.cache import (
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_IDS_STATE_KEY,
+    build_dynamic_detail_for_selection,
     build_dynamic_menu_text,
     dynamic_record_ids,
-    select_cached_dynamic_id,
 )
 from ironsbot.services.bilibili.parser import (
-    parse_single_item,
     target_dynamics_from_response,
 )
 from ironsbot.services.bilibili.permissions import (
@@ -288,7 +286,7 @@ async def _handle_dynamic_select(
     state = context.state if context.state is not None else {}
     try:
         cached_ids = state.get(DYNAMIC_IDS_STATE_KEY, [])
-        selection = select_cached_dynamic_id(
+        selection = build_dynamic_detail_for_selection(
             cached_ids,
             event.get_plaintext(),
         )
@@ -317,27 +315,25 @@ async def _handle_dynamic_select(
             await _wait_dynamic_select(matcher, event)
             return
 
-        dynamic_id = selection.dynamic_id
-        record = get_dynamic_history_item(dynamic_id)
-        if record is None:
+        if selection.status == "missing":
             await finish_event_reply(
                 matcher,
                 event,
                 "❌ 没找到这条历史动态，请重新发送“动态”。",
             )
 
-        final_message = parse_single_item(
-            record.item,
-            record.pub_ts,
-            menu_mode=True,
-            mode="full",
-        )
+        if selection.status == "parse_failed":
+            await finish_event_reply(
+                matcher,
+                event,
+                "❌ 动态详情解析失败。",
+            )
 
-        if final_message:
+        if selection.message:
             await send_event_reply(
                 matcher,
                 event,
-                final_message,
+                selection.message,
             )
 
         await _wait_dynamic_select(matcher, event)

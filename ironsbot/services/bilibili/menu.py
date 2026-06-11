@@ -3,17 +3,42 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
-from ironsbot.services.bilibili.cache import DynamicHistoryRecord
+from nonebot.adapters.onebot.v11 import Message
+
+from ironsbot.services.bilibili.cache import (
+    DynamicHistoryRecord,
+    get_dynamic_history_item,
+)
+from ironsbot.services.bilibili.parser import parse_single_item
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
 
 DynamicSelectionStatus = Literal["ok", "expired", "invalid", "out_of_range"]
+DynamicDetailStatus = Literal[
+    "ok",
+    "expired",
+    "invalid",
+    "out_of_range",
+    "missing",
+    "parse_failed",
+]
 
 
 @dataclass(frozen=True, slots=True)
 class DynamicSelection:
     status: DynamicSelectionStatus
     dynamic_id: str = ""
+    available_count: int = 0
+
+    @property
+    def is_ok(self) -> bool:
+        return self.status == "ok"
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicDetailSelection:
+    status: DynamicDetailStatus
+    message: Message | None = None
     available_count: int = 0
 
     @property
@@ -81,4 +106,41 @@ def select_cached_dynamic_id(
         status="ok",
         dynamic_id=str(cached_ids[select_num - 1]),
         available_count=len(cached_ids),
+    )
+
+
+def build_dynamic_detail_for_selection(
+    cached_ids: Sequence[object],
+    raw_text: str,
+) -> DynamicDetailSelection:
+    selection = select_cached_dynamic_id(cached_ids, raw_text)
+    if not selection.is_ok:
+        return DynamicDetailSelection(
+            status=selection.status,
+            available_count=selection.available_count,
+        )
+
+    record = get_dynamic_history_item(selection.dynamic_id)
+    if record is None:
+        return DynamicDetailSelection(
+            status="missing",
+            available_count=selection.available_count,
+        )
+
+    message = parse_single_item(
+        record.item,
+        record.pub_ts,
+        menu_mode=True,
+        mode="full",
+    )
+    if message is None:
+        return DynamicDetailSelection(
+            status="parse_failed",
+            available_count=selection.available_count,
+        )
+
+    return DynamicDetailSelection(
+        status="ok",
+        message=message,
+        available_count=selection.available_count,
     )

@@ -1,5 +1,8 @@
+import pytest
+
 from ironsbot.services.bilibili.cache import DynamicHistoryRecord
 from ironsbot.services.bilibili.menu import (
+    build_dynamic_detail_for_selection,
     build_dynamic_menu_text,
     dynamic_record_ids,
     select_cached_dynamic_id,
@@ -23,6 +26,10 @@ def _record(
         suppressed=suppressed,
         suppression_reason="命中规则：测试" if suppressed else "",
     )
+
+
+def _record_by_dynamic_id(dynamic_id: str) -> DynamicHistoryRecord:
+    return _record(dynamic_id)
 
 
 def test_build_dynamic_menu_text_renders_records() -> None:
@@ -55,3 +62,51 @@ def test_select_cached_dynamic_id_handles_statuses() -> None:
     out_of_range = select_cached_dynamic_id(["a"], "2")
     assert out_of_range.status == "out_of_range"
     assert out_of_range.available_count == 1
+
+
+def test_build_dynamic_detail_for_selection_renders_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.menu.get_dynamic_history_item",
+        _record_by_dynamic_id,
+    )
+
+    result = build_dynamic_detail_for_selection(["dynamic-1"], "1")
+
+    assert result.is_ok
+    assert result.message is not None
+    assert result.available_count == 1
+    assert "传送门: https://t.bilibili.com/dynamic-1" in str(result.message)
+
+
+def test_build_dynamic_detail_for_selection_handles_missing_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.menu.get_dynamic_history_item",
+        lambda _dynamic_id: None,
+    )
+
+    result = build_dynamic_detail_for_selection(["dynamic-1"], "1")
+
+    assert result.status == "missing"
+    assert result.message is None
+
+
+def test_build_dynamic_detail_for_selection_handles_parse_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.menu.get_dynamic_history_item",
+        _record_by_dynamic_id,
+    )
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.menu.parse_single_item",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = build_dynamic_detail_for_selection(["dynamic-1"], "1")
+
+    assert result.status == "parse_failed"
+    assert result.message is None
