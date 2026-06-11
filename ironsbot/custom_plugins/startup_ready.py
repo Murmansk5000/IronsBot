@@ -1,8 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
 
-from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
@@ -11,7 +9,6 @@ StartupCheck = Callable[[Bot], Awaitable[None]]
 _checks: dict[str, StartupCheck] = {}
 _ready_events: dict[str, asyncio.Event] = {}
 _startup_task_state: dict[str, asyncio.Task[None] | None] = {"task": None}
-_startup_ready_runtime_state = {"registered": False}
 
 
 def register_startup_check(name: str, check: StartupCheck) -> None:
@@ -59,15 +56,3 @@ async def wait_startup_ready() -> None:
 
 async def run_registered_startup_checks(bot: Bot) -> None:
     await ensure_startup_ready(bot)
-
-
-def _setup_startup_ready_runtime(driver: Any) -> None:
-    if _startup_ready_runtime_state["registered"]:
-        return
-
-    driver.on_bot_connect(run_registered_startup_checks)
-    _startup_ready_runtime_state["registered"] = True
-
-
-def setup_startup_ready_runtime() -> None:
-    _setup_startup_ready_runtime(get_driver())
