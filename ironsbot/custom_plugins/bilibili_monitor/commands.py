@@ -1,5 +1,3 @@
-from typing import Any
-
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
@@ -17,7 +15,7 @@ from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_saved_cookie,
     list_dynamic_history,
-    save_dynamic_history_snapshot,
+    save_target_dynamic_history,
 )
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.menu import (
@@ -34,7 +32,6 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
-from ironsbot.services.bilibili.push import build_dynamic_history_snapshot_for_item
 from ironsbot.services.bilibili.state import query_uids_for_event
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
@@ -128,17 +125,6 @@ async def _wait_dynamic_select(
     )
 
 
-def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) -> None:
-    for pub_ts, item in target_dynamics:
-        snapshot = build_dynamic_history_snapshot_for_item(
-            item,
-            pub_ts=pub_ts,
-            suppress_patterns=get_bili_config().filters.suppress_push_patterns,
-        )
-        if snapshot is not None:
-            save_dynamic_history_snapshot(snapshot)
-
-
 async def _handle_dynamic_menu(
     event: MessageEvent,
     context: PluginContext,
@@ -177,7 +163,10 @@ async def _handle_dynamic_menu(
             newest_first=True,
         )
         if target_dynamics:
-            _save_fetched_dynamics(target_dynamics)
+            save_target_dynamic_history(
+                target_dynamics,
+                suppress_patterns=get_bili_config().filters.suppress_push_patterns,
+            )
 
         records = list_dynamic_history(limit=10, uids=query_uids)
         if not records:
