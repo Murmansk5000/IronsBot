@@ -8,7 +8,7 @@ from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
-from ironsbot.shared.messages.text import normalize_command_text
+from ironsbot.shared.messaging.text import normalize_command_text
 
 from .constants import RESERVED_PRIVATE_COMMANDS
 

@@ -2,7 +2,6 @@ import asyncio
 from collections.abc import Iterable
 
 from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
     Message,
     MessageEvent,
     MessageSegment,
@@ -10,22 +9,10 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.matcher import Matcher
 
 from ironsbot.custom_plugins.superuser_priority import wait_for_superuser_priority
+from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 
 from .reply_limits import limit_message_by_reply_lines
 from .text import build_message
-
-
-def event_sender_at_user_ids(
-    event: MessageEvent | None,
-    *,
-    mention_sender: bool = False,
-) -> tuple[int, ...]:
-    del mention_sender
-
-    if not isinstance(event, GroupMessageEvent):
-        return ()
-
-    return (event.user_id,)
 
 
 async def send_matcher_message(

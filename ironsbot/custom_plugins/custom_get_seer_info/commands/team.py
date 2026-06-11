@@ -7,7 +7,6 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.common.query_guard import QueryGuard
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
@@ -18,6 +17,7 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -25,7 +25,7 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..config import plugin_config
+from ..config import get_team_query_config
 from ..group import matcher_group
 from ._args import has_numeric_arg, parse_numeric_id
 from ._client import get_game_client
@@ -34,12 +34,11 @@ from ._format import format_possible_datetime
 
 TEAM_ID_KEY = "team_id"
 TEAM_PLUGIN_NAME = "seer_team"
-QUERY_CONFIG = plugin_config.seer_query_config
 TEAM_QUERY_GUARD = QueryGuard(
     success_namespace="custom_get_seer_info.team_query.success",
     failure_namespace="custom_get_seer_info.team_query.failure",
-    success_cooldown=lambda: QUERY_CONFIG.team.rate_limit_seconds,
-    failure_cooldown=lambda: QUERY_CONFIG.team.failure_rate_limit_seconds,
+    success_cooldown=lambda: get_team_query_config().rate_limit_seconds,
+    failure_cooldown=lambda: get_team_query_config().failure_rate_limit_seconds,
 )
 
 team_matcher = matcher_group.on_message(
@@ -235,14 +234,15 @@ class CustomTeamPlugin:
 
         try:
             game = get_game_client()
+            team_config = get_team_query_config()
             team_info = await asyncio.wait_for(
                 game.get_team_info(team_id),
-                timeout=plugin_config.seer_query_config.team.timeout_seconds,
+                timeout=team_config.timeout_seconds,
             )
             await mark_headless_available(source="战队查询", user_id=int(game.user_id))
             team_message = _format_team_info(
                 team_info,
-                set(plugin_config.seer_query_config.team.sections),
+                set(team_config.sections),
             )
         except FinishedException:
             raise

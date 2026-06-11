@@ -5,7 +5,7 @@ from nonebot import MatcherGroup
 from nonebot.adapters import Event
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
+from ironsbot.shared.features import is_event_feature_allowed
 
 
 async def is_seer_event_allowed(event: Event) -> bool:

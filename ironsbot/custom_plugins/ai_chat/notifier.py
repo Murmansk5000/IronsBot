@@ -9,7 +9,7 @@ from ironsbot.shared.features import (
     groups_for_feature,
 )
 
-from .config import plugin_config
+from .config import get_ai_config
 
 _LAST_SUPERUSER_NOTICE_AT: dict[str, float] = {}
 
@@ -41,7 +41,7 @@ async def _send_admin_notice(message: str) -> None:
 async def notify_superusers_once(key: str, message: str) -> None:
     now = time.time()
     last_notice_at = _LAST_SUPERUSER_NOTICE_AT.get(key, 0.0)
-    if now - last_notice_at < plugin_config.ai_config.admin_notice_cooldown_seconds:
+    if now - last_notice_at < get_ai_config().admin_notice_cooldown_seconds:
         return
 
     _LAST_SUPERUSER_NOTICE_AT[key] = now
