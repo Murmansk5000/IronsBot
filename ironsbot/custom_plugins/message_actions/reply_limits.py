@@ -172,6 +172,9 @@ def limit_message_by_reply_lines(
     return limit_text_lines(message, max_lines)
 
 
+_reply_line_limit_api_hook_state = {"registered": False}
+
+
 def _limit_onebot_message(
     message: object,
     *,
@@ -181,7 +184,6 @@ def _limit_onebot_message(
     return limit_onebot_message(message, max_lines=max_lines)
 
 
-@Bot.on_calling_api
 async def _limit_reply_lines_before_send(
     bot: Bot,  # noqa: ARG001
     api: str,
@@ -198,6 +200,14 @@ async def _limit_reply_lines_before_send(
         message,
         group_id=group_id_for_send_api(api, data),
     )
+
+
+def setup_reply_line_limit_api_hook() -> None:
+    if _reply_line_limit_api_hook_state["registered"]:
+        return
+
+    Bot.on_calling_api(_limit_reply_lines_before_send)
+    _reply_line_limit_api_hook_state["registered"] = True
 
 
 reply_line_limit_matcher = on_message(
