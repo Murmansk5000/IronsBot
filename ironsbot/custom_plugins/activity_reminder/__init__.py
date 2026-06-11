@@ -13,7 +13,6 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.services.activity.catalog import build_active_activity_infos
 from ironsbot.services.activity.commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
@@ -22,20 +21,19 @@ from ironsbot.services.activity.delivery import (
     filter_reminders_before_send,
     format_reminder_message,
 )
-from ironsbot.services.activity.formatting import (
-    format_activity_line,
-)
 from ironsbot.services.activity.models import (
-    ActivityDeadline,
     ActivityInfo,
     ActivityInfoCache,
     ActivityReminder,
 )
 from ironsbot.services.activity.planning import (
-    activity_deadline,
-    activity_is_soon_ending,
-    activity_sort_end_time,
     build_scheduled_reminders,
+)
+from ironsbot.services.activity.query import (
+    ActivityQuerySource,
+    active_activity_infos,
+    build_activity_query_message,
+    soon_ending_activity_infos,
 )
 from ironsbot.services.activity.repository import load_activity_rows
 from ironsbot.services.activity.scheduler import (
@@ -102,36 +100,6 @@ def _now() -> datetime:
     return datetime.now(LOCAL_TZ)
 
 
-def _activity_deadline(
-    activity: ActivityInfo,
-    now: datetime,
-) -> ActivityDeadline | None:
-    return activity_deadline(
-        activity,
-        now,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
-    )
-
-
-def _activity_is_soon_ending(activity: ActivityInfo, now: datetime) -> bool:
-    return activity_is_soon_ending(
-        activity,
-        now,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
-    )
-
-
-def _activity_sort_end_time(
-    activity: ActivityInfo,
-    now: datetime | None = None,
-) -> datetime:
-    return activity_sort_end_time(
-        activity,
-        now,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD if now is not None else None,
-    )
-
-
 def _activity_db_session_factory() -> Any:
     require("ironsbot.plugins.seer_data")
     from ironsbot.plugins.db_sync.manager import db_manager
@@ -147,40 +115,25 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
     )
 
 
-def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
-    if (
-        _activity_info_cache.expires_at is not None
-        and _activity_info_cache.expires_at > now
-    ):
-        return [
-            activity
-            for activity in _activity_info_cache.items
-            if activity.end_time > now
-            and (
-                activity.start_time is None
-                or activity.start_time <= now
-            )
-        ]
+_activity_query_source = ActivityQuerySource(
+    cache=_activity_info_cache,
+    load_rows=_load_activity_rows,
+    cache_ttl=ACTIVITY_INFO_CACHE_TTL,
+    soon_ending_threshold=SOON_ENDING_THRESHOLD,
+)
 
-    sorted_activities = build_active_activity_infos(_load_activity_rows(), now)
-    _activity_info_cache.items = sorted_activities
-    _activity_info_cache.expires_at = now + ACTIVITY_INFO_CACHE_TTL
-    return list(sorted_activities)
+
+def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
+    return active_activity_infos(
+        _activity_query_source,
+        now,
+    )
 
 
 def _soon_ending_activity_infos(now: datetime) -> list[ActivityInfo]:
-    activities = [
-        activity
-        for activity in _active_activity_infos(now)
-        if _activity_is_soon_ending(activity, now)
-    ]
-    return sorted(
-        activities,
-        key=lambda activity: (
-            _activity_sort_end_time(activity, now),
-            activity.sort_order,
-            activity.activity_id,
-        ),
+    return soon_ending_activity_infos(
+        _activity_query_source,
+        now,
     )
 
 
@@ -191,44 +144,12 @@ def build_current_activity_message(
     soon_only: bool = False,
 ) -> str:
     current_time = now or _now()
-    activities = (
-        _soon_ending_activity_infos(current_time)
-        if soon_only
-        else _active_activity_infos(current_time)
+    return build_activity_query_message(
+        _activity_query_source,
+        current_time,
+        limit=limit,
+        soon_only=soon_only,
     )
-
-    if not activities:
-        if soon_only:
-            return "📭 当前没有读到不足 7 天结束的活动。"
-        return "📭 当前没有从活动中心读到正在进行的活动。"
-
-    shown_activities = activities if limit is None else activities[:limit]
-    title = "快结束活动" if soon_only else "当前活动"
-    lines = [
-        f"📅【{title}】",
-        f"截至 {current_time:%Y-%m-%d %H:%M}",
-        "",
-    ]
-
-    for index, activity in enumerate(shown_activities, start=1):
-        lines.extend(
-            format_activity_line(
-                index,
-                activity,
-                current_time,
-                soon_only=soon_only,
-                deadline=(
-                    _activity_deadline(activity, current_time)
-                    if soon_only
-                    else None
-                ),
-            )
-        )
-
-    hidden_count = len(activities) - len(shown_activities)
-    if limit is not None and hidden_count > 0:
-        lines.append(f"...还有 {hidden_count} 个活动未显示")
-    return "\n".join(lines)
 
 
 def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
