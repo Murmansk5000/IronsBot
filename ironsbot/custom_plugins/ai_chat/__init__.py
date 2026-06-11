@@ -11,6 +11,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.services.ai.history import is_reset_prompt
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -20,7 +21,6 @@ from ironsbot.shared.plugin_system import (
 from .client import call_ai_chat
 from .config import Config, get_ai_config, get_ai_key
 from .constants import AI_CHAT_PROMPT_KEY
-from .history import is_reset_prompt
 from .mentions import mentions_or_replies_to_bot
 from .notifier import notify_superusers_once
 from .permissions import is_allowed, is_reserved_private_command

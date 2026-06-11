@@ -3,9 +3,10 @@ from typing import Any
 import httpx
 from nonebot.log import logger
 
+from ironsbot.services.ai.history import HistoryMessage, build_messages
+
 from .config import get_ai_config, get_ai_key
 from .constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
-from .history import HistoryMessage, build_messages
 from .notifier import notify_superusers_once
 
 HTTP_PAYMENT_REQUIRED = 402

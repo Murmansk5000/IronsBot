@@ -5,8 +5,9 @@ from pathlib import Path
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.log import logger
 
+from ironsbot.services.ai.history import HistoryMessage
+
 from .config import get_ai_config
-from .history import HistoryMessage
 
 
 def _memory_path() -> Path:
