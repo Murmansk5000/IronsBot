@@ -19,7 +19,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
 )
 from ironsbot.plugins.seer_data.db import SeerAPISession
-from ironsbot.shared.messages.text import normalize_command_text
+from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

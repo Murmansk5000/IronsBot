@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -16,7 +16,7 @@ from ironsbot.custom_plugins.message_actions import (
     send_event_reply,
 )
 from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
-from ironsbot.shared.messages.text import normalize_command_text, strip_command_prefix
+from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

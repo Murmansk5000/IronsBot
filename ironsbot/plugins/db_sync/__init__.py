@@ -23,7 +23,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
-from ironsbot.shared.messages.text import normalize_command_text
+from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
 from .config import get_data_sync_config

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.shared.features import is_superuser
-from ironsbot.shared.messages.text import normalize_command_text
+from ironsbot.shared.messaging.text import normalize_command_text
 
 from .text import render_text
 

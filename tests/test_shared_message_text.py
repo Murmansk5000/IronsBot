@@ -1,4 +1,4 @@
-from ironsbot.shared.messages.text import (
+from ironsbot.shared.messaging.text import (
     command_text_matches,
     normalize_command_text,
     render_text,

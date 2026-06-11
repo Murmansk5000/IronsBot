@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Callable
 from contextlib import suppress
@@ -29,7 +29,7 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
-from ironsbot.shared.messages.text import command_text_matches
+from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

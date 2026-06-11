@@ -2,7 +2,7 @@ from collections.abc import Iterable
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from ironsbot.shared.messages import text as shared_text
+from ironsbot.shared.messaging import text as shared_text
 
 DEFAULT_COMMAND_PREFIXES = shared_text.DEFAULT_COMMAND_PREFIXES
 command_text_matches = shared_text.command_text_matches

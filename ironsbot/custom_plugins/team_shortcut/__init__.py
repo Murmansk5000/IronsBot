@@ -21,7 +21,7 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
 )
 from ironsbot.shared.features import is_group_feature_allowed
-from ironsbot.shared.messages.text import command_text_matches
+from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
