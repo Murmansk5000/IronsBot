@@ -59,7 +59,7 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.headless_seer_notice:setup_headless_notice_runtime",
     "ironsbot.custom_plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
     "ironsbot.custom_plugins.startup_ready:setup_startup_ready_runtime",
-    "ironsbot.custom_plugins.startup_notice:setup_startup_notice_runtime",
+    "ironsbot.custom_plugins.startup_notice.runtime:setup_startup_notice_runtime",
     "ironsbot.custom_plugins.bilibili_monitor.service:setup_bilibili_monitor_runtime",
     "ironsbot.custom_plugins.activity_reminder.runtime:setup_activity_reminder_runtime",
     "ironsbot.custom_plugins.custom_get_seer_info.commands._local_rank_scheduler:setup_local_rank_scheduler_runtime",

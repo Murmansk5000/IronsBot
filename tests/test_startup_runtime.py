@@ -3,7 +3,7 @@ from collections.abc import Callable
 from pytest import MonkeyPatch
 
 from ironsbot.custom_plugins import startup_ready
-from ironsbot.custom_plugins.startup_notice import (
+from ironsbot.custom_plugins.startup_notice.runtime import (
     _setup_startup_notice_runtime,
     _startup_notice_runtime_state,
     send_startup_notice,
