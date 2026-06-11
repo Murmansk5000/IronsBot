@@ -5,7 +5,6 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
-from nonebot import get_plugin_config
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -1157,7 +1156,3 @@ def resolve_configured_actions(config: AiConfig) -> list[AiIntentAction]:
 
 def unique_ints(values: Iterable[int]) -> list[int]:
     return unique_items(values)
-
-
-def get_shared_config() -> Config:
-    return get_plugin_config(Config)
