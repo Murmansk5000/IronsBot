@@ -2,11 +2,11 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.shared.features import is_superuser
+from ironsbot.shared.messaging.rate_limits import (
     peek_user_rate_limit,
     penalize_user_rate_limit,
 )
-from ironsbot.shared.features import is_superuser
 
 CooldownGetter = Callable[[], float]
 
