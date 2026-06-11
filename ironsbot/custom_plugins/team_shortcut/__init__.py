@@ -30,7 +30,12 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from .adapter import fetch_team_shortcut_result
-from .config import plugin_config
+from .config import (
+    Config,
+    get_team_ids,
+    get_team_resource_users,
+    get_team_shortcut_config,
+)
 
 TEAM_SHORTCUT_PLUGIN_NAME = "team_shortcut"
 
@@ -39,17 +44,20 @@ __plugin_meta__ = PluginMetadata(
     description="在配置群里用短指令查询固定战队",
     usage=(
         "【战队快捷】\n"
-        "群聊发送 MODULES.team.commands 中配置的指令，默认：战队。\n"
-        "机器人会查询 TEAM_IDS 中配置的战队；"
-        "战队资源低于 MODULES.team.resource_threshold 时可 @ TEAM_RESOURCE_USERS。"
+        "群聊发送 seer.team_shortcut.commands 中配置的指令，默认：战队。\n"
+        "机器人会查询 seer.team_shortcut.team_ids 中配置的战队；"
+        "战队资源低于 seer.team_shortcut.resource_threshold 时可 "
+        "@ seer.team_shortcut.resource_users。"
     ),
+    config=Config,
 )
 
 
 def _build_resource_notice() -> Message:
+    config = get_team_shortcut_config()
     return build_message(
-        plugin_config.team_config.resource_message,
-        at_user_ids=plugin_config.team_resource_users,
+        config.resource_message,
+        at_user_ids=get_team_resource_users(),
     )
 
 
@@ -57,7 +65,7 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
-    if not plugin_config.team_ids:
+    if not get_team_ids():
         return False
 
     if not is_group_feature_allowed(
@@ -69,7 +77,7 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
 
     return command_text_matches(
         event.get_plaintext(),
-        plugin_config.team_config.commands,
+        get_team_shortcut_config().commands,
     )
 
 
@@ -90,11 +98,12 @@ class TeamShortcutPlugin:
         replies: list[Message] = []
         resource_notice_needed = False
 
-        for team_id in plugin_config.team_ids:
+        config = get_team_shortcut_config()
+        for team_id in get_team_ids():
             try:
                 result = await asyncio.wait_for(
                     fetch_team_shortcut_result(team_id),
-                    timeout=plugin_config.team_config.query_timeout_seconds,
+                    timeout=config.query_timeout_seconds,
                 )
                 await mark_headless_available(source="战队快捷")
             except FinishedException:
@@ -117,7 +126,7 @@ class TeamShortcutPlugin:
                 continue
 
             replies.append(Message(result.message))
-            if result.resource < plugin_config.team_config.resource_threshold:
+            if result.resource < config.resource_threshold:
                 resource_notice_needed = True
 
         if not replies:

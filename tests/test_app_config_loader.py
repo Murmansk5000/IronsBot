@@ -148,6 +148,10 @@ def test_small_plugin_config_accessors_read_app_config(
         "startup_notice_config_for_app_config_test",
         ROOT / "ironsbot" / "custom_plugins" / "startup_notice" / "config.py",
     )
+    team_shortcut_config = _load_module_from_path(
+        "team_shortcut_config_for_app_config_test",
+        ROOT / "ironsbot" / "custom_plugins" / "team_shortcut" / "config.py",
+    )
 
     try:
         assert ai_chat_config.get_ai_config().model == "deepseek-v4-pro"
@@ -186,5 +190,6 @@ def test_small_plugin_config_accessors_read_app_config(
         assert not scheduled_restart_config.get_restart_config().enabled
         assert "aliases" in seer_data_config.get_data_sync_config().sources
         assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled
+        assert team_shortcut_config.get_team_shortcut_config().commands == ["战队"]
     finally:
         clear_app_config_cache()
