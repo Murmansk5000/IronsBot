@@ -3,15 +3,16 @@
 这个目录用于放置 IronsBot 的自定义插件。用户可触发的功能应优先放在
 `ironsbot/custom_plugins`；`ironsbot/plugins` 只保留基础设施或上游/vendor 代码。
 
-运行入口 `bot.py` 会按显式顺序加载外部插件、基础设施插件和自定义插件。
+运行入口 `bot.py` 委托 `ironsbot/app/bootstrap.py`，并按
+`ironsbot/app/plugin_manifest.py` 中的显式顺序加载外部插件、基础设施插件和自定义插件。
 `pyproject.toml` 不再扫描整个自定义插件目录，避免空目录、试验代码或遗留插件被误加载：
 
 ```toml
 plugin_dirs = []
 ```
 
-新增可运行插件后，需要把模块名加入 `bot.py` 的 `CUSTOM_PLUGINS` 列表，避免
-NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入 `bot.py` 的目录只会被视为普通代码。
+新增可运行插件后，需要把模块名加入 `ironsbot/app/plugin_manifest.py`，
+避免 NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入显式加载列表的目录只会被视为普通代码。
 
 ## 当前插件
 
@@ -41,7 +42,7 @@ ironsbot/custom_plugins/my_plugin/
 ```
 
 固定文本指令、定时私聊、定时群发优先不要写插件，直接用
-`MSG_CONFIG` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
+`APP_CONFIG` 的 `[message]` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
 最终发送走 `message_actions`。
 
 最小业务命令示例：
@@ -78,78 +79,50 @@ async def handle_ping(matcher: Matcher, event: MessageEvent) -> None:
 不要把 QQ 号、群号、账号、密码、Cookie、token 写死在代码里。公开仓库里只保留空
 默认值或无敏感的示例值。
 
+行为配置统一写在 `ironsbot/config/models/` 的 APP_CONFIG schema 里，并由
+`APP_CONFIG_PATH` 指向的 TOML 文件提供。插件自己的 `config.py` 只保留轻量访问函数，
+不再各自调用 NoneBot 的 `get_plugin_config`，也不要新增旧的大 JSON 兼容入口。
+
 推荐写法：
 
 ```python
-from nonebot import get_plugin_config
-from pydantic import BaseModel, Field
+from ironsbot.config.loader import get_app_config
 
-
-class Config(BaseModel):
-    my_plugin_enabled: bool = True
-
-
-plugin_config = get_plugin_config(Config)
+def get_my_plugin_config():
+    return get_app_config().message
 ```
 
-然后在 `.env.dev`、`.env.prod`、Unraid 模板变量或 Docker 环境变量中填实际值。
+新增模块配置时，先在 `ironsbot/config/models/` 里加 Pydantic schema 和默认值，
+再从插件侧通过访问函数引用。导入插件时只允许创建 metadata 和薄 matcher；数据库打开、
+目录创建、目标解析、网络请求、scheduler 注册和长任务都放到显式生命周期函数里。
 
-示例：
+`.env.dev`、`.env.prod`、Unraid 模板变量或 Docker 环境变量只保留密钥、账号凭据和部署运行参数。
+群号、战队号、功能策略、B站订阅、消息动作等行为配置写入 TOML。
+
+环境变量示例：
 
 ```env
-GROUP_ALIASES={"admin":686376929,"main":123456789}
-FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_query","bili_query","bili_push","team","ai_chat","ai_intent"]}
-
-MEETING_CONFIG={"number":"1234567890","template":"腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}","commands":["开播","会议"]}
-
-BILI_CONFIG={"uids":[1310714247,123456789],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","groups":{"main":{"uids":[1310714247],"mode":"full","uid_modes":{"123456789":"link"}}},"users":{}},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
-
-STARTUP_CONFIG={"enabled":true,"message":"机器人已开启。","delay":0}
-HEADLESS_NOTICE_CONFIG={"login_notice":true,"state_notice":true,"reconnect_check_times":"00:01,00:02"}
-SERVER_STATUS_CONFIG={"broadcast":false,"broadcast_message":"赛尔号已经开服了。","broadcast_cooldown_minutes":1440}
-
-# 群聊中由用户触发的文本回复是否在开头 @ 触发者；自动推送和定时消息不受影响。
-MSG_CONFIG={
-  "reply": {
-    "default_lines": -1,
-    "min_lines": 5,
-    "max_lines": 80,
-    "limit_path": "data/message_actions/reply_limits.sqlite"
-  },
-  "private_commands": [
-    {
-      "id": "activity_link_private",
-      "commands": ["签到", "活动", "链接"],
-      "feature": "activity_link",
-      "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
-    }
-  ],
-  "private_schedules": [],
-  "group_commands": [
-    {
-      "id": "activity_link_group",
-      "feature": "activity_link",
-      "commands": ["签到", "活动", "链接"],
-      "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
-    }
-  ],
-  "group_schedules": [
-    {
-      "id": "activity_link_daily",
-      "feature": "activity_link_push",
-      "hour": 23,
-      "minute": 0,
-      "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
-    }
-  ]
-}
-
-TEAM_IDS=[]
-TEAM_RESOURCE_USERS=[]
-TEAM_CONFIG={"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}
-
+APP_CONFIG_PATH=/config/ironsbot.toml
+ONEBOT_ACCESS_TOKEN=change-me
+SUPERUSERS=["123456789"]
 AI_KEY=sk-...
-AI_CONFIG={"base_url":"https://api.deepseek.com","model":"deepseek-v4-pro","intent_actions_enabled":true,"action_templates":{"keyword_info":{"action":"ai_reply","reply_prompt":"Keywords: {keywords}\nMessage: {message}\nReply briefly."}},"intent_actions":[{"template":"join_team"},{"id":"custom_keyword","template":"keyword_info","keywords":["keyword"]}]}
+HEADLESS_SEER_USER_ID=12345678
+HEADLESS_SEER_PASSWORD=...
+```
+
+TOML 示例：
+
+```toml
+[feature]
+group_aliases = { admin = 686376929, main = 123456789 }
+group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "activity_query", "bili_query", "bili_push", "team", "ai_chat", "ai_intent"] }
+
+[seer.team_shortcut]
+team_ids = [1234567]
+resource_users = [123456789]
+
+[bilibili.push]
+groups = { main = { uids = [1310714247, 123456789], mode = "full", uid_modes = { "123456789" = "link" } } }
 ```
 
 ## 本地开发与部署

@@ -1,18 +1,48 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot import get_plugin_config
-from pydantic import BaseModel, Field
+from nonebot import get_driver
+
+from ironsbot.config import (
+    AppConfig,
+    CredentialsConfig,
+    get_app_config,
+    load_credentials_config,
+)
+from ironsbot.config.models.runtime import HeadlessConfig
+
+Config = AppConfig
 
 
-class Config(BaseModel):
-    headless_seer_login_server_addr: str = "https://seer-login-ip.61.com/unity-ip.txt"
-    headless_seer_user_id: int | None = Field(
-        default=None, description="米米号", ge=10001
-    )
-    headless_seer_password: str | None = None
-    headless_seer_heartbeat_interval: float = 300
-    headless_seer_reconnect_retries: int = -1
-    headless_seer_reconnect_delay: float = 5.0
-    headless_seer_reconnect_delay_max: float = 120.0
+def get_headless_config() -> HeadlessConfig:
+    return get_app_config().runtime.headless
 
 
-plugin_config = get_plugin_config(Config)
+def _driver_credentials_data() -> dict[str, object]:
+    try:
+        driver_config = get_driver().config
+    except ValueError:
+        return {}
+
+    data: dict[str, object] = {}
+    user_id = getattr(driver_config, "headless_seer_user_id", None)
+    password = getattr(driver_config, "headless_seer_password", None)
+    if user_id not in (None, ""):
+        data["headless_seer_user_id"] = user_id
+    if password not in (None, ""):
+        data["headless_seer_password"] = password
+    return data
+
+
+def get_headless_credentials() -> CredentialsConfig:
+    data = load_credentials_config().model_dump()
+    for key, value in _driver_credentials_data().items():
+        if data.get(key) in (None, ""):
+            data[key] = value
+    return CredentialsConfig.model_validate(data)
+
+__all__ = [
+    "Config",
+    "CredentialsConfig",
+    "HeadlessConfig",
+    "get_headless_config",
+    "get_headless_credentials",
+]

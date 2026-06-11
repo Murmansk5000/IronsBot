@@ -1,87 +1,70 @@
 from pathlib import Path
-from typing import Literal, TypeAlias
 
-from nonebot import get_plugin_config, require
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing_extensions import Self
+from nonebot import get_driver
 
-from ironsbot.custom_plugins.common.config_utils import string_list
+from ironsbot.config import AppConfig, get_app_config, load_secrets_config
+from ironsbot.config.models.message import SendpicBehaviorConfig
+from ironsbot.shared.config.config import (
+    DEFAULT_SENDPIC_MESSAGE_TEMPLATE,
+    PicConfig,
+    SendpicBackendType,
+)
 
-require("nonebot_plugin_localstore")
-
-from nonebot_plugin_localstore import get_data_dir
-
-BackendType: TypeAlias = Literal["cnb", "local"]
-
-DEFAULT_MESSAGE_TEMPLATE = "{image}"
-
-
-class PicConfig(BaseModel):
-    id: str
-    backend: BackendType
-    command: str
-    aliases: set[str] = Field(default_factory=set)
-    image_dir: str
-    image_filename_template: str
-    help_message: str | None = None
-    message_template: str = DEFAULT_MESSAGE_TEMPLATE
-
-    @field_validator("id", "command", "image_dir", "image_filename_template")
-    @classmethod
-    def normalize_required_strings(cls, value: str) -> str:
-        return value.strip()
-
-    @field_validator("aliases", mode="before")
-    @classmethod
-    def normalize_aliases(cls, value: object) -> object:
-        return string_list(value)
+BackendType = SendpicBackendType
+Config = AppConfig
+DEFAULT_MESSAGE_TEMPLATE = DEFAULT_SENDPIC_MESSAGE_TEMPLATE
+SendpicConfig = SendpicBehaviorConfig
 
 
-class Config(BaseModel):
-    sendpic_cnb_token: str | None = None
-    sendpic_cnb_repo: str | None = None
-    sendpic_local_root: Path = get_data_dir("sendpic")
-    sendpic_configs: list[PicConfig] = Field(default_factory=list)
-    sendpic_enabled_ids: frozenset[str] = Field(default_factory=frozenset)
-
-    @field_validator("sendpic_enabled_ids", mode="before")
-    @classmethod
-    def normalize_enabled_ids(cls, value: object) -> object:
-        return string_list(value)
-
-    @field_validator("sendpic_configs")
-    @classmethod
-    def validate_pics(cls, v: list[PicConfig]) -> list[PicConfig]:
-        seen: set[str] = set()
-        for pic in v:
-            if pic.id in seen:
-                raise ValueError(f"图片类型【{pic.id}】重复")
-            seen.add(pic.id)
-
-        return v
-
-    @model_validator(mode="after")
-    def validate_configs(self) -> Self:
-        for pic in self.sendpic_configs:
-            if pic.backend == "cnb" and (
-                not self.sendpic_cnb_token or not self.sendpic_cnb_repo
-            ):
-                raise ValueError(  # noqa: TRY003
-                    f"CNB 相关配置未设置，而命令【{pic.command}】需要该配置"
-                )
-        return self
+def pic_id_is_enabled(config: SendpicBehaviorConfig, pic_id: str) -> bool:
+    return pic_id in config.enabled_ids
 
 
-plugin_config = get_plugin_config(Config)
-
-
-def pic_id_is_enabled(_id: str) -> bool:
-    return _id in plugin_config.sendpic_enabled_ids
-
-
-def filter_enabled_configs() -> list[PicConfig]:
+def enabled_pic_configs(config: SendpicBehaviorConfig) -> list[PicConfig]:
     return [
-        config
-        for config in plugin_config.sendpic_configs
-        if pic_id_is_enabled(config.id)
+        pic_config
+        for pic_config in config.configs
+        if pic_id_is_enabled(config, pic_config.id)
     ]
+
+
+def get_sendpic_config() -> SendpicBehaviorConfig:
+    return get_app_config().message.sendpic
+
+
+def get_sendpic_cnb_token() -> str | None:
+    token = load_secrets_config().sendpic_cnb_token
+    if token:
+        return token
+
+    try:
+        raw_token = getattr(get_driver().config, "sendpic_cnb_token", None)
+    except ValueError:
+        return None
+
+    if raw_token is None:
+        return None
+    return str(raw_token).strip() or None
+
+
+def get_sendpic_cnb_repo() -> str | None:
+    return get_sendpic_config().cnb_repo
+
+
+def get_sendpic_local_root() -> Path:
+    return get_sendpic_config().local_root
+
+
+__all__ = [
+    "DEFAULT_MESSAGE_TEMPLATE",
+    "BackendType",
+    "Config",
+    "PicConfig",
+    "SendpicConfig",
+    "enabled_pic_configs",
+    "get_sendpic_cnb_repo",
+    "get_sendpic_cnb_token",
+    "get_sendpic_config",
+    "get_sendpic_local_root",
+    "pic_id_is_enabled",
+]

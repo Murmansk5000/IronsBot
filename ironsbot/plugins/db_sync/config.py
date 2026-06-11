@@ -1,17 +1,14 @@
-from nonebot import get_plugin_config
-from pydantic import BaseModel, Field, field_validator
+from ironsbot.config import AppConfig, get_app_config
+from ironsbot.shared.config.config import DataSyncConfig
 
-from ironsbot.custom_plugins.common.config_utils import nested_json_config
-from ironsbot.custom_plugins.common.data_sync_config import DataSyncConfig
-
-
-class Config(BaseModel):
-    data_sync_config: DataSyncConfig = Field(default_factory=DataSyncConfig)
-
-    @field_validator("data_sync_config", mode="before")
-    @classmethod
-    def normalize_data_sync_config(cls, value: object) -> object:
-        return nested_json_config(value, DataSyncConfig, name="DATA_SYNC_CONFIG")
+Config = AppConfig
 
 
-plugin_config = get_plugin_config(Config)
+def get_data_sync_config() -> DataSyncConfig:
+    return get_app_config().runtime.data_sync
+
+__all__ = [
+    "Config",
+    "DataSyncConfig",
+    "get_data_sync_config",
+]

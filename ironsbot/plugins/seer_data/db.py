@@ -41,7 +41,7 @@ from ironsbot.plugins.db_sync import (
 from ironsbot.plugins.db_sync.manager import db_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 
-from .config import plugin_config
+from .config import get_data_sync_config
 from .orm import BaseAliasORM, GemAliasORM, PetAliasORM
 
 _SEERAPI_DB = "seerapi"
@@ -79,9 +79,9 @@ def _fingerprint_getter(url: str) -> GetFingerprintFn | None:
 
 
 def _register_source(name: str) -> None:
-    source = plugin_config.data_sync_config.sources.get(name)
+    source = get_data_sync_config().sources.get(name)
     if source is None:
-        logger.warning(f"数据源 '{name}' 未在 DATA_SYNC_CONFIG.sources 中配置")
+        logger.warning(f"数据源 '{name}' 未在 runtime.data_sync.sources 中配置")
         return
 
     _register(

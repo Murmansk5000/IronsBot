@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+from ironsbot.config import get_app_config
+from ironsbot.shared.config.config import AiConfig
+
+
+def get_ai_config() -> AiConfig:
+    return get_app_config().ai
+
+
+__all__ = ["AiConfig", "get_ai_config"]

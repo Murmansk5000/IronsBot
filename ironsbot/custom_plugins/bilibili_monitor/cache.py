@@ -7,8 +7,8 @@ from typing import Any
 
 from nonebot.log import logger
 
-from .config import plugin_config
-from .state import COOKIE_CACHE_FILE, DYNAMIC_HISTORY_DB_FILE
+from .config import get_bili_config
+from .state import cookie_cache_file, dynamic_history_db_file
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,8 +25,9 @@ class DynamicHistoryRecord:
 
 
 def _connect() -> sqlite3.Connection:
-    DYNAMIC_HISTORY_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DYNAMIC_HISTORY_DB_FILE)
+    db_file = dynamic_history_db_file()
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_file)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -121,14 +122,17 @@ def save_last_saved_times(checkpoints: dict[int, int]) -> None:
 
 
 def get_saved_cookie() -> str:
-    if not COOKIE_CACHE_FILE.exists():
+    cache_file = cookie_cache_file()
+    if not cache_file.exists():
         return ""
 
-    return COOKIE_CACHE_FILE.read_text(encoding="utf-8").strip()
+    return cache_file.read_text(encoding="utf-8").strip()
 
 
 def save_new_cookie(cookie_str: str) -> None:
-    COOKIE_CACHE_FILE.write_text(cookie_str, encoding="utf-8")
+    cache_file = cookie_cache_file()
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(cookie_str, encoding="utf-8")
 
 
 def _dynamic_id(item: dict) -> str:
@@ -202,7 +206,7 @@ def save_dynamic_history_item(  # noqa: PLR0913
                     LIMIT -1 OFFSET ?
                 )
                 """,
-                (plugin_config.bili_config.storage.history_max_items,),
+                (get_bili_config().storage.history_max_items,),
             )
     except (sqlite3.Error, TypeError, ValueError) as e:
         logger.warning(f"failed to save Bilibili dynamic history: {e}")

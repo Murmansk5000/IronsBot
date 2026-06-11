@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT
+# Development behavior config. Secrets stay in environment variables.
+
+[feature]
+group_aliases = {}
+user_aliases = {}
+group_policy = {}
+user_policy = {}
+superuser_bypass = true

@@ -591,6 +591,7 @@ dependencies = [
     { name = "qrcode-terminal" },
     { name = "seerapi" },
     { name = "seerapi-models" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "unitypy" },
 ]
 
@@ -624,6 +625,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "seerapi", specifier = ">=106.2.0" },
     { name = "seerapi-models", specifier = ">=106.2.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
     { name = "unitypy", specifier = ">=1.25.0" },
 ]
 provides-extras = ["dev"]

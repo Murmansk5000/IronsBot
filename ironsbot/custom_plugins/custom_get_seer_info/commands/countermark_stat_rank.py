@@ -17,9 +17,14 @@ from sqlmodel import select
 
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
-    normalize_command_text,
 )
 from ironsbot.plugins.seer_data.db import SeerAPISession
+from ironsbot.shared.messages.text import normalize_command_text
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
 from ..group import matcher_group
@@ -28,6 +33,7 @@ RANK_LIST_SIZE = 20
 FIVE_ANGLE_ATTR_COUNT = 5
 FIVE_ANGLE_MARKERS = ("五角", "5角", "５角")
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
+COUNTERMARK_STAT_RANK_PLUGIN_NAME = "seer_countermark_stat_rank"
 MINTMARK_QUALITY_KEYS = ("Quality", "quality")
 MINTMARK_QUALITY_TABLE = "mintmark_quality"
 
@@ -378,6 +384,40 @@ def _build_stat_rank_message(
     return "\n".join(lines)
 
 
+class CountermarkStatRankPlugin:
+    name = COUNTERMARK_STAT_RANK_PLUGIN_NAME
+    feature = "rank"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        matcher = context.matcher
+        if matcher is None:
+            return
+
+        state = context.state if context.state is not None else {}
+        session: SeerAPISession = context.data["session"]
+        command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
+        quality_map = _load_mintmark_quality_session(session)
+        if command.scope == "five" and not quality_map:
+            await finish_event_reply(
+                matcher,
+                event,
+                "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。",
+            )
+            return
+
+        mintmarks = _load_mintmarks(session)
+        items = _collect_rank_items(mintmarks, command, quality_map)
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_stat_rank_message(command, items),
+        )
+
+
+register_plugin(CountermarkStatRankPlugin())
+
+
 @countermark_stat_rank_matcher.handle()
 async def handle_countermark_stat_rank(
     matcher: Matcher,
@@ -385,20 +425,10 @@ async def handle_countermark_stat_rank(
     state: T_State,
     session: SeerAPISession,
 ) -> None:
-    command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
-    quality_map = _load_mintmark_quality_session(session)
-    if command.scope == "five" and not quality_map:
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。",
-        )
-        return
-
-    mintmarks = _load_mintmarks(session)
-    items = _collect_rank_items(mintmarks, command, quality_map)
-    await finish_event_reply(
-        matcher,
-        event,
-        _build_stat_rank_message(command, items),
+    await dispatch_plugin(
+        plugin_name=COUNTERMARK_STAT_RANK_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        session=session,
     )

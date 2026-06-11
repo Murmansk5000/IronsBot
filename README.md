@@ -69,17 +69,20 @@ services:
       - "8085:8080"
     volumes:
       - ./ironsbot-data:/app/data
+      - ./ironsbot-config:/config:ro
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
       PORT: "8080"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
       SUPERUSERS: '["123456789"]'
-      DATA_SYNC_CONFIG: '{"on_startup":false,"interval_enabled":true,"sources":{"seerapi":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256","interval_minutes":60,"local_path":"data/ironsbot-data.sqlite"},"aliases":{"url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite","fingerprint_url":"https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256","interval_minutes":60,"local_path":"data/aliases-data.sqlite"}}}'
     restart: always
 ```
 
-完整变量说明见 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
+把 [config.prod.toml](config.prod.toml) 或 [config.example.toml](config.example.toml)
+复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
+[docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
 ## 插件架构
 
@@ -104,27 +107,48 @@ services:
 
 原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
 
-## Common Variables
+## 配置方式
+
+行为配置写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
+
+- secrets：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、可选 `SENDPIC_CNB_TOKEN`
+- credentials：`HEADLESS_SEER_USER_ID`、`HEADLESS_SEER_PASSWORD`
+- deployment runtime：`ENVIRONMENT`、`DRIVER`、`HOST`、`PORT`、`LOG_LEVEL`、`COMMAND_START`、`SUPERUSERS`、`APP_CONFIG_PATH`
+
+示例环境变量：
 
 ```env
+APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 SUPERUSERS=["123456789"]
-GROUP_ALIASES={"admin":686376929,"main":123456789}
-USER_ALIASES={"owner":123456789}
-FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","image","rank","meeting","text","text_push","bili_query","bili_push","activity_query","activity_push","server_status_query","server_status_push","team","ai_chat","ai_intent"]}
-FEATURE_USER_POLICY={"owner":["all"]}
-FEATURE_SUPERUSER_BYPASS=true
-BILI_CONFIG={"uids":[1310714247],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","groups":{"main":{"uids":[1310714247],"mode":"full"}},"users":{}},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
-MSG_CONFIG={"reply":{"default_lines":-1,"min_lines":5,"max_lines":80,"limit_path":"data/message_actions/reply_limits.sqlite"},"group_commands":[{"id":"notice","feature":"activity_link","commands":["link"],"message":"activity link"}],"group_schedules":[{"id":"night","feature":"activity_link_push","hour":23,"minute":0,"message":"good night"}]}
-ACTIVITY_CONFIG={"enabled":true,"lead_hours":[11,1],"grace_minutes":15,"only_shown":true,"cache_path":"data/activity_reminder/sent.sqlite","message":"⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"}
-STARTUP_CONFIG={"enabled":true,"message":"机器人已开启。","delay":0}
-BOT_RESTART_CONFIG={"enabled":false,"times":"04:30","grace_seconds":10,"signal_parent":true}
-HEADLESS_NOTICE_CONFIG={"login_notice":true,"state_notice":true,"reconnect_check_times":"00:01,00:02"}
-SERVER_STATUS_CONFIG={"broadcast":false,"broadcast_message":"赛尔号已经开服了。","broadcast_cooldown_minutes":1440}
-AI_CONFIG={"base_url":"https://api.deepseek.com","model":"deepseek-v4-pro","intent_actions_enabled":true,"action_templates":{},"intent_actions":[{"template":"join_team"}]}
+AI_KEY=
+HEADLESS_SEER_USER_ID=
+HEADLESS_SEER_PASSWORD=
 ```
 
-Group and user IDs are written once in aliases, then features are enabled from `FEATURE_GROUP_POLICY` / `FEATURE_USER_POLICY`. Push and query permissions are separate features, such as `bili_query` and `bili_push`. Bilibili pushes must also be explicitly listed in `BILI_CONFIG.push.groups/users`; each target can subscribe to selected UIDs and choose `full` or `link`. Admin-only notices use `admin_notice`; it is intentionally not included by `all`. Message actions use their own `feature` field, for example `activity_link` or `seerinfo`. Module-level options are grouped into JSON configs such as `BILI_CONFIG`, `MSG_CONFIG`, `ACTIVITY_CONFIG`, `HEADLESS_NOTICE_CONFIG`, `SERVER_STATUS_CONFIG`, and `AI_CONFIG`, so Unraid does not need dozens of one-off variables.
+示例 TOML：
+
+```toml
+[feature]
+group_aliases = { admin = 686376929, main = 123456789 }
+user_aliases = { owner = 123456789 }
+group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "activity_query", "activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent"] }
+user_policy = { owner = ["all"] }
+superuser_bypass = true
+
+[bilibili.push]
+groups = { main = { uids = [1310714247], mode = "full" } }
+
+[seer.team_shortcut]
+team_ids = [1234567]
+resource_users = [123456789]
+```
+
+配置字段、默认值、中英文说明和示例集中维护在
+[config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
+例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
+`all` 里。消息动作可以使用自己的 feature 名，例如 `activity_link` 或
+`seerinfo`。
 
 ## 数据与缓存
 

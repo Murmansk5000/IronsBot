@@ -3,13 +3,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from nonebot import require
+from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.common.time_config import minute_of_day
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.shared.config.time import minute_of_day
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
 from .bot_access import get_first_bot
@@ -20,6 +20,7 @@ from .cache import (
     save_last_saved_times,
 )
 from .client import fetch_dynamic_feed
+from .config import get_bili_config
 from .parser import (
     dynamic_brief,
     dynamic_suppression_reason,
@@ -29,15 +30,16 @@ from .parser import (
     parse_single_item,
 )
 from .state import (
-    BILI_CONFIG,
-    MONITORED_UIDS,
     BiliPushTargets,
     check_lock,
+    monitored_uids,
     push_targets_for_uid,
 )
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
+
+driver = get_driver()
 
 HTTP_OK = 200
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
@@ -54,7 +56,7 @@ _auto_check_state = AutoCheckState()
 
 def _window_contains(now: datetime, *, start: str, end: str) -> bool:
     current = now.hour * 60 + now.minute
-    error_message = "BILI_CONFIG.polling.windows time must use HH:MM"
+    error_message = "bilibili.polling.windows time must use HH:MM"
     start_minute = minute_of_day(start, error_message=error_message)
     end_minute = minute_of_day(end, error_message=error_message)
     if start_minute <= end_minute:
@@ -63,10 +65,11 @@ def _window_contains(now: datetime, *, start: str, end: str) -> bool:
 
 
 def _current_interval_minutes(now: datetime) -> int:
-    for window in BILI_CONFIG.polling.windows:
+    config = get_bili_config()
+    for window in config.polling.windows:
         if _window_contains(now, start=window.start, end=window.end):
             return window.minutes
-    return BILI_CONFIG.polling.default_minutes
+    return config.polling.default_minutes
 
 
 def _auto_check_due(now: datetime) -> bool:
@@ -188,7 +191,7 @@ async def _push_new_dynamics(
         should_push = pub_ts > last_saved_time
         suppression_reason = dynamic_suppression_reason(
             item,
-            BILI_CONFIG.filters.suppress_push_patterns,
+            get_bili_config().filters.suppress_push_patterns,
         )
         save_dynamic_history_item(
             item,
@@ -249,7 +252,7 @@ async def _do_check_logic() -> None:
 
         valid_dynamics = find_target_dynamics(
             res_json.get("data", {}).get("items", []),
-            MONITORED_UIDS,
+            monitored_uids(),
         )
         if not valid_dynamics:
             return
@@ -291,9 +294,19 @@ async def run_check_logic(
     return True
 
 
-@scheduler.scheduled_job("interval", minutes=1)
 async def auto_check_job() -> None:
     await run_check_logic()
+
+
+@driver.on_startup
+async def register_bili_auto_check_job() -> None:
+    scheduler.add_job(
+        auto_check_job,
+        "interval",
+        minutes=1,
+        id="bilibili_monitor_auto_check",
+        replace_existing=True,
+    )
 
 
 async def _startup_check(bot: Bot) -> None:

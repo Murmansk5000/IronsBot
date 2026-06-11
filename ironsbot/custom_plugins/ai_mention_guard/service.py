@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import time
+from collections import defaultdict, deque
+from typing import TYPE_CHECKING
+
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+class GuardReplyLimiter:
+    def __init__(
+        self,
+        *,
+        window_seconds: float,
+        max_per_window: int,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.window_seconds = window_seconds
+        self.max_per_window = max_per_window
+        self._clock = clock
+        self._timestamps: defaultdict[int, deque[float]] = defaultdict(deque)
+
+    def can_send(self, group_id: int) -> bool:
+        now = self._clock()
+        timestamps = self._timestamps[group_id]
+        while timestamps and now - timestamps[0] >= self.window_seconds:
+            timestamps.popleft()
+
+        if len(timestamps) >= self.max_per_window:
+            return False
+
+        timestamps.append(now)
+        return True
+
+
+async def should_guard_non_ai_group_mention(event: MessageEvent) -> bool:
+    from ironsbot.custom_plugins.ai_chat.mentions import mentions_or_replies_to_bot
+    from ironsbot.custom_plugins.ai_chat.permissions import is_allowed as is_ai_allowed
+
+    if not isinstance(event, GroupMessageEvent):
+        return False
+
+    if not mentions_or_replies_to_bot(event):
+        return False
+
+    return not is_ai_allowed(event)

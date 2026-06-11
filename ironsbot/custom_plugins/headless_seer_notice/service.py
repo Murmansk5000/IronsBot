@@ -1,4 +1,7 @@
-from ironsbot.plugins.headless_seer.config import plugin_config as headless_config
+from ironsbot.plugins.headless_seer.config import (
+    get_headless_config,
+    get_headless_credentials,
+)
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -11,13 +14,14 @@ HEADLESS_CONFIG_MISSING_MESSAGE = (
 
 
 def headless_user_id_text() -> str:
-    return str(headless_config.headless_seer_user_id or "未配置")
+    return str(get_headless_credentials().headless_seer_user_id or "未配置")
 
 
 def headless_is_configured() -> bool:
+    credentials = get_headless_credentials()
     return (
-        headless_config.headless_seer_user_id is not None
-        and bool(headless_config.headless_seer_password)
+        credentials.headless_seer_user_id is not None
+        and bool(credentials.headless_seer_password)
     )
 
 
@@ -38,19 +42,21 @@ async def login_headless_client() -> int:
     except (DisconnectedError, NotLoggedInError):
         client_manager.shutdown()
 
-    user_id = headless_config.headless_seer_user_id
-    password = headless_config.headless_seer_password
+    credentials = get_headless_credentials()
+    user_id = credentials.headless_seer_user_id
+    password = credentials.headless_seer_password
     if user_id is None or not password:
         raise RuntimeError(HEADLESS_CONFIG_MISSING_MESSAGE)
 
+    headless_config = get_headless_config()
     game = await client_manager.login(
         user_id=user_id,
         password=password,
-        login_server_url=headless_config.headless_seer_login_server_addr,
-        heartbeat_interval=headless_config.headless_seer_heartbeat_interval,
-        reconnect_retries=headless_config.headless_seer_reconnect_retries,
-        reconnect_delay=headless_config.headless_seer_reconnect_delay,
-        reconnect_delay_max=headless_config.headless_seer_reconnect_delay_max,
+        login_server_url=headless_config.login_server_addr,
+        heartbeat_interval=headless_config.heartbeat_interval,
+        reconnect_retries=headless_config.reconnect_retries,
+        reconnect_delay=headless_config.reconnect_delay,
+        reconnect_delay_max=headless_config.reconnect_delay_max,
     )
     if not game.is_logged_in:
         raise RuntimeError("登录未完成，已进入自动重连")
