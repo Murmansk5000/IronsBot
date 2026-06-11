@@ -18,9 +18,12 @@ from ironsbot.services.activity.commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
 )
+from ironsbot.services.activity.delivery import (
+    filter_reminders_before_send,
+    format_reminder_message,
+)
 from ironsbot.services.activity.formatting import (
     format_activity_line,
-    format_activity_list,
 )
 from ironsbot.services.activity.models import (
     ActivityDeadline,
@@ -33,7 +36,6 @@ from ironsbot.services.activity.planning import (
     activity_is_soon_ending,
     activity_sort_end_time,
     build_scheduled_reminders,
-    filter_valid_reminders,
     group_by_send_time,
 )
 from ironsbot.services.activity.repository import load_activity_rows
@@ -236,18 +238,12 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
 
 
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
-    try:
-        return get_activity_config().message.format(
-            lead_hours=lead_hours,
-            activity_count=len(reminders),
-            activity_list=format_activity_list(reminders),
-        )
-    except (KeyError, IndexError, ValueError) as e:
-        logger.warning(f"activity reminder template failed: {e}")
-        return DEFAULT_MESSAGE_TEMPLATE.format(
-            lead_hours=lead_hours,
-            activity_list=format_activity_list(reminders),
-        )
+    return format_reminder_message(
+        lead_hours,
+        reminders,
+        template=get_activity_config().message,
+        fallback_template=DEFAULT_MESSAGE_TEMPLATE,
+    )
 
 
 def _group_by_send_time(
@@ -256,23 +252,15 @@ def _group_by_send_time(
     return group_by_send_time(reminders)
 
 
-def _current_activity_by_id(now: datetime) -> dict[int, ActivityInfo]:
-    return {
-        activity.activity_id: activity
-        for activity in _soon_ending_activity_infos(now)
-    }
-
-
 def _filter_valid_reminders_before_send(
     reminders: Iterable[ActivityReminder],
     *,
     now: datetime,
 ) -> list[ActivityReminder]:
-    activity_by_id = _current_activity_by_id(now)
-    return filter_valid_reminders(
+    return filter_reminders_before_send(
         reminders,
         now=now,
-        activity_by_id=activity_by_id,
+        current_activities=_soon_ending_activity_infos(now),
         dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
         soon_ending_threshold=SOON_ENDING_THRESHOLD,
     )

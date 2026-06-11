@@ -1,0 +1,85 @@
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from ironsbot.services.activity.delivery import (
+    filter_reminders_before_send,
+    format_reminder_message,
+)
+from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
+
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def dt(
+    year: int,
+    month: int,
+    day: int,
+    hour: int,
+    minute: int = 0,
+) -> datetime:
+    return datetime(year, month, day, hour, minute, tzinfo=LOCAL_TZ)
+
+
+def _activity(activity_id: int = 1) -> ActivityInfo:
+    return ActivityInfo(
+        activity_id=activity_id,
+        name=f"活动 {activity_id}",
+        start_time=dt(2026, 6, 1, 10),
+        end_time=dt(2026, 6, 12, 10),
+        sort_order=activity_id,
+    )
+
+
+def _reminder(activity_id: int = 1) -> ActivityReminder:
+    return ActivityReminder(
+        activity_id=activity_id,
+        name=f"活动 {activity_id}",
+        end_time=dt(2026, 6, 12, 10),
+        lead_hours=1,
+        send_time=dt(2026, 6, 12, 9),
+    )
+
+
+def test_format_reminder_message_uses_template_fields() -> None:
+    message = format_reminder_message(
+        1,
+        [_reminder()],
+        template="{activity_count} 个活动：\n{activity_list}",
+    )
+
+    assert message.startswith("1 个活动：")
+    assert "活动 1" in message
+
+
+def test_format_reminder_message_falls_back_on_bad_template() -> None:
+    message = format_reminder_message(
+        1,
+        [_reminder()],
+        template="{missing_field}",
+        fallback_template="提前 {lead_hours} 小时\n{activity_list}",
+    )
+
+    assert message.startswith("提前 1 小时")
+    assert "活动 1" in message
+
+
+def test_filter_reminders_before_send_keeps_current_valid_reminders() -> None:
+    reminder = _reminder()
+
+    assert filter_reminders_before_send(
+        [reminder],
+        now=dt(2026, 6, 12, 9),
+        current_activities=[_activity()],
+        dispatch_tolerance=timedelta(minutes=1),
+        soon_ending_threshold=timedelta(days=7),
+    ) == [reminder]
+
+
+def test_filter_reminders_before_send_drops_stale_or_missing_activity() -> None:
+    assert filter_reminders_before_send(
+        [_reminder()],
+        now=dt(2026, 6, 12, 9, 2),
+        current_activities=[],
+        dispatch_tolerance=timedelta(minutes=1),
+        soon_ending_threshold=timedelta(days=7),
+    ) == []
