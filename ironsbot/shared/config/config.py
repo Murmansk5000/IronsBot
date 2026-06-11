@@ -13,6 +13,7 @@ from pydantic import (
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.bilibili import BiliConfig
+from ironsbot.config.models.feature import FeaturePolicyConfig
 from ironsbot.config.models.message import (
     MeetingConfig,
     MessageActionsConfig,
@@ -38,64 +39,10 @@ from ironsbot.shared.config.parsing import (
     json_object,
     nested_json_config,
     string_list,
-    unique_items,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
-
-KNOWN_FEATURES = frozenset(
-    {
-        "seer",
-        "image",
-        "rank",
-        "meeting",
-        "text",
-        "text_push",
-        "activity_link",
-        "activity_link_push",
-        "seerinfo",
-        "bili_query",
-        "bili_push",
-        "activity_query",
-        "activity_push",
-        "server_status_query",
-        "server_status_push",
-        "team",
-        "ai_chat",
-        "ai_intent",
-        "admin_notice",
-    }
-)
-FEATURE_ALIASES: dict[str, frozenset[str]] = {
-    "all": KNOWN_FEATURES - {"admin_notice"},
-    "custom": frozenset(
-        {
-            "seer",
-            "image",
-            "rank",
-            "bili_query",
-            "activity_query",
-            "server_status_query",
-        }
-    ),
-    "bili": frozenset({"bili_query", "bili_push"}),
-    "activity": frozenset({"activity_query", "activity_push"}),
-    "server_status": frozenset({"server_status_query", "server_status_push"}),
-    "text": frozenset({"text", "activity_link", "seerinfo"}),
-    "text_push": frozenset({"text_push", "activity_link_push"}),
-    "message": frozenset(
-        {
-            "text",
-            "text_push",
-            "activity_link",
-            "activity_link_push",
-            "seerinfo",
-        }
-    ),
-}
-
 
 def _coerce_int_mapping(value: object) -> dict[str, int]:
     parsed = json_object(value, name="feature policy aliases")
@@ -133,24 +80,6 @@ class ModulesConfig(BaseModel):
     priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     sendpic: SendpicConfig = Field(default_factory=SendpicConfig)
-
-
-class FeaturePolicyConfig(BaseModel):
-    group_aliases: dict[str, int] = Field(default_factory=dict)
-    user_aliases: dict[str, int] = Field(default_factory=dict)
-    feature_group_policy: dict[str, list[str]] = Field(default_factory=dict)
-    feature_user_policy: dict[str, list[str]] = Field(default_factory=dict)
-    feature_superuser_bypass: bool = True
-
-    @field_validator("group_aliases", "user_aliases", mode="before")
-    @classmethod
-    def normalize_aliases(cls, value: object) -> object:
-        return _coerce_int_mapping(value)
-
-    @field_validator("feature_group_policy", "feature_user_policy", mode="before")
-    @classmethod
-    def normalize_policy(cls, value: object) -> object:
-        return _coerce_policy_mapping(value)
 
 
 class Config(BaseModel):
@@ -300,7 +229,3 @@ class Config(BaseModel):
             feature_user_policy=self.feature_user_policy,
             feature_superuser_bypass=self.feature_superuser_bypass,
         )
-
-
-def unique_ints(values: Iterable[int]) -> list[int]:
-    return unique_items(values)
