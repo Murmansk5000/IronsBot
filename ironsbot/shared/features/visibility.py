@@ -19,7 +19,6 @@ from .service import (
 
 ORIGINAL_PLUGIN_MODULE_PREFIXES = (
     "ironsbot.plugins.about",
-    "ironsbot.plugins.help",
 )
 
 HIDDEN_MODULE_PREFIXES = (
