@@ -5,10 +5,9 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nonebot import get_driver, on_message, require
+from nonebot import on_message, require
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -17,29 +16,14 @@ from ironsbot.services.activity.commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
 )
-from ironsbot.services.activity.delivery import (
-    activity_reminder_targets,
-    build_reminder_delivery,
-)
 from ironsbot.services.activity.models import (
-    ActivityInfo,
     ActivityInfoCache,
-    ActivityReminder,
 )
 from ironsbot.services.activity.query import (
     ActivityQuerySource,
-    active_activity_infos,
     build_activity_query_message,
-    scheduled_reminders,
-    soon_ending_activity_infos,
-    valid_reminders_before_send,
 )
 from ironsbot.services.activity.repository import load_activity_rows
-from ironsbot.services.activity.scheduler import (
-    register_scan_jobs,
-    schedule_reminder_jobs,
-)
-from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -53,10 +37,7 @@ from .config import Config, get_activity_config
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_REMINDER_PLUGIN_NAME = "activity_reminder"
-DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
 SOON_ENDING_THRESHOLD = timedelta(days=7)
-REMINDER_SEND_DELAY = timedelta(minutes=10)
-REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 
 
@@ -84,10 +65,6 @@ __plugin_meta__ = PluginMetadata(
 
 
 _activity_info_cache = ActivityInfoCache()
-_activity_reminder_runtime_state: dict[str, Any] = {
-    "registered": False,
-    "scheduler": None,
-}
 
 
 def _now() -> datetime:
@@ -117,20 +94,6 @@ _activity_query_source = ActivityQuerySource(
 )
 
 
-def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
-    return active_activity_infos(
-        _activity_query_source,
-        now,
-    )
-
-
-def _soon_ending_activity_infos(now: datetime) -> list[ActivityInfo]:
-    return soon_ending_activity_infos(
-        _activity_query_source,
-        now,
-    )
-
-
 def build_current_activity_message(
     now: datetime | None = None,
     *,
@@ -144,85 +107,6 @@ def build_current_activity_message(
         limit=limit,
         soon_only=soon_only,
     )
-
-
-async def send_activity_reminder(
-    *,
-    lead_hours: int,
-    reminders: list[ActivityReminder],
-) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
-
-    reminders = valid_reminders_before_send(
-        _activity_query_source,
-        reminders,
-        now=_now(),
-        dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
-    )
-    if not reminders:
-        logger.info(
-            f"activity ending reminder {lead_hours}h skipped: no valid reminders"
-        )
-        return
-
-    delivery = build_reminder_delivery(
-        lead_hours,
-        reminders,
-        activity_reminder_targets(),
-        template=get_activity_config().message,
-        fallback_template=DEFAULT_MESSAGE_TEMPLATE,
-    )
-    if delivery.status == "skip_no_targets":
-        logger.warning("activity reminder skipped: no target groups or users")
-        return
-
-    summary = await send_broadcast_message(
-        delivery.message,
-        group_ids=delivery.group_ids,
-        private_user_ids=delivery.private_user_ids,
-        action_name=delivery.action_name,
-        interval_seconds=1.2,
-    )
-    if summary.succeeded:
-        mark_sent(reminders)
-
-
-async def schedule_activity_reminders() -> None:
-    scheduler = _activity_reminder_runtime_state["scheduler"]
-    if scheduler is None:
-        logger.warning("activity reminder scheduler is not configured")
-        return
-
-    config = get_activity_config()
-    if not config.enabled:
-        return
-
-    try:
-        reminders = filter_unsent(
-            scheduled_reminders(
-                _activity_query_source,
-                _now(),
-                lead_hours=config.lead_hours,
-                reminder_send_delay=REMINDER_SEND_DELAY,
-                grace=timedelta(minutes=config.grace_minutes),
-            )
-        )
-    except Exception:  # noqa: BLE001
-        logger.opt(exception=True).warning("activity reminder scan failed")
-        return
-
-    if not reminders:
-        logger.info("activity reminder scan found no pending reminders")
-        return
-
-    scheduled_count = schedule_reminder_jobs(
-        scheduler,
-        send_activity_reminder,
-        reminders,
-        grace_minutes=config.grace_minutes,
-    )
-
-    logger.info(f"activity reminder scheduled {scheduled_count} pending reminders")
 
 
 current_activity_matcher = on_message(
@@ -291,32 +175,3 @@ async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
         matcher=soon_ending_activity_matcher,
         action="soon_ending",
     )
-
-
-def register_activity_reminder_jobs(scheduler: Any) -> None:
-    register_scan_jobs(
-        scheduler,
-        schedule_activity_reminders,
-        enabled=get_activity_config().enabled,
-        now=_now(),
-    )
-
-
-def _setup_activity_reminder_runtime(driver: Any, scheduler: Any) -> None:
-    if _activity_reminder_runtime_state["registered"]:
-        return
-
-    _activity_reminder_runtime_state["scheduler"] = scheduler
-
-    @driver.on_startup
-    async def _register_activity_reminder_jobs_on_startup() -> None:
-        register_activity_reminder_jobs(scheduler)
-
-    _activity_reminder_runtime_state["registered"] = True
-
-
-def setup_activity_reminder_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    _setup_activity_reminder_runtime(get_driver(), scheduler)

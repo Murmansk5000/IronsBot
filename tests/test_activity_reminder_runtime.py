@@ -10,6 +10,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.custom_plugins import activity_reminder
+from ironsbot.custom_plugins.activity_reminder import runtime as activity_runtime
 
 
 class FakeDriver:
@@ -34,23 +35,23 @@ def test_activity_reminder_runtime_setup_registers_startup_once(
 ) -> None:
     registered_state = False
     monkeypatch.setitem(
-        activity_reminder._activity_reminder_runtime_state,
+        activity_runtime._activity_reminder_runtime_state,
         "registered",
         registered_state,
     )
     monkeypatch.setitem(
-        activity_reminder._activity_reminder_runtime_state,
+        activity_runtime._activity_reminder_runtime_state,
         "scheduler",
         None,
     )
     driver = FakeDriver()
     scheduler = object()
 
-    activity_reminder._setup_activity_reminder_runtime(driver, scheduler)
-    activity_reminder._setup_activity_reminder_runtime(driver, scheduler)
+    activity_runtime._setup_activity_reminder_runtime(driver, scheduler)
+    activity_runtime._setup_activity_reminder_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
-    assert activity_reminder._activity_reminder_runtime_state["scheduler"] is scheduler
+    assert activity_runtime._activity_reminder_runtime_state["scheduler"] is scheduler
 
 
 def test_register_activity_reminder_jobs_installs_startup_and_daily_scans(
@@ -58,12 +59,12 @@ def test_register_activity_reminder_jobs_installs_startup_and_daily_scans(
 ) -> None:
     scheduler = FakeScheduler()
     monkeypatch.setattr(
-        activity_reminder,
+        activity_runtime,
         "get_activity_config",
         lambda: SimpleNamespace(enabled=True),
     )
 
-    activity_reminder.register_activity_reminder_jobs(scheduler)
+    activity_runtime.register_activity_reminder_jobs(scheduler)
 
     assert [job["id"] for job in scheduler.jobs] == [
         "activity_reminder_startup_scan",
