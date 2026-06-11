@@ -36,9 +36,12 @@ from ironsbot.services.activity.planning import (
     activity_is_soon_ending,
     activity_sort_end_time,
     build_scheduled_reminders,
-    group_by_send_time,
 )
 from ironsbot.services.activity.repository import load_activity_rows
+from ironsbot.services.activity.scheduler import (
+    register_scan_jobs,
+    schedule_reminder_jobs,
+)
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 from ironsbot.shared.features import (
     groups_for_feature,
@@ -67,7 +70,6 @@ SOON_ENDING_THRESHOLD = timedelta(days=7)
 REMINDER_SEND_DELAY = timedelta(minutes=10)
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
-SECONDS_PER_MINUTE = 60
 
 
 async def _is_current_activity_query_command(event: Event) -> bool:
@@ -246,12 +248,6 @@ def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
     )
 
 
-def _group_by_send_time(
-    reminders: Iterable[ActivityReminder],
-) -> dict[tuple[int, datetime], list[ActivityReminder]]:
-    return group_by_send_time(reminders)
-
-
 def _filter_valid_reminders_before_send(
     reminders: Iterable[ActivityReminder],
     *,
@@ -298,10 +294,6 @@ async def send_activity_reminder(
         mark_sent(reminders)
 
 
-def _reminder_job_id(lead_hours: int, send_time: datetime) -> str:
-    return f"activity_reminder_{lead_hours}h_{int(send_time.timestamp())}"
-
-
 async def schedule_activity_reminders() -> None:
     scheduler = _activity_reminder_runtime_state["scheduler"]
     if scheduler is None:
@@ -322,25 +314,12 @@ async def schedule_activity_reminders() -> None:
         logger.info("activity reminder scan found no pending reminders")
         return
 
-    scheduled_count = 0
-    for (lead_hours, send_time), lead_reminders in _group_by_send_time(
-        reminders
-    ).items():
-        scheduler.add_job(
-            send_activity_reminder,
-            "date",
-            kwargs={
-                "lead_hours": lead_hours,
-                "reminders": lead_reminders,
-            },
-            id=_reminder_job_id(lead_hours, send_time),
-            replace_existing=True,
-            run_date=send_time,
-            misfire_grace_time=(
-                config.grace_minutes * SECONDS_PER_MINUTE
-            ),
-        )
-        scheduled_count += len(lead_reminders)
+    scheduled_count = schedule_reminder_jobs(
+        scheduler,
+        send_activity_reminder,
+        reminders,
+        grace_minutes=config.grace_minutes,
+    )
 
     logger.info(f"activity reminder scheduled {scheduled_count} pending reminders")
 
@@ -414,26 +393,11 @@ async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
 
 
 def register_activity_reminder_jobs(scheduler: Any) -> None:
-    if not get_activity_config().enabled:
-        return
-
-    scheduler.add_job(
+    register_scan_jobs(
+        scheduler,
         schedule_activity_reminders,
-        "date",
-        id="activity_reminder_startup_scan",
-        replace_existing=True,
-        next_run_time=_now() + timedelta(seconds=30),
-        misfire_grace_time=300,
-    )
-    scheduler.add_job(
-        schedule_activity_reminders,
-        "cron",
-        id="activity_reminder_daily_scan",
-        replace_existing=True,
-        hour=0,
-        minute=0,
-        second=0,
-        misfire_grace_time=300,
+        enabled=get_activity_config().enabled,
+        now=_now(),
     )
 
 
