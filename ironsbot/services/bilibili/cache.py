@@ -7,9 +7,8 @@ from typing import Any
 
 from nonebot.log import logger
 
+from ironsbot.config import get_app_config
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
-
-from .config import get_bili_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,7 +206,7 @@ def save_dynamic_history_item(  # noqa: PLR0913
                     LIMIT -1 OFFSET ?
                 )
                 """,
-                (get_bili_config().storage.history_max_items,),
+                (get_app_config().bilibili.storage.history_max_items,),
             )
     except (sqlite3.Error, TypeError, ValueError) as e:
         logger.warning(f"failed to save Bilibili dynamic history: {e}")

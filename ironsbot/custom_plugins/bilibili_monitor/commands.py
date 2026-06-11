@@ -14,6 +14,13 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.services.bilibili.cache import (
+    DynamicHistoryRecord,
+    get_dynamic_history_item,
+    get_saved_cookie,
+    list_dynamic_history,
+    save_dynamic_history_item,
+)
 from ironsbot.services.bilibili.parser import (
     dynamic_brief,
     dynamic_suppression_reason,
@@ -31,13 +38,6 @@ from ironsbot.shared.plugin_system import (
 )
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
-from .cache import (
-    DynamicHistoryRecord,
-    get_dynamic_history_item,
-    get_saved_cookie,
-    list_dynamic_history,
-    save_dynamic_history_item,
-)
 from .client import fetch_dynamic_feed
 from .config import get_bili_config
 from .permissions import (
