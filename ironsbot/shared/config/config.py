@@ -33,13 +33,16 @@ KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
 AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt"
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
-INVALID_INTERVAL_TIME_ERROR = "MODULES.bilibili.polling.windows time must use HH:MM"
+INVALID_INTERVAL_TIME_ERROR = (
+    "APP_CONFIG.bilibili.polling.windows time must use HH:MM"
+)
 INVALID_RESTART_TIME_ERROR = (
-    "MODULES.restart.times must contain daily HH:MM times, "
+    "APP_CONFIG.runtime.restart.times must contain daily HH:MM times, "
     'for example "04:30,16:10" or ["04:30","16:10"]'
 )
 INVALID_RECONNECT_TIME_ERROR = (
-    "MODULES.headless_notice.reconnect_check_times must contain daily HH:MM times, "
+    "APP_CONFIG.runtime.headless_notice.reconnect_check_times must contain "
+    "daily HH:MM times, "
     'for example "00:01,00:02" or ["00:01","00:02"]'
 )
 
@@ -180,7 +183,7 @@ def _normalize_mode(value: object) -> object:
         return value
     mode = str(value).strip().lower()
     if mode not in {"full", "link"}:
-        msg = "MODULES.bilibili push mode must be full or link"
+        msg = "APP_CONFIG.bilibili push mode must be full or link"
         raise ValueError(msg)
     return mode
 
@@ -382,7 +385,7 @@ class AiConfig(BaseModel):
             text = value.strip()
             if not text:
                 return default_ai_templates()
-            return json_object(text, name="MODULES.ai.action_templates")
+            return json_object(text, name="APP_CONFIG.ai.action_templates")
 
         return value
 
@@ -396,7 +399,7 @@ class AiConfig(BaseModel):
             text = value.strip()
             if not text:
                 return default_ai_actions()
-            return json_array(text, name="MODULES.ai.intent_actions")
+            return json_array(text, name="APP_CONFIG.ai.intent_actions")
 
         return value
 
@@ -463,7 +466,7 @@ class BiliPushTargetConfig(BaseModel):
     @field_validator("uid_modes", mode="before")
     @classmethod
     def normalize_uid_modes(cls, value: object) -> object:
-        parsed = json_object(value, name="MODULES.bilibili.push uid_modes")
+        parsed = json_object(value, name="APP_CONFIG.bilibili.push uid_modes")
         result: dict[int, BiliPushMode] = {}
         for raw_uid, raw_mode in parsed.items():
             uid = int(raw_uid)
@@ -486,7 +489,7 @@ class BiliPushConfig(BaseModel):
     @field_validator("groups", "users", mode="before")
     @classmethod
     def normalize_targets(cls, value: object) -> object:
-        parsed = json_object(value, name="MODULES.bilibili.push targets")
+        parsed = json_object(value, name="APP_CONFIG.bilibili.push targets")
         result: dict[str, object] = {}
         for raw_ref, raw_config in parsed.items():
             ref = str(raw_ref).strip()
@@ -1013,12 +1016,16 @@ class Config(BaseModel):
     @field_validator("modules", mode="before")
     @classmethod
     def normalize_modules(cls, value: object) -> object:
-        return nested_json_config(value, ModulesConfig, name="MODULES")
+        return nested_json_config(value, ModulesConfig, name="APP_CONFIG")
 
     @field_validator("data_sync_config", mode="before")
     @classmethod
     def normalize_data_sync_config(cls, value: object) -> object:
-        return nested_json_config(value, DataSyncConfig, name="DATA_SYNC_CONFIG")
+        return nested_json_config(
+            value,
+            DataSyncConfig,
+            name="APP_CONFIG.runtime.data_sync",
+        )
 
     @field_validator("team_ids", "team_resource_users", mode="before")
     @classmethod
