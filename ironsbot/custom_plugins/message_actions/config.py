@@ -1,11 +1,11 @@
 from ironsbot.config import AppConfig, get_app_config
-from ironsbot.config.models.message import MessageConfig
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.message import (
     ENABLED_COMMANDS_REQUIRED_ERROR,
     BaseMessageAction,
     CommandMessageAction,
     GroupCommandMessageAction,
     GroupScheduledMessageAction,
+    MessageConfig,
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     ReplyLineConfig,
