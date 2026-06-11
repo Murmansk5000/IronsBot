@@ -5,12 +5,13 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from .reply_limits import limit_message_by_reply_lines
-from .targets import (
+from ironsbot.shared.messaging.targets import (
     MessageTarget,
     TargetSendSummary,
     broadcast_targets,
 )
+
+from .reply_limits import limit_message_by_reply_lines
 from .text import build_message
 
 
