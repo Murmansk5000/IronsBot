@@ -16,6 +16,12 @@ from ironsbot.services.bilibili.parser import (
     item_author_name,
     parse_single_item,
 )
+from ironsbot.services.bilibili.state import (
+    BiliPushTargets,
+    check_lock,
+    monitored_uids,
+    push_targets_for_uid,
+)
 from ironsbot.shared.config.time import minute_of_day
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
@@ -28,12 +34,6 @@ from .cache import (
 )
 from .client import fetch_dynamic_feed
 from .config import get_bili_config
-from .state import (
-    BiliPushTargets,
-    check_lock,
-    monitored_uids,
-    push_targets_for_uid,
-)
 
 HTTP_OK = 200
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2

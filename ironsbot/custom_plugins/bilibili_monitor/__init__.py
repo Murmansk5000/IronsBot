@@ -8,6 +8,11 @@ from ironsbot.services.bilibili.parser import (
     parse_single_item,
     scan_and_swallow_all_long_strings,
 )
+from ironsbot.services.bilibili.state import (
+    monitored_uids,
+    target_group_ids,
+    target_user_ids,
+)
 
 from . import commands as commands
 from .auth import (
@@ -30,7 +35,6 @@ from .permissions import (
     is_bili_superuser,
 )
 from .service import run_check_logic
-from .state import monitored_uids, target_group_ids, target_user_ids
 
 __plugin_meta__ = PluginMetadata(
     name="B站动态",

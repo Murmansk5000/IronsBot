@@ -22,6 +22,7 @@ from ironsbot.services.bilibili.parser import (
     item_author_name,
     parse_single_item,
 )
+from ironsbot.services.bilibili.state import query_uids_for_event
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -45,7 +46,6 @@ from .permissions import (
     is_dynamic_update_allowed,
 )
 from .service import run_check_logic
-from .state import query_uids_for_event
 
 DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"

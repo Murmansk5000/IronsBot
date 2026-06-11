@@ -7,8 +7,9 @@ from typing import Any
 
 from nonebot.log import logger
 
+from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
+
 from .config import get_bili_config
-from .state import cookie_cache_file, dynamic_history_db_file
 
 
 @dataclass(frozen=True, slots=True)
