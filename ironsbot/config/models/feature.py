@@ -1,10 +1,65 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ironsbot.shared.config.config import FEATURE_ALIASES, KNOWN_FEATURES
-from ironsbot.shared.config.parsing import json_object, string_list
+from ironsbot.shared.config.parsing import json_object, string_list, unique_items
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+KNOWN_FEATURES = frozenset(
+    {
+        "seer",
+        "image",
+        "rank",
+        "meeting",
+        "text",
+        "text_push",
+        "activity_link",
+        "activity_link_push",
+        "seerinfo",
+        "bili_query",
+        "bili_push",
+        "activity_query",
+        "activity_push",
+        "server_status_query",
+        "server_status_push",
+        "team",
+        "ai_chat",
+        "ai_intent",
+        "admin_notice",
+    }
+)
+FEATURE_ALIASES: dict[str, frozenset[str]] = {
+    "all": KNOWN_FEATURES - {"admin_notice"},
+    "custom": frozenset(
+        {
+            "seer",
+            "image",
+            "rank",
+            "bili_query",
+            "activity_query",
+            "server_status_query",
+        }
+    ),
+    "bili": frozenset({"bili_query", "bili_push"}),
+    "activity": frozenset({"activity_query", "activity_push"}),
+    "server_status": frozenset({"server_status_query", "server_status_push"}),
+    "text": frozenset({"text", "activity_link", "seerinfo"}),
+    "text_push": frozenset({"text_push", "activity_link_push"}),
+    "message": frozenset(
+        {
+            "text",
+            "text_push",
+            "activity_link",
+            "activity_link_push",
+            "seerinfo",
+        }
+    ),
+}
 
 
 def _coerce_int_mapping(value: object) -> dict[str, int]:
@@ -47,8 +102,32 @@ class FeatureConfig(BaseModel):
         return _coerce_policy_mapping(value)
 
 
+class FeaturePolicyConfig(BaseModel):
+    group_aliases: dict[str, int] = Field(default_factory=dict)
+    user_aliases: dict[str, int] = Field(default_factory=dict)
+    feature_group_policy: dict[str, list[str]] = Field(default_factory=dict)
+    feature_user_policy: dict[str, list[str]] = Field(default_factory=dict)
+    feature_superuser_bypass: bool = True
+
+    @field_validator("group_aliases", "user_aliases", mode="before")
+    @classmethod
+    def normalize_aliases(cls, value: object) -> object:
+        return _coerce_int_mapping(value)
+
+    @field_validator("feature_group_policy", "feature_user_policy", mode="before")
+    @classmethod
+    def normalize_policy(cls, value: object) -> object:
+        return _coerce_policy_mapping(value)
+
+
+def unique_ints(values: Iterable[int]) -> list[int]:
+    return unique_items(values)
+
+
 __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
     "FeatureConfig",
+    "FeaturePolicyConfig",
+    "unique_ints",
 ]

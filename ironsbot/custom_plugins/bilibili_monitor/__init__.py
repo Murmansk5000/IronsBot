@@ -30,7 +30,7 @@ from .permissions import (
     is_bili_superuser,
 )
 from .service import run_check_logic
-from .state import MONITORED_UIDS, TARGET_GROUP_IDS, TARGET_USER_IDS
+from .state import monitored_uids, target_group_ids, target_user_ids
 
 __plugin_meta__ = PluginMetadata(
     name="B站动态",
@@ -51,9 +51,6 @@ async def wait_startup_check_done() -> None:
 
 
 __all__ = [
-    "MONITORED_UIDS",
-    "TARGET_GROUP_IDS",
-    "TARGET_USER_IDS",
     "commands",
     "get_bili_superuser_uids",
     "get_dynamic_history_item",
@@ -66,6 +63,7 @@ __all__ = [
     "item_author_mid",
     "item_author_name",
     "list_dynamic_history",
+    "monitored_uids",
     "parse_single_item",
     "request_bili_login_qrcode",
     "run_check_logic",
@@ -73,5 +71,7 @@ __all__ = [
     "save_new_cookie",
     "scan_and_swallow_all_long_strings",
     "send_bili_login_qrcode_to_superusers",
+    "target_group_ids",
+    "target_user_ids",
     "wait_startup_check_done",
 ]
