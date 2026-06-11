@@ -21,7 +21,7 @@ from ironsbot.services.bilibili.checkpoints import (
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.delivery import build_dynamic_push_deliveries
 from ironsbot.services.bilibili.parser import (
-    find_target_dynamics,
+    target_dynamics_from_response,
 )
 from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
@@ -175,14 +175,13 @@ async def _do_check_logic() -> None:
         if not await _is_valid_dynamic_response(response, res_json):
             return
 
-        valid_dynamics = find_target_dynamics(
-            res_json.get("data", {}).get("items", []),
+        valid_dynamics = target_dynamics_from_response(
+            res_json,
             monitored_uids(),
         )
         if not valid_dynamics:
             return
 
-        valid_dynamics.sort(key=lambda value: value[0])
         checkpoints = get_last_saved_times()
         initialized_checkpoints = initialize_missing_checkpoints(
             checkpoints,

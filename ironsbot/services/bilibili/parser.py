@@ -86,6 +86,29 @@ def find_target_dynamics(
     return target_dynamics
 
 
+def dynamic_items_from_response(response_data: object) -> list[dict[str, Any]]:
+    payload = _mapping(_mapping(response_data).get("data"))
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return []
+
+    return [item for item in items if isinstance(item, dict)]
+
+
+def target_dynamics_from_response(
+    response_data: object,
+    target_uids: Iterable[int],
+    *,
+    newest_first: bool = False,
+) -> list[tuple[int, dict[str, Any]]]:
+    target_dynamics = find_target_dynamics(
+        dynamic_items_from_response(response_data),
+        target_uids,
+    )
+    target_dynamics.sort(key=lambda value: value[0], reverse=newest_first)
+    return target_dynamics
+
+
 def scan_and_swallow_all_long_strings(data_obj: Any) -> list[str]:
     texts: list[str] = []
     ignore_keys = {

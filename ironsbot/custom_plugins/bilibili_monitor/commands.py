@@ -28,8 +28,8 @@ from ironsbot.services.bilibili.menu import (
     select_cached_dynamic_id,
 )
 from ironsbot.services.bilibili.parser import (
-    find_target_dynamics,
     parse_single_item,
+    target_dynamics_from_response,
 )
 from ironsbot.services.bilibili.permissions import (
     is_bili_superuser,
@@ -173,10 +173,12 @@ async def _handle_dynamic_menu(
                 "⚠️ B 站 Cookie 已失效，请超级管理员重新登录。",
             )
 
-        items = res_json.get("data", {}).get("items", [])
-        if items:
-            target_dynamics = find_target_dynamics(items, query_uids)
-            target_dynamics.sort(key=lambda value: value[0], reverse=True)
+        target_dynamics = target_dynamics_from_response(
+            res_json,
+            query_uids,
+            newest_first=True,
+        )
+        if target_dynamics:
             _save_fetched_dynamics(target_dynamics)
 
         records = list_dynamic_history(limit=10, uids=query_uids)
