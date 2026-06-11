@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -42,10 +42,11 @@ class LocalRankRefreshResult:
 async def refresh_local_rank_cache(
     player_ids: Sequence[int] | None = None,
 ) -> LocalRankRefreshResult:
+    query_config = plugin_config.seer_query_config
     if player_ids is None:
         player_ids = get_refresh_candidate_player_ids(
-            limit=plugin_config.seer_query_cache_refresh_limit,
-            max_age_hours=plugin_config.seer_query_cache_refresh_max_age_hours,
+            limit=query_config.local_rank.refresh_limit,
+            max_age_hours=query_config.local_rank.refresh_max_age_hours,
         )
     else:
         player_ids = list(dict.fromkeys(player_ids))
@@ -63,51 +64,20 @@ async def refresh_local_rank_cache(
             continue
 
         try:
-            user_info, more_info = await asyncio.gather(
-                game.get_user_info(player_id),
-                game.get_more_user_info(player_id),
+            await asyncio.wait_for(
+                _refresh_one_player(
+                    game=game,
+                    peak_sub_key=peak_sub_key,
+                    player_id=player_id,
+                ),
+                timeout=query_config.player.detail_timeout_seconds,
             )
-            unity_part_one, unity_peak = await asyncio.gather(
-                fetch_unity_part_one(game, player_id),
-                fetch_unity_peak(game, player_id),
-            )
-            peak_standard_score = (
-                build_peak_rating_score(
-                    unity_peak.current_j_rank,
-                    unity_peak.current_j_star,
+        except asyncio.TimeoutError:
+            result.failures.append(
+                LocalRankRefreshFailure(
+                    player_id=player_id,
+                    reason="查询超时",
                 )
-                if unity_peak.current_j_all > 0
-                else None
-            )
-            peak_wild_score = (
-                build_peak_rating_score(
-                    unity_peak.current_k_rank,
-                    unity_peak.current_k_star,
-                )
-                if unity_peak.current_k_all > 0
-                else None
-            )
-            peak_expert_score = (
-                unity_peak.current_z_score if unity_peak.current_z_all > 0 else None
-            )
-            rank_summary = await fetch_player_rank_summary(
-                game,
-                player_id,
-                achieve_score=getattr(more_info, "total_achieve", None),
-                pet_kind_count=unity_part_one.pet_kind_num,
-                skin_score=unity_part_one.skin_num,
-            )
-            await update_local_rank_cache(
-                player_id=player_id,
-                nick=user_info.nick,
-                more_info=more_info,
-                unity_part_one=unity_part_one,
-                unity_peak=unity_peak,
-                rank_summary=rank_summary,
-                peak_sub_key=peak_sub_key,
-                peak_standard_score=peak_standard_score,
-                peak_wild_score=peak_wild_score,
-                peak_expert_score=peak_expert_score,
             )
         except Exception as e:  # noqa: BLE001
             result.failures.append(
@@ -119,9 +89,63 @@ async def refresh_local_rank_cache(
         else:
             result.success += 1
 
-        await asyncio.sleep(plugin_config.seer_query_cache_refresh_interval_seconds)
+        await asyncio.sleep(query_config.local_rank.refresh_interval_seconds)
 
     return result
+
+
+async def _refresh_one_player(
+    *,
+    game: object,
+    peak_sub_key: int | None,
+    player_id: int,
+) -> None:
+    user_info, more_info = await asyncio.gather(
+        game.get_user_info(player_id),
+        game.get_more_user_info(player_id),
+    )
+    unity_part_one, unity_peak = await asyncio.gather(
+        fetch_unity_part_one(game, player_id),
+        fetch_unity_peak(game, player_id),
+    )
+    peak_standard_score = (
+        build_peak_rating_score(
+            unity_peak.current_j_rank,
+            unity_peak.current_j_star,
+        )
+        if unity_peak.current_j_all > 0
+        else None
+    )
+    peak_wild_score = (
+        build_peak_rating_score(
+            unity_peak.current_k_rank,
+            unity_peak.current_k_star,
+        )
+        if unity_peak.current_k_all > 0
+        else None
+    )
+    peak_expert_score = (
+        unity_peak.current_z_score if unity_peak.current_z_all > 0 else None
+    )
+    rank_summary = await fetch_player_rank_summary(
+        game,
+        player_id,
+        achieve_score=getattr(more_info, "total_achieve", None),
+        pet_kind_count=unity_part_one.pet_kind_num,
+        skin_score=unity_part_one.skin_num,
+    )
+    await update_local_rank_cache(
+        player_id=player_id,
+        nick=user_info.nick,
+        more_info=more_info,
+        unity_part_one=unity_part_one,
+        unity_peak=unity_peak,
+        rank_summary=rank_summary,
+        peak_sub_key=peak_sub_key,
+        peak_standard_score=peak_standard_score,
+        peak_wild_score=peak_wild_score,
+        peak_expert_score=peak_expert_score,
+    )
 
 
 def format_refresh_failures(

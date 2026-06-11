@@ -23,6 +23,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
+from ironsbot.shared.messages.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
@@ -48,12 +49,8 @@ MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 ADMIN_COMMAND_PREFIX = "/"
 
 
-def _normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
 NORMALIZED_MANUAL_SYNC_COMMANDS = {
-    _normalize_command_text(command)
+    normalize_command_text(command)
     for command in MANUAL_SYNC_COMMANDS
 }
 
@@ -63,7 +60,7 @@ async def _is_manual_sync_command(event: Event) -> bool:
     if not text.startswith(ADMIN_COMMAND_PREFIX):
         return False
 
-    command = _normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
+    command = normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
     return command in NORMALIZED_MANUAL_SYNC_COMMANDS
 
 
@@ -139,7 +136,7 @@ def register_database(
         sync_url, sync_interval_minutes, get_fingerprint, local_path
     )
 
-    if plugin_config.db_sync_interval_enabled:
+    if plugin_config.data_sync_config.interval_enabled:
         scheduler.add_job(
             run_sync_database,
             "interval",
@@ -351,9 +348,8 @@ async def _on_startup() -> None:
     for name in _registered_syncs:
         load_cached_database(name)
 
-    # Keep startup sync behind a switch. Set DB_SYNC_ON_STARTUP=true to restore
-    # the old behavior if automatic refresh is needed again.
-    if not plugin_config.db_sync_on_startup:
+    # Keep startup sync behind a switch to avoid slow container startup.
+    if not plugin_config.data_sync_config.on_startup:
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
         return
 

@@ -1,11 +1,11 @@
-from nonebot import get_plugin_config
-from pydantic import BaseModel, Field
+from ironsbot.config import get_app_config
+from ironsbot.shared.config.config import StartupConfig
 
 
-class Config(BaseModel):
-    startup_notice: bool = True
-    startup_message: str = "机器人已开启。"
-    startup_delay: float = Field(default=0.0, ge=0)
+def get_startup_config() -> StartupConfig:
+    return get_app_config().runtime.startup_notice
 
-
-plugin_config = get_plugin_config(Config)
+__all__ = [
+    "StartupConfig",
+    "get_startup_config",
+]

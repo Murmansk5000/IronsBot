@@ -4,20 +4,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from nonebot import get_plugin_config, logger
+from nonebot import logger
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot.message import event_postprocessor, event_preprocessor
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
-from pydantic import BaseModel, Field
 
-from ironsbot.custom_plugins.feature_policy import is_superuser
-
-
-class Config(BaseModel):
-    superuser_priority: bool = True
-    superuser_priority_wait_timeout_seconds: float = Field(default=300, ge=0)
-
+from ironsbot.shared.config.config import Config, get_shared_config
+from ironsbot.shared.features import is_superuser
 
 __plugin_meta__ = PluginMetadata(
     name="超级管理员优先级",
@@ -41,7 +35,7 @@ class PriorityState:
     normal_active: int = 0
 
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_shared_config()
 _state = PriorityState()
 _condition = asyncio.Condition()
 

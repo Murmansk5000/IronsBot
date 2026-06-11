@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -13,7 +13,9 @@ from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
+    normalize_command_text,
     send_event_reply,
+    strip_command_prefix,
 )
 from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
 from ironsbot.utils.rule import no_reply
@@ -52,24 +54,11 @@ RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
 RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
-ADMIN_COMMAND_PREFIX = "/"
 MAX_CACHE_INTERVALS_SHOWN = 20
 
 
-def _normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
-def _strip_admin_command_prefix(text: str) -> str | None:
-    stripped = text.strip()
-    if not stripped.startswith(ADMIN_COMMAND_PREFIX):
-        return None
-
-    return stripped[len(ADMIN_COMMAND_PREFIX) :].strip()
-
-
 def _with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(f"{ADMIN_COMMAND_PREFIX}{command}" for command in commands)
+    return tuple(f"/{command}" for command in commands)
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,13 +230,13 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
 
 COMMANDS = _build_command_map()
 NORMALIZED_COMMANDS = {
-    _normalize_command_text(command): value
+    normalize_command_text(command): value
     for command, value in COMMANDS.items()
 }
 
 
 async def _is_rank_list_command(event: Event, state: T_State) -> bool:
-    command = _normalize_command_text(event.get_plaintext())
+    command = normalize_command_text(event.get_plaintext())
     if command not in NORMALIZED_COMMANDS:
         return False
 
@@ -255,20 +244,29 @@ async def _is_rank_list_command(event: Event, state: T_State) -> bool:
     return True
 
 
-def _parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
-    stripped = _strip_admin_command_prefix(text)
-    if stripped is None:
-        return None
-
-    command = _normalize_command_text(stripped)
-    normalized_prefix = next(
+def _matching_normalized_prefix(
+    command: str,
+    prefixes: tuple[str, ...],
+) -> str | None:
+    return next(
         (
-            _normalize_command_text(prefix)
-            for prefix in BATCH_CACHE_PREFIXES
-            if command.startswith(_normalize_command_text(prefix))
+            normalized_prefix
+            for prefix in prefixes
+            if command.startswith(
+                normalized_prefix := normalize_command_text(prefix)
+            )
         ),
         None,
     )
+
+
+def _parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
+    stripped = strip_command_prefix(text)
+    if stripped is None:
+        return None
+
+    command = normalize_command_text(stripped)
+    normalized_prefix = _matching_normalized_prefix(command, BATCH_CACHE_PREFIXES)
     if normalized_prefix is None:
         return None
 
@@ -307,18 +305,14 @@ async def _is_rank_cache_batch_command(event: Event, state: T_State) -> bool:
 def _parse_rank_page_cache_status_command(
     text: str,
 ) -> RankPageCacheStatusCommand | None:
-    stripped = _strip_admin_command_prefix(text)
+    stripped = strip_command_prefix(text)
     if stripped is None:
         return None
 
-    command = _normalize_command_text(stripped)
-    normalized_prefix = next(
-        (
-            _normalize_command_text(prefix)
-            for prefix in RANK_PAGE_CACHE_STATUS_PREFIXES
-            if command.startswith(_normalize_command_text(prefix))
-        ),
-        None,
+    command = normalize_command_text(stripped)
+    normalized_prefix = _matching_normalized_prefix(
+        command,
+        RANK_PAGE_CACHE_STATUS_PREFIXES,
     )
     if normalized_prefix is None:
         return None
@@ -419,7 +413,7 @@ async def _fetch_rank_batch_player_ids(
 ) -> tuple[GlobalRankSpec, list[int], int]:
     spec = GLOBAL_RANKS[command.rank_key]
     requested_count = command.end_rank - command.start_rank + 1
-    count = min(requested_count, plugin_config.seer_query_cache_batch_limit)
+    count = min(requested_count, plugin_config.seer_query_config.local_rank.batch_limit)
     raw_start = _batch_raw_start(spec, command.start_rank)
     items = await fetch_daily_rank_page(
         get_game_client(),
@@ -506,7 +500,8 @@ def _build_rank_page_cache_status_message(spec: GlobalRankSpec) -> str:
                 f"过期区间：{_format_rank_intervals(stale_intervals)}",
             ]
         )
-    lines.append(f"TTL：{plugin_config.seer_query_rank_page_cache_ttl_seconds} 秒")
+    ttl = plugin_config.seer_query_config.rank.page_cache_ttl_seconds
+    lines.append(f"TTL：{ttl} 秒")
     return "\n".join(lines)
 
 
@@ -574,7 +569,7 @@ async def handle_rank_cache_batch(
             matcher,
             event,
             f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
-            "请先调大 SEER_QUERY_LOCAL_RANK_MAX_PLAYERS。"
+            "请先调大 SEER_QUERY_CONFIG.local_rank.max_players。"
         )
 
     spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
@@ -588,7 +583,8 @@ async def handle_rank_cache_batch(
     truncated_text = ""
     if requested_count > len(player_ids):
         truncated_text = (
-            f"\n本次按 SEER_QUERY_CACHE_BATCH_LIMIT 只处理前 {len(player_ids)} 个。"
+            "\n本次按 SEER_QUERY_CONFIG.local_rank.batch_limit "
+            f"只处理前 {len(player_ids)} 个。"
         )
 
     await send_event_reply(
@@ -642,14 +638,15 @@ async def handle_rank_cache_status(
     event: MessageEvent,
 ) -> None:
     stats = get_local_rank_cache_stats()
+    query_config = plugin_config.seer_query_config
     lines = [
         "📊【样本榜缓存状态】",
         f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
         f"总缓存玩家：{stats.total_player_count} 个（含全服榜单扫到但未计入样本的人）",
-        f"全服排行扫描上限：前 {plugin_config.seer_query_rank_limit} 名",
-        f"单次批量缓存上限：{plugin_config.seer_query_cache_batch_limit} 个",
-        f"单轮刷新上限：{plugin_config.seer_query_cache_refresh_limit} 个",
-        f"刷新过期时间：{plugin_config.seer_query_cache_refresh_max_age_hours} 小时",
+        f"全服排行扫描上限：前 {query_config.rank.limit} 名",
+        f"单次批量缓存上限：{query_config.local_rank.batch_limit} 个",
+        f"单轮刷新上限：{query_config.local_rank.refresh_limit} 个",
+        f"刷新过期时间：{query_config.local_rank.refresh_max_age_hours} 小时",
         "巅峰样本：按当前赛季单独比较",
         f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
         "",
@@ -682,9 +679,10 @@ async def handle_rank_cache_refresh(
         event,
         "🔄 正在刷新样本榜缓存。"
         f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
-        f"{plugin_config.seer_query_cache_refresh_limit} 个，"
+        f"{plugin_config.seer_query_config.local_rank.refresh_limit} 个，"
         "只刷新超过 "
-        f"{plugin_config.seer_query_cache_refresh_max_age_hours} 小时未更新的数据。"
+        f"{plugin_config.seer_query_config.local_rank.refresh_max_age_hours} "
+        "小时未更新的数据。"
     )
     await release_superuser_priority(state)
     result = await refresh_local_rank_cache()

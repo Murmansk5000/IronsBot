@@ -1,10 +1,9 @@
-from nonebot import get_plugin_config
-from pydantic import BaseModel
+from ironsbot.shared.config.config import Config, DataSyncConfig, get_shared_config
 
+plugin_config = get_shared_config()
 
-class Config(BaseModel):
-    db_sync_on_startup: bool = False
-    db_sync_interval_enabled: bool = True
-
-
-plugin_config = get_plugin_config(Config)
+__all__ = [
+    "Config",
+    "DataSyncConfig",
+    "plugin_config",
+]

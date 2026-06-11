@@ -19,7 +19,7 @@ import nonebot_plugin_localstore as store
 
 from ironsbot.plugins.db_sync.manager import db_manager
 
-CACHE_DIR: Path = plugin_config.render_cache_dir or store.get_plugin_cache_dir()
+CACHE_DIR: Path = plugin_config.render_config.cache_dir or store.get_plugin_cache_dir()
 
 
 _SEERAPI_DB = "seerapi"
@@ -120,8 +120,8 @@ class RenderCache:
 
 render_cache: RenderCache = RenderCache(
     cache_dir=CACHE_DIR,
-    max_size_bytes=plugin_config.render_cache_max_size_mb * 1024 * 1024,
+    max_size_bytes=plugin_config.render_config.cache_max_size_mb * 1024 * 1024,
 )
 
-if plugin_config.render_cache_clear_on_startup:
+if plugin_config.render_config.clear_on_startup:
     render_cache.clear()

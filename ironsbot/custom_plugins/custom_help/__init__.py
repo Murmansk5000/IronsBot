@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from nonebot import get_loaded_plugins, get_plugin_config
+from nonebot import get_loaded_plugins
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
@@ -13,14 +12,19 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
-from pydantic import BaseModel, Field, field_validator
 
-from ironsbot.custom_plugins.feature_visibility import plugin_visible_for_event
 from ironsbot.custom_plugins.message_actions import (
     build_message,
     event_sender_at_user_ids,
     finish_event_reply,
     send_event_reply,
+)
+from ironsbot.shared.config.config import Config, get_shared_config
+from ironsbot.shared.features.visibility import plugin_visible_for_event
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
 )
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
@@ -42,30 +46,7 @@ DEFAULT_IGNORED_PLUGINS = [
     "定时重启",
 ]
 HELP_ENTRIES_KEY = "_custom_help_entries"
-
-
-class Config(BaseModel):
-    help_ignored_plugins: list[str] = Field(default_factory=list)
-
-    @field_validator("help_ignored_plugins", mode="before")
-    @classmethod
-    def normalize_ignored_plugins(cls, value: object) -> object:
-        if value is None or value == "":
-            return []
-
-        if isinstance(value, str):
-            text = value.strip()
-            if not text:
-                return []
-            if text.startswith("["):
-                return json.loads(text)
-            return [
-                item.strip()
-                for item in text.split(",")
-                if item.strip()
-            ]
-
-        return value
+HELP_PLUGIN_NAME = "custom_help"
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +57,7 @@ class HelpEntry:
     usage: str
 
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_shared_config()
 
 __plugin_meta__ = PluginMetadata(
     name="帮助",
@@ -210,6 +191,36 @@ def _is_digit_input(event: Event) -> bool:
     return event.get_plaintext().strip().isdigit()
 
 
+class CustomHelpPlugin:
+    name = HELP_PLUGIN_NAME
+    feature = "help"
+    enabled = True
+
+    async def handle(self, event: Event, context: PluginContext) -> None:
+        matcher = cast("Matcher", context.matcher)
+        bot = cast("Bot", context.data["bot"])
+        state = cast("T_State", context.state)
+        entries = _visible_help_entries(bot, event)
+        if not entries:
+            await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
+
+        state[HELP_ENTRIES_KEY] = entries
+        session_id = event.get_session_id()
+        version = prompt_session_manager.acquire(session_id)
+        rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
+        handler = _create_selection_handler(session_id, version)
+
+        await enter_prompt_loop(
+            matcher,
+            handlers=[handler],
+            rule=rule,
+            prompt=_help_prompt_message(event, _format_plugin_list(entries)),
+        )
+
+
+register_plugin(CustomHelpPlugin())
+
+
 @help_cmd.handle()
 async def handle_help(
     bot: Bot,
@@ -217,21 +228,12 @@ async def handle_help(
     event: Event,
     state: T_State,
 ) -> None:
-    entries = _visible_help_entries(bot, event)
-    if not entries:
-        await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
-
-    state[HELP_ENTRIES_KEY] = entries
-    session_id = event.get_session_id()
-    version = prompt_session_manager.acquire(session_id)
-    rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
-    handler = _create_selection_handler(session_id, version)
-
-    await enter_prompt_loop(
-        matcher,
-        handlers=[handler],
-        rule=rule,
-        prompt=_help_prompt_message(event, _format_plugin_list(entries)),
+    await dispatch_plugin(
+        plugin_name=HELP_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        bot=bot,
     )
 
 
@@ -250,14 +252,14 @@ def _create_selection_handler(
 
         key_text = event.get_plaintext().strip()
         if key_text == "0":
-            await _finish_help_reply(matcher, event, "❌ 已退出帮助")
+            await _finish_help_reply(matcher, event, "✅ 已退出帮助。")
 
         if not key_text.isdigit():
             raise FinishedException
 
         index = int(key_text)
         if index < 1 or index > len(entries):
-            await _finish_help_reply(matcher, event, "⚠️ 序号超出范围，已退出帮助")
+            await _finish_help_reply(matcher, event, "⚠️ 序号超出范围，已退出帮助。")
 
         await _send_help_reply(
             matcher,

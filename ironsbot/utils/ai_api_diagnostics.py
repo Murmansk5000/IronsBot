@@ -15,7 +15,7 @@ HTTP_TOO_MANY_REQUESTS = 429
 class AiApiSettings:
     api_key: str
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-v4-flash"
+    model: str = "deepseek-v4-pro"
     timeout: float = 45.0
     thinking: bool = False
 
