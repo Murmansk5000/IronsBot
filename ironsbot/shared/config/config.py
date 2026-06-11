@@ -14,12 +14,12 @@ from pydantic import (
 )
 from typing_extensions import Self
 
+from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.shared.config.parsing import (
     int_list,
     json_array,
     json_object,
     nested_json_config,
-    positive_int_list,
     string_list,
     unique_items,
 )
@@ -119,8 +119,6 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "logo",
     "text",
 )
-DEFAULT_ACTIVITY_MESSAGE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS = 8.0
 DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 DEFAULT_SENDPIC_MESSAGE_TEMPLATE = "{image}"
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
@@ -713,24 +711,6 @@ class SeerQueryConfig(BaseModel):
     team: TeamQueryConfig = Field(default_factory=TeamQueryConfig)
     rank: RankQueryConfig = Field(default_factory=RankQueryConfig)
     local_rank: LocalRankConfig = Field(default_factory=LocalRankConfig)
-
-
-class ActivityConfig(BaseModel):
-    enabled: bool = True
-    lead_hours: list[int] = Field(default_factory=lambda: [11, 1])
-    grace_minutes: int = Field(default=15, ge=1)
-    only_shown: bool = True
-    cache_path: Path = Path("data/activity_reminder/sent.sqlite")
-    message: str = DEFAULT_ACTIVITY_MESSAGE
-    notice_timeout_seconds: float = Field(
-        default=DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS,
-        gt=0,
-    )
-
-    @field_validator("lead_hours", mode="before")
-    @classmethod
-    def coerce_int_list(cls, value: object) -> object:
-        return positive_int_list(value)
 
 
 class TeamConfig(BaseModel):
