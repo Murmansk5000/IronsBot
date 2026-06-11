@@ -14,6 +14,11 @@ from ironsbot.services.bilibili.cache import (
     save_dynamic_history_item,
     save_last_saved_times,
 )
+from ironsbot.services.bilibili.checkpoints import (
+    DynamicItem,
+    initialize_missing_checkpoints,
+    mark_checkpoint,
+)
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.parser import (
     dynamic_brief,
@@ -41,7 +46,6 @@ from .config import get_bili_config
 
 HTTP_OK = 200
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-DynamicItem = tuple[int, dict[str, Any]]
 
 
 _auto_check_state = AutoCheckState()
@@ -68,39 +72,6 @@ async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) ->
         return False
 
     return True
-
-
-def _latest_seen_by_uid(valid_dynamics: list[DynamicItem]) -> dict[int, DynamicItem]:
-    latest_seen: dict[int, DynamicItem] = {}
-    for pub_ts, item in valid_dynamics:
-        author_mid = item_author_mid(item)
-        if not author_mid:
-            continue
-
-        saved_pub_ts, _ = latest_seen.get(author_mid, (0, {}))
-        if pub_ts > saved_pub_ts:
-            latest_seen[author_mid] = (pub_ts, item)
-
-    return latest_seen
-
-
-def _initialize_missing_checkpoints(
-    checkpoints: dict[int, int],
-    valid_dynamics: list[DynamicItem],
-) -> bool:
-    checkpoint_changed = False
-    for author_mid, (pub_ts, item) in _latest_seen_by_uid(valid_dynamics).items():
-        if checkpoints.get(author_mid, 0) > 0:
-            continue
-
-        checkpoints[author_mid] = pub_ts
-        checkpoint_changed = True
-        logger.info(
-            "Bilibili dynamic checkpoint initialized for "
-            f"{item_author_name(item)} ({author_mid}): {pub_ts}"
-        )
-
-    return checkpoint_changed
 
 
 async def _send_dynamic_push(
@@ -134,16 +105,6 @@ async def _send_dynamic_push(
                 action_name="Bilibili dynamic link push",
                 interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             )
-
-
-def _mark_checkpoint(
-    checkpoints: dict[int, int],
-    author_mid: int,
-    pub_ts: int,
-) -> bool:
-    old_value = checkpoints.get(author_mid, 0)
-    checkpoints[author_mid] = max(old_value, pub_ts)
-    return checkpoints[author_mid] != old_value
 
 
 async def _push_new_dynamics(
@@ -180,7 +141,7 @@ async def _push_new_dynamics(
                 "Bilibili dynamic push suppressed for "
                 f"{item_author_name(item)} ({author_mid}): {suppression_reason}"
             )
-            if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+            if mark_checkpoint(checkpoints, author_mid, pub_ts):
                 checkpoint_changed = True
             continue
 
@@ -190,7 +151,7 @@ async def _push_new_dynamics(
                 "Bilibili dynamic saved without push target for "
                 f"{item_author_name(item)} ({author_mid})"
             )
-            if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+            if mark_checkpoint(checkpoints, author_mid, pub_ts):
                 checkpoint_changed = True
             continue
 
@@ -208,7 +169,7 @@ async def _push_new_dynamics(
             brief=dynamic_brief(item),
             pushed=True,
         )
-        if _mark_checkpoint(checkpoints, author_mid, pub_ts):
+        if mark_checkpoint(checkpoints, author_mid, pub_ts):
             checkpoint_changed = True
 
     return checkpoint_changed
@@ -229,10 +190,18 @@ async def _do_check_logic() -> None:
 
         valid_dynamics.sort(key=lambda value: value[0])
         checkpoints = get_last_saved_times()
-        checkpoint_changed = _initialize_missing_checkpoints(
+        initialized_checkpoints = initialize_missing_checkpoints(
             checkpoints,
             valid_dynamics,
         )
+        checkpoint_changed = bool(initialized_checkpoints)
+        for checkpoint in initialized_checkpoints:
+            logger.info(
+                "Bilibili dynamic checkpoint initialized for "
+                f"{checkpoint.author_name} "
+                f"({checkpoint.author_mid}): {checkpoint.pub_ts}"
+            )
+
         if await _push_new_dynamics(valid_dynamics, checkpoints):
             checkpoint_changed = True
 
