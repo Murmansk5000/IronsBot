@@ -984,6 +984,16 @@ def register_activity_reminder_jobs(scheduler: Any) -> None:
         next_run_time=_now() + timedelta(seconds=30),
         misfire_grace_time=300,
     )
+    scheduler.add_job(
+        schedule_activity_reminders,
+        "cron",
+        id="activity_reminder_daily_scan",
+        replace_existing=True,
+        hour=0,
+        minute=0,
+        second=0,
+        misfire_grace_time=300,
+    )
 
 
 def _setup_activity_reminder_runtime(driver: Any, scheduler: Any) -> None:
@@ -1004,13 +1014,3 @@ def setup_activity_reminder_runtime() -> None:
     from nonebot_plugin_apscheduler import scheduler
 
     _setup_activity_reminder_runtime(get_driver(), scheduler)
-    scheduler.add_job(
-        schedule_activity_reminders,
-        "cron",
-        id="activity_reminder_daily_scan",
-        replace_existing=True,
-        hour=0,
-        minute=0,
-        second=0,
-        misfire_grace_time=300,
-    )
