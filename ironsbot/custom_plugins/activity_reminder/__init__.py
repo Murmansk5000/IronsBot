@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: MIT
 import asyncio
-import sqlite3
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -43,8 +41,8 @@ from ironsbot.services.activity.planning import (
     build_scheduled_reminders,
     filter_valid_reminders,
     group_by_send_time,
-    reminder_key,
 )
+from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 from ironsbot.shared.features import (
     groups_for_feature,
     is_event_feature_allowed,
@@ -141,31 +139,6 @@ def _activity_sort_end_time(
         now,
         soon_ending_threshold=SOON_ENDING_THRESHOLD if now is not None else None,
     )
-
-
-def _cache_path() -> Path:
-    path = get_activity_config().cache_path
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _connect_cache() -> sqlite3.Connection:
-    conn = sqlite3.connect(_cache_path())
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sent_activity_reminders (
-            activity_id INTEGER NOT NULL,
-            end_time TEXT NOT NULL,
-            lead_hours INTEGER NOT NULL,
-            sent_at TEXT NOT NULL,
-            PRIMARY KEY (activity_id, end_time, lead_hours)
-        )
-        """
-    )
-    conn.commit()
-    return conn
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -418,46 +391,6 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
     )
 
 
-def _reminder_key(reminder: ActivityReminder) -> tuple[int, str, int]:
-    return reminder_key(reminder)
-
-
-def _filter_unsent(
-    reminders: Iterable[ActivityReminder],
-) -> list[ActivityReminder]:
-    with _connect_cache() as conn:
-        unsent: list[ActivityReminder] = []
-        for reminder in reminders:
-            activity_id, end_time, lead_hours = _reminder_key(reminder)
-            sent = conn.execute(
-                """
-                SELECT 1 FROM sent_activity_reminders
-                WHERE activity_id = ? AND end_time = ? AND lead_hours = ?
-                """,
-                (activity_id, end_time, lead_hours),
-            ).fetchone()
-            if sent is None:
-                unsent.append(reminder)
-        return unsent
-
-
-def _mark_sent(reminders: Iterable[ActivityReminder]) -> None:
-    sent_at = _now().isoformat()
-    with _connect_cache() as conn:
-        conn.executemany(
-            """
-            INSERT OR IGNORE INTO sent_activity_reminders
-            (activity_id, end_time, lead_hours, sent_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            [
-                (*_reminder_key(reminder), sent_at)
-                for reminder in reminders
-            ],
-        )
-        conn.commit()
-
-
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
     try:
         return get_activity_config().message.format(
@@ -530,7 +463,7 @@ async def send_activity_reminder(
         interval_seconds=1.2,
     )
     if summary.succeeded:
-        _mark_sent(reminders)
+        mark_sent(reminders)
 
 
 def _reminder_job_id(lead_hours: int, send_time: datetime) -> str:
@@ -548,7 +481,7 @@ async def schedule_activity_reminders() -> None:
         return
 
     try:
-        reminders = _filter_unsent(_build_scheduled_reminders(_now()))
+        reminders = filter_unsent(_build_scheduled_reminders(_now()))
     except Exception:  # noqa: BLE001
         logger.opt(exception=True).warning("activity reminder scan failed")
         return
