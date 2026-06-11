@@ -5,12 +5,12 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import httpx
 from anyio import Path as AsyncPath
 from anyio import to_thread
-from nonebot import get_driver, on_message, require
+from nonebot import on_message
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
@@ -22,7 +22,6 @@ from ironsbot.custom_plugins.message_actions import finish_event_reply, send_eve
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
-from .config import get_data_sync_config
 from .manager import db_manager
 
 GetFingerprintFn = Callable[[httpx.AsyncClient], Awaitable[str]]
@@ -41,7 +40,6 @@ _registered_syncs: dict[str, _SyncEntry] = {}
 _registered_local_databases: dict[str, str] = {}
 _prepared_databases: set[str] = set()
 _fingerprints: dict[str, str] = {}
-_db_sync_runtime_state = {"registered": False}
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 ADMIN_COMMAND_PREFIX = "/"
 
@@ -294,73 +292,6 @@ def _prepare_local_database(name: str, file_path: str) -> None:
     db_manager.load_from_file(name, file_path)
     _prepared_databases.add(name)
     logger.info(f"已从本地文件 '{file_path}' 加载数据库 '{name}'（无自动同步）")
-
-
-def _register_interval_jobs(scheduler: Any) -> None:
-    if not get_data_sync_config().interval_enabled:
-        for name in _registered_syncs:
-            logger.debug(f"已注册数据库 '{name}'，自动定时同步已关闭")
-        return
-
-    for name, entry in _registered_syncs.items():
-        scheduler.add_job(
-            run_sync_database,
-            "interval",
-            args=[name],
-            minutes=entry.sync_interval_minutes,
-            id=f"db_sync_{name}",
-            replace_existing=True,
-        )
-        logger.debug(
-            f"已注册数据库 '{name}'，同步间隔: {entry.sync_interval_minutes} 分钟"
-        )
-
-
-async def _start_db_sync_runtime(scheduler: Any) -> None:
-    if not _registered_syncs and not _registered_local_databases:
-        logger.debug("无已注册的同步数据库，db_sync 插件未激活")
-        return
-
-    for name, entry in _registered_syncs.items():
-        _prepare_remote_database(name)
-        logger.info(
-            f"数据库 '{name}' 同步已启动，同步间隔: {entry.sync_interval_minutes} 分钟"
-        )
-
-    for name, file_path in _registered_local_databases.items():
-        _prepare_local_database(name, file_path)
-
-    _register_interval_jobs(scheduler)
-
-    for name in _registered_syncs:
-        load_cached_database(name)
-
-    # Keep startup sync behind a switch to avoid slow container startup.
-    if not get_data_sync_config().on_startup:
-        logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
-        return
-
-    async with _sync_all_lock:
-        for name in _registered_syncs:
-            await sync_database(name)
-
-
-def _setup_db_sync_runtime(driver: Any, scheduler: Any) -> None:
-    if _db_sync_runtime_state["registered"]:
-        return
-
-    @driver.on_startup
-    async def _start_db_sync_on_startup() -> None:
-        await _start_db_sync_runtime(scheduler)
-
-    _db_sync_runtime_state["registered"] = True
-
-
-def setup_db_sync_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    _setup_db_sync_runtime(get_driver(), scheduler)
 
 
 @manual_sync_matcher.handle()
