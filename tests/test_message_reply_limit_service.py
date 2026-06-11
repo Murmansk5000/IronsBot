@@ -6,7 +6,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.custom_plugins.message_actions.reply_limit_service import (
+from ironsbot.shared.messaging.reply_limits import (
     build_reply_line_limit_decision,
     group_id_for_send_api,
     limit_onebot_message,

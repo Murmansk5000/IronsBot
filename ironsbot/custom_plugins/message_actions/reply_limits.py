@@ -12,6 +12,17 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.shared.messaging.reply_limits import (
+    TEXT_SEND_APIS,
+    build_reply_line_limit_decision,
+    can_manage_reply_line_limit,
+    group_id_for_send_api,
+    limit_onebot_message,
+    parse_reply_line_limit_arg,
+)
+from ironsbot.shared.messaging.reply_limits import (
+    limit_text_lines as service_limit_text_lines,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -20,17 +31,6 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from .config import get_reply_config
-from .reply_limit_service import (
-    TEXT_SEND_APIS,
-    build_reply_line_limit_decision,
-    can_manage_reply_line_limit,
-    group_id_for_send_api,
-    limit_onebot_message,
-    parse_reply_line_limit_arg,
-)
-from .reply_limit_service import (
-    limit_text_lines as service_limit_text_lines,
-)
 from .text import (
     build_message,
     strip_command_prefix,
