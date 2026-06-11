@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import sqlite3
 from collections.abc import Sequence
@@ -252,11 +252,11 @@ def _collect_metrics(  # noqa: PLR0913
 
 
 def _max_cached_players() -> int:
-    return max(1, plugin_config.seer_query_local_rank_max_players)
+    return max(1, plugin_config.seer_query_config.local_rank.max_players)
 
 
 def _sqlite_cache_path() -> Path:
-    return plugin_config.seer_query_local_rank_path
+    return plugin_config.seer_query_config.local_rank.path
 
 
 def _connect_cache() -> sqlite3.Connection:

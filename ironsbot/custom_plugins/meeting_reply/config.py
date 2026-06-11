@@ -1,14 +1,11 @@
-from nonebot import get_plugin_config
-from pydantic import BaseModel
+from ironsbot.config import get_app_config
+from ironsbot.shared.config.config import MeetingConfig
 
 
-class Config(BaseModel):
-    meeting_number: str = ""
-    meeting_template: str = (
-        "腾讯会议\n"
-        "腾讯会议号：{meeting_number}\n"
-        "点击链接直接加入：{meeting_url}"
-    )
+def get_meeting_config() -> MeetingConfig:
+    return get_app_config().message.meeting
 
-
-plugin_config = get_plugin_config(Config)
+__all__ = [
+    "MeetingConfig",
+    "get_meeting_config",
+]

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
+import asyncio
 import html
-import json
 import re
 import sqlite3
 import urllib.error
@@ -12,28 +12,57 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nonebot import get_plugin_config, on_message, require
+from nonebot import on_message, require
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
-from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from ironsbot.custom_plugins.feature_policy import (
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+    send_broadcast_message,
+)
+from ironsbot.shared.config.config import Config, get_shared_config
+from ironsbot.shared.features import (
     groups_for_feature,
     is_event_feature_allowed,
     users_for_feature,
     users_with_superusers,
 )
-from ironsbot.custom_plugins.message_actions import (
-    finish_event_reply,
-    send_broadcast_message,
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
 )
 from ironsbot.utils.rule import no_reply
+
+from .commands import (
+    is_current_activity_query_text,
+    is_soon_ending_activity_query_text,
+)
+from .formatting import (
+    format_activity_line,
+    format_activity_list,
+)
+from .models import (
+    ActivityDeadline,
+    ActivityInfo,
+    ActivityInfoCache,
+    ActivityReminder,
+)
+from .planning import (
+    activity_deadline,
+    activity_is_soon_ending,
+    activity_sort_end_time,
+    build_scheduled_reminders,
+    filter_valid_reminders,
+    group_by_send_time,
+    reminder_key,
+)
 
 require("ironsbot.plugins.seer_data")
 require("nonebot_plugin_apscheduler")
@@ -43,23 +72,14 @@ from ironsbot.plugins.db_sync.manager import db_manager
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
+ACTIVITY_REMINDER_PLUGIN_NAME = "activity_reminder"
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-ADMIN_COMMAND_PREFIXES = ("/",)
-CURRENT_ACTIVITY_COMMANDS = ("当前活动", "活动列表", "活动时间")
-SOON_ENDING_ACTIVITY_COMMANDS = (
-    "快结束活动",
-    "即将结束活动",
-    "即将结束",
-    "本周结束活动",
-    "本周活动",
-    "活动快结束",
-)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
 REMINDER_SEND_DELAY = timedelta(minutes=10)
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 UNITY_NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
-UNITY_NOTICE_TIMEOUT_SECONDS = 8
 UNITY_NOTICE_CACHE_TTL = timedelta(minutes=30)
+ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 DAYS_PER_WEEK = 7
 DEFAULT_OFFER_WINDOW_WEEKS = 1
 LIMITED_OFFER_KEYWORDS = (
@@ -86,9 +106,7 @@ OFFER_WINDOW_KEYWORDS = (
     "回复至原价",
 )
 SECONDS_PER_MINUTE = 60
-MINUTES_PER_HOUR = 60
 HOURS_PER_DAY = 24
-MINUTES_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR
 
 
 @dataclass(slots=True)
@@ -114,146 +132,36 @@ CHINESE_NUMBER_MAP = {
 }
 
 
-def _coerce_int_list(value: object) -> object:
-    if not isinstance(value, str):
-        return value
-
-    raw = value.strip()
-    if not raw:
-        return []
-
-    if raw.startswith("["):
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return value
-
-    return [item.strip() for item in raw.split(",") if item.strip()]
-
-
-def _unique_positive_ints(values: Iterable[int]) -> list[int]:
-    return [
-        value
-        for value in dict.fromkeys(values)
-        if value > 0
-    ]
-
-
-def _normalize_command_text(text_value: str) -> str:
-    return "".join(text_value.split()).lower()
-
-
-NORMALIZED_CURRENT_ACTIVITY_COMMANDS = {
-    _normalize_command_text(command)
-    for command in CURRENT_ACTIVITY_COMMANDS
-}
-NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS = {
-    _normalize_command_text(command)
-    for command in SOON_ENDING_ACTIVITY_COMMANDS
-}
-
-
-def _strip_admin_command_prefix(text_value: str) -> str | None:
-    stripped = text_value.strip()
-    for prefix in ADMIN_COMMAND_PREFIXES:
-        if stripped.startswith(prefix):
-            return stripped[len(prefix) :].strip()
-    return None
-
-
 async def _is_current_activity_query_command(event: Event) -> bool:
-    command = _strip_admin_command_prefix(event.get_plaintext())
-    if command is None:
-        return False
-
-    normalized = _normalize_command_text(command)
-    return normalized in NORMALIZED_CURRENT_ACTIVITY_COMMANDS
+    return is_current_activity_query_text(event.get_plaintext())
 
 
 async def _is_soon_ending_activity_query_command(event: Event) -> bool:
-    text_value = event.get_plaintext().strip()
-    command = _strip_admin_command_prefix(text_value) or text_value
-
-    normalized = _normalize_command_text(command)
-    return normalized in NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS
+    return is_soon_ending_activity_query_text(event.get_plaintext())
 
 
-class Config(BaseModel):
-    activity_reminder: bool = True
-    activity_reminder_lead_hours: list[int] = Field(
-        default_factory=lambda: [11, 1]
-    )
-    activity_reminder_grace_minutes: int = Field(default=15, ge=1)
-    activity_reminder_only_shown: bool = True
-    activity_reminder_cache_path: Path = Path(
-        "data/activity_reminder/sent.sqlite"
-    )
-    activity_reminder_message: str = DEFAULT_MESSAGE_TEMPLATE
-
-    @field_validator(
-        "activity_reminder_lead_hours",
-        mode="before",
-    )
-    @classmethod
-    def coerce_int_list(cls, value: object) -> object:
-        return _coerce_int_list(value)
-
-    @field_validator(
-        "activity_reminder_lead_hours",
-    )
-    @classmethod
-    def normalize_int_list(cls, value: list[int]) -> list[int]:
-        return _unique_positive_ints(value)
-
-
-plugin_config = get_plugin_config(Config)
+plugin_config = get_shared_config()
 
 __plugin_meta__ = PluginMetadata(
     name="活动结束提醒",
     description="从 SeerAPI 活动数据读取结束时间，提前提醒活动即将结束",
     usage=(
         "【活动结束提醒】\n"
-        "按 ACTIVITY_REMINDER_LEAD_HOURS 配置提前提醒活动即将结束。\n"
+        "按 MODULES.activity.lead_hours 配置提前提醒活动即将结束。\n"
         "Target groups use FEATURE_GROUP_POLICY feature: activity_push.\n"
         "Target users use FEATURE_USER_POLICY feature: activity_push.\n"
-        "超级管理员可发送 /当前活动、/活动列表、/活动时间 查看当前活动和剩余时间；"
+        "超级管理员可发 /当前活动、活动列表、活动时间 查看当前活动和剩余时间；"
         "发送 快结束活动 查看不足 7 天结束的活动。"
     ),
     config=Config,
 )
 
 
-@dataclass(frozen=True, slots=True)
-class ActivityInfo:
-    activity_id: int
-    name: str
-    start_time: datetime | None
-    end_time: datetime
-    sort_order: int
-    offer_label: str | None = None
-    offer_window_days: int | None = None
-    offer_end_time: datetime | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ActivityReminder:
-    activity_id: int
-    name: str
-    end_time: datetime
-    lead_hours: int
-    send_time: datetime
-    end_label: str = "结束时间"
-    display_end_time: bool = True
-
-
-@dataclass(frozen=True, slots=True)
-class ActivityDeadline:
-    end_time: datetime
-    label: str
-    display_end_time: bool
-
-
 _logged_warnings: set[str] = set()
+_activity_info_cache = ActivityInfoCache()
+_ACTIVITY_REQUIRED_COLUMNS = frozenset(
+    {"id", "name", "end_time", "is_show", "sort_order"}
+)
 
 
 def _now() -> datetime:
@@ -283,7 +191,7 @@ def _fetch_unity_notice_text(now: datetime) -> str:
         )
         with urllib.request.urlopen(
             request,
-            timeout=UNITY_NOTICE_TIMEOUT_SECONDS,
+            timeout=plugin_config.activity_config.notice_timeout_seconds,
         ) as response:
             raw_text = response.read().decode("utf-8", "replace")
     except (OSError, urllib.error.URLError) as e:
@@ -325,6 +233,8 @@ def _offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
     notice_text = _fetch_unity_notice_text(now)
     if not notice_text:
         return []
+    if activity.name not in notice_text:
+        return []
 
     return [
         block
@@ -340,7 +250,9 @@ def _offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
     ]
 
 
-def _parse_week_count(text_value: str) -> int | None:
+def _parse_week_count(text_value: str | None) -> int | None:
+    if text_value is None:
+        return 1
     if text_value.isdigit():
         return int(text_value)
     return CHINESE_NUMBER_MAP.get(text_value)
@@ -363,7 +275,7 @@ def _datetime_from_match(
     minute_text = match.groupdict().get("minute")
     hour = default_hour
     if hour_text is not None:
-        hour = 0 if hour_text == "零" else int(hour_text)
+        hour = 0 if hour_text == "24" else int(hour_text)
     minute = int(minute_text) if minute_text is not None else default_minute
     second_text = match.groupdict().get("second")
     second = int(second_text) if second_text is not None else 0
@@ -403,7 +315,7 @@ def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR
         return None
 
     week_match = re.search(
-        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])周)",
+        r"(?P<label>(?:首|第(?P<count>\d+|[一二两三四五六七八九十])个?)周)",
         block,
     )
     if week_match is not None:
@@ -415,7 +327,7 @@ def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR
             )
 
     day_match = re.search(
-        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])天)",
+        r"(?P<label>(?:首|第(?P<count>\d+|[一二两三四五六七八九十])个?)天)",
         block,
     )
     if day_match is not None:
@@ -430,7 +342,7 @@ def _offer_window_from_block(block: str) -> tuple[str, int] | None:  # noqa: PLR
         )
 
     month_match = re.search(
-        r"(?P<label>(?:首|前)(?P<count>\d+|[一二两三四五六七八九十])月)",
+        r"(?P<label>(?:首|第(?P<count>\d+|[一二两三四五六七八九十])个?)月)",
         block,
     )
     if month_match is not None:
@@ -461,7 +373,7 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"截止至\s*(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
         r"\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{1,2})"
         r"(?::(?P<second>\d{1,2}))?",
         block,
@@ -471,9 +383,9 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"截止至\s*(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
-        r"\s*(?P<hour>\d{1,2}|零)点"
-        r"(?:(?P<minute>\d{1,2})分)?前",
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
+        r"\s*(?P<hour>\d{1,2}|24)点?"
+        r"(?:(?P<minute>\d{1,2})分)?",
         block,
     )
     if match is not None:
@@ -481,8 +393,8 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
-        r"\s*(?P<hour>\d{1,2}|零)?点?后(?:价格)?(?:恢复|回复)",
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
+        r"\s*(?P<hour>\d{1,2}|24)?点?(?:价格)?(?:恢复|回复)",
         block,
     )
     if match is not None:
@@ -490,7 +402,7 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
 
     match = re.search(
         r"(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
         r"\s*(?:更新前|更新后(?:价格)?(?:恢复|回复))",
         block,
     )
@@ -498,12 +410,12 @@ def _parse_offer_deadline_with_hour(  # noqa: PLR0911
         return _datetime_from_match(match, activity, default_hour=10)
 
     match = re.search(
-        r"(?:购买时间|生效时间|限时生效|活动时间)[：:，,\s]*"
+        r"(?:购买时间|生效时间|限时生效|活动时间)[：:\s]*"
         r"(?:(?P<start_year>\d{4})[.年])?"
-        r"\d{1,2}月\d{1,2}日(?:更新后)?[-~至到]+"
+        r"\d{1,2}月\d{1,2}日?(?:更新前)?[-~至到]+"
         r"(?:(?P<year>\d{4})[.年])?"
-        r"(?P<month>\d{1,2})月(?P<day>\d{1,2})日"
-        r"(?:(?P<hour>\d{1,2}|零)点)?(?:更新前)?",
+        r"(?P<month>\d{1,2})[.月](?P<day>\d{1,2})[日号]?"
+        r"(?:(?P<hour>\d{1,2}|24)点?)?(?:更新前)?",
         block,
     )
     if match is not None:
@@ -523,77 +435,38 @@ def _offer_end_time(
     return None
 
 
-def _fallback_offer_window_open(activity: ActivityInfo, now: datetime) -> bool:
-    fallback_end = _fallback_offer_window_end(activity)
-    if fallback_end is None:
-        return False
-    return activity.start_time <= now < fallback_end
-
-
-def _fallback_offer_window_end(activity: ActivityInfo) -> datetime | None:
-    if (
-        activity.offer_label is None
-        or activity.offer_window_days is None
-        or activity.start_time is None
-    ):
-        return None
-    return activity.start_time + timedelta(days=activity.offer_window_days)
-
-
 def _activity_deadline(
     activity: ActivityInfo,
     now: datetime,
 ) -> ActivityDeadline | None:
-    if activity.offer_end_time is not None and activity.offer_end_time > now:
-        return ActivityDeadline(
-            end_time=activity.offer_end_time,
-            label=f"{activity.offer_label or '限时优惠'}截至",
-            display_end_time=True,
-        )
-
-    if now < activity.end_time and activity.end_time - now < SOON_ENDING_THRESHOLD:
-        return ActivityDeadline(
-            end_time=activity.end_time,
-            label="结束时间",
-            display_end_time=True,
-        )
-
-    fallback_end = (
-        None
-        if activity.offer_end_time is not None
-        else _fallback_offer_window_end(activity)
+    return activity_deadline(
+        activity,
+        now,
+        soon_ending_threshold=SOON_ENDING_THRESHOLD,
     )
-    if (
-        fallback_end is not None
-        and activity.start_time is not None
-        and activity.start_time <= now < fallback_end
-    ):
-        return ActivityDeadline(
-            end_time=fallback_end,
-            label=activity.offer_label or "限时优惠",
-            display_end_time=False,
-        )
-
-    return None
 
 
 def _activity_is_soon_ending(activity: ActivityInfo, now: datetime) -> bool:
-    return _activity_deadline(activity, now) is not None
+    return activity_is_soon_ending(
+        activity,
+        now,
+        soon_ending_threshold=SOON_ENDING_THRESHOLD,
+    )
 
 
 def _activity_sort_end_time(
     activity: ActivityInfo,
     now: datetime | None = None,
 ) -> datetime:
-    if now is not None:
-        deadline = _activity_deadline(activity, now)
-        if deadline is not None:
-            return deadline.end_time
-    return activity.offer_end_time or activity.end_time
+    return activity_sort_end_time(
+        activity,
+        now,
+        soon_ending_threshold=SOON_ENDING_THRESHOLD if now is not None else None,
+    )
 
 
 def _cache_path() -> Path:
-    path = plugin_config.activity_reminder_cache_path
+    path = plugin_config.activity_config.cache_path
     if not path.is_absolute():
         path = Path.cwd() / path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -641,55 +514,101 @@ def _parse_datetime(value: Any) -> datetime | None:
     return parsed.astimezone(LOCAL_TZ)
 
 
+def _warn_activity_data_unavailable(key: str, reason: str) -> None:
+    if key in _logged_warnings:
+        return
+
+    logger.warning(f"activity reminder skipped: {reason}")
+    _logged_warnings.add(key)
+
+
+def _activity_table_columns(session: Any) -> set[str]:
+    rows = session.execute(text("PRAGMA table_info(activity)")).mappings().all()
+    return {str(row["name"]) for row in rows if row.get("name") is not None}
+
+
 def _load_activity_rows() -> list[Mapping[str, Any]]:
     gen = db_manager.get_session(SEERAPI_DB_NAME)
     if gen is None:
-        if "missing_session" not in _logged_warnings:
-            logger.warning("activity reminder skipped: SeerAPI database not ready")
-            _logged_warnings.add("missing_session")
+        _warn_activity_data_unavailable(
+            "missing_session",
+            "SeerAPI database not ready",
+        )
         return []
 
     where_clause = "WHERE end_time IS NOT NULL"
-    if plugin_config.activity_reminder_only_shown:
+    if plugin_config.activity_config.only_shown:
         where_clause += " AND COALESCE(is_show, 0) != 0"
 
     try:
         session = next(gen)
-        try:
-            rows = session.execute(
-                text(
-                    "SELECT id, name, start_time, end_time, is_show, sort_order "
-                    f"FROM activity {where_clause} "
-                    "ORDER BY end_time, sort_order, id"
-                )
-            ).mappings().all()
-        except OperationalError as e:
-            if "start_time" not in str(e):
-                raise
-            rows = session.execute(
-                text(
-                    "SELECT id, name, end_time, is_show, sort_order "
-                    f"FROM activity {where_clause} "
-                    "ORDER BY end_time, sort_order, id"
-                )
-            ).mappings().all()
-    except OperationalError as e:
-        if "missing_table" not in _logged_warnings:
-            logger.warning(
-                "activity reminder skipped: activity table unavailable: "
-                f"{e}"
+        columns = _activity_table_columns(session)
+        if not columns:
+            _warn_activity_data_unavailable(
+                "missing_table",
+                (
+                    "activity table missing in SeerAPI database; run /更新数据 "
+                    "after the data release is available, or set "
+                    "MODULES.activity.enabled=false"
+                ),
             )
-            _logged_warnings.add("missing_table")
+            return []
+
+        missing_columns = _ACTIVITY_REQUIRED_COLUMNS - columns
+        if missing_columns:
+            _warn_activity_data_unavailable(
+                "invalid_schema",
+                (
+                    "activity table schema is missing columns: "
+                    f"{', '.join(sorted(missing_columns))}"
+                ),
+            )
+            return []
+
+        select_column_names = ["id", "name"]
+        if "start_time" in columns:
+            select_column_names.append("start_time")
+        select_column_names.extend(["end_time", "is_show", "sort_order"])
+
+        rows = session.execute(
+            text(
+                f"SELECT {', '.join(select_column_names)} "
+                f"FROM activity {where_clause} "
+                "ORDER BY end_time, sort_order, id"
+            )
+        ).mappings().all()
+    except OperationalError as e:
+        logger.opt(exception=True).debug("activity reminder query failed")
+        _warn_activity_data_unavailable(
+            "query_failed",
+            f"activity table query failed: {e.__class__.__name__}",
+        )
         return []
     finally:
         gen.close()
 
     _logged_warnings.discard("missing_session")
     _logged_warnings.discard("missing_table")
+    _logged_warnings.discard("invalid_schema")
+    _logged_warnings.discard("query_failed")
     return list(rows)
 
 
 def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
+    if (
+        _activity_info_cache.expires_at is not None
+        and _activity_info_cache.expires_at > now
+    ):
+        return [
+            activity
+            for activity in _activity_info_cache.items
+            if activity.end_time > now
+            and (
+                activity.start_time is None
+                or activity.start_time <= now
+            )
+        ]
+
     activities: list[ActivityInfo] = []
     for row in _load_activity_rows():
         end_time = _parse_datetime(row.get("end_time"))
@@ -707,8 +626,20 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
             end_time=end_time,
             sort_order=int(row.get("sort_order") or 0),
         )
-        offer_blocks = _offer_blocks(activity, now)
-        offer_window = _offer_window_from_blocks(offer_blocks)
+        try:
+            offer_blocks = _offer_blocks(activity, now)
+            offer_window = _offer_window_from_blocks(offer_blocks)
+            offer_end_time = _offer_end_time(
+                activity,
+                offer_blocks,
+            )
+        except Exception:  # noqa: BLE001
+            logger.opt(exception=True).warning(
+                "activity reminder offer parsing failed for "
+                f"activity {activity.activity_id}: {activity.name}"
+            )
+            offer_window = None
+            offer_end_time = None
         activities.append(
             ActivityInfo(
                 activity_id=activity.activity_id,
@@ -718,14 +649,11 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
                 sort_order=activity.sort_order,
                 offer_label=offer_window[0] if offer_window else None,
                 offer_window_days=offer_window[1] if offer_window else None,
-                offer_end_time=_offer_end_time(
-                    activity,
-                    offer_blocks,
-                ),
+                offer_end_time=offer_end_time,
             )
         )
 
-    return sorted(
+    sorted_activities = sorted(
         activities,
         key=lambda activity: (
             _activity_sort_end_time(activity),
@@ -733,6 +661,9 @@ def _active_activity_infos(now: datetime) -> list[ActivityInfo]:
             activity.activity_id,
         ),
     )
+    _activity_info_cache.items = sorted_activities
+    _activity_info_cache.expires_at = now + ACTIVITY_INFO_CACHE_TTL
+    return list(sorted_activities)
 
 
 def _soon_ending_activity_infos(now: datetime) -> list[ActivityInfo]:
@@ -749,67 +680,6 @@ def _soon_ending_activity_infos(now: datetime) -> list[ActivityInfo]:
             activity.activity_id,
         ),
     )
-
-
-def _format_remaining_time(delta: timedelta) -> str:
-    total_minutes = max(
-        0,
-        int(delta.total_seconds() // SECONDS_PER_MINUTE),
-    )
-    days, day_remainder = divmod(total_minutes, MINUTES_PER_DAY)
-    hours, minutes = divmod(day_remainder, MINUTES_PER_HOUR)
-
-    parts: list[str] = []
-    if days:
-        parts.append(f"{days}天")
-    if hours:
-        parts.append(f"{hours}小时")
-    if minutes or not parts:
-        parts.append(f"{minutes}分")
-    return "".join(parts)
-
-
-def _format_activity_period(activity: ActivityInfo) -> str:
-    end_text = f"{activity.end_time:%m-%d %H:%M}"
-    if activity.start_time is None:
-        return f"结束：{end_text}"
-    return f"{activity.start_time:%m-%d %H:%M} ~ {end_text}"
-
-
-def _format_activity_line(
-    index: int,
-    activity: ActivityInfo,
-    current_time: datetime,
-    *,
-    soon_only: bool,
-) -> list[str]:
-    if soon_only:
-        deadline = _activity_deadline(activity, current_time)
-        if deadline is not None and deadline.display_end_time:
-            remaining_text = _format_remaining_time(
-                deadline.end_time - current_time
-            )
-            return [
-                (
-                    f"{index}. {activity.name}：{deadline.label}："
-                    f"{deadline.end_time:%m-%d %H:%M} | 剩余：{remaining_text}"
-                )
-            ]
-
-        period_text = _format_activity_period(activity)
-        offer_label = activity.offer_label or "限时优惠"
-        return [
-            (
-                f"{index}. {activity.name}：{offer_label}见官方说明 | "
-                f"活动：{period_text}"
-            )
-        ]
-
-    period_text = _format_activity_period(activity)
-    remaining_text = _format_remaining_time(activity.end_time - current_time)
-    return [
-        f"{index}. {activity.name}：{period_text} | 剩余：{remaining_text}",
-    ]
 
 
 def build_current_activity_message(
@@ -840,11 +710,16 @@ def build_current_activity_message(
 
     for index, activity in enumerate(shown_activities, start=1):
         lines.extend(
-            _format_activity_line(
+            format_activity_line(
                 index,
                 activity,
                 current_time,
                 soon_only=soon_only,
+                deadline=(
+                    _activity_deadline(activity, current_time)
+                    if soon_only
+                    else None
+                ),
             )
         )
 
@@ -855,43 +730,18 @@ def build_current_activity_message(
 
 
 def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
-    reminders: list[ActivityReminder] = []
-
-    for activity in _soon_ending_activity_infos(now):
-        deadline = _activity_deadline(activity, now)
-        if deadline is None:
-            continue
-
-        for lead_hours in plugin_config.activity_reminder_lead_hours:
-            send_time = (
-                deadline.end_time
-                - timedelta(hours=lead_hours)
-                + REMINDER_SEND_DELAY
-            )
-            if send_time < now:
-                continue
-
-            reminders.append(
-                ActivityReminder(
-                    activity_id=activity.activity_id,
-                    name=activity.name,
-                    end_time=deadline.end_time,
-                    lead_hours=lead_hours,
-                    send_time=send_time,
-                    end_label=deadline.label,
-                    display_end_time=deadline.display_end_time,
-                )
-            )
-
-    return reminders
+    return build_scheduled_reminders(
+        _soon_ending_activity_infos(now),
+        now,
+        lead_hours=plugin_config.activity_config.lead_hours,
+        reminder_send_delay=REMINDER_SEND_DELAY,
+        grace=timedelta(minutes=plugin_config.activity_config.grace_minutes),
+        soon_ending_threshold=SOON_ENDING_THRESHOLD,
+    )
 
 
 def _reminder_key(reminder: ActivityReminder) -> tuple[int, str, int]:
-    return (
-        reminder.activity_id,
-        reminder.end_time.isoformat(),
-        reminder.lead_hours,
-    )
+    return reminder_key(reminder)
 
 
 def _filter_unsent(
@@ -930,45 +780,25 @@ def _mark_sent(reminders: Iterable[ActivityReminder]) -> None:
         conn.commit()
 
 
-def _format_activity_list(reminders: list[ActivityReminder]) -> str:
-    lines: list[str] = []
-    for index, reminder in enumerate(reminders, start=1):
-        if reminder.display_end_time:
-            lines.append(
-                f"{index}. {reminder.name}：{reminder.end_label}："
-                f"{reminder.end_time:%Y-%m-%d %H:%M}"
-            )
-        else:
-            lines.append(
-                f"{index}. {reminder.name}：{reminder.end_label}见官方说明"
-            )
-    return "\n".join(lines)
-
-
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
     try:
-        return plugin_config.activity_reminder_message.format(
+        return plugin_config.activity_config.message.format(
             lead_hours=lead_hours,
             activity_count=len(reminders),
-            activity_list=_format_activity_list(reminders),
+            activity_list=format_activity_list(reminders),
         )
     except (KeyError, IndexError, ValueError) as e:
         logger.warning(f"activity reminder template failed: {e}")
         return DEFAULT_MESSAGE_TEMPLATE.format(
             lead_hours=lead_hours,
-            activity_list=_format_activity_list(reminders),
+            activity_list=format_activity_list(reminders),
         )
 
 
 def _group_by_send_time(
     reminders: Iterable[ActivityReminder],
 ) -> dict[tuple[int, datetime], list[ActivityReminder]]:
-    grouped: dict[tuple[int, datetime], list[ActivityReminder]] = {}
-    for reminder in reminders:
-        grouped.setdefault((reminder.lead_hours, reminder.send_time), []).append(
-            reminder
-        )
-    return grouped
+    return group_by_send_time(reminders)
 
 
 def _current_activity_by_id(now: datetime) -> dict[int, ActivityInfo]:
@@ -978,43 +808,19 @@ def _current_activity_by_id(now: datetime) -> dict[int, ActivityInfo]:
     }
 
 
-def _is_reminder_still_valid(
-    reminder: ActivityReminder,
-    *,
-    now: datetime,
-    activity_by_id: dict[int, ActivityInfo],
-) -> bool:
-    if now > reminder.send_time + REMINDER_DISPATCH_TOLERANCE:
-        return False
-
-    current_activity = activity_by_id.get(reminder.activity_id)
-    if current_activity is None:
-        return False
-
-    deadline = _activity_deadline(current_activity, now)
-    if deadline is None:
-        return False
-    return (
-        deadline.end_time == reminder.end_time
-        and deadline.display_end_time == reminder.display_end_time
-    )
-
-
 def _filter_valid_reminders_before_send(
     reminders: Iterable[ActivityReminder],
     *,
     now: datetime,
 ) -> list[ActivityReminder]:
     activity_by_id = _current_activity_by_id(now)
-    return [
-        reminder
-        for reminder in reminders
-        if _is_reminder_still_valid(
-            reminder,
-            now=now,
-            activity_by_id=activity_by_id,
-        )
-    ]
+    return filter_valid_reminders(
+        reminders,
+        now=now,
+        activity_by_id=activity_by_id,
+        dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
+        soon_ending_threshold=SOON_ENDING_THRESHOLD,
+    )
 
 
 async def send_activity_reminder(
@@ -1052,10 +858,15 @@ def _reminder_job_id(lead_hours: int, send_time: datetime) -> str:
 
 
 async def schedule_activity_reminders() -> None:
-    if not plugin_config.activity_reminder:
+    if not plugin_config.activity_config.enabled:
         return
 
-    reminders = _filter_unsent(_build_scheduled_reminders(_now()))
+    try:
+        reminders = _filter_unsent(_build_scheduled_reminders(_now()))
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).warning("activity reminder scan failed")
+        return
+
     if not reminders:
         logger.info("activity reminder scan found no pending reminders")
         return
@@ -1074,7 +885,10 @@ async def schedule_activity_reminders() -> None:
             id=_reminder_job_id(lead_hours, send_time),
             replace_existing=True,
             run_date=send_time,
-            misfire_grace_time=300,
+            misfire_grace_time=(
+                plugin_config.activity_config.grace_minutes
+                * SECONDS_PER_MINUTE
+            ),
         )
         scheduled_count += len(lead_reminders)
 
@@ -1099,27 +913,55 @@ soon_ending_activity_matcher = on_message(
 )
 
 
+class ActivityReminderPlugin:
+    name = ACTIVITY_REMINDER_PLUGIN_NAME
+    feature = "activity_query"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        matcher = context.matcher or soon_ending_activity_matcher
+        if context.action == "current":
+            await finish_event_reply(
+                matcher,
+                event,
+                await asyncio.to_thread(build_current_activity_message),
+            )
+            return
+
+        if context.action == "soon_ending":
+            await finish_event_reply(
+                matcher,
+                event,
+                await asyncio.to_thread(build_current_activity_message, soon_only=True),
+            )
+
+
+register_plugin(ActivityReminderPlugin())
+
+
 @current_activity_matcher.handle()
 async def handle_current_activity_query(
     event: MessageEvent,
 ) -> None:
-    await finish_event_reply(
-        current_activity_matcher,
-        event,
-        build_current_activity_message(),
+    await dispatch_plugin(
+        plugin_name=ACTIVITY_REMINDER_PLUGIN_NAME,
+        event=event,
+        matcher=current_activity_matcher,
+        action="current",
     )
 
 
 @soon_ending_activity_matcher.handle()
 async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
-    await finish_event_reply(
-        soon_ending_activity_matcher,
-        event,
-        build_current_activity_message(soon_only=True),
+    await dispatch_plugin(
+        plugin_name=ACTIVITY_REMINDER_PLUGIN_NAME,
+        event=event,
+        matcher=soon_ending_activity_matcher,
+        action="soon_ending",
     )
 
 
-if plugin_config.activity_reminder:
+if plugin_config.activity_config.enabled:
     scheduler.add_job(
         schedule_activity_reminders,
         "date",

@@ -1,14 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from pathlib import Path
-
 from nonebot import get_plugin_config
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+from ironsbot.custom_plugins.common.config_utils import nested_json_config
+from ironsbot.custom_plugins.common.render_config import RenderConfig
 
 
 class Config(BaseModel):
-    render_cache_dir: Path | None = None
-    render_cache_max_size_mb: int = 200
-    render_cache_clear_on_startup: bool = True
+    render_config: RenderConfig = Field(default_factory=RenderConfig)
+
+    @field_validator("render_config", mode="before")
+    @classmethod
+    def normalize_render_config(cls, value: object) -> object:
+        return nested_json_config(value, RenderConfig, name="RENDER_CONFIG")
 
 
 plugin_config = get_plugin_config(Config)

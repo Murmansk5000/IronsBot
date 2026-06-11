@@ -92,7 +92,8 @@ async def _build_pet_image_message(
     if model is None:
         return msg
 
-    msg += await format_skin_price_lines(
+    msg += format_skin_price_lines(
+        session,
         model.id,
         existing_card_price=model.card_price,
     )
