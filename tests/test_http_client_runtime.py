@@ -13,7 +13,7 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.plugins import http_client
+from ironsbot.plugins.http_client import runtime as http_client_runtime
 
 
 class FakeDriver:
@@ -31,11 +31,11 @@ class FakeDriver:
 
 
 def test_http_client_runtime_setup_registers_lifecycle_once() -> None:
-    http_client._http_client_runtime_state["registered"] = False
+    http_client_runtime._http_client_runtime_state["registered"] = False
     driver = FakeDriver()
 
-    http_client._setup_http_client_runtime(driver)
-    http_client._setup_http_client_runtime(driver)
+    http_client_runtime._setup_http_client_runtime(driver)
+    http_client_runtime._setup_http_client_runtime(driver)
 
     assert len(driver.startup_handlers) == 1
     assert len(driver.shutdown_handlers) == 1
