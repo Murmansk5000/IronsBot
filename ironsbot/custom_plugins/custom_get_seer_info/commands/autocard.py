@@ -14,11 +14,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.custom_plugins.message_actions import (
     enter_event_reply_conversation,
-    event_conversation_session_id,
     finish_event_reply,
     send_event_reply,
 )
 from ironsbot.plugins.seer_data.db import SeerAPISession
+from ironsbot.shared.messaging.conversations import event_conversation_session_id
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

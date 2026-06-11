@@ -1,30 +1,26 @@
-from collections.abc import Callable
 from typing import Any
 
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.matcher import Matcher
 
+from ironsbot.shared.messaging.conversations import (
+    EventReplyCheck,
+    command_reply_check,
+    event_conversation_session_id,
+)
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
 from .reply_limits import limit_message_by_reply_lines
-from .text import build_message, command_text_matches
+from .text import build_message
 
-EventReplyCheck = Callable[[MessageEvent], bool]
-
-
-def event_conversation_session_id(namespace: str, event: MessageEvent) -> str:
-    group_id = getattr(event, "group_id", None)
-    target = f"group:{group_id}" if group_id is not None else "private"
-    return f"{namespace}:{target}:user:{event.user_id}"
-
-
-def command_reply_check(commands: tuple[str, ...] | list[str]) -> EventReplyCheck:
-    def _check(event: MessageEvent) -> bool:
-        return command_text_matches(event.get_plaintext(), commands)
-
-    return _check
+__all__ = [
+    "EventReplyCheck",
+    "command_reply_check",
+    "enter_event_reply_conversation",
+    "event_conversation_session_id",
+]
 
 
 async def enter_event_reply_conversation(  # noqa: PLR0913
