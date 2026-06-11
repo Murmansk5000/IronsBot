@@ -5,13 +5,16 @@ from pathlib import Path
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.log import logger
 
+from ironsbot.config import get_app_config
 from ironsbot.services.ai.history import HistoryMessage
 
-from .config import get_ai_config
+
+def _get_ai_config():
+    return get_app_config().ai
 
 
 def _memory_path() -> Path:
-    return get_ai_config().memory_path
+    return _get_ai_config().memory_path
 
 
 def _connect() -> sqlite3.Connection:
@@ -44,7 +47,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def _is_memory_enabled() -> bool:
-    config = get_ai_config()
+    config = _get_ai_config()
     return config.memory and config.memory_turns > 0
 
 
@@ -121,7 +124,7 @@ def get_user_memory(
     if not _is_memory_enabled():
         return []
 
-    message_limit = get_ai_config().memory_turns * 2
+    message_limit = _get_ai_config().memory_turns * 2
     sql = (
         "SELECT role, content "
         "FROM messages "
@@ -150,7 +153,7 @@ def get_user_memory(
 
 
 def _trim_memory_chars(messages: list[HistoryMessage]) -> list[HistoryMessage]:
-    max_chars = get_ai_config().memory_max_chars
+    max_chars = _get_ai_config().memory_max_chars
     used = 0
     selected: list[HistoryMessage] = []
 

@@ -11,10 +11,14 @@ from ironsbot.services.ai.history import (
     history_key,
     reset_history,
 )
+from ironsbot.services.ai.memory import (
+    append_user_memory,
+    get_user_memory,
+    reset_user_memory,
+)
 from ironsbot.shared.features import group_has_feature, is_superuser
 
 from .constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
-from .memory import append_user_memory, get_user_memory, reset_user_memory
 
 
 @dataclass(frozen=True, slots=True)
