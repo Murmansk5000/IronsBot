@@ -3,13 +3,12 @@ import time
 from nonebot import get_driver
 from nonebot.log import logger
 
+from ironsbot.config import get_app_config
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.shared.features import (
     get_superuser_ids,
     groups_for_feature,
 )
-
-from .config import get_ai_config
 
 _LAST_SUPERUSER_NOTICE_AT: dict[str, float] = {}
 
@@ -41,7 +40,7 @@ async def _send_admin_notice(message: str) -> None:
 async def notify_superusers_once(key: str, message: str) -> None:
     now = time.time()
     last_notice_at = _LAST_SUPERUSER_NOTICE_AT.get(key, 0.0)
-    if now - last_notice_at < get_ai_config().admin_notice_cooldown_seconds:
+    if now - last_notice_at < get_app_config().ai.admin_notice_cooldown_seconds:
         return
 
     _LAST_SUPERUSER_NOTICE_AT[key] = now

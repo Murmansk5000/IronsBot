@@ -8,6 +8,12 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
+from ironsbot.config import get_app_config
+from ironsbot.config.models.bilibili import (
+    BiliConfig,
+    BiliPushMode,
+    BiliPushTargetConfig,
+)
 from ironsbot.shared.features import (
     group_has_feature,
     is_group_feature_allowed,
@@ -16,8 +22,6 @@ from ironsbot.shared.features import (
     resolve_group_refs,
     resolve_user_refs,
 )
-
-from .config import BiliConfig, BiliPushMode, BiliPushTargetConfig, get_bili_config
 
 
 def _unique_ints(values: list[int]) -> list[int]:
@@ -62,6 +66,10 @@ PUSH_USER_RULES: dict[int, BiliTargetRule] | None = None
 TARGET_GROUP_IDS: list[int] | None = None
 TARGET_USER_IDS: list[int] | None = None
 MONITORED_UIDS: list[int] | None = None
+
+
+def get_bili_config() -> BiliConfig:
+    return get_app_config().bilibili
 
 
 def _target_uids(

@@ -2,7 +2,7 @@ import nonebot
 
 nonebot.init()
 
-from ironsbot.custom_plugins.bilibili_monitor.parser import (
+from ironsbot.services.bilibili.parser import (
     dynamic_suppression_reason,
     find_target_dynamics,
     parse_single_item,

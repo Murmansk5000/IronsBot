@@ -10,7 +10,22 @@ from ironsbot.shared.features import (
 )
 from ironsbot.shared.messaging.text import normalize_command_text
 
-from .constants import RESERVED_PRIVATE_COMMANDS
+RESERVED_PRIVATE_COMMANDS = {
+    "help",
+    "帮助",
+    "动态",
+    "动态刷新",
+    "动态更新",
+    "刷新动态",
+    "更新动态",
+    "数据版本",
+    "数据更新",
+    "更新数据",
+    "服务器状态",
+    "签到",
+    "活动",
+    "链接",
+}
 
 
 def is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:

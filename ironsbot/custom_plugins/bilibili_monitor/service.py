@@ -8,19 +8,14 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.custom_plugins.startup_ready import register_startup_check
-from ironsbot.shared.config.time import minute_of_day
-
-from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
-from .bot_access import get_first_bot
-from .cache import (
+from ironsbot.services.bilibili.cache import (
     get_last_saved_times,
     get_saved_cookie,
     save_dynamic_history_item,
     save_last_saved_times,
 )
-from .client import fetch_dynamic_feed
-from .config import get_bili_config
-from .parser import (
+from ironsbot.services.bilibili.client import fetch_dynamic_feed
+from ironsbot.services.bilibili.parser import (
     dynamic_brief,
     dynamic_suppression_reason,
     find_target_dynamics,
@@ -28,12 +23,17 @@ from .parser import (
     item_author_name,
     parse_single_item,
 )
-from .state import (
+from ironsbot.services.bilibili.state import (
     BiliPushTargets,
     check_lock,
     monitored_uids,
     push_targets_for_uid,
 )
+from ironsbot.shared.config.time import minute_of_day
+
+from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
+from .bot_access import get_first_bot
+from .config import get_bili_config
 
 HTTP_OK = 200
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
