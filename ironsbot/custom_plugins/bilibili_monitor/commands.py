@@ -21,6 +21,7 @@ from ironsbot.services.bilibili.cache import (
     list_dynamic_history,
     save_dynamic_history_item,
 )
+from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.parser import (
     dynamic_brief,
     dynamic_suppression_reason,
@@ -38,7 +39,6 @@ from ironsbot.shared.plugin_system import (
 )
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
-from .client import fetch_dynamic_feed
 from .config import get_bili_config
 from .permissions import (
     is_bili_superuser,

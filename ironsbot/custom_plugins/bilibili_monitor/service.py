@@ -14,6 +14,7 @@ from ironsbot.services.bilibili.cache import (
     save_dynamic_history_item,
     save_last_saved_times,
 )
+from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.parser import (
     dynamic_brief,
     dynamic_suppression_reason,
@@ -32,7 +33,6 @@ from ironsbot.shared.config.time import minute_of_day
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
 from .bot_access import get_first_bot
-from .client import fetch_dynamic_feed
 from .config import get_bili_config
 
 HTTP_OK = 200
