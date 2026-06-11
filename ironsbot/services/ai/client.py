@@ -1,17 +1,28 @@
 from typing import Any
 
 import httpx
+from nonebot import get_driver
 from nonebot.log import logger
 
+from ironsbot.config import get_app_config, load_secrets_config
+from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
-
-from .config import get_ai_config, get_ai_key
-from .constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
-from .notifier import notify_superusers_once
+from ironsbot.services.ai.notifier import notify_superusers_once
 
 HTTP_PAYMENT_REQUIRED = 402
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_BAD_REQUEST = 400
+
+
+def get_ai_key() -> str:
+    key = load_secrets_config().ai_key.strip()
+    if key:
+        return key
+
+    try:
+        return str(getattr(get_driver().config, "ai_key", "") or "").strip()
+    except ValueError:
+        return ""
 
 
 def _extract_reply(data: dict[str, Any]) -> str:
@@ -28,7 +39,7 @@ def _extract_reply(data: dict[str, Any]) -> str:
 
 
 def _truncate_reply(text: str) -> str:
-    max_chars = get_ai_config().max_reply_chars
+    max_chars = get_app_config().ai.max_reply_chars
     if len(text) <= max_chars:
         return text
 
@@ -67,7 +78,7 @@ async def call_ai_chat(
     history: list[HistoryMessage],
     memory: list[HistoryMessage] | None = None,
 ) -> str:
-    config = get_ai_config()
+    config = get_app_config().ai
     payload = {
         "model": config.model,
         "messages": build_messages(history, prompt, memory),

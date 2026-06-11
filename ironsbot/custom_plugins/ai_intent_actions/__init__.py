@@ -10,16 +10,16 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.ai_chat.client import call_ai_chat
-from ironsbot.custom_plugins.ai_chat.constants import (
-    EMPTY_REPLY,
-    REQUEST_FAILED_REPLY,
-)
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     finish_message_sequence,
 )
 from ironsbot.custom_plugins.team_shortcut.adapter import fetch_team_shortcut_result
+from ironsbot.services.ai.client import call_ai_chat
+from ironsbot.services.ai.constants import (
+    EMPTY_REPLY,
+    REQUEST_FAILED_REPLY,
+)
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,

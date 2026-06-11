@@ -13,7 +13,7 @@ except ValueError:
     nonebot.init()
 
 service = pytest.importorskip("ironsbot.custom_plugins.ai_chat.service")
-constants = pytest.importorskip("ironsbot.custom_plugins.ai_chat.constants")
+constants = pytest.importorskip("ironsbot.services.ai.constants")
 
 
 def _group_event() -> GroupMessageEvent:

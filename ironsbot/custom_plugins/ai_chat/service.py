@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
+from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import (
     HistoryMessage,
     append_turn,
@@ -17,8 +18,6 @@ from ironsbot.services.ai.memory import (
     reset_user_memory,
 )
 from ironsbot.shared.features import group_has_feature, is_superuser
-
-from .constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 
 
 @dataclass(frozen=True, slots=True)
