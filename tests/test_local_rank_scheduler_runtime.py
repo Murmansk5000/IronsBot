@@ -14,9 +14,7 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.custom_plugins.custom_get_seer_info.commands import (
-    _local_rank_scheduler,
-)
+from ironsbot.custom_plugins.custom_get_seer_info import runtime as seer_runtime
 
 
 class FakeDriver:
@@ -33,14 +31,14 @@ def test_local_rank_scheduler_runtime_setup_registers_startup_once(
 ) -> None:
     registered_state = False
     monkeypatch.setitem(
-        _local_rank_scheduler._local_rank_scheduler_runtime_state,
+        seer_runtime._local_rank_scheduler_runtime_state,
         "registered",
         registered_state,
     )
     driver = FakeDriver()
     scheduler = object()
 
-    _local_rank_scheduler._setup_local_rank_scheduler_runtime(driver, scheduler)
-    _local_rank_scheduler._setup_local_rank_scheduler_runtime(driver, scheduler)
+    seer_runtime._setup_local_rank_scheduler_runtime(driver, scheduler)
+    seer_runtime._setup_local_rank_scheduler_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
