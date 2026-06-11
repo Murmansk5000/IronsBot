@@ -17,10 +17,6 @@ from .service import (
     is_superuser,
 )
 
-ORIGINAL_PLUGIN_MODULE_PREFIXES = (
-    "ironsbot.plugins.about",
-)
-
 HIDDEN_MODULE_PREFIXES = (
     "ironsbot.custom_plugins.ai_mention_guard",
     "ironsbot.custom_plugins.scheduled_restart",
@@ -140,9 +136,6 @@ def plugin_visible_for_event(
     module_name: str,
     event: Event,
 ) -> bool:
-    if _module_startswith(module_name, ORIGINAL_PLUGIN_MODULE_PREFIXES):
-        return False
-
     if _module_startswith(module_name, HIDDEN_MODULE_PREFIXES):
         return False
 

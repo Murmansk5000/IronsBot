@@ -51,14 +51,6 @@ def _config(
     )
 
 
-def test_original_plugins_are_hidden() -> None:
-    assert not visibility.plugin_visible_for_event(
-        "关于",
-        "ironsbot.plugins.about",
-        _group_event(),
-    )
-
-
 def test_always_visible_custom_help_is_shown() -> None:
     assert visibility.plugin_visible_for_event(
         "帮助",
