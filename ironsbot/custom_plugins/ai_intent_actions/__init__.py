@@ -33,7 +33,16 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from .config import AiIntentAction, Config, get_configured_actions, plugin_config
+from .config import (
+    AiIntentAction,
+    Config,
+    get_ai_config,
+    get_ai_key,
+    get_configured_actions,
+    get_team_ids,
+    get_team_resource_users,
+    get_team_shortcut_config,
+)
 
 ACTION_KEY = "_ai_intent_action"
 AI_INTENT_PLUGIN_NAME = "ai_intent"
@@ -50,7 +59,7 @@ __plugin_meta__ = PluginMetadata(
         "【AI意图动作】\n"
         "默认规则：消息包含“战队”时，请 AI 判断发送者是否想加入战队。\n"
         "若判断为是，则发送 5 级战队审核群链接。\n"
-        "可通过 MODULES.ai.intent_actions 配置更多关键词、判定意图和动作。"
+        "可通过 ai.intent_actions 配置更多关键词、判定意图和动作。"
     ),
     config=Config,
 )
@@ -67,7 +76,7 @@ def _contains_any_keyword(text: str, keywords: list[str]) -> bool:
 def _excluded_by_command(text: str, action: AiIntentAction) -> bool:
     exclude_commands = list(action.exclude_commands)
     if action.action == "team_shortcut":
-        exclude_commands.extend(plugin_config.team_config.commands)
+        exclude_commands.extend(get_team_shortcut_config().commands)
 
     return bool(exclude_commands) and command_text_matches(text, exclude_commands)
 
@@ -118,11 +127,11 @@ def _reply_is_yes(reply: str) -> bool:
 
 
 async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
-    if not plugin_config.ai_config.intent_actions_enabled:
+    if not get_ai_config().intent_actions_enabled:
         return False
 
     text = event.get_plaintext().strip()
-    if not text or not plugin_config.ai_key:
+    if not text or not get_ai_key():
         return False
 
     for action in get_configured_actions():
@@ -162,9 +171,10 @@ ai_intent_action_matcher = on_message(
 
 
 def _build_resource_notice() -> Message:
+    config = get_team_shortcut_config()
     return build_message(
-        plugin_config.team_config.resource_message,
-        at_user_ids=plugin_config.team_resource_users,
+        config.resource_message,
+        at_user_ids=get_team_resource_users(),
     )
 
 
@@ -173,12 +183,12 @@ async def _handle_team_shortcut_action(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    team_ids = action.team_ids or plugin_config.team_ids
+    team_ids = action.team_ids or get_team_ids()
     if not team_ids:
         await finish_event_reply(
             matcher,
             event,
-            "战队信息还没有配置 TEAM_IDS。",
+            "战队信息还没有配置 seer.team_shortcut.team_ids。",
             mention_sender=True,
         )
 
@@ -188,7 +198,7 @@ async def _handle_team_shortcut_action(
         try:
             result = await asyncio.wait_for(
                 fetch_team_shortcut_result(team_id),
-                timeout=plugin_config.team_config.query_timeout_seconds,
+                timeout=get_team_shortcut_config().query_timeout_seconds,
             )
         except FinishedException:
             raise
@@ -200,7 +210,7 @@ async def _handle_team_shortcut_action(
             continue
 
         replies.append(Message(result.message))
-        if result.resource < plugin_config.team_config.resource_threshold:
+        if result.resource < get_team_shortcut_config().resource_threshold:
             resource_notice_needed = True
 
     if not replies:

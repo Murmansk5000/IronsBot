@@ -30,6 +30,7 @@ from .cache import (
     save_dynamic_history_item,
 )
 from .client import fetch_dynamic_feed
+from .config import get_bili_config
 from .parser import (
     dynamic_brief,
     dynamic_suppression_reason,
@@ -44,7 +45,7 @@ from .permissions import (
     is_dynamic_update_allowed,
 )
 from .service import run_check_logic
-from .state import bili_config, query_uids_for_event
+from .state import query_uids_for_event
 
 DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
@@ -167,7 +168,7 @@ def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) ->
 
         suppression_reason = dynamic_suppression_reason(
             item,
-            bili_config.filters.suppress_push_patterns,
+            get_bili_config().filters.suppress_push_patterns,
         )
         save_dynamic_history_item(
             item,

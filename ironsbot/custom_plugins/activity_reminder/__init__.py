@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nonebot import on_message, require
+from nonebot import get_driver, on_message, require
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
@@ -26,7 +26,6 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_broadcast_message,
 )
-from ironsbot.shared.config.config import Config, get_shared_config
 from ironsbot.shared.features import (
     groups_for_feature,
     is_event_feature_allowed,
@@ -44,6 +43,7 @@ from .commands import (
     is_current_activity_query_text,
     is_soon_ending_activity_query_text,
 )
+from .config import Config, get_activity_config
 from .formatting import (
     format_activity_line,
     format_activity_list,
@@ -69,6 +69,8 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from ironsbot.plugins.db_sync.manager import db_manager
+
+driver = get_driver()
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
@@ -142,14 +144,12 @@ async def _is_soon_ending_activity_query_command(event: Event) -> bool:
     return is_soon_ending_activity_query_text(event.get_plaintext())
 
 
-plugin_config = get_shared_config()
-
 __plugin_meta__ = PluginMetadata(
     name="活动结束提醒",
     description="从 SeerAPI 活动数据读取结束时间，提前提醒活动即将结束",
     usage=(
         "【活动结束提醒】\n"
-        "按 MODULES.activity.lead_hours 配置提前提醒活动即将结束。\n"
+        "按 activity.lead_hours 配置提前提醒活动即将结束。\n"
         "Target groups use FEATURE_GROUP_POLICY feature: activity_push.\n"
         "Target users use FEATURE_USER_POLICY feature: activity_push.\n"
         "超级管理员可发 /当前活动、活动列表、活动时间 查看当前活动和剩余时间；"
@@ -193,7 +193,7 @@ def _fetch_unity_notice_text(now: datetime) -> str:
         )
         with urllib.request.urlopen(
             request,
-            timeout=plugin_config.activity_config.notice_timeout_seconds,
+            timeout=get_activity_config().notice_timeout_seconds,
         ) as response:
             raw_text = response.read().decode("utf-8", "replace")
     except (OSError, urllib.error.URLError) as e:
@@ -472,7 +472,7 @@ def _activity_sort_end_time(
 
 
 def _cache_path() -> Path:
-    path = plugin_config.activity_config.cache_path
+    path = get_activity_config().cache_path
     if not path.is_absolute():
         path = Path.cwd() / path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -543,7 +543,7 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
         return []
 
     where_clause = "WHERE end_time IS NOT NULL"
-    if plugin_config.activity_config.only_shown:
+    if get_activity_config().only_shown:
         where_clause += " AND COALESCE(is_show, 0) != 0"
 
     try:
@@ -555,7 +555,7 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
                 (
                     "activity table missing in SeerAPI database; run /更新数据 "
                     "after the data release is available, or set "
-                    "MODULES.activity.enabled=false"
+                    "activity.enabled=false"
                 ),
             )
             return []
@@ -739,9 +739,9 @@ def _build_scheduled_reminders(now: datetime) -> list[ActivityReminder]:
     return build_scheduled_reminders(
         _soon_ending_activity_infos(now),
         now,
-        lead_hours=plugin_config.activity_config.lead_hours,
+        lead_hours=get_activity_config().lead_hours,
         reminder_send_delay=REMINDER_SEND_DELAY,
-        grace=timedelta(minutes=plugin_config.activity_config.grace_minutes),
+        grace=timedelta(minutes=get_activity_config().grace_minutes),
         soon_ending_threshold=SOON_ENDING_THRESHOLD,
     )
 
@@ -788,7 +788,7 @@ def _mark_sent(reminders: Iterable[ActivityReminder]) -> None:
 
 def _format_message(lead_hours: int, reminders: list[ActivityReminder]) -> str:
     try:
-        return plugin_config.activity_config.message.format(
+        return get_activity_config().message.format(
             lead_hours=lead_hours,
             activity_count=len(reminders),
             activity_list=format_activity_list(reminders),
@@ -864,7 +864,8 @@ def _reminder_job_id(lead_hours: int, send_time: datetime) -> str:
 
 
 async def schedule_activity_reminders() -> None:
-    if not plugin_config.activity_config.enabled:
+    config = get_activity_config()
+    if not config.enabled:
         return
 
     try:
@@ -892,8 +893,7 @@ async def schedule_activity_reminders() -> None:
             replace_existing=True,
             run_date=send_time,
             misfire_grace_time=(
-                plugin_config.activity_config.grace_minutes
-                * SECONDS_PER_MINUTE
+                config.grace_minutes * SECONDS_PER_MINUTE
             ),
         )
         scheduled_count += len(lead_reminders)
@@ -967,7 +967,11 @@ async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
     )
 
 
-if plugin_config.activity_config.enabled:
+@driver.on_startup
+async def register_activity_reminder_jobs() -> None:
+    if not get_activity_config().enabled:
+        return
+
     scheduler.add_job(
         schedule_activity_reminders,
         "date",

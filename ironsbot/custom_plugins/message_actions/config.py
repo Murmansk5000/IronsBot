@@ -1,19 +1,27 @@
+from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.models.message import MessageConfig
 from ironsbot.shared.config.config import (
     ENABLED_COMMANDS_REQUIRED_ERROR,
     BaseMessageAction,
     CommandMessageAction,
-    Config,
     GroupCommandMessageAction,
     GroupScheduledMessageAction,
-    MessageActionsConfig,
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     ReplyLineConfig,
     ScheduledMessageAction,
-    get_shared_config,
 )
 
-plugin_config = get_shared_config()
+Config = AppConfig
+MessageActionsConfig = MessageConfig
+
+
+def get_message_config() -> MessageConfig:
+    return get_app_config().message
+
+
+def get_reply_config() -> ReplyLineConfig:
+    return get_message_config().reply
 
 __all__ = [
     "ENABLED_COMMANDS_REQUIRED_ERROR",
@@ -27,5 +35,6 @@ __all__ = [
     "PrivateScheduledMessageAction",
     "ReplyLineConfig",
     "ScheduledMessageAction",
-    "plugin_config",
+    "get_message_config",
+    "get_reply_config",
 ]

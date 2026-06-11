@@ -12,12 +12,12 @@ from ironsbot.custom_plugins.message_actions import send_broadcast_message
 
 from .bot_access import get_first_bot
 from .cache import save_new_cookie
+from .config import get_bili_config
 from .permissions import get_bili_superuser_uids
 from .state import (
     AUTH_INVALID_CODES,
     LOGIN_COOKIE_KEYS,
     LOGIN_QR_EXPIRE_SECONDS,
-    bili_config,
 )
 
 _bili_login_required = False
@@ -185,7 +185,9 @@ async def send_bili_login_qrcode_to_superusers(
 
     if (
         not force
-        and now - _last_login_notice_at < bili_config.login_notice_cooldown_seconds
+        and now
+        - _last_login_notice_at
+        < get_bili_config().login_notice_cooldown_seconds
     ):
         return
 

@@ -3,7 +3,7 @@ from typing import Any
 import httpx
 from nonebot.log import logger
 
-from .config import plugin_config
+from .config import get_ai_config, get_ai_key
 from .constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from .history import HistoryMessage, build_messages
 from .notifier import notify_superusers_once
@@ -27,7 +27,7 @@ def _extract_reply(data: dict[str, Any]) -> str:
 
 
 def _truncate_reply(text: str) -> str:
-    max_chars = plugin_config.ai_config.max_reply_chars
+    max_chars = get_ai_config().max_reply_chars
     if len(text) <= max_chars:
         return text
 
@@ -66,7 +66,7 @@ async def call_ai_chat(
     history: list[HistoryMessage],
     memory: list[HistoryMessage] | None = None,
 ) -> str:
-    config = plugin_config.ai_config
+    config = get_ai_config()
     payload = {
         "model": config.model,
         "messages": build_messages(history, prompt, memory),
@@ -82,7 +82,7 @@ async def call_ai_chat(
         },
     }
     headers = {
-        "Authorization": f"Bearer {plugin_config.ai_key}",
+        "Authorization": f"Bearer {get_ai_key()}",
         "Content-Type": "application/json",
     }
 

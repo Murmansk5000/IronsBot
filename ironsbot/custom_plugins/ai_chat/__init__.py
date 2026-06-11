@@ -18,7 +18,7 @@ from ironsbot.shared.plugin_system import (
 )
 
 from .client import call_ai_chat
-from .config import Config, plugin_config
+from .config import Config, get_ai_config, get_ai_key
 from .constants import AI_CHAT_PROMPT_KEY
 from .history import is_reset_prompt
 from .mentions import mentions_or_replies_to_bot
@@ -88,7 +88,7 @@ class AiChatPlugin:
                 mention_sender=True,
             )
 
-        if not plugin_config.ai_key:
+        if not get_ai_key():
             await notify_superusers_once(
                 "missing_api_key",
                 "AI聊天还没有配置 API Key。\n"
@@ -99,7 +99,8 @@ class AiChatPlugin:
                 "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
             )
 
-        if plugin_config.ai_config.waiting_notice:
+        config = get_ai_config()
+        if config.waiting_notice:
             await send_event_reply(
                 matcher,
                 event,
@@ -135,9 +136,9 @@ class AiChatPlugin:
             await notify_superusers_once(
                 "timeout",
                 "AI聊天接口响应超时。\n"
-                f"接口：{plugin_config.ai_config.base_url}\n"
-                f"超时时间：{plugin_config.ai_config.timeout} 秒\n"
-                "请检查网络或适当调大 MODULES.ai.timeout。",
+                f"接口：{config.base_url}\n"
+                f"超时时间：{config.timeout} 秒\n"
+                "请检查网络或适当调大 ai.timeout。",
             )
             await _finish_admin_notice_or_silent(
                 event,

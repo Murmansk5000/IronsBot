@@ -444,6 +444,18 @@ refresh_interval_seconds = 0.5
 path = "data/custom_get_seer_info/player_query_cache.sqlite"
 
 [seer.team_shortcut]
+# Default: []
+# EN: Default team IDs used by team shortcut actions.
+# ZH: 战队快捷动作使用的默认战队 ID。
+# Example: [12345]
+team_ids = []
+
+# Default: []
+# EN: User IDs mentioned by low-resource notices.
+# ZH: 战队资源不足提醒时 @ 的用户 ID。
+# Example: [123456789]
+resource_users = []
+
 # Default: ["战队"]; EN: Team shortcut commands. ZH: 战队快捷查询口令。
 commands = ["战队"]
 # Default: 1000; EN: Low resource threshold. ZH: 战队低资源提醒阈值。

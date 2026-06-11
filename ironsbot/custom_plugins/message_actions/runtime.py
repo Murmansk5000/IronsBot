@@ -1,4 +1,4 @@
-from nonebot import on_message, require
+from nonebot import get_driver, on_message, require
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -25,7 +25,7 @@ from .config import (
     GroupScheduledMessageAction,
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
-    plugin_config,
+    get_message_config,
 )
 from .replies import event_sender_at_user_ids, finish_matcher_message
 from .runtime_service import (
@@ -37,6 +37,8 @@ from .senders import send_broadcast_message
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
+
+driver = get_driver()
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
@@ -58,9 +60,10 @@ async def _match_private_command(event: MessageEvent, state: T_State) -> bool:
         return False
 
     text = event.get_plaintext()
+    config = get_message_config()
     action = find_command_action(
         text,
-        plugin_config.msg_config.private_commands,
+        config.private_commands,
         is_allowed=lambda candidate: _private_action_allowed(event, candidate),
     )
     if action is not None:
@@ -75,9 +78,10 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
         return False
 
     text = event.get_plaintext()
+    config = get_message_config()
     action = find_command_action(
         text,
-        plugin_config.msg_config.group_commands,
+        config.group_commands,
         is_allowed=lambda candidate: is_group_feature_allowed(
             event.user_id,
             event.group_id,
@@ -232,14 +236,11 @@ def _register_group_schedule(
     )
 
 
-for _index, _task in enumerate(
-    plugin_config.msg_config.private_schedules,
-    start=1,
-):
-    _register_private_schedule(_index, _task)
+@driver.on_startup
+async def register_message_schedules() -> None:
+    config = get_message_config()
+    for index, task in enumerate(config.private_schedules, start=1):
+        _register_private_schedule(index, task)
 
-for _index, _task in enumerate(
-    plugin_config.msg_config.group_schedules,
-    start=1,
-):
-    _register_group_schedule(_index, _task)
+    for index, task in enumerate(config.group_schedules, start=1):
+        _register_group_schedule(index, task)
