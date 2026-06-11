@@ -7,7 +7,6 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.custom_plugins.startup_ready import register_startup_check
-from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_last_saved_times,
     get_saved_cookie,
@@ -28,6 +27,7 @@ from ironsbot.services.bilibili.parser import (
     item_author_name,
     parse_single_item,
 )
+from ironsbot.services.bilibili.responses import check_dynamic_response
 from ironsbot.services.bilibili.schedule import (
     AutoCheckState,
     auto_check_due,
@@ -44,7 +44,6 @@ from .auth import send_bili_login_qrcode_to_superusers
 from .bot_access import get_first_bot
 from .config import get_bili_config
 
-HTTP_OK = 200
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 
 
@@ -53,25 +52,24 @@ _bilibili_monitor_runtime_state = {"registered": False}
 
 
 async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) -> bool:
-    if is_bili_auth_invalid(response.status_code, res_json):
+    check = check_dynamic_response(response.status_code, res_json)
+    if check.is_ok:
+        return True
+
+    if check.status == "auth_invalid":
         await send_bili_login_qrcode_to_superusers(
             "自动检查动态时发现 B 站登录失效"
         )
         return False
 
-    if response.status_code != HTTP_OK:
+    if check.status == "http_error":
         logger.warning(
-            f"Bilibili dynamic API returned HTTP {response.status_code}"
+            f"Bilibili dynamic API returned HTTP {check.http_status}"
         )
         return False
 
-    if res_json.get("code") != 0:
-        logger.warning(
-            f"Bilibili dynamic API returned code {res_json.get('code')}"
-        )
-        return False
-
-    return True
+    logger.warning(f"Bilibili dynamic API returned code {check.api_code}")
+    return False
 
 
 async def _send_dynamic_push(
