@@ -8,19 +8,16 @@ from seerapi_models import ApiMetadataORM
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
 
-from ..config import plugin_config
+from ..config import get_render_config
 
 require("ironsbot.plugins.db_sync")
 require("nonebot_plugin_localstore")
 
-config = get_driver().config
+driver = get_driver()
 
 import nonebot_plugin_localstore as store
 
 from ironsbot.plugins.db_sync.manager import db_manager
-
-CACHE_DIR: Path = plugin_config.render_config.cache_dir or store.get_plugin_cache_dir()
-
 
 _SEERAPI_DB = "seerapi"
 _UNKNOWN_VERSION = "unknown"
@@ -33,9 +30,15 @@ class RenderCache:
     当数据库版本变化时，旧版本的缓存不再命中，会在清理时被移除。
     """
 
-    def __init__(self, cache_dir: Path, max_size_bytes: int) -> None:
-        self._cache_dir = cache_dir
-        self._max_size_bytes = max_size_bytes
+    @property
+    def _cache_dir(self) -> Path:
+        return get_render_config().cache_dir or store.get_plugin_cache_dir()
+
+    @property
+    def _max_size_bytes(self) -> int:
+        return get_render_config().cache_max_size_mb * 1024 * 1024
+
+    def _ensure_cache_dir(self) -> None:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_db_version(self) -> str:
@@ -78,6 +81,7 @@ class RenderCache:
         version = self._get_db_version()
         if version == _UNKNOWN_VERSION:
             return
+        self._ensure_cache_dir()
         ver_hash = self._version_hash(version)
         path = self._build_path(category, content_key, ver_hash)
         path.write_bytes(data)
@@ -86,6 +90,8 @@ class RenderCache:
 
     def cleanup(self) -> None:
         """检查总缓存大小，超限时按修改时间从旧到新删除文件。"""
+        if not self._cache_dir.exists():
+            return
         files = [f for f in self._cache_dir.iterdir() if f.is_file()]
         total_size = sum(f.stat().st_size for f in files)
         if total_size <= self._max_size_bytes:
@@ -106,6 +112,8 @@ class RenderCache:
 
     def clear(self) -> None:
         """删除缓存目录下的所有缓存文件。"""
+        if not self._cache_dir.exists():
+            return
         files = [f for f in self._cache_dir.iterdir() if f.is_file()]
         for f in files:
             f.unlink(missing_ok=True)
@@ -115,13 +123,15 @@ class RenderCache:
     @property
     def total_size(self) -> int:
         """当前缓存目录总大小（bytes）。"""
+        if not self._cache_dir.exists():
+            return 0
         return sum(f.stat().st_size for f in self._cache_dir.iterdir() if f.is_file())
 
 
-render_cache: RenderCache = RenderCache(
-    cache_dir=CACHE_DIR,
-    max_size_bytes=plugin_config.render_config.cache_max_size_mb * 1024 * 1024,
-)
+render_cache = RenderCache()
 
-if plugin_config.render_config.clear_on_startup:
-    render_cache.clear()
+
+@driver.on_startup
+async def clear_render_cache_on_startup() -> None:
+    if get_render_config().clear_on_startup:
+        render_cache.clear()

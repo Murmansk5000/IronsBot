@@ -24,6 +24,7 @@ DEFAULT_REPLY_MAX_LINES = 80
 DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
+DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -206,6 +207,15 @@ def test_seer_plugin_config_accessors_read_app_config(
         "custom_get_seer_info_config_for_app_config_test",
         ROOT / "ironsbot" / "custom_plugins" / "custom_get_seer_info" / "config.py",
     )
+    upstream_seer_config = _load_module_from_path(
+        "custom_get_seer_info_upstream_config_for_app_config_test",
+        ROOT
+        / "ironsbot"
+        / "custom_plugins"
+        / "custom_get_seer_info"
+        / "_upstream"
+        / "config.py",
+    )
 
     try:
         assert (
@@ -213,5 +223,9 @@ def test_seer_plugin_config_accessors_read_app_config(
             == DEFAULT_PLAYER_TIMEOUT_SECONDS
         )
         assert custom_seer_config.get_local_rank_config().enabled
+        assert (
+            upstream_seer_config.get_render_config().cache_max_size_mb
+            == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
+        )
     finally:
         clear_app_config_cache()

@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from ironsbot.shared.config.config import Config, RenderConfig, get_shared_config
+from ironsbot.config import AppConfig, get_app_config
+from ironsbot.shared.config.config import RenderConfig
 
-plugin_config = get_shared_config()
+Config = AppConfig
+
+
+def get_render_config() -> RenderConfig:
+    return get_app_config().seer.render
 
 __all__ = [
     "Config",
     "RenderConfig",
-    "plugin_config",
+    "get_render_config",
 ]
