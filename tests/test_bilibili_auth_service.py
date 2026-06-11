@@ -1,6 +1,8 @@
 import httpx
 
 from ironsbot.services.bilibili.auth import (
+    build_bili_login_qrcode_message_parts,
+    build_bili_login_qrcode_tip,
     extract_bili_login_cookie,
     is_bili_auth_invalid,
 )
@@ -37,3 +39,23 @@ def test_extract_bili_login_cookie_merges_response_and_login_url() -> None:
     assert "bili_jct=csrf-token" in cookie
     assert "ignored=value" not in cookie
     assert "ignored_empty=" not in cookie
+
+
+def test_build_bili_login_qrcode_tip_includes_login_url() -> None:
+    qr_url = "https://passport.example.test/qr"
+
+    tip = build_bili_login_qrcode_tip(qr_url)
+
+    assert "B站登录已失效" in tip
+    assert "二维码约3分钟内有效" in tip
+    assert qr_url in tip
+
+
+def test_build_bili_login_qrcode_message_parts_encodes_qr_image() -> None:
+    parts = build_bili_login_qrcode_message_parts(
+        "https://passport.example.test/qr"
+    )
+
+    assert parts.tip_text
+    assert not parts.image_error
+    assert parts.image_base64

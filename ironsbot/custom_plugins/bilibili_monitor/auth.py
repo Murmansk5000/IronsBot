@@ -1,7 +1,5 @@
 import asyncio
-import base64
 import time
-from io import BytesIO
 
 import httpx
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
@@ -9,6 +7,7 @@ from nonebot.log import logger
 
 from ironsbot.services.bilibili.auth import (
     LOGIN_QR_EXPIRE_SECONDS,
+    build_bili_login_qrcode_message_parts,
     extract_bili_login_cookie,
 )
 from ironsbot.services.bilibili.cache import save_new_cookie
@@ -57,30 +56,18 @@ async def _send_private_to_superusers(
 
 
 def _build_login_qrcode_message(qr_url: str) -> Message:
-    tip_text = (
-        "B站登录已失效，需要重新登录。\n"
-        "请使用B站App扫码；确认后机器人会自动保存Cookie。\n"
-        "二维码约3分钟内有效，过期后下次检测到登录失效会重新发送。\n"
-        "不扫码只会影响B站动态监控，其他机器人功能不受影响。\n"
-        "如果图片无法显示，可复制下面的登录链接到二维码工具中生成：\n"
-        f"{qr_url}"
-    )
-
-    try:
-        import qrcode
-
-        image = qrcode.make(qr_url)
-        image_bytes = BytesIO()
-        image.save(image_bytes, format="PNG")
-        image_base64 = base64.b64encode(image_bytes.getvalue()).decode("ascii")
-
+    parts = build_bili_login_qrcode_message_parts(qr_url)
+    if parts.image_base64:
         return Message([
-            MessageSegment.image(f"base64://{image_base64}"),
-            MessageSegment.text("\n" + tip_text),
+            MessageSegment.image(f"base64://{parts.image_base64}"),
+            MessageSegment.text("\n" + parts.tip_text),
         ])
-    except Exception as e:
-        logger.warning(f"failed to build Bilibili login QR image: {e}")
-        return Message(tip_text)
+
+    if parts.image_error:
+        logger.warning(
+            f"failed to build Bilibili login QR image: {parts.image_error}"
+        )
+    return Message(parts.tip_text)
 
 
 async def request_bili_login_qrcode(
