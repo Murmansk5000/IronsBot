@@ -21,13 +21,11 @@ from ironsbot.services.bilibili.checkpoints import (
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.delivery import build_dynamic_push_deliveries
 from ironsbot.services.bilibili.parser import (
-    dynamic_suppression_reason,
     find_target_dynamics,
-    item_author_mid,
-    item_author_name,
 )
 from ironsbot.services.bilibili.push import (
-    build_dynamic_history_snapshot,
+    DynamicHistorySnapshot,
+    build_dynamic_history_snapshot_for_item,
     decide_dynamic_push_after_targets,
     decide_dynamic_push_before_targets,
     mark_history_snapshot_pushed,
@@ -96,6 +94,24 @@ async def _send_dynamic_push(
         )
 
 
+def _log_non_delivery_decision(
+    status: str,
+    snapshot: DynamicHistorySnapshot,
+) -> None:
+    if status == "suppressed":
+        logger.info(
+            "Bilibili dynamic push suppressed for "
+            f"{snapshot.author_name} ({snapshot.author_mid}): "
+            f"{snapshot.suppression_reason}"
+        )
+        return
+
+    logger.info(
+        "Bilibili dynamic saved without push target for "
+        f"{snapshot.author_name} ({snapshot.author_mid})"
+    )
+
+
 async def _push_new_dynamics(
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
@@ -103,27 +119,22 @@ async def _push_new_dynamics(
     checkpoint_changed = False
     bot: Bot | None = None
     for pub_ts, item in valid_dynamics:
-        author_mid = item_author_mid(item)
-        if not author_mid:
-            continue
-
-        last_saved_time = checkpoints.get(author_mid, 0)
-        suppression_reason = dynamic_suppression_reason(
-            item,
-            get_bili_config().filters.suppress_push_patterns,
-        )
-        snapshot = build_dynamic_history_snapshot(
+        snapshot = build_dynamic_history_snapshot_for_item(
             item,
             pub_ts=pub_ts,
-            author_mid=author_mid,
-            suppression_reason=suppression_reason,
+            suppress_patterns=get_bili_config().filters.suppress_push_patterns,
         )
+        if snapshot is None:
+            continue
+
+        author_mid = snapshot.author_mid
+        last_saved_time = checkpoints.get(author_mid, 0)
         save_dynamic_history_snapshot(snapshot)
         targets: BiliPushTargets | None = None
         decision = decide_dynamic_push_before_targets(
             pub_ts=pub_ts,
             last_saved_time=last_saved_time,
-            suppression_reason=suppression_reason,
+            suppression_reason=snapshot.suppression_reason,
         )
         if decision is None:
             targets = push_targets_for_uid(author_mid)
@@ -132,22 +143,12 @@ async def _push_new_dynamics(
         if decision.status == "skip_existing":
             continue
 
-        if decision.status == "suppressed":
-            logger.info(
-                "Bilibili dynamic push suppressed for "
-                f"{item_author_name(item)} ({author_mid}): {suppression_reason}"
+        if decision.status in {"suppressed", "no_targets"}:
+            _log_non_delivery_decision(decision.status, snapshot)
+            checkpoint_changed = (
+                mark_checkpoint(checkpoints, author_mid, pub_ts)
+                or checkpoint_changed
             )
-            if mark_checkpoint(checkpoints, author_mid, pub_ts):
-                checkpoint_changed = True
-            continue
-
-        if decision.status == "no_targets":
-            logger.info(
-                "Bilibili dynamic saved without push target for "
-                f"{item_author_name(item)} ({author_mid})"
-            )
-            if mark_checkpoint(checkpoints, author_mid, pub_ts):
-                checkpoint_changed = True
             continue
 
         if targets is None:
@@ -160,8 +161,10 @@ async def _push_new_dynamics(
 
         await _send_dynamic_push(bot, item, pub_ts, targets)
         save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
-        if mark_checkpoint(checkpoints, author_mid, pub_ts):
-            checkpoint_changed = True
+        checkpoint_changed = (
+            mark_checkpoint(checkpoints, author_mid, pub_ts)
+            or checkpoint_changed
+        )
 
     return checkpoint_changed
 

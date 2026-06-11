@@ -28,9 +28,7 @@ from ironsbot.services.bilibili.menu import (
     select_cached_dynamic_id,
 )
 from ironsbot.services.bilibili.parser import (
-    dynamic_suppression_reason,
     find_target_dynamics,
-    item_author_mid,
     parse_single_item,
 )
 from ironsbot.services.bilibili.permissions import (
@@ -38,7 +36,7 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
-from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
+from ironsbot.services.bilibili.push import build_dynamic_history_snapshot_for_item
 from ironsbot.services.bilibili.state import query_uids_for_event
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
@@ -134,21 +132,13 @@ async def _wait_dynamic_select(
 
 def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) -> None:
     for pub_ts, item in target_dynamics:
-        author_mid = item_author_mid(item)
-        if not author_mid:
-            continue
-
-        suppression_reason = dynamic_suppression_reason(
-            item,
-            get_bili_config().filters.suppress_push_patterns,
-        )
-        snapshot = build_dynamic_history_snapshot(
+        snapshot = build_dynamic_history_snapshot_for_item(
             item,
             pub_ts=pub_ts,
-            author_mid=author_mid,
-            suppression_reason=suppression_reason,
+            suppress_patterns=get_bili_config().filters.suppress_push_patterns,
         )
-        save_dynamic_history_snapshot(snapshot)
+        if snapshot is not None:
+            save_dynamic_history_snapshot(snapshot)
 
 
 async def _handle_dynamic_menu(

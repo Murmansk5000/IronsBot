@@ -1,7 +1,12 @@
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
-from ironsbot.services.bilibili.parser import dynamic_brief, item_author_name
+from ironsbot.services.bilibili.parser import (
+    dynamic_brief,
+    dynamic_suppression_reason,
+    item_author_mid,
+    item_author_name,
+)
 
 DynamicPushStatus = Literal[
     "skip_existing",
@@ -54,6 +59,30 @@ def build_dynamic_history_snapshot(
         pushed=pushed,
         suppressed=bool(suppression_reason),
         suppression_reason=suppression_reason,
+    )
+
+
+def build_dynamic_history_snapshot_for_item(
+    item: dict[str, Any],
+    *,
+    pub_ts: int,
+    suppress_patterns: list[str],
+    pushed: bool = False,
+) -> DynamicHistorySnapshot | None:
+    author_mid = item_author_mid(item)
+    if not author_mid:
+        return None
+
+    suppression_reason = dynamic_suppression_reason(
+        item,
+        suppress_patterns,
+    )
+    return build_dynamic_history_snapshot(
+        item,
+        pub_ts=pub_ts,
+        author_mid=author_mid,
+        suppression_reason=suppression_reason,
+        pushed=pushed,
     )
 
 

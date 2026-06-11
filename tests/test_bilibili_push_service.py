@@ -3,6 +3,7 @@ from typing import Any
 
 from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot,
+    build_dynamic_history_snapshot_for_item,
     decide_dynamic_push_after_targets,
     decide_dynamic_push_before_targets,
     mark_history_snapshot_pushed,
@@ -51,6 +52,30 @@ def test_build_dynamic_history_snapshot_collects_display_fields() -> None:
     assert snapshot.suppressed
     assert snapshot.suppression_reason == "命中规则：测试"
     assert not snapshot.pushed
+
+
+def test_build_dynamic_history_snapshot_for_item_applies_suppression() -> None:
+    snapshot = build_dynamic_history_snapshot_for_item(
+        _item(text="恭喜测试用户获得赛尔号超长测试奖励内容"),
+        pub_ts=NEW_TS,
+        suppress_patterns=["恭喜.*获得"],
+    )
+
+    assert snapshot is not None
+    assert snapshot.author_mid == AUTHOR_UID
+    assert snapshot.suppressed
+    assert snapshot.suppression_reason == "命中规则：恭喜.*获得"
+
+
+def test_build_dynamic_history_snapshot_for_item_skips_missing_author() -> None:
+    assert (
+        build_dynamic_history_snapshot_for_item(
+            {"id_str": "dynamic-without-author"},
+            pub_ts=NEW_TS,
+            suppress_patterns=[],
+        )
+        is None
+    )
 
 
 def test_mark_history_snapshot_pushed_preserves_existing_fields() -> None:
