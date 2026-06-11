@@ -19,12 +19,12 @@ from ironsbot.services.bilibili.checkpoints import (
     mark_checkpoint,
 )
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
+from ironsbot.services.bilibili.delivery import build_dynamic_push_deliveries
 from ironsbot.services.bilibili.parser import (
     dynamic_suppression_reason,
     find_target_dynamics,
     item_author_mid,
     item_author_name,
-    parse_single_item,
 )
 from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot,
@@ -85,29 +85,15 @@ async def _send_dynamic_push(
 ) -> None:
     from ironsbot.custom_plugins.message_actions import send_broadcast_message
 
-    if targets.full_group_ids or targets.full_user_ids:
-        full_message = parse_single_item(item, pub_ts, mode="full")
-        if full_message:
-            await send_broadcast_message(
-                full_message,
-                group_ids=targets.full_group_ids,
-                private_user_ids=targets.full_user_ids,
-                bot=bot,
-                action_name="Bilibili dynamic push",
-                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-            )
-
-    if targets.link_group_ids or targets.link_user_ids:
-        link_message = parse_single_item(item, pub_ts, mode="link")
-        if link_message:
-            await send_broadcast_message(
-                link_message,
-                group_ids=targets.link_group_ids,
-                private_user_ids=targets.link_user_ids,
-                bot=bot,
-                action_name="Bilibili dynamic link push",
-                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-            )
+    for delivery in build_dynamic_push_deliveries(item, pub_ts, targets):
+        await send_broadcast_message(
+            delivery.message,
+            group_ids=delivery.group_ids,
+            private_user_ids=delivery.private_user_ids,
+            bot=bot,
+            action_name=delivery.action_name,
+            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+        )
 
 
 async def _push_new_dynamics(
