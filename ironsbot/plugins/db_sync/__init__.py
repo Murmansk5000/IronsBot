@@ -5,7 +5,7 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import httpx
 from anyio import Path as AsyncPath
@@ -17,10 +17,6 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
-
-require("nonebot_plugin_apscheduler")
-
-from nonebot_plugin_apscheduler import scheduler
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
@@ -39,12 +35,13 @@ class _SyncEntry(NamedTuple):
     local_path: str | None = None
 
 
-_driver = get_driver()
 _sync_locks: dict[str, asyncio.Lock] = {}
 _sync_all_lock = asyncio.Lock()
 _registered_syncs: dict[str, _SyncEntry] = {}
-_local_databases: set[str] = set()
+_registered_local_databases: dict[str, str] = {}
+_prepared_databases: set[str] = set()
 _fingerprints: dict[str, str] = {}
+_db_sync_runtime_state = {"registered": False}
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 ADMIN_COMMAND_PREFIX = "/"
 
@@ -117,53 +114,32 @@ def register_database(
     get_fingerprint: GetFingerprintFn | None = None,
     local_path: str | None = None,
 ) -> None:
-    """注册一个从远程同步的内存数据库。供其他插件在模块级代码中调用。
+    """登记一个从远程同步的内存数据库。供其他插件在模块级代码中调用。
 
-    该函数会：
-    1. 在 db_manager 中注册内存引擎
-    2. 添加定时同步任务
-    3. 在启动时自动执行首次同步
+    该函数只记录同步源；内存引擎、定时任务和启动同步会在 runtime setup
+    安装的启动生命周期中完成。
 
     若提供 ``get_fingerprint``，每次同步前会先调用该函数获取远程指纹，
     与上次成功同步后的指纹对比；若相同则跳过下载。
     """
-    if name in _registered_syncs or name in _local_databases:
+    if name in _registered_syncs or name in _registered_local_databases:
         logger.warning(f"数据库 '{name}' 已注册，跳过重复注册")
         return
 
-    db_manager.register(name)
     _registered_syncs[name] = _SyncEntry(
         sync_url, sync_interval_minutes, get_fingerprint, local_path
     )
-
-    if get_data_sync_config().interval_enabled:
-        scheduler.add_job(
-            run_sync_database,
-            "interval",
-            args=[name],
-            minutes=sync_interval_minutes,
-            id=f"db_sync_{name}",
-            replace_existing=True,
-        )
-        logger.debug(f"已注册数据库 '{name}'，同步间隔: {sync_interval_minutes} 分钟")
-    else:
-        logger.debug(f"已注册数据库 '{name}'，自动定时同步已关闭")
+    logger.debug(f"已登记远程同步数据库 '{name}'")
 
 
 def register_local_database(name: str, *, file_path: str) -> None:
     """注册一个从本地文件加载的只读内存数据库，不设置自动同步。"""
-    if name in _registered_syncs or name in _local_databases:
+    if name in _registered_syncs or name in _registered_local_databases:
         logger.warning(f"数据库 '{name}' 已注册，跳过重复注册")
         return
 
-    if not Path(file_path).exists():
-        logger.warning(f"本地文件 '{file_path}' 不存在，跳过注册 {name}")
-        return
-
-    db_manager.register(name)
-    db_manager.load_from_file(name, file_path)
-    _local_databases.add(name)
-    logger.info(f"已从本地文件 '{file_path}' 加载数据库 '{name}'（无自动同步）")
+    _registered_local_databases[name] = file_path
+    logger.debug(f"已登记本地数据库 '{name}': {file_path}")
 
 
 async def sync_database(name: str) -> bool:  # noqa: C901
@@ -298,6 +274,95 @@ def load_cached_database(name: str) -> bool:
         return True
 
 
+def _prepare_remote_database(name: str) -> None:
+    if name in _prepared_databases:
+        return
+
+    db_manager.register(name)
+    _prepared_databases.add(name)
+
+
+def _prepare_local_database(name: str, file_path: str) -> None:
+    if name in _prepared_databases:
+        return
+
+    if not Path(file_path).exists():
+        logger.warning(f"本地文件 '{file_path}' 不存在，跳过注册 {name}")
+        return
+
+    db_manager.register(name)
+    db_manager.load_from_file(name, file_path)
+    _prepared_databases.add(name)
+    logger.info(f"已从本地文件 '{file_path}' 加载数据库 '{name}'（无自动同步）")
+
+
+def _register_interval_jobs(scheduler: Any) -> None:
+    if not get_data_sync_config().interval_enabled:
+        for name in _registered_syncs:
+            logger.debug(f"已注册数据库 '{name}'，自动定时同步已关闭")
+        return
+
+    for name, entry in _registered_syncs.items():
+        scheduler.add_job(
+            run_sync_database,
+            "interval",
+            args=[name],
+            minutes=entry.sync_interval_minutes,
+            id=f"db_sync_{name}",
+            replace_existing=True,
+        )
+        logger.debug(
+            f"已注册数据库 '{name}'，同步间隔: {entry.sync_interval_minutes} 分钟"
+        )
+
+
+async def _start_db_sync_runtime(scheduler: Any) -> None:
+    if not _registered_syncs and not _registered_local_databases:
+        logger.debug("无已注册的同步数据库，db_sync 插件未激活")
+        return
+
+    for name, entry in _registered_syncs.items():
+        _prepare_remote_database(name)
+        logger.info(
+            f"数据库 '{name}' 同步已启动，同步间隔: {entry.sync_interval_minutes} 分钟"
+        )
+
+    for name, file_path in _registered_local_databases.items():
+        _prepare_local_database(name, file_path)
+
+    _register_interval_jobs(scheduler)
+
+    for name in _registered_syncs:
+        load_cached_database(name)
+
+    # Keep startup sync behind a switch to avoid slow container startup.
+    if not get_data_sync_config().on_startup:
+        logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
+        return
+
+    async with _sync_all_lock:
+        for name in _registered_syncs:
+            await sync_database(name)
+
+
+def _setup_db_sync_runtime(driver: Any, scheduler: Any) -> None:
+    if _db_sync_runtime_state["registered"]:
+        return
+
+    @driver.on_startup
+    async def _start_db_sync_on_startup() -> None:
+        await _start_db_sync_runtime(scheduler)
+
+    _db_sync_runtime_state["registered"] = True
+
+
+def setup_db_sync_runtime() -> None:
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
+
+    _setup_db_sync_runtime(get_driver(), scheduler)
+
+
 @manual_sync_matcher.handle()
 async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
     if not _registered_syncs:
@@ -332,27 +397,3 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
         )
 
     await finish_event_reply(matcher, event, f"数据更新完成：{', '.join(succeeded)}")
-
-
-@_driver.on_startup
-async def _on_startup() -> None:
-    if not _registered_syncs:
-        logger.debug("无已注册的同步数据库，db_sync 插件未激活")
-        return
-
-    for name, entry in _registered_syncs.items():
-        logger.info(
-            f"数据库 '{name}' 同步已启动，同步间隔: {entry.sync_interval_minutes} 分钟"
-        )
-
-    for name in _registered_syncs:
-        load_cached_database(name)
-
-    # Keep startup sync behind a switch to avoid slow container startup.
-    if not get_data_sync_config().on_startup:
-        logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
-        return
-
-    async with _sync_all_lock:
-        for name in _registered_syncs:
-            await sync_database(name)
