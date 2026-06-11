@@ -16,6 +16,10 @@ from ironsbot.services.bilibili.parser import (
     parse_single_item,
     scan_and_swallow_all_long_strings,
 )
+from ironsbot.services.bilibili.permissions import (
+    get_bili_superuser_uids,
+    is_bili_superuser,
+)
 from ironsbot.services.bilibili.state import (
     monitored_uids,
     target_group_ids,
@@ -30,10 +34,6 @@ from .auth import (
     send_bili_login_qrcode_to_superusers,
 )
 from .config import Config
-from .permissions import (
-    get_bili_superuser_uids,
-    is_bili_superuser,
-)
 from .service import run_check_logic
 
 __plugin_meta__ = PluginMetadata(

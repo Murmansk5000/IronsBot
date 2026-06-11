@@ -30,6 +30,11 @@ from ironsbot.services.bilibili.parser import (
     item_author_name,
     parse_single_item,
 )
+from ironsbot.services.bilibili.permissions import (
+    is_bili_superuser,
+    is_dynamic_query_allowed,
+    is_dynamic_update_allowed,
+)
 from ironsbot.services.bilibili.state import query_uids_for_event
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
@@ -40,11 +45,6 @@ from ironsbot.shared.plugin_system import (
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
 from .config import get_bili_config
-from .permissions import (
-    is_bili_superuser,
-    is_dynamic_query_allowed,
-    is_dynamic_update_allowed,
-)
 from .service import run_check_logic
 
 DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"

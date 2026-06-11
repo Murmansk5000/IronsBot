@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
 from ironsbot.services.bilibili.cache import save_new_cookie
+from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
 from ironsbot.services.bilibili.state import (
     AUTH_INVALID_CODES,
     LOGIN_COOKIE_KEYS,
@@ -17,7 +18,6 @@ from ironsbot.services.bilibili.state import (
 
 from .bot_access import get_first_bot
 from .config import get_bili_config
-from .permissions import get_bili_superuser_uids
 
 _bili_login_required = False
 _last_login_notice_at = 0.0
