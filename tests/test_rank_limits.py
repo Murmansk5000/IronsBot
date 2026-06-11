@@ -13,7 +13,11 @@ try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
-nonebot.load_plugin("nonebot_plugin_htmlkit")
+try:
+    nonebot.load_plugin("nonebot_plugin_htmlkit")
+except RuntimeError as e:
+    if "Plugin already exists" not in str(e):
+        raise
 
 from ironsbot.custom_plugins.custom_get_seer_info.commands import _rank
 from ironsbot.custom_plugins.custom_get_seer_info.commands._rank_page_cache import (
