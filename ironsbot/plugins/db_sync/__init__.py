@@ -26,7 +26,7 @@ from ironsbot.custom_plugins.message_actions import finish_event_reply, send_eve
 from ironsbot.shared.messages.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
-from .config import plugin_config
+from .config import get_data_sync_config
 from .manager import db_manager
 
 GetFingerprintFn = Callable[[httpx.AsyncClient], Awaitable[str]]
@@ -136,7 +136,7 @@ def register_database(
         sync_url, sync_interval_minutes, get_fingerprint, local_path
     )
 
-    if plugin_config.data_sync_config.interval_enabled:
+    if get_data_sync_config().interval_enabled:
         scheduler.add_job(
             run_sync_database,
             "interval",
@@ -349,7 +349,7 @@ async def _on_startup() -> None:
         load_cached_database(name)
 
     # Keep startup sync behind a switch to avoid slow container startup.
-    if not plugin_config.data_sync_config.on_startup:
+    if not get_data_sync_config().on_startup:
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
         return
 
