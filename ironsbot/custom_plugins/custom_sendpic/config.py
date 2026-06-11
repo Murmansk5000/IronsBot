@@ -16,6 +16,18 @@ DEFAULT_MESSAGE_TEMPLATE = DEFAULT_SENDPIC_MESSAGE_TEMPLATE
 SendpicConfig = SendpicBehaviorConfig
 
 
+def pic_id_is_enabled(config: SendpicBehaviorConfig, pic_id: str) -> bool:
+    return pic_id in config.enabled_ids
+
+
+def enabled_pic_configs(config: SendpicBehaviorConfig) -> list[PicConfig]:
+    return [
+        pic_config
+        for pic_config in config.configs
+        if pic_id_is_enabled(config, pic_config.id)
+    ]
+
+
 def get_sendpic_config() -> SendpicBehaviorConfig:
     return get_app_config().message.sendpic
 
@@ -49,8 +61,10 @@ __all__ = [
     "Config",
     "PicConfig",
     "SendpicConfig",
+    "enabled_pic_configs",
     "get_sendpic_cnb_repo",
     "get_sendpic_cnb_token",
     "get_sendpic_config",
     "get_sendpic_local_root",
+    "pic_id_is_enabled",
 ]

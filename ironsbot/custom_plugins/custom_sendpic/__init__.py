@@ -1,9 +1,7 @@
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.shared.config.sendpic import enabled_pic_configs
-
 from . import fixed_images as fixed_images
-from .config import Config, get_sendpic_config
+from .config import Config, enabled_pic_configs, get_sendpic_config
 from .matchers import matcher_group as matcher_group
 
 

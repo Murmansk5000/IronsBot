@@ -10,7 +10,6 @@ from nonebot.params import CommandArg, Depends
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
-from ironsbot.shared.config.sendpic import enabled_pic_configs, pic_id_is_enabled
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -23,10 +22,12 @@ from .backend import ImageBackend
 from .backends import CnbBackend, LocalBackend
 from .config import (
     PicConfig,
+    enabled_pic_configs,
     get_sendpic_cnb_repo,
     get_sendpic_cnb_token,
     get_sendpic_config,
     get_sendpic_local_root,
+    pic_id_is_enabled,
 )
 from .image_selection_service import (
     ImageIndexOutOfRangeError,
