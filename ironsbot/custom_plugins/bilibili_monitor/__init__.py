@@ -1,6 +1,13 @@
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.custom_plugins.startup_ready import wait_startup_ready
+from ironsbot.services.bilibili.parser import (
+    item_author_label,
+    item_author_mid,
+    item_author_name,
+    parse_single_item,
+    scan_and_swallow_all_long_strings,
+)
 
 from . import commands as commands
 from .auth import (
@@ -18,13 +25,6 @@ from .cache import (
     save_new_cookie,
 )
 from .config import Config
-from .parser import (
-    item_author_label,
-    item_author_mid,
-    item_author_name,
-    parse_single_item,
-    scan_and_swallow_all_long_strings,
-)
 from .permissions import (
     get_bili_superuser_uids,
     is_bili_superuser,

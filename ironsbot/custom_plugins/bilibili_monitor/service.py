@@ -8,6 +8,14 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.services.bilibili.parser import (
+    dynamic_brief,
+    dynamic_suppression_reason,
+    find_target_dynamics,
+    item_author_mid,
+    item_author_name,
+    parse_single_item,
+)
 from ironsbot.shared.config.time import minute_of_day
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
@@ -20,14 +28,6 @@ from .cache import (
 )
 from .client import fetch_dynamic_feed
 from .config import get_bili_config
-from .parser import (
-    dynamic_brief,
-    dynamic_suppression_reason,
-    find_target_dynamics,
-    item_author_mid,
-    item_author_name,
-    parse_single_item,
-)
 from .state import (
     BiliPushTargets,
     check_lock,

@@ -14,6 +14,14 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.services.bilibili.parser import (
+    dynamic_brief,
+    dynamic_suppression_reason,
+    find_target_dynamics,
+    item_author_mid,
+    item_author_name,
+    parse_single_item,
+)
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -31,14 +39,6 @@ from .cache import (
 )
 from .client import fetch_dynamic_feed
 from .config import get_bili_config
-from .parser import (
-    dynamic_brief,
-    dynamic_suppression_reason,
-    find_target_dynamics,
-    item_author_mid,
-    item_author_name,
-    parse_single_item,
-)
 from .permissions import (
     is_bili_superuser,
     is_dynamic_query_allowed,
