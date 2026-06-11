@@ -20,12 +20,18 @@ from ironsbot.services.bilibili.checkpoints import (
 )
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.parser import (
-    dynamic_brief,
     dynamic_suppression_reason,
     find_target_dynamics,
     item_author_mid,
     item_author_name,
     parse_single_item,
+)
+from ironsbot.services.bilibili.push import (
+    DynamicHistorySnapshot,
+    build_dynamic_history_snapshot,
+    decide_dynamic_push_after_targets,
+    decide_dynamic_push_before_targets,
+    mark_history_snapshot_pushed,
 )
 from ironsbot.services.bilibili.responses import check_dynamic_response
 from ironsbot.services.bilibili.schedule import (
@@ -105,6 +111,19 @@ async def _send_dynamic_push(
             )
 
 
+def _save_dynamic_history_snapshot(snapshot: DynamicHistorySnapshot) -> None:
+    save_dynamic_history_item(
+        snapshot.item,
+        pub_ts=snapshot.pub_ts,
+        author_mid=snapshot.author_mid,
+        author_name=snapshot.author_name,
+        brief=snapshot.brief,
+        pushed=snapshot.pushed,
+        suppressed=snapshot.suppressed,
+        suppression_reason=snapshot.suppression_reason,
+    )
+
+
 async def _push_new_dynamics(
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
@@ -117,24 +136,31 @@ async def _push_new_dynamics(
             continue
 
         last_saved_time = checkpoints.get(author_mid, 0)
-        should_push = pub_ts > last_saved_time
         suppression_reason = dynamic_suppression_reason(
             item,
             get_bili_config().filters.suppress_push_patterns,
         )
-        save_dynamic_history_item(
+        snapshot = build_dynamic_history_snapshot(
             item,
             pub_ts=pub_ts,
             author_mid=author_mid,
-            author_name=item_author_name(item),
-            brief=dynamic_brief(item),
-            suppressed=bool(suppression_reason),
             suppression_reason=suppression_reason,
         )
-        if not should_push:
+        _save_dynamic_history_snapshot(snapshot)
+        targets: BiliPushTargets | None = None
+        decision = decide_dynamic_push_before_targets(
+            pub_ts=pub_ts,
+            last_saved_time=last_saved_time,
+            suppression_reason=suppression_reason,
+        )
+        if decision is None:
+            targets = push_targets_for_uid(author_mid)
+            decision = decide_dynamic_push_after_targets(targets)
+
+        if decision.status == "skip_existing":
             continue
 
-        if suppression_reason:
+        if decision.status == "suppressed":
             logger.info(
                 "Bilibili dynamic push suppressed for "
                 f"{item_author_name(item)} ({author_mid}): {suppression_reason}"
@@ -143,8 +169,7 @@ async def _push_new_dynamics(
                 checkpoint_changed = True
             continue
 
-        targets = push_targets_for_uid(author_mid)
-        if not targets.has_targets:
+        if decision.status == "no_targets":
             logger.info(
                 "Bilibili dynamic saved without push target for "
                 f"{item_author_name(item)} ({author_mid})"
@@ -153,20 +178,16 @@ async def _push_new_dynamics(
                 checkpoint_changed = True
             continue
 
+        if targets is None:
+            targets = push_targets_for_uid(author_mid)
+
         bot = bot or get_first_bot()
         if not bot:
             logger.warning("no bot online for Bilibili dynamic push")
             return checkpoint_changed
 
         await _send_dynamic_push(bot, item, pub_ts, targets)
-        save_dynamic_history_item(
-            item,
-            pub_ts=pub_ts,
-            author_mid=author_mid,
-            author_name=item_author_name(item),
-            brief=dynamic_brief(item),
-            pushed=True,
-        )
+        _save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
         if mark_checkpoint(checkpoints, author_mid, pub_ts):
             checkpoint_changed = True
 
