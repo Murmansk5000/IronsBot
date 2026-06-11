@@ -1,5 +1,4 @@
 import asyncio
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,13 +23,17 @@ from ironsbot.services.bilibili.parser import (
     item_author_name,
     parse_single_item,
 )
+from ironsbot.services.bilibili.schedule import (
+    AutoCheckState,
+    auto_check_due,
+    mark_auto_check,
+)
 from ironsbot.services.bilibili.state import (
     BiliPushTargets,
     check_lock,
     monitored_uids,
     push_targets_for_uid,
 )
-from ironsbot.shared.config.time import minute_of_day
 
 from .auth import send_bili_login_qrcode_to_superusers
 from .bot_access import get_first_bot
@@ -41,39 +44,8 @@ DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 DynamicItem = tuple[int, dict[str, Any]]
 
 
-@dataclass(slots=True)
-class AutoCheckState:
-    last_checked_at: datetime | None = None
-
-
 _auto_check_state = AutoCheckState()
 _bilibili_monitor_runtime_state = {"registered": False}
-
-
-def _window_contains(now: datetime, *, start: str, end: str) -> bool:
-    current = now.hour * 60 + now.minute
-    error_message = "bilibili.polling.windows time must use HH:MM"
-    start_minute = minute_of_day(start, error_message=error_message)
-    end_minute = minute_of_day(end, error_message=error_message)
-    if start_minute <= end_minute:
-        return start_minute <= current < end_minute
-    return current >= start_minute or current < end_minute
-
-
-def _current_interval_minutes(now: datetime) -> int:
-    config = get_bili_config()
-    for window in config.polling.windows:
-        if _window_contains(now, start=window.start, end=window.end):
-            return window.minutes
-    return config.polling.default_minutes
-
-
-def _auto_check_due(now: datetime) -> bool:
-    if _auto_check_state.last_checked_at is None:
-        return True
-    interval = _current_interval_minutes(now)
-    elapsed = now - _auto_check_state.last_checked_at
-    return elapsed.total_seconds() >= interval * 60
 
 
 async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) -> bool:
@@ -283,11 +255,19 @@ async def run_check_logic(
 
     async with check_lock:
         now = datetime.now(timezone.utc).astimezone()
-        if not is_startup_check and not force and not _auto_check_due(now):
+        if (
+            not is_startup_check
+            and not force
+            and not auto_check_due(
+                _auto_check_state,
+                get_bili_config().polling,
+                now,
+            )
+        ):
             return False
 
         await _do_check_logic()
-        _auto_check_state.last_checked_at = now
+        mark_auto_check(_auto_check_state, now)
 
     return True
 
