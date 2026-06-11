@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import Any
 
 from nonebot import on_message
@@ -16,13 +15,18 @@ from ironsbot.custom_plugins.message_actions import (
 )
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
-    DynamicHistoryRecord,
     get_dynamic_history_item,
     get_saved_cookie,
     list_dynamic_history,
     save_dynamic_history_item,
 )
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
+from ironsbot.services.bilibili.menu import (
+    DYNAMIC_IDS_STATE_KEY,
+    build_dynamic_menu_text,
+    dynamic_record_ids,
+    select_cached_dynamic_id,
+)
 from ironsbot.services.bilibili.parser import (
     dynamic_brief,
     dynamic_suppression_reason,
@@ -48,7 +52,6 @@ from .auth import send_bili_login_qrcode_to_superusers
 from .config import get_bili_config
 from .service import run_check_logic
 
-DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
@@ -115,37 +118,6 @@ class BiliMonitorPlugin:
 
 
 register_plugin(BiliMonitorPlugin())
-
-
-def _build_menu_text(records: list[DynamicHistoryRecord]) -> str:
-    lines = [
-        "📋 【最新动态列表】",
-        "👉 发送数字查看详情",
-        "-------------------------",
-    ]
-
-    for index, record in enumerate(records, start=1):
-        time_str = (
-            datetime.fromtimestamp(record.pub_ts, tz=timezone.utc)
-            .astimezone()
-            .strftime("%Y-%m-%d %H:%M:%S")
-        )
-        suppressed_tag = "（未推送）" if record.suppressed else ""
-        lines.extend(
-            [
-                f"【{index}】 ⏰ {time_str}{suppressed_tag}",
-                f"👤 {record.author_name}（UID：{record.uid}）",
-                f"📝 {record.brief}",
-            ]
-        )
-
-    lines.extend(
-        [
-            "-------------------------",
-            "💡 两分钟内有效",
-        ]
-    )
-    return "\n".join(lines)
 
 
 async def _wait_dynamic_select(
@@ -228,7 +200,7 @@ async def _handle_dynamic_menu(
                 "📭 没有可展示的历史动态。",
             )
 
-        state[DYNAMIC_IDS_KEY] = [record.dynamic_id for record in records]
+        state[DYNAMIC_IDS_STATE_KEY] = dynamic_record_ids(records)
 
         logger.info(
             f"user {event.user_id} fetched Bilibili dynamic menu for {query_uids}"
@@ -239,7 +211,7 @@ async def _handle_dynamic_menu(
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
             handlers=[handle_dynamic_select],
             reply_check=_is_dynamic_select_reply,
-            prompt=Message(_build_menu_text(records)),
+            prompt=Message(build_dynamic_menu_text(records)),
         )
 
     except FinishedException:
@@ -326,24 +298,37 @@ async def _handle_dynamic_select(
     matcher = context.matcher or dynamic_menu_matcher
     state = context.state if context.state is not None else {}
     try:
-        select_num = int(event.get_plaintext().strip())
-        cached_ids = state.get(DYNAMIC_IDS_KEY, [])
-        if not cached_ids:
+        cached_ids = state.get(DYNAMIC_IDS_STATE_KEY, [])
+        selection = select_cached_dynamic_id(
+            cached_ids,
+            event.get_plaintext(),
+        )
+        if selection.status == "expired":
             await finish_event_reply(
                 matcher,
                 event,
                 "⏳ 会话已超时，请重新发送“动态”。",
             )
 
-        if select_num < 1 or select_num > len(cached_ids):
+        if selection.status == "invalid":
             await send_event_reply(
                 matcher,
                 event,
-                f"请输入 1~{len(cached_ids)} 之间的数字。",
+                "请输入数字。",
             )
             await _wait_dynamic_select(matcher, event)
+            return
 
-        dynamic_id = str(cached_ids[select_num - 1])
+        if selection.status == "out_of_range":
+            await send_event_reply(
+                matcher,
+                event,
+                f"请输入 1~{selection.available_count} 之间的数字。",
+            )
+            await _wait_dynamic_select(matcher, event)
+            return
+
+        dynamic_id = selection.dynamic_id
         record = get_dynamic_history_item(dynamic_id)
         if record is None:
             await finish_event_reply(
