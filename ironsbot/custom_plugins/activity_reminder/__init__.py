@@ -22,10 +22,6 @@ from nonebot.rule import Rule
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from ironsbot.custom_plugins.message_actions import (
-    finish_event_reply,
-    send_broadcast_message,
-)
 from ironsbot.shared.features import (
     groups_for_feature,
     is_event_feature_allowed,
@@ -65,12 +61,8 @@ from .planning import (
 )
 
 require("ironsbot.plugins.seer_data")
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
 
 from ironsbot.plugins.db_sync.manager import db_manager
-
-driver = get_driver()
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
@@ -161,6 +153,10 @@ __plugin_meta__ = PluginMetadata(
 
 _logged_warnings: set[str] = set()
 _activity_info_cache = ActivityInfoCache()
+_activity_reminder_runtime_state: dict[str, Any] = {
+    "registered": False,
+    "scheduler": None,
+}
 _ACTIVITY_REQUIRED_COLUMNS = frozenset(
     {"id", "name", "end_time", "is_show", "sort_order"}
 )
@@ -834,6 +830,8 @@ async def send_activity_reminder(
     lead_hours: int,
     reminders: list[ActivityReminder],
 ) -> None:
+    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+
     reminders = _filter_valid_reminders_before_send(reminders, now=_now())
     if not reminders:
         logger.info(
@@ -864,6 +862,11 @@ def _reminder_job_id(lead_hours: int, send_time: datetime) -> str:
 
 
 async def schedule_activity_reminders() -> None:
+    scheduler = _activity_reminder_runtime_state["scheduler"]
+    if scheduler is None:
+        logger.warning("activity reminder scheduler is not configured")
+        return
+
     config = get_activity_config()
     if not config.enabled:
         return
@@ -925,6 +928,8 @@ class ActivityReminderPlugin:
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        from ironsbot.custom_plugins.message_actions import finish_event_reply
+
         matcher = context.matcher or soon_ending_activity_matcher
         if context.action == "current":
             await finish_event_reply(
@@ -967,8 +972,7 @@ async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
     )
 
 
-@driver.on_startup
-async def register_activity_reminder_jobs() -> None:
+def register_activity_reminder_jobs(scheduler: Any) -> None:
     if not get_activity_config().enabled:
         return
 
@@ -980,6 +984,26 @@ async def register_activity_reminder_jobs() -> None:
         next_run_time=_now() + timedelta(seconds=30),
         misfire_grace_time=300,
     )
+
+
+def _setup_activity_reminder_runtime(driver: Any, scheduler: Any) -> None:
+    if _activity_reminder_runtime_state["registered"]:
+        return
+
+    _activity_reminder_runtime_state["scheduler"] = scheduler
+
+    @driver.on_startup
+    async def _register_activity_reminder_jobs_on_startup() -> None:
+        register_activity_reminder_jobs(scheduler)
+
+    _activity_reminder_runtime_state["registered"] = True
+
+
+def setup_activity_reminder_runtime() -> None:
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
+
+    _setup_activity_reminder_runtime(get_driver(), scheduler)
     scheduler.add_job(
         schedule_activity_reminders,
         "cron",
