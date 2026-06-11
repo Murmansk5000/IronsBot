@@ -8,6 +8,7 @@ from typing import Any
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
+from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
 
 
@@ -210,6 +211,19 @@ def save_dynamic_history_item(  # noqa: PLR0913
             )
     except (sqlite3.Error, TypeError, ValueError) as e:
         logger.warning(f"failed to save Bilibili dynamic history: {e}")
+
+
+def save_dynamic_history_snapshot(snapshot: DynamicHistorySnapshot) -> None:
+    save_dynamic_history_item(
+        snapshot.item,
+        pub_ts=snapshot.pub_ts,
+        author_mid=snapshot.author_mid,
+        author_name=snapshot.author_name,
+        brief=snapshot.brief,
+        pushed=snapshot.pushed,
+        suppressed=snapshot.suppressed,
+        suppression_reason=snapshot.suppression_reason,
+    )
 
 
 def _record_from_row(row: sqlite3.Row) -> DynamicHistoryRecord | None:

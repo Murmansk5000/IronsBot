@@ -18,7 +18,7 @@ from ironsbot.services.bilibili.cache import (
     get_dynamic_history_item,
     get_saved_cookie,
     list_dynamic_history,
-    save_dynamic_history_item,
+    save_dynamic_history_snapshot,
 )
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.menu import (
@@ -28,11 +28,9 @@ from ironsbot.services.bilibili.menu import (
     select_cached_dynamic_id,
 )
 from ironsbot.services.bilibili.parser import (
-    dynamic_brief,
     dynamic_suppression_reason,
     find_target_dynamics,
     item_author_mid,
-    item_author_name,
     parse_single_item,
 )
 from ironsbot.services.bilibili.permissions import (
@@ -40,6 +38,7 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
+from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
 from ironsbot.services.bilibili.state import query_uids_for_event
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
@@ -143,15 +142,13 @@ def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) ->
             item,
             get_bili_config().filters.suppress_push_patterns,
         )
-        save_dynamic_history_item(
+        snapshot = build_dynamic_history_snapshot(
             item,
             pub_ts=pub_ts,
             author_mid=author_mid,
-            author_name=item_author_name(item),
-            brief=dynamic_brief(item),
-            suppressed=bool(suppression_reason),
             suppression_reason=suppression_reason,
         )
+        save_dynamic_history_snapshot(snapshot)
 
 
 async def _handle_dynamic_menu(

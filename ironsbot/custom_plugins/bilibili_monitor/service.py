@@ -10,7 +10,7 @@ from ironsbot.custom_plugins.startup_ready import register_startup_check
 from ironsbot.services.bilibili.cache import (
     get_last_saved_times,
     get_saved_cookie,
-    save_dynamic_history_item,
+    save_dynamic_history_snapshot,
     save_last_saved_times,
 )
 from ironsbot.services.bilibili.checkpoints import (
@@ -27,7 +27,6 @@ from ironsbot.services.bilibili.parser import (
     parse_single_item,
 )
 from ironsbot.services.bilibili.push import (
-    DynamicHistorySnapshot,
     build_dynamic_history_snapshot,
     decide_dynamic_push_after_targets,
     decide_dynamic_push_before_targets,
@@ -111,19 +110,6 @@ async def _send_dynamic_push(
             )
 
 
-def _save_dynamic_history_snapshot(snapshot: DynamicHistorySnapshot) -> None:
-    save_dynamic_history_item(
-        snapshot.item,
-        pub_ts=snapshot.pub_ts,
-        author_mid=snapshot.author_mid,
-        author_name=snapshot.author_name,
-        brief=snapshot.brief,
-        pushed=snapshot.pushed,
-        suppressed=snapshot.suppressed,
-        suppression_reason=snapshot.suppression_reason,
-    )
-
-
 async def _push_new_dynamics(
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
@@ -146,7 +132,7 @@ async def _push_new_dynamics(
             author_mid=author_mid,
             suppression_reason=suppression_reason,
         )
-        _save_dynamic_history_snapshot(snapshot)
+        save_dynamic_history_snapshot(snapshot)
         targets: BiliPushTargets | None = None
         decision = decide_dynamic_push_before_targets(
             pub_ts=pub_ts,
@@ -187,7 +173,7 @@ async def _push_new_dynamics(
             return checkpoint_changed
 
         await _send_dynamic_push(bot, item, pub_ts, targets)
-        _save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
+        save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
         if mark_checkpoint(checkpoints, author_mid, pub_ts):
             checkpoint_changed = True
 
