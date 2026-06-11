@@ -13,7 +13,7 @@ try:
 except ValueError:
     nonebot.init()
 
-state = importlib.import_module("ironsbot.custom_plugins.bilibili_monitor.state")
+state = importlib.import_module("ironsbot.services.bilibili.state")
 
 
 def test_bili_login_notice_cooldown_lives_in_bili_config() -> None:

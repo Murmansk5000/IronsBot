@@ -1,15 +1,8 @@
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.custom_plugins.startup_ready import wait_startup_ready
-
-from . import commands as commands
-from .auth import (
-    is_bili_auth_invalid,
-    is_bili_login_required,
-    request_bili_login_qrcode,
-    send_bili_login_qrcode_to_superusers,
-)
-from .cache import (
+from ironsbot.services.bilibili.auth import is_bili_auth_invalid
+from ironsbot.services.bilibili.cache import (
     get_dynamic_history_item,
     get_last_saved_times,
     get_saved_cookie,
@@ -17,20 +10,31 @@ from .cache import (
     save_last_saved_times,
     save_new_cookie,
 )
-from .config import Config
-from .parser import (
+from ironsbot.services.bilibili.parser import (
     item_author_label,
     item_author_mid,
     item_author_name,
     parse_single_item,
     scan_and_swallow_all_long_strings,
 )
-from .permissions import (
+from ironsbot.services.bilibili.permissions import (
     get_bili_superuser_uids,
     is_bili_superuser,
 )
+from ironsbot.services.bilibili.state import (
+    monitored_uids,
+    target_group_ids,
+    target_user_ids,
+)
+
+from . import commands as commands
+from .auth import (
+    is_bili_login_required,
+    request_bili_login_qrcode,
+    send_bili_login_qrcode_to_superusers,
+)
+from .config import Config
 from .service import run_check_logic
-from .state import monitored_uids, target_group_ids, target_user_ids
 
 __plugin_meta__ = PluginMetadata(
     name="B站动态",
