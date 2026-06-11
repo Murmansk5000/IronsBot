@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: MIT
-from nonebot import get_plugin_config
-from pydantic import BaseModel
+from ironsbot.shared.config.config import Config, HelpConfig, get_shared_config
 
+plugin_config = get_shared_config()
 
-class Config(BaseModel):
-    help_ignored_plugins: list[str] = ["发图"]
-    """需要忽略的插件名称列表"""
-
-
-plugin_config = get_plugin_config(Config)
+__all__ = [
+    "Config",
+    "HelpConfig",
+    "plugin_config",
+]

@@ -33,9 +33,7 @@ STANDARD_PEAK_USER_RANK_KEY = 120
 WILD_PEAK_USER_RANK_KEY = 182
 EXPERT_PEAK_USER_RANK_KEY = 199
 
-ACHIEVE_SCORE_SEARCH_LIMIT = 30_000_000
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
-PEAK_USER_SCORE_SEARCH_LIMIT = 100_000
 CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
 _RANK_WINDOW_REFRESH_KEYS: set[tuple[int, int, int, int]] = set()
 _RANK_WINDOW_REFRESH_TASKS: set[asyncio.Task[None]] = set()
@@ -165,25 +163,27 @@ class PeakSeasonRankSummary:
         )
 
 
-async def _fetch_rank_page(
+async def _fetch_rank_page(  # noqa: PLR0913
     game: Any,
     *,
     key: int,
     sub_key: int,
     start: int,
     end: int,
+    use_cache: bool = True,
 ) -> list[Any]:
-    cached_items = get_cached_rank_page(
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        end=end,
-    )
-    if cached_items is not None:
-        from ._local_rank import upsert_rank_page_metrics
+    if use_cache:
+        cached_items = get_cached_rank_page(
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=end,
+        )
+        if cached_items is not None:
+            from ._local_rank import upsert_rank_page_metrics
 
-        upsert_rank_page_metrics(key=key, sub_key=sub_key, items=cached_items)
-        return cached_items
+            upsert_rank_page_metrics(key=key, sub_key=sub_key, items=cached_items)
+            return cached_items
 
     _head, rank_list = await game.send_and_wait(
         COMMAND_ID.GET_DAILY_RANK_INFO,
@@ -226,6 +226,7 @@ async def _refresh_cached_rank_window(
             sub_key=sub_key,
             start=start,
             end=start + page_size - 1,
+            use_cache=False,
         )
         interval = plugin_config.seer_query_config.local_rank.refresh_interval_seconds
         await asyncio.sleep(min(interval, 0.5))
@@ -240,6 +241,9 @@ def _schedule_cached_rank_window_refresh(  # noqa: PLR0913
     page_size: int,
     fetched_at: float,
 ) -> None:
+    if not plugin_config.seer_query_config.rank.refresh_stale_cache:
+        return
+
     ttl = plugin_config.seer_query_config.rank.page_cache_ttl_seconds
     if ttl <= 0 or time.time() - fetched_at < ttl:
         return
@@ -288,37 +292,19 @@ async def _find_rank_by_cached_position(  # noqa: PLR0913
     if cached_item is None:
         return None
 
-    if cached_item.is_stale:
-        try:
-            await _refresh_cached_rank_window(
-                game,
-                key=key,
-                sub_key=sub_key,
-                center_index=cached_item.rank_index,
-                page_size=page_size,
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"rank cache refresh before lookup failed: {e}")
-        else:
-            refreshed_item = get_cached_rank_item(
-                key=key,
-                sub_key=sub_key,
-                user_id=user_id,
-            )
-            if refreshed_item is not None:
-                cached_item = refreshed_item
-
+    result.queried = True
     result.rank = cached_item.rank_index + 1
     result.score = cached_item.score
 
-    _schedule_cached_rank_window_refresh(
-        game,
-        key=key,
-        sub_key=sub_key,
-        center_index=cached_item.rank_index,
-        page_size=page_size,
-        fetched_at=cached_item.fetched_at,
-    )
+    if cached_item.is_stale:
+        _schedule_cached_rank_window_refresh(
+            game,
+            key=key,
+            sub_key=sub_key,
+            center_index=cached_item.rank_index,
+            page_size=page_size,
+            fetched_at=cached_item.fetched_at,
+        )
 
     return result
 
@@ -497,6 +483,13 @@ async def _find_rank_by_score(  # noqa: C901, PLR0913
     return result
 
 
+def _online_search_limit(search_limit: int | None = None) -> int:
+    rank_config = plugin_config.seer_query_config.rank
+    configured_limit = max(0, rank_config.limit)
+    requested_limit = configured_limit if search_limit is None else max(0, search_limit)
+    return min(requested_limit, max(0, rank_config.online_limit))
+
+
 async def _find_rank(  # noqa: PLR0913
     game: Any,
     *,
@@ -507,13 +500,9 @@ async def _find_rank(  # noqa: PLR0913
     sub_key: int,
     target_score: int | None = None,
     search_limit: int | None = None,
-    minimum_score_search_limit: int = 0,
 ) -> RankLookupResult:
-    configured_limit = max(0, plugin_config.seer_query_config.rank.limit)
-    limit = configured_limit if search_limit is None else max(0, search_limit)
+    limit = _online_search_limit(search_limit)
     page_size = max(1, min(plugin_config.seer_query_config.rank.page_size, 100))
-    if target_score is not None and target_score > 0:
-        limit = max(limit, minimum_score_search_limit)
 
     result = RankLookupResult(
         title=title,
@@ -521,9 +510,6 @@ async def _find_rank(  # noqa: PLR0913
         searched_limit=limit,
         queried=limit > 0,
     )
-
-    if limit <= 0:
-        return result
 
     cached_result = await _find_rank_by_cached_position(
         game,
@@ -535,6 +521,9 @@ async def _find_rank(  # noqa: PLR0913
     )
     if cached_result is not None:
         return cached_result
+
+    if limit <= 0:
+        return result
 
     if target_score is not None and target_score > 0:
         return await _find_rank_by_score(
@@ -566,7 +555,7 @@ async def _find_pet_kind_rank(
     pet_kind_count: int,
     search_limit: int,
 ) -> RankLookupResult:
-    real_search_limit = max(0, search_limit)
+    real_search_limit = _online_search_limit(search_limit)
     raw_search_limit = real_search_limit + PET_KIND_RANK_ANOMALY_COUNT
     result = RankLookupResult(
         title="精灵图鉴",
@@ -580,9 +569,6 @@ async def _find_pet_kind_rank(
         result.rank = 0
         if result.score is None:
             result.score = 0
-        return result
-
-    if real_search_limit <= 0:
         return result
 
     cached_result = await _find_rank_by_cached_position(
@@ -600,6 +586,9 @@ async def _find_pet_kind_rank(
                 0, cached_result.rank - PET_KIND_RANK_ANOMALY_COUNT
             )
         return cached_result
+
+    if real_search_limit <= 0:
+        return result
 
     raw_result = await _find_rank_by_linear_scan(
         game,
@@ -712,7 +701,6 @@ async def fetch_peak_season_rank_summary(
             key=STANDARD_PEAK_USER_RANK_KEY,
             sub_key=sub_key,
             target_score=standard_score,
-            minimum_score_search_limit=PEAK_USER_SCORE_SEARCH_LIMIT,
         )
     if wild_score is not None and wild_score > 0:
         summary.wild = await _find_rank(
@@ -723,7 +711,6 @@ async def fetch_peak_season_rank_summary(
             key=WILD_PEAK_USER_RANK_KEY,
             sub_key=sub_key,
             target_score=wild_score,
-            minimum_score_search_limit=PEAK_USER_SCORE_SEARCH_LIMIT,
         )
     if expert_score is not None and expert_score > 0:
         summary.expert = await _find_rank(
@@ -734,7 +721,6 @@ async def fetch_peak_season_rank_summary(
             key=EXPERT_PEAK_USER_RANK_KEY,
             sub_key=sub_key,
             target_score=expert_score,
-            minimum_score_search_limit=PEAK_USER_SCORE_SEARCH_LIMIT,
         )
     return summary
 
@@ -765,7 +751,6 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         key=ACHIEVE_RANK_KEY,
         sub_key=ACHIEVE_RANK_SUB_KEY,
         target_score=achieve_score,
-        minimum_score_search_limit=ACHIEVE_SCORE_SEARCH_LIMIT,
     )
     breakdown = await _fetch_book_breakdown_summary(
         game,

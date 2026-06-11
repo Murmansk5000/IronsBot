@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
 from nonebot.plugin import PluginMetadata
 
-from .config import Config, filter_enabled_configs
+from ironsbot.shared.config.sendpic import enabled_pic_configs
+
+from .config import Config, plugin_config
 from .matchers import matcher_group as matcher_group
 
 command_help = [
     config.help_message or f"  {'/'.join(config.command, *config.aliases)}"
-    for config in filter_enabled_configs()
+    for config in enabled_pic_configs(plugin_config.sendpic_config)
 ]
 usage = """图片相关命令
 

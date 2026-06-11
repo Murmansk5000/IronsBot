@@ -11,11 +11,12 @@ from nonebot.matcher import Matcher
 from nonebot.params import CommandArg, Depends
 from nonebot_plugin_saa import Image
 
+from ironsbot.shared.config.sendpic import enabled_pic_configs, pic_id_is_enabled
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
 from .backends import CnbBackend, LocalBackend
-from .config import PicConfig, filter_enabled_configs, pic_id_is_enabled, plugin_config
+from .config import PicConfig, plugin_config
 
 matcher_group = MatcherGroup()
 
@@ -46,7 +47,7 @@ def create_image_command(
     backend_factory: Callable[..., AsyncGenerator[ImageBackend, None]],
 ) -> type[Matcher] | None:
     """根据配置创建一个「随机/指定索引 + 图床后端」的命令。"""
-    if not pic_id_is_enabled(config.id):
+    if not pic_id_is_enabled(plugin_config.sendpic_config, config.id):
         logger.warning(
             f"图片类型【{config.id}】未启用，命令【{config.command}】将不会生效"
         )
@@ -93,7 +94,7 @@ def create_image_command(
     return matcher
 
 
-for _cmd in filter_enabled_configs():
+for _cmd in enabled_pic_configs(plugin_config.sendpic_config):
     if _cmd.backend == "cnb":
         backend_factory = get_cnb_backend(
             cast("str", plugin_config.sendpic_cnb_token),

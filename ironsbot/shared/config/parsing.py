@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+from __future__ import annotations
+
 import json
 from collections.abc import Iterable, Mapping
 from typing import Any, TypeVar

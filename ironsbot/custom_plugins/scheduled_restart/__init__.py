@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from nonebot import logger, require
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.custom_plugins.common.time_config import daily_time_parts
+from ironsbot.shared.config.time import daily_time_parts
 
 from .config import INVALID_RESTART_TIME_ERROR, Config, plugin_config
 
@@ -18,8 +18,8 @@ __plugin_meta__ = PluginMetadata(
     name="定时重启",
     description="按环境变量配置每日固定时间重启机器人容器。",
     usage=(
-        "设置 BOT_RESTART_CONFIG.enabled=true 后启用。\n"
-        'BOT_RESTART_CONFIG={"enabled":true,"times":"04:30,16:10"} '
+        "设置 MODULES.restart.enabled=true 后启用。\n"
+        'MODULES={"restart":{"enabled":true,"times":"04:30,16:10"}} '
         "时每天在这些时间点重启。"
     ),
     config=Config,

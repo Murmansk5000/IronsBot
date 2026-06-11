@@ -114,14 +114,8 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 | `FEATURE_GROUP_POLICY` | JSON object mapping group aliases or numeric group IDs to enabled features. |
 | `FEATURE_USER_POLICY` | JSON object mapping user aliases or numeric QQ IDs to enabled private/push features. |
 | `FEATURE_SUPERUSER_BYPASS` | Set `true` to let superusers use group features in groups not listed in policy. Default `true`. |
-| `BILI_CONFIG` | Bilibili monitor JSON config: monitored UIDs, SQLite history storage, polling windows, explicit push targets, per-UID full/link mode, and suppressed push patterns. |
-| `MSG_CONFIG` | Generic text reply and scheduled text JSON config: reply line limits, private/group commands, and private/group schedules. |
-| `ACTIVITY_CONFIG` | Activity reminder JSON config: enable switch, lead hours, grace minutes, visible-only filter, cache path, and message template. |
-| `STARTUP_CONFIG` | Startup notice JSON config: enable switch, message, and extra delay after services are ready. |
-| `BOT_RESTART_CONFIG` | Scheduled restart JSON config: enable switch, daily times, grace seconds, and parent-process signaling. |
-| `HEADLESS_NOTICE_CONFIG` | Headless Seer login/state notice JSON config: login failure notice, online/offline state notices, and daily reconnect-check times. |
-| `SERVER_STATUS_CONFIG` | Server-status broadcast JSON config: broadcast switch, message, and cooldown. |
-| `AI_CONFIG` | AI chat and AI intent-action JSON config. `AI_KEY` remains separate and masked. |
+| `MODULES` | Optional advanced JSON override for module defaults from `ironsbot/shared/config/config.py`, such as Bilibili subscriptions or AI tuning. |
+| `AI_KEY` | AI chat API key. Kept separate from `MODULES` so it can be masked. |
 
 Common feature names include `all`, `custom`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use custom feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
 
@@ -132,14 +126,7 @@ USER_ALIASES={"owner":123456789}
 FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_link","bili_query","bili_push","ai_chat"]}
 FEATURE_USER_POLICY={"owner":["all"]}
 FEATURE_SUPERUSER_BYPASS=true
-BILI_CONFIG={"uids":[1310714247],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","groups":{"main":{"uids":[1310714247],"mode":"full"}},"users":{}},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
-MSG_CONFIG={"reply":{"default_lines":-1,"min_lines":5,"max_lines":80,"limit_path":"data/message_actions/reply_limits.sqlite"},"group_commands":[{"id":"notice","feature":"activity_link","commands":["link"],"message":"activity link"}],"group_schedules":[{"id":"night","feature":"activity_link_push","hour":23,"minute":0,"message":"good night"}]}
-ACTIVITY_CONFIG={"enabled":true,"lead_hours":[11,1],"grace_minutes":15,"only_shown":true,"cache_path":"data/activity_reminder/sent.sqlite","message":"⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"}
-STARTUP_CONFIG={"enabled":true,"message":"机器人已开启。","delay":0}
-BOT_RESTART_CONFIG={"enabled":false,"times":"04:30","grace_seconds":10,"signal_parent":true}
-HEADLESS_NOTICE_CONFIG={"login_notice":true,"state_notice":true,"reconnect_check_times":"00:01,00:02"}
-SERVER_STATUS_CONFIG={"broadcast":false,"broadcast_message":"赛尔号已经开服了。","broadcast_cooldown_minutes":1440}
-AI_CONFIG={"base_url":"https://api.deepseek.com","model":"deepseek-v4-pro","intent_actions_enabled":true,"action_templates":{},"intent_actions":[{"template":"join_team"},{"id":"event_help","template":"keyword_info","keywords":["event","activity"],"intent":"The user is asking about Seer events or activity links."}]}
+MODULES={"bilibili":{"push":{"groups":{"main":{"uids":[1310714247],"mode":"full"}}}}}
 ```
 
 ## Team Group Shortcut
@@ -162,7 +149,7 @@ FEATURE_GROUP_POLICY={"team_group":["team"]}
 GROUP_ALIASES={"team_group":123456789}
 TEAM_IDS=[1234567,7654321]
 TEAM_RESOURCE_USERS=[123456789]
-TEAM_CONFIG={"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}
+MODULES={"team":{"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}}
 ```
 
 Keep real QQ group IDs and team IDs in Docker Compose, Unraid variables, or an ignored `.env.prod` file. Do not commit them to GitHub.

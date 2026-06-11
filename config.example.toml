@@ -1,0 +1,546 @@
+# SPDX-License-Identifier: MIT
+# IronsBot behavior config example.
+# Copy to config.dev.toml or /config/ironsbot.toml and edit behavior values here.
+# Keep secrets and credentials in environment variables, not in this file.
+
+[feature]
+# Default: {}
+# EN: Named QQ group IDs used by policies.
+# ZH: 群别名，把易读名称映射到 QQ 群号。
+# Example: { main = 123456789 }
+group_aliases = {}
+
+# Default: {}
+# EN: Named QQ user IDs used by policies.
+# ZH: 用户别名，把易读名称映射到 QQ 号。
+# Example: { owner = 123456789 }
+user_aliases = {}
+
+# Default: {}
+# EN: Group feature allowlist. Feature aliases include all, custom, bili, activity,
+# server_status, text, text_push, and message.
+# ZH: 群功能策略，控制每个群可用哪些功能。
+# Example: { main = ["seer", "image", "meeting"] }
+group_policy = {}
+
+# Default: {}
+# EN: Private/user feature allowlist.
+# ZH: 私聊/用户功能策略，也用于私聊推送目标。
+# Example: { owner = ["all"] }
+user_policy = {}
+
+# Default: true
+# EN: Let NoneBot superusers bypass feature restrictions.
+# ZH: 是否允许超级管理员绕过功能策略限制。
+# Example: false
+superuser_bypass = true
+
+[ai]
+# Default: "https://api.deepseek.com"
+# EN: OpenAI-compatible AI API base URL.
+# ZH: OpenAI 兼容 AI 接口地址。
+# Example: "https://api.openai.com/v1"
+base_url = "https://api.deepseek.com"
+
+# Default: "deepseek-v4-pro"
+# EN: AI chat model name.
+# ZH: AI 聊天模型名称。
+# Example: "deepseek-chat"
+model = "deepseek-v4-pro"
+
+# Default: built-in IronsBot prompt.
+# EN: System prompt used for AI chat.
+# ZH: AI 聊天系统提示词。
+# Example: "You are IronsBot."
+prompt = "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
+
+# Default: ["清空聊天", "重置聊天", "清空上下文"]
+# EN: Commands that reset chat history and memory.
+# ZH: 清空 AI 聊天上下文与记忆的口令。
+# Example: ["reset"]
+reset_commands = ["清空聊天", "重置聊天", "清空上下文"]
+
+# Default: 6
+# EN: Recent chat turns kept in context.
+# ZH: 保留在短期上下文中的聊天轮数。
+# Example: 8
+history_turns = 6
+
+# Default: true
+# EN: Enable persistent AI memory.
+# ZH: 是否启用 AI 长期记忆。
+# Example: false
+memory = true
+
+# Default: "data/ai_chat/memory.sqlite"
+# EN: SQLite path for AI memory.
+# ZH: AI 记忆 SQLite 路径。
+# Example: "data/ai/memory.sqlite"
+memory_path = "data/ai_chat/memory.sqlite"
+
+# Default: 8
+# EN: Memory turns loaded into context.
+# ZH: 加载进上下文的长期记忆轮数。
+# Example: 10
+memory_turns = 8
+
+# Default: 1200
+# EN: Max characters loaded from memory.
+# ZH: 长期记忆最大字符数。
+# Example: 1500
+memory_max_chars = 1200
+
+# Default: 45.0
+# EN: AI API timeout in seconds.
+# ZH: AI 接口超时时间，单位秒。
+# Example: 60.0
+timeout = 45.0
+
+# Default: 800
+# EN: Maximum output tokens.
+# ZH: 最大输出 token 数。
+# Example: 1000
+max_tokens = 800
+
+# Default: 0.7
+# EN: Sampling temperature.
+# ZH: 采样温度。
+# Example: 0.5
+temperature = 0.7
+
+# Default: false
+# EN: Enable provider-specific thinking mode.
+# ZH: 是否启用供应商特定的思考模式。
+# Example: true
+thinking = false
+
+# Default: false
+# EN: Send a processing notice before AI replies.
+# ZH: AI 回复前是否发送“处理中”提示。
+# Example: true
+waiting_notice = false
+
+# Default: 1500
+# EN: Maximum AI reply characters.
+# ZH: AI 回复最大字符数。
+# Example: 1200
+max_reply_chars = 1500
+
+# Default: 60.0
+# EN: Mention-guard rate limit window in seconds.
+# ZH: 未开启 AI 群 @ 提示的限流窗口秒数。
+# Example: 60.0
+mention_guard_reply_window_seconds = 60.0
+
+# Default: 10
+# EN: Max mention-guard replies per window.
+# ZH: 每个窗口最多发送多少次 @ 提示。
+# Example: 5
+mention_guard_reply_max_per_window = 10
+
+# Default: built-in Chinese guard message.
+# EN: Message sent when a non-AI group mentions the bot.
+# ZH: 未开启 AI 群 @ 机器人时的提示文案。
+# Example: "直接发送帮助查看可用功能。"
+mention_guard_message = "这个群没有开启 AI 聊天，@或回复我不会触发功能。直接发送指令就可以查询；不会用可以发送“帮助”。"
+
+# Default: 600.0
+# EN: Admin notice cooldown for AI failures.
+# ZH: AI 异常通知管理员的冷却秒数。
+# Example: 300.0
+admin_notice_cooldown_seconds = 600.0
+
+# Default: true
+# EN: Enable AI intent actions.
+# ZH: 是否启用 AI 意图动作。
+# Example: false
+intent_actions_enabled = true
+
+# Default: [{ template = "join_team" }]
+# EN: Enabled intent actions. Fields: id, enabled, template, feature, keywords,
+# intent, classifier_prompt, action, message, reply_prompt, team_ids,
+# include_team_resource_notice, exclude_commands.
+# ZH: 启用的意图动作。字段同上，可通过 template 复用内置模板。
+# Example: [{ template = "join_team" }]
+intent_actions = [{ template = "join_team" }]
+
+# Default: built-in join_team and keyword_info templates.
+# EN: Optional reusable intent action templates keyed by template ID.
+# ZH: 可选意图动作模板，按模板 ID 配置。
+# Example: { keyword_info = { id = "keyword_info", action = "ai_reply" } }
+action_templates = {}
+
+[bilibili]
+# Default: [1310714247]
+# EN: Default monitored Bilibili UIDs.
+# ZH: 默认监控的 B 站 UID。
+# Example: [1310714247, 375750254]
+uids = [1310714247]
+
+# Default: 300.0
+# EN: Cooldown for Bilibili login QR notices.
+# ZH: B 站登录二维码提醒冷却秒数。
+# Example: 600.0
+login_notice_cooldown_seconds = 300.0
+
+[bilibili.storage]
+# Default: "data/bilibili_monitor"
+# EN: Directory for Bilibili history and cookie state.
+# ZH: B 站历史与 Cookie 状态目录。
+# Example: "data/bili"
+data_dir = "data/bilibili_monitor"
+
+# Default: 1000
+# EN: Max dynamic history items retained.
+# ZH: 动态历史最多保留条数。
+# Example: 2000
+history_max_items = 1000
+
+[bilibili.polling]
+# Default: 30
+# EN: Default polling interval in minutes.
+# ZH: 默认轮询间隔分钟数。
+# Example: 20
+default_minutes = 30
+
+# Default: [{ start = "07:00", end = "23:00", minutes = 5 }]
+# EN: Time windows with custom polling interval.
+# ZH: 分时轮询窗口。
+# Example: [{ start = "07:00", end = "23:00", minutes = 5 }]
+windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
+
+[bilibili.push]
+# Default: "full"
+# EN: Default push mode, either full or link.
+# ZH: 默认推送模式，可选 full 或 link。
+# Example: "link"
+default_mode = "full"
+
+# Default: {}
+# EN: Group push targets keyed by feature group alias or group ID.
+# ZH: 群推送目标，键可以是群别名或群号。
+# Example: { main = { uids = [1310714247], mode = "full" } }
+groups = {}
+
+# Default: {}
+# EN: Private push targets keyed by user alias or user ID.
+# ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
+# Example: { owner = { uids = [1310714247], mode = "link" } }
+users = {}
+
+[bilibili.filters]
+# Default: built-in lottery/result suppression patterns.
+# EN: Regex patterns that suppress automatic pushes.
+# ZH: 抑制自动推送的正则表达式。
+# Example: ["中奖", "抽奖结果"]
+suppress_push_patterns = ["恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
+
+[activity]
+# Default: true
+# EN: Enable activity reminders.
+# ZH: 是否启用活动结束提醒。
+# Example: false
+enabled = true
+
+# Default: [11, 1]
+# EN: Lead hours for ending reminders.
+# ZH: 活动结束前提前多少小时提醒。
+# Example: [24, 1]
+lead_hours = [11, 1]
+
+# Default: 15
+# EN: Grace minutes for missed reminder scheduling.
+# ZH: 错过计划提醒时间后的补发宽限分钟。
+# Example: 10
+grace_minutes = 15
+
+# Default: true
+# EN: Only include activities marked as visible.
+# ZH: 是否只读取活动中心展示的活动。
+# Example: true
+only_shown = true
+
+# Default: "data/activity_reminder/sent.sqlite"
+# EN: SQLite path recording sent reminders.
+# ZH: 已发送活动提醒记录数据库。
+# Example: "data/activity/sent.sqlite"
+cache_path = "data/activity_reminder/sent.sqlite"
+
+# Default: built-in reminder template.
+# EN: Reminder message template.
+# ZH: 活动提醒消息模板。
+# Example: "还有约 {lead_hours} 小时结束\n{activity_list}"
+message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
+
+# Default: 8.0
+# EN: Timeout for fetching official activity notices.
+# ZH: 获取官方活动公告的超时秒数。
+# Example: 10.0
+notice_timeout_seconds = 8.0
+
+[message]
+# Default: []
+# EN: Private fixed command replies.
+# ZH: 私聊固定文本回复动作。
+# Example action fields: id, enabled, feature, message, commands.
+private_commands = []
+
+# Default: []
+# EN: Private scheduled messages.
+# ZH: 私聊定时文本动作。
+# Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
+private_schedules = []
+
+# Default: []
+# EN: Group fixed command replies.
+# ZH: 群聊固定文本回复动作。
+# Example action fields: id, enabled, feature, message, commands, at_user_ids.
+group_commands = []
+
+# Default: []
+# EN: Group scheduled messages.
+# ZH: 群聊定时文本动作。
+# Example action fields: id, enabled, feature, message, hour, minute, day_of_week,
+# at_user_ids.
+group_schedules = []
+
+[message.reply]
+# Default: -1
+# EN: Default reply line limit. -1 means unlimited.
+# ZH: 默认回复行数限制，-1 表示不限。
+# Example: 30
+default_lines = -1
+
+# Default: 5
+# EN: Minimum user-settable reply line limit.
+# ZH: 用户可设置的最小回复行数。
+# Example: 5
+min_lines = 5
+
+# Default: 80
+# EN: Maximum user-settable reply line limit.
+# ZH: 用户可设置的最大回复行数。
+# Example: 100
+max_lines = 80
+
+# Default: "data/message_actions/reply_limits.sqlite"
+# EN: SQLite path for per-group reply line limits.
+# ZH: 每群回复行数限制数据库。
+# Example: "data/message/reply_limits.sqlite"
+limit_path = "data/message_actions/reply_limits.sqlite"
+
+[message.meeting]
+# Default: ""
+# EN: Tencent meeting number.
+# ZH: 腾讯会议号。
+# Example: "1234567890"
+number = ""
+
+# Default: built-in Tencent meeting template.
+# EN: Reply template. Variables: meeting_number, meeting_url.
+# ZH: 会议回复模板，可用变量 meeting_number、meeting_url。
+# Example: "会议号：{meeting_number}\n{meeting_url}"
+template = "腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}"
+
+# Default: ["开播", "会议"]
+# EN: Meeting trigger commands.
+# ZH: 会议回复触发口令。
+# Example: ["会议"]
+commands = ["开播", "会议"]
+
+[message.sendpic]
+# Default: null/omitted
+# EN: CNB repository for configured image backend. Token stays in env.
+# ZH: CNB 图床仓库；token 留在环境变量中。
+# Example: "org/repo"
+cnb_repo = ""
+
+# Default: "sendpic"
+# EN: Local image backend root.
+# ZH: 本地图床根目录。
+# Example: "data/sendpic"
+local_root = "sendpic"
+
+# Default: []
+# EN: Dynamic sendpic configs. Fields: id, backend, command, aliases, image_dir,
+# image_filename_template, help_message, message_template.
+# ZH: 可配置发图命令。字段同上。
+configs = []
+
+# Default: []
+# EN: Enabled dynamic sendpic config IDs.
+# ZH: 启用的可配置发图 ID。
+# Example: ["meme"]
+enabled_ids = []
+
+[seer.player]
+# Default: 60
+# EN: Successful player-query cooldown seconds.
+# ZH: 玩家查询成功后的冷却秒数。
+rate_limit_seconds = 60
+# Default: 10; EN: Failed player-query cooldown seconds. ZH: 玩家查询失败冷却秒数。
+failure_rate_limit_seconds = 10
+# Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
+timeout_seconds = 30.0
+# Default: 90.0; EN: Player detail timeout seconds. ZH: 玩家详情查询超时秒数。
+detail_timeout_seconds = 90.0
+# Default: all player sections; EN: Enabled player sections. ZH: 玩家展示区块。
+sections = ["all"]
+
+[seer.team]
+# Default: 60; EN: Successful team-query cooldown seconds. ZH: 战队查询成功冷却秒数。
+rate_limit_seconds = 60
+# Default: 10; EN: Failed team-query cooldown seconds. ZH: 战队查询失败冷却秒数。
+failure_rate_limit_seconds = 10
+# Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
+timeout_seconds = 20.0
+# Default: all team sections; EN: Enabled team sections. ZH: 战队展示区块。
+sections = ["all"]
+
+[seer.rank]
+# Default: 10000; EN: Max rank records. ZH: 榜单最大记录数。
+limit = 10000
+# Default: 2000; EN: Online rank limit. ZH: 在线榜查询限制。
+online_limit = 2000
+# Default: 100; EN: Rank page size. ZH: 榜单分页大小。
+page_size = 100
+# Default: true; EN: Enable rank page cache. ZH: 启用榜单分页缓存。
+page_cache = true
+# Default: 3600; EN: Rank page cache TTL seconds. ZH: 榜单分页缓存 TTL。
+page_cache_ttl_seconds = 3600
+# Default: true; EN: Allow stale rank cache. ZH: 允许使用过期缓存。
+allow_stale_cache = true
+# Default: true; EN: Refresh stale rank cache. ZH: 刷新过期缓存。
+refresh_stale_cache = true
+# Default: "data/custom_get_seer_info/rank_page_cache.sqlite"
+# EN: Rank page cache SQLite path.
+# ZH: 榜单分页缓存数据库。
+page_cache_path = "data/custom_get_seer_info/rank_page_cache.sqlite"
+# Default: omitted/null; EN: Override peak subkey. ZH: 覆盖巅峰 subkey。
+# peak_subkey = 123
+
+[seer.local_rank]
+# Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
+enabled = true
+# Default: 5000; EN: Max local players. ZH: 本地样本最大玩家数。
+max_players = 5000
+# Default: 100; EN: Batch query limit. ZH: 批量查询大小。
+batch_limit = 100
+# Default: true; EN: Enable scheduled refresh. ZH: 启用定时刷新。
+auto_refresh = true
+# Default: 3; EN: Refresh hour. ZH: 刷新小时。
+refresh_hour = 3
+# Default: 30; EN: Refresh minute. ZH: 刷新分钟。
+refresh_minute = 30
+# Default: 300; EN: Refresh count limit. ZH: 单次刷新数量上限。
+refresh_limit = 300
+# Default: 24; EN: Refresh entries older than this many hours. ZH: 刷新超过多少小时的样本。
+refresh_max_age_hours = 24
+# Default: 0.5; EN: Delay between refresh queries. ZH: 刷新请求间隔秒数。
+refresh_interval_seconds = 0.5
+# Default: "data/custom_get_seer_info/player_query_cache.sqlite"
+# EN: Local rank SQLite path.
+# ZH: 本地样本榜数据库。
+path = "data/custom_get_seer_info/player_query_cache.sqlite"
+
+[seer.team_shortcut]
+# Default: ["战队"]; EN: Team shortcut commands. ZH: 战队快捷查询口令。
+commands = ["战队"]
+# Default: 1000; EN: Low resource threshold. ZH: 战队低资源提醒阈值。
+resource_threshold = 1000
+# Default: 20; EN: Team shortcut query timeout seconds. ZH: 战队快捷查询超时秒数。
+query_timeout_seconds = 20
+# Default: built-in message; EN: Resource notice message. ZH: 战队资源提醒文案。
+resource_message = "出来买资源，别逼我求你😡"
+
+[seer.render]
+# Default: "render_cache"; EN: Render cache directory. ZH: 渲染缓存目录。
+cache_dir = "render_cache"
+# Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
+cache_max_size_mb = 200
+# Default: true; EN: Clear render cache on startup. ZH: 启动时清理渲染缓存。
+clear_on_startup = true
+
+[runtime.data_sync]
+# Default: false; EN: Sync remote SQLite DBs on startup. ZH: 启动时同步远程 SQLite。
+on_startup = false
+# Default: true; EN: Enable scheduled DB sync. ZH: 启用定时数据库同步。
+interval_enabled = true
+
+[runtime.data_sync.sources.seerapi]
+# Default: IronsBot data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
+url = "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
+# Default: IronsBot data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
+fingerprint_url = "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
+# Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
+interval_minutes = 60
+# Default: "data/ironsbot-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
+local_path = "data/ironsbot-data.sqlite"
+
+[runtime.data_sync.sources.aliases]
+url = "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite"
+fingerprint_url = "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+interval_minutes = 60
+local_path = "data/aliases-data.sqlite"
+
+[runtime.headless]
+# Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
+login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
+# Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。
+heartbeat_interval = 300.0
+# Default: -1; EN: Reconnect attempts, -1 means forever. ZH: 重连次数，-1 表示无限。
+reconnect_retries = -1
+# Default: 5.0; EN: Initial reconnect delay seconds. ZH: 初始重连延迟秒数。
+reconnect_delay = 5.0
+# Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
+reconnect_delay_max = 120.0
+
+[runtime.headless_notice]
+# Default: true; EN: Send startup login failure notice. ZH: 启动时发送无头登录失败通知。
+login_notice = true
+# Default: built-in; EN: Startup login failure notice template. ZH: 启动登录失败通知模板。
+login_notice_message = "无头米米号登录未成功。\n米米号：{user_id}\n状态：{reason}\n依赖米米号登录的功能可能不可用；请检查账号、MD5密码、网络或赛尔号服务器状态。"
+# Default: true; EN: Send online/offline state notices. ZH: 发送在线/离线状态通知。
+state_notice = true
+# Default: built-in; EN: Offline state notice template. ZH: 掉线通知模板。
+state_offline_message = "无头米米号已掉线。\n米米号：{user_id}\n状态：{reason}\n来源：{source}"
+# Default: built-in; EN: Online state notice template. ZH: 恢复在线通知模板。
+state_online_message = "无头米米号已恢复登录。\n米米号：{user_id}\n来源：{source}"
+# Default: "00:01,00:02"; EN: Daily reconnect check times. ZH: 每日重连检查时间。
+reconnect_check_times = "00:01,00:02"
+
+[runtime.startup_notice]
+# Default: true; EN: Enable startup notice. ZH: 启用启动通知。
+enabled = true
+# Default: "机器人已开启。"; EN: Startup notice message. ZH: 启动通知文本。
+message = "机器人已开启。"
+# Default: 0.0; EN: Delay before sending startup notice. ZH: 启动通知延迟秒数。
+delay = 0.0
+
+[runtime.server_status]
+# Default: false; EN: Broadcast when server is detected open. ZH: 检测开服时是否广播。
+broadcast = false
+# Default: "赛尔号已经开服了。"; EN: Open broadcast message. ZH: 开服广播文本。
+broadcast_message = "赛尔号已经开服了。"
+# Default: 1440; EN: Broadcast cooldown minutes. ZH: 开服广播冷却分钟。
+broadcast_cooldown_minutes = 1440
+
+[runtime.restart]
+# Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
+enabled = false
+# Default: "04:30"; EN: Daily restart times. ZH: 每日重启时间。
+times = "04:30"
+# Default: 10.0; EN: Grace seconds before signaling. ZH: 发信号前宽限秒数。
+grace_seconds = 10.0
+# Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。
+signal_parent = true
+
+[runtime.help]
+# Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
+ignored_plugins = []
+
+[runtime.priority]
+# Default: true; EN: Enable superuser priority gate. ZH: 启用超级管理员优先级。
+enabled = true
+# Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
+wait_timeout_seconds = 300.0

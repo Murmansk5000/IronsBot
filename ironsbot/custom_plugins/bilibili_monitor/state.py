@@ -7,8 +7,9 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.custom_plugins.feature_policy import (
+from ironsbot.shared.features import (
     group_has_feature,
+    is_group_feature_allowed,
     is_private_feature_allowed,
     is_superuser,
     resolve_group_refs,
@@ -53,21 +54,21 @@ class BiliPushTargets:
         )
 
 
-BILI_CONFIG = plugin_config.bili_config
+bili_config = plugin_config.bili_config
 
 
 def _target_uids(target_config: BiliPushTargetConfig) -> frozenset[int]:
     uids = set(target_config.uids)
     uids.update(target_config.uid_modes)
     if not uids:
-        uids.update(BILI_CONFIG.uids)
+        uids.update(bili_config.uids)
     return frozenset(uid for uid in uids if uid > 0)
 
 
 def _resolve_rule(target_config: BiliPushTargetConfig) -> BiliTargetRule:
     return BiliTargetRule(
         uids=_target_uids(target_config),
-        mode=target_config.mode or BILI_CONFIG.push.default_mode,
+        mode=target_config.mode or bili_config.push.default_mode,
         uid_modes=dict(target_config.uid_modes),
     )
 
@@ -82,7 +83,7 @@ def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTarg
 
 def _resolve_group_rules() -> dict[int, BiliTargetRule]:
     rules: dict[int, BiliTargetRule] = {}
-    for ref, target_config in BILI_CONFIG.push.groups.items():
+    for ref, target_config in bili_config.push.groups.items():
         rule = _resolve_rule(target_config)
         for group_id in resolve_group_refs([ref]):
             rules[group_id] = (
@@ -95,7 +96,7 @@ def _resolve_group_rules() -> dict[int, BiliTargetRule]:
 
 def _resolve_user_rules() -> dict[int, BiliTargetRule]:
     rules: dict[int, BiliTargetRule] = {}
-    for ref, target_config in BILI_CONFIG.push.users.items():
+    for ref, target_config in bili_config.push.users.items():
         rule = _resolve_rule(target_config)
         for user_id in resolve_user_refs([ref]):
             rules[user_id] = (
@@ -125,7 +126,7 @@ TARGET_USER_IDS = _unique_ints(list(PUSH_USER_RULES))
 
 
 def _configured_monitor_uids() -> list[int]:
-    uids = set(BILI_CONFIG.uids)
+    uids = set(bili_config.uids)
     for rule in [*CONFIGURED_GROUP_RULES.values(), *CONFIGURED_USER_RULES.values()]:
         uids.update(rule.uids)
     return _unique_ints(sorted(uids))
@@ -133,14 +134,13 @@ def _configured_monitor_uids() -> list[int]:
 
 MONITORED_UIDS = _configured_monitor_uids()
 
-BILI_STORAGE_DIR = BILI_CONFIG.storage.data_dir
+BILI_STORAGE_DIR = bili_config.storage.data_dir
 BILI_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 DYNAMIC_HISTORY_DB_FILE = BILI_STORAGE_DIR / "dynamic_history.sqlite"
 COOKIE_CACHE_FILE = BILI_STORAGE_DIR / "bili_cookie_cache.txt"
 
 AUTH_INVALID_CODES = {-101, -401, -403, 412}
-LOGIN_NOTICE_COOLDOWN_SECONDS = 5 * 60
 LOGIN_QR_EXPIRE_SECONDS = 180
 LOGIN_COOKIE_KEYS = {
     "SESSDATA",
@@ -153,17 +153,36 @@ LOGIN_COOKIE_KEYS = {
 check_lock = asyncio.Lock()
 
 
+def query_uids_for_group(user_id: int, group_id: int) -> list[int]:
+    rule = CONFIGURED_GROUP_RULES.get(group_id)
+    if rule is None:
+        return []
+
+    if not is_group_feature_allowed(user_id, group_id, "bili_query"):
+        return []
+
+    return sorted(rule.uids)
+
+
+def query_uids_for_private(user_id: int) -> list[int]:
+    rule = CONFIGURED_USER_RULES.get(user_id)
+    if rule is not None:
+        if is_private_feature_allowed(user_id, "bili_query"):
+            return sorted(rule.uids)
+        return []
+
+    if is_superuser(user_id):
+        return MONITORED_UIDS
+
+    return []
+
+
 def query_uids_for_event(event: MessageEvent) -> list[int]:
     if isinstance(event, GroupMessageEvent):
-        rule = CONFIGURED_GROUP_RULES.get(event.group_id)
-        return sorted(rule.uids) if rule is not None else []
+        return query_uids_for_group(event.user_id, event.group_id)
 
     if isinstance(event, PrivateMessageEvent):
-        rule = CONFIGURED_USER_RULES.get(event.user_id)
-        if rule is not None:
-            return sorted(rule.uids)
-        if is_superuser(event.user_id):
-            return MONITORED_UIDS
+        return query_uids_for_private(event.user_id)
 
     return []
 

@@ -4,11 +4,10 @@ import httpx
 from nonebot.log import logger
 
 from .config import plugin_config
+from .constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from .history import HistoryMessage, build_messages
 from .notifier import notify_superusers_once
 
-REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
-EMPTY_REPLY = "AI没有返回有效内容，请稍后再试。"
 HTTP_PAYMENT_REQUIRED = 402
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_BAD_REQUEST = 400

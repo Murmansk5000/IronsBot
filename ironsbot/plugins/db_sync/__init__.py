@@ -23,6 +23,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
+from ironsbot.shared.messages.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
 from .config import plugin_config
@@ -48,12 +49,8 @@ MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 ADMIN_COMMAND_PREFIX = "/"
 
 
-def _normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
 NORMALIZED_MANUAL_SYNC_COMMANDS = {
-    _normalize_command_text(command)
+    normalize_command_text(command)
     for command in MANUAL_SYNC_COMMANDS
 }
 
@@ -63,7 +60,7 @@ async def _is_manual_sync_command(event: Event) -> bool:
     if not text.startswith(ADMIN_COMMAND_PREFIX):
         return False
 
-    command = _normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
+    command = normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
     return command in NORMALIZED_MANUAL_SYNC_COMMANDS
 
 

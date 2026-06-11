@@ -1,6 +1,6 @@
 from nonebot.adapters.onebot.v11 import MessageEvent
 
-from ironsbot.custom_plugins.feature_policy import (
+from ironsbot.shared.features import (
     get_superuser_ids,
     is_event_feature_allowed,
 )

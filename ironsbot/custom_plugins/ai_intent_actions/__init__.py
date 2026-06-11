@@ -10,29 +10,33 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.ai_chat.client import (
+from ironsbot.custom_plugins.ai_chat.client import call_ai_chat
+from ironsbot.custom_plugins.ai_chat.constants import (
     EMPTY_REPLY,
     REQUEST_FAILED_REPLY,
-    call_ai_chat,
-)
-from ironsbot.custom_plugins.feature_policy import (
-    is_group_feature_allowed,
-    is_private_feature_allowed,
 )
 from ironsbot.custom_plugins.message_actions import (
     build_message,
-    command_text_matches,
     finish_event_reply,
     finish_message_sequence,
-    normalize_command_text,
 )
 from ironsbot.custom_plugins.team_shortcut.adapter import fetch_team_shortcut_result
-from ironsbot.custom_plugins.team_shortcut.config import plugin_config as team_config
+from ironsbot.shared.features import (
+    is_group_feature_allowed,
+    is_private_feature_allowed,
+)
+from ironsbot.shared.messages.text import command_text_matches, normalize_command_text
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
 from .config import AiIntentAction, Config, get_configured_actions, plugin_config
 
 ACTION_KEY = "_ai_intent_action"
+AI_INTENT_PLUGIN_NAME = "ai_intent"
 
 
 class _TemplateContext(dict[str, str]):
@@ -45,8 +49,8 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "【AI意图动作】\n"
         "默认规则：消息包含“战队”时，请 AI 判断发送者是否想加入战队。\n"
-        "若判断为是，则发送 TEAM_IDS 配置的战队信息。\n"
-        "可通过 AI_CONFIG.intent_actions 配置更多关键词、判定意图和动作。"
+        "若判断为是，则发送 5 级战队审核群链接。\n"
+        "可通过 MODULES.ai.intent_actions 配置更多关键词、判定意图和动作。"
     ),
     config=Config,
 )
@@ -63,7 +67,7 @@ def _contains_any_keyword(text: str, keywords: list[str]) -> bool:
 def _excluded_by_command(text: str, action: AiIntentAction) -> bool:
     exclude_commands = list(action.exclude_commands)
     if action.action == "team_shortcut":
-        exclude_commands.extend(team_config.team_config.commands)
+        exclude_commands.extend(plugin_config.team_config.commands)
 
     return bool(exclude_commands) and command_text_matches(text, exclude_commands)
 
@@ -159,8 +163,8 @@ ai_intent_action_matcher = on_message(
 
 def _build_resource_notice() -> Message:
     return build_message(
-        team_config.team_config.resource_message,
-        at_user_ids=team_config.team_resource_users,
+        plugin_config.team_config.resource_message,
+        at_user_ids=plugin_config.team_resource_users,
     )
 
 
@@ -169,7 +173,7 @@ async def _handle_team_shortcut_action(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    team_ids = action.team_ids or team_config.team_ids
+    team_ids = action.team_ids or plugin_config.team_ids
     if not team_ids:
         await finish_event_reply(
             matcher,
@@ -184,7 +188,7 @@ async def _handle_team_shortcut_action(
         try:
             result = await asyncio.wait_for(
                 fetch_team_shortcut_result(team_id),
-                timeout=team_config.team_config.query_timeout_seconds,
+                timeout=plugin_config.team_config.query_timeout_seconds,
             )
         except FinishedException:
             raise
@@ -196,7 +200,7 @@ async def _handle_team_shortcut_action(
             continue
 
         replies.append(Message(result.message))
-        if result.resource < team_config.team_config.resource_threshold:
+        if result.resource < plugin_config.team_config.resource_threshold:
             resource_notice_needed = True
 
     if not replies:
@@ -236,19 +240,38 @@ async def handle_ai_intent_action(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    action = state[ACTION_KEY]
-
-    if action.action == "team_shortcut":
-        await _handle_team_shortcut_action(action, matcher, event)
-        return
-
-    if action.action == "ai_reply":
-        await _handle_ai_reply_action(action, matcher, event)
-        return
-
-    await finish_event_reply(
-        matcher,
-        event,
-        action.message,
-        mention_sender=True,
+    await dispatch_plugin(
+        plugin_name=AI_INTENT_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
     )
+
+
+class AiIntentPlugin:
+    name = AI_INTENT_PLUGIN_NAME
+    feature = "ai_intent"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        state = context.state if context.state is not None else {}
+        action = state[ACTION_KEY]
+        matcher = context.matcher or ai_intent_action_matcher
+
+        if action.action == "team_shortcut":
+            await _handle_team_shortcut_action(action, matcher, event)
+            return
+
+        if action.action == "ai_reply":
+            await _handle_ai_reply_action(action, matcher, event)
+            return
+
+        await finish_event_reply(
+            matcher,
+            event,
+            action.message,
+            mention_sender=True,
+        )
+
+
+register_plugin(AiIntentPlugin())

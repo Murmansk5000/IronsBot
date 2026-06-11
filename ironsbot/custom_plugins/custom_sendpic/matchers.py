@@ -1,24 +1,40 @@
-import random
 from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
-from typing import NoReturn, cast
+from typing import cast
 
 from nonebot import MatcherGroup, logger
-from nonebot.adapters import Bot, Message, MessageTemplate
+from nonebot.adapters import Bot, Event, Message, MessageTemplate
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg, Depends
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
-from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
+from ironsbot.shared.config.sendpic import enabled_pic_configs, pic_id_is_enabled
+from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
 from .backends import CnbBackend, LocalBackend
-from .config import PicConfig, filter_enabled_configs, pic_id_is_enabled, plugin_config
+from .config import PicConfig, plugin_config
+from .image_selection_service import (
+    ImageIndexOutOfRangeError,
+    InvalidImageArgumentError,
+    build_image_file_path,
+    select_image,
+)
 
 matcher_group = MatcherGroup()
+CUSTOM_SENDPIC_PLUGIN_PREFIX = "custom_sendpic"
+
+
+def _plugin_name_for_config(config: PicConfig) -> str:
+    return f"{CUSTOM_SENDPIC_PLUGIN_PREFIX}:{config.id}"
 
 
 def get_cnb_backend(
@@ -47,7 +63,7 @@ def create_image_command(
     backend_factory: Callable[..., AsyncGenerator[ImageBackend, None]],
 ) -> type[Matcher] | None:
     """根据配置创建一个「随机/指定索引 + 图床后端」的命令。"""
-    if not pic_id_is_enabled(config.id):
+    if not pic_id_is_enabled(plugin_config.sendpic_config, config.id):
         logger.warning(
             f"图片类型【{config.id}】未启用，命令【{config.command}】将不会生效"
         )
@@ -58,45 +74,67 @@ def create_image_command(
         rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
     )
     template = config.message_template
+    plugin_name = _plugin_name_for_config(config)
+
+    class ConfiguredImagePlugin:
+        name = plugin_name
+        feature = "image"
+        enabled = True
+
+        async def handle(self, event: object, context: PluginContext) -> None:  # noqa: ARG002
+            m = cast("Matcher", context.matcher)
+            bot = cast("Bot", context.data["bot"])
+            arg = cast("Message", context.data["arg"])
+            backend = cast("ImageBackend", context.data["backend"])
+
+            max_index = await backend.count(config.image_dir)
+            arg_str = arg.extract_plain_text()
+            try:
+                selection = select_image(arg_str, max_index)
+            except InvalidImageArgumentError:
+                raise FinishedException from None
+            except ImageIndexOutOfRangeError as e:
+                await m.finish(str(e))
+
+            file_path = build_image_file_path(
+                config.image_dir,
+                config.image_filename_template,
+                selection.index,
+            )
+            image = Image(await backend.get_file(file_path))
+            await m.finish(
+                MessageTemplate(template).format(
+                    command=config.command,
+                    random_text=selection.random_text,
+                    index=selection.index,
+                    total=max_index,
+                    image=await image.build(bot),
+                )
+            )
+
+    register_plugin(ConfiguredImagePlugin())
 
     async def _handler(
         m: Matcher,
         bot: Bot,
+        event: Event,
         arg: Message = CommandArg(),
         backend: ImageBackend = Depends(backend_factory),
-    ) -> NoReturn:
-        max_index = await backend.count(config.image_dir)
-        is_random = False
-        arg_str = arg.extract_plain_text()
-        if arg_str.isdigit():
-            index = int(arg_str)
-        elif not arg_str:
-            index = random.randint(1, max_index)
-            is_random = True
-        else:
-            raise FinishedException
-
-        if not 1 <= index <= max_index:
-            await m.finish(f"编号必须在1到{max_index}之间！")
-        file_path = "/".join(
-            [config.image_dir, config.image_filename_template.format(index=index)]
-        )
-        image = Image(await backend.get_file(file_path))
-        await m.finish(
-            MessageTemplate(template).format(
-                command=config.command,
-                random_text="随机" if is_random else "自选",
-                index=index,
-                total=max_index,
-                image=await image.build(bot),
-            )
+    ) -> None:
+        await dispatch_plugin(
+            plugin_name=plugin_name,
+            event=event,
+            matcher=m,
+            bot=bot,
+            arg=arg,
+            backend=backend,
         )
 
     matcher.append_handler(_handler)
     return matcher
 
 
-for _cmd in filter_enabled_configs():
+for _cmd in enabled_pic_configs(plugin_config.sendpic_config):
     if _cmd.backend == "cnb":
         backend_factory = get_cnb_backend(
             cast("str", plugin_config.sendpic_cnb_token),

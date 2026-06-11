@@ -1,6 +1,7 @@
 ﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,14 +20,20 @@ from ironsbot.custom_plugins.headless_seer_notice.state import (
 )
 from ironsbot.custom_plugins.message_actions import (
     command_reply_check,
-    command_text_matches,
     enter_event_reply_conversation,
     finish_event_reply,
+    send_event_reply,
 )
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
+)
+from ironsbot.shared.messages.text import command_text_matches
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
 )
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
@@ -60,9 +67,12 @@ PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 PLAYER_DETAIL_TASK_KEY = "_player_detail_task"
 PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
+PLAYER_DETAIL_AUTO_REPLY_KEYS = "_player_detail_auto_reply_keys"
+PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY = "_player_detail_auto_reply_tasks"
 METRIC_SEPARATOR = "\uFF5C"
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_DETAIL_NAMESPACE = "custom_get_seer_info_player_details"
+PLAYER_PLUGIN_NAME = "seer_player"
 QUERY_CONFIG = plugin_config.seer_query_config
 PLAYER_QUERY_GUARD = QueryGuard(
     success_namespace="custom_get_seer_info.player_query.success",
@@ -658,42 +668,242 @@ async def _optional_extra(
     return await _safe_extra(label, coro_factory(), default, extra_errors)
 
 
+class PlayerQueryPlugin:
+    name = PLAYER_PLUGIN_NAME
+    feature = "seer"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        matcher = context.matcher
+        if matcher is None:
+            return
+
+        state = context.state if context.state is not None else {}
+        if context.action == "validate":
+            await self._validate_player_id(matcher, event, state)
+            return
+        if context.action == "detail_reply":
+            await self._handle_detail_reply(matcher, event, state)
+            return
+        if context.action == "query":
+            await self._handle_player(matcher, event, state)
+
+    async def _validate_player_id(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        player_id = await parse_numeric_id(
+            matcher,
+            state,
+            min_value=1,
+            max_value=2_000_000_000,
+            error_message="❌ 米米号无效，请输入纯数字米米号。",
+        )
+        state[PLAYER_ID_KEY] = player_id
+        in_progress_player_id = PLAYER_QUERY_GUARD.in_progress_subject(event.user_id)
+        if in_progress_player_id is not None:
+            await finish_event_reply(
+                matcher,
+                event,
+                _player_query_in_progress_message(in_progress_player_id),
+                mention_sender=True,
+            )
+
+        remaining = PLAYER_QUERY_GUARD.remaining_seconds(event.user_id)
+        if remaining > 0:
+            await finish_event_reply(
+                matcher,
+                event,
+                (
+                    f"⏳ 刚刚已经发起过米米号查询，请 {remaining} 秒后再试。\n"
+                    "收集、巅峰和全服排行数据会更慢，排名越靠后可能查得越久，"
+                    "多人同时查询时也可能需要排队。"
+                ),
+                mention_sender=True,
+            )
+        PLAYER_QUERY_GUARD.set_in_progress(event.user_id, player_id)
+
+    async def _handle_detail_reply(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        text = event.get_plaintext()
+        if command_text_matches(text, ("收集",)):
+            label = "收集与排行"
+            message = await _get_player_detail_message(
+                state,
+                PLAYER_COLLECTION_KEY,
+                label,
+                matcher=matcher,
+                event=event,
+            )
+        elif command_text_matches(text, ("巅峰",)):
+            label = "巅峰之战"
+            message = await _get_player_detail_message(
+                state,
+                PLAYER_PEAK_KEY,
+                label,
+                matcher=matcher,
+                event=event,
+            )
+        else:
+            message = None
+
+        if not message:
+            raise FinishedException
+
+        await _continue_player_detail_conversation(
+            matcher,
+            event,
+            state,
+            prompt=message,
+        )
+
+    async def _handle_player(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        ensure_extended_packets()
+        player_id: int = state[PLAYER_ID_KEY]
+        extra_errors: list[str] = []
+        enabled_sections = set(plugin_config.seer_query_config.player.sections)
+        show_local_rank = "local_rank" in enabled_sections
+        has_collection = bool(
+            {"collection", "rank", "local_rank", "achievement"} & enabled_sections
+        )
+        needs_peak_section = "peak" in enabled_sections
+        needs_online_info = "basic" in enabled_sections
+        detail_task: asyncio.Task[PlayerDetailMessages] | None = None
+
+        try:
+            game = get_game_client()
+            user_info, more_info, online_info = await asyncio.wait_for(
+                asyncio.gather(
+                    game.get_user_info(player_id),
+                    game.get_more_user_info(player_id),
+                    _optional_extra(
+                        "在线状态",
+                        needs_online_info,
+                        lambda: game.get_user_online_info(player_id),
+                        None,
+                        extra_errors,
+                    ),
+                ),
+                timeout=plugin_config.seer_query_config.player.timeout_seconds,
+            )
+            await mark_headless_available(
+                source="米米号查询",
+                user_id=int(game.user_id),
+            )
+
+            team_name = "无"
+            if getattr(user_info, "team_id", 0) > 0:
+                try:
+                    team_info = await asyncio.wait_for(
+                        game.get_team_info(user_info.team_id),
+                        timeout=min(
+                            5.0,
+                            plugin_config.seer_query_config.team.timeout_seconds,
+                        ),
+                    )
+                    team_name = team_info.name
+                except Exception:  # noqa: BLE001
+                    team_name = str(user_info.team_id)
+
+            if has_collection or needs_peak_section or QUERY_CONFIG.local_rank.enabled:
+                detail_task = _create_player_detail_task(
+                    player_id=player_id,
+                    user_info=user_info,
+                    more_info=more_info,
+                    has_collection=has_collection,
+                    needs_peak_section=needs_peak_section,
+                    show_local_rank=show_local_rank,
+                )
+
+            player_message = _format_compact_player_info(
+                user_info,
+                more_info,
+                team_name=team_name,
+                online_info=online_info,
+                unity_peak=UnityPeakInfo(),
+                peak_rank_summary=PeakSeasonRankSummary.empty(),
+                local_summary=LocalRankSummary(),
+                has_collection=has_collection,
+                has_peak=needs_peak_section,
+                show_peak=False,
+                extra_errors=extra_errors,
+            )
+
+        except FinishedException:
+            raise
+        except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
+            if isinstance(e, (NotLoggedInError, DisconnectedError)):
+                await mark_headless_unavailable(str(e), source="米米号查询")
+            PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+            PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+            await finish_event_reply(
+                matcher,
+                event,
+                format_player_query_error(player_id, e),
+                mention_sender=True,
+            )
+            return
+        except TimeoutError:
+            PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+            PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+            await finish_event_reply(
+                matcher,
+                event,
+                f"❌ 米米号 {player_id} 查询超时，请稍后再试。",
+                mention_sender=True,
+            )
+            return
+        except Exception as e:  # noqa: BLE001
+            PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+            PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+            await finish_event_reply(
+                matcher,
+                event,
+                f"❌ 米米号 {player_id} 查询失败：{e}",
+                mention_sender=True,
+            )
+            return
+
+        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+        PLAYER_QUERY_GUARD.penalize_success(event.user_id)
+        await _send_player_info_with_detail_prompt(
+            matcher,
+            event,
+            state,
+            player_message=player_message,
+            detail_task=detail_task,
+            has_collection=has_collection,
+            has_peak=needs_peak_section,
+        )
+
+
+register_plugin(PlayerQueryPlugin())
+
+
 @player_matcher.handle()
 async def validate_player_id(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    player_id = await parse_numeric_id(
-        matcher,
-        state,
-        min_value=1,
-        max_value=2_000_000_000,
-        error_message="❌ 米米号无效，请输入纯数字米米号。",
+    await dispatch_plugin(
+        plugin_name=PLAYER_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="validate",
     )
-    state[PLAYER_ID_KEY] = player_id
-    in_progress_player_id = PLAYER_QUERY_GUARD.in_progress_subject(event.user_id)
-    if in_progress_player_id is not None:
-        await finish_event_reply(
-            matcher,
-            event,
-            _player_query_in_progress_message(in_progress_player_id),
-            mention_sender=True,
-        )
-
-    remaining = PLAYER_QUERY_GUARD.remaining_seconds(event.user_id)
-    if remaining > 0:
-        await finish_event_reply(
-            matcher,
-            event,
-            (
-                f"⏳ 刚刚已经发起过米米号查询，请 {remaining} 秒后再试。\n"
-                "收集、巅峰和全服排行数据会更慢，排名越靠后可能查得越久，"
-                "多人同时查询时也可能需要排队。"
-            ),
-            mention_sender=True,
-        )
-    PLAYER_QUERY_GUARD.set_in_progress(event.user_id, player_id)
 
 
 async def _handle_detail_reply(
@@ -701,32 +911,12 @@ async def _handle_detail_reply(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    text = event.get_plaintext()
-    if command_text_matches(text, ("收集",)):
-        label = "收集与排行"
-        message = await _get_player_detail_message(
-            state,
-            PLAYER_COLLECTION_KEY,
-            label,
-        )
-    elif command_text_matches(text, ("巅峰",)):
-        label = "巅峰之战"
-        message = await _get_player_detail_message(
-            state,
-            PLAYER_PEAK_KEY,
-            label,
-        )
-    else:
-        message = None
-
-    if not message:
-        raise FinishedException
-
-    await _continue_player_detail_conversation(
-        matcher,
-        event,
-        state,
-        prompt=message,
+    await dispatch_plugin(
+        plugin_name=PLAYER_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="detail_reply",
     )
 
 
@@ -742,10 +932,22 @@ async def _get_player_detail_message(
     state: T_State,
     key: str,
     label: str,
+    *,
+    matcher: Matcher | None = None,
+    event: MessageEvent | None = None,
 ) -> str:
     task = state.get(PLAYER_DETAIL_TASK_KEY)
     if isinstance(task, asyncio.Task):
         if not task.done():
+            if matcher is not None and event is not None:
+                _schedule_player_detail_auto_reply(
+                    matcher,
+                    event,
+                    state,
+                    key=key,
+                    label=label,
+                    task=task,
+                )
             return _player_detail_pending_message(label)
 
         try:
@@ -765,6 +967,84 @@ async def _get_player_detail_message(
         state[PLAYER_DETAIL_TASK_KEY] = None
 
     return str(state.get(key) or "")
+
+
+def _auto_reply_keys(state: T_State) -> set[str]:
+    raw_keys = state.get(PLAYER_DETAIL_AUTO_REPLY_KEYS)
+    if isinstance(raw_keys, set):
+        return raw_keys
+
+    keys: set[str] = set()
+    state[PLAYER_DETAIL_AUTO_REPLY_KEYS] = keys
+    return keys
+
+
+def _auto_reply_tasks(state: T_State) -> set[asyncio.Task[None]]:
+    raw_tasks = state.get(PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY)
+    if isinstance(raw_tasks, set):
+        return raw_tasks
+
+    tasks: set[asyncio.Task[None]] = set()
+    state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] = tasks
+    return tasks
+
+
+def _schedule_player_detail_auto_reply(  # noqa: PLR0913
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    *,
+    key: str,
+    label: str,
+    task: asyncio.Task[PlayerDetailMessages],
+) -> None:
+    auto_reply_keys = _auto_reply_keys(state)
+    if key in auto_reply_keys:
+        return
+
+    auto_reply_keys.add(key)
+    auto_reply_task = asyncio.create_task(
+        _send_player_detail_auto_reply(
+            matcher,
+            event,
+            state,
+            key=key,
+            label=label,
+            task=task,
+        )
+    )
+    auto_reply_tasks = _auto_reply_tasks(state)
+    auto_reply_tasks.add(auto_reply_task)
+    auto_reply_task.add_done_callback(auto_reply_tasks.discard)
+
+
+async def _send_player_detail_auto_reply(  # noqa: PLR0913
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    *,
+    key: str,
+    label: str,
+    task: asyncio.Task[PlayerDetailMessages],
+) -> None:
+    try:
+        with suppress(Exception):
+            await asyncio.shield(task)
+
+        message = await _get_player_detail_message(state, key, label)
+        if not message:
+            message = f"❌ {label}数据没有返回结果，请稍后再试。"
+
+        await send_event_reply(
+            matcher,
+            event,
+            message,
+            mention_sender=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"米米号后台详情自动回复失败：{e}")
+    finally:
+        _auto_reply_keys(state).discard(key)
 
 
 async def _continue_player_detail_conversation(
@@ -1031,117 +1311,10 @@ async def handle_player(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    ensure_extended_packets()
-    player_id: int = state[PLAYER_ID_KEY]
-    extra_errors: list[str] = []
-    enabled_sections = set(plugin_config.seer_query_config.player.sections)
-    show_local_rank = "local_rank" in enabled_sections
-    has_collection = bool(
-        {"collection", "rank", "local_rank", "achievement"} & enabled_sections
-    )
-    needs_peak_section = "peak" in enabled_sections
-    needs_online_info = "basic" in enabled_sections
-    detail_task: asyncio.Task[PlayerDetailMessages] | None = None
-
-    try:
-        game = get_game_client()
-        user_info, more_info, online_info = await asyncio.wait_for(
-            asyncio.gather(
-                game.get_user_info(player_id),
-                game.get_more_user_info(player_id),
-                _optional_extra(
-                    "在线状态",
-                    needs_online_info,
-                    lambda: game.get_user_online_info(player_id),
-                    None,
-                    extra_errors,
-                ),
-            ),
-            timeout=plugin_config.seer_query_config.player.timeout_seconds,
-        )
-        await mark_headless_available(source="米米号查询", user_id=int(game.user_id))
-
-        team_name = "无"
-        if getattr(user_info, "team_id", 0) > 0:
-            try:
-                team_info = await asyncio.wait_for(
-                    game.get_team_info(user_info.team_id),
-                    timeout=min(
-                        5.0,
-                        plugin_config.seer_query_config.team.timeout_seconds,
-                    ),
-                )
-                team_name = team_info.name
-            except Exception:  # noqa: BLE001
-                team_name = str(user_info.team_id)
-
-        if has_collection or needs_peak_section or QUERY_CONFIG.local_rank.enabled:
-            detail_task = _create_player_detail_task(
-                player_id=player_id,
-                user_info=user_info,
-                more_info=more_info,
-                has_collection=has_collection,
-                needs_peak_section=needs_peak_section,
-                show_local_rank=show_local_rank,
-            )
-
-        player_message = _format_compact_player_info(
-            user_info,
-            more_info,
-            team_name=team_name,
-            online_info=online_info,
-            unity_peak=UnityPeakInfo(),
-            peak_rank_summary=PeakSeasonRankSummary.empty(),
-            local_summary=LocalRankSummary(),
-            has_collection=has_collection,
-            has_peak=needs_peak_section,
-            show_peak=False,
-            extra_errors=extra_errors,
-        )
-
-    except FinishedException:
-        raise
-    except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
-        if isinstance(e, (NotLoggedInError, DisconnectedError)):
-            await mark_headless_unavailable(str(e), source="米米号查询")
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
-        await finish_event_reply(
-            matcher,
-            event,
-            format_player_query_error(player_id, e),
-            mention_sender=True,
-        )
-        return
-    except TimeoutError:
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 米米号 {player_id} 查询超时，请稍后再试。",
-            mention_sender=True,
-        )
-        return
-    except Exception as e:  # noqa: BLE001
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 米米号 {player_id} 查询失败：{e}",
-            mention_sender=True,
-        )
-        return
-
-    PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-    PLAYER_QUERY_GUARD.penalize_success(event.user_id)
-    await _send_player_info_with_detail_prompt(
-        matcher,
-        event,
-        state,
-        player_message=player_message,
-        detail_task=detail_task,
-        has_collection=has_collection,
-        has_peak=needs_peak_section,
+    await dispatch_plugin(
+        plugin_name=PLAYER_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="query",
     )

@@ -1,25 +1,56 @@
-import base64
-from pathlib import Path
-
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import on_fullmatch
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.feature_policy import is_event_feature_allowed
 from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
-IMAGE_DIR = Path(__file__).parent / "image"
+from .fixed_image_service import (
+    DEFAULT_FIXED_IMAGE_DIR,
+    FIXED_IMAGE_COMMANDS,
+    FIXED_IMAGE_MISSING_MESSAGE,
+    build_fixed_image_segment,
+)
 
-IMAGE_COMMANDS = {
-    "学习力": "学习力表格.png",
-    "学习力表": "学习力表格.png",
-    "学习力表格": "学习力表格.png",
-    "巅峰姬": "巅峰姬.png",
-    "必先": "必先.png",
-    "技能石": "技能石.png",
-}
+IMAGE_DIR = DEFAULT_FIXED_IMAGE_DIR
+IMAGE_COMMANDS = FIXED_IMAGE_COMMANDS
+FIXED_IMAGE_PLUGIN_NAME = "custom_sendpic_fixed_image"
+
+
+class FixedImagePlugin:
+    name = FIXED_IMAGE_PLUGIN_NAME
+    feature = "image"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        filename = str(context.data["filename"])
+        image_segment = build_fixed_image_segment(IMAGE_DIR, filename)
+        matcher = context.matcher
+        if matcher is None:
+            return
+
+        if image_segment is None:
+            await finish_event_reply(
+                matcher,
+                event,
+                FIXED_IMAGE_MISSING_MESSAGE,
+            )
+
+        await finish_event_reply(
+            matcher,
+            event,
+            image_segment,
+        )
+
+
+register_plugin(FixedImagePlugin())
 
 
 for command, filename in IMAGE_COMMANDS.items():
@@ -36,17 +67,9 @@ for command, filename in IMAGE_COMMANDS.items():
         event: MessageEvent,
         filename: str = filename,
     ) -> None:
-        image_path = IMAGE_DIR / filename
-        if not image_path.is_file():
-            await finish_event_reply(
-                matcher,
-                event,
-                "图片文件不存在，请检查机器人图片目录。",
-            )
-
-        image_base64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
-        await finish_event_reply(
-            matcher,
-            event,
-            MessageSegment.image(f"base64://{image_base64}"),
+        await dispatch_plugin(
+            plugin_name=FIXED_IMAGE_PLUGIN_NAME,
+            event=event,
+            matcher=matcher,
+            filename=filename,
         )

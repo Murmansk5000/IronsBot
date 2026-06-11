@@ -13,11 +13,15 @@ from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
-    normalize_command_text,
     send_event_reply,
-    strip_command_prefix,
 )
 from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
+from ironsbot.shared.messages.text import normalize_command_text, strip_command_prefix
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
 from ..config import plugin_config
@@ -52,6 +56,7 @@ RANK_LIST_SIZE = 20
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
+RANK_LIST_PLUGIN_NAME = "seer_rank_list"
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
 RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
 MAX_CACHE_INTERVALS_SHOWN = 20
@@ -527,9 +532,220 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
     return "\n".join(lines)
 
 
+class RankListPlugin:
+    name = RANK_LIST_PLUGIN_NAME
+    feature = "rank"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        matcher = context.matcher
+        if matcher is None:
+            return
+
+        state = context.state if context.state is not None else {}
+        if context.action == "help":
+            await self._handle_help(matcher, event)
+            return
+        if context.action == "list":
+            await self._handle_list(matcher, event, state)
+            return
+        if context.action == "cache_batch":
+            await self._handle_cache_batch(matcher, event, state)
+            return
+        if context.action == "page_cache_status":
+            await self._handle_page_cache_status(matcher, event, state)
+            return
+        if context.action == "cache_status":
+            await self._handle_cache_status(matcher, event)
+            return
+        if context.action == "cache_refresh":
+            await self._handle_cache_refresh(matcher, event, state)
+
+    async def _handle_help(self, matcher: Matcher, event: MessageEvent) -> None:
+        await finish_event_reply(matcher, event, build_rank_help_message())
+
+    async def _handle_list(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        command = state[RANK_LIST_COMMAND_KEY]
+        kind, key = NORMALIZED_COMMANDS[command]
+
+        if kind == "global":
+            await finish_event_reply(
+                matcher,
+                event,
+                await _build_global_rank_message(GLOBAL_RANKS[key]),
+            )
+
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_local_rank_message(LOCAL_RANKS[key]),
+        )
+
+    async def _handle_cache_batch(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        ensure_extended_packets()
+        command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
+        before = get_local_rank_cache_stats()
+        if before.player_count >= before.max_players:
+            await finish_event_reply(
+                matcher,
+                event,
+                f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
+                "请先调大 MODULES.seer.local_rank.max_players。",
+            )
+
+        spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
+        if not player_ids:
+            await finish_event_reply(
+                matcher,
+                event,
+                f"❌ 没有从{spec.title}拿到可缓存的米米号。",
+            )
+
+        truncated_text = ""
+        if requested_count > len(player_ids):
+            truncated_text = (
+                "\n本次按 MODULES.seer.local_rank.batch_limit "
+                f"只处理前 {len(player_ids)} 个。"
+            )
+
+        await send_event_reply(
+            matcher,
+            event,
+            f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
+            f"\n实际拿到 {len(player_ids)} 个米米号。"
+            f"\n当前缓存：{before.player_count}/{before.max_players}。"
+            f"{truncated_text}",
+        )
+        await release_superuser_priority(state)
+        result = await refresh_local_rank_cache(player_ids)
+        after = get_local_rank_cache_stats()
+
+        lines = [
+            "✅【榜单区间缓存完成】",
+            f"榜单：{spec.title}",
+            f"请求区间：第 {command.start_rank}-{command.end_rank} 名",
+            f"本次处理：{result.total} 个",
+            f"成功写入/刷新：{result.success} 个",
+            f"缓存已满跳过：{result.skipped_full} 个",
+            f"失败：{result.failed} 个",
+            f"当前缓存：{after.player_count}/{after.max_players}",
+        ]
+        if result.failures:
+            lines.append("")
+            lines.append("失败示例：")
+            lines.extend(format_refresh_failures(result.failures))
+
+        await finish_event_reply(matcher, event, "\n".join(lines))
+
+    async def _handle_page_cache_status(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        command: RankPageCacheStatusCommand = state[
+            RANK_PAGE_CACHE_STATUS_COMMAND_KEY
+        ]
+        spec = GLOBAL_RANKS[command.rank_key]
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_rank_page_cache_status_message(spec),
+        )
+
+    async def _handle_cache_status(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        stats = get_local_rank_cache_stats()
+        query_config = plugin_config.seer_query_config
+        lines = [
+            "📊【样本榜缓存状态】",
+            f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
+            f"总缓存玩家：{stats.total_player_count} 个"
+            "（含全服榜单扫到但未计入样本的人）",
+            f"全服排行扫描上限：前 {query_config.rank.limit} 名",
+            f"单次批量缓存上限：{query_config.local_rank.batch_limit} 个",
+            f"单轮刷新上限：{query_config.local_rank.refresh_limit} 个",
+            f"刷新过期时间：{query_config.local_rank.refresh_max_age_hours} 小时",
+            "巅峰样本：按当前赛季单独比较",
+            f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
+            "",
+            "可参与排行人数：",
+        ]
+        lines.extend(
+            f"{title}：{count}"
+            for title, count in stats.metric_counts.items()
+        )
+        await finish_event_reply(matcher, event, "\n".join(lines))
+
+    async def _handle_cache_refresh(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        ensure_extended_packets()
+        before = get_local_rank_cache_stats()
+        if before.player_count <= 0:
+            await finish_event_reply(
+                matcher,
+                event,
+                "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。",
+            )
+
+        await send_event_reply(
+            matcher,
+            event,
+            "🔄 正在刷新样本榜缓存。"
+            f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
+            f"{plugin_config.seer_query_config.local_rank.refresh_limit} 个，"
+            "只刷新超过 "
+            f"{plugin_config.seer_query_config.local_rank.refresh_max_age_hours} "
+            "小时未更新的数据。",
+        )
+        await release_superuser_priority(state)
+        result = await refresh_local_rank_cache()
+        after = get_local_rank_cache_stats()
+
+        lines = [
+            "✅【样本榜缓存刷新完成】",
+            f"本轮候选米米号：{result.total} 个",
+            f"成功刷新：{result.success} 个",
+            f"缓存已满跳过：{result.skipped_full} 个",
+            f"失败：{result.failed} 个",
+            f"当前缓存米米号：{after.player_count}/{after.max_players} 个",
+        ]
+        if result.failures:
+            lines.append("")
+            lines.append("失败示例：")
+            lines.extend(format_refresh_failures(result.failures))
+
+        await finish_event_reply(matcher, event, "\n".join(lines))
+
+
+register_plugin(RankListPlugin())
+
+
 @rank_help_matcher.handle()
 async def handle_rank_help(matcher: Matcher, event: MessageEvent) -> None:
-    await finish_event_reply(matcher, event, build_rank_help_message())
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        action="help",
+    )
 
 
 @rank_list_matcher.handle()
@@ -538,20 +754,12 @@ async def handle_rank_list(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    command = state[RANK_LIST_COMMAND_KEY]
-    kind, key = NORMALIZED_COMMANDS[command]
-
-    if kind == "global":
-        await finish_event_reply(
-            matcher,
-            event,
-            await _build_global_rank_message(GLOBAL_RANKS[key]),
-        )
-
-    await finish_event_reply(
-        matcher,
-        event,
-        _build_local_rank_message(LOCAL_RANKS[key]),
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="list",
     )
 
 
@@ -561,60 +769,13 @@ async def handle_rank_cache_batch(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    ensure_extended_packets()
-    command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
-    before = get_local_rank_cache_stats()
-    if before.player_count >= before.max_players:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
-            "请先调大 SEER_QUERY_CONFIG.local_rank.max_players。"
-        )
-
-    spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
-    if not player_ids:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 没有从{spec.title}拿到可缓存的米米号。",
-        )
-
-    truncated_text = ""
-    if requested_count > len(player_ids):
-        truncated_text = (
-            "\n本次按 SEER_QUERY_CONFIG.local_rank.batch_limit "
-            f"只处理前 {len(player_ids)} 个。"
-        )
-
-    await send_event_reply(
-        matcher,
-        event,
-        f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
-        f"\n实际拿到 {len(player_ids)} 个米米号。"
-        f"\n当前缓存：{before.player_count}/{before.max_players}。"
-        f"{truncated_text}"
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="cache_batch",
     )
-    await release_superuser_priority(state)
-    result = await refresh_local_rank_cache(player_ids)
-    after = get_local_rank_cache_stats()
-
-    lines = [
-        "✅【榜单区间缓存完成】",
-        f"榜单：{spec.title}",
-        f"请求区间：第 {command.start_rank}-{command.end_rank} 名",
-        f"本次处理：{result.total} 个",
-        f"成功写入/刷新：{result.success} 个",
-        f"缓存已满跳过：{result.skipped_full} 个",
-        f"失败：{result.failed} 个",
-        f"当前缓存：{after.player_count}/{after.max_players}",
-    ]
-    if result.failures:
-        lines.append("")
-        lines.append("失败示例：")
-        lines.extend(format_refresh_failures(result.failures))
-
-    await finish_event_reply(matcher, event, "\n".join(lines))
 
 
 @rank_page_cache_status_matcher.handle()
@@ -623,12 +784,12 @@ async def handle_rank_page_cache_status(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
-    spec = GLOBAL_RANKS[command.rank_key]
-    await finish_event_reply(
-        matcher,
-        event,
-        _build_rank_page_cache_status_message(spec),
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="page_cache_status",
     )
 
 
@@ -637,26 +798,12 @@ async def handle_rank_cache_status(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    stats = get_local_rank_cache_stats()
-    query_config = plugin_config.seer_query_config
-    lines = [
-        "📊【样本榜缓存状态】",
-        f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
-        f"总缓存玩家：{stats.total_player_count} 个（含全服榜单扫到但未计入样本的人）",
-        f"全服排行扫描上限：前 {query_config.rank.limit} 名",
-        f"单次批量缓存上限：{query_config.local_rank.batch_limit} 个",
-        f"单轮刷新上限：{query_config.local_rank.refresh_limit} 个",
-        f"刷新过期时间：{query_config.local_rank.refresh_max_age_hours} 小时",
-        "巅峰样本：按当前赛季单独比较",
-        f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
-        "",
-        "可参与排行人数：",
-    ]
-    lines.extend(
-        f"{title}：{count}"
-        for title, count in stats.metric_counts.items()
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        action="cache_status",
     )
-    await finish_event_reply(matcher, event, "\n".join(lines))
 
 
 @rank_cache_refresh_matcher.handle()
@@ -665,40 +812,10 @@ async def handle_rank_cache_refresh(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    ensure_extended_packets()
-    before = get_local_rank_cache_stats()
-    if before.player_count <= 0:
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。",
-        )
-
-    await send_event_reply(
-        matcher,
-        event,
-        "🔄 正在刷新样本榜缓存。"
-        f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
-        f"{plugin_config.seer_query_config.local_rank.refresh_limit} 个，"
-        "只刷新超过 "
-        f"{plugin_config.seer_query_config.local_rank.refresh_max_age_hours} "
-        "小时未更新的数据。"
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="cache_refresh",
     )
-    await release_superuser_priority(state)
-    result = await refresh_local_rank_cache()
-    after = get_local_rank_cache_stats()
-
-    lines = [
-        "✅【样本榜缓存刷新完成】",
-        f"本轮候选米米号：{result.total} 个",
-        f"成功刷新：{result.success} 个",
-        f"缓存已满跳过：{result.skipped_full} 个",
-        f"失败：{result.failed} 个",
-        f"当前缓存米米号：{after.player_count}/{after.max_players} 个",
-    ]
-    if result.failures:
-        lines.append("")
-        lines.append("失败示例：")
-        lines.extend(format_refresh_failures(result.failures))
-
-    await finish_event_reply(matcher, event, "\n".join(lines))

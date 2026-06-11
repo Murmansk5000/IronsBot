@@ -41,7 +41,7 @@ ironsbot/custom_plugins/my_plugin/
 ```
 
 固定文本指令、定时私聊、定时群发优先不要写插件，直接用
-`MSG_CONFIG` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
+`MODULES.message` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
 最终发送走 `message_actions`。
 
 最小业务命令示例：
@@ -78,78 +78,35 @@ async def handle_ping(matcher: Matcher, event: MessageEvent) -> None:
 不要把 QQ 号、群号、账号、密码、Cookie、token 写死在代码里。公开仓库里只保留空
 默认值或无敏感的示例值。
 
+模块配置统一写在 `ironsbot/shared/config/config.py`，插件自己的 `config.py`
+只保留轻量代理或兼容导出，不再各自调用 `get_plugin_config`。
+
 推荐写法：
 
 ```python
-from nonebot import get_plugin_config
-from pydantic import BaseModel, Field
+from ironsbot.shared.config.config import Config, get_shared_config
 
-
-class Config(BaseModel):
-    my_plugin_enabled: bool = True
-
-
-plugin_config = get_plugin_config(Config)
+plugin_config = get_shared_config()
+my_plugin_config = plugin_config.modules.my_plugin
 ```
 
-然后在 `.env.dev`、`.env.prod`、Unraid 模板变量或 Docker 环境变量中填实际值。
+新增模块配置时，先在 shared config 里加 Pydantic schema，再从插件侧代理引用。
+
+然后在 `.env.dev`、`.env.prod`、Unraid 模板变量或 Docker 环境变量中只填
+密钥、账号、群号、战队号和功能策略；确实要覆盖模块默认值时使用 `MODULES`
+写局部覆盖。
 
 示例：
 
 ```env
 GROUP_ALIASES={"admin":686376929,"main":123456789}
 FEATURE_GROUP_POLICY={"admin":["admin_notice"],"main":["seer","meeting","activity_query","bili_query","bili_push","team","ai_chat","ai_intent"]}
-
-MEETING_CONFIG={"number":"1234567890","template":"腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}","commands":["开播","会议"]}
-
-BILI_CONFIG={"uids":[1310714247,123456789],"storage":{"data_dir":"data/bilibili_monitor","history_max_items":1000},"polling":{"default_minutes":30,"windows":[{"start":"07:00","end":"23:00","minutes":5}]},"push":{"default_mode":"full","groups":{"main":{"uids":[1310714247],"mode":"full","uid_modes":{"123456789":"link"}}},"users":{}},"filters":{"suppress_push_patterns":["恭喜.*获得","记得及时查看私信通知","中奖","抽奖结果"]}}
-
-STARTUP_CONFIG={"enabled":true,"message":"机器人已开启。","delay":0}
-HEADLESS_NOTICE_CONFIG={"login_notice":true,"state_notice":true,"reconnect_check_times":"00:01,00:02"}
-SERVER_STATUS_CONFIG={"broadcast":false,"broadcast_message":"赛尔号已经开服了。","broadcast_cooldown_minutes":1440}
-
-# 群聊中由用户触发的文本回复是否在开头 @ 触发者；自动推送和定时消息不受影响。
-MSG_CONFIG={
-  "reply": {
-    "default_lines": -1,
-    "min_lines": 5,
-    "max_lines": 80,
-    "limit_path": "data/message_actions/reply_limits.sqlite"
-  },
-  "private_commands": [
-    {
-      "id": "activity_link_private",
-      "commands": ["签到", "活动", "链接"],
-      "feature": "activity_link",
-      "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
-    }
-  ],
-  "private_schedules": [],
-  "group_commands": [
-    {
-      "id": "activity_link_group",
-      "feature": "activity_link",
-      "commands": ["签到", "活动", "链接"],
-      "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
-    }
-  ],
-  "group_schedules": [
-    {
-      "id": "activity_link_daily",
-      "feature": "activity_link_push",
-      "hour": 23,
-      "minute": 0,
-      "message": "周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"
-    }
-  ]
-}
-
 TEAM_IDS=[]
 TEAM_RESOURCE_USERS=[]
-TEAM_CONFIG={"commands":["战队"],"resource_threshold":1000,"query_timeout_seconds":20,"resource_message":"出来买资源，别逼我求你😡"}
 
 AI_KEY=sk-...
-AI_CONFIG={"base_url":"https://api.deepseek.com","model":"deepseek-v4-pro","intent_actions_enabled":true,"action_templates":{"keyword_info":{"action":"ai_reply","reply_prompt":"Keywords: {keywords}\nMessage: {message}\nReply briefly."}},"intent_actions":[{"template":"join_team"},{"id":"custom_keyword","template":"keyword_info","keywords":["keyword"]}]}
+
+MODULES={"bilibili":{"push":{"groups":{"main":{"uids":[1310714247,123456789],"mode":"full","uid_modes":{"123456789":"link"}}}}}}
 ```
 
 ## 本地开发与部署

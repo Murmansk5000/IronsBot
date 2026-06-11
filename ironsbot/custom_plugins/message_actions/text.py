@@ -2,34 +2,13 @@ from collections.abc import Iterable
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-DEFAULT_COMMAND_PREFIXES = ("/",)
+from ironsbot.shared.messages import text as shared_text
 
-
-def normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
-def strip_command_prefix(
-    text: str,
-    prefixes: Iterable[str] = DEFAULT_COMMAND_PREFIXES,
-) -> str | None:
-    stripped = text.strip()
-    for prefix in prefixes:
-        if prefix and stripped.startswith(prefix):
-            return stripped[len(prefix) :].strip()
-    return None
-
-
-def command_text_matches(text: str, commands: Iterable[str]) -> bool:
-    normalized = normalize_command_text(text)
-    return normalized in {
-        normalize_command_text(command)
-        for command in commands
-    }
-
-
-def render_text(text: str) -> str:
-    return text.replace("\\n", "\n")
+DEFAULT_COMMAND_PREFIXES = shared_text.DEFAULT_COMMAND_PREFIXES
+command_text_matches = shared_text.command_text_matches
+normalize_command_text = shared_text.normalize_command_text
+render_text = shared_text.render_text
+strip_command_prefix = shared_text.strip_command_prefix
 
 
 def build_message(

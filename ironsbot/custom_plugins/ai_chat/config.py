@@ -1,13 +1,9 @@
-from nonebot import get_plugin_config
-
-from ironsbot.custom_plugins.common.ai_config import (
+from ironsbot.shared.config.config import (
     AiConfig as AiChatConfig,
 )
-from ironsbot.custom_plugins.common.ai_config import (
-    Config,
-)
+from ironsbot.shared.config.config import Config, get_shared_config
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_shared_config()
 
 __all__ = [
     "AiChatConfig",

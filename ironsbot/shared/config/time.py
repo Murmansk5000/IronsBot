@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
+from __future__ import annotations
+
 from collections.abc import Sequence
 
-from .config_utils import csv_items, json_array
+from ironsbot.shared.config.parsing import csv_items, json_array
 
 TIME_PART_COUNT = 2
 MIN_HOUR = 0

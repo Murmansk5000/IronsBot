@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: MIT
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Final
+
+
+@dataclass(frozen=True, slots=True)
+class PluginGroup:
+    name: str
+    modules: tuple[str, ...]
+
+
+EXTERNAL_PLUGINS: Final[tuple[str, ...]] = (
+    "nonebot_plugin_apscheduler",
+    "nonebot_plugin_localstore",
+    "nonebot_plugin_htmlkit",
+    "nonebot_plugin_saa",
+)
+
+CUSTOM_CORE_PLUGINS: Final[tuple[str, ...]] = (
+    "ironsbot.custom_plugins.superuser_priority",
+    "ironsbot.custom_plugins.message_actions",
+)
+
+INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.db_sync",
+    "ironsbot.plugins.http_client",
+    "ironsbot.plugins.seer_data",
+    "ironsbot.plugins.headless_seer",
+)
+
+CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
+    "ironsbot.custom_plugins.headless_seer_notice",
+    "ironsbot.custom_plugins.ai_chat",
+    "ironsbot.custom_plugins.team_shortcut",
+    "ironsbot.custom_plugins.activity_reminder",
+    "ironsbot.custom_plugins.ai_mention_guard",
+    "ironsbot.custom_plugins.ai_intent_actions",
+    "ironsbot.custom_plugins.bilibili_monitor",
+    "ironsbot.custom_plugins.custom_about",
+    "ironsbot.custom_plugins.custom_get_seer_info",
+    "ironsbot.custom_plugins.custom_help",
+    "ironsbot.custom_plugins.custom_sendpic",
+    "ironsbot.custom_plugins.meeting_reply",
+    "ironsbot.custom_plugins.pet_config_reply",
+    "ironsbot.custom_plugins.rank_help",
+    "ironsbot.custom_plugins.scheduled_restart",
+    "ironsbot.custom_plugins.server_status",
+    "ironsbot.custom_plugins.startup_notice",
+)
+
+PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
+    PluginGroup("external", EXTERNAL_PLUGINS),
+    PluginGroup("custom_core", CUSTOM_CORE_PLUGINS),
+    PluginGroup("infrastructure", INFRASTRUCTURE_PLUGINS),
+    PluginGroup("custom", CUSTOM_PLUGINS),
+)
+
+
+class PluginManifestError(ValueError):
+    """Raised when the static plugin manifest is internally inconsistent."""
+
+    @classmethod
+    def empty_module(cls, group_name: str) -> PluginManifestError:
+        return cls(f"plugin group {group_name} contains an empty module name")
+
+    @classmethod
+    def empty_groups(cls, group_names: list[str]) -> PluginManifestError:
+        return cls(
+            f"plugin manifest groups must not be empty: {', '.join(group_names)}"
+        )
+
+    @classmethod
+    def duplicate_modules(cls, modules: list[str]) -> PluginManifestError:
+        return cls(f"plugin manifest contains duplicate modules: {', '.join(modules)}")
+
+
+def iter_plugin_modules() -> tuple[str, ...]:
+    return tuple(
+        module
+        for group in PLUGIN_GROUPS
+        for module in group.modules
+    )
+
+
+def validate_plugin_manifest() -> None:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    empty_groups: list[str] = []
+
+    for group in PLUGIN_GROUPS:
+        if not group.modules:
+            empty_groups.append(group.name)
+        for module in group.modules:
+            if not module.strip():
+                raise PluginManifestError.empty_module(group.name)
+            if module in seen:
+                duplicates.append(module)
+            seen.add(module)
+
+    if empty_groups:
+        raise PluginManifestError.empty_groups(empty_groups)
+    if duplicates:
+        raise PluginManifestError.duplicate_modules(duplicates)
+
+
+__all__ = [
+    "CUSTOM_CORE_PLUGINS",
+    "CUSTOM_PLUGINS",
+    "EXTERNAL_PLUGINS",
+    "INFRASTRUCTURE_PLUGINS",
+    "PLUGIN_GROUPS",
+    "PluginGroup",
+    "PluginManifestError",
+    "iter_plugin_modules",
+    "validate_plugin_manifest",
+]

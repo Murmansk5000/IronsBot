@@ -1,61 +1,51 @@
-import re
-
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
     MessageEvent,
-    PrivateMessageEvent,
 )
+from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.feature_policy import (
+from ironsbot.custom_plugins.message_actions import (
+    finish_event_reply,
+)
+from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
-from ironsbot.custom_plugins.message_actions import (
-    command_text_matches,
-    finish_event_reply,
+from ironsbot.shared.messages.text import command_text_matches
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
 )
 from ironsbot.utils.rule import no_reply
 
-from .config import plugin_config
-
-TENCENT_MEETING_NUMBER_DIGITS = 10
+from .config import get_meeting_config
+from .service import build_meeting_reply, is_meeting_command_event
 
 __plugin_meta__ = PluginMetadata(
     name="\u4f1a\u8bae\u56de\u590d",
     description="\u6309\u914d\u7f6e\u56de\u590d\u817e\u8baf\u4f1a\u8bae\u4fe1\u606f",
     usage=(
         "\u3010\u4f1a\u8bae\u56de\u590d\u3011\n"
-        "群聊或私聊发送 MEETING_CONFIG.commands 中配置的口令。\n"
+        "群聊或私聊发送 message.meeting.commands 中配置的口令。\n"
         "Access is controlled by FEATURE_GROUP_POLICY / FEATURE_USER_POLICY "
         "feature: meeting."
     ),
 )
 
+MEETING_PLUGIN_NAME = "meeting"
+
 
 async def _is_meeting_command(event: MessageEvent) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        if not is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            "meeting",
-        ):
-            return False
-    elif isinstance(event, PrivateMessageEvent):
-        if not is_private_feature_allowed(
-            event.user_id,
-            "meeting",
-        ):
-            return False
-    else:
-        return False
-
-    return command_text_matches(
-        event.get_plaintext(),
-        plugin_config.meeting_config.commands,
+    return is_meeting_command_event(
+        event,
+        get_meeting_config(),
+        is_group_allowed=is_group_feature_allowed,
+        is_private_allowed=is_private_feature_allowed,
+        command_matches=command_text_matches,
     )
 
 
@@ -66,30 +56,37 @@ meeting_matcher = on_message(
 )
 
 
-def build_meeting_reply() -> str:
-    raw_number = plugin_config.meeting_config.number.strip()
-    digits = re.sub(r"\D", "", raw_number)
-    if not digits:
-        return ""
+class MeetingReplyPlugin:
+    name = MEETING_PLUGIN_NAME
+    feature = "meeting"
+    enabled = True
 
-    if len(digits) == TENCENT_MEETING_NUMBER_DIGITS:
-        meeting_number = f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
-    else:
-        meeting_number = raw_number
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        matcher = context.matcher or meeting_matcher
+        config = get_meeting_config()
+        reply = build_meeting_reply(config)
+        if not reply:
+            logger.warning(
+                "meeting command matched but message.meeting.number is empty"
+            )
+            await finish_event_reply(
+                matcher,
+                event,
+                "会议号还没有配置，请在 message.meeting.number 中填写腾讯会议号。",
+                mention_sender=True,
+            )
+            return
 
-    meeting_url = f"https://meeting.tencent.com/p/{digits}"
-    template = plugin_config.meeting_config.template.replace("\\n", "\n")
-    return template.format(
-        meeting_number=meeting_number,
-        meeting_digits=digits,
-        meeting_url=meeting_url,
-    )
+        await finish_event_reply(matcher, event, reply)
+
+
+register_plugin(MeetingReplyPlugin())
 
 
 @meeting_matcher.handle()
 async def handle_meeting_reply(matcher: Matcher, event: MessageEvent) -> None:
-    reply = build_meeting_reply()
-    if not reply:
-        return
-
-    await finish_event_reply(matcher, event, reply)
+    await dispatch_plugin(
+        plugin_name=MEETING_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+    )

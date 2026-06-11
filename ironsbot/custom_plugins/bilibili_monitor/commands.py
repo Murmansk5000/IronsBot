@@ -10,11 +10,15 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.custom_plugins.message_actions import (
-    command_text_matches,
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,
-    strip_command_prefix,
+)
+from ironsbot.shared.messages.text import command_text_matches, strip_command_prefix
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
 )
 
 from .auth import is_bili_auth_invalid, send_bili_login_qrcode_to_superusers
@@ -40,14 +44,14 @@ from .permissions import (
     is_dynamic_update_allowed,
 )
 from .service import run_check_logic
-from .state import BILI_CONFIG, query_uids_for_event
+from .state import bili_config, query_uids_for_event
 
 DYNAMIC_IDS_KEY = "_bilibili_dynamic_ids"
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
 DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
-DYNAMIC_MENU_TIMEOUT_SECONDS = 120
+BILI_PLUGIN_NAME = "bili"
 
 
 async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
@@ -89,6 +93,26 @@ update_dynamic_matcher = on_message(
     priority=1,
     block=True,
 )
+
+
+class BiliMonitorPlugin:
+    name = BILI_PLUGIN_NAME
+    feature = "bili_query"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        if context.action == "menu":
+            await _handle_dynamic_menu(event, context)
+            return
+        if context.action == "update":
+            await _handle_update_dynamic(event)
+            return
+        if context.action == "select":
+            await _handle_dynamic_select(event, context)
+            return
+
+
+register_plugin(BiliMonitorPlugin())
 
 
 def _build_menu_text(records: list[DynamicHistoryRecord]) -> str:
@@ -143,7 +167,7 @@ def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) ->
 
         suppression_reason = dynamic_suppression_reason(
             item,
-            BILI_CONFIG.filters.suppress_push_patterns,
+            bili_config.filters.suppress_push_patterns,
         )
         save_dynamic_history_item(
             item,
@@ -156,12 +180,12 @@ def _save_fetched_dynamics(target_dynamics: list[tuple[int, dict[str, Any]]]) ->
         )
 
 
-@dynamic_menu_matcher.handle()
-async def handle_dynamic_menu(
-    matcher: Matcher,
+async def _handle_dynamic_menu(
     event: MessageEvent,
-    state: T_State,
+    context: PluginContext,
 ) -> None:
+    matcher = context.matcher or dynamic_menu_matcher
+    state = context.state if context.state is not None else {}
     try:
         query_uids = query_uids_for_event(event)
         if not query_uids:
@@ -227,8 +251,7 @@ async def handle_dynamic_menu(
         )
 
 
-@update_dynamic_matcher.handle()
-async def handle_update_dynamic(event: MessageEvent) -> None:
+async def _handle_update_dynamic(event: MessageEvent) -> None:
     if not is_bili_superuser(event.user_id):
         await finish_event_reply(
             update_dynamic_matcher,
@@ -269,11 +292,37 @@ async def handle_update_dynamic(event: MessageEvent) -> None:
         )
 
 
-async def handle_dynamic_select(
+@dynamic_menu_matcher.handle()
+async def handle_dynamic_menu(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
+    await dispatch_plugin(
+        plugin_name=BILI_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="menu",
+    )
+
+
+@update_dynamic_matcher.handle()
+async def handle_update_dynamic(event: MessageEvent) -> None:
+    await dispatch_plugin(
+        plugin_name=BILI_PLUGIN_NAME,
+        event=event,
+        matcher=update_dynamic_matcher,
+        action="update",
+    )
+
+
+async def _handle_dynamic_select(
+    event: MessageEvent,
+    context: PluginContext,
+) -> None:
+    matcher = context.matcher or dynamic_menu_matcher
+    state = context.state if context.state is not None else {}
     try:
         select_num = int(event.get_plaintext().strip())
         cached_ids = state.get(DYNAMIC_IDS_KEY, [])
@@ -326,3 +375,17 @@ async def handle_dynamic_select(
             event,
             "❌ 动态详情解析失败。",
         )
+
+
+async def handle_dynamic_select(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=BILI_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="select",
+    )

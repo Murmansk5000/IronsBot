@@ -1,5 +1,3 @@
-import re
-
 from nonebot import on_message, require
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -9,12 +7,17 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.feature_policy import (
+from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
     is_private_feature_allowed,
     users_for_feature,
     users_with_superusers,
+)
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
 )
 from ironsbot.utils.rule import no_reply
 
@@ -25,20 +28,19 @@ from .config import (
     plugin_config,
 )
 from .replies import event_sender_at_user_ids, finish_matcher_message
+from .runtime_service import (
+    build_schedule_job_id,
+    build_schedule_trigger_kwargs,
+    find_command_action,
+)
 from .senders import send_broadcast_message
-from .text import command_text_matches
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
-
-
-def _job_id(prefix: str, index: int, raw_id: str) -> str:
-    safe_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", raw_id or f"task_{index}")
-    safe_id = safe_id.strip("_") or str(index)
-    return f"message_action_{prefix}_{safe_id}"
+MESSAGE_PLUGIN_NAME = "message"
 
 
 def _private_action_allowed(
@@ -56,13 +58,14 @@ async def _match_private_command(event: MessageEvent, state: T_State) -> bool:
         return False
 
     text = event.get_plaintext()
-    for action in plugin_config.msg_config.private_commands:
-        if not action.enabled or not _private_action_allowed(event, action):
-            continue
-
-        if command_text_matches(text, action.commands):
-            state[PRIVATE_ACTION_KEY] = action
-            return True
+    action = find_command_action(
+        text,
+        plugin_config.msg_config.private_commands,
+        is_allowed=lambda candidate: _private_action_allowed(event, candidate),
+    )
+    if action is not None:
+        state[PRIVATE_ACTION_KEY] = action
+        return True
 
     return False
 
@@ -72,20 +75,18 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
         return False
 
     text = event.get_plaintext()
-    for action in plugin_config.msg_config.group_commands:
-        if not action.enabled:
-            continue
-
-        if not is_group_feature_allowed(
+    action = find_command_action(
+        text,
+        plugin_config.msg_config.group_commands,
+        is_allowed=lambda candidate: is_group_feature_allowed(
             event.user_id,
             event.group_id,
-            action.feature,
-        ):
-            continue
-
-        if command_text_matches(text, action.commands):
-            state[GROUP_ACTION_KEY] = action
-            return True
+            candidate.feature,
+        ),
+    )
+    if action is not None:
+        state[GROUP_ACTION_KEY] = action
+        return True
 
     return False
 
@@ -103,31 +104,80 @@ group_command_matcher = on_message(
 )
 
 
+class MessageActionsPlugin:
+    name = MESSAGE_PLUGIN_NAME
+    feature = "text"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        if context.action == "private_command" and isinstance(
+            event,
+            PrivateMessageEvent,
+        ):
+            await self._handle_private_command(event, context)
+            return
+
+        if context.action == "group_command" and isinstance(event, GroupMessageEvent):
+            await self._handle_group_command(event, context)
+            return
+
+    async def _handle_private_command(
+        self,
+        event: PrivateMessageEvent,
+        context: PluginContext,
+    ) -> None:
+        state = context.state if context.state is not None else {}
+        action = state[PRIVATE_ACTION_KEY]
+        await finish_matcher_message(
+            context.matcher or private_command_matcher,
+            action.message,
+            event=event,
+        )
+
+    async def _handle_group_command(
+        self,
+        event: GroupMessageEvent,
+        context: PluginContext,
+    ) -> None:
+        state = context.state if context.state is not None else {}
+        action = state[GROUP_ACTION_KEY]
+        at_user_ids = [
+            *event_sender_at_user_ids(event),
+            *action.at_user_ids,
+        ]
+        await finish_matcher_message(
+            context.matcher or group_command_matcher,
+            action.message,
+            at_user_ids=at_user_ids,
+            event=event,
+        )
+
+
+register_plugin(MessageActionsPlugin())
+
+
 @private_command_matcher.handle()
 async def handle_private_command(
     event: PrivateMessageEvent,
     state: T_State,
 ) -> None:
-    action = state[PRIVATE_ACTION_KEY]
-    await finish_matcher_message(
-        private_command_matcher,
-        action.message,
+    await dispatch_plugin(
+        plugin_name=MESSAGE_PLUGIN_NAME,
         event=event,
+        matcher=private_command_matcher,
+        state=state,
+        action="private_command",
     )
 
 
 @group_command_matcher.handle()
 async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None:
-    action = state[GROUP_ACTION_KEY]
-    at_user_ids = [
-        *event_sender_at_user_ids(event),
-        *action.at_user_ids,
-    ]
-    await finish_matcher_message(
-        group_command_matcher,
-        action.message,
-        at_user_ids=at_user_ids,
+    await dispatch_plugin(
+        plugin_name=MESSAGE_PLUGIN_NAME,
         event=event,
+        matcher=group_command_matcher,
+        state=state,
+        action="group_command",
     )
 
 
@@ -155,21 +205,13 @@ def _register_private_schedule(
     if not task.enabled:
         return
 
-    trigger_kwargs: dict[str, int | str] = {
-        "hour": task.hour,
-        "minute": task.minute,
-        "second": 0,
-    }
-    if task.day_of_week:
-        trigger_kwargs["day_of_week"] = task.day_of_week
-
     scheduler.add_job(
         _send_private_schedule,
         "cron",
         kwargs={"task": task},
-        id=_job_id("private_schedule", index, task.id),
+        id=build_schedule_job_id("private_schedule", index, task.id),
         replace_existing=True,
-        **trigger_kwargs,
+        **build_schedule_trigger_kwargs(task),
     )
 
 
@@ -180,21 +222,13 @@ def _register_group_schedule(
     if not task.enabled:
         return
 
-    trigger_kwargs: dict[str, int | str] = {
-        "hour": task.hour,
-        "minute": task.minute,
-        "second": 0,
-    }
-    if task.day_of_week:
-        trigger_kwargs["day_of_week"] = task.day_of_week
-
     scheduler.add_job(
         _send_group_schedule,
         "cron",
         kwargs={"task": task},
-        id=_job_id("group_schedule", index, task.id),
+        id=build_schedule_job_id("group_schedule", index, task.id),
         replace_existing=True,
-        **trigger_kwargs,
+        **build_schedule_trigger_kwargs(task),
     )
 
 

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
@@ -8,33 +8,40 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.feature_policy import is_group_feature_allowed
 from ironsbot.custom_plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
 from ironsbot.custom_plugins.message_actions import (
     build_message,
-    command_text_matches,
     finish_message_sequence,
 )
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.shared.features import is_group_feature_allowed
+from ironsbot.shared.messages.text import command_text_matches
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
 from .adapter import fetch_team_shortcut_result
 from .config import plugin_config
+
+TEAM_SHORTCUT_PLUGIN_NAME = "team_shortcut"
 
 __plugin_meta__ = PluginMetadata(
     name="战队快捷",
     description="在配置群里用短指令查询固定战队",
     usage=(
         "【战队快捷】\n"
-        "群聊发送 TEAM_CONFIG.commands 中配置的指令，默认：战队。\n"
+        "群聊发送 MODULES.team.commands 中配置的指令，默认：战队。\n"
         "机器人会查询 TEAM_IDS 中配置的战队；"
-        "战队资源低于 TEAM_CONFIG.resource_threshold 时可 @ TEAM_RESOURCE_USERS。"
+        "战队资源低于 MODULES.team.resource_threshold 时可 @ TEAM_RESOURCE_USERS。"
     ),
 )
 
@@ -73,45 +80,62 @@ team_shortcut_matcher = on_message(
 )
 
 
+class TeamShortcutPlugin:
+    name = TEAM_SHORTCUT_PLUGIN_NAME
+    feature = "team"
+    enabled = True
+
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        matcher = context.matcher or team_shortcut_matcher
+        replies: list[Message] = []
+        resource_notice_needed = False
+
+        for team_id in plugin_config.team_ids:
+            try:
+                result = await asyncio.wait_for(
+                    fetch_team_shortcut_result(team_id),
+                    timeout=plugin_config.team_config.query_timeout_seconds,
+                )
+                await mark_headless_available(source="战队快捷")
+            except FinishedException:
+                raise
+            except (NotLoggedInError, DisconnectedError) as e:
+                await mark_headless_unavailable(str(e), source="战队快捷")
+                replies.append(
+                    Message(
+                        f"战队 {team_id} 暂时查不了："
+                        "需要连接赛尔号游戏服务器，当前可能在维护、未开放或无头客户端未登录。"
+                    )
+                )
+                continue
+            except TimeoutError:
+                replies.append(Message(f"战队 {team_id} 查询超时，请稍后再试。"))
+                continue
+            except Exception as e:  # noqa: BLE001
+                logger.exception(f"team shortcut query failed, team id {team_id}: {e}")
+                replies.append(Message(f"战队 {team_id} 查询失败，请稍后再试。"))
+                continue
+
+            replies.append(Message(result.message))
+            if result.resource < plugin_config.team_config.resource_threshold:
+                resource_notice_needed = True
+
+        if not replies:
+            return
+
+        if resource_notice_needed:
+            replies.append(_build_resource_notice())
+
+        await finish_message_sequence(matcher, replies, event=event)
+
+
+register_plugin(TeamShortcutPlugin())
+
+
 @team_shortcut_matcher.handle()
 async def handle_team_shortcut(matcher: Matcher, event: MessageEvent) -> None:
-    replies: list[Message] = []
-    resource_notice_needed = False
-
-    for team_id in plugin_config.team_ids:
-        try:
-            result = await asyncio.wait_for(
-                fetch_team_shortcut_result(team_id),
-                timeout=plugin_config.team_config.query_timeout_seconds,
-            )
-            await mark_headless_available(source="战队快捷")
-        except FinishedException:
-            raise
-        except (NotLoggedInError, DisconnectedError) as e:
-            await mark_headless_unavailable(str(e), source="战队快捷")
-            replies.append(
-                Message(
-                    f"战队 {team_id} 暂时查不了："
-                    "需要连接赛尔号游戏服务器，当前可能在维护、未开放或无头客户端未登录。"
-                )
-            )
-            continue
-        except TimeoutError:
-            replies.append(Message(f"战队 {team_id} 查询超时，请稍后再试。"))
-            continue
-        except Exception as e:  # noqa: BLE001
-            logger.exception(f"team shortcut query failed, team id {team_id}: {e}")
-            replies.append(Message(f"战队 {team_id} 查询失败，请稍后再试。"))
-            continue
-
-        replies.append(Message(result.message))
-        if result.resource < plugin_config.team_config.resource_threshold:
-            resource_notice_needed = True
-
-    if not replies:
-        return
-
-    if resource_notice_needed:
-        replies.append(_build_resource_notice())
-
-    await finish_message_sequence(matcher, replies, event=event)
+    await dispatch_plugin(
+        plugin_name=TEAM_SHORTCUT_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+    )

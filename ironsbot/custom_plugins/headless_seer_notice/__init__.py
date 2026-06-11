@@ -3,10 +3,10 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.custom_plugins.common.time_config import daily_time_parts
-from ironsbot.custom_plugins.feature_policy import get_superuser_ids
 from ironsbot.custom_plugins.message_actions import send_broadcast_message
 from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.shared.config.time import daily_time_parts
+from ironsbot.shared.features import get_superuser_ids
 
 from .config import INVALID_RECONNECT_TIME_ERROR, plugin_config
 from .service import (
@@ -30,7 +30,7 @@ __plugin_meta__ = PluginMetadata(
         "【自定义无头登录】\n"
         "启动后检查 HEADLESS_SEER_USER_ID / HEADLESS_SEER_PASSWORD 是否登录成功。\n"
         "登录状态从在线/离线发生变化时私聊 SUPERUSERS；正常维护窗口内不播报。\n"
-        "每天按 HEADLESS_NOTICE_CONFIG.reconnect_check_times "
+        "每天按 MODULES.headless_notice.reconnect_check_times "
         "检查无头状态，掉线则尝试重连。\n"
         "超级管理员可发送 /开服查询 触发开服查询和无头重连。"
     ),

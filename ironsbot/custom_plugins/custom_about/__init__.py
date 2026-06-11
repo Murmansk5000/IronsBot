@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: MIT
-from typing import NoReturn
-
 from anyio import Path as AsyncPath
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
 from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
 from ironsbot.utils.rule import no_reply
 
 __plugin_meta__ = PluginMetadata(
@@ -31,15 +34,36 @@ ABOUT_MESSAGE = """
 """.strip()
 
 VERSION_FILE_PATH = AsyncPath("__version__")
+ABOUT_PLUGIN_NAME = "custom_about"
 
 matcher = on_fullmatch("关于", rule=no_reply(), priority=0, block=True)
 
 
-@matcher.handle()
-async def handle_about(matcher: Matcher, event: MessageEvent) -> NoReturn:
-    try:
-        version = (await VERSION_FILE_PATH.read_text(encoding="utf-8")).strip()
-    except FileNotFoundError:
-        version = "未知"
+class CustomAboutPlugin:
+    name = ABOUT_PLUGIN_NAME
+    feature = "about"
+    enabled = True
 
-    await finish_event_reply(matcher, event, ABOUT_MESSAGE.format(version=version))
+    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+        try:
+            version = (await VERSION_FILE_PATH.read_text(encoding="utf-8")).strip()
+        except FileNotFoundError:
+            version = "未知"
+
+        await finish_event_reply(
+            context.matcher or matcher,
+            event,
+            ABOUT_MESSAGE.format(version=version),
+        )
+
+
+register_plugin(CustomAboutPlugin())
+
+
+@matcher.handle()
+async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
+    await dispatch_plugin(
+        plugin_name=ABOUT_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+    )
