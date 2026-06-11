@@ -1,4 +1,4 @@
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.ai import (
     DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_AI_MENTION_GUARD_MESSAGE,
     DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW,

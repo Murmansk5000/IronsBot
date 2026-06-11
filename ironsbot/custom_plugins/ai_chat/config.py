@@ -1,7 +1,7 @@
 from nonebot import get_driver
 
 from ironsbot.config import AppConfig, get_app_config, load_secrets_config
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.ai import (
     AiConfig as AiChatConfig,
 )
 

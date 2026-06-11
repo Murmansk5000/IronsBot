@@ -1,16 +1,16 @@
 from nonebot import get_driver
 
 from ironsbot.config import AppConfig, get_app_config, load_secrets_config
-from ironsbot.config.models.seer import TeamShortcutConfig
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.ai import (
     AiActionBase,
     AiActionTemplate,
     AiIntentAction,
     resolve_configured_actions,
 )
-from ironsbot.shared.config.config import (
+from ironsbot.config.models.ai import (
     AiConfig as AiIntentConfig,
 )
+from ironsbot.config.models.seer import TeamShortcutConfig
 
 Config = AppConfig
 
