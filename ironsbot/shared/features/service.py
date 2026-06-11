@@ -8,11 +8,13 @@ from typing import TYPE_CHECKING
 from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
-from ironsbot.shared.config.config import (
+from ironsbot.config import get_app_config
+from ironsbot.config.models.feature import (
     FEATURE_ALIASES,
     KNOWN_FEATURES,
-    FeaturePolicyConfig,
-    get_shared_config,
+    FeatureConfig,
+)
+from ironsbot.shared.config.config import (
     unique_ints,
 )
 
@@ -36,8 +38,8 @@ class FeatureService:
     """Central access point for feature policy decisions."""
 
     @property
-    def config(self) -> FeaturePolicyConfig:
-        return get_shared_config().feature_policy
+    def config(self) -> FeatureConfig:
+        return get_app_config().feature
 
     def get_superuser_ids(self) -> set[int]:
         superusers = getattr(get_driver().config, "superusers", set())
@@ -102,7 +104,7 @@ class FeatureService:
     def groups_for_feature(self, feature: str) -> list[int]:
         config = self.config
         return self._ids_for_feature(
-            config.feature_group_policy,
+            config.group_policy,
             config.group_aliases,
             feature,
         )
@@ -110,7 +112,7 @@ class FeatureService:
     def users_for_feature(self, feature: str) -> list[int]:
         config = self.config
         return self._ids_for_feature(
-            config.feature_user_policy,
+            config.user_policy,
             config.user_aliases,
             feature,
         )
@@ -120,7 +122,7 @@ class FeatureService:
         if resolved is None or resolved <= 0:
             return []
         features: list[str] = []
-        for raw_key, feature_list in self.config.feature_group_policy.items():
+        for raw_key, feature_list in self.config.group_policy.items():
             if self._resolve_policy_id(raw_key, self.config.group_aliases) != resolved:
                 continue
             features.extend(self._expand_features(feature_list))
@@ -131,7 +133,7 @@ class FeatureService:
         if resolved is None or resolved <= 0:
             return []
         features: list[str] = []
-        for raw_key, feature_list in self.config.feature_user_policy.items():
+        for raw_key, feature_list in self.config.user_policy.items():
             if self._resolve_policy_id(raw_key, self.config.user_aliases) != resolved:
                 continue
             features.extend(self._expand_features(feature_list))
@@ -151,11 +153,11 @@ class FeatureService:
     ) -> bool:
         if self.group_has_feature(group_id, feature):
             return True
-        return self.config.feature_superuser_bypass and self.is_superuser(user_id)
+        return self.config.superuser_bypass and self.is_superuser(user_id)
 
     def is_private_feature_allowed(self, user_id: int, feature: str) -> bool:
         return user_id in self.users_for_feature(feature) or (
-            self.config.feature_superuser_bypass and self.is_superuser(user_id)
+            self.config.superuser_bypass and self.is_superuser(user_id)
         )
 
     def is_event_feature_allowed(self, event: Event, feature: str) -> bool:
@@ -318,7 +320,7 @@ def is_event_feature_allowed(event: Event, feature: str) -> bool:
 __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
-    "FeaturePolicyConfig",
+    "FeatureConfig",
     "FeatureService",
     "feature_service",
     "get_superuser_ids",

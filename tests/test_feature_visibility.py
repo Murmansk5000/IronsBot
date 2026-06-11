@@ -33,20 +33,20 @@ def _group_event(text: str = "帮助") -> GroupMessageEvent:
 
 def _config(
     *,
-    ai_key: str = "",
     ai_intent_enabled: bool = True,
     team_ids: list[int] | None = None,
     group_actions: list[Action] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        ai_key=ai_key,
-        ai_config=SimpleNamespace(intent_actions_enabled=ai_intent_enabled),
-        team_ids=team_ids or [],
-        msg_config=SimpleNamespace(
+        ai=SimpleNamespace(intent_actions_enabled=ai_intent_enabled),
+        message=SimpleNamespace(
             group_commands=group_actions or [],
             group_schedules=[],
             private_commands=[],
             private_schedules=[],
+        ),
+        seer=SimpleNamespace(
+            team_shortcut=SimpleNamespace(team_ids=team_ids or []),
         ),
     )
 
@@ -88,12 +88,12 @@ def test_feature_module_visibility_uses_feature_service(
     )
 
 
-def test_message_actions_visibility_reads_shared_config(
+def test_message_actions_visibility_reads_app_config(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "get_shared_config",
+        "get_app_config",
         lambda: _config(group_actions=[Action(enabled=True, feature="text")]),
     )
     monkeypatch.setattr(
@@ -114,8 +114,13 @@ def test_ai_intent_visibility_requires_key_and_feature(
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "get_shared_config",
-        lambda: _config(ai_key="key", ai_intent_enabled=True),
+        "_ai_key_configured",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        visibility,
+        "get_app_config",
+        lambda: _config(ai_intent_enabled=True),
     )
     monkeypatch.setattr(
         visibility,
@@ -126,5 +131,26 @@ def test_ai_intent_visibility_requires_key_and_feature(
     assert visibility.plugin_visible_for_event(
         "AI意图动作",
         "ironsbot.custom_plugins.ai_intent_actions",
+        _group_event(),
+    )
+
+
+def test_team_shortcut_visibility_reads_app_config(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        visibility,
+        "get_app_config",
+        lambda: _config(team_ids=[123456]),
+    )
+    monkeypatch.setattr(
+        visibility,
+        "is_group_feature_allowed",
+        lambda _user_id, _group_id, feature: feature == "team",
+    )
+
+    assert visibility.plugin_visible_for_event(
+        "战队快捷",
+        "ironsbot.custom_plugins.team_shortcut",
         _group_event(),
     )
