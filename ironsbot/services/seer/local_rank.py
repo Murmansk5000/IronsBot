@@ -10,6 +10,11 @@ from typing import Any, cast
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig
 from ironsbot.services.seer.rank import (
+    PlayerRankSummary,
+    RankLookupResult,
+    is_pet_kind_rank_anomaly_user,
+)
+from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
     BOOK_RANK_KEY,
@@ -27,9 +32,6 @@ from ironsbot.services.seer.rank import (
     SKIN_RANK_SUB_KEY,
     STANDARD_PEAK_USER_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
-    PlayerRankSummary,
-    RankLookupResult,
-    is_pet_kind_rank_anomaly_user,
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
 

@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -27,30 +25,29 @@ from ironsbot.services.seer.local_rank_refresh import (
 )
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank import (
-    ACHIEVE_RANK_KEY,
-    ACHIEVE_RANK_SUB_KEY,
-    BOOK_RANK_KEY,
-    BOOK_RANK_SUB_KEY,
-    COUNTERMARK_RANK_KEY,
-    COUNTERMARK_RANK_SUB_KEY,
-    MOUNT_RANK_SUB_KEY,
-    OUTFIT_PART_RANK_SUB_KEY,
-    OUTFIT_RANK_KEY,
-    OUTFIT_SUIT_RANK_SUB_KEY,
-    PET_KIND_RANK_ANOMALY_COUNT,
-    PET_KIND_RANK_KEY,
-    PET_KIND_RANK_SUB_KEY,
-    SKIN_RANK_KEY,
-    SKIN_RANK_SUB_KEY,
     fetch_daily_rank_page,
     get_current_peak_sub_key,
+)
+from ironsbot.services.seer.rank_list import (
+    GLOBAL_RANKS,
+    LOCAL_RANKS,
+    MAX_CACHE_INTERVALS_SHOWN,
+    RANK_LIST_SIZE,
+    GlobalRankSpec,
+    LocalRankSpec,
+    RankCacheBatchCommand,
+    RankListCommand,
+    RankPageCacheStatusCommand,
+    parse_rank_cache_batch_command,
+    parse_rank_list_command,
+    parse_rank_page_cache_status_command,
+    with_admin_prefix,
 )
 from ironsbot.services.seer.rank_page_cache import (
     CachedRankPageSummary,
     get_rank_page_cache_summary,
 )
 from ironsbot.services.seer.rank_usage import build_rank_help_message
-from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -61,254 +58,23 @@ from ironsbot.utils.rule import no_reply
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
 from ..group import matcher_group
 
-RANK_LIST_SIZE = 20
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 RANK_LIST_PLUGIN_NAME = "seer_rank_list"
-BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
-RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
-MAX_CACHE_INTERVALS_SHOWN = 20
-
-
-def _with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(f"/{command}" for command in commands)
-
-
-@dataclass(frozen=True, slots=True)
-class GlobalRankSpec:
-    title: str
-    key: int
-    sub_key: int
-    unit: str
-    start: int = 0
-    rank_offset: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class LocalRankSpec:
-    title: str
-    metric_key: str
-    season_limited: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class RankCacheBatchCommand:
-    rank_key: str
-    start_rank: int
-    end_rank: int
-
-
-@dataclass(frozen=True, slots=True)
-class RankPageCacheStatusCommand:
-    rank_key: str
-
-
-GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
-    "图鉴积分": GlobalRankSpec("图鉴积分榜", BOOK_RANK_KEY, BOOK_RANK_SUB_KEY, "分"),
-    "成就点数": GlobalRankSpec(
-        "成就点数榜", ACHIEVE_RANK_KEY, ACHIEVE_RANK_SUB_KEY, "点"
-    ),
-    "精灵图鉴": GlobalRankSpec(
-        "精灵图鉴榜",
-        PET_KIND_RANK_KEY,
-        PET_KIND_RANK_SUB_KEY,
-        "项",
-        start=PET_KIND_RANK_ANOMALY_COUNT,
-        rank_offset=-PET_KIND_RANK_ANOMALY_COUNT,
-    ),
-    "皮肤图鉴": GlobalRankSpec("皮肤图鉴榜", SKIN_RANK_KEY, SKIN_RANK_SUB_KEY, "款"),
-    "套装图鉴": GlobalRankSpec(
-        "套装图鉴榜", OUTFIT_RANK_KEY, OUTFIT_SUIT_RANK_SUB_KEY, "套"
-    ),
-    "部件图鉴": GlobalRankSpec(
-        "部件图鉴榜", OUTFIT_RANK_KEY, OUTFIT_PART_RANK_SUB_KEY, "件"
-    ),
-    "座驾图鉴": GlobalRankSpec("座驾图鉴榜", OUTFIT_RANK_KEY, MOUNT_RANK_SUB_KEY, "个"),
-    "刻印图鉴": GlobalRankSpec(
-        "刻印图鉴榜", COUNTERMARK_RANK_KEY, COUNTERMARK_RANK_SUB_KEY, "枚"
-    ),
-}
-
-LOCAL_RANKS: dict[str, LocalRankSpec] = {
-    "图鉴积分": LocalRankSpec("样本图鉴积分榜", "book_score"),
-    "成就点数": LocalRankSpec("样本成就点数榜", "achievement_score"),
-    "精灵数量": LocalRankSpec("样本精灵总数榜", "pet_total_count"),
-    "精灵图鉴": LocalRankSpec("样本精灵图鉴榜", "pet_kind_count"),
-    "皮肤图鉴": LocalRankSpec("样本皮肤图鉴榜", "skin_count"),
-    "套装图鉴": LocalRankSpec("样本套装图鉴榜", "outfit_suit_count"),
-    "部件图鉴": LocalRankSpec("样本部件图鉴榜", "outfit_part_count"),
-    "座驾图鉴": LocalRankSpec("样本座驾图鉴榜", "mount_count"),
-    "刻印图鉴": LocalRankSpec("样本刻印图鉴榜", "countermark_count"),
-    "已解锁图鉴": LocalRankSpec("样本已解锁图鉴榜", "unlocked_book_entries"),
-    "成就数量": LocalRankSpec("样本成就数量榜", "achievement_count"),
-    "竞技段位": LocalRankSpec(
-        "样本竞技段位榜", "peak_standard", season_limited=True
-    ),
-    "竞技胜率": LocalRankSpec(
-        "样本竞技胜率榜", "peak_standard_win_rate", season_limited=True
-    ),
-    "竞技场次": LocalRankSpec(
-        "样本竞技场次榜", "peak_standard_matches", season_limited=True
-    ),
-    "狂野段位": LocalRankSpec("样本狂野段位榜", "peak_wild", season_limited=True),
-    "狂野胜率": LocalRankSpec(
-        "样本狂野胜率榜", "peak_wild_win_rate", season_limited=True
-    ),
-    "狂野场次": LocalRankSpec(
-        "样本狂野场次榜", "peak_wild_matches", season_limited=True
-    ),
-    "专家段位": LocalRankSpec("样本专家段位榜", "peak_expert", season_limited=True),
-    "专家胜率": LocalRankSpec(
-        "样本专家胜率榜", "peak_expert_win_rate", season_limited=True
-    ),
-    "专家场次": LocalRankSpec(
-        "样本专家场次榜", "peak_expert_matches", season_limited=True
-    ),
-    "巅峰总场次": LocalRankSpec(
-        "样本巅峰总场次榜", "peak_total_matches", season_limited=True
-    ),
-}
-
-
-def _build_command_map() -> dict[str, tuple[str, str]]:
-    commands: dict[str, tuple[str, str]] = {}
-
-    aliases = {
-        "图鉴积分": ("图鉴积分榜", "图鉴榜"),
-        "成就点数": ("成就点数榜", "成就榜"),
-        "精灵图鉴": ("精灵图鉴榜", "精灵种类榜", "精灵榜"),
-        "皮肤图鉴": ("皮肤图鉴榜", "皮肤榜"),
-        "套装图鉴": ("套装图鉴榜", "套装榜"),
-        "部件图鉴": ("部件图鉴榜", "部件榜"),
-        "座驾图鉴": ("座驾图鉴榜", "座驾榜"),
-        "刻印图鉴": ("刻印图鉴榜", "刻印榜"),
-    }
-    for key, names in aliases.items():
-        for name in names:
-            commands[name] = ("global", key)
-
-    local_aliases = {
-        "精灵数量": (
-            "精灵总数榜",
-            "样本精灵数量榜",
-            "样本精灵总数榜",
-            "样品精灵数量榜",
-            "样品精灵总数榜",
-            "机器人精灵数量榜",
-            "机器人精灵总数榜",
-        ),
-        "精灵图鉴": ("样本精灵榜", "机器人精灵榜"),
-        "已解锁图鉴": ("样本已解锁图鉴榜", "机器人已解锁图鉴榜", "解锁图鉴榜"),
-        "成就数量": ("样本成就数量榜", "机器人成就数量榜"),
-        "竞技段位": ("样本竞技段位榜", "机器人竞技段位榜", "样本竞技榜"),
-        "竞技胜率": ("样本竞技胜率榜", "机器人竞技胜率榜"),
-        "竞技场次": ("样本竞技场次榜", "机器人竞技场次榜", "竞技场次榜"),
-        "狂野段位": ("样本狂野段位榜", "机器人狂野段位榜", "样本狂野榜"),
-        "狂野胜率": ("样本狂野胜率榜", "机器人狂野胜率榜"),
-        "狂野场次": ("样本狂野场次榜", "机器人狂野场次榜", "狂野场次榜"),
-        "专家段位": ("样本专家段位榜", "机器人专家段位榜", "样本专家榜"),
-        "专家胜率": ("样本专家胜率榜", "机器人专家胜率榜"),
-        "专家场次": ("样本专家场次榜", "机器人专家场次榜", "专家场次榜"),
-        "巅峰总场次": (
-            "样本场次榜",
-            "样本场次总榜",
-            "样本总场次榜",
-            "样本巅峰场次榜",
-            "样本巅峰总场次榜",
-            "机器人场次榜",
-            "机器人场次总榜",
-            "机器人总场次榜",
-            "场次榜",
-            "场次总榜",
-            "总场次榜",
-        ),
-    }
-    for key, spec in GLOBAL_RANKS.items():
-        names = (
-            f"样本{key}榜",
-            f"机器人{key}榜",
-            f"样本{spec.title}",
-            f"机器人{spec.title}",
-            *(f"样本{name}" for name in aliases.get(key, ())),
-            *(f"机器人{name}" for name in aliases.get(key, ())),
-        )
-        local_aliases[key] = (*local_aliases.get(key, ()), *names)
-
-    for key, names in local_aliases.items():
-        for name in names:
-            commands[name] = ("local", key)
-
-    return commands
-
-
-COMMANDS = _build_command_map()
-NORMALIZED_COMMANDS = {
-    normalize_command_text(command): value
-    for command, value in COMMANDS.items()
-}
 
 
 async def _is_rank_list_command(event: Event, state: T_State) -> bool:
-    command = normalize_command_text(event.get_plaintext())
-    if command not in NORMALIZED_COMMANDS:
+    command = parse_rank_list_command(event.get_plaintext())
+    if command is None:
         return False
 
     state[RANK_LIST_COMMAND_KEY] = command
     return True
 
 
-def _matching_normalized_prefix(
-    command: str,
-    prefixes: tuple[str, ...],
-) -> str | None:
-    return next(
-        (
-            normalized_prefix
-            for prefix in prefixes
-            if command.startswith(
-                normalized_prefix := normalize_command_text(prefix)
-            )
-        ),
-        None,
-    )
-
-
-def _parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
-    stripped = strip_command_prefix(text)
-    if stripped is None:
-        return None
-
-    command = normalize_command_text(stripped)
-    normalized_prefix = _matching_normalized_prefix(command, BATCH_CACHE_PREFIXES)
-    if normalized_prefix is None:
-        return None
-
-    command = command[len(normalized_prefix) :]
-    match = re.fullmatch(r"(.+?)(\d+)(?:-|~|到|至)(\d+)", command)
-    if match is not None:
-        rank_name, start_text, end_text = match.groups()
-        rank_command = NORMALIZED_COMMANDS.get(rank_name)
-        start_rank = int(start_text)
-        end_rank = int(end_text)
-
-        if (
-            rank_command is not None
-            and rank_command[0] == "global"
-            and start_rank > 0
-            and end_rank >= start_rank
-        ):
-            return RankCacheBatchCommand(
-                rank_key=rank_command[1],
-                start_rank=start_rank,
-                end_rank=end_rank,
-            )
-
-    return None
-
-
 async def _is_rank_cache_batch_command(event: Event, state: T_State) -> bool:
-    command = _parse_rank_cache_batch_command(event.get_plaintext())
+    command = parse_rank_cache_batch_command(event.get_plaintext())
     if command is None:
         return False
 
@@ -316,31 +82,8 @@ async def _is_rank_cache_batch_command(event: Event, state: T_State) -> bool:
     return True
 
 
-def _parse_rank_page_cache_status_command(
-    text: str,
-) -> RankPageCacheStatusCommand | None:
-    stripped = strip_command_prefix(text)
-    if stripped is None:
-        return None
-
-    command = normalize_command_text(stripped)
-    normalized_prefix = _matching_normalized_prefix(
-        command,
-        RANK_PAGE_CACHE_STATUS_PREFIXES,
-    )
-    if normalized_prefix is None:
-        return None
-
-    rank_name = command[len(normalized_prefix) :]
-    rank_command = NORMALIZED_COMMANDS.get(rank_name)
-    if rank_command is None or rank_command[0] != "global":
-        return None
-
-    return RankPageCacheStatusCommand(rank_key=rank_command[1])
-
-
 async def _is_rank_page_cache_status_command(event: Event, state: T_State) -> bool:
-    command = _parse_rank_page_cache_status_command(event.get_plaintext())
+    command = parse_rank_page_cache_status_command(event.get_plaintext())
     if command is None:
         return False
 
@@ -356,7 +99,7 @@ rank_list_matcher = matcher_group.on_message(
     rule=Rule(_is_rank_list_command) & no_reply(),
 )
 rank_cache_status_matcher = matcher_group.on_fullmatch(
-    _with_admin_prefix((
+    with_admin_prefix((
         "缓存情况",
         "缓存状态",
         "查询缓存",
@@ -369,7 +112,7 @@ rank_cache_status_matcher = matcher_group.on_fullmatch(
     permission=SUPERUSER,
 )
 rank_cache_refresh_matcher = matcher_group.on_fullmatch(
-    _with_admin_prefix(("更新样本榜", "刷新样本榜", "重建样本榜")),
+    with_admin_prefix(("更新样本榜", "刷新样本榜", "重建样本榜")),
     rule=no_reply(),
     permission=SUPERUSER,
 )
@@ -579,20 +322,19 @@ class RankListPlugin:
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        command = state[RANK_LIST_COMMAND_KEY]
-        kind, key = NORMALIZED_COMMANDS[command]
+        command: RankListCommand = state[RANK_LIST_COMMAND_KEY]
 
-        if kind == "global":
+        if command.kind == "global":
             await finish_event_reply(
                 matcher,
                 event,
-                await _build_global_rank_message(GLOBAL_RANKS[key]),
+                await _build_global_rank_message(GLOBAL_RANKS[command.rank_key]),
             )
 
         await finish_event_reply(
             matcher,
             event,
-            _build_local_rank_message(LOCAL_RANKS[key]),
+            _build_local_rank_message(LOCAL_RANKS[command.rank_key]),
         )
 
     async def _handle_cache_batch(
