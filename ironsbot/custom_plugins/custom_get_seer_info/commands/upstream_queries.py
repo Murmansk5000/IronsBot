@@ -33,13 +33,6 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from .._upstream.commands import cloth as upstream_cloth
-from .._upstream.commands import effect as upstream_effect
-from .._upstream.commands import mintmark as upstream_mintmark
-from .._upstream.commands import other as upstream_other
-from .._upstream.commands import peak as upstream_peak
-from .._upstream.commands import pet as upstream_pet
-from .._upstream.commands import type as upstream_type
 from ..depends import (
     GetPetData,
     PetDataGetter,
@@ -52,6 +45,13 @@ from ..prompt import (
     enter_prompt,
     simple_prompt_resolver,
 )
+from ..upstream_commands import cloth as upstream_cloth
+from ..upstream_commands import effect as upstream_effect
+from ..upstream_commands import mintmark as upstream_mintmark
+from ..upstream_commands import other as upstream_other
+from ..upstream_commands import peak as upstream_peak
+from ..upstream_commands import pet as upstream_pet
+from ..upstream_commands import type as upstream_type
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
