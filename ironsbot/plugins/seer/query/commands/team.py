@@ -42,8 +42,8 @@ from ._args import has_numeric_arg, parse_numeric_id
 TEAM_ID_KEY = "team_id"
 TEAM_PLUGIN_NAME = "seer_team"
 TEAM_QUERY_GUARD = QueryGuard(
-    success_namespace="custom_get_seer_info.team_query.success",
-    failure_namespace="custom_get_seer_info.team_query.failure",
+    success_namespace="seer.team_query.success",
+    failure_namespace="seer.team_query.failure",
     success_cooldown=lambda: get_team_query_config().rate_limit_seconds,
     failure_cooldown=lambda: get_team_query_config().failure_rate_limit_seconds,
 )

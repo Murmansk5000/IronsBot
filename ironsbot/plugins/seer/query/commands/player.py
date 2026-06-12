@@ -88,11 +88,11 @@ from ..group import matcher_group
 from ._args import parse_numeric_id
 
 PLAYER_ID_KEY = "player_id"
-PLAYER_DETAIL_NAMESPACE = "custom_get_seer_info_player_details"
+PLAYER_DETAIL_NAMESPACE = "seer_player_details"
 PLAYER_PLUGIN_NAME = "seer_player"
 PLAYER_QUERY_GUARD = QueryGuard(
-    success_namespace="custom_get_seer_info.player_query.success",
-    failure_namespace="custom_get_seer_info.player_query.failure",
+    success_namespace="seer.player_query.success",
+    failure_namespace="seer.player_query.failure",
     success_cooldown=lambda: get_player_query_config().rate_limit_seconds,
     failure_cooldown=lambda: get_player_query_config().failure_rate_limit_seconds,
 )

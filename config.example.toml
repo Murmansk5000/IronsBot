@@ -412,10 +412,10 @@ page_cache_ttl_seconds = 3600
 allow_stale_cache = true
 # Default: true; EN: Refresh stale rank cache. ZH: 刷新过期缓存。
 refresh_stale_cache = true
-# Default: "data/custom_get_seer_info/rank_page_cache.sqlite"
+# Default: "data/seer/rank_page_cache.sqlite"
 # EN: Rank page cache SQLite path.
 # ZH: 榜单分页缓存数据库。
-page_cache_path = "data/custom_get_seer_info/rank_page_cache.sqlite"
+page_cache_path = "data/seer/rank_page_cache.sqlite"
 # Default: omitted/null; EN: Override peak subkey. ZH: 覆盖巅峰 subkey。
 # peak_subkey = 123
 
@@ -438,10 +438,10 @@ refresh_limit = 300
 refresh_max_age_hours = 24
 # Default: 0.5; EN: Delay between refresh queries. ZH: 刷新请求间隔秒数。
 refresh_interval_seconds = 0.5
-# Default: "data/custom_get_seer_info/player_query_cache.sqlite"
+# Default: "data/seer/player_query_cache.sqlite"
 # EN: Local rank SQLite path.
 # ZH: 本地样本榜数据库。
-path = "data/custom_get_seer_info/player_query_cache.sqlite"
+path = "data/seer/player_query_cache.sqlite"
 
 [seer.team_shortcut]
 # Default: []

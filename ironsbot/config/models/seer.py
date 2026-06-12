@@ -115,9 +115,7 @@ class RankQueryConfig(BaseModel):
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
     refresh_stale_cache: bool = True
-    page_cache_path: Path = Path(
-        "data/custom_get_seer_info/rank_page_cache.sqlite"
-    )
+    page_cache_path: Path = Path("data/seer/rank_page_cache.sqlite")
     peak_subkey: int | None = Field(default=None, ge=0)
 
     @field_validator("peak_subkey", mode="before")
@@ -143,7 +141,7 @@ class LocalRankConfig(BaseModel):
     refresh_limit: int = Field(default=300, ge=1)
     refresh_max_age_hours: int = Field(default=24, ge=0)
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
-    path: Path = Path("data/custom_get_seer_info/player_query_cache.sqlite")
+    path: Path = Path("data/seer/player_query_cache.sqlite")
 
     @field_validator("path")
     @classmethod

@@ -6,7 +6,7 @@
 
 IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
-当前主线已经转为自定义插件架构：用户可触发的功能由 `ironsbot/custom_plugins` 提供；原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
+当前主线已经转为显式插件架构：用户可触发的功能集中在 `ironsbot/plugins`；原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
 
 ## 功能
 
@@ -86,7 +86,7 @@ services:
 
 ## 插件架构
 
-用户功能目前分布在 `ironsbot/plugins` 与 `ironsbot/custom_plugins`，旧 `custom_*` 命名会在 Stage 9 逐步收束：
+用户功能集中在 `ironsbot/plugins`，旧 `custom_*` 命名会在 Stage 9 逐步收束：
 
 | 插件 | 作用 |
 | --- | --- |
@@ -105,7 +105,7 @@ services:
 | `ai_intent` | AI 判定后触发文本或战队动作。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
-原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
+仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
 
 ## 配置方式
 
