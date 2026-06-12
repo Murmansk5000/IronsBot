@@ -35,6 +35,14 @@ from ironsbot.services.seer.rank_list import (
     RankListCommand,
     RankPageCacheStatusCommand,
     batch_raw_start,
+    build_local_rank_cache_full_message,
+    build_local_rank_cache_status_message,
+    build_local_rank_refresh_empty_message,
+    build_local_rank_refresh_result_message,
+    build_local_rank_refresh_start_message,
+    build_rank_batch_no_players_message,
+    build_rank_batch_result_message,
+    build_rank_batch_start_message,
     build_rank_page_cache_status_message,
     format_global_rank_message,
     format_local_rank_message,
@@ -234,8 +242,7 @@ class RankListPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                f"❌ 样本缓存已满：{before.player_count}/{before.max_players}。"
-                "请先调大 seer.local_rank.max_players。",
+                build_local_rank_cache_full_message(before),
             )
 
         spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
@@ -243,44 +250,35 @@ class RankListPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                f"❌ 没有从{spec.title}拿到可缓存的米米号。",
-            )
-
-        truncated_text = ""
-        if requested_count > len(player_ids):
-            truncated_text = (
-                "\n本次按 seer.local_rank.batch_limit "
-                f"只处理前 {len(player_ids)} 个。"
+                build_rank_batch_no_players_message(spec),
             )
 
         await send_event_reply(
             matcher,
             event,
-            f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
-            f"\n实际拿到 {len(player_ids)} 个米米号。"
-            f"\n当前缓存：{before.player_count}/{before.max_players}。"
-            f"{truncated_text}",
+            build_rank_batch_start_message(
+                spec,
+                command,
+                before,
+                player_id_count=len(player_ids),
+                requested_count=requested_count,
+            ),
         )
         await release_superuser_priority(state)
         result = await refresh_local_rank_cache(player_ids)
         after = get_local_rank_cache_stats()
 
-        lines = [
-            "✅【榜单区间缓存完成】",
-            f"榜单：{spec.title}",
-            f"请求区间：第 {command.start_rank}-{command.end_rank} 名",
-            f"本次处理：{result.total} 个",
-            f"成功写入/刷新：{result.success} 个",
-            f"缓存已满跳过：{result.skipped_full} 个",
-            f"失败：{result.failed} 个",
-            f"当前缓存：{after.player_count}/{after.max_players}",
-        ]
-        if result.failures:
-            lines.append("")
-            lines.append("失败示例：")
-            lines.extend(format_refresh_failures(result.failures))
-
-        await finish_event_reply(matcher, event, "\n".join(lines))
+        await finish_event_reply(
+            matcher,
+            event,
+            build_rank_batch_result_message(
+                spec,
+                command,
+                result,
+                after,
+                failure_lines=format_refresh_failures(result.failures),
+            ),
+        )
 
     async def _handle_page_cache_status(
         self,
@@ -310,25 +308,19 @@ class RankListPlugin:
     ) -> None:
         stats = get_local_rank_cache_stats()
         query_config = get_seer_config()
-        lines = [
-            "📊【样本榜缓存状态】",
-            f"已缓存米米号：{stats.player_count}/{stats.max_players} 个",
-            f"总缓存玩家：{stats.total_player_count} 个"
-            "（含全服榜单扫到但未计入样本的人）",
-            f"全服排行扫描上限：前 {query_config.rank.limit} 名",
-            f"单次批量缓存上限：{query_config.local_rank.batch_limit} 个",
-            f"单轮刷新上限：{query_config.local_rank.refresh_limit} 个",
-            f"刷新过期时间：{query_config.local_rank.refresh_max_age_hours} 小时",
-            "巅峰样本：按当前赛季单独比较",
-            f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
-            "",
-            "可参与排行人数：",
-        ]
-        lines.extend(
-            f"{title}：{count}"
-            for title, count in stats.metric_counts.items()
+        await finish_event_reply(
+            matcher,
+            event,
+            build_local_rank_cache_status_message(
+                stats,
+                rank_limit=query_config.rank.limit,
+                batch_limit=query_config.local_rank.batch_limit,
+                refresh_limit=query_config.local_rank.refresh_limit,
+                refresh_max_age_hours=(
+                    query_config.local_rank.refresh_max_age_hours
+                ),
+            ),
         )
-        await finish_event_reply(matcher, event, "\n".join(lines))
 
     async def _handle_cache_refresh(
         self,
@@ -342,37 +334,32 @@ class RankListPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。",
+                build_local_rank_refresh_empty_message(),
             )
 
+        local_rank_config = get_local_rank_config()
         await send_event_reply(
             matcher,
             event,
-            "🔄 正在刷新样本榜缓存。"
-            f"样本共 {before.player_count} 个，本轮按最旧优先最多刷新 "
-            f"{get_local_rank_config().refresh_limit} 个，"
-            "只刷新超过 "
-            f"{get_local_rank_config().refresh_max_age_hours} "
-            "小时未更新的数据。",
+            build_local_rank_refresh_start_message(
+                before,
+                refresh_limit=local_rank_config.refresh_limit,
+                refresh_max_age_hours=local_rank_config.refresh_max_age_hours,
+            ),
         )
         await release_superuser_priority(state)
         result = await refresh_local_rank_cache()
         after = get_local_rank_cache_stats()
 
-        lines = [
-            "✅【样本榜缓存刷新完成】",
-            f"本轮候选米米号：{result.total} 个",
-            f"成功刷新：{result.success} 个",
-            f"缓存已满跳过：{result.skipped_full} 个",
-            f"失败：{result.failed} 个",
-            f"当前缓存米米号：{after.player_count}/{after.max_players} 个",
-        ]
-        if result.failures:
-            lines.append("")
-            lines.append("失败示例：")
-            lines.extend(format_refresh_failures(result.failures))
-
-        await finish_event_reply(matcher, event, "\n".join(lines))
+        await finish_event_reply(
+            matcher,
+            event,
+            build_local_rank_refresh_result_message(
+                result,
+                after,
+                failure_lines=format_refresh_failures(result.failures),
+            ),
+        )
 
 
 register_plugin(RankListPlugin())
