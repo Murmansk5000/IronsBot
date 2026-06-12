@@ -34,13 +34,23 @@ from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vot
 from ironsbot.utils import time
 from ironsbot.utils.rule import no_reply
 
-from ...depends import GameClient, PetDataGetter, SeerAPISession
-from ...upstream_noop_group import matcher_group
+from ..depends import GameClient, PetDataGetter, SeerAPISession
+from ..upstream_noop_group import matcher_group
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
     from ironsbot.plugins.headless_seer.packets import DailyRankList
+
+LIMIT_POOL_VOTE_COUNT = 2
+SEMI_LIMIT_POOL_VOTE_COUNT = 3
+RATING_STAR_THRESHOLD = 4
+
+
+class UnknownPeakCommandError(ValueError):
+    def __init__(self, command: str) -> None:
+        super().__init__(f"无法从命令 {command} 中获取巅峰类型")
+
 
 peak_pool_matcher = matcher_group.on_fullmatch(
     ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"), rule=no_reply()
@@ -145,11 +155,13 @@ async def handle_peak_vote(
         elif orm.end_time < now:
             title += " / 票选已结束"
         else:
-            title += f"<br>票选时间：{orm.start_time.strftime('%Y-%m-%d')} ~ {orm.end_time.strftime('%Y-%m-%d')}"
+            start_time = orm.start_time.strftime("%Y-%m-%d")
+            end_time = orm.end_time.strftime("%Y-%m-%d")
+            title += f"<br>票选时间：{start_time} ~ {end_time}"
 
-        if orm.count == 2:
+        if orm.count == LIMIT_POOL_VOTE_COUNT:
             pool = await game.get_limit_pool_vote(sub_key=orm.subkey)
-        elif orm.count == 3:
+        elif orm.count == SEMI_LIMIT_POOL_VOTE_COUNT:
             pool = await game.get_semi_limit_pool_vote(sub_key=orm.subkey)
         else:
             continue
@@ -235,7 +247,7 @@ def _get_peak_type(command: Annotated[str, Fullmatch()]) -> _PeakTypeTuple:
     elif "竞技" in command:
         peak_type = PeakType.STANDARD
     else:
-        raise ValueError(f"无法从命令 {command} 中获取巅峰类型")
+        raise UnknownPeakCommandError(command)
 
     return _PeakTypeTuple(name=PEAK_TYPE_NAME_MAP[peak_type], peak_type=peak_type)
 
@@ -265,8 +277,9 @@ async def handle_peak_suit(
         await matcher.finish("❌找不到套装榜数据。")
 
     rank = _Rank.from_peak_item_data(rank, getter=SuitDataGetter, sessions=sessions)
+    timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
     await matcher.finish(
-        f"{name}套装榜（截至{time.now(tz=time.TZ_CN).strftime('%Y-%m-%d %H:%M:%S')}）\n{rank}"
+        f"{name}套装榜（截至{timestamp}）\n{rank}"
     )
 
 
@@ -279,8 +292,12 @@ def _format_peak_rating(data: int) -> str:
         return "未知"
 
     score = data - first_digit * 100000
-    end_str = "星" if first_digit >= 4 else "分"
+    end_str = "星" if first_digit >= RATING_STAR_THRESHOLD else "分"
     return f"{PEAK_RATING_NAMES[first_digit]}{score}{end_str}"
+
+
+def _format_peak_score(score: int) -> str:
+    return f"{score}分"
 
 
 title_matcher = matcher_group.on_fullmatch(
@@ -308,8 +325,9 @@ async def handle_title(
         await matcher.finish("❌找不到称号榜数据。")
 
     rank = _Rank.from_peak_item_data(rank, getter=TitleDataGetter, sessions=sessions)
+    timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
     await matcher.finish(
-        f"{name}称号榜（截至{time.now(tz=time.TZ_CN).strftime('%Y-%m-%d %H:%M:%S')}）\n{rank}"
+        f"{name}称号榜（截至{timestamp}）\n{rank}"
     )
 
 
@@ -327,7 +345,7 @@ peak_pet_matcher = matcher_group.on_fullmatch(
 
 
 @peak_pet_matcher.handle()
-async def handle_peak_pet(
+async def handle_peak_pet(  # noqa: PLR0913
     matcher: Matcher,
     seerapi_session: SeerAPISession,
     command: Annotated[str, Fullmatch()],
@@ -403,14 +421,15 @@ async def handle_peak_user(
     if not rank:
         await matcher.finish("❌找不到段位榜数据。")
 
-    rating_func = lambda x: f"{x}分"
-    if peak_type != PeakType.EXPERT:
-        rating_func = _format_peak_rating
+    rating_func = (
+        _format_peak_score if peak_type == PeakType.EXPERT else _format_peak_rating
+    )
 
     rank_str = "\n".join(
         f"{index}. {item.nick}（{item.id}） {rating_func(item.score)}"
         for index, item in enumerate(rank, 1)
     )
+    timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
     await matcher.finish(
-        f"{name}段位榜（截至{time.now(tz=time.TZ_CN).strftime('%Y-%m-%d %H:%M:%S')}）\n{rank_str}"
+        f"{name}段位榜（截至{timestamp}）\n{rank_str}"
     )
