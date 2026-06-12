@@ -75,7 +75,7 @@ def test_feature_module_visibility_uses_feature_service(
     )
     assert not visibility.plugin_visible_for_event(
         "榜单",
-        "ironsbot.custom_plugins.rank_help",
+        "ironsbot.plugins.seer.rank_help",
         _group_event(),
     )
 

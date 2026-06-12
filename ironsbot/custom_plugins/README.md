@@ -25,8 +25,6 @@ plugin_dirs = []
 ironsbot/custom_plugins/
   custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
   message_actions/         # 通用消息动作适配层
-  pet_config_reply/        # 对“精灵名 + 配置”提示暂不支持配置查询
-  rank_help/               # 榜单帮助入口
   superuser_priority/      # 超级用户优先级控制
 ```
 

@@ -9,10 +9,10 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     "help": ("ironsbot.plugins.help",),
     "seer": (
         "ironsbot.custom_plugins.custom_get_seer_info",
-        "ironsbot.custom_plugins.pet_config_reply",
+        "ironsbot.plugins.seer.pet_config_reply",
     ),
     "image": ("ironsbot.plugins.sendpic",),
-    "rank": ("ironsbot.custom_plugins.rank_help",),
+    "rank": ("ironsbot.plugins.seer.rank_help",),
     "meeting": ("ironsbot.plugins.meeting",),
     "text": ("ironsbot.custom_plugins.message_actions",),
     "text_push": ("ironsbot.custom_plugins.message_actions",),
