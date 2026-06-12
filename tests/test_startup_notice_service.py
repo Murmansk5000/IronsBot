@@ -6,7 +6,7 @@ from pathlib import Path
 _SERVICE_PATH = (
     Path(__file__).resolve().parents[1]
     / "ironsbot"
-    / "custom_plugins"
+    / "plugins"
     / "startup_notice"
     / "service.py"
 )

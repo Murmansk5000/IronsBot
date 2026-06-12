@@ -6,8 +6,8 @@ from pathlib import Path
 _SERVICE_PATH = (
     Path(__file__).resolve().parents[1]
     / "ironsbot"
-    / "custom_plugins"
-    / "message_actions"
+    / "plugins"
+    / "messaging"
     / "runtime_service.py"
 )
 _SPEC = spec_from_file_location("message_runtime_service_for_test", _SERVICE_PATH)

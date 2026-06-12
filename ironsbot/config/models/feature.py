@@ -35,7 +35,7 @@ KNOWN_FEATURES = frozenset(
 )
 FEATURE_ALIASES: dict[str, frozenset[str]] = {
     "all": KNOWN_FEATURES - {"admin_notice"},
-    "custom": frozenset(
+    "query": frozenset(
         {
             "seer",
             "image",

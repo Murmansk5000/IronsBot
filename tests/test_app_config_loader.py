@@ -92,27 +92,27 @@ def test_small_plugin_config_accessors_read_app_config(
 
     ai_chat_config = _load_module_from_path(
         "ai_chat_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "ai_chat" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "ai_chat" / "config.py",
     )
     ai_intent_config = _load_module_from_path(
         "ai_intent_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "ai_intent_actions" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "ai_intent" / "config.py",
     )
     ai_mention_config = _load_module_from_path(
         "ai_mention_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "ai_mention_guard" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "ai_mention_guard" / "config.py",
     )
     activity_config = _load_module_from_path(
         "activity_reminder_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "activity_reminder" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "activity" / "config.py",
     )
     bili_config = _load_module_from_path(
         "bilibili_monitor_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "bilibili_monitor" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "bilibili" / "config.py",
     )
-    custom_sendpic_config = _load_module_from_path(
-        "custom_sendpic_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "custom_sendpic" / "config.py",
+    sendpic_config = _load_module_from_path(
+        "sendpic_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
     )
     db_sync_config = _load_module_from_path(
         "db_sync_config_for_app_config_test",
@@ -124,23 +124,23 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     headless_notice_config = _load_module_from_path(
         "headless_seer_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "headless_seer_notice" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "headless_seer_notice" / "config.py",
     )
     meeting_config = _load_module_from_path(
-        "meeting_reply_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "meeting_reply" / "config.py",
+        "meeting_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "meeting" / "config.py",
     )
     message_config = _load_module_from_path(
         "message_actions_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "message_actions" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
     )
     server_status_config = _load_module_from_path(
         "server_status_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "server_status" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "server_status" / "config.py",
     )
     scheduled_restart_config = _load_module_from_path(
         "scheduled_restart_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "scheduled_restart" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "config.py",
     )
     seer_data_config = _load_module_from_path(
         "seer_data_config_for_app_config_test",
@@ -148,11 +148,11 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     startup_config = _load_module_from_path(
         "startup_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "startup_notice" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "startup_notice" / "config.py",
     )
     team_shortcut_config = _load_module_from_path(
         "team_shortcut_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "team_shortcut" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "team_shortcut" / "config.py",
     )
 
     try:
@@ -166,8 +166,8 @@ def test_small_plugin_config_accessors_read_app_config(
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
-        assert custom_sendpic_config.get_sendpic_config().local_root.name == "sendpic"
-        assert custom_sendpic_config.get_sendpic_cnb_token() == "cnb-token"
+        assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
+        assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"
         assert "seerapi" in db_sync_config.get_data_sync_config().sources
         assert (
             headless_config.get_headless_config().heartbeat_interval
@@ -204,8 +204,8 @@ def test_seer_plugin_config_accessors_read_app_config(
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
 
     custom_seer_config = _load_module_from_path(
-        "custom_get_seer_info_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "custom_get_seer_info" / "config.py",
+        "seer_query_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "seer" / "query" / "config.py",
     )
     from ironsbot.services.seer import render_cache as seer_render_cache
 

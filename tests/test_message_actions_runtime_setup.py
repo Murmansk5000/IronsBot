@@ -8,7 +8,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.custom_plugins.message_actions import runtime
+from ironsbot.plugins.messaging import runtime
 
 
 class FakeDriver:

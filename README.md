@@ -6,7 +6,7 @@
 
 IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
-当前主线已经转为自定义插件架构：用户可触发的功能由 `ironsbot/custom_plugins` 提供；原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
+当前主线已经转为显式插件架构：用户可触发的功能集中在 `ironsbot/plugins`；原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
 
 ## 功能
 
@@ -86,26 +86,26 @@ services:
 
 ## 插件架构
 
-用户功能集中在 `ironsbot/custom_plugins`：
+用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
 
 | 插件 | 作用 |
 | --- | --- |
-| `custom_get_seer_info` | 自定义赛尔号查询、榜单、群星牌、活动相关入口。 |
-| `custom_help` | 按当前群/私聊权限显示可用功能。 |
-| `custom_about` | 新版关于页。 |
-| `custom_sendpic` | 固定关键词发图。 |
-| `message_actions` | 通用文本回复、定时消息、事件回复和批量发送。 |
-| `bilibili_monitor` | B站动态监控与点播。 |
-| `meeting_reply` | 腾讯会议回复。 |
+| `seer.query` | 自定义赛尔号查询、榜单、群星牌、活动相关入口。 |
+| `help` | 按当前群/私聊权限显示可用功能。 |
+| `about` | 新版关于页。 |
+| `sendpic` | 固定关键词发图。 |
+| `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
+| `bilibili` | B站动态监控与点播。 |
+| `meeting` | 腾讯会议回复。 |
 | `team_shortcut` | 战队群快捷查询与资源提醒。 |
-| `activity_reminder` | 当前活动、快结束活动和活动结束提醒。 |
+| `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent_actions` | AI 判定后触发文本或战队动作。 |
+| `ai_intent` | AI 判定后触发文本或战队动作。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
-原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
+仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
 
 ## 配置方式
 

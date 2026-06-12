@@ -18,9 +18,9 @@ EXTERNAL_PLUGINS: Final[tuple[str, ...]] = (
     "nonebot_plugin_saa",
 )
 
-CUSTOM_CORE_PLUGINS: Final[tuple[str, ...]] = (
-    "ironsbot.custom_plugins.superuser_priority",
-    "ironsbot.custom_plugins.message_actions",
+CORE_PLUGINS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.admin_priority",
+    "ironsbot.plugins.messaging",
 )
 
 INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
@@ -30,47 +30,47 @@ INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.headless_seer",
 )
 
-CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
-    "ironsbot.custom_plugins.headless_seer_notice",
-    "ironsbot.custom_plugins.ai_chat",
-    "ironsbot.custom_plugins.team_shortcut",
-    "ironsbot.custom_plugins.activity_reminder",
-    "ironsbot.custom_plugins.ai_mention_guard",
-    "ironsbot.custom_plugins.ai_intent_actions",
-    "ironsbot.custom_plugins.bilibili_monitor",
-    "ironsbot.custom_plugins.custom_about",
-    "ironsbot.custom_plugins.custom_get_seer_info",
-    "ironsbot.custom_plugins.custom_help",
-    "ironsbot.custom_plugins.custom_sendpic",
-    "ironsbot.custom_plugins.meeting_reply",
-    "ironsbot.custom_plugins.pet_config_reply",
-    "ironsbot.custom_plugins.rank_help",
-    "ironsbot.custom_plugins.scheduled_restart",
-    "ironsbot.custom_plugins.server_status",
-    "ironsbot.custom_plugins.startup_notice",
+FEATURE_PLUGINS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.headless_seer_notice",
+    "ironsbot.plugins.ai_chat",
+    "ironsbot.plugins.team_shortcut",
+    "ironsbot.plugins.activity",
+    "ironsbot.plugins.ai_mention_guard",
+    "ironsbot.plugins.ai_intent",
+    "ironsbot.plugins.bilibili",
+    "ironsbot.plugins.about",
+    "ironsbot.plugins.seer.query",
+    "ironsbot.plugins.help",
+    "ironsbot.plugins.sendpic",
+    "ironsbot.plugins.meeting",
+    "ironsbot.plugins.seer.pet_config_reply",
+    "ironsbot.plugins.seer.rank_help",
+    "ironsbot.plugins.scheduled_restart",
+    "ironsbot.plugins.server_status",
+    "ironsbot.plugins.startup_notice",
 )
 
 RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime",
     "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",
     "ironsbot.plugins.headless_seer.runtime:setup_headless_seer_runtime",
-    "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
-    "ironsbot.custom_plugins.message_actions.runtime:setup_message_actions_runtime",
-    "ironsbot.custom_plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
-    "ironsbot.custom_plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
-    "ironsbot.custom_plugins.startup_ready_runtime:setup_startup_ready_runtime",
-    "ironsbot.custom_plugins.startup_notice.runtime:setup_startup_notice_runtime",
-    "ironsbot.custom_plugins.bilibili_monitor.runtime:setup_bilibili_monitor_runtime",
-    "ironsbot.custom_plugins.activity_reminder.runtime:setup_activity_reminder_runtime",
-    "ironsbot.custom_plugins.custom_get_seer_info.runtime:setup_local_rank_scheduler_runtime",
-    "ironsbot.custom_plugins.custom_get_seer_info.runtime:setup_render_cache_runtime",
+    "ironsbot.plugins.messaging.reply_limits:setup_reply_line_limit_api_hook",
+    "ironsbot.plugins.messaging.runtime:setup_message_actions_runtime",
+    "ironsbot.plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
+    "ironsbot.plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
+    "ironsbot.shared.plugin_runtime.startup_ready_runtime:setup_startup_ready_runtime",
+    "ironsbot.plugins.startup_notice.runtime:setup_startup_notice_runtime",
+    "ironsbot.plugins.bilibili.runtime:setup_bilibili_monitor_runtime",
+    "ironsbot.plugins.activity.runtime:setup_activity_reminder_runtime",
+    "ironsbot.plugins.seer.query.runtime:setup_local_rank_scheduler_runtime",
+    "ironsbot.plugins.seer.query.runtime:setup_render_cache_runtime",
 )
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
     PluginGroup("external", EXTERNAL_PLUGINS),
-    PluginGroup("custom_core", CUSTOM_CORE_PLUGINS),
+    PluginGroup("core", CORE_PLUGINS),
     PluginGroup("infrastructure", INFRASTRUCTURE_PLUGINS),
-    PluginGroup("custom", CUSTOM_PLUGINS),
+    PluginGroup("feature", FEATURE_PLUGINS),
 )
 
 
@@ -136,9 +136,9 @@ def validate_plugin_manifest() -> None:
 
 
 __all__ = [
-    "CUSTOM_CORE_PLUGINS",
-    "CUSTOM_PLUGINS",
+    "CORE_PLUGINS",
     "EXTERNAL_PLUGINS",
+    "FEATURE_PLUGINS",
     "INFRASTRUCTURE_PLUGINS",
     "PLUGIN_GROUPS",
     "RUNTIME_SETUP_CALLS",
