@@ -176,7 +176,7 @@ def _gender_icon_data_uri(gender_id: int) -> str:
     return to_data_uri(icon_path.read_bytes())
 
 
-async def render_pet_info(pet: PetORM) -> bytes:
+async def render_custom_pet_info(pet: PetORM) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     cached = render_cache.get("custom_pet_info", str(pet.id))
     if cached is not None:

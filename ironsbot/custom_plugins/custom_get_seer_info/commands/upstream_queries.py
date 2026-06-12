@@ -22,6 +22,7 @@ from sqlmodel import select
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
+from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.shared.plugin_system import (
@@ -51,7 +52,6 @@ from .._upstream.prompt import (
     simple_prompt_resolver,
 )
 from ..group import matcher_group
-from ..render import render_pet_info
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
@@ -465,7 +465,7 @@ async def _handle_pet_info(
 
 
 async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
-    pic_bytes = await render_pet_info(pet)
+    pic_bytes = await render_custom_pet_info(pet)
     msg = MessageFactory()
     msg += Image(pic_bytes)
     return msg
