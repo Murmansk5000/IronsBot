@@ -3,22 +3,22 @@ import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from ironsbot.services.seer.sequ_extra import (
-    fetch_unity_part_one,
-    fetch_unity_peak,
-)
-
-from ..config import get_local_rank_config, get_player_query_config
-from ._client import get_game_client
-from ._local_rank import (
+from ironsbot.config import get_app_config
+from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
+from ironsbot.services.seer.client import get_game_client
+from ironsbot.services.seer.local_rank import (
     can_cache_player_id,
     get_refresh_candidate_player_ids,
     update_local_rank_cache,
 )
-from ._rank import (
+from ironsbot.services.seer.rank import (
     build_peak_rating_score,
     fetch_player_rank_summary,
     get_current_peak_sub_key,
+)
+from ironsbot.services.seer.sequ_extra import (
+    fetch_unity_part_one,
+    fetch_unity_peak,
 )
 
 
@@ -38,6 +38,14 @@ class LocalRankRefreshResult:
     @property
     def failed(self) -> int:
         return len(self.failures)
+
+
+def get_local_rank_config() -> LocalRankConfig:
+    return get_app_config().seer.local_rank
+
+
+def get_player_query_config() -> PlayerQueryConfig:
+    return get_app_config().seer.player
 
 
 async def refresh_local_rank_cache(

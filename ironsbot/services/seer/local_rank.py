@@ -7,10 +7,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
-
-from ..config import get_local_rank_config
-from ._rank import (
+from ironsbot.config import get_app_config
+from ironsbot.config.models.seer import LocalRankConfig
+from ironsbot.services.seer.rank import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
     BOOK_RANK_KEY,
@@ -32,6 +31,7 @@ from ._rank import (
     RankLookupResult,
     is_pet_kind_rank_anomaly_user,
 )
+from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
 MetricValue = dict[str, int | str | None]
 
@@ -84,6 +84,10 @@ _PEAK_RANK_PAGE_METRIC_KEYS = {
     WILD_PEAK_USER_RANK_KEY: "peak_wild",
     EXPERT_PEAK_USER_RANK_KEY: "peak_expert",
 }
+
+
+def get_local_rank_config() -> LocalRankConfig:
+    return get_app_config().seer.local_rank
 
 
 @dataclass(slots=True)

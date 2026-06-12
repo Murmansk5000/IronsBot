@@ -16,25 +16,16 @@ from ironsbot.custom_plugins.message_actions import (
     send_event_reply,
 )
 from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
-from ironsbot.services.seer.rank_page_cache import (
-    CachedRankPageSummary,
-    get_rank_page_cache_summary,
+from ironsbot.services.seer.client import get_game_client
+from ironsbot.services.seer.local_rank import (
+    get_local_rank_cache_stats,
+    get_local_rank_entries,
 )
-from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
+from ironsbot.services.seer.local_rank_refresh import (
+    format_refresh_failures,
+    refresh_local_rank_cache,
 )
-from ironsbot.utils.rule import no_reply
-
-from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
-from ..group import matcher_group
-from ..packets import ensure_extended_packets
-from ._client import get_game_client
-from ._local_rank import get_local_rank_cache_stats, get_local_rank_entries
-from ._local_rank_refresh import format_refresh_failures, refresh_local_rank_cache
-from ._rank import (
+from ironsbot.services.seer.rank import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
     BOOK_RANK_KEY,
@@ -53,6 +44,21 @@ from ._rank import (
     fetch_daily_rank_page,
     get_current_peak_sub_key,
 )
+from ironsbot.services.seer.rank_page_cache import (
+    CachedRankPageSummary,
+    get_rank_page_cache_summary,
+)
+from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
+from ironsbot.shared.plugin_system import (
+    PluginContext,
+    dispatch_plugin,
+    register_plugin,
+)
+from ironsbot.utils.rule import no_reply
+
+from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
+from ..group import matcher_group
+from ..packets import ensure_extended_packets
 from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20

@@ -17,6 +17,7 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.services.seer.client import get_game_client
 from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -28,7 +29,6 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 from ..config import get_team_query_config
 from ..group import matcher_group
 from ._args import has_numeric_arg, parse_numeric_id
-from ._client import get_game_client
 from ._errors import format_socket_recv_error
 from ._format import format_possible_datetime
 

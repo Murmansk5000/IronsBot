@@ -7,6 +7,8 @@ from typing import Any
 
 from nonebot import logger
 
+from ironsbot.config import get_app_config
+from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
 from ironsbot.plugins.headless_seer.command_id import COMMAND_ID
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
 from ironsbot.services.seer.rank_page_cache import (
@@ -14,8 +16,6 @@ from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_page,
     save_rank_page,
 )
-
-from ..config import get_local_rank_config, get_rank_query_config
 
 BOOK_RANK_KEY = 156
 BOOK_RANK_SUB_KEY = 1
@@ -77,6 +77,14 @@ PET_KIND_RANK_ANOMALY_USER_IDS = frozenset(
     )
 )
 PET_KIND_RANK_ANOMALY_COUNT = len(PET_KIND_RANK_ANOMALY_USER_IDS)
+
+
+def get_rank_query_config() -> RankQueryConfig:
+    return get_app_config().seer.rank
+
+
+def get_local_rank_config() -> LocalRankConfig:
+    return get_app_config().seer.local_rank
 
 
 def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
@@ -184,7 +192,7 @@ async def _fetch_rank_page(  # noqa: PLR0913
             end=end,
         )
         if cached_items is not None:
-            from ._local_rank import upsert_rank_page_metrics
+            from ironsbot.services.seer.local_rank import upsert_rank_page_metrics
 
             upsert_rank_page_metrics(key=key, sub_key=sub_key, items=cached_items)
             return cached_items
@@ -196,7 +204,7 @@ async def _fetch_rank_page(  # noqa: PLR0913
     )
     items = list(rank_list.rank_list)
     save_rank_page(key=key, sub_key=sub_key, start=start, end=end, items=items)
-    from ._local_rank import upsert_rank_page_metrics
+    from ironsbot.services.seer.local_rank import upsert_rank_page_metrics
 
     upsert_rank_page_metrics(key=key, sub_key=sub_key, items=items)
     return items
