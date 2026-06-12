@@ -25,9 +25,9 @@ TEMPLATE_PATHS = (
 ACTIVE_RENDER_MODULES = (
     "ironsbot.custom_plugins.custom_get_seer_info.render.pet_info",
     "ironsbot.custom_plugins.custom_get_seer_info._upstream.render.peak_pet_rank",
-    "ironsbot.custom_plugins.custom_get_seer_info._upstream.render.peak_pool",
     "ironsbot.custom_plugins.custom_get_seer_info._upstream.render.pet_info",
     "ironsbot.custom_plugins.custom_get_seer_info._upstream.render.type_matchup",
+    "ironsbot.services.seer.rendering.peak_pool",
     "ironsbot.services.seer.rendering.peak_pool_vote",
 )
 
