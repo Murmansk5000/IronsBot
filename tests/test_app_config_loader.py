@@ -216,11 +216,6 @@ def test_seer_plugin_config_accessors_read_app_config(
         / "_upstream"
         / "config.py",
     )
-    legacy_seer_config = _load_module_from_path(
-        "legacy_get_seer_info_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "get_seer_info" / "config.py",
-    )
-
     try:
         assert (
             custom_seer_config.get_player_query_config().timeout_seconds
@@ -229,10 +224,6 @@ def test_seer_plugin_config_accessors_read_app_config(
         assert custom_seer_config.get_local_rank_config().enabled
         assert (
             upstream_seer_config.get_render_config().cache_max_size_mb
-            == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
-        )
-        assert (
-            legacy_seer_config.get_render_config().cache_max_size_mb
             == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
         )
     finally:
