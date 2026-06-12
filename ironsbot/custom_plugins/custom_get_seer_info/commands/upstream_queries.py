@@ -40,7 +40,7 @@ from .._upstream.commands import other as upstream_other
 from .._upstream.commands import peak as upstream_peak
 from .._upstream.commands import pet as upstream_pet
 from .._upstream.commands import type as upstream_type
-from .._upstream.depends import (
+from ..depends import (
     GetPetData,
     PetDataGetter,
     SeerAPISession,

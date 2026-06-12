@@ -12,8 +12,8 @@ from ironsbot.plugins.headless_seer.packets.user import MoreInfo, UserInfo
 from ironsbot.plugins.headless_seer.utils import split_bits
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..depends import GameClient
-from ..depends.arg_validator import PlayerIdArg
+from ...depends import GameClient
+from ...depends.arg_validator import PlayerIdArg
 from ..group import matcher_group
 
 player_matcher = matcher_group.on_message(

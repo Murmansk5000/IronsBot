@@ -15,7 +15,7 @@ from ironsbot.services.seer.rendering.upstream_pet_info import (
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..depends import (
+from ...depends import (
     GetPetData,
     GetPetSkinData,
     PetBodyImageGetter,

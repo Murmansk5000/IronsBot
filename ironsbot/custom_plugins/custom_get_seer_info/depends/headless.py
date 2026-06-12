@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.matcher import Matcher
 from nonebot.params import Depends
 
 if TYPE_CHECKING:
+    from nonebot.matcher import Matcher
+
     from ironsbot.plugins.headless_seer.game import SeerGame
 
 

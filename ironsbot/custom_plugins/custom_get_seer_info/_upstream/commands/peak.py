@@ -34,7 +34,7 @@ from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vot
 from ironsbot.utils import time
 from ironsbot.utils.rule import no_reply
 
-from ..depends import GameClient, PetDataGetter, SeerAPISession
+from ...depends import GameClient, PetDataGetter, SeerAPISession
 from ..group import matcher_group
 
 if TYPE_CHECKING:
