@@ -46,7 +46,7 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.pet_config_reply",
     "ironsbot.custom_plugins.rank_help",
     "ironsbot.custom_plugins.scheduled_restart",
-    "ironsbot.custom_plugins.server_status",
+    "ironsbot.plugins.server_status",
     "ironsbot.custom_plugins.startup_notice",
 )
 

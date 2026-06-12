@@ -136,7 +136,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     server_status_config = _load_module_from_path(
         "server_status_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "server_status" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "server_status" / "config.py",
     )
     scheduled_restart_config = _load_module_from_path(
         "scheduled_restart_config_for_app_config_test",
