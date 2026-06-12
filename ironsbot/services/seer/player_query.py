@@ -54,6 +54,13 @@ class PlayerDetailReplyRequest:
     label: str
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerPeakScores:
+    standard: int | None = None
+    wild: int | None = None
+    expert: int | None = None
+
+
 def extract_player_query_arg(text_value: str) -> str | None:
     stripped = text_value.strip()
     folded = stripped.casefold()
@@ -61,6 +68,41 @@ def extract_player_query_arg(text_value: str) -> str | None:
         if folded.startswith(prefix.casefold()):
             return stripped[len(prefix) :].strip()
     return None
+
+
+def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
+    standard_score = (
+        build_peak_rating_score(
+            int(getattr(unity_peak, "current_j_rank", 0)),
+            int(getattr(unity_peak, "current_j_star", 0)),
+        )
+        if int(getattr(unity_peak, "current_j_all", 0)) > 0
+        else None
+    )
+    wild_score = (
+        build_peak_rating_score(
+            int(getattr(unity_peak, "current_k_rank", 0)),
+            int(getattr(unity_peak, "current_k_star", 0)),
+        )
+        if int(getattr(unity_peak, "current_k_all", 0)) > 0
+        else None
+    )
+    expert_score = (
+        int(getattr(unity_peak, "current_z_score", 0))
+        if int(getattr(unity_peak, "current_z_all", 0)) > 0
+        else None
+    )
+    return PlayerPeakScores(
+        standard=standard_score,
+        wild=wild_score,
+        expert=expert_score,
+    )
+
+
+def build_peak_rating_score(rank: int, star: int) -> int | None:
+    if rank <= 0 and star <= 0:
+        return None
+    return rank * 100000 + star
 
 
 def resolve_player_detail_reply(text_value: str) -> PlayerDetailReplyRequest | None:

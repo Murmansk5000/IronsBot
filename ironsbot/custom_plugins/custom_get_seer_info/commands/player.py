@@ -42,6 +42,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_TASK_KEY,
     PlayerDetailMessages,
     cached_player_detail_message,
+    calculate_player_peak_scores,
     extract_player_query_arg,
     plan_player_detail_fetches,
     plan_player_query_sections,
@@ -62,7 +63,6 @@ from ironsbot.services.seer.player_query import (
 from ironsbot.services.seer.rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
-    build_peak_rating_score,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
     get_current_peak_sub_key,
@@ -655,36 +655,16 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         extra_errors,
     )
     peak_sub_key = get_current_peak_sub_key()
-    peak_standard_score = (
-        build_peak_rating_score(
-            unity_peak.current_j_rank,
-            unity_peak.current_j_star,
-        )
-        if unity_peak.current_j_all > 0
-        else None
-    )
-    peak_wild_score = (
-        build_peak_rating_score(
-            unity_peak.current_k_rank,
-            unity_peak.current_k_star,
-        )
-        if unity_peak.current_k_all > 0
-        else None
-    )
-    peak_expert_score = (
-        unity_peak.current_z_score
-        if unity_peak.current_z_all > 0
-        else None
-    )
+    peak_scores = calculate_player_peak_scores(unity_peak)
     peak_rank_summary = await _optional_extra(
         "巅峰赛季榜",
         needs_peak_section,
         lambda: fetch_peak_season_rank_summary(
             game,
             player_id,
-            standard_score=peak_standard_score,
-            wild_score=peak_wild_score,
-            expert_score=peak_expert_score,
+            standard_score=peak_scores.standard,
+            wild_score=peak_scores.wild,
+            expert_score=peak_scores.expert,
         ),
         PeakSeasonRankSummary.empty(),
         extra_errors,
@@ -700,9 +680,9 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             unity_peak=unity_peak,
             rank_summary=rank_summary,
             peak_sub_key=peak_sub_key,
-            peak_standard_score=peak_standard_score,
-            peak_wild_score=peak_wild_score,
-            peak_expert_score=peak_expert_score,
+            peak_standard_score=peak_scores.standard,
+            peak_wild_score=peak_scores.wild,
+            peak_expert_score=peak_scores.expert,
         ),
         LocalRankSummary(),
         extra_errors,

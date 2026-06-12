@@ -6,8 +6,11 @@ from ironsbot.services.seer.player_query import (
     PlayerDetailFetchPlan,
     PlayerDetailMessages,
     PlayerDetailReplyRequest,
+    PlayerPeakScores,
     PlayerQuerySectionPlan,
+    build_peak_rating_score,
     cached_player_detail_message,
+    calculate_player_peak_scores,
     extract_player_query_arg,
     plan_player_detail_fetches,
     plan_player_query_sections,
@@ -116,6 +119,42 @@ def test_player_detail_auto_reply_state_sets_are_created_once() -> None:
     assert player_detail_auto_reply_tasks(state) is tasks
     assert state[PLAYER_DETAIL_AUTO_REPLY_KEYS] == {"collection"}
     assert state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] == {"task"}
+
+
+def test_build_peak_rating_score_matches_rank_score_shape() -> None:
+    rank_seven_star_three_score = 700003
+    star_only_score = 5
+
+    assert build_peak_rating_score(7, 3) == rank_seven_star_three_score
+    assert build_peak_rating_score(0, 5) == star_only_score
+    assert build_peak_rating_score(0, 0) is None
+
+
+def test_calculate_player_peak_scores_uses_only_played_modes() -> None:
+    unity_peak = type(
+        "UnityPeak",
+        (),
+        {
+            "current_j_rank": 7,
+            "current_j_star": 3,
+            "current_j_all": 10,
+            "current_k_rank": 5,
+            "current_k_star": 2,
+            "current_k_all": 0,
+            "current_z_score": 1234,
+            "current_z_all": 6,
+        },
+    )()
+
+    assert calculate_player_peak_scores(unity_peak) == PlayerPeakScores(
+        standard=700003,
+        wild=None,
+        expert=1234,
+    )
+
+
+def test_calculate_player_peak_scores_defaults_missing_fields_to_empty_scores() -> None:
+    assert calculate_player_peak_scores(object()) == PlayerPeakScores()
 
 
 def test_plan_player_query_sections_maps_configured_sections() -> None:
