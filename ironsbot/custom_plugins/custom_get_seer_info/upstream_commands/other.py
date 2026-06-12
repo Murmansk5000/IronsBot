@@ -12,8 +12,8 @@ from sqlmodel import select
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.utils.rule import no_reply
 
-from ...depends import SeerAPISession
-from ...upstream_noop_group import matcher_group
+from ..depends import SeerAPISession
+from ..upstream_noop_group import matcher_group
 
 preview_matcher = matcher_group.on_fullmatch("下周预告", rule=no_reply())
 
@@ -31,6 +31,7 @@ async def handle_preview(matcher: Matcher, bot: Bot) -> NoReturn:
 data_version_matcher = matcher_group.on_fullmatch("数据版本", rule=no_reply())
 
 DATA_VERSION_MESSAGE_TEMPLATE = MessageTemplate("数据更新时间：{time}")
+SERVER_MAINTENANCE_NOTICE_TYPE = 3
 
 
 @data_version_matcher.handle()
@@ -39,7 +40,7 @@ async def handle_data_version(matcher: Matcher, session: SeerAPISession) -> NoRe
     if not obj:
         await matcher.finish("❌暂无数据版本信息(这是一个bug，请反馈给开发者)")
     dt = obj.generate_time
-    # 为确保时区转换生效，需先判断dt是否带有tzinfo（即是否为"aware" datetime）；否则先转为UTC再转换
+    # Ensure timezone conversion works for both aware and naive datetimes.
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         # 假设dt原本为UTC时间（无tzinfo），先加上UTC tzinfo
         dt = dt.replace(tzinfo=timezone.utc)
@@ -56,7 +57,7 @@ async def fetch_server_notice_text() -> str | None:
         data = resp.json()
 
     for item in data:
-        if item["type"] == 3:
+        if item["type"] == SERVER_MAINTENANCE_NOTICE_TYPE:
             return _clean_text(item["text"])
 
     return None

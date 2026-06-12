@@ -9,9 +9,7 @@ __all__ = [
     "cloth",
     "effect",
     "mintmark",
-    "other",
     "peak",
     "pet",
     "type",
 ]
-
