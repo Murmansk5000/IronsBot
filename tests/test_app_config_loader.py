@@ -204,8 +204,8 @@ def test_seer_plugin_config_accessors_read_app_config(
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
 
     custom_seer_config = _load_module_from_path(
-        "custom_get_seer_info_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "custom_get_seer_info" / "config.py",
+        "seer_query_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "seer" / "query" / "config.py",
     )
     from ironsbot.services.seer import render_cache as seer_render_cache
 

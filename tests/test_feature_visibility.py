@@ -70,7 +70,7 @@ def test_feature_module_visibility_uses_feature_service(
 
     assert visibility.plugin_visible_for_event(
         "扩展赛尔号查询",
-        "ironsbot.custom_plugins.custom_get_seer_info",
+        "ironsbot.plugins.seer.query",
         _group_event(),
     )
     assert not visibility.plugin_visible_for_event(

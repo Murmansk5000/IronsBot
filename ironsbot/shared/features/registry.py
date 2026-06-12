@@ -8,7 +8,7 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     "about": ("ironsbot.plugins.about",),
     "help": ("ironsbot.plugins.help",),
     "seer": (
-        "ironsbot.custom_plugins.custom_get_seer_info",
+        "ironsbot.plugins.seer.query",
         "ironsbot.plugins.seer.pet_config_reply",
     ),
     "image": ("ironsbot.plugins.sendpic",),

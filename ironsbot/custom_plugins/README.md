@@ -1,6 +1,6 @@
 # 插件适配层目录
 
-这个目录目前只保留尚未完成最终收束的遗留 Seer 插件边界。新的 NoneBot 插件适配层
+这个目录目前只保留尚未完成最终收束的遗留 Seer 渲染资产边界。新的 NoneBot 插件适配层
 应放在 `ironsbot/plugins`；可复用的业务逻辑应优先放在 `ironsbot/services` 或
 `ironsbot/shared`，插件目录只负责把 NoneBot 事件接到服务层。
 
@@ -19,11 +19,11 @@ plugin_dirs = []
 新增可运行插件后，需要把模块名加入 `ironsbot/app/plugin_manifest.py`，
 避免 NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入显式加载列表的目录只会被视为普通代码。
 
-## 当前插件适配层
+## 当前遗留资产边界
 
 ```text
 ironsbot/custom_plugins/
-  custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
+  custom_get_seer_info/    # Seer 渲染模板、图片与 CSS 资产
 ```
 
 ## 新增插件

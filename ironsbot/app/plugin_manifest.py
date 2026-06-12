@@ -39,7 +39,7 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.ai_intent",
     "ironsbot.plugins.bilibili",
     "ironsbot.plugins.about",
-    "ironsbot.custom_plugins.custom_get_seer_info",
+    "ironsbot.plugins.seer.query",
     "ironsbot.plugins.help",
     "ironsbot.plugins.sendpic",
     "ironsbot.plugins.meeting",
@@ -62,8 +62,8 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.startup_notice.runtime:setup_startup_notice_runtime",
     "ironsbot.plugins.bilibili.runtime:setup_bilibili_monitor_runtime",
     "ironsbot.plugins.activity.runtime:setup_activity_reminder_runtime",
-    "ironsbot.custom_plugins.custom_get_seer_info.runtime:setup_local_rank_scheduler_runtime",
-    "ironsbot.custom_plugins.custom_get_seer_info.runtime:setup_render_cache_runtime",
+    "ironsbot.plugins.seer.query.runtime:setup_local_rank_scheduler_runtime",
+    "ironsbot.plugins.seer.query.runtime:setup_render_cache_runtime",
 )
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
