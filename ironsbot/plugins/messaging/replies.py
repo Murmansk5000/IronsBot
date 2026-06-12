@@ -12,7 +12,7 @@ from ironsbot.plugins.admin_priority import wait_for_superuser_priority
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 
 from .reply_limits import limit_message_by_reply_lines
-from .text import build_message
+from ironsbot.shared.messaging.text import build_message
 
 
 async def send_matcher_message(

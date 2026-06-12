@@ -31,7 +31,7 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from .config import get_reply_config
-from .text import (
+from ironsbot.shared.messaging.text import (
     build_message,
     strip_command_prefix,
 )
