@@ -17,19 +17,19 @@ from ironsbot.plugins.seer_data.db import (
 from ironsbot.utils import build_sub_line
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ...depends import (
+from ..depends import (
     GetMintmarkClassData,
     GetMintmarkData,
     MintmarkBodyImageGetter,
     MintmarkDataGetter,
 )
-from ...upstream_noop_group import matcher_group
-from ...prompt import (
+from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
     simple_prompt_resolver,
 )
+from ..upstream_noop_group import matcher_group
 
 mintmark_matcher = matcher_group.on_message(
     rule=startswith_or_endswith("刻印") & no_reply()
@@ -37,6 +37,15 @@ mintmark_matcher = matcher_group.on_message(
 
 
 PROMPT_MAX_ITEMS = 30
+ATTACK_MARK_THRESHOLD = 54
+SPEED_MARK_THRESHOLD = 40
+DEFENSE_MARK_THRESHOLD = 40
+HP_MARK_THRESHOLD = 100
+
+
+class UnknownMintmarkTypeError(TypeError):
+    def __init__(self, part: object) -> None:
+        super().__init__(f"未知的刻印类型: {type(part)}")
 
 
 def _mark_attributes(mintmark: MintmarkORM) -> SixAttributes | None:
@@ -50,7 +59,7 @@ def _mark_attributes(mintmark: MintmarkORM) -> SixAttributes | None:
     elif isinstance(part, SkillPartORM):
         return None
     else:
-        raise TypeError(f"未知的刻印类型: {type(part)}")
+        raise UnknownMintmarkTypeError(part)
 
     return attr.round()
 
@@ -66,13 +75,19 @@ def _mark_type_description(attributes: SixAttributes | None) -> str:
     elif attributes.atk and attributes.sp_atk:
         strings.append("双刀")
 
-    if (attributes.atk >= 54 or attributes.sp_atk >= 54) and attributes.spd < 40:
+    if (
+        attributes.atk >= ATTACK_MARK_THRESHOLD
+        or attributes.sp_atk >= ATTACK_MARK_THRESHOLD
+    ) and attributes.spd < SPEED_MARK_THRESHOLD:
         strings.append("攻")
-    if attributes.spd >= 40:
+    if attributes.spd >= SPEED_MARK_THRESHOLD:
         strings.append("速")
-    if attributes.def_ >= 40 or attributes.sp_def >= 40:
+    if (
+        attributes.def_ >= DEFENSE_MARK_THRESHOLD
+        or attributes.sp_def >= DEFENSE_MARK_THRESHOLD
+    ):
         strings.append("盾")
-    if attributes.hp >= 100:
+    if attributes.hp >= HP_MARK_THRESHOLD:
         strings.append("体")
 
     return "".join(strings)
@@ -122,7 +137,7 @@ async def build_mintmark_message(mintmark: MintmarkORM) -> MessageFactory:
         msg += f"效果：{mintmark.desc}"
         return msg
     elif not isinstance(part, AbilityPartORM):
-        raise TypeError(f"未知的刻印类型: {type(part)}")
+        raise UnknownMintmarkTypeError(part)
 
     if (attr := _mark_attributes(mintmark)) is not None:
         msg += f"数值：(总和{attr.total})\n"

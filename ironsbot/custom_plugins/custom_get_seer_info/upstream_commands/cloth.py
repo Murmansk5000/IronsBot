@@ -22,13 +22,13 @@ from ironsbot.plugins.seer_data.image import (
 from ironsbot.utils import build_sub_line
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ...upstream_noop_group import matcher_group
-from ...prompt import (
+from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
     simple_prompt_resolver,
 )
+from ..upstream_noop_group import matcher_group
 
 suit_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(("套装", "查询套装信息"), suffixes="套装") & no_reply()
