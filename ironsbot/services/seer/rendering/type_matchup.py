@@ -9,9 +9,8 @@ from sqlalchemy.orm import object_session
 from ironsbot.plugins.seer_data.image import ElementTypeImageGetter
 from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH
+from ironsbot.services.seer.type_calc import calc_attack_table, calc_defense_table
 from ironsbot.utils.image import to_data_uri
-
-from ..type_calc import calc_attack_table, calc_defense_table
 
 if TYPE_CHECKING:
     from sqlmodel import Session

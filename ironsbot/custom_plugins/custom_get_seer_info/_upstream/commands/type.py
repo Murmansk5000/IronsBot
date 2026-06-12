@@ -10,23 +10,27 @@ from seerapi_models import ElementTypeORM
 from seerapi_models.element_type import TypeCombinationORM
 from sqlmodel import select
 
-from ..prompt import (
-    Prompt,
-    PromptItem,
-    enter_prompt,
-)
 from ironsbot.plugins.seer_data.db import (
     GetTypeCombinationData,
     SQLModelSession,
     TypeCombinationDataGetter,
+)
+from ironsbot.services.seer.rendering.type_matchup import render_type_matchup
+from ironsbot.services.seer.type_calc import (
+    calc_attack_table,
+    calc_defense_table,
+    calc_type_multiplier,
 )
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import SeerAPISession
 from ..group import matcher_group
-from ..render import render_type_matchup
-from ..type_calc import calc_attack_table, calc_defense_table, calc_type_multiplier
+from ..prompt import (
+    Prompt,
+    PromptItem,
+    enter_prompt,
+)
 
 __all__ = [
     "calc_attack_table",
