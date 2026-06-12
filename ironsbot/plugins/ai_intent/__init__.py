@@ -9,7 +9,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.plugins.messaging import (
+from ironsbot.shared.messaging import (
     finish_event_reply,
     finish_message_sequence,
 )

@@ -13,6 +13,7 @@ from .targets import MessageTarget, TargetSendSummary, broadcast_targets
 from .text import build_message
 
 MessageLimiter = Callable[[str | Message, int | None], str | Message]
+_message_limiter: MessageLimiter | None = None
 
 
 class OneBotMessageSender(Protocol):
@@ -29,6 +30,14 @@ def get_bot_or_none() -> OneBotMessageSender | None:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"message action failed to get bot: {e}")
         return None
+
+
+def configure_sender_message_limiter(
+    message_limiter: MessageLimiter | None,
+) -> None:
+    global _message_limiter
+
+    _message_limiter = message_limiter
 
 
 async def send_target_messages(  # noqa: PLR0913
@@ -50,9 +59,10 @@ async def send_target_messages(  # noqa: PLR0913
 
     for target in deduped_targets:
         group_id = target.target_id if target.target_type == "group" else None
+        active_limiter = message_limiter or _message_limiter
         limited_message = (
-            message_limiter(message, group_id)
-            if message_limiter is not None
+            active_limiter(message, group_id)
+            if active_limiter is not None
             else message
         )
         rendered_message = build_message(

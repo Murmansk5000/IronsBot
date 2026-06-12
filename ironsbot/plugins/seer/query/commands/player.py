@@ -15,7 +15,7 @@ from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.plugins.messaging import (
+from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,

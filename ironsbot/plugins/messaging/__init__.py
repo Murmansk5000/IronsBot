@@ -1,47 +1,11 @@
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.shared.messaging import (
-    MessageTarget,
-    TargetSendSummary,
-    broadcast_targets,
-    build_message,
-    command_reply_check,
-    command_text_matches,
-    event_conversation_session_id,
-    group_targets,
-    normalize_command_text,
-    peek_user_rate_limit,
-    penalize_user_rate_limit,
-    private_targets,
-    render_text,
-    strip_command_prefix,
-)
-
 from . import reply_limits as reply_limits
 from . import runtime as runtime
 from .config import Config
-from .conversations import enter_event_reply_conversation
-from .replies import (
-    event_sender_at_user_ids,
-    finish_event_reply,
-    finish_matcher_message,
-    finish_message_sequence,
-    send_event_reply,
-    send_matcher_message,
-)
-from .reply_limits import (
-    clear_group_reply_line_limit,
-    get_group_reply_line_limit,
-    limit_message_by_reply_lines,
-    limit_text_lines,
-    reply_line_limit_for_target,
-    set_group_reply_line_limit,
-)
-from .senders import (
-    get_bot_or_none,
-    send_broadcast_message,
-    send_target_messages,
-)
+from .policies import setup_messaging_delivery_policies
+
+setup_messaging_delivery_policies()
 
 __plugin_meta__ = PluginMetadata(
     name="文本发送",
@@ -58,36 +22,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 __all__ = [
-    "MessageTarget",
-    "TargetSendSummary",
-    "broadcast_targets",
-    "build_message",
-    "clear_group_reply_line_limit",
-    "command_reply_check",
-    "command_text_matches",
-    "enter_event_reply_conversation",
-    "event_conversation_session_id",
-    "event_sender_at_user_ids",
-    "finish_event_reply",
-    "finish_matcher_message",
-    "finish_message_sequence",
-    "get_bot_or_none",
-    "get_group_reply_line_limit",
-    "group_targets",
-    "limit_message_by_reply_lines",
-    "limit_text_lines",
-    "normalize_command_text",
-    "peek_user_rate_limit",
-    "penalize_user_rate_limit",
-    "private_targets",
-    "render_text",
     "reply_limits",
-    "reply_line_limit_for_target",
     "runtime",
-    "send_broadcast_message",
-    "send_event_reply",
-    "send_matcher_message",
-    "send_target_messages",
-    "set_group_reply_line_limit",
-    "strip_command_prefix",
 ]

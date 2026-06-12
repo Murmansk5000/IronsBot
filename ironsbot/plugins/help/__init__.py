@@ -14,7 +14,7 @@ from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
-from ironsbot.plugins.messaging import (
+from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )

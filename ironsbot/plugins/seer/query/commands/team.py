@@ -10,7 +10,7 @@ from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.plugins.messaging import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,

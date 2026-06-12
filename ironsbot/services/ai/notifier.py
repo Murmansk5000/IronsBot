@@ -4,7 +4,7 @@ from nonebot import get_driver
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
-from ironsbot.plugins.messaging import send_broadcast_message
+from ironsbot.shared.messaging import send_broadcast_message
 from ironsbot.shared.features import (
     get_superuser_ids,
     groups_for_feature,

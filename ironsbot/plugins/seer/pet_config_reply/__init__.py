@@ -6,7 +6,7 @@ from nonebot.plugin import on_message
 from nonebot.rule import Rule
 from seerapi_models import PetORM
 
-from ironsbot.plugins.messaging import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.plugins.seer_data.db import GetPetData
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.plugin_system import (

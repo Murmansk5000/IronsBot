@@ -77,7 +77,7 @@ async def _send_dynamic_push(
     pub_ts: int,
     targets: BiliPushTargets,
 ) -> None:
-    from ironsbot.plugins.messaging import send_broadcast_message
+    from ironsbot.shared.messaging import send_broadcast_message
 
     for delivery in build_dynamic_push_deliveries(item, pub_ts, targets):
         await send_broadcast_message(

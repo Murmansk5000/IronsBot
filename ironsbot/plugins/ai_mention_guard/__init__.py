@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.plugins.messaging import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.services.ai.mention_guard import (
     GuardReplyLimiter,
     should_guard_non_ai_group_mention,
