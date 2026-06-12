@@ -33,6 +33,14 @@ class PlayerQuerySectionPlan:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerDetailFetchPlan:
+    needs_unity_part_one: bool
+    needs_unity_peak: bool
+    needs_rank_summary: bool
+    needs_local_rank: bool
+
+
 def extract_player_query_arg(text_value: str) -> str | None:
     stripped = text_value.strip()
     folded = stripped.casefold()
@@ -60,6 +68,28 @@ def plan_player_query_sections(
     )
 
 
+def plan_player_detail_fetches(
+    *,
+    has_collection: bool,
+    needs_peak_section: bool,
+    local_rank_enabled: bool,
+) -> PlayerDetailFetchPlan:
+    needs_unity_part_one = has_collection
+    needs_unity_peak = needs_peak_section
+    needs_rank_summary = has_collection or local_rank_enabled
+
+    if local_rank_enabled:
+        needs_unity_part_one = True
+        needs_unity_peak = True
+
+    return PlayerDetailFetchPlan(
+        needs_unity_part_one=needs_unity_part_one,
+        needs_unity_peak=needs_unity_peak,
+        needs_rank_summary=needs_rank_summary,
+        needs_local_rank=local_rank_enabled,
+    )
+
+
 def player_detail_commands(
     *,
     has_collection: bool,
@@ -81,12 +111,32 @@ def player_query_in_progress_message(player_id: int) -> str:
     )
 
 
+def player_query_timeout_message(player_id: int) -> str:
+    return f"❌ 米米号 {player_id} 查询超时，请稍后再试。"
+
+
+def player_query_failure_message(player_id: int, error: object) -> str:
+    return f"❌ 米米号 {player_id} 查询失败：{error}"
+
+
 def player_query_wait_message(remaining: int) -> str:
     return (
         f"⏳ 刚刚已经发起过米米号查询，请 {remaining} 秒后再试。\n"
         "收集、巅峰和全服排行数据会更慢，排名越靠后可能查得越久，"
         "多人同时查询时也可能需要排队。"
     )
+
+
+def player_detail_timeout_message(label: str) -> str:
+    return f"❌ {label}数据查询超时，请稍后再试。"
+
+
+def player_detail_failure_message(label: str, error: object) -> str:
+    return f"❌ {label}数据获取失败：{error}"
+
+
+def player_detail_empty_message(label: str) -> str:
+    return f"❌ {label}数据没有返回结果，请稍后再试。"
 
 
 def player_detail_pending_message(label: str) -> str:

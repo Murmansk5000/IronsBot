@@ -40,10 +40,16 @@ from ironsbot.services.seer.player_formatting import (
 from ironsbot.services.seer.player_query import (
     PlayerDetailMessages,
     extract_player_query_arg,
+    plan_player_detail_fetches,
     plan_player_query_sections,
     player_detail_commands,
+    player_detail_empty_message,
+    player_detail_failure_message,
     player_detail_pending_message,
+    player_detail_timeout_message,
+    player_query_failure_message,
     player_query_in_progress_message,
+    player_query_timeout_message,
     player_query_wait_message,
 )
 from ironsbot.services.seer.rank import (
@@ -342,7 +348,7 @@ class PlayerQueryPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                f"❌ 米米号 {player_id} 查询超时，请稍后再试。",
+                player_query_timeout_message(player_id),
                 mention_sender=True,
             )
             return
@@ -352,7 +358,7 @@ class PlayerQueryPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                f"❌ 米米号 {player_id} 查询失败：{e}",
+                player_query_failure_message(player_id, e),
                 mention_sender=True,
             )
             return
@@ -436,14 +442,14 @@ async def _get_player_detail_message(
             detail_messages = task.result()
         except TimeoutError:
             state[PLAYER_DETAIL_TASK_KEY] = None
-            return f"❌ {label}数据查询超时，请稍后再试。"
+            return player_detail_timeout_message(label)
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
             state[PLAYER_DETAIL_TASK_KEY] = None
             return format_player_query_error(int(state.get(PLAYER_ID_KEY, 0)), e)
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("米米号后台详情任务失败")
             state[PLAYER_DETAIL_TASK_KEY] = None
-            return f"❌ {label}数据获取失败：{e}"
+            return player_detail_failure_message(label, e)
 
         _store_player_detail_messages(state, detail_messages)
         state[PLAYER_DETAIL_TASK_KEY] = None
@@ -515,7 +521,7 @@ async def _send_player_detail_auto_reply(  # noqa: PLR0913
 
         message = await _get_player_detail_message(state, key, label)
         if not message:
-            message = f"❌ {label}数据没有返回结果，请稍后再试。"
+            message = player_detail_empty_message(label)
 
         await send_event_reply(
             matcher,
@@ -650,26 +656,23 @@ async def _build_player_detail_messages(  # noqa: PLR0913
 ) -> PlayerDetailMessages:
     game = get_game_client()
     extra_errors: list[str] = []
-    needs_local_rank = get_local_rank_config().enabled
-    needs_unity_part_one = has_collection
-    needs_unity_peak = needs_peak_section
-    needs_rank_summary = has_collection or needs_local_rank
-
-    if needs_local_rank:
-        needs_unity_part_one = True
-        needs_unity_peak = True
+    fetch_plan = plan_player_detail_fetches(
+        has_collection=has_collection,
+        needs_peak_section=needs_peak_section,
+        local_rank_enabled=get_local_rank_config().enabled,
+    )
 
     unity_part_one, unity_peak = await asyncio.gather(
         _optional_extra(
             "展示/收集数据",
-            needs_unity_part_one,
+            fetch_plan.needs_unity_part_one,
             lambda: fetch_unity_part_one(game, player_id),
             UnityPartOneInfo(),
             extra_errors,
         ),
         _optional_extra(
             "巅峰数据",
-            needs_unity_peak,
+            fetch_plan.needs_unity_peak,
             lambda: fetch_unity_peak(game, player_id),
             UnityPeakInfo(),
             extra_errors,
@@ -677,7 +680,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     )
     rank_summary = await _optional_extra(
         "全服排行",
-        needs_rank_summary,
+        fetch_plan.needs_rank_summary,
         lambda: fetch_player_rank_summary(
             game,
             player_id,
@@ -725,7 +728,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     )
     local_rank_summary = await _optional_extra(
         "机器人查询排行",
-        needs_local_rank,
+        fetch_plan.needs_local_rank,
         lambda: update_local_rank_cache(
             player_id=player_id,
             nick=user_info.nick,
