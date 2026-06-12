@@ -20,7 +20,7 @@ except RuntimeError as e:
         raise
 
 from ironsbot.custom_plugins.custom_get_seer_info.commands import _rank
-from ironsbot.custom_plugins.custom_get_seer_info.commands._rank_page_cache import (
+from ironsbot.services.seer.rank_page_cache import (
     CachedRankLookup,
 )
 

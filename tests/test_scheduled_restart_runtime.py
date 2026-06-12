@@ -2,7 +2,9 @@ from collections.abc import Callable
 
 from pytest import MonkeyPatch
 
-from ironsbot.custom_plugins import scheduled_restart
+from ironsbot.custom_plugins.scheduled_restart import (
+    runtime as scheduled_restart_runtime,
+)
 
 
 class FakeDriver:
@@ -19,14 +21,14 @@ def test_scheduled_restart_runtime_setup_registers_startup_once(
 ) -> None:
     registered_state = False
     monkeypatch.setitem(
-        scheduled_restart._scheduled_restart_runtime_state,
+        scheduled_restart_runtime._scheduled_restart_runtime_state,
         "registered",
         registered_state,
     )
     driver = FakeDriver()
     scheduler = object()
 
-    scheduled_restart._setup_scheduled_restart_runtime(driver, scheduler)
-    scheduled_restart._setup_scheduled_restart_runtime(driver, scheduler)
+    scheduled_restart_runtime._setup_scheduled_restart_runtime(driver, scheduler)
+    scheduled_restart_runtime._setup_scheduled_restart_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1

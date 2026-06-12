@@ -16,6 +16,10 @@ from ironsbot.custom_plugins.message_actions import (
     send_event_reply,
 )
 from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
+from ironsbot.services.seer.rank_page_cache import (
+    CachedRankPageSummary,
+    get_rank_page_cache_summary,
+)
 from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -49,7 +53,6 @@ from ._rank import (
     fetch_daily_rank_page,
     get_current_peak_sub_key,
 )
-from ._rank_page_cache import CachedRankPageSummary, get_rank_page_cache_summary
 from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20

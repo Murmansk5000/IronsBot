@@ -9,9 +9,13 @@ from nonebot import logger
 
 from ironsbot.plugins.headless_seer.command_id import COMMAND_ID
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
+from ironsbot.services.seer.rank_page_cache import (
+    get_cached_rank_item,
+    get_cached_rank_page,
+    save_rank_page,
+)
 
 from ..config import get_local_rank_config, get_rank_query_config
-from ._rank_page_cache import get_cached_rank_item, get_cached_rank_page, save_rank_page
 
 BOOK_RANK_KEY = 156
 BOOK_RANK_SUB_KEY = 1

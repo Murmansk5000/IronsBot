@@ -8,6 +8,10 @@ from typing import Any
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
+from ironsbot.services.bilibili.push import (
+    DynamicHistorySnapshot,
+    build_dynamic_history_snapshot_for_item,
+)
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
 
 
@@ -210,6 +214,40 @@ def save_dynamic_history_item(  # noqa: PLR0913
             )
     except (sqlite3.Error, TypeError, ValueError) as e:
         logger.warning(f"failed to save Bilibili dynamic history: {e}")
+
+
+def save_dynamic_history_snapshot(snapshot: DynamicHistorySnapshot) -> None:
+    save_dynamic_history_item(
+        snapshot.item,
+        pub_ts=snapshot.pub_ts,
+        author_mid=snapshot.author_mid,
+        author_name=snapshot.author_name,
+        brief=snapshot.brief,
+        pushed=snapshot.pushed,
+        suppressed=snapshot.suppressed,
+        suppression_reason=snapshot.suppression_reason,
+    )
+
+
+def save_target_dynamic_history(
+    target_dynamics: Iterable[tuple[int, dict[str, Any]]],
+    *,
+    suppress_patterns: list[str],
+) -> int:
+    saved_count = 0
+    for pub_ts, item in target_dynamics:
+        snapshot = build_dynamic_history_snapshot_for_item(
+            item,
+            pub_ts=pub_ts,
+            suppress_patterns=suppress_patterns,
+        )
+        if snapshot is None:
+            continue
+
+        save_dynamic_history_snapshot(snapshot)
+        saved_count += 1
+
+    return saved_count
 
 
 def _record_from_row(row: sqlite3.Row) -> DynamicHistoryRecord | None:

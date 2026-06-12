@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
 from typing import Any
 
 from nonebot import get_driver, logger, require
 
-from ..config import get_local_rank_config
+from .config import get_local_rank_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
 
 
 async def _scheduled_local_rank_refresh() -> None:
-    from ._local_rank_refresh import refresh_local_rank_cache
+    from .commands._local_rank_refresh import refresh_local_rank_cache
 
     if not get_local_rank_config().auto_refresh:
         return
@@ -52,3 +54,6 @@ def setup_local_rank_scheduler_runtime() -> None:
     from nonebot_plugin_apscheduler import scheduler
 
     _setup_local_rank_scheduler_runtime(get_driver(), scheduler)
+
+
+__all__ = ["setup_local_rank_scheduler_runtime"]

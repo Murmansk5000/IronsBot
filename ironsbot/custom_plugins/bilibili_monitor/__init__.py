@@ -1,6 +1,7 @@
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.custom_plugins.startup_ready import wait_startup_ready
+from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_dynamic_history_item,
     get_last_saved_times,
@@ -28,7 +29,6 @@ from ironsbot.services.bilibili.state import (
 
 from . import commands as commands
 from .auth import (
-    is_bili_auth_invalid,
     is_bili_login_required,
     request_bili_login_qrcode,
     send_bili_login_qrcode_to_superusers,

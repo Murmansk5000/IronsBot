@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from ironsbot.plugins import headless_seer
+from ironsbot.plugins.headless_seer import runtime as headless_seer_runtime
 
 
 class FakeDriver:
@@ -18,11 +18,11 @@ class FakeDriver:
 
 
 def test_headless_seer_runtime_setup_registers_lifecycle_once() -> None:
-    headless_seer._headless_seer_runtime_state["registered"] = False
+    headless_seer_runtime._headless_seer_runtime_state["registered"] = False
     driver = FakeDriver()
 
-    headless_seer._setup_headless_seer_runtime(driver)
-    headless_seer._setup_headless_seer_runtime(driver)
+    headless_seer_runtime._setup_headless_seer_runtime(driver)
+    headless_seer_runtime._setup_headless_seer_runtime(driver)
 
     assert len(driver.startup_handlers) == 1
     assert len(driver.shutdown_handlers) == 1
