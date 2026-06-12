@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.custom_plugins.startup_ready import wait_startup_ready
+from ironsbot.shared.plugin_runtime.startup_ready import wait_startup_ready
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_dynamic_history_item,

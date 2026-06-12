@@ -45,9 +45,9 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.meeting",
     "ironsbot.custom_plugins.pet_config_reply",
     "ironsbot.custom_plugins.rank_help",
-    "ironsbot.custom_plugins.scheduled_restart",
+    "ironsbot.plugins.scheduled_restart",
     "ironsbot.plugins.server_status",
-    "ironsbot.custom_plugins.startup_notice",
+    "ironsbot.plugins.startup_notice",
 )
 
 RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
@@ -57,9 +57,9 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
     "ironsbot.custom_plugins.message_actions.runtime:setup_message_actions_runtime",
     "ironsbot.custom_plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
-    "ironsbot.custom_plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
-    "ironsbot.custom_plugins.startup_ready_runtime:setup_startup_ready_runtime",
-    "ironsbot.custom_plugins.startup_notice.runtime:setup_startup_notice_runtime",
+    "ironsbot.plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
+    "ironsbot.shared.plugin_runtime.startup_ready_runtime:setup_startup_ready_runtime",
+    "ironsbot.plugins.startup_notice.runtime:setup_startup_notice_runtime",
     "ironsbot.custom_plugins.bilibili_monitor.runtime:setup_bilibili_monitor_runtime",
     "ironsbot.custom_plugins.activity_reminder.runtime:setup_activity_reminder_runtime",
     "ironsbot.custom_plugins.custom_get_seer_info.runtime:setup_local_rank_scheduler_runtime",

@@ -8,7 +8,7 @@ from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.startup_ready import ensure_startup_ready
+from ironsbot.shared.plugin_runtime.startup_ready import ensure_startup_ready
 
 from .config import get_startup_config
 from .service import StartupNoticeService

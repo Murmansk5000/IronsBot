@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 
 from .service import run_check_logic
 

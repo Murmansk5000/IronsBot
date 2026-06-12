@@ -19,8 +19,8 @@ from .service import (
 
 HIDDEN_MODULE_PREFIXES = (
     "ironsbot.custom_plugins.ai_mention_guard",
-    "ironsbot.custom_plugins.scheduled_restart",
-    "ironsbot.custom_plugins.startup_notice",
+    "ironsbot.plugins.scheduled_restart",
+    "ironsbot.plugins.startup_notice",
     "ironsbot.custom_plugins.superuser_priority",
     "ironsbot.plugins.db_sync",
     "ironsbot.plugins.headless_seer",

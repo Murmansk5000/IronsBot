@@ -140,7 +140,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     scheduled_restart_config = _load_module_from_path(
         "scheduled_restart_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "scheduled_restart" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "config.py",
     )
     seer_data_config = _load_module_from_path(
         "seer_data_config_for_app_config_test",
@@ -148,7 +148,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     startup_config = _load_module_from_path(
         "startup_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "startup_notice" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "startup_notice" / "config.py",
     )
     team_shortcut_config = _load_module_from_path(
         "team_shortcut_config_for_app_config_test",

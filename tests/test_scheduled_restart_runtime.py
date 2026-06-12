@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from pytest import MonkeyPatch
 
-from ironsbot.custom_plugins.scheduled_restart import (
+from ironsbot.plugins.scheduled_restart import (
     runtime as scheduled_restart_runtime,
 )
 

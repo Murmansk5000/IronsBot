@@ -7,7 +7,7 @@ from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 

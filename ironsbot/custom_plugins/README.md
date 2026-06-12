@@ -33,8 +33,6 @@ ironsbot/custom_plugins/
   message_actions/         # 通用消息动作适配层
   pet_config_reply/        # 对“精灵名 + 配置”提示暂不支持配置查询
   rank_help/               # 榜单帮助入口
-  scheduled_restart/       # 定时重启入口与生命周期注册
-  startup_notice/          # 启动通知适配层
   superuser_priority/      # 超级用户优先级控制
   team_shortcut/           # 战队群短指令适配层
 ```
