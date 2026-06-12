@@ -45,13 +45,13 @@ from .._upstream.depends import (
     PetDataGetter,
     SeerAPISession,
 )
-from .._upstream.prompt import (
+from ..group import matcher_group
+from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
     simple_prompt_resolver,
 )
-from ..group import matcher_group
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {

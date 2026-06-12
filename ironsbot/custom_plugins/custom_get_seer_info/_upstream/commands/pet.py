@@ -23,7 +23,7 @@ from ..depends import (
     SeerAPISession,
 )
 from ..group import matcher_group
-from ..prompt import (
+from ...prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
