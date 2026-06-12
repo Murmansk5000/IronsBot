@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot import logger
 
-from ironsbot.plugins.db_sync.manager import db_manager
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
 )
-from ironsbot.plugins.seer_data.db import ErrorCodeGetter
 
 PLAYER_NOT_FOUND_RESULT_CODES = {101105}
 SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE = (
@@ -18,6 +16,9 @@ SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE = (
 def format_socket_recv_error(error: SocketRecvError) -> str:
     result_code = error.head.result
     try:
+        from ironsbot.plugins.db_sync.manager import db_manager
+        from ironsbot.plugins.seer_data.db import ErrorCodeGetter
+
         sessions = next(db_manager.get_all_sessions())
         error_code = ErrorCodeGetter(sessions, str(result_code))
     except Exception:  # noqa: BLE001

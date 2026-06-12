@@ -4,7 +4,7 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
-from .._binary import BufferReader
+from ironsbot.services.seer.binary import BufferReader
 
 UNITY_INFO_CMD = 41298
 USER_FOREVER_VALUE_CMD = 40002

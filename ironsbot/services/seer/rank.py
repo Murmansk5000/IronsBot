@@ -7,76 +7,49 @@ from typing import Any
 
 from nonebot import logger
 
+from ironsbot.config import get_app_config
+from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
 from ironsbot.plugins.headless_seer.command_id import COMMAND_ID
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
+from ironsbot.services.seer.rank_constants import (
+    ACHIEVE_RANK_KEY,
+    ACHIEVE_RANK_SUB_KEY,
+    BOOK_RANK_KEY,
+    BOOK_RANK_SUB_KEY,
+    COUNTERMARK_RANK_KEY,
+    COUNTERMARK_RANK_SUB_KEY,
+    EXPERT_PEAK_USER_RANK_KEY,
+    MOUNT_RANK_SUB_KEY,
+    OUTFIT_PART_RANK_SUB_KEY,
+    OUTFIT_RANK_KEY,
+    OUTFIT_SUIT_RANK_SUB_KEY,
+    PET_KIND_RANK_ANOMALY_COUNT,
+    PET_KIND_RANK_ANOMALY_USER_IDS,
+    PET_KIND_RANK_KEY,
+    PET_KIND_RANK_SUB_KEY,
+    SKIN_RANK_KEY,
+    SKIN_RANK_SUB_KEY,
+    STANDARD_PEAK_USER_RANK_KEY,
+    WILD_PEAK_USER_RANK_KEY,
+)
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
     get_cached_rank_page,
     save_rank_page,
 )
 
-from ..config import get_local_rank_config, get_rank_query_config
-
-BOOK_RANK_KEY = 156
-BOOK_RANK_SUB_KEY = 1
-ACHIEVE_RANK_KEY = 17
-ACHIEVE_RANK_SUB_KEY = 0
-
-PET_KIND_RANK_KEY = 158
-PET_KIND_RANK_SUB_KEY = 1
-COUNTERMARK_RANK_KEY = 159
-COUNTERMARK_RANK_SUB_KEY = 1
-OUTFIT_RANK_KEY = 160
-OUTFIT_SUIT_RANK_SUB_KEY = 1
-OUTFIT_PART_RANK_SUB_KEY = 2
-MOUNT_RANK_SUB_KEY = 3
-SKIN_RANK_KEY = 161
-SKIN_RANK_SUB_KEY = 1
-
-STANDARD_PEAK_USER_RANK_KEY = 120
-WILD_PEAK_USER_RANK_KEY = 182
-EXPERT_PEAK_USER_RANK_KEY = 199
-
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
 _RANK_WINDOW_REFRESH_KEYS: set[tuple[int, int, int, int]] = set()
 _RANK_WINDOW_REFRESH_TASKS: set[asyncio.Task[None]] = set()
-PET_KIND_RANK_ANOMALY_USER_IDS = frozenset(
-    (
-        389438787,
-        563101901,
-        75576625,
-        941831079,
-        129030222,
-        569440141,
-        962351895,
-        141312889,
-        674021793,
-        163443467,
-        206601225,
-        925171143,
-        810989428,
-        963527044,
-        961510772,
-        914692158,
-        962236717,
-        960755946,
-        930395179,
-        964791989,
-        960957048,
-        963833963,
-        963123185,
-        963190850,
-        960351788,
-        964035946,
-        963236961,
-        962883553,
-        961625369,
-        961392272,
-        51010611,
-    )
-)
-PET_KIND_RANK_ANOMALY_COUNT = len(PET_KIND_RANK_ANOMALY_USER_IDS)
+
+
+def get_rank_query_config() -> RankQueryConfig:
+    return get_app_config().seer.rank
+
+
+def get_local_rank_config() -> LocalRankConfig:
+    return get_app_config().seer.local_rank
 
 
 def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
@@ -184,7 +157,7 @@ async def _fetch_rank_page(  # noqa: PLR0913
             end=end,
         )
         if cached_items is not None:
-            from ._local_rank import upsert_rank_page_metrics
+            from ironsbot.services.seer.local_rank import upsert_rank_page_metrics
 
             upsert_rank_page_metrics(key=key, sub_key=sub_key, items=cached_items)
             return cached_items
@@ -196,7 +169,7 @@ async def _fetch_rank_page(  # noqa: PLR0913
     )
     items = list(rank_list.rank_list)
     save_rank_page(key=key, sub_key=sub_key, start=start, end=end, items=items)
-    from ._local_rank import upsert_rank_page_metrics
+    from ironsbot.services.seer.local_rank import upsert_rank_page_metrics
 
     upsert_rank_page_metrics(key=key, sub_key=sub_key, items=items)
     return items

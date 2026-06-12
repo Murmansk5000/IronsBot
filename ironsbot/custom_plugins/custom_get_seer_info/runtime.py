@@ -11,7 +11,7 @@ _local_rank_scheduler_runtime_state = {"registered": False}
 
 
 async def _scheduled_local_rank_refresh() -> None:
-    from .commands._local_rank_refresh import refresh_local_rank_cache
+    from ironsbot.services.seer.local_rank_refresh import refresh_local_rank_cache
 
     if not get_local_rank_config().auto_refresh:
         return
