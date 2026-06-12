@@ -5,8 +5,8 @@ FeatureModuleRegistry = dict[str, tuple[str, ...]]
 
 
 FEATURE_REGISTRY: FeatureModuleRegistry = {
-    "about": ("ironsbot.custom_plugins.custom_about",),
-    "help": ("ironsbot.custom_plugins.custom_help",),
+    "about": ("ironsbot.plugins.about",),
+    "help": ("ironsbot.plugins.help",),
     "seer": (
         "ironsbot.custom_plugins.custom_get_seer_info",
         "ironsbot.custom_plugins.pet_config_reply",

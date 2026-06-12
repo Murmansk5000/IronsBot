@@ -51,10 +51,10 @@ def _config(
     )
 
 
-def test_always_visible_custom_help_is_shown() -> None:
+def test_always_visible_help_is_shown() -> None:
     assert visibility.plugin_visible_for_event(
         "帮助",
-        "ironsbot.custom_plugins.custom_help",
+        "ironsbot.plugins.help",
         _group_event(),
     )
 

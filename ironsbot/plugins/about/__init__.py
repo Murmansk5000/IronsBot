@@ -34,7 +34,7 @@ ABOUT_MESSAGE = """
 """.strip()
 
 VERSION_FILE_PATH = AsyncPath("__version__")
-ABOUT_PLUGIN_NAME = "custom_about"
+ABOUT_PLUGIN_NAME = "about"
 
 matcher = on_fullmatch("关于", rule=no_reply(), priority=0, block=True)
 

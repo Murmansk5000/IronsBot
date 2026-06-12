@@ -86,13 +86,13 @@ services:
 
 ## 插件架构
 
-用户功能集中在 `ironsbot/custom_plugins`：
+用户功能目前分布在 `ironsbot/plugins` 与 `ironsbot/custom_plugins`，旧 `custom_*` 命名会在 Stage 9 逐步收束：
 
 | 插件 | 作用 |
 | --- | --- |
 | `custom_get_seer_info` | 自定义赛尔号查询、榜单、群星牌、活动相关入口。 |
-| `custom_help` | 按当前群/私聊权限显示可用功能。 |
-| `custom_about` | 新版关于页。 |
+| `help` | 按当前群/私聊权限显示可用功能。 |
+| `about` | 新版关于页。 |
 | `custom_sendpic` | 固定关键词发图。 |
 | `message_actions` | 通用文本回复、定时消息、事件回复和批量发送。 |
 | `bilibili_monitor` | B站动态监控与点播。 |

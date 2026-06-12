@@ -47,8 +47,8 @@ DEFAULT_IGNORED_PLUGINS = [
     "超级管理员优先级",
     "定时重启",
 ]
-HELP_ENTRIES_KEY = "_custom_help_entries"
-HELP_PLUGIN_NAME = "custom_help"
+HELP_ENTRIES_KEY = "_help_entries"
+HELP_PLUGIN_NAME = "help"
 Config = AppConfig
 
 

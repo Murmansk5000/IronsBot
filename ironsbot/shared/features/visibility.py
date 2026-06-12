@@ -29,8 +29,8 @@ HIDDEN_MODULE_PREFIXES = (
 )
 
 ALWAYS_VISIBLE_MODULE_PREFIXES = (
-    "ironsbot.custom_plugins.custom_about",
-    "ironsbot.custom_plugins.custom_help",
+    "ironsbot.plugins.about",
+    "ironsbot.plugins.help",
 )
 
 VisibilityRule = Callable[[Event], bool]
