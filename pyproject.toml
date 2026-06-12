@@ -136,9 +136,6 @@ allowed-confusables = [
     "、",
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"ironsbot/custom_plugins/custom_get_seer_info/_upstream/**" = ["ALL"]
-
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
 
