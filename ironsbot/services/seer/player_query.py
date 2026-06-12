@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 
@@ -12,6 +16,23 @@ class PlayerDetailMessages:
     peak_message: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerQuerySectionPlan:
+    show_local_rank: bool
+    has_collection: bool
+    needs_peak_section: bool
+    needs_online_info: bool
+    local_rank_enabled: bool
+
+    @property
+    def needs_detail_task(self) -> bool:
+        return (
+            self.has_collection
+            or self.needs_peak_section
+            or self.local_rank_enabled
+        )
+
+
 def extract_player_query_arg(text_value: str) -> str | None:
     stripped = text_value.strip()
     folded = stripped.casefold()
@@ -19,6 +40,37 @@ def extract_player_query_arg(text_value: str) -> str | None:
         if folded.startswith(prefix.casefold()):
             return stripped[len(prefix) :].strip()
     return None
+
+
+def plan_player_query_sections(
+    sections: Iterable[str],
+    *,
+    local_rank_enabled: bool,
+) -> PlayerQuerySectionPlan:
+    enabled_sections = set(sections)
+    has_collection = bool(
+        {"collection", "rank", "local_rank", "achievement"} & enabled_sections
+    )
+    return PlayerQuerySectionPlan(
+        show_local_rank="local_rank" in enabled_sections,
+        has_collection=has_collection,
+        needs_peak_section="peak" in enabled_sections,
+        needs_online_info="basic" in enabled_sections,
+        local_rank_enabled=local_rank_enabled,
+    )
+
+
+def player_detail_commands(
+    *,
+    has_collection: bool,
+    has_peak: bool,
+) -> tuple[str, ...]:
+    commands: list[str] = []
+    if has_collection:
+        commands.append("收集")
+    if has_peak:
+        commands.append("巅峰")
+    return tuple(commands)
 
 
 def player_query_in_progress_message(player_id: int) -> str:

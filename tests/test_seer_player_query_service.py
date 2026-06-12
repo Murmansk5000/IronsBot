@@ -1,6 +1,9 @@
 from ironsbot.services.seer.player_query import (
     PlayerDetailMessages,
+    PlayerQuerySectionPlan,
     extract_player_query_arg,
+    plan_player_query_sections,
+    player_detail_commands,
     player_detail_pending_message,
     player_query_in_progress_message,
     player_query_wait_message,
@@ -39,3 +42,38 @@ def test_player_detail_messages_defaults_to_empty_messages() -> None:
 
     assert messages.collection_message == ""
     assert messages.peak_message == ""
+
+
+def test_plan_player_query_sections_maps_configured_sections() -> None:
+    plan = plan_player_query_sections(
+        ("basic", "collection", "local_rank", "peak"),
+        local_rank_enabled=True,
+    )
+
+    assert plan == PlayerQuerySectionPlan(
+        show_local_rank=True,
+        has_collection=True,
+        needs_peak_section=True,
+        needs_online_info=True,
+        local_rank_enabled=True,
+    )
+    assert plan.needs_detail_task is True
+
+
+def test_plan_player_query_sections_keeps_cache_refresh_detail_task() -> None:
+    plan = plan_player_query_sections(("basic",), local_rank_enabled=True)
+
+    assert plan.show_local_rank is False
+    assert plan.has_collection is False
+    assert plan.needs_peak_section is False
+    assert plan.needs_online_info is True
+    assert plan.needs_detail_task is True
+
+
+def test_player_detail_commands_follow_available_detail_sections() -> None:
+    assert player_detail_commands(has_collection=True, has_peak=True) == (
+        "收集",
+        "巅峰",
+    )
+    assert player_detail_commands(has_collection=False, has_peak=True) == ("巅峰",)
+    assert player_detail_commands(has_collection=False, has_peak=False) == ()

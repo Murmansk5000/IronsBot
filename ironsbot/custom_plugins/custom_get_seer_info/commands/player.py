@@ -40,6 +40,8 @@ from ironsbot.services.seer.player_formatting import (
 from ironsbot.services.seer.player_query import (
     PlayerDetailMessages,
     extract_player_query_arg,
+    plan_player_query_sections,
+    player_detail_commands,
     player_detail_pending_message,
     player_query_in_progress_message,
     player_query_wait_message,
@@ -254,13 +256,11 @@ class PlayerQueryPlugin:
         player_id: int = state[PLAYER_ID_KEY]
         extra_errors: list[str] = []
         player_config = get_player_query_config()
-        enabled_sections = set(player_config.sections)
-        show_local_rank = "local_rank" in enabled_sections
-        has_collection = bool(
-            {"collection", "rank", "local_rank", "achievement"} & enabled_sections
+        local_rank_config = get_local_rank_config()
+        section_plan = plan_player_query_sections(
+            player_config.sections,
+            local_rank_enabled=local_rank_config.enabled,
         )
-        needs_peak_section = "peak" in enabled_sections
-        needs_online_info = "basic" in enabled_sections
         detail_task: asyncio.Task[PlayerDetailMessages] | None = None
 
         try:
@@ -271,7 +271,7 @@ class PlayerQueryPlugin:
                     game.get_more_user_info(player_id),
                     _optional_extra(
                         "在线状态",
-                        needs_online_info,
+                        section_plan.needs_online_info,
                         lambda: game.get_user_online_info(player_id),
                         None,
                         extra_errors,
@@ -298,14 +298,14 @@ class PlayerQueryPlugin:
                 except Exception:  # noqa: BLE001
                     team_name = str(user_info.team_id)
 
-            if has_collection or needs_peak_section or get_local_rank_config().enabled:
+            if section_plan.needs_detail_task:
                 detail_task = _create_player_detail_task(
                     player_id=player_id,
                     user_info=user_info,
                     more_info=more_info,
-                    has_collection=has_collection,
-                    needs_peak_section=needs_peak_section,
-                    show_local_rank=show_local_rank,
+                    has_collection=section_plan.has_collection,
+                    needs_peak_section=section_plan.needs_peak_section,
+                    show_local_rank=section_plan.show_local_rank,
                 )
 
             player_message = format_compact_player_info(
@@ -316,8 +316,8 @@ class PlayerQueryPlugin:
                 unity_peak=UnityPeakInfo(),
                 peak_rank_summary=PeakSeasonRankSummary.empty(),
                 local_summary=LocalRankSummary(),
-                has_collection=has_collection,
-                has_peak=needs_peak_section,
+                has_collection=section_plan.has_collection,
+                has_peak=section_plan.needs_peak_section,
                 show_peak=False,
                 extra_errors=extra_errors,
             )
@@ -365,8 +365,8 @@ class PlayerQueryPlugin:
             state,
             player_message=player_message,
             detail_task=detail_task,
-            has_collection=has_collection,
-            has_peak=needs_peak_section,
+            has_collection=section_plan.has_collection,
+            has_peak=section_plan.needs_peak_section,
         )
 
 
@@ -566,18 +566,15 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     has_collection: bool = False,
     has_peak: bool = False,
 ) -> None:
-    commands: list[str] = []
+    commands = player_detail_commands(
+        has_collection=has_collection,
+        has_peak=has_peak,
+    )
 
     if detail_task is not None:
         state[PLAYER_DETAIL_TASK_KEY] = detail_task
 
-    if has_collection:
-        commands.append("收集")
-
-    if has_peak:
-        commands.append("巅峰")
-
-    state[PLAYER_DETAIL_COMMANDS_KEY] = tuple(commands)
+    state[PLAYER_DETAIL_COMMANDS_KEY] = commands
 
     if not commands:
         if isinstance(event, MessageEvent):
