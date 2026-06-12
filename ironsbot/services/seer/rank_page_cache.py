@@ -7,7 +7,12 @@ from pathlib import Path
 
 from nonebot.log import logger
 
-from ..config import get_rank_query_config
+from ironsbot.config import get_app_config
+from ironsbot.config.models.seer import RankQueryConfig
+
+
+def get_rank_query_config() -> RankQueryConfig:
+    return get_app_config().seer.rank
 
 
 @dataclass(frozen=True, slots=True)
