@@ -6,12 +6,6 @@ from nonebot.typing import T_State
 from nonebot_plugin_saa import MessageFactory
 from seerapi_models import BattleEffectORM
 
-from ...prompt import (
-    Prompt,
-    PromptItem,
-    enter_prompt,
-    simple_prompt_resolver,
-)
 from ironsbot.plugins.seer_data.db import (
     BattleEffectDataGetter,
     GetBattleEffectData,
@@ -19,7 +13,13 @@ from ironsbot.plugins.seer_data.db import (
 from ironsbot.plugins.seer_data.image import BattleEffectImageGetter
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ...upstream_noop_group import matcher_group
+from ..prompt import (
+    Prompt,
+    PromptItem,
+    enter_prompt,
+    simple_prompt_resolver,
+)
+from ..upstream_noop_group import matcher_group
 
 battle_effect_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(("异常", "查询异常状态"), suffixes="异常") & no_reply()
@@ -33,7 +33,10 @@ async def _build_battle_effect_message(
     msg += await BattleEffectImageGetter.get(str(battle_effect.id))
     msg += f"【{battle_effect.name}（ID：{battle_effect.id}）】\n"
     msg += f"类型：{'，'.join(t.name for t in battle_effect.type) or '无'}\n"
-    msg += f"抗性类型：{battle_effect.resistance.name if battle_effect.resistance else '无'}\n"
+    resistance_name = (
+        battle_effect.resistance.name if battle_effect.resistance else "无"
+    )
+    msg += f"抗性类型：{resistance_name}\n"
     msg += f"效果：{battle_effect.desc}"
     return msg
 

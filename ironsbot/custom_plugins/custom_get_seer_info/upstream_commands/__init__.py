@@ -2,5 +2,6 @@
 """Upstream-derived command helpers reused by custom Seer entry points."""
 
 __all__ = [
+    "effect",
     "other",
 ]
