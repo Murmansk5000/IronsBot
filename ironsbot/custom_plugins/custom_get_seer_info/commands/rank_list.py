@@ -1,7 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from datetime import datetime, timedelta, timezone
-from typing import Any
-
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
@@ -31,22 +28,22 @@ from ironsbot.services.seer.rank import (
 from ironsbot.services.seer.rank_list import (
     GLOBAL_RANKS,
     LOCAL_RANKS,
-    MAX_CACHE_INTERVALS_SHOWN,
     RANK_LIST_SIZE,
     GlobalRankSpec,
     LocalRankSpec,
     RankCacheBatchCommand,
     RankListCommand,
     RankPageCacheStatusCommand,
+    batch_raw_start,
+    build_rank_page_cache_status_message,
+    format_global_rank_message,
+    format_local_rank_message,
     parse_rank_cache_batch_command,
     parse_rank_list_command,
     parse_rank_page_cache_status_command,
     with_admin_prefix,
 )
-from ironsbot.services.seer.rank_page_cache import (
-    CachedRankPageSummary,
-    get_rank_page_cache_summary,
-)
+from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -126,21 +123,6 @@ rank_page_cache_status_matcher = matcher_group.on_message(
 )
 
 
-def _now_text() -> str:
-    now = datetime.now(timezone(timedelta(hours=8)))
-    return now.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _format_global_line(
-    item: Any,
-    *,
-    index: int,
-    spec: GlobalRankSpec,
-) -> str:
-    rank = index + 1 + spec.rank_offset
-    return f"{rank}. {item.nick}（{item.id}） {item.score}{spec.unit}"
-
-
 async def _build_global_rank_message(spec: GlobalRankSpec) -> str:
     game = get_game_client()
     items = await fetch_daily_rank_page(
@@ -150,19 +132,7 @@ async def _build_global_rank_message(spec: GlobalRankSpec) -> str:
         start=spec.start,
         count=RANK_LIST_SIZE,
     )
-    if not items:
-        return f"❌找不到{spec.title}数据。"
-
-    lines = [f"{spec.title}（截至{_now_text()}）"]
-    lines.extend(
-        _format_global_line(item, index=spec.start + index, spec=spec)
-        for index, item in enumerate(items)
-    )
-    return "\n".join(lines)
-
-
-def _batch_raw_start(spec: GlobalRankSpec, start_rank: int) -> int:
-    return max(spec.start, start_rank - 1 - spec.rank_offset)
+    return format_global_rank_message(spec, items)
 
 
 async def _fetch_rank_batch_player_ids(
@@ -171,7 +141,7 @@ async def _fetch_rank_batch_player_ids(
     spec = GLOBAL_RANKS[command.rank_key]
     requested_count = command.end_rank - command.start_rank + 1
     count = min(requested_count, get_local_rank_config().batch_limit)
-    raw_start = _batch_raw_start(spec, command.start_rank)
+    raw_start = batch_raw_start(spec, command.start_rank)
     items = await fetch_daily_rank_page(
         get_game_client(),
         key=spec.key,
@@ -183,85 +153,6 @@ async def _fetch_rank_batch_player_ids(
     return spec, player_ids, requested_count
 
 
-def _page_cache_rank_interval(
-    page: CachedRankPageSummary,
-    spec: GlobalRankSpec,
-) -> tuple[int, int] | None:
-    if page.item_count <= 0:
-        return None
-
-    start_rank = page.start_index + 1 + spec.rank_offset
-    end_rank = page.start_index + page.item_count + spec.rank_offset
-    return max(1, start_rank), max(1, end_rank)
-
-
-def _merge_rank_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    merged: list[tuple[int, int]] = []
-    for start, end in sorted(intervals):
-        if not merged or start > merged[-1][1] + 1:
-            merged.append((start, end))
-            continue
-
-        previous_start, previous_end = merged[-1]
-        merged[-1] = (previous_start, max(previous_end, end))
-    return merged
-
-
-def _format_rank_intervals(intervals: list[tuple[int, int]]) -> str:
-    if not intervals:
-        return "无"
-
-    shown = intervals[:MAX_CACHE_INTERVALS_SHOWN]
-    text = "、".join(
-        str(start) if start == end else f"{start}-{end}"
-        for start, end in shown
-    )
-    if len(intervals) > len(shown):
-        text += f"、...另 {len(intervals) - len(shown)} 段"
-    return text
-
-
-def _build_rank_page_cache_status_message(spec: GlobalRankSpec) -> str:
-    pages = get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
-    if not pages:
-        return f"📦【{spec.title}缓存】\n当前没有缓存区间。"
-
-    valid_pages = [page for page in pages if not page.is_stale]
-    stale_pages = [page for page in pages if page.is_stale]
-    valid_intervals = _merge_rank_intervals(
-        [
-            interval
-            for page in valid_pages
-            if (interval := _page_cache_rank_interval(page, spec)) is not None
-        ]
-    )
-    stale_intervals = _merge_rank_intervals(
-        [
-            interval
-            for page in stale_pages
-            if (interval := _page_cache_rank_interval(page, spec)) is not None
-        ]
-    )
-
-    valid_count = sum(page.item_count for page in valid_pages)
-    stale_count = sum(page.item_count for page in stale_pages)
-    lines = [
-        f"📦【{spec.title}缓存】",
-        f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
-        f"有效区间：{_format_rank_intervals(valid_intervals)}",
-    ]
-    if stale_pages:
-        lines.extend(
-            [
-                f"过期缓存：{len(stale_pages)} 段，{stale_count} 名",
-                f"过期区间：{_format_rank_intervals(stale_intervals)}",
-            ]
-        )
-    ttl = get_rank_query_config().page_cache_ttl_seconds
-    lines.append(f"TTL：{ttl} 秒")
-    return "\n".join(lines)
-
-
 def _build_local_rank_message(spec: LocalRankSpec) -> str:
     season_sub_key = get_current_peak_sub_key() if spec.season_limited else None
     entries, sample_count = get_local_rank_entries(
@@ -269,19 +160,12 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
         limit=RANK_LIST_SIZE,
         season_sub_key=season_sub_key,
     )
-    if not entries:
-        return f"❌暂无{spec.title}数据。先查询一些米米号后再试。"
-
-    title = f"{spec.title}（样本{sample_count}人，截至{_now_text()}）"
-    if season_sub_key is not None:
-        title += f"\n赛季样本：{season_sub_key}"
-
-    lines = [title]
-    lines.extend(
-        f"{entry.rank}. {entry.nick}（{entry.user_id}） {entry.display}"
-        for entry in entries
+    return format_local_rank_message(
+        spec,
+        entries,
+        sample_count=sample_count,
+        season_sub_key=season_sub_key,
     )
-    return "\n".join(lines)
 
 
 class RankListPlugin:
@@ -408,10 +292,15 @@ class RankListPlugin:
             RANK_PAGE_CACHE_STATUS_COMMAND_KEY
         ]
         spec = GLOBAL_RANKS[command.rank_key]
+        pages = get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
         await finish_event_reply(
             matcher,
             event,
-            _build_rank_page_cache_status_message(spec),
+            build_rank_page_cache_status_message(
+                spec,
+                pages,
+                ttl_seconds=get_rank_query_config().page_cache_ttl_seconds,
+            ),
         )
 
     async def _handle_cache_status(

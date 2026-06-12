@@ -3,6 +3,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
 
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
@@ -132,6 +138,149 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
 
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(f"/{command}" for command in commands)
+
+
+def now_text() -> str:
+    now = datetime.now(timezone(timedelta(hours=8)))
+    return now.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_global_rank_line(
+    item: Any,
+    *,
+    index: int,
+    spec: GlobalRankSpec,
+) -> str:
+    rank = index + 1 + spec.rank_offset
+    return f"{rank}. {item.nick}（{item.id}） {item.score}{spec.unit}"
+
+
+def format_global_rank_message(
+    spec: GlobalRankSpec,
+    items: Sequence[Any],
+    *,
+    timestamp: str | None = None,
+) -> str:
+    if not items:
+        return f"❌找不到{spec.title}数据。"
+
+    lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
+    lines.extend(
+        format_global_rank_line(item, index=spec.start + index, spec=spec)
+        for index, item in enumerate(items)
+    )
+    return "\n".join(lines)
+
+
+def batch_raw_start(spec: GlobalRankSpec, start_rank: int) -> int:
+    return max(spec.start, start_rank - 1 - spec.rank_offset)
+
+
+def page_cache_rank_interval(
+    page: Any,
+    spec: GlobalRankSpec,
+) -> tuple[int, int] | None:
+    if page.item_count <= 0:
+        return None
+
+    start_rank = page.start_index + 1 + spec.rank_offset
+    end_rank = page.start_index + page.item_count + spec.rank_offset
+    return max(1, start_rank), max(1, end_rank)
+
+
+def merge_rank_intervals(
+    intervals: Sequence[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(intervals):
+        if not merged or start > merged[-1][1] + 1:
+            merged.append((start, end))
+            continue
+
+        previous_start, previous_end = merged[-1]
+        merged[-1] = (previous_start, max(previous_end, end))
+    return merged
+
+
+def format_rank_intervals(intervals: Sequence[tuple[int, int]]) -> str:
+    if not intervals:
+        return "无"
+
+    shown = intervals[:MAX_CACHE_INTERVALS_SHOWN]
+    text = "、".join(
+        str(start) if start == end else f"{start}-{end}"
+        for start, end in shown
+    )
+    if len(intervals) > len(shown):
+        text += f"、...另 {len(intervals) - len(shown)} 段"
+    return text
+
+
+def build_rank_page_cache_status_message(
+    spec: GlobalRankSpec,
+    pages: Sequence[Any],
+    *,
+    ttl_seconds: int,
+) -> str:
+    if not pages:
+        return f"📦【{spec.title}缓存】\n当前没有缓存区间。"
+
+    valid_pages = [page for page in pages if not page.is_stale]
+    stale_pages = [page for page in pages if page.is_stale]
+    valid_intervals = merge_rank_intervals(
+        [
+            interval
+            for page in valid_pages
+            if (interval := page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
+    stale_intervals = merge_rank_intervals(
+        [
+            interval
+            for page in stale_pages
+            if (interval := page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
+
+    valid_count = sum(page.item_count for page in valid_pages)
+    stale_count = sum(page.item_count for page in stale_pages)
+    lines = [
+        f"📦【{spec.title}缓存】",
+        f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
+        f"有效区间：{format_rank_intervals(valid_intervals)}",
+    ]
+    if stale_pages:
+        lines.extend(
+            [
+                f"过期缓存：{len(stale_pages)} 段，{stale_count} 名",
+                f"过期区间：{format_rank_intervals(stale_intervals)}",
+            ]
+        )
+    lines.append(f"TTL：{ttl_seconds} 秒")
+    return "\n".join(lines)
+
+
+def format_local_rank_message(
+    spec: LocalRankSpec,
+    entries: Sequence[Any],
+    *,
+    sample_count: int,
+    timestamp: str | None = None,
+    season_sub_key: str | None = None,
+) -> str:
+    if not entries:
+        return f"❌暂无{spec.title}数据。先查询一些米米号后再试。"
+
+    title = f"{spec.title}（样本{sample_count}人，截至{timestamp or now_text()}）"
+    if season_sub_key is not None:
+        title += f"\n赛季样本：{season_sub_key}"
+
+    lines = [title]
+    lines.extend(
+        f"{entry.rank}. {entry.nick}（{entry.user_id}） {entry.display}"
+        for entry in entries
+    )
+    return "\n".join(lines)
 
 
 def parse_rank_list_command(text: str) -> RankListCommand | None:
