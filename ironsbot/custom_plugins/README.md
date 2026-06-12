@@ -29,7 +29,6 @@ ironsbot/custom_plugins/
   ai_mention_guard/        # AI @ 风控适配层
   bilibili_monitor/        # B 站动态查询与推送适配层
   custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
-  custom_sendpic/          # 本地固定关键词发图
   headless_seer_notice/    # headless Seer 登录状态与通知适配层
   meeting_reply/           # 回复“开播/会议”的腾讯会议信息
   message_actions/         # 通用消息动作适配层

@@ -110,9 +110,9 @@ def test_small_plugin_config_accessors_read_app_config(
         "bilibili_monitor_config_for_app_config_test",
         ROOT / "ironsbot" / "custom_plugins" / "bilibili_monitor" / "config.py",
     )
-    custom_sendpic_config = _load_module_from_path(
-        "custom_sendpic_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "custom_sendpic" / "config.py",
+    sendpic_config = _load_module_from_path(
+        "sendpic_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
     )
     db_sync_config = _load_module_from_path(
         "db_sync_config_for_app_config_test",
@@ -166,8 +166,8 @@ def test_small_plugin_config_accessors_read_app_config(
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
-        assert custom_sendpic_config.get_sendpic_config().local_root.name == "sendpic"
-        assert custom_sendpic_config.get_sendpic_cnb_token() == "cnb-token"
+        assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
+        assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"
         assert "seerapi" in db_sync_config.get_data_sync_config().sources
         assert (
             headless_config.get_headless_config().heartbeat_interval

@@ -4,11 +4,11 @@ from pathlib import Path
 _CONFIG_PATH = (
     Path(__file__).resolve().parents[1]
     / "ironsbot"
-    / "custom_plugins"
-    / "custom_sendpic"
+    / "plugins"
+    / "sendpic"
     / "config.py"
 )
-_SPEC = spec_from_file_location("custom_sendpic_config_for_test", _CONFIG_PATH)
+_SPEC = spec_from_file_location("sendpic_config_for_test", _CONFIG_PATH)
 assert _SPEC is not None and _SPEC.loader is not None
 _CONFIG = module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_CONFIG)

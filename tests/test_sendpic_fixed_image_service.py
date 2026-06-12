@@ -4,12 +4,12 @@ from pathlib import Path
 _SERVICE_PATH = (
     Path(__file__).resolve().parents[1]
     / "ironsbot"
-    / "custom_plugins"
-    / "custom_sendpic"
+    / "plugins"
+    / "sendpic"
     / "fixed_image_service.py"
 )
 _SPEC = spec_from_file_location(
-    "custom_sendpic_fixed_image_service_for_test",
+    "sendpic_fixed_image_service_for_test",
     _SERVICE_PATH,
 )
 assert _SPEC is not None and _SPEC.loader is not None

@@ -20,7 +20,7 @@ from .fixed_image_service import (
 
 IMAGE_DIR = DEFAULT_FIXED_IMAGE_DIR
 IMAGE_COMMANDS = FIXED_IMAGE_COMMANDS
-FIXED_IMAGE_PLUGIN_NAME = "custom_sendpic_fixed_image"
+FIXED_IMAGE_PLUGIN_NAME = "sendpic_fixed_image"
 
 
 class FixedImagePlugin:

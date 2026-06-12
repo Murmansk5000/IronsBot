@@ -11,7 +11,7 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
         "ironsbot.custom_plugins.custom_get_seer_info",
         "ironsbot.custom_plugins.pet_config_reply",
     ),
-    "image": ("ironsbot.custom_plugins.custom_sendpic",),
+    "image": ("ironsbot.plugins.sendpic",),
     "rank": ("ironsbot.custom_plugins.rank_help",),
     "meeting": ("ironsbot.custom_plugins.meeting_reply",),
     "text": ("ironsbot.custom_plugins.message_actions",),
