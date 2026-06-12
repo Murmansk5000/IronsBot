@@ -28,6 +28,8 @@ SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
 
 STAT_BAR_MAX_WIDTH = 120
 STAT_MAX_VALUE = 200
+SPECIAL_SOULMARK_PET_ID = 2500
+HIDDEN_SKILL_ID = 19002
 _ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
     "#f35555": lambda t: f'<b style="color:#60e0ff">{t}</b>',
 }
@@ -157,7 +159,7 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[Soulmar
     return results
 
 
-async def render_pet_info(pet: PetORM) -> bytes:
+async def render_upstream_pet_info(pet: PetORM) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     cached = render_cache.get("pet_info", str(pet.id))
     if cached is not None:
@@ -170,7 +172,7 @@ async def render_pet_info(pet: PetORM) -> bytes:
         advance_stats = pet.advance.base_stats.to_model().round().model_dump()
 
     soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark, pet)
-    if pet.id == 2500:
+    if pet.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
                 "desc": "登场首回合所有攻击先制+1同时增加20%暴击率",
@@ -186,7 +188,7 @@ async def render_pet_info(pet: PetORM) -> bytes:
         skill
         for skill_list in [_extract_skill(sl) for sl in pet.skill_links]
         for skill in skill_list
-        if skill["id"] != 19002
+        if skill["id"] != HIDDEN_SKILL_ID
     ]
     special_skills: list[SkillDict] = []
     advanced_skills: list[SkillDict] = []

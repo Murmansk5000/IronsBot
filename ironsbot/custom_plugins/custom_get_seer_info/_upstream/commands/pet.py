@@ -9,6 +9,9 @@ from seerapi_models import PetORM, PetSkinORM
 from sqlmodel import select
 
 from ironsbot.plugins.seer_data.db import SQLModelSession
+from ironsbot.services.seer.rendering.upstream_pet_info import (
+    render_upstream_pet_info,
+)
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
@@ -26,7 +29,6 @@ from ..prompt import (
     enter_prompt,
     simple_prompt_resolver,
 )
-from ..render import render_pet_info
 
 pet_image_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(
@@ -198,7 +200,7 @@ async def handle_pet_info(
 
 
 async def build_pet_info_message(pet: PetORM) -> MessageFactory:
-    pic_bytes = await render_pet_info(pet)
+    pic_bytes = await render_upstream_pet_info(pet)
     msg = MessageFactory()
     msg += Image(pic_bytes)
     return msg
