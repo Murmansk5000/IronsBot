@@ -108,7 +108,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     bili_config = _load_module_from_path(
         "bilibili_monitor_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "bilibili_monitor" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "bilibili" / "config.py",
     )
     sendpic_config = _load_module_from_path(
         "sendpic_config_for_app_config_test",
