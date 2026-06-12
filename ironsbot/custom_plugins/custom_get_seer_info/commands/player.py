@@ -31,11 +31,8 @@ from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank import LocalRankSummary, update_local_rank_cache
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.player_formatting import (
-    append_extra_errors,
-    format_collection_info,
-    format_compact_peak_section,
     format_compact_player_info,
-    format_player_identity,
+    format_player_detail_messages,
 )
 from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_COMMANDS_KEY,
@@ -687,39 +684,20 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
     )
-    visible_local_rank_summary = (
-        local_rank_summary if show_local_rank else LocalRankSummary()
-    )
-
-    collection_message = (
-        format_collection_info(
-            more_info,
-            unity_part_one=unity_part_one,
-            rank_summary=rank_summary,
-            local_summary=visible_local_rank_summary,
-            player_identity=format_player_identity(player_id, user_info.nick),
-        )
-        if has_collection
-        else ""
-    )
-    peak_message = (
-        format_compact_peak_section(
-            unity_peak,
-            peak_rank_summary,
-            visible_local_rank_summary,
-            player_id=player_id,
-            nick=user_info.nick,
-        )
-        if needs_peak_section
-        else ""
-    )
-    return PlayerDetailMessages(
-        collection_message=append_extra_errors(collection_message, extra_errors)
-        if collection_message
-        else "",
-        peak_message=append_extra_errors(peak_message, extra_errors)
-        if peak_message
-        else "",
+    return format_player_detail_messages(
+        player_id=player_id,
+        user_info=user_info,
+        more_info=more_info,
+        unity_part_one=unity_part_one,
+        unity_peak=unity_peak,
+        rank_summary=rank_summary,
+        peak_rank_summary=peak_rank_summary,
+        local_rank_summary=local_rank_summary,
+        empty_local_rank_summary=LocalRankSummary(),
+        has_collection=has_collection,
+        needs_peak_section=needs_peak_section,
+        show_local_rank=show_local_rank,
+        extra_errors=extra_errors,
     )
 
 
