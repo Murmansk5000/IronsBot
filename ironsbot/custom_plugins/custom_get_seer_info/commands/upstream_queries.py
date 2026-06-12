@@ -24,6 +24,7 @@ from sqlmodel import select
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
+from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -52,7 +53,6 @@ from .._upstream.prompt import (
 )
 from ..group import matcher_group
 from ..render import render_pet_info
-from ._skin_price import format_skin_price_lines
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
