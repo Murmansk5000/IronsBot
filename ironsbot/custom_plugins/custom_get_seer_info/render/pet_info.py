@@ -15,6 +15,7 @@ from ironsbot.plugins.seer_data.image import (
     PetBodyImageGetter,
     PetHeadImageGetter,
 )
+from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     UPSTREAM_PET_INFO_IMAGES_PATH,
@@ -22,7 +23,6 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.utils.analyze_parser import AnalyzeDescParser
 
-from .._upstream.render._cache import render_cache
 from .._upstream.render._common import (
     to_data_uri,
 )

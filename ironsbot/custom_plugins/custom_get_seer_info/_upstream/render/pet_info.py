@@ -15,13 +15,13 @@ from ironsbot.plugins.seer_data.image import (
     PetBodyImageGetter,
     PetHeadImageGetter,
 )
+from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
     UPSTREAM_PET_INFO_TEMPLATE_PATH,
     UPSTREAM_SHARED_TEMPLATE_PATH,
 )
 from ironsbot.utils.analyze_parser import AnalyzeDescParser
 
-from ._cache import render_cache
 from ._common import to_data_uri
 
 TEMPLATE_PATH = UPSTREAM_PET_INFO_TEMPLATE_PATH

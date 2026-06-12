@@ -8,12 +8,12 @@ from nonebot_plugin_htmlkit import template_to_pic
 from seerapi_models import PeakExpertPoolORM, PeakPoolORM
 
 from ironsbot.plugins.seer_data.image import ElementTypeImageGetter, PetHeadImageGetter
+from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
     UPSTREAM_PEAK_POOL_TEMPLATE_PATH,
     UPSTREAM_SHARED_TEMPLATE_PATH,
 )
 
-from ._cache import render_cache
 from ._common import to_data_uri
 
 TEMPLATE_PATH = UPSTREAM_PEAK_POOL_TEMPLATE_PATH
