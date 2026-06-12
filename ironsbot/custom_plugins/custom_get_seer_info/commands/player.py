@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
-from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
@@ -41,6 +40,7 @@ from ironsbot.services.seer.player_query import (
     cached_player_detail_message,
     calculate_player_peak_scores,
     extract_player_query_arg,
+    optional_player_extra,
     plan_player_detail_fetches,
     plan_player_query_sections,
     player_detail_auto_reply_keys,
@@ -130,32 +130,8 @@ async def block_invalid_player_text_query() -> None:
     return
 
 
-
-async def _safe_extra(
-    label: str,
-    coro: Any,
-    default: Any,
-    extra_errors: list[str],
-) -> Any:
-    try:
-        return await coro
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=True).warning(f"米米号扩展字段获取失败：{label}")
-        extra_errors.append(f"{label}失败：{e}")
-        return default
-
-
-async def _optional_extra(
-    label: str,
-    enabled: bool,  # noqa: FBT001
-    coro_factory: Callable[[], Any],
-    default: Any,
-    extra_errors: list[str],
-) -> Any:
-    if not enabled:
-        return default
-
-    return await _safe_extra(label, coro_factory(), default, extra_errors)
+def _log_player_extra_error(label: str, _error: Exception) -> None:
+    logger.opt(exception=True).warning(f"米米号扩展字段获取失败：{label}")
 
 
 class PlayerQueryPlugin:
@@ -263,12 +239,13 @@ class PlayerQueryPlugin:
                 asyncio.gather(
                     game.get_user_info(player_id),
                     game.get_more_user_info(player_id),
-                    _optional_extra(
+                    optional_player_extra(
                         "在线状态",
                         section_plan.needs_online_info,
                         lambda: game.get_user_online_info(player_id),
                         None,
                         extra_errors,
+                        on_error=_log_player_extra_error,
                     ),
                 ),
                 timeout=player_config.timeout_seconds,
@@ -623,22 +600,24 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     )
 
     unity_part_one, unity_peak = await asyncio.gather(
-        _optional_extra(
+        optional_player_extra(
             "展示/收集数据",
             fetch_plan.needs_unity_part_one,
             lambda: fetch_unity_part_one(game, player_id),
             UnityPartOneInfo(),
             extra_errors,
+            on_error=_log_player_extra_error,
         ),
-        _optional_extra(
+        optional_player_extra(
             "巅峰数据",
             fetch_plan.needs_unity_peak,
             lambda: fetch_unity_peak(game, player_id),
             UnityPeakInfo(),
             extra_errors,
+            on_error=_log_player_extra_error,
         ),
     )
-    rank_summary = await _optional_extra(
+    rank_summary = await optional_player_extra(
         "全服排行",
         fetch_plan.needs_rank_summary,
         lambda: fetch_player_rank_summary(
@@ -650,10 +629,11 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         ),
         PlayerRankSummary.empty(),
         extra_errors,
+        on_error=_log_player_extra_error,
     )
     peak_sub_key = get_current_peak_sub_key()
     peak_scores = calculate_player_peak_scores(unity_peak)
-    peak_rank_summary = await _optional_extra(
+    peak_rank_summary = await optional_player_extra(
         "巅峰赛季榜",
         needs_peak_section,
         lambda: fetch_peak_season_rank_summary(
@@ -665,8 +645,9 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         ),
         PeakSeasonRankSummary.empty(),
         extra_errors,
+        on_error=_log_player_extra_error,
     )
-    local_rank_summary = await _optional_extra(
+    local_rank_summary = await optional_player_extra(
         "机器人查询排行",
         fetch_plan.needs_local_rank,
         lambda: update_local_rank_cache(
@@ -683,6 +664,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         ),
         LocalRankSummary(),
         extra_errors,
+        on_error=_log_player_extra_error,
     )
     return format_player_detail_messages(
         player_id=player_id,

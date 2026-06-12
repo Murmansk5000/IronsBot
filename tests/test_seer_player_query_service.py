@@ -1,3 +1,5 @@
+import asyncio
+
 from ironsbot.services.seer.player_query import (
     PLAYER_COLLECTION_KEY,
     PLAYER_DETAIL_AUTO_REPLY_KEYS,
@@ -12,6 +14,7 @@ from ironsbot.services.seer.player_query import (
     cached_player_detail_message,
     calculate_player_peak_scores,
     extract_player_query_arg,
+    optional_player_extra,
     plan_player_detail_fetches,
     plan_player_query_sections,
     player_detail_auto_reply_keys,
@@ -26,6 +29,7 @@ from ironsbot.services.seer.player_query import (
     player_query_timeout_message,
     player_query_wait_message,
     resolve_player_detail_reply,
+    safe_player_extra,
     store_player_detail_messages,
 )
 
@@ -155,6 +159,75 @@ def test_calculate_player_peak_scores_uses_only_played_modes() -> None:
 
 def test_calculate_player_peak_scores_defaults_missing_fields_to_empty_scores() -> None:
     assert calculate_player_peak_scores(object()) == PlayerPeakScores()
+
+
+def test_safe_player_extra_returns_result() -> None:
+    async def run() -> str:
+        return "ok"
+
+    extra_errors: list[str] = []
+
+    assert (
+        asyncio.run(safe_player_extra("在线状态", run(), "fallback", extra_errors))
+        == "ok"
+    )
+    assert extra_errors == []
+
+
+def test_optional_player_extra_skips_disabled_factory() -> None:
+    called = False
+
+    async def run() -> str:
+        return "unused"
+
+    def factory() -> object:
+        nonlocal called
+        called = True
+        return run()
+
+    extra_errors: list[str] = []
+
+    assert (
+        asyncio.run(
+            optional_player_extra(
+                "在线状态",
+                enabled=False,
+                awaitable_factory=factory,
+                default="fallback",
+                extra_errors=extra_errors,
+            )
+        )
+        == "fallback"
+    )
+    assert called is False
+    assert extra_errors == []
+
+
+def test_optional_player_extra_records_errors_and_uses_logger_callback() -> None:
+    async def fail() -> str:
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    extra_errors: list[str] = []
+    logged_errors: list[tuple[str, str]] = []
+
+    assert (
+        asyncio.run(
+            optional_player_extra(
+                "在线状态",
+                enabled=True,
+                awaitable_factory=fail,
+                default="fallback",
+                extra_errors=extra_errors,
+                on_error=lambda label, error: logged_errors.append(
+                    (label, str(error))
+                ),
+            )
+        )
+        == "fallback"
+    )
+    assert extra_errors == ["在线状态失败：boom"]
+    assert logged_errors == [("在线状态", "boom")]
 
 
 def test_plan_player_query_sections_maps_configured_sections() -> None:

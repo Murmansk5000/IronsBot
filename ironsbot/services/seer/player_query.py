@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, MutableMapping
+    from collections.abc import Awaitable, Callable, Iterable, MutableMapping
     from typing import Any
 
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
@@ -96,6 +96,44 @@ def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
         standard=standard_score,
         wild=wild_score,
         expert=expert_score,
+    )
+
+
+async def safe_player_extra(
+    label: str,
+    awaitable: Awaitable[Any],
+    default: Any,
+    extra_errors: list[str],
+    *,
+    on_error: Callable[[str, Exception], None] | None = None,
+) -> Any:
+    try:
+        return await awaitable
+    except Exception as error:  # noqa: BLE001
+        if on_error is not None:
+            on_error(label, error)
+        extra_errors.append(f"{label}失败：{error}")
+        return default
+
+
+async def optional_player_extra(  # noqa: PLR0913
+    label: str,
+    enabled: bool,  # noqa: FBT001
+    awaitable_factory: Callable[[], Awaitable[Any]],
+    default: Any,
+    extra_errors: list[str],
+    *,
+    on_error: Callable[[str, Exception], None] | None = None,
+) -> Any:
+    if not enabled:
+        return default
+
+    return await safe_player_extra(
+        label,
+        awaitable_factory(),
+        default,
+        extra_errors,
+        on_error=on_error,
     )
 
 
