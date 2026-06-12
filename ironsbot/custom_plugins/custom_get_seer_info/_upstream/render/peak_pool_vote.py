@@ -5,17 +5,21 @@ from typing import TYPE_CHECKING, TypedDict
 from nonebot_plugin_htmlkit import template_to_pic
 
 from ironsbot.plugins.seer_data.image import ElementTypeImageGetter, PetHeadImageGetter
+from ironsbot.services.seer.render_paths import (
+    UPSTREAM_PEAK_POOL_VOTE_TEMPLATE_PATH,
+    UPSTREAM_SHARED_TEMPLATE_PATH,
+)
 from ironsbot.utils import time
 
-from ._common import TEMPLATES_PATH, to_data_uri
+from ._common import to_data_uri
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
     from ironsbot.plugins.headless_seer.packets.peak import DailyRankList
 
-TEMPLATE_PATH = TEMPLATES_PATH / "peak_pool_vote"
-SHARED_PATH = TEMPLATES_PATH / "_shared"
+TEMPLATE_PATH = UPSTREAM_PEAK_POOL_VOTE_TEMPLATE_PATH
+SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
 
 TABLE_WIDTH = 400
 CONTAINER_PADDING = 20 * 2

@@ -6,16 +6,18 @@ from nonebot_plugin_htmlkit import template_to_pic
 from seerapi_models.element_type import TypeCombinationORM
 from sqlalchemy.orm import object_session
 
-from ._cache import render_cache
 from ironsbot.plugins.seer_data.image import ElementTypeImageGetter
+from ironsbot.services.seer.render_paths import UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH
+
+from ._cache import render_cache
 
 from ..type_calc import calc_attack_table, calc_defense_table
-from ._common import TEMPLATES_PATH, to_data_uri
+from ._common import to_data_uri
 
 if TYPE_CHECKING:
     from sqlmodel import Session
 
-TEMPLATE_PATH = TEMPLATES_PATH / "type_matchup"
+TEMPLATE_PATH = UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH
 
 GRID_COLUMNS = 10
 CELL_SIZE = 72
