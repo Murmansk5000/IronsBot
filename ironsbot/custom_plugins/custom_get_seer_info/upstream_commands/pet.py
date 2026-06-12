@@ -15,20 +15,20 @@ from ironsbot.services.seer.rendering.upstream_pet_info import (
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ...depends import (
+from ..depends import (
     GetPetData,
     GetPetSkinData,
     PetBodyImageGetter,
     PetDataGetter,
     SeerAPISession,
 )
-from ...upstream_noop_group import matcher_group
-from ...prompt import (
+from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
     simple_prompt_resolver,
 )
+from ..upstream_noop_group import matcher_group
 
 pet_image_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(
@@ -80,7 +80,7 @@ def _create_prompt_items(
 
 
 @pet_image_matcher.handle()
-async def handle_pet_image(
+async def handle_pet_image(  # noqa: PLR0913
     matcher: Matcher,
     state: T_State,
     event: Event,

@@ -7,5 +7,4 @@ does not register a postprocessor. Import individual modules explicitly.
 
 __all__ = [
     "peak",
-    "pet",
 ]

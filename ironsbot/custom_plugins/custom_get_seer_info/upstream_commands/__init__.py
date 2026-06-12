@@ -6,5 +6,6 @@ __all__ = [
     "effect",
     "mintmark",
     "other",
+    "pet",
     "type",
 ]
