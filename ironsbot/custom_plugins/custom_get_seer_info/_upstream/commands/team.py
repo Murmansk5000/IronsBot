@@ -10,7 +10,7 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ...depends import GameClient
 from ...depends.arg_validator import TeamIdArg
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 
 team_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(prefixes=("战队", "查询战队信息"), suffixes=())

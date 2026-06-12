@@ -14,7 +14,7 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ...depends import GameClient
 from ...depends.arg_validator import PlayerIdArg
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 
 player_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(prefixes=("查询玩家信息", "米米号"), suffixes=())

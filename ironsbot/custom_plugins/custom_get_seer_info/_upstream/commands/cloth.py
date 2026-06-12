@@ -22,7 +22,7 @@ from ironsbot.plugins.seer_data.image import (
 from ironsbot.utils import build_sub_line
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 from ...prompt import (
     Prompt,
     PromptItem,

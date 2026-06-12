@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class _NoOpMatcher:
-    def handle(self, *_: Any, **__: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def handle(
+        self,
+        *_: Any,
+        **__: Any,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def _decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return func
 
@@ -25,4 +31,3 @@ class _NoOpMatcherGroup:
 
 
 matcher_group = _NoOpMatcherGroup()
-

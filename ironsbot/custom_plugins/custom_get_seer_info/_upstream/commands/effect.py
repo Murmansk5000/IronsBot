@@ -19,7 +19,7 @@ from ironsbot.plugins.seer_data.db import (
 from ironsbot.plugins.seer_data.image import BattleEffectImageGetter
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 
 battle_effect_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(("异常", "查询异常状态"), suffixes="异常") & no_reply()

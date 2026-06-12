@@ -25,7 +25,7 @@ from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ...depends import SeerAPISession
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 from ...prompt import (
     Prompt,
     PromptItem,

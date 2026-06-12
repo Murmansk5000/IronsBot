@@ -22,7 +22,7 @@ from ...depends import (
     PetDataGetter,
     SeerAPISession,
 )
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 from ...prompt import (
     Prompt,
     PromptItem,

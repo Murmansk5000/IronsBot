@@ -35,7 +35,7 @@ from ironsbot.utils import time
 from ironsbot.utils.rule import no_reply
 
 from ...depends import GameClient, PetDataGetter, SeerAPISession
-from ..group import matcher_group
+from ...upstream_noop_group import matcher_group
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
