@@ -28,6 +28,7 @@ from ironsbot.plugins.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.services.seer.client import get_game_client
+from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.formatting import format_datetime, yes_no
 from ironsbot.services.seer.local_rank import LocalRankSummary, update_local_rank_cache
 from ironsbot.services.seer.rank import (
@@ -64,7 +65,6 @@ from ..config import (
 from ..group import matcher_group
 from ..packets import ensure_extended_packets
 from ._args import parse_numeric_id
-from ._errors import format_player_query_error
 
 PLAYER_ID_KEY = "player_id"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
