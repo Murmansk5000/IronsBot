@@ -122,7 +122,7 @@ def test_ai_intent_visibility_requires_key_and_feature(
 
     assert visibility.plugin_visible_for_event(
         "AI意图动作",
-        "ironsbot.custom_plugins.ai_intent_actions",
+        "ironsbot.plugins.ai_intent",
         _group_event(),
     )
 

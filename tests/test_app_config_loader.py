@@ -92,15 +92,15 @@ def test_small_plugin_config_accessors_read_app_config(
 
     ai_chat_config = _load_module_from_path(
         "ai_chat_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "ai_chat" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "ai_chat" / "config.py",
     )
     ai_intent_config = _load_module_from_path(
         "ai_intent_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "ai_intent_actions" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "ai_intent" / "config.py",
     )
     ai_mention_config = _load_module_from_path(
         "ai_mention_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "ai_mention_guard" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "ai_mention_guard" / "config.py",
     )
     activity_config = _load_module_from_path(
         "activity_reminder_config_for_app_config_test",

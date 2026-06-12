@@ -18,7 +18,7 @@ from .service import (
 )
 
 HIDDEN_MODULE_PREFIXES = (
-    "ironsbot.custom_plugins.ai_mention_guard",
+    "ironsbot.plugins.ai_mention_guard",
     "ironsbot.plugins.scheduled_restart",
     "ironsbot.plugins.startup_notice",
     "ironsbot.custom_plugins.superuser_priority",
@@ -111,8 +111,8 @@ def _superuser_visible(event: Event) -> bool:
 SPECIAL_MODULE_VISIBILITY: tuple[tuple[str, VisibilityRule], ...] = (
     ("ironsbot.custom_plugins.message_actions", _message_actions_visible),
     ("ironsbot.custom_plugins.team_shortcut", _team_shortcut_visible),
-    ("ironsbot.custom_plugins.ai_chat", _ai_chat_visible),
-    ("ironsbot.custom_plugins.ai_intent_actions", _ai_intent_visible),
+    ("ironsbot.plugins.ai_chat", _ai_chat_visible),
+    ("ironsbot.plugins.ai_intent", _ai_intent_visible),
     ("ironsbot.custom_plugins.headless_seer_notice", _superuser_visible),
 )
 

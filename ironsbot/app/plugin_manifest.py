@@ -32,11 +32,11 @@ INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
 
 CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.headless_seer_notice",
-    "ironsbot.custom_plugins.ai_chat",
+    "ironsbot.plugins.ai_chat",
     "ironsbot.custom_plugins.team_shortcut",
     "ironsbot.custom_plugins.activity_reminder",
-    "ironsbot.custom_plugins.ai_mention_guard",
-    "ironsbot.custom_plugins.ai_intent_actions",
+    "ironsbot.plugins.ai_mention_guard",
+    "ironsbot.plugins.ai_intent",
     "ironsbot.custom_plugins.bilibili_monitor",
     "ironsbot.plugins.about",
     "ironsbot.custom_plugins.custom_get_seer_info",

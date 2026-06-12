@@ -102,7 +102,7 @@ services:
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent_actions` | AI 判定后触发文本或战队动作。 |
+| `ai_intent` | AI 判定后触发文本或战队动作。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
