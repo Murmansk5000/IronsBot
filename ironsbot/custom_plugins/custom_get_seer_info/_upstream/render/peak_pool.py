@@ -13,8 +13,7 @@ from ironsbot.services.seer.render_paths import (
     UPSTREAM_PEAK_POOL_TEMPLATE_PATH,
     UPSTREAM_SHARED_TEMPLATE_PATH,
 )
-
-from ._common import to_data_uri
+from ironsbot.utils.image import to_data_uri
 
 TEMPLATE_PATH = UPSTREAM_PEAK_POOL_TEMPLATE_PATH
 SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH

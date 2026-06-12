@@ -22,10 +22,7 @@ from ironsbot.services.seer.render_paths import (
     UPSTREAM_SHARED_TEMPLATE_PATH,
 )
 from ironsbot.utils.analyze_parser import AnalyzeDescParser
-
-from .._upstream.render._common import (
-    to_data_uri,
-)
+from ironsbot.utils.image import to_data_uri
 
 TEMPLATE_PATH = CUSTOM_PET_INFO_TEMPLATE_PATH
 SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
