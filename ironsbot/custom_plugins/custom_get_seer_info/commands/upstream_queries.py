@@ -17,13 +17,14 @@ from nonebot.params import Depends, Fullmatch
 from nonebot.typing import T_State
 from nonebot_plugin_saa import Image, MessageFactory, Text
 from seerapi_models import PetORM, PetSkinORM
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
+from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
+from ironsbot.services.seer.skin_price import format_skin_price_lines
+from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -32,27 +33,25 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from .._upstream.commands import cloth as upstream_cloth
-from .._upstream.commands import effect as upstream_effect
-from .._upstream.commands import mintmark as upstream_mintmark
-from .._upstream.commands import other as upstream_other
-from .._upstream.commands import peak as upstream_peak
-from .._upstream.commands import pet as upstream_pet
-from .._upstream.commands import type as upstream_type
-from .._upstream.depends import (
+from ..depends import (
     GetPetData,
     PetDataGetter,
     SeerAPISession,
 )
-from .._upstream.prompt import (
+from ..group import matcher_group
+from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
     simple_prompt_resolver,
 )
-from ..group import matcher_group
-from ..render import render_pet_info
-from ._skin_price import format_skin_price_lines
+from ..upstream_commands import cloth as upstream_cloth
+from ..upstream_commands import effect as upstream_effect
+from ..upstream_commands import mintmark as upstream_mintmark
+from ..upstream_commands import other as upstream_other
+from ..upstream_commands import peak as upstream_peak
+from ..upstream_commands import pet as upstream_pet
+from ..upstream_commands import type as upstream_type
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
@@ -186,7 +185,7 @@ class UpstreamQueryPlugin:
         context: PluginContext,
     ) -> None:
         session: SeerAPISession = context.data["session"]
-        image_url, source_url = _load_weekly_preview_links(session)
+        image_url, source_url = load_weekly_preview_links(session)
         msg = MessageFactory()
         msg += await _fetch_weekly_preview_image(image_url)
         msg += Text(f"\n预告图来自 {source_url}")
@@ -466,7 +465,7 @@ async def _handle_pet_info(
 
 
 async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
-    pic_bytes = await render_pet_info(pet)
+    pic_bytes = await render_custom_pet_info(pet)
     msg = MessageFactory()
     msg += Image(pic_bytes)
     return msg
@@ -840,47 +839,6 @@ async def _handle_peak_user(
         type_tuple=type_tuple,
         game=game,
     )
-
-DEFAULT_WEEKLY_PREVIEW_IMAGE_URL = (
-    "https://cnb.cool/HurryWang/seer-unity-preview-img-dumper-cnb/-/git/raw/"
-    "master/img/preview.png"
-)
-DEFAULT_WEEKLY_PREVIEW_SOURCE_URL = (
-    "https://github.com/WhY15w/seer-unity-preview-img-dumper"
-)
-
-
-def _load_weekly_preview_metadata(session: SQLModelSession) -> dict[str, str]:
-    try:
-        rows = session.execute(
-            text(
-                """
-                SELECT key, value
-                FROM ironsbot_metadata
-                WHERE key IN (:image_url_key, :source_url_key)
-                """
-            ),
-            {
-                "image_url_key": "weekly_preview_image_url",
-                "source_url_key": "weekly_preview_source_url",
-            },
-        ).all()
-    except SQLAlchemyError:
-        return {}
-
-    return {str(row[0]): str(row[1]) for row in rows}
-
-
-def _load_weekly_preview_links(session: SQLModelSession) -> tuple[str, str]:
-    metadata = _load_weekly_preview_metadata(session)
-    image_url = (
-        metadata.get("weekly_preview_image_url") or DEFAULT_WEEKLY_PREVIEW_IMAGE_URL
-    )
-    source_url = (
-        metadata.get("weekly_preview_source_url") or DEFAULT_WEEKLY_PREVIEW_SOURCE_URL
-    )
-    return image_url, source_url
-
 
 async def _fetch_weekly_preview_image(image_url: str):
     try:

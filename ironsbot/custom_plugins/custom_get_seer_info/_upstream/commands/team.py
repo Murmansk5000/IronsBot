@@ -8,8 +8,8 @@ from ironsbot.plugins.headless_seer.game import SeerGame
 from ironsbot.plugins.headless_seer.packets.team import SimpleTeamInfo
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..depends import GameClient
-from ..depends.arg_validator import TeamIdArg
+from ...depends import GameClient
+from ...depends.arg_validator import TeamIdArg
 from ..group import matcher_group
 
 team_matcher = matcher_group.on_message(
