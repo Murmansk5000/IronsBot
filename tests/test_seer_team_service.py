@@ -1,6 +1,16 @@
 from types import SimpleNamespace
 
-from ironsbot.services.seer.team import format_team_info
+from ironsbot.services.seer.team import (
+    format_team_generic_error_message,
+    format_team_info,
+    format_team_socket_error_message,
+    format_team_timeout_message,
+    format_team_unavailable_message,
+    team_query_in_progress_message,
+    team_query_wait_message,
+)
+
+TEAM_ID = 123456
 
 
 def _team_info() -> SimpleNamespace:
@@ -42,3 +52,29 @@ def test_format_team_info_respects_enabled_sections() -> None:
     assert "最近缴纳时间：2000年1月1日 08:00:00（946684800）" in message
     assert "【设施等级】" not in message
     assert "【文本】" not in message
+
+
+def test_team_query_messages_explain_in_progress_and_wait_states() -> None:
+    in_progress = team_query_in_progress_message(TEAM_ID)
+    wait = team_query_wait_message(30)
+
+    assert "正在查询战队 123456" in in_progress
+    assert "服务器维护、开服波动" in in_progress
+    assert "请 30 秒后再试" in wait
+    assert "短时间连续查询容易排队或超时" in wait
+
+
+def test_team_error_messages_include_team_id_and_reason() -> None:
+    assert "战队 123456 暂时查不了" in format_team_unavailable_message(TEAM_ID)
+    assert (
+        format_team_timeout_message(TEAM_ID)
+        == "❌ 战队 123456 查询超时，请稍后再试。"
+    )
+    assert (
+        format_team_socket_error_message(TEAM_ID, "连接断开")
+        == "❌ 战队 123456 连接断开"
+    )
+    assert (
+        format_team_generic_error_message(TEAM_ID, "boom")
+        == "❌ 战队 123456 查询失败：boom"
+    )

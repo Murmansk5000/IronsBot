@@ -17,14 +17,13 @@ from nonebot.params import Depends, Fullmatch
 from nonebot.typing import T_State
 from nonebot_plugin_saa import Image, MessageFactory, Text
 from seerapi_models import PetORM, PetSkinORM
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.services.seer.skin_price import format_skin_price_lines
+from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -186,7 +185,7 @@ class UpstreamQueryPlugin:
         context: PluginContext,
     ) -> None:
         session: SeerAPISession = context.data["session"]
-        image_url, source_url = _load_weekly_preview_links(session)
+        image_url, source_url = load_weekly_preview_links(session)
         msg = MessageFactory()
         msg += await _fetch_weekly_preview_image(image_url)
         msg += Text(f"\n预告图来自 {source_url}")
@@ -840,47 +839,6 @@ async def _handle_peak_user(
         type_tuple=type_tuple,
         game=game,
     )
-
-DEFAULT_WEEKLY_PREVIEW_IMAGE_URL = (
-    "https://cnb.cool/HurryWang/seer-unity-preview-img-dumper-cnb/-/git/raw/"
-    "master/img/preview.png"
-)
-DEFAULT_WEEKLY_PREVIEW_SOURCE_URL = (
-    "https://github.com/WhY15w/seer-unity-preview-img-dumper"
-)
-
-
-def _load_weekly_preview_metadata(session: SQLModelSession) -> dict[str, str]:
-    try:
-        rows = session.execute(
-            text(
-                """
-                SELECT key, value
-                FROM ironsbot_metadata
-                WHERE key IN (:image_url_key, :source_url_key)
-                """
-            ),
-            {
-                "image_url_key": "weekly_preview_image_url",
-                "source_url_key": "weekly_preview_source_url",
-            },
-        ).all()
-    except SQLAlchemyError:
-        return {}
-
-    return {str(row[0]): str(row[1]) for row in rows}
-
-
-def _load_weekly_preview_links(session: SQLModelSession) -> tuple[str, str]:
-    metadata = _load_weekly_preview_metadata(session)
-    image_url = (
-        metadata.get("weekly_preview_image_url") or DEFAULT_WEEKLY_PREVIEW_IMAGE_URL
-    )
-    source_url = (
-        metadata.get("weekly_preview_source_url") or DEFAULT_WEEKLY_PREVIEW_SOURCE_URL
-    )
-    return image_url, source_url
-
 
 async def _fetch_weekly_preview_image(image_url: str):
     try:
