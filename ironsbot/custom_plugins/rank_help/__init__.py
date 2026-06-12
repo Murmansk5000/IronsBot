@@ -4,9 +4,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.custom_get_seer_info.commands.rank_usage import (
-    build_rank_help_message,
-)
+from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.plugin_system import (
     PluginContext,

@@ -19,8 +19,8 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.custom_plugins.custom_get_seer_info.commands import _rank
-from ironsbot.custom_plugins.custom_get_seer_info.commands._rank_page_cache import (
+from ironsbot.services.seer import rank as _rank
+from ironsbot.services.seer.rank_page_cache import (
     CachedRankLookup,
 )
 

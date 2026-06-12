@@ -17,14 +17,14 @@ from ironsbot.plugins.seer_data.db import (
 from ironsbot.utils import build_sub_line
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..depends import (
+from ...depends import (
     GetMintmarkClassData,
     GetMintmarkData,
     MintmarkBodyImageGetter,
     MintmarkDataGetter,
 )
 from ..group import matcher_group
-from ..prompt import (
+from ...prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
