@@ -49,6 +49,7 @@ from ironsbot.services.seer.rank_page_cache import (
     CachedRankPageSummary,
     get_rank_page_cache_summary,
 )
+from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.messaging.text import normalize_command_text, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -59,7 +60,6 @@ from ironsbot.utils.rule import no_reply
 
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
 from ..group import matcher_group
-from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
