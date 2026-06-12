@@ -24,13 +24,13 @@ from ironsbot.services.seer.type_calc import (
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ...depends import SeerAPISession
-from ...upstream_noop_group import matcher_group
-from ...prompt import (
+from ..depends import SeerAPISession
+from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
 )
+from ..upstream_noop_group import matcher_group
 
 __all__ = [
     "calc_attack_table",

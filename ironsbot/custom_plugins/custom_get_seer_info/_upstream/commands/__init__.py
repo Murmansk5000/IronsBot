@@ -10,5 +10,4 @@ __all__ = [
     "mintmark",
     "peak",
     "pet",
-    "type",
 ]

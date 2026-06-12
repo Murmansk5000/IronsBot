@@ -4,4 +4,5 @@
 __all__ = [
     "effect",
     "other",
+    "type",
 ]
