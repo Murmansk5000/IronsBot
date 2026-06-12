@@ -28,6 +28,7 @@ from ironsbot.plugins.seer_data.db import (
     TitleDataGetter,
     from_id_get_name,
 )
+from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
 from ironsbot.utils import time
@@ -35,7 +36,6 @@ from ironsbot.utils.rule import no_reply
 
 from ..depends import GameClient, PetDataGetter, SeerAPISession
 from ..group import matcher_group
-from ..render import render_peak_pet_rank
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
