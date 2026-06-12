@@ -31,6 +31,7 @@ from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.formatting import format_datetime, yes_no
 from ironsbot.services.seer.local_rank import LocalRankSummary, update_local_rank_cache
+from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
@@ -63,7 +64,6 @@ from ..config import (
     get_team_query_config,
 )
 from ..group import matcher_group
-from ..packets import ensure_extended_packets
 from ._args import parse_numeric_id
 
 PLAYER_ID_KEY = "player_id"

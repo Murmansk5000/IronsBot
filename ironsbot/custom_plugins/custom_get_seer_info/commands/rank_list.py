@@ -25,6 +25,7 @@ from ironsbot.services.seer.local_rank_refresh import (
     format_refresh_failures,
     refresh_local_rank_cache,
 )
+from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
@@ -58,7 +59,6 @@ from ironsbot.utils.rule import no_reply
 
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
 from ..group import matcher_group
-from ..packets import ensure_extended_packets
 from .rank_usage import build_rank_help_message
 
 RANK_LIST_SIZE = 20
