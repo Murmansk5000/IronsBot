@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
-from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
@@ -31,25 +30,36 @@ from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank import LocalRankSummary, update_local_rank_cache
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.player_formatting import (
-    append_extra_errors,
-    format_collection_info,
-    format_compact_peak_section,
     format_compact_player_info,
-    format_player_identity,
+    format_player_detail_messages,
 )
 from ironsbot.services.seer.player_query import (
+    PLAYER_DETAIL_COMMANDS_KEY,
+    PLAYER_DETAIL_TASK_KEY,
     PlayerDetailMessages,
+    cached_player_detail_message,
+    calculate_player_peak_scores,
     extract_player_query_arg,
+    optional_player_extra,
+    plan_player_detail_fetches,
+    plan_player_detail_prompt,
     plan_player_query_sections,
-    player_detail_commands,
+    player_detail_auto_reply_keys,
+    player_detail_auto_reply_tasks,
+    player_detail_empty_message,
+    player_detail_failure_message,
     player_detail_pending_message,
+    player_detail_timeout_message,
+    player_query_failure_message,
     player_query_in_progress_message,
+    player_query_timeout_message,
     player_query_wait_message,
+    resolve_player_detail_reply,
+    store_player_detail_messages,
 )
 from ironsbot.services.seer.rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
-    build_peak_rating_score,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
     get_current_peak_sub_key,
@@ -62,7 +72,6 @@ from ironsbot.services.seer.sequ_extra import (
 )
 from ironsbot.shared.messaging.conversations import command_reply_check
 from ironsbot.shared.messaging.query_guard import QueryGuard
-from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -79,12 +88,6 @@ from ..group import matcher_group
 from ._args import parse_numeric_id
 
 PLAYER_ID_KEY = "player_id"
-PLAYER_COLLECTION_KEY = "_player_collection_message"
-PLAYER_PEAK_KEY = "_player_peak_message"
-PLAYER_DETAIL_TASK_KEY = "_player_detail_task"
-PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
-PLAYER_DETAIL_AUTO_REPLY_KEYS = "_player_detail_auto_reply_keys"
-PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY = "_player_detail_auto_reply_tasks"
 PLAYER_DETAIL_NAMESPACE = "custom_get_seer_info_player_details"
 PLAYER_PLUGIN_NAME = "seer_player"
 PLAYER_QUERY_GUARD = QueryGuard(
@@ -127,32 +130,8 @@ async def block_invalid_player_text_query() -> None:
     return
 
 
-
-async def _safe_extra(
-    label: str,
-    coro: Any,
-    default: Any,
-    extra_errors: list[str],
-) -> Any:
-    try:
-        return await coro
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=True).warning(f"米米号扩展字段获取失败：{label}")
-        extra_errors.append(f"{label}失败：{e}")
-        return default
-
-
-async def _optional_extra(
-    label: str,
-    enabled: bool,  # noqa: FBT001
-    coro_factory: Callable[[], Any],
-    default: Any,
-    extra_errors: list[str],
-) -> Any:
-    if not enabled:
-        return default
-
-    return await _safe_extra(label, coro_factory(), default, extra_errors)
+def _log_player_extra_error(label: str, _error: Exception) -> None:
+    logger.opt(exception=True).warning(f"米米号扩展字段获取失败：{label}")
 
 
 class PlayerQueryPlugin:
@@ -214,27 +193,18 @@ class PlayerQueryPlugin:
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        text = event.get_plaintext()
-        if command_text_matches(text, ("收集",)):
-            label = "收集与排行"
-            message = await _get_player_detail_message(
+        detail_request = resolve_player_detail_reply(event.get_plaintext())
+        message = (
+            await _get_player_detail_message(
                 state,
-                PLAYER_COLLECTION_KEY,
-                label,
+                detail_request.key,
+                detail_request.label,
                 matcher=matcher,
                 event=event,
             )
-        elif command_text_matches(text, ("巅峰",)):
-            label = "巅峰之战"
-            message = await _get_player_detail_message(
-                state,
-                PLAYER_PEAK_KEY,
-                label,
-                matcher=matcher,
-                event=event,
-            )
-        else:
-            message = None
+            if detail_request is not None
+            else None
+        )
 
         if not message:
             raise FinishedException
@@ -269,12 +239,13 @@ class PlayerQueryPlugin:
                 asyncio.gather(
                     game.get_user_info(player_id),
                     game.get_more_user_info(player_id),
-                    _optional_extra(
+                    optional_player_extra(
                         "在线状态",
                         section_plan.needs_online_info,
                         lambda: game.get_user_online_info(player_id),
                         None,
                         extra_errors,
+                        on_error=_log_player_extra_error,
                     ),
                 ),
                 timeout=player_config.timeout_seconds,
@@ -342,7 +313,7 @@ class PlayerQueryPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                f"❌ 米米号 {player_id} 查询超时，请稍后再试。",
+                player_query_timeout_message(player_id),
                 mention_sender=True,
             )
             return
@@ -352,7 +323,7 @@ class PlayerQueryPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                f"❌ 米米号 {player_id} 查询失败：{e}",
+                player_query_failure_message(player_id, e),
                 mention_sender=True,
             )
             return
@@ -402,14 +373,6 @@ async def _handle_detail_reply(
     )
 
 
-def _store_player_detail_messages(
-    state: T_State,
-    detail_messages: PlayerDetailMessages,
-) -> None:
-    state[PLAYER_COLLECTION_KEY] = detail_messages.collection_message
-    state[PLAYER_PEAK_KEY] = detail_messages.peak_message
-
-
 async def _get_player_detail_message(
     state: T_State,
     key: str,
@@ -436,39 +399,19 @@ async def _get_player_detail_message(
             detail_messages = task.result()
         except TimeoutError:
             state[PLAYER_DETAIL_TASK_KEY] = None
-            return f"❌ {label}数据查询超时，请稍后再试。"
+            return player_detail_timeout_message(label)
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
             state[PLAYER_DETAIL_TASK_KEY] = None
             return format_player_query_error(int(state.get(PLAYER_ID_KEY, 0)), e)
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("米米号后台详情任务失败")
             state[PLAYER_DETAIL_TASK_KEY] = None
-            return f"❌ {label}数据获取失败：{e}"
+            return player_detail_failure_message(label, e)
 
-        _store_player_detail_messages(state, detail_messages)
+        store_player_detail_messages(state, detail_messages)
         state[PLAYER_DETAIL_TASK_KEY] = None
 
-    return str(state.get(key) or "")
-
-
-def _auto_reply_keys(state: T_State) -> set[str]:
-    raw_keys = state.get(PLAYER_DETAIL_AUTO_REPLY_KEYS)
-    if isinstance(raw_keys, set):
-        return raw_keys
-
-    keys: set[str] = set()
-    state[PLAYER_DETAIL_AUTO_REPLY_KEYS] = keys
-    return keys
-
-
-def _auto_reply_tasks(state: T_State) -> set[asyncio.Task[None]]:
-    raw_tasks = state.get(PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY)
-    if isinstance(raw_tasks, set):
-        return raw_tasks
-
-    tasks: set[asyncio.Task[None]] = set()
-    state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] = tasks
-    return tasks
+    return cached_player_detail_message(state, key)
 
 
 def _schedule_player_detail_auto_reply(  # noqa: PLR0913
@@ -480,7 +423,7 @@ def _schedule_player_detail_auto_reply(  # noqa: PLR0913
     label: str,
     task: asyncio.Task[PlayerDetailMessages],
 ) -> None:
-    auto_reply_keys = _auto_reply_keys(state)
+    auto_reply_keys = player_detail_auto_reply_keys(state)
     if key in auto_reply_keys:
         return
 
@@ -495,7 +438,7 @@ def _schedule_player_detail_auto_reply(  # noqa: PLR0913
             task=task,
         )
     )
-    auto_reply_tasks = _auto_reply_tasks(state)
+    auto_reply_tasks = player_detail_auto_reply_tasks(state)
     auto_reply_tasks.add(auto_reply_task)
     auto_reply_task.add_done_callback(auto_reply_tasks.discard)
 
@@ -515,7 +458,7 @@ async def _send_player_detail_auto_reply(  # noqa: PLR0913
 
         message = await _get_player_detail_message(state, key, label)
         if not message:
-            message = f"❌ {label}数据没有返回结果，请稍后再试。"
+            message = player_detail_empty_message(label)
 
         await send_event_reply(
             matcher,
@@ -526,7 +469,7 @@ async def _send_player_detail_auto_reply(  # noqa: PLR0913
     except Exception as e:  # noqa: BLE001
         logger.warning(f"米米号后台详情自动回复失败：{e}")
     finally:
-        _auto_reply_keys(state).discard(key)
+        player_detail_auto_reply_keys(state).discard(key)
 
 
 async def _continue_player_detail_conversation(
@@ -566,17 +509,18 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     has_collection: bool = False,
     has_peak: bool = False,
 ) -> None:
-    commands = player_detail_commands(
+    prompt_plan = plan_player_detail_prompt(
         has_collection=has_collection,
         has_peak=has_peak,
+        supports_conversation=isinstance(event, MessageEvent),
     )
 
     if detail_task is not None:
         state[PLAYER_DETAIL_TASK_KEY] = detail_task
 
-    state[PLAYER_DETAIL_COMMANDS_KEY] = commands
+    state[PLAYER_DETAIL_COMMANDS_KEY] = prompt_plan.commands
 
-    if not commands:
+    if not prompt_plan.should_enter_conversation:
         if isinstance(event, MessageEvent):
             await finish_event_reply(
                 matcher,
@@ -595,7 +539,7 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
         event,
         namespace=PLAYER_DETAIL_NAMESPACE,
         handlers=[_handle_detail_reply],
-        reply_check=command_reply_check(tuple(commands)),
+        reply_check=command_reply_check(prompt_plan.commands),
         prompt=player_message,
         mention_sender=True,
     )
@@ -650,34 +594,33 @@ async def _build_player_detail_messages(  # noqa: PLR0913
 ) -> PlayerDetailMessages:
     game = get_game_client()
     extra_errors: list[str] = []
-    needs_local_rank = get_local_rank_config().enabled
-    needs_unity_part_one = has_collection
-    needs_unity_peak = needs_peak_section
-    needs_rank_summary = has_collection or needs_local_rank
-
-    if needs_local_rank:
-        needs_unity_part_one = True
-        needs_unity_peak = True
+    fetch_plan = plan_player_detail_fetches(
+        has_collection=has_collection,
+        needs_peak_section=needs_peak_section,
+        local_rank_enabled=get_local_rank_config().enabled,
+    )
 
     unity_part_one, unity_peak = await asyncio.gather(
-        _optional_extra(
+        optional_player_extra(
             "展示/收集数据",
-            needs_unity_part_one,
+            fetch_plan.needs_unity_part_one,
             lambda: fetch_unity_part_one(game, player_id),
             UnityPartOneInfo(),
             extra_errors,
+            on_error=_log_player_extra_error,
         ),
-        _optional_extra(
+        optional_player_extra(
             "巅峰数据",
-            needs_unity_peak,
+            fetch_plan.needs_unity_peak,
             lambda: fetch_unity_peak(game, player_id),
             UnityPeakInfo(),
             extra_errors,
+            on_error=_log_player_extra_error,
         ),
     )
-    rank_summary = await _optional_extra(
+    rank_summary = await optional_player_extra(
         "全服排行",
-        needs_rank_summary,
+        fetch_plan.needs_rank_summary,
         lambda: fetch_player_rank_summary(
             game,
             player_id,
@@ -687,45 +630,27 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         ),
         PlayerRankSummary.empty(),
         extra_errors,
+        on_error=_log_player_extra_error,
     )
     peak_sub_key = get_current_peak_sub_key()
-    peak_standard_score = (
-        build_peak_rating_score(
-            unity_peak.current_j_rank,
-            unity_peak.current_j_star,
-        )
-        if unity_peak.current_j_all > 0
-        else None
-    )
-    peak_wild_score = (
-        build_peak_rating_score(
-            unity_peak.current_k_rank,
-            unity_peak.current_k_star,
-        )
-        if unity_peak.current_k_all > 0
-        else None
-    )
-    peak_expert_score = (
-        unity_peak.current_z_score
-        if unity_peak.current_z_all > 0
-        else None
-    )
-    peak_rank_summary = await _optional_extra(
+    peak_scores = calculate_player_peak_scores(unity_peak)
+    peak_rank_summary = await optional_player_extra(
         "巅峰赛季榜",
         needs_peak_section,
         lambda: fetch_peak_season_rank_summary(
             game,
             player_id,
-            standard_score=peak_standard_score,
-            wild_score=peak_wild_score,
-            expert_score=peak_expert_score,
+            standard_score=peak_scores.standard,
+            wild_score=peak_scores.wild,
+            expert_score=peak_scores.expert,
         ),
         PeakSeasonRankSummary.empty(),
         extra_errors,
+        on_error=_log_player_extra_error,
     )
-    local_rank_summary = await _optional_extra(
+    local_rank_summary = await optional_player_extra(
         "机器人查询排行",
-        needs_local_rank,
+        fetch_plan.needs_local_rank,
         lambda: update_local_rank_cache(
             player_id=player_id,
             nick=user_info.nick,
@@ -734,46 +659,28 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             unity_peak=unity_peak,
             rank_summary=rank_summary,
             peak_sub_key=peak_sub_key,
-            peak_standard_score=peak_standard_score,
-            peak_wild_score=peak_wild_score,
-            peak_expert_score=peak_expert_score,
+            peak_standard_score=peak_scores.standard,
+            peak_wild_score=peak_scores.wild,
+            peak_expert_score=peak_scores.expert,
         ),
         LocalRankSummary(),
         extra_errors,
+        on_error=_log_player_extra_error,
     )
-    visible_local_rank_summary = (
-        local_rank_summary if show_local_rank else LocalRankSummary()
-    )
-
-    collection_message = (
-        format_collection_info(
-            more_info,
-            unity_part_one=unity_part_one,
-            rank_summary=rank_summary,
-            local_summary=visible_local_rank_summary,
-            player_identity=format_player_identity(player_id, user_info.nick),
-        )
-        if has_collection
-        else ""
-    )
-    peak_message = (
-        format_compact_peak_section(
-            unity_peak,
-            peak_rank_summary,
-            visible_local_rank_summary,
-            player_id=player_id,
-            nick=user_info.nick,
-        )
-        if needs_peak_section
-        else ""
-    )
-    return PlayerDetailMessages(
-        collection_message=append_extra_errors(collection_message, extra_errors)
-        if collection_message
-        else "",
-        peak_message=append_extra_errors(peak_message, extra_errors)
-        if peak_message
-        else "",
+    return format_player_detail_messages(
+        player_id=player_id,
+        user_info=user_info,
+        more_info=more_info,
+        unity_part_one=unity_part_one,
+        unity_peak=unity_peak,
+        rank_summary=rank_summary,
+        peak_rank_summary=peak_rank_summary,
+        local_rank_summary=local_rank_summary,
+        empty_local_rank_summary=LocalRankSummary(),
+        has_collection=has_collection,
+        needs_peak_section=needs_peak_section,
+        show_local_rank=show_local_rank,
+        extra_errors=extra_errors,
     )
 
 
