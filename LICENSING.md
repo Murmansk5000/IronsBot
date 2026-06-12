@@ -7,7 +7,7 @@
 | 范围 | 协议 | 说明 |
 | --- | --- | --- |
 | 整机 / 组合作品（完整仓库、Docker 镜像、可运行的 bot） | **GPL-3.0-or-later** | 因包含下方 GPL 组件，整体作为"组合作品"对外分发时必须遵守 GPL-3.0。 |
-| `ironsbot/custom_plugins/custom_get_seer_info/**` | **GPL-3.0-or-later** | 赛尔号查询插件适配层与仍在使用的 upstream 命令边界。 |
+| `ironsbot/custom_plugins/custom_get_seer_info/**` | **GPL-3.0-or-later** | 赛尔号查询插件适配层与仍在使用的 upstream-derived helper 边界。 |
 | `ironsbot/services/seer/**` | **GPL-3.0-or-later** | 从赛尔号查询插件抽出的领域服务、渲染与纯计算逻辑。 |
 | `ironsbot/plugins/get_seer_info/templates/**` 与相邻 upstream 文档/许可证 | **GPL-3.0-or-later** | 保留的 upstream 渲染模板、图片资产与许可资料；旧 Python 插件代码已迁移或删除。 |
 | `ironsbot/plugins/headless_seer/**` | **GPL-3.0-or-later** | 见 [ironsbot/plugins/headless_seer/LICENSE](ironsbot/plugins/headless_seer/LICENSE)，另见同目录 `NOTICE` |

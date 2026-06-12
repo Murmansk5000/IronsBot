@@ -1,7 +1,12 @@
-# 自定义插件目录
+# 插件适配层目录
 
-这个目录用于放置 IronsBot 的自定义插件。用户可触发的功能应优先放在
-`ironsbot/custom_plugins`；`ironsbot/plugins` 只保留基础设施或上游/vendor 代码。
+这个目录目前承载 IronsBot 的 NoneBot 插件适配层：matcher、命令入口、生命周期注册
+和少量插件本地配置访问函数。可复用的业务逻辑应优先放在 `ironsbot/services` 或
+`ironsbot/shared`，插件目录只负责把 NoneBot 事件接到服务层。
+
+`ironsbot/plugins` 只保留基础设施插件、协议/数据接入和必须随仓库保留的上游资产。
+Seer 的 upstream Python 代码已经迁出；`custom_get_seer_info/_upstream` 现在只保留
+模板和图片资产。
 
 运行入口 `bot.py` 委托 `ironsbot/app/bootstrap.py`，并按
 `ironsbot/app/plugin_manifest.py` 中的显式顺序加载外部插件、基础设施插件和自定义插件。
@@ -14,21 +19,29 @@ plugin_dirs = []
 新增可运行插件后，需要把模块名加入 `ironsbot/app/plugin_manifest.py`，
 避免 NoneBot 无序加载导致依赖插件先后顺序不稳定；没有加入显式加载列表的目录只会被视为普通代码。
 
-## 当前插件
+## 当前插件适配层
 
 ```text
 ironsbot/custom_plugins/
-  ai_chat/           # 接入 DeepSeek API，群聊 @机器人 或授权私聊触发
-  bilibili_monitor/   # 监控指定 B 站账号动态，推送到配置的群/用户
-  custom_about/       # 新版关于页
-  custom_get_seer_info/ # 自定义赛尔号查询、榜单、群星牌、活动入口
-  custom_help/        # 按当前群/私聊权限显示可用功能
-  custom_sendpic/     # 本地固定关键词发图
-  message_actions/    # 通用文本消息动作：指令回复、定时发送、批量推送、事件回复
-  meeting_reply/      # 回复“开播/会议”的腾讯会议信息
-  pet_config_reply/   # 对“精灵名 + 配置”提示暂不支持配置查询
-  startup_notice/     # 机器人启动并连接后私聊通知超级管理员
-  team_shortcut/      # 给战队群使用：群内短指令触发预设战队查询
+  activity_reminder/       # 活动查询与活动推送适配层
+  ai_chat/                 # AI 聊天 matcher 适配层
+  ai_intent_actions/       # AI 意图动作适配层
+  ai_mention_guard/        # AI @ 风控适配层
+  bilibili_monitor/        # B 站动态查询与推送适配层
+  custom_about/            # 关于页
+  custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
+  custom_help/             # 按当前群/私聊权限显示可用功能
+  custom_sendpic/          # 本地固定关键词发图
+  headless_seer_notice/    # headless Seer 登录状态与通知适配层
+  meeting_reply/           # 回复“开播/会议”的腾讯会议信息
+  message_actions/         # 通用消息动作适配层
+  pet_config_reply/        # 对“精灵名 + 配置”提示暂不支持配置查询
+  rank_help/               # 榜单帮助入口
+  scheduled_restart/       # 定时重启入口与生命周期注册
+  server_status/           # 服务器状态查询与推送适配层
+  startup_notice/          # 启动通知适配层
+  superuser_priority/      # 超级用户优先级控制
+  team_shortcut/           # 战队群短指令适配层
 ```
 
 ## 新增插件
@@ -41,9 +54,9 @@ ironsbot/custom_plugins/my_plugin/
   config.py        # 可选：放配置模型
 ```
 
-固定文本指令、定时私聊、定时群发优先不要写插件，直接用
+固定文本指令、定时私聊、定时群发优先不要写新插件，直接用
 `APP_CONFIG` 的 `[message]` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
-最终发送走 `message_actions`。
+最终发送走 `shared.messaging` 或现有 `message_actions` 适配层。
 
 最小业务命令示例：
 
