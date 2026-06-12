@@ -55,6 +55,12 @@ class PlayerDetailReplyRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class PlayerDetailPromptPlan:
+    commands: tuple[str, ...]
+    should_enter_conversation: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PlayerPeakScores:
     standard: int | None = None
     wild: int | None = None
@@ -244,6 +250,22 @@ def player_detail_commands(
     if has_peak:
         commands.append("巅峰")
     return tuple(commands)
+
+
+def plan_player_detail_prompt(
+    *,
+    has_collection: bool,
+    has_peak: bool,
+    supports_conversation: bool,
+) -> PlayerDetailPromptPlan:
+    commands = player_detail_commands(
+        has_collection=has_collection,
+        has_peak=has_peak,
+    )
+    return PlayerDetailPromptPlan(
+        commands=commands,
+        should_enter_conversation=bool(commands) and supports_conversation,
+    )
 
 
 def player_query_in_progress_message(player_id: int) -> str:

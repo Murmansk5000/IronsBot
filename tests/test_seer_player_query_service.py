@@ -7,6 +7,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_PEAK_KEY,
     PlayerDetailFetchPlan,
     PlayerDetailMessages,
+    PlayerDetailPromptPlan,
     PlayerDetailReplyRequest,
     PlayerPeakScores,
     PlayerQuerySectionPlan,
@@ -16,6 +17,7 @@ from ironsbot.services.seer.player_query import (
     extract_player_query_arg,
     optional_player_extra,
     plan_player_detail_fetches,
+    plan_player_detail_prompt,
     plan_player_query_sections,
     player_detail_auto_reply_keys,
     player_detail_auto_reply_tasks,
@@ -263,6 +265,39 @@ def test_player_detail_commands_follow_available_detail_sections() -> None:
     )
     assert player_detail_commands(has_collection=False, has_peak=True) == ("巅峰",)
     assert player_detail_commands(has_collection=False, has_peak=False) == ()
+
+
+def test_plan_player_detail_prompt_enters_available_conversation() -> None:
+    assert plan_player_detail_prompt(
+        has_collection=True,
+        has_peak=True,
+        supports_conversation=True,
+    ) == PlayerDetailPromptPlan(
+        commands=("收集", "巅峰"),
+        should_enter_conversation=True,
+    )
+
+
+def test_plan_player_detail_prompt_finishes_when_no_commands_are_available() -> None:
+    assert plan_player_detail_prompt(
+        has_collection=False,
+        has_peak=False,
+        supports_conversation=True,
+    ) == PlayerDetailPromptPlan(
+        commands=(),
+        should_enter_conversation=False,
+    )
+
+
+def test_plan_player_detail_prompt_keeps_commands_without_event() -> None:
+    assert plan_player_detail_prompt(
+        has_collection=False,
+        has_peak=True,
+        supports_conversation=False,
+    ) == PlayerDetailPromptPlan(
+        commands=("巅峰",),
+        should_enter_conversation=False,
+    )
 
 
 def test_plan_player_detail_fetches_for_collection_and_peak() -> None:

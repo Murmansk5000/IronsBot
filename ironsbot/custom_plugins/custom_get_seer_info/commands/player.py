@@ -42,10 +42,10 @@ from ironsbot.services.seer.player_query import (
     extract_player_query_arg,
     optional_player_extra,
     plan_player_detail_fetches,
+    plan_player_detail_prompt,
     plan_player_query_sections,
     player_detail_auto_reply_keys,
     player_detail_auto_reply_tasks,
-    player_detail_commands,
     player_detail_empty_message,
     player_detail_failure_message,
     player_detail_pending_message,
@@ -509,17 +509,18 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     has_collection: bool = False,
     has_peak: bool = False,
 ) -> None:
-    commands = player_detail_commands(
+    prompt_plan = plan_player_detail_prompt(
         has_collection=has_collection,
         has_peak=has_peak,
+        supports_conversation=isinstance(event, MessageEvent),
     )
 
     if detail_task is not None:
         state[PLAYER_DETAIL_TASK_KEY] = detail_task
 
-    state[PLAYER_DETAIL_COMMANDS_KEY] = commands
+    state[PLAYER_DETAIL_COMMANDS_KEY] = prompt_plan.commands
 
-    if not commands:
+    if not prompt_plan.should_enter_conversation:
         if isinstance(event, MessageEvent):
             await finish_event_reply(
                 matcher,
@@ -538,7 +539,7 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
         event,
         namespace=PLAYER_DETAIL_NAMESPACE,
         handlers=[_handle_detail_reply],
-        reply_check=command_reply_check(tuple(commands)),
+        reply_check=command_reply_check(prompt_plan.commands),
         prompt=player_message,
         mention_sender=True,
     )
