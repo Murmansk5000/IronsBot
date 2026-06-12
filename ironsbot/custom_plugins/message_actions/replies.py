@@ -8,7 +8,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.matcher import Matcher
 
-from ironsbot.custom_plugins.superuser_priority import wait_for_superuser_priority
+from ironsbot.plugins.admin_priority import wait_for_superuser_priority
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 
 from .reply_limits import limit_message_by_reply_lines

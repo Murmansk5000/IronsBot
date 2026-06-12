@@ -10,7 +10,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
+from ironsbot.plugins.admin_priority import release_superuser_priority
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.local_rank import (
     get_local_rank_cache_stats,

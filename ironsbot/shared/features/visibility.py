@@ -21,7 +21,7 @@ HIDDEN_MODULE_PREFIXES = (
     "ironsbot.plugins.ai_mention_guard",
     "ironsbot.plugins.scheduled_restart",
     "ironsbot.plugins.startup_notice",
-    "ironsbot.custom_plugins.superuser_priority",
+    "ironsbot.plugins.admin_priority",
     "ironsbot.plugins.db_sync",
     "ironsbot.plugins.headless_seer",
     "ironsbot.plugins.http_client",

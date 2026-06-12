@@ -19,7 +19,7 @@ EXTERNAL_PLUGINS: Final[tuple[str, ...]] = (
 )
 
 CUSTOM_CORE_PLUGINS: Final[tuple[str, ...]] = (
-    "ironsbot.custom_plugins.superuser_priority",
+    "ironsbot.plugins.admin_priority",
     "ironsbot.custom_plugins.message_actions",
 )
 
