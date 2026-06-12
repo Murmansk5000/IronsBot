@@ -143,6 +143,6 @@ def test_team_shortcut_visibility_reads_app_config(
 
     assert visibility.plugin_visible_for_event(
         "战队快捷",
-        "ironsbot.custom_plugins.team_shortcut",
+        "ironsbot.plugins.team_shortcut",
         _group_event(),
     )

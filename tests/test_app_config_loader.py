@@ -124,7 +124,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     headless_notice_config = _load_module_from_path(
         "headless_seer_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "headless_seer_notice" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "headless_seer_notice" / "config.py",
     )
     meeting_config = _load_module_from_path(
         "meeting_config_for_app_config_test",
@@ -152,7 +152,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     team_shortcut_config = _load_module_from_path(
         "team_shortcut_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "team_shortcut" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "team_shortcut" / "config.py",
     )
 
     try:

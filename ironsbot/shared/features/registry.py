@@ -25,7 +25,7 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     "activity_push": ("ironsbot.plugins.activity",),
     "server_status_query": ("ironsbot.plugins.server_status",),
     "server_status_push": ("ironsbot.plugins.server_status",),
-    "team": ("ironsbot.custom_plugins.team_shortcut",),
+    "team": ("ironsbot.plugins.team_shortcut",),
     "ai_chat": ("ironsbot.plugins.ai_chat",),
     "ai_intent": ("ironsbot.plugins.ai_intent",),
     "admin_notice": ("ironsbot.plugins.ai_chat",),

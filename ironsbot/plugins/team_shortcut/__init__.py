@@ -8,7 +8,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.headless_seer_notice.state import (
+from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )

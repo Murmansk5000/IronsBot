@@ -6,7 +6,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.headless_seer_notice.state import (
+from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )

@@ -16,8 +16,8 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.custom_plugins.headless_seer_notice.service import login_headless_client
-from ironsbot.custom_plugins.headless_seer_notice.state import (
+from ironsbot.plugins.headless_seer_notice.service import login_headless_client
+from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )

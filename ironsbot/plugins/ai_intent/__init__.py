@@ -13,7 +13,7 @@ from ironsbot.custom_plugins.message_actions import (
     finish_event_reply,
     finish_message_sequence,
 )
-from ironsbot.custom_plugins.team_shortcut.adapter import fetch_team_shortcut_result
+from ironsbot.plugins.team_shortcut.adapter import fetch_team_shortcut_result
 from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.constants import (
     EMPTY_REPLY,
