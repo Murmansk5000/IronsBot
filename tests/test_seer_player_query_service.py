@@ -1,10 +1,18 @@
 from ironsbot.services.seer.player_query import (
+    PLAYER_COLLECTION_KEY,
+    PLAYER_DETAIL_AUTO_REPLY_KEYS,
+    PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY,
+    PLAYER_PEAK_KEY,
     PlayerDetailFetchPlan,
     PlayerDetailMessages,
+    PlayerDetailReplyRequest,
     PlayerQuerySectionPlan,
+    cached_player_detail_message,
     extract_player_query_arg,
     plan_player_detail_fetches,
     plan_player_query_sections,
+    player_detail_auto_reply_keys,
+    player_detail_auto_reply_tasks,
     player_detail_commands,
     player_detail_empty_message,
     player_detail_failure_message,
@@ -14,6 +22,8 @@ from ironsbot.services.seer.player_query import (
     player_query_in_progress_message,
     player_query_timeout_message,
     player_query_wait_message,
+    resolve_player_detail_reply,
+    store_player_detail_messages,
 )
 
 
@@ -64,6 +74,48 @@ def test_player_detail_messages_defaults_to_empty_messages() -> None:
 
     assert messages.collection_message == ""
     assert messages.peak_message == ""
+
+
+def test_resolve_player_detail_reply_maps_text_to_detail_request() -> None:
+    assert resolve_player_detail_reply("收集") == PlayerDetailReplyRequest(
+        key=PLAYER_COLLECTION_KEY,
+        label="收集与排行",
+    )
+    assert resolve_player_detail_reply(" 巅 峰 ") == PlayerDetailReplyRequest(
+        key=PLAYER_PEAK_KEY,
+        label="巅峰之战",
+    )
+    assert resolve_player_detail_reply("战队") is None
+
+
+def test_store_and_read_cached_player_detail_messages() -> None:
+    state: dict[str, object] = {}
+
+    store_player_detail_messages(
+        state,
+        PlayerDetailMessages(
+            collection_message="collection",
+            peak_message="peak",
+        ),
+    )
+
+    assert cached_player_detail_message(state, PLAYER_COLLECTION_KEY) == "collection"
+    assert cached_player_detail_message(state, PLAYER_PEAK_KEY) == "peak"
+    assert cached_player_detail_message(state, "missing") == ""
+
+
+def test_player_detail_auto_reply_state_sets_are_created_once() -> None:
+    state: dict[str, object] = {}
+
+    keys = player_detail_auto_reply_keys(state)
+    tasks = player_detail_auto_reply_tasks(state)
+    keys.add("collection")
+    tasks.add("task")
+
+    assert player_detail_auto_reply_keys(state) is keys
+    assert player_detail_auto_reply_tasks(state) is tasks
+    assert state[PLAYER_DETAIL_AUTO_REPLY_KEYS] == {"collection"}
+    assert state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] == {"task"}
 
 
 def test_plan_player_query_sections_maps_configured_sections() -> None:

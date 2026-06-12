@@ -5,9 +5,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, MutableMapping
+    from typing import Any
 
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
+PLAYER_COLLECTION_KEY = "_player_collection_message"
+PLAYER_PEAK_KEY = "_player_peak_message"
+PLAYER_DETAIL_TASK_KEY = "_player_detail_task"
+PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
+PLAYER_DETAIL_AUTO_REPLY_KEYS = "_player_detail_auto_reply_keys"
+PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY = "_player_detail_auto_reply_tasks"
 
 
 @dataclass(slots=True)
@@ -41,6 +48,12 @@ class PlayerDetailFetchPlan:
     needs_local_rank: bool
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerDetailReplyRequest:
+    key: str
+    label: str
+
+
 def extract_player_query_arg(text_value: str) -> str | None:
     stripped = text_value.strip()
     folded = stripped.casefold()
@@ -48,6 +61,56 @@ def extract_player_query_arg(text_value: str) -> str | None:
         if folded.startswith(prefix.casefold()):
             return stripped[len(prefix) :].strip()
     return None
+
+
+def resolve_player_detail_reply(text_value: str) -> PlayerDetailReplyRequest | None:
+    normalized = _normalize_detail_command_text(text_value)
+    if normalized == "收集":
+        return PlayerDetailReplyRequest(
+            key=PLAYER_COLLECTION_KEY,
+            label="收集与排行",
+        )
+    if normalized == "巅峰":
+        return PlayerDetailReplyRequest(
+            key=PLAYER_PEAK_KEY,
+            label="巅峰之战",
+        )
+    return None
+
+
+def store_player_detail_messages(
+    state: MutableMapping[str, Any],
+    detail_messages: PlayerDetailMessages,
+) -> None:
+    state[PLAYER_COLLECTION_KEY] = detail_messages.collection_message
+    state[PLAYER_PEAK_KEY] = detail_messages.peak_message
+
+
+def cached_player_detail_message(
+    state: MutableMapping[str, Any],
+    key: str,
+) -> str:
+    return str(state.get(key) or "")
+
+
+def player_detail_auto_reply_keys(state: MutableMapping[str, Any]) -> set[str]:
+    raw_keys = state.get(PLAYER_DETAIL_AUTO_REPLY_KEYS)
+    if isinstance(raw_keys, set):
+        return raw_keys
+
+    keys: set[str] = set()
+    state[PLAYER_DETAIL_AUTO_REPLY_KEYS] = keys
+    return keys
+
+
+def player_detail_auto_reply_tasks(state: MutableMapping[str, Any]) -> set[Any]:
+    raw_tasks = state.get(PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY)
+    if isinstance(raw_tasks, set):
+        return raw_tasks
+
+    tasks: set[Any] = set()
+    state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] = tasks
+    return tasks
 
 
 def plan_player_query_sections(
@@ -145,3 +208,7 @@ def player_detail_pending_message(label: str) -> str:
         "这部分需要拉取收集、全服榜或赛季榜数据，排名越靠后可能越慢，"
         "多人同时查询时也可能需要排队。"
     )
+
+
+def _normalize_detail_command_text(text_value: str) -> str:
+    return "".join(text_value.split()).lower()

@@ -38,10 +38,15 @@ from ironsbot.services.seer.player_formatting import (
     format_player_identity,
 )
 from ironsbot.services.seer.player_query import (
+    PLAYER_DETAIL_COMMANDS_KEY,
+    PLAYER_DETAIL_TASK_KEY,
     PlayerDetailMessages,
+    cached_player_detail_message,
     extract_player_query_arg,
     plan_player_detail_fetches,
     plan_player_query_sections,
+    player_detail_auto_reply_keys,
+    player_detail_auto_reply_tasks,
     player_detail_commands,
     player_detail_empty_message,
     player_detail_failure_message,
@@ -51,6 +56,8 @@ from ironsbot.services.seer.player_query import (
     player_query_in_progress_message,
     player_query_timeout_message,
     player_query_wait_message,
+    resolve_player_detail_reply,
+    store_player_detail_messages,
 )
 from ironsbot.services.seer.rank import (
     PeakSeasonRankSummary,
@@ -68,7 +75,6 @@ from ironsbot.services.seer.sequ_extra import (
 )
 from ironsbot.shared.messaging.conversations import command_reply_check
 from ironsbot.shared.messaging.query_guard import QueryGuard
-from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -85,12 +91,6 @@ from ..group import matcher_group
 from ._args import parse_numeric_id
 
 PLAYER_ID_KEY = "player_id"
-PLAYER_COLLECTION_KEY = "_player_collection_message"
-PLAYER_PEAK_KEY = "_player_peak_message"
-PLAYER_DETAIL_TASK_KEY = "_player_detail_task"
-PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
-PLAYER_DETAIL_AUTO_REPLY_KEYS = "_player_detail_auto_reply_keys"
-PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY = "_player_detail_auto_reply_tasks"
 PLAYER_DETAIL_NAMESPACE = "custom_get_seer_info_player_details"
 PLAYER_PLUGIN_NAME = "seer_player"
 PLAYER_QUERY_GUARD = QueryGuard(
@@ -220,27 +220,18 @@ class PlayerQueryPlugin:
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        text = event.get_plaintext()
-        if command_text_matches(text, ("收集",)):
-            label = "收集与排行"
-            message = await _get_player_detail_message(
+        detail_request = resolve_player_detail_reply(event.get_plaintext())
+        message = (
+            await _get_player_detail_message(
                 state,
-                PLAYER_COLLECTION_KEY,
-                label,
+                detail_request.key,
+                detail_request.label,
                 matcher=matcher,
                 event=event,
             )
-        elif command_text_matches(text, ("巅峰",)):
-            label = "巅峰之战"
-            message = await _get_player_detail_message(
-                state,
-                PLAYER_PEAK_KEY,
-                label,
-                matcher=matcher,
-                event=event,
-            )
-        else:
-            message = None
+            if detail_request is not None
+            else None
+        )
 
         if not message:
             raise FinishedException
@@ -408,14 +399,6 @@ async def _handle_detail_reply(
     )
 
 
-def _store_player_detail_messages(
-    state: T_State,
-    detail_messages: PlayerDetailMessages,
-) -> None:
-    state[PLAYER_COLLECTION_KEY] = detail_messages.collection_message
-    state[PLAYER_PEAK_KEY] = detail_messages.peak_message
-
-
 async def _get_player_detail_message(
     state: T_State,
     key: str,
@@ -451,30 +434,10 @@ async def _get_player_detail_message(
             state[PLAYER_DETAIL_TASK_KEY] = None
             return player_detail_failure_message(label, e)
 
-        _store_player_detail_messages(state, detail_messages)
+        store_player_detail_messages(state, detail_messages)
         state[PLAYER_DETAIL_TASK_KEY] = None
 
-    return str(state.get(key) or "")
-
-
-def _auto_reply_keys(state: T_State) -> set[str]:
-    raw_keys = state.get(PLAYER_DETAIL_AUTO_REPLY_KEYS)
-    if isinstance(raw_keys, set):
-        return raw_keys
-
-    keys: set[str] = set()
-    state[PLAYER_DETAIL_AUTO_REPLY_KEYS] = keys
-    return keys
-
-
-def _auto_reply_tasks(state: T_State) -> set[asyncio.Task[None]]:
-    raw_tasks = state.get(PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY)
-    if isinstance(raw_tasks, set):
-        return raw_tasks
-
-    tasks: set[asyncio.Task[None]] = set()
-    state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] = tasks
-    return tasks
+    return cached_player_detail_message(state, key)
 
 
 def _schedule_player_detail_auto_reply(  # noqa: PLR0913
@@ -486,7 +449,7 @@ def _schedule_player_detail_auto_reply(  # noqa: PLR0913
     label: str,
     task: asyncio.Task[PlayerDetailMessages],
 ) -> None:
-    auto_reply_keys = _auto_reply_keys(state)
+    auto_reply_keys = player_detail_auto_reply_keys(state)
     if key in auto_reply_keys:
         return
 
@@ -501,7 +464,7 @@ def _schedule_player_detail_auto_reply(  # noqa: PLR0913
             task=task,
         )
     )
-    auto_reply_tasks = _auto_reply_tasks(state)
+    auto_reply_tasks = player_detail_auto_reply_tasks(state)
     auto_reply_tasks.add(auto_reply_task)
     auto_reply_task.add_done_callback(auto_reply_tasks.discard)
 
@@ -532,7 +495,7 @@ async def _send_player_detail_auto_reply(  # noqa: PLR0913
     except Exception as e:  # noqa: BLE001
         logger.warning(f"米米号后台详情自动回复失败：{e}")
     finally:
-        _auto_reply_keys(state).discard(key)
+        player_detail_auto_reply_keys(state).discard(key)
 
 
 async def _continue_player_detail_conversation(
