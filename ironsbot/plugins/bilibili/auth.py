@@ -48,7 +48,7 @@ async def _send_private_to_superusers(
     bot: Bot | None = None,
     user_ids: list[int] | None = None,
 ) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.plugins.messaging import send_broadcast_message
 
     target_user_ids = user_ids or get_bili_superuser_uids()
 

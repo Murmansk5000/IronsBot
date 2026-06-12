@@ -1,7 +1,7 @@
 # 插件适配层目录
 
-这个目录目前承载 IronsBot 的 NoneBot 插件适配层：matcher、命令入口、生命周期注册
-和少量插件本地配置访问函数。可复用的业务逻辑应优先放在 `ironsbot/services` 或
+这个目录目前只保留尚未完成最终收束的遗留 Seer 插件边界。新的 NoneBot 插件适配层
+应放在 `ironsbot/plugins`；可复用的业务逻辑应优先放在 `ironsbot/services` 或
 `ironsbot/shared`，插件目录只负责把 NoneBot 事件接到服务层。
 
 `ironsbot/plugins` 只保留基础设施插件、协议/数据接入和必须随仓库保留的上游资产。
@@ -24,7 +24,6 @@ plugin_dirs = []
 ```text
 ironsbot/custom_plugins/
   custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
-  message_actions/         # 通用消息动作适配层
 ```
 
 ## 新增插件
@@ -32,14 +31,14 @@ ironsbot/custom_plugins/
 每个插件一个子目录，最小结构如下：
 
 ```text
-ironsbot/custom_plugins/my_plugin/
+ironsbot/plugins/my_plugin/
   __init__.py
   config.py        # 可选：放配置模型
 ```
 
 固定文本指令、定时私聊、定时群发优先不要写新插件，直接用
 `APP_CONFIG` 的 `[message]` 配置。确实需要业务逻辑时，插件只负责判断和生成文本，
-最终发送走 `shared.messaging` 或现有 `message_actions` 适配层。
+最终发送走 `shared.messaging` 或 `plugins.messaging` 适配层。
 
 最小业务命令示例：
 
@@ -49,7 +48,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.plugins.messaging import (
     command_text_matches,
     finish_event_reply,
 )

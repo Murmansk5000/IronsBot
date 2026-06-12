@@ -132,7 +132,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     message_config = _load_module_from_path(
         "message_actions_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "message_actions" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
     )
     server_status_config = _load_module_from_path(
         "server_status_config_for_app_config_test",

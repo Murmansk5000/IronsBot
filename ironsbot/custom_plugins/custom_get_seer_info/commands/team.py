@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -10,7 +10,7 @@ from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.plugins.messaging import finish_event_reply
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,

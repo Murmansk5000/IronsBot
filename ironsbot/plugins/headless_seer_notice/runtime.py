@@ -31,7 +31,7 @@ def _build_startup_notice_message(reason: str) -> Message:
 
 
 async def _startup_check(bot: Bot) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.plugins.messaging import send_broadcast_message
 
     from .service import headless_is_configured, headless_login_failure_reason
 

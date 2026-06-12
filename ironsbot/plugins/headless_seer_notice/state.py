@@ -123,7 +123,7 @@ async def _send_headless_state_notice(
     source: str,
     user_id: int | None,
 ) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.plugins.messaging import send_broadcast_message
 
     from .service import headless_user_id_text
 

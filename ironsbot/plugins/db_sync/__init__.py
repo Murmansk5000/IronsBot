@@ -18,7 +18,7 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply, send_event_reply
+from ironsbot.plugins.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 

@@ -18,7 +18,7 @@ _startup_notice_runtime_state = {"registered": False}
 
 
 async def send_startup_notice(bot: Bot) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.plugins.messaging import send_broadcast_message
 
     config = get_startup_config()
     if not startup_notice_service.should_send(config):

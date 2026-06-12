@@ -41,7 +41,7 @@ async def send_activity_reminder(
     lead_hours: int,
     reminders: list[ActivityReminder],
 ) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.plugins.messaging import send_broadcast_message
 
     reminders = valid_reminders_before_send(
         _activity_query_source,

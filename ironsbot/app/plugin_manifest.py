@@ -20,7 +20,7 @@ EXTERNAL_PLUGINS: Final[tuple[str, ...]] = (
 
 CUSTOM_CORE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.admin_priority",
-    "ironsbot.custom_plugins.message_actions",
+    "ironsbot.plugins.messaging",
 )
 
 INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
@@ -54,8 +54,8 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime",
     "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",
     "ironsbot.plugins.headless_seer.runtime:setup_headless_seer_runtime",
-    "ironsbot.custom_plugins.message_actions.reply_limits:setup_reply_line_limit_api_hook",
-    "ironsbot.custom_plugins.message_actions.runtime:setup_message_actions_runtime",
+    "ironsbot.plugins.messaging.reply_limits:setup_reply_line_limit_api_hook",
+    "ironsbot.plugins.messaging.runtime:setup_message_actions_runtime",
     "ironsbot.plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
     "ironsbot.plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
     "ironsbot.shared.plugin_runtime.startup_ready_runtime:setup_startup_ready_runtime",

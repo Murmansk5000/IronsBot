@@ -6,7 +6,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.plugins.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,

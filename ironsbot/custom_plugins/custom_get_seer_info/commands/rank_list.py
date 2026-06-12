@@ -6,7 +6,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.plugins.messaging import (
     finish_event_reply,
     send_event_reply,
 )

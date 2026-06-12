@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.plugins.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,

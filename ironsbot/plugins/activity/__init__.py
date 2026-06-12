@@ -133,7 +133,7 @@ class ActivityReminderPlugin:
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        from ironsbot.custom_plugins.message_actions import finish_event_reply
+        from ironsbot.plugins.messaging import finish_event_reply
 
         matcher = context.matcher or soon_ending_activity_matcher
         if context.action == "current":

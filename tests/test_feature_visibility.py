@@ -96,7 +96,7 @@ def test_message_actions_visibility_reads_app_config(
 
     assert visibility.plugin_visible_for_event(
         "文本发送",
-        "ironsbot.custom_plugins.message_actions",
+        "ironsbot.plugins.messaging",
         _group_event(),
     )
 

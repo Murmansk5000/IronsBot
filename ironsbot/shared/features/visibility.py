@@ -109,7 +109,7 @@ def _superuser_visible(event: Event) -> bool:
 
 
 SPECIAL_MODULE_VISIBILITY: tuple[tuple[str, VisibilityRule], ...] = (
-    ("ironsbot.custom_plugins.message_actions", _message_actions_visible),
+    ("ironsbot.plugins.messaging", _message_actions_visible),
     ("ironsbot.plugins.team_shortcut", _team_shortcut_visible),
     ("ironsbot.plugins.ai_chat", _ai_chat_visible),
     ("ironsbot.plugins.ai_intent", _ai_intent_visible),
