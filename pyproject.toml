@@ -4,7 +4,7 @@ version = "0.5.1"
 description = "赛尔号信息查询机器人"
 readme = "README.md"
 requires-python = ">=3.10, <4.0"
-# 整机作为组合作品分发时受 GPL-3.0 约束（因含 get_seer_info、headless_seer 两个 GPL 插件）。
+# 整机作为组合作品分发时受 GPL-3.0 约束（因含 Seer 查询/渲染组件与 headless_seer GPL 组件）。
 # 其余非插件模块单独以 MIT 授权，详见 LICENSING.md 与各源文件的 SPDX 标识。
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"]

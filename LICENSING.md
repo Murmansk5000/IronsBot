@@ -11,7 +11,7 @@
 | `ironsbot/services/seer/**` | **GPL-3.0-or-later** | 从赛尔号查询插件抽出的领域服务、渲染与纯计算逻辑。 |
 | `ironsbot/plugins/seer/rank_help/**` | **GPL-3.0-or-later** | 榜单帮助入口，依赖 GPL Seer 榜单说明服务。 |
 | `ironsbot/plugins/seer/assets/**` | **GPL-3.0-or-later** | Seer 渲染模板、图片和 CSS 资产。 |
-| `ironsbot/plugins/get_seer_info/templates/**` 与相邻 upstream 文档/许可证 | **GPL-3.0-or-later** | 保留的 upstream 渲染模板、图片资产与许可资料；旧 Python 插件代码已迁移或删除。 |
+| `ironsbot/vendor/seer_upstream/**` | **GPL-3.0-or-later** | 保留的 upstream 渲染模板、图片资产、文档与许可资料；不作为 NoneBot 插件加载。 |
 | `ironsbot/plugins/headless_seer/**` | **GPL-3.0-or-later** | 见 [ironsbot/plugins/headless_seer/LICENSE](ironsbot/plugins/headless_seer/LICENSE)，另见同目录 `NOTICE` |
 | 其余全部代码（其他插件、`ironsbot/utils`、`bot.py`、`docker/` 等） | **MIT** | 见根目录 [LICENSE](LICENSE) |
 
