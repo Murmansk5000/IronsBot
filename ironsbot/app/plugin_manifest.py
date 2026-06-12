@@ -18,7 +18,7 @@ EXTERNAL_PLUGINS: Final[tuple[str, ...]] = (
     "nonebot_plugin_saa",
 )
 
-CUSTOM_CORE_PLUGINS: Final[tuple[str, ...]] = (
+CORE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.admin_priority",
     "ironsbot.plugins.messaging",
 )
@@ -30,7 +30,7 @@ INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.headless_seer",
 )
 
-CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
+FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.headless_seer_notice",
     "ironsbot.plugins.ai_chat",
     "ironsbot.plugins.team_shortcut",
@@ -68,9 +68,9 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
     PluginGroup("external", EXTERNAL_PLUGINS),
-    PluginGroup("custom_core", CUSTOM_CORE_PLUGINS),
+    PluginGroup("core", CORE_PLUGINS),
     PluginGroup("infrastructure", INFRASTRUCTURE_PLUGINS),
-    PluginGroup("custom", CUSTOM_PLUGINS),
+    PluginGroup("feature", FEATURE_PLUGINS),
 )
 
 
@@ -136,9 +136,9 @@ def validate_plugin_manifest() -> None:
 
 
 __all__ = [
-    "CUSTOM_CORE_PLUGINS",
-    "CUSTOM_PLUGINS",
+    "CORE_PLUGINS",
     "EXTERNAL_PLUGINS",
+    "FEATURE_PLUGINS",
     "INFRASTRUCTURE_PLUGINS",
     "PLUGIN_GROUPS",
     "RUNTIME_SETUP_CALLS",

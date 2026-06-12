@@ -86,7 +86,7 @@ services:
 
 ## 插件架构
 
-用户功能集中在 `ironsbot/plugins`，旧 `custom_*` 命名会在 Stage 9 逐步收束：
+用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
 
 | 插件 | 作用 |
 | --- | --- |
