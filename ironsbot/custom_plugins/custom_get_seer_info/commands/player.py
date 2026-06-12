@@ -27,6 +27,13 @@ from ironsbot.plugins.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.services.seer.sequ_extra import (
+    UnityPartOneInfo,
+    UnityPartTwoInfo,
+    UnityPeakInfo,
+    fetch_unity_part_one,
+    fetch_unity_peak,
+)
 from ironsbot.shared.messaging.conversations import command_reply_check
 from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.shared.messaging.text import command_text_matches
@@ -57,13 +64,6 @@ from ._rank import (
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
     get_current_peak_sub_key,
-)
-from ._sequ_extra import (
-    UnityPartOneInfo,
-    UnityPartTwoInfo,
-    UnityPeakInfo,
-    fetch_unity_part_one,
-    fetch_unity_peak,
 )
 
 PLAYER_ID_KEY = "player_id"

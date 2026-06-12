@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from dataclasses import dataclass, field
 
-from ._binary import BufferReader
+from ironsbot.services.seer.binary import BufferReader
 
 LEVEL_NAMES: tuple[str, ...] = (
     "Two",

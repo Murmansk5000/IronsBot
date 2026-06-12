@@ -3,6 +3,11 @@ import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from ironsbot.services.seer.sequ_extra import (
+    fetch_unity_part_one,
+    fetch_unity_peak,
+)
+
 from ..config import get_local_rank_config, get_player_query_config
 from ._client import get_game_client
 from ._local_rank import (
@@ -14,10 +19,6 @@ from ._rank import (
     build_peak_rating_score,
     fetch_player_rank_summary,
     get_current_peak_sub_key,
-)
-from ._sequ_extra import (
-    fetch_unity_part_one,
-    fetch_unity_peak,
 )
 
 

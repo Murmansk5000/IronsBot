@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
+from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
+
 from ..config import get_local_rank_config
 from ._rank import (
     ACHIEVE_RANK_KEY,
@@ -30,7 +32,6 @@ from ._rank import (
     RankLookupResult,
     is_pet_kind_rank_anomaly_user,
 )
-from ._sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
 MetricValue = dict[str, int | str | None]
 
