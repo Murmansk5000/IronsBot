@@ -98,7 +98,7 @@ services:
 | `bilibili_monitor` | B站动态监控与点播。 |
 | `meeting` | 腾讯会议回复。 |
 | `team_shortcut` | 战队群快捷查询与资源提醒。 |
-| `activity_reminder` | 当前活动、快结束活动和活动结束提醒。 |
+| `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |

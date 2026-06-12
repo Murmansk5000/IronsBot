@@ -9,8 +9,8 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.custom_plugins import activity_reminder
-from ironsbot.custom_plugins.activity_reminder import runtime as activity_runtime
+from ironsbot.plugins import activity
+from ironsbot.plugins.activity import runtime as activity_runtime
 
 
 class FakeDriver:
@@ -88,20 +88,20 @@ def test_load_activity_rows_resolves_session_factory_at_runtime(
         return [{"id": 1}]
 
     monkeypatch.setattr(
-        activity_reminder,
+        activity,
         "_activity_db_session_factory",
         lambda: session_factory,
     )
     monkeypatch.setattr(
-        activity_reminder,
+        activity,
         "get_activity_config",
         lambda: SimpleNamespace(only_shown=False),
     )
     monkeypatch.setattr(
-        activity_reminder,
+        activity,
         "load_activity_rows",
         fake_load_activity_rows,
     )
 
-    assert activity_reminder._load_activity_rows() == [{"id": 1}]
-    assert calls == [(session_factory, activity_reminder.SEERAPI_DB_NAME, False)]
+    assert activity._load_activity_rows() == [{"id": 1}]
+    assert calls == [(session_factory, activity.SEERAPI_DB_NAME, False)]

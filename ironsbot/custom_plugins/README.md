@@ -23,7 +23,6 @@ plugin_dirs = []
 
 ```text
 ironsbot/custom_plugins/
-  activity_reminder/       # 活动查询与活动推送适配层
   bilibili_monitor/        # B 站动态查询与推送适配层
   custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
   headless_seer_notice/    # headless Seer 登录状态与通知适配层
