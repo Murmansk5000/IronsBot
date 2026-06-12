@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Custom high-priority entry points for upstream Seer info queries.
+"""High-priority entry points for upstream Seer info queries.
 
-These matchers keep upstream query behavior available through the custom plugin
-without editing the upstream plugin code. They intentionally reuse upstream
-handlers and renderers, while registering at the custom plugin priority so they
-win before the original matchers.
+These matchers keep upstream query behavior available through the Seer query
+adapter without editing upstream-derived handlers and renderers. They register
+at the feature plugin priority so they win before lower-priority matchers.
 """
 
 from typing import Annotated

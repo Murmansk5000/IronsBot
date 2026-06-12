@@ -171,7 +171,8 @@ class ServerStatusPlugin:
     async def _handle_normal(self, matcher: Matcher, event: MessageEvent) -> None:
         if not is_event_feature_allowed(event, "server_status_query"):
             logger.info(
-                "normal server status command ignored: custom feature not allowed"
+                "normal server status command ignored: "
+                "server_status_query feature not allowed"
             )
             return
 

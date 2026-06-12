@@ -17,7 +17,7 @@ group_aliases = {}
 user_aliases = {}
 
 # Default: {}
-# EN: Group feature allowlist. Feature aliases include all, custom, bili, activity,
+# EN: Group feature allowlist. Feature aliases include all, query, bili, activity,
 # server_status, text, text_push, and message.
 # ZH: 群功能策略，控制每个群可用哪些功能。
 # Example: { main = ["seer", "image", "meeting"] }
