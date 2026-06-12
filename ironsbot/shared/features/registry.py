@@ -13,7 +13,7 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     ),
     "image": ("ironsbot.plugins.sendpic",),
     "rank": ("ironsbot.custom_plugins.rank_help",),
-    "meeting": ("ironsbot.custom_plugins.meeting_reply",),
+    "meeting": ("ironsbot.plugins.meeting",),
     "text": ("ironsbot.custom_plugins.message_actions",),
     "text_push": ("ironsbot.custom_plugins.message_actions",),
     "activity_link": ("ironsbot.custom_plugins.message_actions",),

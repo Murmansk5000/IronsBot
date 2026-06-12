@@ -127,8 +127,8 @@ def test_small_plugin_config_accessors_read_app_config(
         ROOT / "ironsbot" / "custom_plugins" / "headless_seer_notice" / "config.py",
     )
     meeting_config = _load_module_from_path(
-        "meeting_reply_config_for_app_config_test",
-        ROOT / "ironsbot" / "custom_plugins" / "meeting_reply" / "config.py",
+        "meeting_config_for_app_config_test",
+        ROOT / "ironsbot" / "plugins" / "meeting" / "config.py",
     )
     message_config = _load_module_from_path(
         "message_actions_config_for_app_config_test",

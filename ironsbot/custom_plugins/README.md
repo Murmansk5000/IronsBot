@@ -30,7 +30,6 @@ ironsbot/custom_plugins/
   bilibili_monitor/        # B 站动态查询与推送适配层
   custom_get_seer_info/    # Seer 查询、榜单、群星牌、upstream helper 适配层
   headless_seer_notice/    # headless Seer 登录状态与通知适配层
-  meeting_reply/           # 回复“开播/会议”的腾讯会议信息
   message_actions/         # 通用消息动作适配层
   pet_config_reply/        # 对“精灵名 + 配置”提示暂不支持配置查询
   rank_help/               # 榜单帮助入口

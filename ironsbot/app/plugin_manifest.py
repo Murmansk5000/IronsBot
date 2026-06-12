@@ -42,7 +42,7 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.custom_plugins.custom_get_seer_info",
     "ironsbot.plugins.help",
     "ironsbot.plugins.sendpic",
-    "ironsbot.custom_plugins.meeting_reply",
+    "ironsbot.plugins.meeting",
     "ironsbot.custom_plugins.pet_config_reply",
     "ironsbot.custom_plugins.rank_help",
     "ironsbot.custom_plugins.scheduled_restart",
