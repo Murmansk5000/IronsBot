@@ -23,7 +23,7 @@ from ironsbot.utils import build_sub_line
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group
-from ..prompt import (
+from ...prompt import (
     Prompt,
     PromptItem,
     enter_prompt,

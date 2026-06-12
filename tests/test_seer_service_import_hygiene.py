@@ -8,6 +8,7 @@ PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.player_query",
     "ironsbot.services.seer.rank_list",
     "ironsbot.services.seer.rank_usage",
+    "ironsbot.services.seer.render_paths",
     "ironsbot.services.seer.team",
     "ironsbot.services.seer.weekly_preview",
 )

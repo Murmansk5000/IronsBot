@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any, Literal, NamedTuple, TypedDict
 
 from nonebot_plugin_htmlkit import template_to_pic
@@ -16,19 +15,18 @@ from ironsbot.plugins.seer_data.image import (
     PetBodyImageGetter,
     PetHeadImageGetter,
 )
+from ironsbot.services.seer.render_cache import render_cache
+from ironsbot.services.seer.render_paths import (
+    CUSTOM_PET_INFO_TEMPLATE_PATH,
+    UPSTREAM_PET_INFO_IMAGES_PATH,
+    UPSTREAM_SHARED_TEMPLATE_PATH,
+)
 from ironsbot.utils.analyze_parser import AnalyzeDescParser
+from ironsbot.utils.image import to_data_uri
 
-from .._upstream.render._cache import render_cache
-from .._upstream.render._common import (
-    TEMPLATES_PATH as UPSTREAM_TEMPLATES_PATH,
-)
-from .._upstream.render._common import (
-    to_data_uri,
-)
-
-TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "pet_info"
-SHARED_PATH = UPSTREAM_TEMPLATES_PATH / "_shared"
-GENDER_ICON_PATH = UPSTREAM_TEMPLATES_PATH / "pet_info" / "images"
+TEMPLATE_PATH = CUSTOM_PET_INFO_TEMPLATE_PATH
+SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
+GENDER_ICON_PATH = UPSTREAM_PET_INFO_IMAGES_PATH
 
 STAT_BAR_MAX_WIDTH = 120
 STAT_MAX_VALUE = 200
@@ -178,7 +176,7 @@ def _gender_icon_data_uri(gender_id: int) -> str:
     return to_data_uri(icon_path.read_bytes())
 
 
-async def render_pet_info(pet: PetORM) -> bytes:
+async def render_custom_pet_info(pet: PetORM) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     cached = render_cache.get("custom_pet_info", str(pet.id))
     if cached is not None:

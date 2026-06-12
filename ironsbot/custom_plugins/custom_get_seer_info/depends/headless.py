@@ -1,20 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot import require
-from nonebot.matcher import Matcher
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from nonebot.params import Depends
 
-require("ironsbot.plugins.headless_seer")
+if TYPE_CHECKING:
+    from nonebot.matcher import Matcher
 
-from ironsbot.plugins.headless_seer.exception import (
-    ClientNotInitializedError,
-    DisconnectedError,
-    NotLoggedInError,
-)
-from ironsbot.plugins.headless_seer.game import SeerGame
-from ironsbot.plugins.headless_seer.manager import client_manager
+    from ironsbot.plugins.headless_seer.game import SeerGame
 
 
 async def _get_game_client(matcher: Matcher) -> SeerGame:
+    from ironsbot.plugins.headless_seer.exception import (
+        ClientNotInitializedError,
+        DisconnectedError,
+        NotLoggedInError,
+    )
+    from ironsbot.plugins.headless_seer.manager import client_manager
+
     try:
         return client_manager.get_client()
     except ClientNotInitializedError:
