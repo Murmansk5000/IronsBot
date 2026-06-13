@@ -37,18 +37,6 @@ nonebot-adapter-onebot = [
 ]
 "@local" = []
 
-[tool.nonebot.plugins]
-"@local" = [
-    "ironsbot.plugins.db_sync",
-    "ironsbot.plugins.headless_seer",
-    "ironsbot.plugins.http_client",
-    "ironsbot.plugins.seer_data",
-]
-nonebot-plugin-htmlkit = ["nonebot_plugin_htmlkit"]
-nonebot-plugin-apscheduler = ["nonebot_plugin_apscheduler"]
-nonebot-plugin-send-anything-anywhere = ["nonebot_plugin_saa"]
-nonebot-plugin-localstore = ["nonebot_plugin_localstore"]
-
 [tool.pytest.ini_options]
 pythonpath = ["."]
 

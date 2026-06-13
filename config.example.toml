@@ -323,11 +323,11 @@ min_lines = 5
 # Example: 100
 max_lines = 80
 
-# Default: "data/message_actions/reply_limits.sqlite"
+# Default: "data/messaging/reply_limits.sqlite"
 # EN: SQLite path for per-group reply line limits.
 # ZH: 每群回复行数限制数据库。
-# Example: "data/message/reply_limits.sqlite"
-limit_path = "data/message_actions/reply_limits.sqlite"
+# Example: "data/messaging/reply_limits.sqlite"
+limit_path = "data/messaging/reply_limits.sqlite"
 
 [message.meeting]
 # Default: ""

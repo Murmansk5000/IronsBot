@@ -80,7 +80,7 @@ def test_feature_module_visibility_uses_feature_service(
     )
 
 
-def test_message_actions_visibility_reads_app_config(
+def test_messaging_visibility_reads_app_config(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
