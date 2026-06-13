@@ -2,20 +2,20 @@
   <img src="https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.png" width="128" alt="IronsBot icon">
 </p>
 
-# IronsBot Custom Docker Image
+# IronsBot Docker Image
 
-Custom Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer game information queries, with personal custom plugins and Unraid deployment templates.
+Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer game information queries, with explicit plugin loading and Unraid deployment templates.
 
-This image is built from [Murmansk5000/IronsBot](https://github.com/Murmansk5000/IronsBot). User-facing features are provided by custom plugins, while upstream IronsBot code is retained only where it is needed as data, rendering, protocol, or infrastructure code.
+This image is built from [Murmansk5000/IronsBot](https://github.com/Murmansk5000/IronsBot). User-facing features are loaded from the manifest, while upstream-derived code is retained only where it is needed as data, rendering, protocol, or infrastructure code.
 
 ## Images
 
 ```text
 docker.io/murmansk5000/ironsbot:latest
-docker.io/murmansk5000/ironsbot:<base-version>.<custom-revision>
+docker.io/murmansk5000/ironsbot:<base-version>.<revision>
 docker.io/murmansk5000/ironsbot:sha-xxxxxxx
 ghcr.io/murmansk5000/ironsbot:latest
-ghcr.io/murmansk5000/ironsbot:<base-version>.<custom-revision>
+ghcr.io/murmansk5000/ironsbot:<base-version>.<revision>
 ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 ```
 
@@ -23,25 +23,25 @@ ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 
 ## Version Tags And Changelog
 
-This repository keeps Docker `latest` available, and also publishes extra tags so you can see exactly which custom build you are running.
+This repository keeps Docker `latest` available, and also publishes extra tags so you can see exactly which build you are running.
 
 - `latest`: the newest `main` build, suitable for normal Unraid updates.
-- `<base-version>.<custom-revision>`: IronsBot base version plus this repository's custom revision.
+- `<base-version>.<revision>`: IronsBot base version plus this repository's revision.
 - `sha-xxxxxxx`: the exact Git commit used to build the image.
 
-For example, `0.6.0.3` means the image is based on IronsBot `0.6.0` with the 3rd custom revision after that base version.
+For example, `0.6.0.3` means the image is based on IronsBot `0.6.0` with the 3rd revision after that base version.
 
 Recent changes are tracked in the GitHub commit history and in the Unraid template notes. On Docker Hub, check the tag list for the newest upstream-based version tag and `sha-xxxxxxx` tag.
 
-## Included Custom Plugins
+## Included Plugins
 
 - `ai_chat`: chat with DeepSeek through mentions or authorized private messages.
-- `custom_sendpic`: reply with fixed local images by command keywords.
-- `custom_help`: show only features enabled for the current group or private user.
-- `custom_about`: show the current IronsBot project information.
-- `meeting_reply`: reply with Tencent Meeting information from APP_CONFIG.
-- `message_actions`: generic private/group command replies and scheduled messages.
-- `bilibili_monitor`: monitor Bilibili dynamic updates and send them to configured groups/users.
+- `sendpic`: reply with fixed local images by command keywords.
+- `help`: show only features enabled for the current group or private user.
+- `about`: show the current IronsBot project information.
+- `meeting`: reply with Tencent Meeting information from APP_CONFIG.
+- `messaging`: generic private/group command replies and scheduled messages.
+- `bilibili`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
 - `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.

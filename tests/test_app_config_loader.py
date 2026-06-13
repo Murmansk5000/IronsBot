@@ -131,7 +131,7 @@ def test_small_plugin_config_accessors_read_app_config(
         ROOT / "ironsbot" / "plugins" / "meeting" / "config.py",
     )
     message_config = _load_module_from_path(
-        "message_actions_config_for_app_config_test",
+        "messaging_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
     )
     server_status_config = _load_module_from_path(
@@ -203,7 +203,7 @@ def test_seer_plugin_config_accessors_read_app_config(
     clear_app_config_cache()
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
 
-    custom_seer_config = _load_module_from_path(
+    seer_query_config = _load_module_from_path(
         "seer_query_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "seer" / "query" / "config.py",
     )
@@ -211,10 +211,10 @@ def test_seer_plugin_config_accessors_read_app_config(
 
     try:
         assert (
-            custom_seer_config.get_player_query_config().timeout_seconds
+            seer_query_config.get_player_query_config().timeout_seconds
             == DEFAULT_PLAYER_TIMEOUT_SECONDS
         )
-        assert custom_seer_config.get_local_rank_config().enabled
+        assert seer_query_config.get_local_rank_config().enabled
         assert (
             seer_render_cache.get_render_config().cache_max_size_mb
             == DEFAULT_RENDER_CACHE_MAX_SIZE_MB

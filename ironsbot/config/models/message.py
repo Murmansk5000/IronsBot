@@ -91,7 +91,7 @@ class ReplyLineConfig(BaseModel):
     default_lines: int = Field(default=-1, ge=-1)
     min_lines: int = Field(default=5, ge=1)
     max_lines: int = Field(default=80, ge=1)
-    limit_path: Path = Path("data/message_actions/reply_limits.sqlite")
+    limit_path: Path = Path("data/messaging/reply_limits.sqlite")
 
     @model_validator(mode="after")
     def validate_line_range(self) -> Self:
@@ -99,16 +99,6 @@ class ReplyLineConfig(BaseModel):
             msg = "reply.min_lines must be less than or equal to reply.max_lines"
             raise ValueError(msg)
         return self
-
-
-class MessageActionsConfig(BaseModel):
-    reply: ReplyLineConfig = Field(default_factory=ReplyLineConfig)
-    private_commands: list[PrivateCommandMessageAction] = Field(default_factory=list)
-    private_schedules: list[PrivateScheduledMessageAction] = Field(
-        default_factory=list
-    )
-    group_commands: list[GroupCommandMessageAction] = Field(default_factory=list)
-    group_schedules: list[GroupScheduledMessageAction] = Field(default_factory=list)
 
 
 class MeetingConfig(BaseModel):

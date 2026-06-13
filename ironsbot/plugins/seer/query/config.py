@@ -11,7 +11,6 @@ from ironsbot.config.models.seer import (
 )
 
 Config = AppConfig
-SeerQueryConfig = SeerConfig
 
 
 def get_seer_config() -> SeerConfig:
@@ -40,7 +39,6 @@ __all__ = [
     "LocalRankConfig",
     "PlayerQueryConfig",
     "RankQueryConfig",
-    "SeerQueryConfig",
     "TeamQueryConfig",
     "get_local_rank_config",
     "get_player_query_config",
