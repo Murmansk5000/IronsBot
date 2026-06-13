@@ -31,7 +31,7 @@ This repository keeps Docker `latest` available, and also publishes extra tags s
 
 For example, `0.6.0.3` means the image is based on IronsBot `0.6.0` with the 3rd revision after that base version.
 
-Recent changes are tracked in the GitHub commit history and in the Unraid template notes. On Docker Hub, check the tag list for the newest upstream-based version tag and `sha-xxxxxxx` tag.
+Recent changes are tracked in the GitHub commit history and in the Unraid template notes. On Docker Hub, check the tag list for the newest project-version tag and `sha-xxxxxxx` tag.
 
 ## Included Plugins
 

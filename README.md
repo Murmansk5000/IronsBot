@@ -162,6 +162,22 @@ resource_users = [123456789]
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
+## 上游更新策略
+
+本仓库已经是独立维护线，不再直接 merge 或 rebase
+[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot) 的 `main`。
+GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不会自动合并、
+提交、推送或发布镜像。
+
+处理上游更新时按类型选择性吸收：
+
+- 小型 bug 修复：手动 port 到当前架构，或在确认冲突范围后单独 cherry-pick。
+- 数据和别名更新：进入 SeerAPI / alias SQLite 数据构建流程，不在 bot 仓库恢复旧 CSV。
+- 精灵查询、渲染、协议能力：通过 `vendor` 边界或 `services` 层吸收，不恢复原版用户入口。
+- 上游结构性重构：默认不跟随，除非它修复了当前项目里的具体问题。
+
+也就是说，上游现在是参考源和补丁来源，不是可以直接同步的主线。
+
 ## 本地开发
 
 ```powershell
