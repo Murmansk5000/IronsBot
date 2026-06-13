@@ -1,4 +1,4 @@
-name: Sync Upstream and Publish
+name: Check Upstream Updates
 
 on:
     schedule:
@@ -7,118 +7,58 @@ on:
     workflow_dispatch:
 
 jobs:
-    sync-and-publish:
+    check-upstream:
         runs-on: ubuntu-latest
         permissions:
-            contents: write
-            packages: write
+            contents: read
 
         steps:
-            - name: Checkout fork
+            - name: Checkout
               uses: actions/checkout@v4
               with:
-                  ref: main
                   fetch-depth: 0
 
-            - name: Configure Git
-              run: |
-                  git config user.name "github-actions[bot]"
-                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-            - name: Merge upstream
-              id: sync
+            - name: Fetch upstream
               run: |
                   git remote add upstream https://github.com/Nattsu39/IronsBot.git
                   git fetch upstream main
 
-                  before="$(git rev-parse HEAD)"
-                  upstream="$(git rev-parse upstream/main)"
-                  echo "before=${before}" >> "$GITHUB_OUTPUT"
-                  echo "upstream=${upstream}" >> "$GITHUB_OUTPUT"
+            - name: Report upstream changes
+              shell: bash
+              run: |
+                  set -euo pipefail
 
-                  if git merge-base --is-ancestor upstream/main HEAD; then
-                    echo "changed=false" >> "$GITHUB_OUTPUT"
-                    echo "Fork already contains upstream/main."
+                  local_count="$(git rev-list --count upstream/main..HEAD)"
+                  upstream_count="$(git rev-list --count HEAD..upstream/main)"
+
+                  {
+                    echo "## Upstream intake report"
+                    echo
+                    echo "- Local commits not in upstream: ${local_count}"
+                    echo "- Upstream commits not in local branch: ${upstream_count}"
+                    echo
+                  } >> "$GITHUB_STEP_SUMMARY"
+
+                  if [ "${upstream_count}" = "0" ]; then
+                    echo "No upstream changes need review." >> "$GITHUB_STEP_SUMMARY"
                     exit 0
                   fi
 
-                  git merge --no-edit upstream/main
-                  git push origin main
-                  echo "changed=true" >> "$GITHUB_OUTPUT"
-
-            - name: Set up QEMU
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              uses: docker/setup-qemu-action@v3
-
-            - name: Setup Docker
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              uses: docker/setup-buildx-action@v3
-
-            - name: Login to GitHub Container Registry
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              uses: docker/login-action@v3
-              with:
-                  registry: ghcr.io
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Login to Docker Hub
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              uses: docker/login-action@v3
-              with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-            - name: Resolve Fork Version
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              id: fork_version
-              shell: bash
-              run: |
-                  base_tag="$(tr -d '[:space:]' < __version__)"
-                  base_version="${base_tag#v}"
-
-                  if ! git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
-                    git fetch --tags origin || true
-                  fi
-
-                  if ! git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
-                    git fetch --tags upstream "refs/tags/${base_tag}:refs/tags/${base_tag}" || true
-                  fi
-
-                  if git rev-parse -q --verify "refs/tags/${base_tag}" >/dev/null; then
-                    custom_revision="$(git rev-list --count "${base_tag}..HEAD")"
-                  else
-                    custom_revision="${GITHUB_RUN_NUMBER}"
-                    echo "Base tag ${base_tag} not found; using workflow run number ${custom_revision}."
-                  fi
-
-                  if [ "${custom_revision}" = "0" ]; then
-                    custom_revision="1"
-                  fi
-
-                  echo "fork_version=${base_version}.${custom_revision}" >> "$GITHUB_OUTPUT"
-
-            - name: Generate Tags
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              uses: docker/metadata-action@v5
-              id: metadata
-              with:
-                  images: |
-                      ghcr.io/murmansk5000/ironsbot
-                      docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
-                  tags: |
-                      type=raw,value=latest
-                      type=raw,value=${{ steps.fork_version.outputs.fork_version }}
-                      type=sha,prefix=sha-
-                      type=ref,event=branch
-
-            - name: Build and Publish
-              if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-              uses: docker/build-push-action@v6
-              with:
-                  context: .
-                  push: true
-                  tags: ${{ steps.metadata.outputs.tags }}
-                  labels: ${{ steps.metadata.outputs.labels }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
+                  {
+                    echo "### Upstream commits to review"
+                    echo
+                    git log --oneline --decorate HEAD..upstream/main
+                    echo
+                    echo "### Changed files"
+                    echo
+                    git diff --name-status HEAD..upstream/main
+                    echo
+                    echo "### Intake policy"
+                    echo
+                    echo "Do not merge upstream/main directly. Classify each change and port it through this repository's current architecture:"
+                    echo
+                    echo "- data or alias changes: move to the data/alias database pipeline"
+                    echo "- small bug fixes: manually port or cherry-pick with review"
+                    echo "- Seer query/rendering changes: update the vendor boundary or service layer"
+                    echo "- upstream structural refactors: ignore unless they fix a concrete bug here"
+                  } >> "$GITHUB_STEP_SUMMARY"

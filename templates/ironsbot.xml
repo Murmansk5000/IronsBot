@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Murmansk5000/IronsBot/issues</Support>
   <Project>https://github.com/Murmansk5000/IronsBot</Project>
-  <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins. Version tags use latest plus upstream-version.fork-revision tags and exact sha tags; behavior config is file-based through APP_CONFIG_PATH, with environment variables kept for secrets, credentials, and deployment runtime only.</Overview>
+  <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins. Version tags use latest plus project-version.revision tags and exact sha tags; behavior config is file-based through APP_CONFIG_PATH, with environment variables kept for secrets, credentials, and deployment runtime only.</Overview>
   <Description>IronsBot 是一个基于 NoneBot2 和 OneBot v11 的 QQ 机器人。这个镜像面向赛尔号查询、群聊回复、B 站动态监控、活动提醒、AI 聊天和 Unraid 部署。行为配置写在 /config/ironsbot.toml，环境变量只保留 OneBot token、AI Key、米米号凭据和部署运行参数，数据缓存保存在 /app/data。超级管理员可使用 /更新数据 手动刷新 SQLite 数据。</Description>
   <Category>Tools:Utilities</Category>
   <WebUI />
@@ -19,11 +19,11 @@
   <ExtraParams />
   <DonateText />
   <DonateLink />
-  <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network. Changelog/version check: latest remains available; fixed builds are tagged as upstream-version.fork-revision plus sha-xxxxxxx. See the Docker Hub README / ReadMe link for full notes.</Requires>
+  <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network. Changelog/version check: latest remains available; fixed builds are tagged as project-version.revision plus sha-xxxxxxx. See the Docker Hub README / ReadMe link for full notes.</Requires>
   <Changes>
 Version scheme:
 - latest: current main branch of this fork.
-- upstream-version.fork-revision: current upstream IronsBot version plus this fork revision.
+- project-version.revision: current IronsBot project version plus repository revision count.
 - sha-xxxxxxx: exact Git commit used to build the image.
 
 Recent changes:
