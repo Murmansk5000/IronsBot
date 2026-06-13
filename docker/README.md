@@ -136,7 +136,7 @@ SENDPIC_CNB_TOKEN=
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
 
-Common feature names include `all`, `custom`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use custom feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
+Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
 
 ```toml
 [feature]
