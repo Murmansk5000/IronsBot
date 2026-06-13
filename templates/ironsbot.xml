@@ -45,8 +45,8 @@ Recent changes:
   <Config Name="App Config Path" Target="APP_CONFIG_PATH" Default="/config/ironsbot.toml" Mode="" Description="行为配置 TOML 文件路径。Unraid 中保持 /config/ironsbot.toml，并在上方 Config 目录里放置该文件。" Type="Variable" Display="always" Required="true" Mask="false">/config/ironsbot.toml</Config>
   <Config Name="OneBot Access Token" Target="ONEBOT_ACCESS_TOKEN" Default="" Mode="" Description="OneBot 连接令牌，必须和 NapCat 等 OneBot 客户端的 access_token 一致。" Type="Variable" Display="always" Required="true" Mask="true" />
   <Config Name="Superusers" Target="SUPERUSERS" Default="[]" Mode="" Description="超级管理员 QQ 列表，必填。示例：[123456789] 或 [&quot;123456789&quot;]。" Type="Variable" Display="always" Required="true" Mask="false">[]</Config>
-  <Config Name="Headless Seer User ID" Target="HEADLESS_SEER_USER_ID" Default="12345678" Mode="" Description="米米号" Type="Variable" Display="always" Required="false" Mask="false">12345678</Config>
-  <Config Name="Headless Seer Password" Target="HEADLESS_SEER_PASSWORD" Default="..." Mode="" Description="密码（明文密码的MD5值）" Type="Variable" Display="always" Required="false" Mask="true">...</Config>
+  <Config Name="Headless Seer User ID" Target="HEADLESS_SEER_USER_ID" Default="" Mode="" Description="可选。米米号账号；只有需要无头登录/自动化赛尔号操作时填写，不使用时留空。" Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="Headless Seer Password" Target="HEADLESS_SEER_PASSWORD" Default="" Mode="" Description="可选。米米号密码的 MD5 值；和米米号账号配套使用，不使用时留空。" Type="Variable" Display="always" Required="false" Mask="true" />
   <Config Name="AI Chat API Key" Target="AI_KEY" Default="" Mode="" Description="AI 聊天的 API Key，例如 DeepSeek Key；这是密钥，不要提交到 Git。" Type="Variable" Display="always" Required="false" Mask="true" />
   <Config Name="SendPic CNB Token" Target="SENDPIC_CNB_TOKEN" Default="" Mode="" Description="可选。custom_sendpic 使用 CNB 后端时的访问令牌；仓库名等行为配置写在 /config/ironsbot.toml。" Type="Variable" Display="advanced" Required="false" Mask="true" />
 </Container>
