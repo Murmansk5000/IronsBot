@@ -6,11 +6,6 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import (
-    enter_event_reply_conversation,
-    finish_event_reply,
-    send_event_reply,
-)
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_saved_cookie,
@@ -33,6 +28,11 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_update_allowed,
 )
 from ironsbot.services.bilibili.state import query_uids_for_event
+from ironsbot.shared.messaging import (
+    enter_event_reply_conversation,
+    finish_event_reply,
+    send_event_reply,
+)
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -133,18 +133,15 @@ async def _handle_dynamic_menu(
     state = context.state if context.state is not None else {}
     try:
         query_uids = query_uids_for_event(event)
+        logger.info(
+            f"Bilibili dynamic menu query: user={event.user_id} uids={query_uids}"
+        )
         if not query_uids:
             await finish_event_reply(
                 dynamic_menu_matcher,
                 event,
                 "📭 当前会话没有配置可查询的 B 站账号。",
             )
-
-        await send_event_reply(
-            dynamic_menu_matcher,
-            event,
-            "🔄 正在拉取 B 站动态...",
-        )
 
         response, res_json = await fetch_dynamic_feed(get_saved_cookie())
         if is_bili_auth_invalid(response.status_code, res_json):

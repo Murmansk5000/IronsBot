@@ -197,6 +197,18 @@
             line-height: 1.7;
         }
 
+        .sm-icon-row {
+            margin: 6px 0 10px;
+            text-align: center;
+        }
+
+        .sm-icon {
+            width: 56px;
+            height: 56px;
+            vertical-align: middle;
+            image-rendering: auto;
+        }
+
         .sm-glossaries {
             margin-top: 12px;
             padding: 10px;
@@ -447,6 +459,11 @@
                                 <span class="tag t-npve">PVE无效</span>
                                 {% endif %}
                                 -->
+                            </div>
+                            {% endif %}
+                            {% if sm.icon %}
+                            <div class="sm-icon-row">
+                                <img class="sm-icon" src="{{ sm.icon }}" />
                             </div>
                             {% endif %}
                             <div class="sm-desc">{{ sm.desc }}</div>

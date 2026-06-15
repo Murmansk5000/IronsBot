@@ -23,12 +23,32 @@ def test_bili_login_notice_cooldown_lives_in_bili_config() -> None:
     )
 
 
-def test_group_query_requires_explicit_bili_subscription(
+def test_group_query_falls_back_to_global_uids_when_feature_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(state, "CONFIGURED_GROUP_RULES", {})
-    monkeypatch.setattr(state, "MONITORED_UIDS", [1310714247])
+    monkeypatch.setattr(
+        state,
+        "get_bili_config",
+        lambda: BiliConfig(uids=[1310714247]),
+    )
     monkeypatch.setattr(state, "is_group_feature_allowed", lambda *_args: True)
+
+    assert state.query_uids_for_group(user_id=1, group_id=786252348) == [
+        1310714247
+    ]
+
+
+def test_group_query_still_requires_bili_feature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(state, "CONFIGURED_GROUP_RULES", {})
+    monkeypatch.setattr(
+        state,
+        "get_bili_config",
+        lambda: BiliConfig(uids=[1310714247]),
+    )
+    monkeypatch.setattr(state, "is_group_feature_allowed", lambda *_args: False)
 
     assert state.query_uids_for_group(user_id=1, group_id=786252348) == []
 

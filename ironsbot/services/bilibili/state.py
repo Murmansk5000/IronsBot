@@ -200,12 +200,12 @@ check_lock = asyncio.Lock()
 
 
 def query_uids_for_group(user_id: int, group_id: int) -> list[int]:
-    rule = configured_group_rules().get(group_id)
-    if rule is None:
-        return []
-
     if not is_group_feature_allowed(user_id, group_id, "bili_query"):
         return []
+
+    rule = configured_group_rules().get(group_id)
+    if rule is None:
+        return sorted(get_bili_config().uids)
 
     return sorted(rule.uids)
 

@@ -5,6 +5,7 @@ from ironsbot.services.seer.player_formatting import (
     format_compact_player_info,
     format_id_name,
     format_id_name_list,
+    format_login_timeline_lines,
     format_online_text,
     format_player_detail_messages,
     format_player_identity,
@@ -102,6 +103,47 @@ def test_format_player_identity_team_vip_and_online_text() -> None:
         == "在线（服务器：1，地图类型：2，地图ID：3）"
     )
     assert format_online_text(None) == "离线"
+
+
+def test_format_login_timeline_orders_login_after_offline() -> None:
+    user_info = SimpleNamespace(
+        login_time=1_780_000_000,
+        last_offline_time=1_779_990_000,
+    )
+    online_info = SimpleNamespace(server_id=1, map_type=2, map_id=3)
+
+    assert format_login_timeline_lines(user_info, online_info) == [
+        "最后离线：2026年5月29日 01:40:00",
+        "最后登录：2026年5月29日 04:26:40",
+        "是否在线：在线（服务器：1，地图类型：2，地图ID：3）",
+    ]
+
+
+def test_format_login_timeline_orders_offline_after_login() -> None:
+    user_info = SimpleNamespace(
+        login_time=1_779_990_000,
+        last_offline_time=1_780_000_000,
+    )
+    online_info = SimpleNamespace(server_id=1, map_type=2, map_id=3)
+
+    assert format_login_timeline_lines(user_info, online_info) == [
+        "最后登录：2026年5月29日 01:40:00",
+        "最后离线：2026年5月29日 04:26:40",
+        "是否在线：在线（服务器：1，地图类型：2，地图ID：3）",
+    ]
+
+
+def test_format_login_timeline_keeps_online_info_as_source_of_truth() -> None:
+    user_info = SimpleNamespace(
+        login_time=1_780_000_000,
+        last_offline_time=1_779_990_000,
+    )
+
+    assert format_login_timeline_lines(user_info, None) == [
+        "最后离线：2026年5月29日 01:40:00",
+        "最后登录：2026年5月29日 04:26:40",
+        "是否在线：离线",
+    ]
 
 
 def test_format_win_rate_handles_empty_and_non_empty_records() -> None:

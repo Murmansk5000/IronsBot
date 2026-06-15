@@ -5,7 +5,6 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.services.seer.countermark_stat_rank import (
     MISSING_MINTMARK_QUALITY_MESSAGE,
@@ -16,6 +15,7 @@ from ironsbot.services.seer.countermark_stat_rank import (
     load_mintmarks,
     parse_countermark_stat_rank_command,
 )
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -57,7 +57,7 @@ class CountermarkStatRankPlugin:
         session: SeerAPISession = context.data["session"]
         command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
         quality_map = load_mintmark_quality_session(session)
-        if command.scope == "five" and not quality_map:
+        if command.angle_count is not None and not quality_map:
             await finish_event_reply(
                 matcher,
                 event,
