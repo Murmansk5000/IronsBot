@@ -88,6 +88,27 @@ def format_online_text(online_info: Any | None) -> str:
     )
 
 
+def format_login_timeline_lines(user_info: Any, online_info: Any | None) -> list[str]:
+    events = [
+        ("最后登录", int(getattr(user_info, "login_time", 0) or 0)),
+        ("最后离线", int(getattr(user_info, "last_offline_time", 0) or 0)),
+    ]
+    ordered_events = sorted(
+        enumerate(events),
+        key=lambda item: (
+            item[1][1] <= 0,
+            item[1][1] if item[1][1] > 0 else item[0],
+            item[0],
+        ),
+    )
+    lines = [
+        f"{label}：{format_datetime(timestamp)}"
+        for _, (label, timestamp) in ordered_events
+    ]
+    lines.append(f"是否在线：{format_online_text(online_info)}")
+    return lines
+
+
 def format_status(value: int) -> str:
     if value == 1:
         return "正常"
@@ -401,9 +422,7 @@ def format_compact_player_info(  # noqa: PLR0913
         f"昵称：{user_info.nick}",
         f"VIP状态：{format_vip(user_info)}",
         f"注册时间：{format_datetime(getattr(more_info, 'reg_time', 0))}",
-        f"最后登录：{format_datetime(getattr(user_info, 'login_time', 0))}",
-        f"最后离线：{format_datetime(getattr(user_info, 'last_offline_time', 0))}",
-        f"是否在线：{format_online_text(online_info)}",
+        *format_login_timeline_lines(user_info, online_info),
         "",
         f"战队：{format_team_text(user_info, team_name)}",
     ]

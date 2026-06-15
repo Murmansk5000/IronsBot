@@ -7,10 +7,6 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import (
-    finish_event_reply,
-    send_event_reply,
-)
 from ironsbot.services.ai.chat import (
     build_ai_chat_context,
     can_show_admin_notice,
@@ -24,6 +20,10 @@ from ironsbot.services.ai.history import is_reset_prompt
 from ironsbot.services.ai.mentions import mentions_or_replies_to_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
+from ironsbot.shared.messaging import (
+    finish_event_reply,
+    send_event_reply,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -164,7 +164,7 @@ register_plugin(AiChatPlugin())
 
 ai_chat_matcher = on_message(
     rule=Rule(_ai_chat_rule),
-    priority=6,
+    priority=1,
     block=True,
 )
 
