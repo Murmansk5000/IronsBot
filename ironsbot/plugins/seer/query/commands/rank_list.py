@@ -6,11 +6,11 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.custom_plugins.superuser_priority import release_superuser_priority
+from ironsbot.plugins.admin_priority import release_superuser_priority
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.local_rank import (
     get_local_rank_cache_stats,
