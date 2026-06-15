@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.plugins.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -34,7 +34,7 @@ ABOUT_MESSAGE = """
 """.strip()
 
 VERSION_FILE_PATH = AsyncPath("__version__")
-ABOUT_PLUGIN_NAME = "custom_about"
+ABOUT_PLUGIN_NAME = "about"
 
 matcher = on_fullmatch("关于", rule=no_reply(), priority=0, block=True)
 

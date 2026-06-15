@@ -14,7 +14,7 @@ from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.plugins.messaging import (
     finish_event_reply,
     send_event_reply,
 )
@@ -47,8 +47,8 @@ DEFAULT_IGNORED_PLUGINS = [
     "超级管理员优先级",
     "定时重启",
 ]
-HELP_ENTRIES_KEY = "_custom_help_entries"
-HELP_PLUGIN_NAME = "custom_help"
+HELP_ENTRIES_KEY = "_help_entries"
+HELP_PLUGIN_NAME = "help"
 Config = AppConfig
 
 

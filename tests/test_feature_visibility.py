@@ -51,10 +51,10 @@ def _config(
     )
 
 
-def test_always_visible_custom_help_is_shown() -> None:
+def test_always_visible_help_is_shown() -> None:
     assert visibility.plugin_visible_for_event(
         "帮助",
-        "ironsbot.custom_plugins.custom_help",
+        "ironsbot.plugins.help",
         _group_event(),
     )
 
@@ -70,12 +70,12 @@ def test_feature_module_visibility_uses_feature_service(
 
     assert visibility.plugin_visible_for_event(
         "扩展赛尔号查询",
-        "ironsbot.custom_plugins.custom_get_seer_info",
+        "ironsbot.plugins.seer.query",
         _group_event(),
     )
     assert not visibility.plugin_visible_for_event(
         "榜单",
-        "ironsbot.custom_plugins.rank_help",
+        "ironsbot.plugins.seer.rank_help",
         _group_event(),
     )
 
@@ -96,7 +96,7 @@ def test_message_actions_visibility_reads_app_config(
 
     assert visibility.plugin_visible_for_event(
         "文本发送",
-        "ironsbot.custom_plugins.message_actions",
+        "ironsbot.plugins.messaging",
         _group_event(),
     )
 
@@ -122,7 +122,7 @@ def test_ai_intent_visibility_requires_key_and_feature(
 
     assert visibility.plugin_visible_for_event(
         "AI意图动作",
-        "ironsbot.custom_plugins.ai_intent_actions",
+        "ironsbot.plugins.ai_intent",
         _group_event(),
     )
 
@@ -143,6 +143,6 @@ def test_team_shortcut_visibility_reads_app_config(
 
     assert visibility.plugin_visible_for_event(
         "战队快捷",
-        "ironsbot.custom_plugins.team_shortcut",
+        "ironsbot.plugins.team_shortcut",
         _group_event(),
     )

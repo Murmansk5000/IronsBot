@@ -6,7 +6,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.custom_plugins.message_actions import reply_limits
+from ironsbot.plugins.messaging import reply_limits
 
 
 def test_reply_line_limit_api_hook_setup_is_explicit_and_idempotent(

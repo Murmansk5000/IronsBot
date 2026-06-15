@@ -5,7 +5,7 @@ from typing import Any
 
 from nonebot import get_driver
 
-from ironsbot.custom_plugins.startup_ready import run_registered_startup_checks
+from ironsbot.shared.plugin_runtime.startup_ready import run_registered_startup_checks
 
 _startup_ready_runtime_state = {"registered": False}
 

@@ -7,7 +7,7 @@ from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.startup_ready import register_startup_check
+from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 
@@ -31,7 +31,7 @@ def _build_startup_notice_message(reason: str) -> Message:
 
 
 async def _startup_check(bot: Bot) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.plugins.messaging import send_broadcast_message
 
     from .service import headless_is_configured, headless_login_failure_reason
 

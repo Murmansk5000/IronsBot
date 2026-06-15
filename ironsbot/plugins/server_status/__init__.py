@@ -16,12 +16,12 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.custom_plugins.headless_seer_notice.service import login_headless_client
-from ironsbot.custom_plugins.headless_seer_notice.state import (
+from ironsbot.plugins.headless_seer_notice.service import login_headless_client
+from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.shared.messaging import (
     finish_event_reply,
     send_broadcast_message,
     send_event_reply,
@@ -171,7 +171,8 @@ class ServerStatusPlugin:
     async def _handle_normal(self, matcher: Matcher, event: MessageEvent) -> None:
         if not is_event_feature_allowed(event, "server_status_query"):
             logger.info(
-                "normal server status command ignored: custom feature not allowed"
+                "normal server status command ignored: "
+                "server_status_query feature not allowed"
             )
             return
 
