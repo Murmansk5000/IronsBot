@@ -10,9 +10,9 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"]
 dependencies = [
     "nonebot-adapter-onebot>=2.4.6",
-    "seerapi>=106.2.0",
+    "seerapi>=106.4.0",
     "nonebot2[fastapi,httpx]>=2.4.4",
-    "seerapi-models>=106.2.0",
+    "seerapi-models>=106.4.0",
     "nonebot-plugin-htmlkit>=0.1.0rc5",
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
@@ -134,4 +134,9 @@ pythonPlatform = "All"
 typeCheckingMode = "standard"
 
 [dependency-groups]
-dev = ["basedpyright>=1.38.1", "pytest>=9.0.2", "ruff>=0.15.2"]
+dev = ["basedpyright>=1.38.1", "ruff>=0.15.2"]
+test = ["nonebug>=0.4.4", "pytest>=9.0.2", "pytest-asyncio>=1.4.0"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
