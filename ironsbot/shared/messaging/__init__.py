@@ -5,6 +5,14 @@ from .conversations import (
     enter_event_reply_conversation,
     event_conversation_session_id,
 )
+from .help_hints import (
+    DIRECT_COMMAND_HELP_HINT_TEXT,
+    HELP_COMMAND_TEXT,
+    HELP_HINT_TEXT,
+    POKE_HELP_HINT_TEXT,
+    append_help_hint,
+    unsupported_feature_help_message,
+)
 from .query_guard import QueryGuard
 from .rate_limits import (
     InMemoryRateLimiter,
@@ -65,11 +73,15 @@ from .text import (
 
 __all__ = [
     "DEFAULT_COMMAND_PREFIXES",
+    "DIRECT_COMMAND_HELP_HINT_TEXT",
     "EventReplyCheck",
+    "HELP_COMMAND_TEXT",
+    "HELP_HINT_TEXT",
     "InMemoryRateLimiter",
     "MessageLimiter",
     "MessageTarget",
     "OneBotMessageSender",
+    "POKE_HELP_HINT_TEXT",
     "QueryGuard",
     "REPLY_LINE_LIMIT_CLEAR_COMMANDS",
     "REPLY_LINE_LIMIT_COMMANDS",
@@ -80,6 +92,7 @@ __all__ = [
     "TEXT_SEND_APIS",
     "TargetSendSummary",
     "apply_reply_before_send",
+    "append_help_hint",
     "BeforeReplySendHook",
     "broadcast_targets",
     "build_message",
@@ -113,4 +126,5 @@ __all__ = [
     "send_matcher_message",
     "send_target_messages",
     "strip_command_prefix",
+    "unsupported_feature_help_message",
 ]

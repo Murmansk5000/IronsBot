@@ -43,7 +43,7 @@ from .runtime_service import (
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
 MESSAGE_PLUGIN_NAME = "message"
-_message_actions_runtime_state = {"registered": False}
+_messaging_runtime_state = {"registered": False}
 
 
 def _private_action_allowed(
@@ -109,7 +109,7 @@ group_command_matcher = on_message(
 )
 
 
-class MessageActionsPlugin:
+class MessagingPlugin:
     name = MESSAGE_PLUGIN_NAME
     feature = "text"
     enabled = True
@@ -158,7 +158,7 @@ class MessageActionsPlugin:
         )
 
 
-register_plugin(MessageActionsPlugin())
+register_plugin(MessagingPlugin())
 
 
 @private_command_matcher.handle()
@@ -248,19 +248,19 @@ async def register_message_schedules(scheduler: Any) -> None:
         _register_group_schedule(scheduler, index, task)
 
 
-def _setup_message_actions_runtime(driver: Any, scheduler: Any) -> None:
-    if _message_actions_runtime_state["registered"]:
+def _setup_messaging_runtime(driver: Any, scheduler: Any) -> None:
+    if _messaging_runtime_state["registered"]:
         return
 
     @driver.on_startup
     async def _register_message_schedules_on_startup() -> None:
         await register_message_schedules(scheduler)
 
-    _message_actions_runtime_state["registered"] = True
+    _messaging_runtime_state["registered"] = True
 
 
-def setup_message_actions_runtime() -> None:
+def setup_messaging_runtime() -> None:
     require("nonebot_plugin_apscheduler")
     from nonebot_plugin_apscheduler import scheduler
 
-    _setup_message_actions_runtime(get_driver(), scheduler)
+    _setup_messaging_runtime(get_driver(), scheduler)

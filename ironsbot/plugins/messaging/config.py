@@ -13,7 +13,6 @@ from ironsbot.config.models.message import (
 )
 
 Config = AppConfig
-MessageActionsConfig = MessageConfig
 
 
 def get_message_config() -> MessageConfig:
@@ -30,7 +29,6 @@ __all__ = [
     "Config",
     "GroupCommandMessageAction",
     "GroupScheduledMessageAction",
-    "MessageActionsConfig",
     "PrivateCommandMessageAction",
     "PrivateScheduledMessageAction",
     "ReplyLineConfig",

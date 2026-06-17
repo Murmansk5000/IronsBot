@@ -149,13 +149,6 @@ class LocalRankConfig(BaseModel):
         return _validate_sqlite_path(value)
 
 
-class SeerQueryConfig(BaseModel):
-    player: PlayerQueryConfig = Field(default_factory=PlayerQueryConfig)
-    team: TeamQueryConfig = Field(default_factory=TeamQueryConfig)
-    rank: RankQueryConfig = Field(default_factory=RankQueryConfig)
-    local_rank: LocalRankConfig = Field(default_factory=LocalRankConfig)
-
-
 class TeamConfig(BaseModel):
     commands: list[str] = Field(default_factory=lambda: ["战队"])
     resource_threshold: int = Field(default=1000, ge=0)
@@ -203,7 +196,6 @@ __all__ = [
     "RankQueryConfig",
     "RenderConfig",
     "SeerConfig",
-    "SeerQueryConfig",
     "TeamConfig",
     "TeamQueryConfig",
     "TeamShortcutConfig",

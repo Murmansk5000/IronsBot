@@ -101,16 +101,6 @@ class ReplyLineConfig(BaseModel):
         return self
 
 
-class MessageActionsConfig(BaseModel):
-    reply: ReplyLineConfig = Field(default_factory=ReplyLineConfig)
-    private_commands: list[PrivateCommandMessageAction] = Field(default_factory=list)
-    private_schedules: list[PrivateScheduledMessageAction] = Field(
-        default_factory=list
-    )
-    group_commands: list[GroupCommandMessageAction] = Field(default_factory=list)
-    group_schedules: list[GroupScheduledMessageAction] = Field(default_factory=list)
-
-
 class MeetingConfig(BaseModel):
     number: str = ""
     template: str = (

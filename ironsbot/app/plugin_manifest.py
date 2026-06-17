@@ -18,7 +18,7 @@ EXTERNAL_PLUGINS: Final[tuple[str, ...]] = (
     "nonebot_plugin_saa",
 )
 
-CUSTOM_CORE_PLUGINS: Final[tuple[str, ...]] = (
+CORE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.admin_priority",
     "ironsbot.plugins.messaging",
 )
@@ -30,7 +30,7 @@ INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.headless_seer",
 )
 
-CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
+FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.headless_seer_notice",
     "ironsbot.plugins.ai_chat",
     "ironsbot.plugins.team_shortcut",
@@ -41,6 +41,7 @@ CUSTOM_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.about",
     "ironsbot.plugins.seer.query",
     "ironsbot.plugins.help",
+    "ironsbot.plugins.help_hint",
     "ironsbot.plugins.sendpic",
     "ironsbot.plugins.meeting",
     "ironsbot.plugins.seer.pet_config_reply",
@@ -55,7 +56,7 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",
     "ironsbot.plugins.headless_seer.runtime:setup_headless_seer_runtime",
     "ironsbot.plugins.messaging.reply_limits:setup_reply_line_limit_api_hook",
-    "ironsbot.plugins.messaging.runtime:setup_message_actions_runtime",
+    "ironsbot.plugins.messaging.runtime:setup_messaging_runtime",
     "ironsbot.plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
     "ironsbot.plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
     "ironsbot.shared.plugin_runtime.startup_ready_runtime:setup_startup_ready_runtime",
@@ -68,9 +69,9 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
     PluginGroup("external", EXTERNAL_PLUGINS),
-    PluginGroup("custom_core", CUSTOM_CORE_PLUGINS),
+    PluginGroup("core", CORE_PLUGINS),
     PluginGroup("infrastructure", INFRASTRUCTURE_PLUGINS),
-    PluginGroup("custom", CUSTOM_PLUGINS),
+    PluginGroup("feature", FEATURE_PLUGINS),
 )
 
 
@@ -136,9 +137,9 @@ def validate_plugin_manifest() -> None:
 
 
 __all__ = [
-    "CUSTOM_CORE_PLUGINS",
-    "CUSTOM_PLUGINS",
+    "CORE_PLUGINS",
     "EXTERNAL_PLUGINS",
+    "FEATURE_PLUGINS",
     "INFRASTRUCTURE_PLUGINS",
     "PLUGIN_GROUPS",
     "RUNTIME_SETUP_CALLS",

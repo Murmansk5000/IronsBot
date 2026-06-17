@@ -13,6 +13,7 @@ from ironsbot.shared.config.parsing import (
     json_object,
     string_list,
 )
+from ironsbot.shared.help_hints import DIRECT_COMMAND_HELP_HINT_TEXT
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
@@ -23,7 +24,7 @@ DEFAULT_AI_PROMPT = (
 )
 DEFAULT_AI_MENTION_GUARD_MESSAGE = (
     "这个群没有开启 AI 聊天，@或回复我不会触发功能。"
-    "直接发送指令就可以查询；不会用可以发送“帮助”。"
+    + DIRECT_COMMAND_HELP_HINT_TEXT
 )
 DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS = 60.0
 DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW = 10

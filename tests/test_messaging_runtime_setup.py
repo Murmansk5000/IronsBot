@@ -20,19 +20,19 @@ class FakeDriver:
         return handler
 
 
-def test_message_actions_runtime_setup_registers_startup_once(
+def test_messaging_runtime_setup_registers_startup_once(
     monkeypatch: MonkeyPatch,
 ) -> None:
     registered_state = False
     monkeypatch.setitem(
-        runtime._message_actions_runtime_state,
+        runtime._messaging_runtime_state,
         "registered",
         registered_state,
     )
     driver = FakeDriver()
     scheduler = object()
 
-    runtime._setup_message_actions_runtime(driver, scheduler)
-    runtime._setup_message_actions_runtime(driver, scheduler)
+    runtime._setup_messaging_runtime(driver, scheduler)
+    runtime._setup_messaging_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
