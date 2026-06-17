@@ -8,11 +8,11 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.headless_seer_notice.state import (
+from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.custom_plugins.message_actions import finish_message_sequence
+from ironsbot.shared.messaging import finish_message_sequence
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,

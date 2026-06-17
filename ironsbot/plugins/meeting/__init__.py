@@ -7,7 +7,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.plugins.messaging import (
+from ironsbot.shared.messaging import (
     finish_event_reply,
 )
 from ironsbot.shared.features import (

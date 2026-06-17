@@ -43,10 +43,11 @@ async def send_activity_reminder(
 ) -> None:
     from ironsbot.shared.messaging import send_broadcast_message
 
+    now = _now()
     reminders = valid_reminders_before_send(
         _activity_query_source,
         reminders,
-        now=_now(),
+        now=now,
         dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
     )
     if not reminders:

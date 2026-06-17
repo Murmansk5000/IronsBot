@@ -8,7 +8,7 @@ from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.custom_plugins.startup_ready import ensure_startup_ready
+from ironsbot.shared.plugin_runtime.startup_ready import ensure_startup_ready
 
 from .config import get_startup_config
 from .service import StartupNoticeService
@@ -18,7 +18,7 @@ _startup_notice_runtime_state = {"registered": False}
 
 
 async def send_startup_notice(bot: Bot) -> None:
-    from ironsbot.custom_plugins.message_actions import send_broadcast_message
+    from ironsbot.shared.messaging import send_broadcast_message
 
     config = get_startup_config()
     if not startup_notice_service.should_send(config):

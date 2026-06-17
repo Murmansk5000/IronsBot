@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -6,11 +6,11 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.headless_seer_notice.state import (
+from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -42,8 +42,8 @@ from ._args import has_numeric_arg, parse_numeric_id
 TEAM_ID_KEY = "team_id"
 TEAM_PLUGIN_NAME = "seer_team"
 TEAM_QUERY_GUARD = QueryGuard(
-    success_namespace="custom_get_seer_info.team_query.success",
-    failure_namespace="custom_get_seer_info.team_query.failure",
+    success_namespace="seer.team_query.success",
+    failure_namespace="seer.team_query.failure",
     success_cooldown=lambda: get_team_query_config().rate_limit_seconds,
     failure_cooldown=lambda: get_team_query_config().failure_rate_limit_seconds,
 )
