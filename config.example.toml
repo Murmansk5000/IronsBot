@@ -269,7 +269,7 @@ cache_path = "data/activity_reminder/sent.sqlite"
 # Default: built-in reminder template.
 # EN: Reminder message template.
 # ZH: 活动提醒消息模板。
-# Example: "还有约 {lead_hours} 小时结束\n{activity_list}"
+# Available fields: {lead_hours}, {activity_count}, {activity_list}
 message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
 
 # Default: 8.0
@@ -490,8 +490,8 @@ interval_minutes = 60
 local_path = "data/ironsbot-data.sqlite"
 
 [runtime.data_sync.sources.aliases]
-url = "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite"
-fingerprint_url = "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
+fingerprint_url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
 interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
 

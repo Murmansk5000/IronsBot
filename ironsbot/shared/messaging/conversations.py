@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import Message
-from nonebot.matcher import Matcher
 
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
 from .replies import event_sender_at_user_ids, limit_reply_message
-from .text import command_text_matches
-from .text import build_message
+from .text import build_message, command_text_matches
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+    from nonebot.adapters.onebot.v11 import Message
+    from nonebot.matcher import Matcher
 
 EventReplyCheck = Callable[[MessageEvent], bool]
 
@@ -21,6 +23,10 @@ def event_conversation_session_id(namespace: str, event: MessageEvent) -> str:
     group_id = getattr(event, "group_id", None)
     target = f"group:{group_id}" if group_id is not None else "private"
     return f"{namespace}:{target}:user:{event.user_id}"
+
+
+def is_self_message_event(event: MessageEvent) -> bool:
+    return event.user_id == event.self_id
 
 
 def command_reply_check(commands: tuple[str, ...] | list[str]) -> EventReplyCheck:
@@ -48,6 +54,9 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
             return False
 
         if event_conversation_session_id(namespace, next_event) != session_id:
+            return False
+
+        if is_self_message_event(next_event):
             return False
 
         return reply_check(next_event)

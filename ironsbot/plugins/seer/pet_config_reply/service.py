@@ -1,8 +1,8 @@
 from collections.abc import Sequence
 
-PET_CONFIG_UNSUPPORTED_MESSAGE = (
-    "此机器人暂不支持查询精灵配置。可以发送“帮助”查看目前可用的功能。"
-)
+from ironsbot.shared.help_hints import unsupported_feature_help_message
+
+PET_CONFIG_UNSUPPORTED_MESSAGE = unsupported_feature_help_message("查询精灵配置")
 
 
 def should_reply_pet_config(arg: str, pets: Sequence[object]) -> bool:
