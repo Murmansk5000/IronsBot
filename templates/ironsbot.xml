@@ -15,10 +15,7 @@
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.png</Icon>
-  <ReadMe>https://github.com/Murmansk5000/IronsBot/blob/main/docker/README.md</ReadMe>
-  <ExtraParams />
-  <DonateText />
-  <DonateLink />
+  <ReadMe>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/docker/README.md</ReadMe>
   <Requires>Requires a OneBot v11 client such as NapCat. Configure the client reverse WebSocket to ws://UNRAID_SERVER_IP:8085/onebot/v11/ws, or use ws://ironsbot:8080/onebot/v11/ws when both containers share a Docker network. Changelog/version check: latest remains available; fixed builds are tagged as project-version.revision plus sha-xxxxxxx. See the Docker Hub README / ReadMe link for full notes.</Requires>
   <Changes>
 Version scheme:
