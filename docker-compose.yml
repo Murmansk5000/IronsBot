@@ -37,8 +37,8 @@ services:
       SEERAPI_LOCAL_PATH: "data/ironsbot-data.sqlite"
 
       # 别名数据库在线同步配置
-      ALIAS_SYNC_URL: "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite"
-      ALIAS_FINGERPRINT_URL: "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+      ALIAS_SYNC_URL: "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
+      ALIAS_FINGERPRINT_URL: "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
       ALIAS_SYNC_INTERVAL_MINUTES: "65"
       ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
 

@@ -39,6 +39,10 @@ def format_activity_period(activity: ActivityInfo) -> str:
     return f"{activity.start_time:%m-%d %H:%M} ~ {end_text}"
 
 
+def format_deadline_label(label: str) -> str:
+    return label if label.endswith("时间") else f"{label}时间"
+
+
 def format_activity_line(
     index: int,
     activity: ActivityInfo,
@@ -50,9 +54,10 @@ def format_activity_line(
     if soon_only:
         if deadline is not None and deadline.display_end_time:
             remaining_text = format_remaining_time(deadline.end_time - current_time)
+            deadline_label = format_deadline_label(deadline.label)
             return [
                 (
-                    f"{index}. {activity.name}：{deadline.label}时间："
+                    f"{index}. {activity.name}：{deadline_label}："
                     f"{deadline.end_time:%m-%d %H:%M} | 剩余：{remaining_text}"
                 )
             ]
@@ -77,8 +82,9 @@ def format_activity_list(reminders: list[ActivityReminder]) -> str:
     lines: list[str] = []
     for index, reminder in enumerate(reminders, start=1):
         if reminder.display_end_time:
+            deadline_label = format_deadline_label(reminder.end_label)
             lines.append(
-                f"{index}. {reminder.name}：{reminder.end_label}时间："
+                f"{index}. {reminder.name}：{deadline_label}："
                 f"{reminder.end_time:%Y-%m-%d %H:%M}"
             )
         else:

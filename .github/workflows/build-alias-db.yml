@@ -1,0 +1,53 @@
+name: Build Alias DB
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tables/*.csv"
+      - "tables_custom/*.csv"
+      - "scripts/sync_alias_tables.py"
+      - "scripts/build_alias_db.py"
+      - ".github/workflows/build-alias-db.yml"
+  schedule:
+    - cron: "40 19 * * *"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Sync alias tables
+        run: python scripts/sync_alias_tables.py
+
+      - name: Build alias database
+        run: python scripts/build_alias_db.py
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: alias-db-latest
+          name: Alias Database
+          make_latest: false
+          body: |
+            Automatically built alias SQLite database for IronsBot.
+
+            Upstream source: `Nattsu39/IronsBot/tables/pet_aliases.csv`
+            Custom source: `tables_custom/pet_aliases.csv`
+            Commit: ${{ github.sha }}
+          files: |
+            aliases-data.sqlite
+            aliases-data.sqlite.sha256

@@ -129,6 +129,6 @@ def test_format_activity_list_uses_deadline_display_flag() -> None:
     ]
 
     assert format_activity_list(reminders) == (
-        "1. 银河斗技场：结束时间时间：2026-06-12 10:00\n"
+        "1. 银河斗技场：结束时间：2026-06-12 10:00\n"
         "2. 审判天使：首周优惠见官方说明"
     )

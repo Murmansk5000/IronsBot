@@ -20,7 +20,8 @@ INVALID_RECONNECT_TIME_ERROR = (
     'for example "00:01,00:02" or ["00:01","00:02"]'
 )
 DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
-IRONS_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
+SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
+IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 
 
 class DataSourceConfig(BaseModel):
@@ -36,18 +37,18 @@ class DataSyncConfig(BaseModel):
     sources: dict[str, DataSourceConfig] = Field(
         default_factory=lambda: {
             "seerapi": DataSourceConfig(
-                url=f"{IRONS_DATA_RELEASE}/ironsbot-data-latest/ironsbot-data.sqlite",
+                url=f"{SEERAPI_DATA_RELEASE}/ironsbot-data-latest/ironsbot-data.sqlite",
                 fingerprint_url=(
-                    f"{IRONS_DATA_RELEASE}/ironsbot-data-latest/"
+                    f"{SEERAPI_DATA_RELEASE}/ironsbot-data-latest/"
                     "ironsbot-data.sqlite.sha256"
                 ),
                 interval_minutes=60,
                 local_path="data/ironsbot-data.sqlite",
             ),
             "aliases": DataSourceConfig(
-                url=f"{IRONS_DATA_RELEASE}/alias-db-latest/aliases-data.sqlite",
+                url=f"{IRONSBOT_RELEASE}/alias-db-latest/aliases-data.sqlite",
                 fingerprint_url=(
-                    f"{IRONS_DATA_RELEASE}/alias-db-latest/"
+                    f"{IRONSBOT_RELEASE}/alias-db-latest/"
                     "aliases-data.sqlite.sha256"
                 ),
                 interval_minutes=60,
@@ -182,7 +183,8 @@ __all__ = [
     "DEFAULT_BROADCAST_MESSAGE",
     "INVALID_RECONNECT_TIME_ERROR",
     "INVALID_RESTART_TIME_ERROR",
-    "IRONS_DATA_RELEASE",
+    "IRONSBOT_RELEASE",
+    "SEERAPI_DATA_RELEASE",
     "DataSourceConfig",
     "DataSyncConfig",
     "HeadlessConfig",

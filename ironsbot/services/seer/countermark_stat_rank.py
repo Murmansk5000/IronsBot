@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from ironsbot.plugins.seer_data.db import SeerAPISession
 
 RANK_LIST_SIZE = 20
+MIN_COMBINATION_PARTS = 2
 ANGLE_MARKERS = {
     "一角": 1,
     "1角": 1,
@@ -52,6 +53,7 @@ _MINTMARK_QUALITY_KEYS = ("Quality", "quality")
 class StatSpec:
     key: str
     title: str
+    components: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,32 +73,54 @@ class CountermarkStatRankItem:
     angle_count: int | None
 
 
-STAT_ALIASES: dict[str, StatSpec] = {
-    "攻击": StatSpec("atk", "攻击"),
-    "物攻": StatSpec("atk", "攻击"),
-    "防御": StatSpec("def_", "防御"),
-    "物防": StatSpec("def_", "防御"),
-    "特攻": StatSpec("sp_atk", "特攻"),
-    "特防": StatSpec("sp_def", "特防"),
-    "盾": StatSpec("shield", "盾"),
-    "双防": StatSpec("shield", "盾"),
-    "双防和": StatSpec("shield", "盾"),
-    "防御特防": StatSpec("shield", "盾"),
-    "防御加特防": StatSpec("shield", "盾"),
-    "双攻": StatSpec("dual_atk", "双攻"),
-    "双攻和": StatSpec("dual_atk", "双攻"),
-    "攻击特攻": StatSpec("dual_atk", "双攻"),
-    "攻击加特攻": StatSpec("dual_atk", "双攻"),
-    "速度": StatSpec("spd", "速度"),
-    "速": StatSpec("spd", "速度"),
-    "体力": StatSpec("hp", "体力"),
-    "血量": StatSpec("hp", "体力"),
-    "生命": StatSpec("hp", "体力"),
-    "总和": StatSpec("total", "总和"),
-    "总值": StatSpec("total", "总和"),
-    "总数值": StatSpec("total", "总和"),
-    "综合": StatSpec("total", "总和"),
+BASE_STAT_ALIASES: dict[str, StatSpec] = {
+    "攻击": StatSpec("atk", "攻击", ("atk",)),
+    "物攻": StatSpec("atk", "攻击", ("atk",)),
+    "防御": StatSpec("def_", "防御", ("def_",)),
+    "物防": StatSpec("def_", "防御", ("def_",)),
+    "特攻": StatSpec("sp_atk", "特攻", ("sp_atk",)),
+    "特防": StatSpec("sp_def", "特防", ("sp_def",)),
+    "速度": StatSpec("spd", "速度", ("spd",)),
+    "速": StatSpec("spd", "速度", ("spd",)),
+    "体力": StatSpec("hp", "体力", ("hp",)),
+    "体": StatSpec("hp", "体力", ("hp",)),
+    "血量": StatSpec("hp", "体力", ("hp",)),
+    "生命": StatSpec("hp", "体力", ("hp",)),
 }
+
+COMPOSITE_STAT_ALIASES: dict[str, StatSpec] = {
+    "盾": StatSpec("shield", "盾", ("def_", "sp_def")),
+    "双防": StatSpec("shield", "盾", ("def_", "sp_def")),
+    "双防和": StatSpec("shield", "盾", ("def_", "sp_def")),
+    "防御特防": StatSpec("shield", "盾", ("def_", "sp_def")),
+    "防御加特防": StatSpec("shield", "盾", ("def_", "sp_def")),
+    "双攻": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
+    "双攻和": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
+    "攻击特攻": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
+    "攻击加特攻": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
+    "总和": StatSpec("total", "总和", ("total",)),
+    "总值": StatSpec("total", "总和", ("total",)),
+    "总数值": StatSpec("total", "总和", ("total",)),
+    "综合": StatSpec("total", "总和", ("total",)),
+}
+
+STAT_ALIASES: dict[str, StatSpec] = {
+    **BASE_STAT_ALIASES,
+    **COMPOSITE_STAT_ALIASES,
+}
+
+COMBINABLE_STAT_ALIASES: tuple[tuple[str, StatSpec], ...] = tuple(
+    sorted(
+        {
+            **BASE_STAT_ALIASES,
+            "盾": COMPOSITE_STAT_ALIASES["盾"],
+            "双防": COMPOSITE_STAT_ALIASES["盾"],
+            "双攻": COMPOSITE_STAT_ALIASES["双攻"],
+        }.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+)
 
 
 def _normalize_command_text(text: str) -> str:
@@ -121,8 +145,9 @@ def parse_countermark_stat_rank_command(
 ) -> CountermarkStatRankCommand | None:
     normalized = _normalize_command_text(text)
     has_angle_marker = any(marker in normalized for marker in ANGLE_MARKERS)
+    has_countermark_marker = "刻印" in normalized
     if not normalized.endswith("榜") or (
-        "刻印" not in normalized and not has_angle_marker
+        not has_countermark_marker and not has_angle_marker
     ):
         return None
     if normalized in _NON_STAT_COUNTERMARK_RANK_COMMANDS:
@@ -149,11 +174,42 @@ def parse_countermark_stat_rank_command(
     for marker in ("排行榜", "排行", "数值", "属性", "刻印", "榜"):
         stat_text = stat_text.replace(marker, "")
 
-    stat = STAT_ALIASES.get(stat_text)
+    stat = parse_stat_spec(stat_text)
     return CountermarkStatRankCommand(
         stat=stat,
         scope=scope,
         angle_count=angle_count,
+    )
+
+
+def parse_stat_spec(text: str) -> StatSpec | None:
+    if stat := STAT_ALIASES.get(text):
+        return stat
+
+    remaining = text
+    parts: list[StatSpec] = []
+    while remaining:
+        for alias, stat in COMBINABLE_STAT_ALIASES:
+            if remaining.startswith(alias):
+                parts.append(stat)
+                remaining = remaining.removeprefix(alias)
+                break
+        else:
+            return None
+
+    if len(parts) < MIN_COMBINATION_PARTS:
+        return None
+
+    components: list[str] = []
+    titles: list[str] = []
+    for part in parts:
+        components.extend(part.components or (part.key,))
+        titles.append(part.title)
+
+    return StatSpec(
+        key="combo:" + "+".join(components),
+        title="".join(titles),
+        components=tuple(components),
     )
 
 
@@ -258,7 +314,7 @@ def build_countermark_stat_rank_message(
         return (
             "❌ 刻印数值榜需要指定属性。\n"
             f"可用属性：{AVAILABLE_STATS_TEXT}\n"
-            "例：刻印攻击榜 / 六角双攻榜 / 刻印盾榜 / 刻印总和榜"
+            "例：刻印攻击榜 / 六角双攻榜 / 刻印盾体榜 / 特攻盾刻印榜 / 刻印总和榜"
         )
 
     scope_text = _scope_text(command)
@@ -390,10 +446,14 @@ def _format_number(value: float) -> str:
 def _get_stat_value(attrs: SixAttributes, stat: StatSpec) -> float:
     if stat.key == "total":
         return float(attrs.total)
-    if stat.key == "shield":
-        return float(attrs.def_ + attrs.sp_def)
-    if stat.key == "dual_atk":
-        return float(attrs.atk + attrs.sp_atk)
+    if stat.components:
+        total = 0.0
+        for component in stat.components:
+            if component == "total":
+                total += float(attrs.total)
+            else:
+                total += float(getattr(attrs, component))
+        return total
 
     return float(getattr(attrs, stat.key))
 
