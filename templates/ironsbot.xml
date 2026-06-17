@@ -12,7 +12,7 @@
   <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins. Version tags use latest plus project-version.revision tags and exact sha tags; behavior config is file-based through APP_CONFIG_PATH, with environment variables kept for secrets, credentials, and deployment runtime only.</Overview>
   <Description>IronsBot 是一个基于 NoneBot2 和 OneBot v11 的 QQ 机器人。这个镜像面向赛尔号查询、群聊回复、B 站动态监控、活动提醒、AI 聊天和 Unraid 部署。行为配置写在 /config/ironsbot.toml，环境变量只保留 OneBot token、AI Key、米米号凭据和部署运行参数，数据缓存保存在 /app/data。超级管理员可使用 /更新数据 手动刷新 SQLite 数据。</Description>
   <Category>Tools:Utilities</Category>
-  <WebUI />
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/icon.png</Icon>
   <ReadMe>https://github.com/Murmansk5000/IronsBot/blob/main/docker/README.md</ReadMe>
