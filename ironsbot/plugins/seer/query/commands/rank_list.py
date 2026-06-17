@@ -6,10 +6,6 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import (
-    finish_event_reply,
-    send_event_reply,
-)
 from ironsbot.plugins.admin_priority import release_superuser_priority
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.local_rank import (
@@ -53,6 +49,10 @@ from ironsbot.services.seer.rank_list import (
 )
 from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.shared.messaging import (
+    finish_event_reply,
+    send_event_reply,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -109,6 +109,10 @@ rank_cache_status_matcher = matcher_group.on_fullmatch(
         "缓存状态",
         "查询缓存",
         "样本缓存",
+        "样本状态",
+        "样本缓存情况",
+        "样本缓存状态",
+        "样本情况",
         "样本榜状态",
         "本地榜状态",
         "机器人样本状态",

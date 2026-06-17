@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Custom high-priority entry points for upstream Seer info queries.
+"""High-priority entry points for upstream Seer info queries.
 
-These matchers keep upstream query behavior available through the custom plugin
-without editing the upstream plugin code. They intentionally reuse upstream
-handlers and renderers, while registering at the custom plugin priority so they
-win before the original matchers.
+These matchers keep upstream query behavior available through the Seer query
+adapter without editing upstream-derived handlers and renderers. They register
+at the feature plugin priority so they win before lower-priority matchers.
 """
 
 from typing import Annotated
@@ -14,6 +13,7 @@ from nonebot.adapters import Event
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends, Fullmatch
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot_plugin_saa import Image, MessageFactory, Text
 from seerapi_models import PetORM, PetSkinORM
@@ -22,6 +22,7 @@ from sqlmodel import select
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
+from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
@@ -75,10 +76,19 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "peak_user": "_handle_peak_user",
 }
 
+
+async def _is_not_rank_query(event: Event) -> bool:
+    return not is_rank_query_text(event.get_plaintext())
+
+
+not_rank_query = Rule(_is_not_rank_query)
+
+
 pet_image_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(
         prefixes=("立绘", "皮肤", "查询立绘"),
     )
+    & not_rank_query
     & no_reply()
 )
 
@@ -441,6 +451,7 @@ pet_info_matcher = matcher_group.on_message(
         prefixes=("精灵", "查询精灵信息", "魂印", "技能"),
         suffixes=("查询精灵信息", "魂印", "技能"),
     )
+    & not_rank_query
     & no_reply()
 )
 
@@ -471,7 +482,7 @@ async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
     return msg
 
 mintmark_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith("刻印") & no_reply()
+    rule=startswith_or_endswith("刻印") & not_rank_query & no_reply()
 )
 
 
@@ -582,6 +593,7 @@ suit_matcher = matcher_group.on_message(
         ("套装", "查询套装信息"),
         suffixes="套装",
     )
+    & not_rank_query
     & no_reply()
 )
 
@@ -610,6 +622,7 @@ equip_matcher = matcher_group.on_message(
         ("部件", "查询部件信息"),
         suffixes="部件",
     )
+    & not_rank_query
     & no_reply()
 )
 
@@ -638,6 +651,7 @@ title_matcher = matcher_group.on_message(
         ("称号", "查询称号信息"),
         suffixes="称号",
     )
+    & not_rank_query
     & no_reply()
 )
 

@@ -82,7 +82,7 @@ async def _leave_priority_gate(_event: Event, state: T_State) -> None:
 
 
 async def wait_for_superuser_priority(event: Event | None) -> None:
-    """Checkpoint for long custom handlers before they send a response."""
+    """Checkpoint for long feature handlers before they send a response."""
     if not _priority_config().enabled or event is None:
         return
     if _is_superuser_event(event):

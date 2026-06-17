@@ -34,7 +34,7 @@ def register_local_rank_refresh_job(scheduler: Any) -> None:
         "cron",
         hour=local_rank_config.refresh_hour,
         minute=local_rank_config.refresh_minute,
-        id="custom_get_seer_info_local_rank_refresh",
+        id="seer_local_rank_refresh",
         replace_existing=True,
     )
 

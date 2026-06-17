@@ -37,11 +37,11 @@ from .image_selection_service import (
 )
 
 matcher_group = MatcherGroup()
-CUSTOM_SENDPIC_PLUGIN_PREFIX = "custom_sendpic"
+SENDPIC_PLUGIN_PREFIX = "sendpic"
 
 
 def _plugin_name_for_config(config: PicConfig) -> str:
-    return f"{CUSTOM_SENDPIC_PLUGIN_PREFIX}:{config.id}"
+    return f"{SENDPIC_PLUGIN_PREFIX}:{config.id}"
 
 
 def get_cnb_backend(

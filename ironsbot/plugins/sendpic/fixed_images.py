@@ -20,7 +20,7 @@ from .fixed_image_service import (
 
 IMAGE_DIR = DEFAULT_FIXED_IMAGE_DIR
 IMAGE_COMMANDS = FIXED_IMAGE_COMMANDS
-FIXED_IMAGE_PLUGIN_NAME = "custom_sendpic_fixed_image"
+FIXED_IMAGE_PLUGIN_NAME = "sendpic_fixed_image"
 
 
 class FixedImagePlugin:
@@ -29,7 +29,7 @@ class FixedImagePlugin:
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        from ironsbot.custom_plugins.message_actions import finish_event_reply
+        from ironsbot.shared.messaging import finish_event_reply
 
         filename = str(context.data["filename"])
         image_segment = build_fixed_image_segment(IMAGE_DIR, filename)
