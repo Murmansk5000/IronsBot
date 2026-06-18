@@ -1,19 +1,11 @@
-import asyncio
-
 from nonebot import on_message
-from nonebot.adapters.onebot.v11 import Message, MessageEvent
-from nonebot.exception import FinishedException
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import (
-    finish_event_reply,
-    finish_message_sequence,
-)
-from ironsbot.plugins.team_shortcut.adapter import fetch_team_shortcut_result
 from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.constants import (
     EMPTY_REPLY,
@@ -27,13 +19,12 @@ from ironsbot.services.ai.intent import (
     format_action_template,
     get_ai_intent_config,
     get_configured_actions,
-    get_team_ids,
-    get_team_resource_users,
-    get_team_shortcut_config,
     is_action_allowed,
     reply_is_yes,
 )
-from ironsbot.shared.messaging.text import build_message
+from ironsbot.shared.messaging import (
+    finish_event_reply,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -45,15 +36,18 @@ from .config import Config
 
 ACTION_KEY = "_ai_intent_action"
 AI_INTENT_PLUGIN_NAME = "ai_intent"
+TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
+TEAM_ACTIONS = {"team_recommend", "team_shortcut"}
 
 
 __plugin_meta__ = PluginMetadata(
-    name="AI意图动作",
-    description="用关键词粗筛消息，再让 AI 判断意图并触发配置动作。",
+    name="AI意图分析",
+    description="用关键词粗筛消息，再让 AI 判断意图并分发给对应功能。",
     usage=(
-        "【AI意图动作】\n"
-        "默认规则：消息包含“战队”时，请 AI 判断发送者是否想加入战队。\n"
-        "若判断为是，则发送 5 级战队审核群链接。\n"
+        "【AI意图分析】\n"
+        "先用关键词粗筛，再让 AI 判断消息是否符合配置意图。\n"
+        "默认规则：消息包含“战队”时，判断发送者是否想加入战队；"
+        "若判断为是，交给“战队推荐”功能发送审核群链接。\n"
         "可通过 ai.intent_actions 配置更多关键词、判定意图和动作。"
     ),
     config=Config,
@@ -104,58 +98,6 @@ ai_intent_action_matcher = on_message(
 )
 
 
-def _build_resource_notice() -> Message:
-    config = get_team_shortcut_config()
-    return build_message(
-        config.resource_message,
-        at_user_ids=get_team_resource_users(),
-    )
-
-
-async def _handle_team_shortcut_action(
-    action: AiIntentAction,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    team_ids = action.team_ids or get_team_ids()
-    if not team_ids:
-        await finish_event_reply(
-            matcher,
-            event,
-            "战队信息还没有配置 seer.team_shortcut.team_ids。",
-            mention_sender=True,
-        )
-
-    replies: list[Message] = []
-    resource_notice_needed = False
-    for team_id in team_ids:
-        try:
-            result = await asyncio.wait_for(
-                fetch_team_shortcut_result(team_id),
-                timeout=get_team_shortcut_config().query_timeout_seconds,
-            )
-        except FinishedException:
-            raise
-        except Exception as e:  # noqa: BLE001
-            logger.exception(
-                f"AI intent team action query failed, team id {team_id}: {e}"
-            )
-            replies.append(Message(f"战队 {team_id} 查询失败，请稍后再试。"))
-            continue
-
-        replies.append(Message(result.message))
-        if result.resource < get_team_shortcut_config().resource_threshold:
-            resource_notice_needed = True
-
-    if not replies:
-        return
-
-    if action.include_team_resource_notice and resource_notice_needed:
-        replies.append(_build_resource_notice())
-
-    await finish_message_sequence(matcher, replies, event=event)
-
-
 async def _handle_ai_reply_action(
     action: AiIntentAction,
     matcher: Matcher,
@@ -202,8 +144,14 @@ class AiIntentPlugin:
         action = state[ACTION_KEY]
         matcher = context.matcher or ai_intent_action_matcher
 
-        if action.action == "team_shortcut":
-            await _handle_team_shortcut_action(action, matcher, event)
+        if action.action in TEAM_ACTIONS:
+            await dispatch_plugin(
+                plugin_name=TEAM_RECOMMEND_PLUGIN_NAME,
+                event=event,
+                matcher=matcher,
+                action=action.action,
+                ai_action=action,
+            )
             return
 
         if action.action == "ai_reply":

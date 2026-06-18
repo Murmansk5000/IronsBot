@@ -32,6 +32,8 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import and_, col, func, or_, select
 
+from ironsbot.config.models.runtime import RemoteBuildConfig
+
 # require("ironsbot.plugins.db_sync")
 from ironsbot.plugins.db_sync import (
     GetFingerprintFn,
@@ -48,12 +50,13 @@ _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
 
 
-def _register(
+def _register(  # noqa: PLR0913
     name: str,
     sync_url: str,
     interval: int,
     local_path: str,
     get_fingerprint: GetFingerprintFn | None = None,
+    remote_build: RemoteBuildConfig | None = None,
 ) -> None:
     if sync_url:
         register_database(
@@ -62,6 +65,7 @@ def _register(
             sync_interval_minutes=interval,
             get_fingerprint=get_fingerprint,
             local_path=local_path,
+            remote_build=remote_build,
         )
     else:
         register_local_database(name, file_path=local_path)
@@ -90,6 +94,7 @@ def _register_source(name: str) -> None:
         source.interval_minutes,
         source.local_path,
         _fingerprint_getter(source.fingerprint_url),
+        source.remote_build,
     )
 
 

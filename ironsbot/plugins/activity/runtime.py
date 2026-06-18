@@ -27,7 +27,6 @@ from .config import get_activity_config
 if TYPE_CHECKING:
     from ironsbot.services.activity.models import ActivityReminder
 
-REMINDER_SEND_DELAY = timedelta(minutes=10)
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 
 _activity_reminder_runtime_state: dict[str, Any] = {
@@ -93,7 +92,6 @@ async def schedule_activity_reminders() -> None:
                 _activity_query_source,
                 _now(),
                 lead_hours=config.lead_hours,
-                reminder_send_delay=REMINDER_SEND_DELAY,
                 grace=timedelta(minutes=config.grace_minutes),
             )
         )

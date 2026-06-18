@@ -17,7 +17,7 @@ from ironsbot.services.ai.chat import (
 )
 from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.history import is_reset_prompt
-from ironsbot.services.ai.mentions import mentions_or_replies_to_bot
+from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
 from ironsbot.shared.messaging import (
@@ -40,8 +40,7 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "群聊中 @机器人 并附带问题\n"
         "私聊中直接发送问题\n"
-        "@机器人 清空聊天\n"
-        "回复机器人消息也可以继续对话"
+        "@机器人 清空聊天"
     ),
     config=Config,
 )
@@ -51,7 +50,7 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
     if not is_allowed(event):
         return False
 
-    if isinstance(event, GroupMessageEvent) and not mentions_or_replies_to_bot(event):
+    if isinstance(event, GroupMessageEvent) and not mentions_bot(event):
         return False
 
     prompt = event.get_plaintext().strip()

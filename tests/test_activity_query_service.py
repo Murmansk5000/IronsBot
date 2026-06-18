@@ -13,7 +13,6 @@ from ironsbot.services.activity.models import (
 
 ACTIVITY_ID_ONE = 1
 ACTIVITY_ID_TWO = 2
-EXPECTED_SEND_MINUTE = 10
 
 
 def dt(
@@ -197,12 +196,11 @@ def test_scheduled_reminders_uses_query_source_activities(
         _query_source(cache),
         dt(2026, 6, 12, 8, 50),
         lead_hours=[1],
-        reminder_send_delay=timedelta(minutes=EXPECTED_SEND_MINUTE),
         grace=timedelta(minutes=15),
     )
 
     assert len(reminders) == 1
-    assert reminders[0].send_time == dt(2026, 6, 12, 9, EXPECTED_SEND_MINUTE)
+    assert reminders[0].send_time == dt(2026, 6, 12, 9)
 
 
 def test_valid_reminders_before_send_filters_against_current_query(

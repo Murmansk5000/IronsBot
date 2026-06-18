@@ -102,7 +102,8 @@ services:
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent` | AI 判定后触发文本或战队动作。 |
+| `ai_intent` | AI 意图分析，并把命中的意图分发给对应功能。 |
+| `team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
@@ -161,6 +162,15 @@ resource_users = [123456789]
 - 皮肤价格、渲染缓存等运行数据
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
+
+## 致谢
+
+本项目当前是独立维护的 IronsBot 分支，但仍感谢上游与社区项目提供的基础和灵感：
+
+- [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)：原 IronsBot 项目，为本项目提供了核心查询、渲染和协议能力参考。
+- 火火（QQ：1157733847，[GitHub: Yogurt114514](https://github.com/Yogurt114514)）：原西塔伦Bot作者。原项目 README 曾写道“谨以此项目向火火致敬，感谢他为赛尔号玩家社区所做的贡献，愿火种永存”，本项目也延续这份感谢。
+- [oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)：无头登录相关实现的参考来源之一。
+- [WhY15w](https://github.com/WhY15w)：Unity 配置与预告图等赛尔号数据工具参考。
 
 ## 上游更新策略
 

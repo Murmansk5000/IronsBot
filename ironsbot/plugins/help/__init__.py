@@ -14,11 +14,11 @@ from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
+from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 from ironsbot.shared.messaging.text import build_message
 from ironsbot.shared.plugin_system import (
@@ -155,7 +155,8 @@ def _format_plugin_list(entries: list[HelpEntry]) -> str:
         lines.append(f"{index}. {entry.name} — {entry.description}")
     lines.append(
         "\n💬 直接发送序号查看详细帮助 · 输入 0 退出\n"
-        "⚠️ 请勿 @ 机器人或回复这条消息；@ 会产生通知，回复消息机器人无法继续处理。"
+        "⚠️ 请直接发送指令；回复机器人消息不会触发功能。\n"
+        "🧩 此机器人无法查询精灵配置；没有收录配置图片，也没有人维护配置收集。"
     )
     return "\n".join(lines)
 
@@ -193,6 +194,8 @@ async def _send_help_reply(
 
 
 def _is_digit_input(event: Event) -> bool:
+    if getattr(event, "reply", None) is not None:
+        return False
     return event.get_plaintext().strip().isdigit()
 
 

@@ -867,10 +867,15 @@ preview_matcher = matcher_group.on_fullmatch("下周预告", rule=no_reply())
 
 
 @preview_matcher.handle()
-async def _handle_preview(event: Event, session: SeerAPISession) -> None:
+async def _handle_preview(
+    matcher: Matcher,
+    event: Event,
+    session: SeerAPISession,
+) -> None:
     await dispatch_plugin(
         plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
         event=event,
+        matcher=matcher,
         action="preview",
         session=session,
     )

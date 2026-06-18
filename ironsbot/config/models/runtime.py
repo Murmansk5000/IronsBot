@@ -24,11 +24,21 @@ SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/downloa
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 
 
+class RemoteBuildConfig(BaseModel):
+    enabled: bool = False
+    repository: str = ""
+    workflow_id: str = ""
+    ref: str = "main"
+    timeout_seconds: float = Field(default=1200.0, gt=0)
+    poll_interval_seconds: float = Field(default=10.0, gt=0)
+
+
 class DataSourceConfig(BaseModel):
     url: str
     fingerprint_url: str = ""
     interval_minutes: int = Field(default=60, gt=0)
     local_path: str
+    remote_build: RemoteBuildConfig = Field(default_factory=RemoteBuildConfig)
 
 
 class DataSyncConfig(BaseModel):
@@ -190,6 +200,7 @@ __all__ = [
     "HeadlessConfig",
     "HeadlessNoticeConfig",
     "HelpConfig",
+    "RemoteBuildConfig",
     "RestartConfig",
     "RuntimeConfig",
     "ServerStatusConfig",
