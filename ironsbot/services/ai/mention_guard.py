@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from ironsbot.services.ai.mentions import mentions_or_replies_to_bot
+from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.permissions import is_allowed as is_ai_allowed
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ async def should_guard_non_ai_group_mention(event: MessageEvent) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
-    if not mentions_or_replies_to_bot(event):
+    if not mentions_bot(event):
         return False
 
     return not is_ai_allowed(event)

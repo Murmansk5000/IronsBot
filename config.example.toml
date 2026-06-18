@@ -142,7 +142,7 @@ mention_guard_reply_max_per_window = 10
 # EN: Message sent when a non-AI group mentions the bot.
 # ZH: 未开启 AI 群 @ 机器人时的提示文案。
 # Example: "直接发送帮助查看可用功能。"
-mention_guard_message = "这个群没有开启 AI 聊天，@或回复我不会触发功能。直接发送指令就可以查询；不会用可以发送“帮助”。"
+mention_guard_message = "这个群没有开启 AI 聊天，@我不会触发功能。直接发送指令就可以查询；不会用可以发送“帮助”。"
 
 # Default: 600.0
 # EN: Admin notice cooldown for AI failures.
@@ -161,6 +161,7 @@ intent_actions_enabled = true
 # intent, classifier_prompt, action, message, reply_prompt, team_ids,
 # include_team_resource_notice, exclude_commands.
 # ZH: 启用的意图动作。字段同上，可通过 template 复用内置模板。
+# Built-in join_team uses action = "team_recommend".
 # Example: [{ template = "join_team" }]
 intent_actions = [{ template = "join_team" }]
 
@@ -488,6 +489,20 @@ fingerprint_url = "https://github.com/Murmansk5000/seerapi/releases/download/iro
 interval_minutes = 60
 # Default: "data/ironsbot-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
 local_path = "data/ironsbot-data.sqlite"
+
+[runtime.data_sync.sources.seerapi.remote_build]
+# Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
+enabled = true
+# EN: GitHub repository that owns the build workflow. ZH: 拥有数据构建 workflow 的 GitHub 仓库。
+repository = "Murmansk5000/seerapi"
+# EN: Workflow file name or id. ZH: workflow 文件名或 ID。
+workflow_id = "build-ironsbot-data-db.yml"
+# EN: Branch/ref used by workflow_dispatch. ZH: workflow_dispatch 使用的分支或 ref。
+ref = "main"
+# Default: 1200; EN: Max wait seconds for manual update. ZH: 手动更新最多等待秒数。
+timeout_seconds = 1200
+# Default: 10; EN: Poll interval seconds. ZH: 查询 workflow 状态的间隔秒数。
+poll_interval_seconds = 10
 
 [runtime.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"

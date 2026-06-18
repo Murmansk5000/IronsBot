@@ -115,12 +115,11 @@ def effective_reminder_send_time(
     return None
 
 
-def build_scheduled_reminders(  # noqa: PLR0913
+def build_scheduled_reminders(
     activities: Iterable[ActivityInfo],
     now: datetime,
     *,
     lead_hours: Iterable[int],
-    reminder_send_delay: timedelta,
     grace: timedelta,
     soon_ending_threshold: timedelta,
 ) -> list[ActivityReminder]:
@@ -136,11 +135,7 @@ def build_scheduled_reminders(  # noqa: PLR0913
             continue
 
         for lead_hour in lead_hours:
-            planned_send_time = (
-                deadline.end_time
-                - timedelta(hours=lead_hour)
-                + reminder_send_delay
-            )
+            planned_send_time = deadline.end_time - timedelta(hours=lead_hour)
             send_time = effective_reminder_send_time(
                 planned_send_time,
                 now,

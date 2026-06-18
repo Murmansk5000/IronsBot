@@ -90,6 +90,7 @@ def load_secrets_config(env: Mapping[str, str] | None = None) -> SecretsConfig:
                 "ONEBOT_ACCESS_TOKEN": "onebot_access_token",
                 "AI_KEY": "ai_key",
                 "SENDPIC_CNB_TOKEN": "sendpic_cnb_token",
+                "GITHUB_WORKFLOW_TOKEN": "github_workflow_token",
             },
         )
     )

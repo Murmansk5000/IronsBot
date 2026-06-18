@@ -31,25 +31,3 @@ def mentions_bot(event: GroupMessageEvent) -> bool:
         getattr(segment, "type", "") == "at" and _segment_at_qq(segment) == self_id
         for segment in message
     )
-
-
-def replies_to_bot(event: GroupMessageEvent) -> bool:
-    self_id = _event_self_id(event)
-    if not self_id:
-        return False
-
-    reply = getattr(event, "reply", None)
-    if reply is None:
-        return False
-
-    sender = getattr(reply, "sender", None)
-    if isinstance(sender, dict):
-        sender_id = sender.get("user_id")
-    else:
-        sender_id = getattr(sender, "user_id", None)
-
-    return str(sender_id or "") == self_id
-
-
-def mentions_or_replies_to_bot(event: GroupMessageEvent) -> bool:
-    return mentions_bot(event) or replies_to_bot(event)

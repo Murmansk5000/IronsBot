@@ -18,10 +18,13 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
+from ironsbot.config import load_secrets_config
+from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
+from .github_actions import WorkflowRunResult, trigger_and_wait_workflow
 from .manager import db_manager
 
 GetFingerprintFn = Callable[[httpx.AsyncClient], Awaitable[str]]
@@ -32,6 +35,7 @@ class _SyncEntry(NamedTuple):
     sync_interval_minutes: int
     get_fingerprint: GetFingerprintFn | None = None
     local_path: str | None = None
+    remote_build: RemoteBuildConfig | None = None
 
 
 _sync_locks: dict[str, asyncio.Lock] = {}
@@ -40,6 +44,7 @@ _registered_syncs: dict[str, _SyncEntry] = {}
 _registered_local_databases: dict[str, str] = {}
 _prepared_databases: set[str] = set()
 _fingerprints: dict[str, str] = {}
+_remote_build_results: dict[str, WorkflowRunResult] = {}
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 ADMIN_COMMAND_PREFIX = "/"
 
@@ -104,13 +109,14 @@ def is_sync_running() -> bool:
     )
 
 
-def register_database(
+def register_database(  # noqa: PLR0913
     name: str,
     *,
     sync_url: str,
     sync_interval_minutes: int = 60,
     get_fingerprint: GetFingerprintFn | None = None,
     local_path: str | None = None,
+    remote_build: RemoteBuildConfig | None = None,
 ) -> None:
     """登记一个从远程同步的内存数据库。供其他插件在模块级代码中调用。
 
@@ -125,7 +131,11 @@ def register_database(
         return
 
     _registered_syncs[name] = _SyncEntry(
-        sync_url, sync_interval_minutes, get_fingerprint, local_path
+        sync_url,
+        sync_interval_minutes,
+        get_fingerprint,
+        local_path,
+        remote_build,
     )
     logger.debug(f"已登记远程同步数据库 '{name}'")
 
@@ -230,14 +240,101 @@ async def run_sync_database(name: str) -> bool:
     return await sync_database(name)
 
 
-async def sync_all_databases() -> dict[str, bool]:
+def _remote_build_names() -> list[str]:
+    return [
+        name
+        for name, entry in _registered_syncs.items()
+        if entry.remote_build is not None and entry.remote_build.enabled
+    ]
+
+
+def _workflow_page(config: RemoteBuildConfig) -> str:
+    return (
+        f"https://github.com/{config.repository}/actions/workflows/"
+        f"{config.workflow_id}"
+    )
+
+
+def _remote_build_failure(
+    *,
+    config: RemoteBuildConfig,
+    message: str,
+) -> WorkflowRunResult:
+    return WorkflowRunResult(
+        ok=False,
+        status="error",
+        conclusion=None,
+        html_url=(
+            _workflow_page(config)
+            if config.repository and config.workflow_id
+            else ""
+        ),
+        message=message,
+    )
+
+
+async def _run_remote_build(name: str, entry: _SyncEntry) -> bool:
+    config = entry.remote_build
+    if config is None or not config.enabled:
+        return True
+
+    token = load_secrets_config().github_workflow_token.strip()
+    if not token:
+        _remote_build_results[name] = _remote_build_failure(
+            config=config,
+            message="缺少 GITHUB_WORKFLOW_TOKEN，未触发远程构建",
+        )
+        logger.warning(
+            f"数据库 '{name}' 远程构建已启用，但未配置 GITHUB_WORKFLOW_TOKEN"
+        )
+        return False
+
+    if not config.repository or not config.workflow_id:
+        _remote_build_results[name] = _remote_build_failure(
+            config=config,
+            message="远程构建配置缺少 repository 或 workflow_id",
+        )
+        logger.warning(f"数据库 '{name}' 远程构建配置不完整")
+        return False
+
+    logger.info(
+        f"开始触发数据库 '{name}' 远程构建: "
+        f"{config.repository}/{config.workflow_id}@{config.ref}"
+    )
+    try:
+        result = await trigger_and_wait_workflow(config, token=token)
+    except Exception as e:  # noqa: BLE001
+        logger.opt(exception=True).error(f"数据库 '{name}' 远程构建请求失败")
+        result = _remote_build_failure(config=config, message=str(e))
+
+    _remote_build_results[name] = result
+    if result.ok:
+        logger.info(f"数据库 '{name}' 远程构建成功: {result.html_url}")
+        return True
+
+    logger.warning(
+        f"数据库 '{name}' 远程构建失败: {result.message}; Actions: {result.html_url}"
+    )
+    return False
+
+
+async def sync_all_databases(*, trigger_remote_build: bool = False) -> dict[str, bool]:
     results: dict[str, bool] = {}
-    for name in _registered_syncs:
+    if trigger_remote_build:
+        _remote_build_results.clear()
+
+    for name, entry in _registered_syncs.items():
+        if trigger_remote_build and not await _run_remote_build(name, entry):
+            results[name] = False
+            continue
         results[name] = await sync_database(name)
     return results
 
 
-async def run_sync_all_databases() -> tuple[bool, dict[str, bool]]:
+async def run_sync_all_databases(
+    *,
+    trigger_remote_build: bool = False,
+) -> tuple[bool, dict[str, bool]]:
     if _sync_all_lock.locked():
         logger.info("数据库全量同步正在运行，跳过本次手动触发")
         return False, {}
@@ -254,7 +351,9 @@ async def run_sync_all_databases() -> tuple[bool, dict[str, bool]]:
             )
             return False, {}
 
-        return True, await sync_all_databases()
+        return True, await sync_all_databases(
+            trigger_remote_build=trigger_remote_build
+        )
 
 
 def load_cached_database(name: str) -> bool:
@@ -303,13 +402,20 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
         await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
 
     names = list(_registered_syncs)
+    remote_names = _remote_build_names()
+    start_message = (
+        f"开始远程构建数据：{', '.join(remote_names)}；"
+        f"随后更新数据：{', '.join(names)}，请稍等。"
+        if remote_names
+        else f"开始更新数据：{', '.join(names)}，请稍等。"
+    )
     await send_event_reply(
         matcher,
         event,
-        f"开始更新数据：{', '.join(names)}，请稍等。",
+        start_message,
     )
 
-    did_run, results = await run_sync_all_databases()
+    did_run, results = await run_sync_all_databases(trigger_remote_build=True)
 
     if not did_run:
         await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
@@ -318,13 +424,28 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
     succeeded = [name for name, ok in results.items() if ok]
 
     if failed:
+        remote_failure_text = _format_remote_build_failures(failed)
+        extra_text = f"\n{remote_failure_text}" if remote_failure_text else ""
         await finish_event_reply(
             matcher,
             event,
             "数据更新完成，但有失败项。\n"
             f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
-            f"失败：{', '.join(failed)}\n"
+            f"失败：{', '.join(failed)}"
+            f"{extra_text}\n"
             "请查看容器日志确认网络或下载错误。"
         )
 
     await finish_event_reply(matcher, event, f"数据更新完成：{', '.join(succeeded)}")
+
+
+def _format_remote_build_failures(failed_names: list[str]) -> str:
+    lines: list[str] = []
+    for name in failed_names:
+        result = _remote_build_results.get(name)
+        if result is None:
+            continue
+        lines.append(f"远程构建失败：{name}（{result.message}）")
+        if result.html_url:
+            lines.append(f"Actions: {result.html_url}")
+    return "\n".join(lines)
