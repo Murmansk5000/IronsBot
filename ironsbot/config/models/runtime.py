@@ -24,13 +24,44 @@ SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/downloa
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 
 
-class RemoteBuildConfig(BaseModel):
-    enabled: bool = False
+class RemoteBuildStepConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = ""
     repository: str = ""
     workflow_id: str = ""
     ref: str = "main"
     timeout_seconds: float = Field(default=1200.0, gt=0)
     poll_interval_seconds: float = Field(default=10.0, gt=0)
+
+    @property
+    def display_name(self) -> str:
+        if self.name:
+            return self.name
+        if self.repository and self.workflow_id:
+            return f"{self.repository}/{self.workflow_id}"
+        return "unnamed workflow"
+
+
+class RemoteBuildConfig(RemoteBuildStepConfig):
+    enabled: bool = False
+    steps: list[RemoteBuildStepConfig] = Field(default_factory=list)
+
+    def build_steps(self) -> list[RemoteBuildStepConfig]:
+        if self.steps:
+            return list(self.steps)
+        if not self.repository and not self.workflow_id:
+            return []
+        return [
+            RemoteBuildStepConfig(
+                name=self.name,
+                repository=self.repository,
+                workflow_id=self.workflow_id,
+                ref=self.ref,
+                timeout_seconds=self.timeout_seconds,
+                poll_interval_seconds=self.poll_interval_seconds,
+            )
+        ]
 
 
 class DataSourceConfig(BaseModel):
@@ -201,6 +232,7 @@ __all__ = [
     "HeadlessNoticeConfig",
     "HelpConfig",
     "RemoteBuildConfig",
+    "RemoteBuildStepConfig",
     "RestartConfig",
     "RuntimeConfig",
     "ServerStatusConfig",

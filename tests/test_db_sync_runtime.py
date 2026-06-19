@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import nonebot
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.runtime import RemoteBuildConfig
+from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
 
 try:
     nonebot.get_driver()
@@ -128,6 +128,34 @@ def _remote_build_config() -> RemoteBuildConfig:
     )
 
 
+def _remote_build_pipeline_config() -> RemoteBuildConfig:
+    return RemoteBuildConfig(
+        enabled=True,
+        steps=[
+            RemoteBuildStepConfig(
+                name="update_unity_config",
+                repository="Murmansk5000/seer-unity-config-parser",
+                workflow_id="schedule.yml",
+            ),
+            RemoteBuildStepConfig(
+                name="sync_config_sources",
+                repository="Murmansk5000/config-sources",
+                workflow_id="sync-upstream.yml",
+            ),
+            RemoteBuildStepConfig(
+                name="build_seer_data",
+                repository="Murmansk5000/seer-data",
+                workflow_id="main.yml",
+            ),
+            RemoteBuildStepConfig(
+                name="build_ironsbot_data",
+                repository="Murmansk5000/seerapi",
+                workflow_id="build-ironsbot-data-db.yml",
+            ),
+        ],
+    )
+
+
 def test_manual_sync_triggers_remote_build_before_download(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -186,6 +214,62 @@ def test_manual_sync_triggers_remote_build_before_download(
         "build:Murmansk5000/seerapi:token",
         "sync:seerapi",
         "sync:aliases",
+    ]
+
+
+def test_manual_sync_runs_remote_build_pipeline_before_download(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        db_sync,
+        "_registered_syncs",
+        {
+            "seerapi": db_sync._SyncEntry(
+                "https://example.invalid/seerapi.sqlite",
+                60,
+                None,
+                None,
+                _remote_build_pipeline_config(),
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        db_sync,
+        "load_secrets_config",
+        lambda: SimpleNamespace(github_workflow_token="token"),
+    )
+
+    async def fake_build(
+        config: RemoteBuildStepConfig,
+        *,
+        token: str,
+    ) -> WorkflowRunResult:
+        calls.append(f"build:{config.name}:{config.repository}:{token}")
+        return WorkflowRunResult(
+            ok=True,
+            status="completed",
+            conclusion="success",
+            html_url=f"https://github.com/{config.repository}/actions/runs/1",
+            message="ok",
+        )
+
+    async def fake_sync(name: str) -> bool:
+        calls.append(f"sync:{name}")
+        return True
+
+    monkeypatch.setattr(db_sync, "trigger_and_wait_workflow", fake_build)
+    monkeypatch.setattr(db_sync, "sync_database", fake_sync)
+
+    results = asyncio.run(db_sync.sync_all_databases(trigger_remote_build=True))
+
+    assert results == {"seerapi": True}
+    assert calls == [
+        "build:update_unity_config:Murmansk5000/seer-unity-config-parser:token",
+        "build:sync_config_sources:Murmansk5000/config-sources:token",
+        "build:build_seer_data:Murmansk5000/seer-data:token",
+        "build:build_ironsbot_data:Murmansk5000/seerapi:token",
+        "sync:seerapi",
     ]
 
 

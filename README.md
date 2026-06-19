@@ -161,6 +161,18 @@ resource_users = [123456789]
 - 全服榜页 SQLite 缓存
 - 皮肤价格、渲染缓存等运行数据
 
+超级管理员发送 `/更新数据` 时，IronsBot 会先按
+`[runtime.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
+
+1. `Murmansk5000/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出 JSON。
+2. `Murmansk5000/config-sources`：同步上游配置源。
+3. `Murmansk5000/seer-data`：构建 SeerAPI 基础 SQLite。
+4. `Murmansk5000/seerapi`：合并基础库、官方 ConfigPackage 补充表和自定义表，发布 IronsBot 运行库。
+
+启用远程构建时，环境变量需要填写 `GITHUB_WORKFLOW_TOKEN`。启动同步和定时同步只下载
+已有 release，不触发 Actions，避免容器启动过慢或频繁消耗 GitHub Actions。
+
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
 ## 致谢
@@ -168,7 +180,7 @@ resource_users = [123456789]
 本项目当前是独立维护的 IronsBot 分支，但仍感谢上游与社区项目提供的基础和灵感：
 
 - [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)：原 IronsBot 项目，为本项目提供了核心查询、渲染和协议能力参考。
-- 火火（QQ：1157733847，[GitHub: Yogurt114514](https://github.com/Yogurt114514)）：原西塔伦Bot作者。原项目 README 曾写道“谨以此项目向火火致敬，感谢他为赛尔号玩家社区所做的贡献，愿火种永存”，本项目也延续这份感谢。
+- 本项目原作是 @火火（[GitHub: Yogurt114514](https://github.com/Yogurt114514)）开发的西塔伦Bot，谨以此项目向 @火火 致敬。感谢他为赛尔号玩家社区所做的贡献，愿火种永存。
 - [oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)：无头登录相关实现的参考来源之一。
 - [WhY15w](https://github.com/WhY15w)：Unity 配置与预告图等赛尔号数据工具参考。
 

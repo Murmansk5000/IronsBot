@@ -19,7 +19,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
 from ironsbot.config import load_secrets_config
-from ironsbot.config.models.runtime import RemoteBuildConfig
+from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
@@ -248,7 +248,7 @@ def _remote_build_names() -> list[str]:
     ]
 
 
-def _workflow_page(config: RemoteBuildConfig) -> str:
+def _workflow_page(config: RemoteBuildConfig | RemoteBuildStepConfig) -> str:
     return (
         f"https://github.com/{config.repository}/actions/workflows/"
         f"{config.workflow_id}"
@@ -257,7 +257,7 @@ def _workflow_page(config: RemoteBuildConfig) -> str:
 
 def _remote_build_failure(
     *,
-    config: RemoteBuildConfig,
+    config: RemoteBuildConfig | RemoteBuildStepConfig,
     message: str,
 ) -> WorkflowRunResult:
     return WorkflowRunResult(
@@ -273,10 +273,25 @@ def _remote_build_failure(
     )
 
 
+def _configured_remote_build_steps(
+    config: RemoteBuildConfig,
+) -> list[RemoteBuildStepConfig]:
+    return config.build_steps()
+
+
 async def _run_remote_build(name: str, entry: _SyncEntry) -> bool:
     config = entry.remote_build
     if config is None or not config.enabled:
         return True
+
+    steps = _configured_remote_build_steps(config)
+    if not steps:
+        _remote_build_results[name] = _remote_build_failure(
+            config=config,
+            message="远程构建配置缺少 steps 或 repository/workflow_id",
+        )
+        logger.warning(f"数据库 '{name}' 远程构建配置缺少可执行 workflow")
+        return False
 
     token = load_secrets_config().github_workflow_token.strip()
     if not token:
@@ -289,33 +304,60 @@ async def _run_remote_build(name: str, entry: _SyncEntry) -> bool:
         )
         return False
 
-    if not config.repository or not config.workflow_id:
-        _remote_build_results[name] = _remote_build_failure(
-            config=config,
-            message="远程构建配置缺少 repository 或 workflow_id",
+    for step_index, step in enumerate(steps, start=1):
+        if not step.repository or not step.workflow_id:
+            _remote_build_results[name] = _remote_build_failure(
+                config=step,
+                message=(
+                    f"远程构建步骤 {step.display_name} "
+                    "缺少 repository 或 workflow_id"
+                ),
+            )
+            logger.warning(
+                f"数据库 '{name}' 远程构建步骤配置不完整: {step.display_name}"
+            )
+            return False
+
+        logger.info(
+            f"开始触发数据库 '{name}' 远程构建步骤 "
+            f"{step_index}/{len(steps)}: {step.display_name} "
+            f"({step.repository}/{step.workflow_id}@{step.ref})"
         )
-        logger.warning(f"数据库 '{name}' 远程构建配置不完整")
+        try:
+            result = await trigger_and_wait_workflow(step, token=token)
+        except Exception as e:  # noqa: BLE001
+            logger.opt(exception=True).error(
+                f"数据库 '{name}' 远程构建步骤请求失败: {step.display_name}"
+            )
+            result = _remote_build_failure(
+                config=step,
+                message=f"{step.display_name}: {e}",
+            )
+
+        _remote_build_results[name] = result
+        if result.ok:
+            logger.info(
+                f"数据库 '{name}' 远程构建步骤成功: "
+                f"{step.display_name}; Actions: {result.html_url}"
+            )
+            continue
+
+        logger.warning(
+            f"数据库 '{name}' 远程构建步骤失败: "
+            f"{step.display_name}; {result.message}; Actions: {result.html_url}"
+        )
+        if not result.message.startswith(step.display_name):
+            _remote_build_results[name] = WorkflowRunResult(
+                ok=result.ok,
+                status=result.status,
+                conclusion=result.conclusion,
+                html_url=result.html_url,
+                message=f"{step.display_name}: {result.message}",
+            )
         return False
 
-    logger.info(
-        f"开始触发数据库 '{name}' 远程构建: "
-        f"{config.repository}/{config.workflow_id}@{config.ref}"
-    )
-    try:
-        result = await trigger_and_wait_workflow(config, token=token)
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=True).error(f"数据库 '{name}' 远程构建请求失败")
-        result = _remote_build_failure(config=config, message=str(e))
-
-    _remote_build_results[name] = result
-    if result.ok:
-        logger.info(f"数据库 '{name}' 远程构建成功: {result.html_url}")
-        return True
-
-    logger.warning(
-        f"数据库 '{name}' 远程构建失败: {result.message}; Actions: {result.html_url}"
-    )
-    return False
+    logger.info(f"数据库 '{name}' 远程构建流水线成功，共 {len(steps)} 步")
+    return True
 
 
 async def sync_all_databases(*, trigger_remote_build: bool = False) -> dict[str, bool]:

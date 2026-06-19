@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ironsbot.services.help_hint import is_poke_at_bot
+from ironsbot.services.help_hint import HelpHintLimiter, is_poke_at_bot
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
     append_help_hint,
@@ -30,3 +30,26 @@ def test_unsupported_feature_help_message_uses_shared_hint() -> None:
 def test_is_poke_at_bot_checks_poke_target() -> None:
     assert is_poke_at_bot(FakePokeEvent(self_id=100, target_id=100))
     assert not is_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
+
+
+def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
+    now = 100.0
+    limiter = HelpHintLimiter(clock=lambda: now)
+
+    assert limiter.can_send(686376929)
+    assert limiter.can_send(686376929)
+    assert limiter.can_send(686376929)
+    assert not limiter.can_send(686376929)
+
+    now = 160.0
+    assert limiter.can_send(686376929)
+
+
+def test_help_hint_limiter_counts_groups_independently() -> None:
+    limiter = HelpHintLimiter(clock=lambda: 100.0)
+
+    assert limiter.can_send(1)
+    assert limiter.can_send(1)
+    assert limiter.can_send(1)
+    assert not limiter.can_send(1)
+    assert limiter.can_send(2)

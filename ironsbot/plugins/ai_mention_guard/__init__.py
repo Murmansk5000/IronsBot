@@ -7,6 +7,7 @@ from ironsbot.services.ai.mention_guard import (
     GuardReplyLimiter,
     should_guard_non_ai_group_mention,
 )
+from ironsbot.services.help_hint import can_send_group_help_hint
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -68,7 +69,9 @@ class AiMentionGuardPlugin:
         event: GroupMessageEvent,
         context: PluginContext,
     ) -> None:
-        if not _get_guard_reply_limiter().can_send(event.group_id):
+        if not can_send_group_help_hint(
+            event.group_id
+        ) or not _get_guard_reply_limiter().can_send(event.group_id):
             return
 
         await finish_event_reply(
