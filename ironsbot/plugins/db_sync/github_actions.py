@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import httpx
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.runtime import RemoteBuildConfig
+    from ironsbot.config.models.runtime import RemoteBuildStepConfig
 
 GITHUB_API_BASE_URL = "https://api.github.com"
 RUN_MATCH_WINDOW_SECONDS = 30
@@ -92,7 +92,7 @@ def _match_workflow_run(
 async def _dispatch_workflow(
     client: AsyncGitHubClient,
     *,
-    config: RemoteBuildConfig,
+    config: RemoteBuildStepConfig,
     token: str,
 ) -> None:
     response = await client.post(
@@ -108,7 +108,7 @@ async def _dispatch_workflow(
 async def _find_dispatched_run(
     client: AsyncGitHubClient,
     *,
-    config: RemoteBuildConfig,
+    config: RemoteBuildStepConfig,
     token: str,
     started_at: datetime,
 ) -> dict[str, Any] | None:
@@ -167,7 +167,7 @@ def _completed_result(run: dict[str, Any]) -> WorkflowRunResult:
 
 
 async def trigger_and_wait_workflow(
-    config: RemoteBuildConfig,
+    config: RemoteBuildStepConfig,
     *,
     token: str,
     client: AsyncGitHubClient | None = None,

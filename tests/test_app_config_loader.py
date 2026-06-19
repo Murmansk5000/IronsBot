@@ -46,12 +46,21 @@ def test_example_config_parses() -> None:
     assert config.seer.team_shortcut.team_ids == []
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
+    remote_build_steps = config.runtime.data_sync.sources[
+        "seerapi"
+    ].remote_build.steps
+    assert [step.name for step in remote_build_steps] == [
+        "update_unity_config",
+        "sync_config_sources",
+        "build_seer_data",
+        "build_ironsbot_data",
+    ]
     assert (
-        config.runtime.data_sync.sources["seerapi"].remote_build.repository
+        remote_build_steps[-1].repository
         == "Murmansk5000/seerapi"
     )
     assert (
-        config.runtime.data_sync.sources["seerapi"].remote_build.workflow_id
+        remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
     assert config.runtime.help.ignored_plugins == []

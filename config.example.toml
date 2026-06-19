@@ -493,15 +493,39 @@ local_path = "data/ironsbot-data.sqlite"
 [runtime.data_sync.sources.seerapi.remote_build]
 # Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
 enabled = true
-# EN: GitHub repository that owns the build workflow. ZH: 拥有数据构建 workflow 的 GitHub 仓库。
-repository = "Murmansk5000/seerapi"
-# EN: Workflow file name or id. ZH: workflow 文件名或 ID。
-workflow_id = "build-ironsbot-data-db.yml"
-# EN: Branch/ref used by workflow_dispatch. ZH: workflow_dispatch 使用的分支或 ref。
+
+# EN: Ordered GitHub Actions pipeline executed before downloading this database.
+# ZH: 下载该数据库前顺序执行的 GitHub Actions 流水线。
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "update_unity_config"
+repository = "Murmansk5000/seer-unity-config-parser"
+workflow_id = "schedule.yml"
 ref = "main"
-# Default: 1200; EN: Max wait seconds for manual update. ZH: 手动更新最多等待秒数。
-timeout_seconds = 1200
-# Default: 10; EN: Poll interval seconds. ZH: 查询 workflow 状态的间隔秒数。
+timeout_seconds = 1800
+poll_interval_seconds = 10
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "sync_config_sources"
+repository = "Murmansk5000/config-sources"
+workflow_id = "sync-upstream.yml"
+ref = "main"
+timeout_seconds = 600
+poll_interval_seconds = 10
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "build_seer_data"
+repository = "Murmansk5000/seer-data"
+workflow_id = "main.yml"
+ref = "main"
+timeout_seconds = 1800
+poll_interval_seconds = 10
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "build_ironsbot_data"
+repository = "Murmansk5000/seerapi"
+workflow_id = "build-ironsbot-data-db.yml"
+ref = "main"
+timeout_seconds = 1800
 poll_interval_seconds = 10
 
 [runtime.data_sync.sources.aliases]
