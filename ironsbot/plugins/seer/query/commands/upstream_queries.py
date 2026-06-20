@@ -75,6 +75,25 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "peak_pet": "_handle_peak_pet",
     "peak_user": "_handle_peak_user",
 }
+QUESTION_LIKE_PET_QUERY_ARGS = {
+    "怎么",
+    "咋",
+    "如何",
+    "什么",
+    "啥",
+    "为什么",
+    "为啥",
+    "哪个",
+    "哪些",
+    "多少",
+    "能不能",
+    "可以",
+    "配置",
+    "技能",
+    "魂印",
+    "查询",
+}
+MIN_MISSING_PET_REPORT_CHARS = 2
 
 
 async def _is_not_rank_query(event: Event) -> bool:
@@ -156,6 +175,11 @@ class UpstreamQueryPlugin:
         pets: tuple[PetORM, ...] = context.data["pets"]
 
         if not pets:
+            if _should_report_missing_pet(arg):
+                await matcher.finish(
+                    f"❌ 未找到精灵或别名：{arg}\n"
+                    "如果这是别名，请先确认别名库已更新。"
+                )
             raise FinishedException
 
         if len(pets) == 1:
@@ -445,6 +469,16 @@ async def _pet_image_resolver(
 ) -> None:
     msg = await _build_pet_image_message(item, session)
     await msg.send()
+
+
+def _should_report_missing_pet(arg: str) -> bool:
+    normalized = "".join(arg.split()).lower()
+    if not normalized or normalized in QUESTION_LIKE_PET_QUERY_ARGS:
+        return False
+    if any(char.isascii() and char.isalnum() for char in normalized):
+        return True
+    return len(normalized) >= MIN_MISSING_PET_REPORT_CHARS
+
 
 pet_info_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(

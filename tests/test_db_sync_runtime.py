@@ -2,8 +2,10 @@ import asyncio
 from collections.abc import Callable
 from types import SimpleNamespace
 
+import httpx
 import nonebot
 from pytest import MonkeyPatch
+from typing_extensions import Self
 
 from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
 
@@ -21,6 +23,8 @@ except RuntimeError as e:
 from ironsbot.plugins import db_sync
 from ironsbot.plugins.db_sync import runtime as db_sync_runtime
 from ironsbot.plugins.db_sync.github_actions import WorkflowRunResult
+
+CONNECT_ERROR_MESSAGE = "connection failed"
 
 
 class FakeDriver:
@@ -401,3 +405,43 @@ def test_remote_build_enabled_without_token_fails_fast(
 
     assert results == {"seerapi": False}
     assert synced == []
+
+
+def test_sync_database_handles_connect_error(monkeypatch: MonkeyPatch) -> None:
+    class FailingStream:
+        async def __aenter__(self) -> object:
+            raise httpx.ConnectError(CONNECT_ERROR_MESSAGE)
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        def stream(self, *_args: object, **_kwargs: object) -> FailingStream:
+            return FailingStream()
+
+    monkeypatch.setattr(db_sync.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(
+        db_sync,
+        "_registered_syncs",
+        {
+            "network_fail": db_sync._SyncEntry(
+                "https://example.invalid/data.sqlite",
+                60,
+                None,
+                None,
+            )
+        },
+    )
+
+    result = asyncio.run(db_sync.sync_database("network_fail"))
+
+    assert result is False

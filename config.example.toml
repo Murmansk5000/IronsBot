@@ -595,3 +595,17 @@ ignored_plugins = []
 enabled = true
 # Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
 wait_timeout_seconds = 300.0
+
+[runtime.logging]
+# Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
+file_enabled = false
+# Default: "data/logs/ironsbot.log"; EN: File log path. ZH: 文件日志路径，建议放在 /app/data 下方便持久化。
+file_path = "data/logs/ironsbot.log"
+# Default: "INFO"; EN: Minimum file log level. ZH: 写入文件的最低日志等级，可填 DEBUG、INFO、WARNING、ERROR 等。
+file_level = "INFO"
+# Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。
+rotation = "20 MB"
+# Default: "14 days"; EN: Keep rotated logs for this duration. ZH: 轮转日志保留时间。
+retention = "14 days"
+# Default: "zip"; EN: Compress rotated logs. Set to "" or null to disable. ZH: 轮转旧日志压缩格式，设为空或 null 表示不压缩。
+compression = "zip"
