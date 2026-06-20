@@ -150,7 +150,7 @@ def register_local_database(name: str, *, file_path: str) -> None:
     logger.debug(f"已登记本地数据库 '{name}': {file_path}")
 
 
-async def sync_database(name: str) -> bool:  # noqa: C901
+async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
     """从远程 URL 下载 SQLite 数据库并导入到内存中。
 
     若注册时提供了 ``get_fingerprint``，会先获取远程指纹并与上次成功同步
@@ -216,8 +216,23 @@ async def sync_database(name: str) -> bool:  # noqa: C901
             size_mb = len(content) / (1024 * 1024)
             logger.info(f"数据库 '{name}' 已同步到内存，源文件大小: {size_mb:.2f} MB")
 
-        except httpx.HTTPError:
-            logger.exception(f"数据库 '{name}' 同步失败（HTTP 错误）")
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                f"数据库 '{name}' 同步失败（HTTP {e.response.status_code}）："
+                f"{e.request.url}"
+            )
+            return False
+        except httpx.TransportError as e:
+            logger.warning(
+                f"数据库 '{name}' 同步失败（网络连接错误）："
+                f"{type(e).__name__}: {e}"
+            )
+            return False
+        except httpx.HTTPError as e:
+            logger.warning(
+                f"数据库 '{name}' 同步失败（HTTP 客户端错误）："
+                f"{type(e).__name__}: {e}"
+            )
             return False
         except (OSError, ValueError):
             logger.exception(f"数据库 '{name}' 同步失败（文件或导入错误）")
