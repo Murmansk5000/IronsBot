@@ -75,12 +75,11 @@ def test_first_week_offer_schedules_late_night_and_morning_reminders() -> None:
         [activity],
         dt(2026, 6, 7, 23),
         lead_hours=[11, 1],
-        reminder_send_delay=timedelta(minutes=10),
         grace=timedelta(minutes=15),
         soon_ending_threshold=timedelta(days=7),
     )
 
     assert [(item.lead_hours, item.send_time) for item in reminders] == [
-        (11, dt(2026, 6, 7, 23, 10)),
-        (1, dt(2026, 6, 8, 9, 10)),
+        (11, dt(2026, 6, 7, 23)),
+        (1, dt(2026, 6, 8, 9)),
     ]

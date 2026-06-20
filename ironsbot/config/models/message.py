@@ -11,6 +11,9 @@ from ironsbot.shared.config.parsing import int_list, string_list
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 DEFAULT_SENDPIC_MESSAGE_TEMPLATE = "{image}"
+TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR = (
+    "team_audit_welcome.message must not be empty"
+)
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
 
 
@@ -116,6 +119,42 @@ class MeetingConfig(BaseModel):
         return string_list(value)
 
 
+class TeamAuditWelcomeConfig(BaseModel):
+    enabled: bool = False
+    feature: str = "team_audit"
+    groups: list[int | str] = Field(default_factory=list)
+    message: str = (
+        "欢迎加入战队审核群。\n"
+        "如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，"
+        "方便管理员审核。\n"
+        "审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
+    )
+
+    @field_validator("feature")
+    @classmethod
+    def normalize_feature(cls, value: str) -> str:
+        feature = value.strip()
+        return feature or "team_audit"
+
+    @field_validator("groups", mode="before")
+    @classmethod
+    def normalize_groups(cls, value: object) -> object:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            return string_list(stripped) if stripped else []
+        return value
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR)
+        return message
+
+
 class PicConfig(BaseModel):
     id: str
     backend: SendpicBackendType
@@ -187,6 +226,9 @@ class MessageConfig(BaseModel):
     group_commands: list[GroupCommandMessageAction] = Field(default_factory=list)
     group_schedules: list[GroupScheduledMessageAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
+    team_audit_welcome: TeamAuditWelcomeConfig = Field(
+        default_factory=TeamAuditWelcomeConfig
+    )
     sendpic: SendpicBehaviorConfig = Field(default_factory=SendpicBehaviorConfig)
 
 

@@ -3,16 +3,22 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, PrivateMessa
 from ironsbot.shared.messaging.conversations import (
     command_reply_check,
     event_conversation_session_id,
+    is_self_message_event,
 )
 
 
-def _group_event(text: str = "帮助") -> GroupMessageEvent:
+def _group_event(
+    text: str = "帮助",
+    *,
+    user_id: int = 2,
+    self_id: int = 1,
+) -> GroupMessageEvent:
     return GroupMessageEvent(
         time=0,
-        self_id=1,
+        self_id=self_id,
         post_type="message",
         sub_type="normal",
-        user_id=2,
+        user_id=user_id,
         message_type="group",
         message_id=3,
         message=Message(text),
@@ -60,3 +66,8 @@ def test_command_reply_check_matches_normalized_commands() -> None:
 
     assert check(_group_event(" 收 集 "))
     assert not check(_group_event("巅峰"))
+
+
+def test_is_self_message_event_detects_bot_message() -> None:
+    assert is_self_message_event(_group_event(user_id=1, self_id=1))
+    assert not is_self_message_event(_group_event(user_id=2, self_id=1))

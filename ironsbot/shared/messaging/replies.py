@@ -3,12 +3,19 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
+from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
-from nonebot.matcher import Matcher
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 
 from .text import build_message
+
+if TYPE_CHECKING:
+    from nonebot.matcher import Matcher
 
 ReplyMessage = str | Message | MessageSegment
 BeforeReplySendHook = Callable[[MessageEvent | None], Awaitable[None]]
@@ -39,7 +46,7 @@ def configure_reply_delivery_policy(
     before_send: BeforeReplySendHook | None = None,
     message_limiter: ReplyMessageLimiter | None = None,
 ) -> None:
-    global _before_reply_send_hook, _reply_message_limiter
+    global _before_reply_send_hook, _reply_message_limiter  # noqa: PLW0603
 
     if before_send is not None:
         _before_reply_send_hook = before_send
@@ -55,6 +62,8 @@ def event_sender_at_user_ids(
     del mention_sender
 
     if not isinstance(event, GroupMessageEvent):
+        return ()
+    if event.user_id == event.self_id:
         return ()
 
     return (event.user_id,)
