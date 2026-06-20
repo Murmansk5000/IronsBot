@@ -3,7 +3,11 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.custom_plugins.message_actions import finish_event_reply
+from ironsbot.services.ai.mention_guard import (
+    GuardReplyLimiter,
+    should_guard_non_ai_group_mention,
+)
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -11,7 +15,6 @@ from ironsbot.shared.plugin_system import (
 )
 
 from .config import get_ai_config
-from .service import GuardReplyLimiter, should_guard_non_ai_group_mention
 
 _guard_reply_limiter: GuardReplyLimiter | None = None
 AI_MENTION_GUARD_PLUGIN_NAME = "ai_mention_guard"
@@ -72,7 +75,7 @@ class AiMentionGuardPlugin:
             context.matcher or mention_guard_matcher,
             event,
             get_ai_config().mention_guard_message,
-            mention_sender=True,
+            mention_sender=False,
         )
 
 

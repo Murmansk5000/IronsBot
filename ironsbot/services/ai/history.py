@@ -1,10 +1,14 @@
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from .config import get_ai_config
+from ironsbot.config import get_app_config
 
 HistoryMessage = dict[str, str]
 
 _HISTORY: dict[str, list[HistoryMessage]] = {}
+
+
+def _get_ai_config():
+    return get_app_config().ai
 
 
 def history_key(event: MessageEvent) -> str:
@@ -15,7 +19,7 @@ def history_key(event: MessageEvent) -> str:
 
 
 def trim_history(history: list[HistoryMessage]) -> list[HistoryMessage]:
-    config = get_ai_config()
+    config = _get_ai_config()
     if config.history_turns <= 0:
         return []
 
@@ -31,7 +35,7 @@ def build_messages(
     messages = [
         {
             "role": "system",
-            "content": get_ai_config().prompt,
+            "content": _get_ai_config().prompt,
         }
     ]
     memory_text = format_memory(memory or [])
@@ -68,7 +72,7 @@ def is_reset_prompt(prompt: str) -> bool:
     normalized = "".join(prompt.split())
     return any(
         normalized == "".join(command.split())
-        for command in get_ai_config().reset_commands
+        for command in _get_ai_config().reset_commands
     )
 
 

@@ -23,7 +23,7 @@ DEFAULT_AI_PROMPT = (
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
 )
 DEFAULT_AI_MENTION_GUARD_MESSAGE = (
-    "这个群没有开启 AI 聊天，@或回复我不会触发功能。"
+    "这个群没有开启 AI 聊天，@我不会触发功能。"
     + DIRECT_COMMAND_HELP_HINT_TEXT
 )
 DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS = 60.0
@@ -68,7 +68,9 @@ class AiActionBase(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     intent: str = DEFAULT_JOIN_TEAM_INTENT
     classifier_prompt: str = DEFAULT_CLASSIFIER_PROMPT
-    action: Literal["message", "team_shortcut", "ai_reply"] = "team_shortcut"
+    action: Literal["message", "team_recommend", "team_shortcut", "ai_reply"] = (
+        "team_recommend"
+    )
     message: str = ""
     reply_prompt: str = ""
     team_ids: list[int] = Field(default_factory=list)
@@ -119,7 +121,7 @@ def default_ai_templates() -> dict[str, AiActionTemplate]:
         "join_team": AiActionTemplate(
             id="join_team",
             keywords=["战队"],
-            action="message",
+            action="team_recommend",
             intent=DEFAULT_JOIN_TEAM_INTENT,
             message=DEFAULT_JOIN_TEAM_MESSAGE,
             include_team_resource_notice=False,

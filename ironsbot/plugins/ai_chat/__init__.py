@@ -7,7 +7,20 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.custom_plugins.message_actions import (
+from ironsbot.services.ai.chat import (
+    build_ai_chat_context,
+    can_show_admin_notice,
+    get_ai_chat_key,
+    is_ai_error_reply,
+    record_successful_ai_reply,
+    reset_ai_chat_context,
+)
+from ironsbot.services.ai.client import call_ai_chat, get_ai_key
+from ironsbot.services.ai.history import is_reset_prompt
+from ironsbot.services.ai.mentions import mentions_bot
+from ironsbot.services.ai.notifier import notify_superusers_once
+from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
+from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
@@ -17,21 +30,9 @@ from ironsbot.shared.plugin_system import (
     register_plugin,
 )
 
-from .client import call_ai_chat
-from .config import Config, get_ai_config, get_ai_key
-from .constants import AI_CHAT_PROMPT_KEY
-from .history import is_reset_prompt
-from .mentions import mentions_or_replies_to_bot
-from .notifier import notify_superusers_once
-from .permissions import is_allowed, is_reserved_private_command
-from .service import (
-    build_ai_chat_context,
-    can_show_admin_notice,
-    get_ai_chat_key,
-    is_ai_error_reply,
-    record_successful_ai_reply,
-    reset_ai_chat_context,
-)
+from .config import Config, get_ai_config
+
+AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 
 __plugin_meta__ = PluginMetadata(
     name="AI聊天",
@@ -39,8 +40,7 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "群聊中 @机器人 并附带问题\n"
         "私聊中直接发送问题\n"
-        "@机器人 清空聊天\n"
-        "回复机器人消息也可以继续对话"
+        "@机器人 清空聊天"
     ),
     config=Config,
 )
@@ -50,7 +50,7 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
     if not is_allowed(event):
         return False
 
-    if isinstance(event, GroupMessageEvent) and not mentions_or_replies_to_bot(event):
+    if isinstance(event, GroupMessageEvent) and not mentions_bot(event):
         return False
 
     prompt = event.get_plaintext().strip()
@@ -163,7 +163,7 @@ register_plugin(AiChatPlugin())
 
 ai_chat_matcher = on_message(
     rule=Rule(_ai_chat_rule),
-    priority=6,
+    priority=1,
     block=True,
 )
 
