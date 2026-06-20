@@ -16,7 +16,7 @@ def test_default_join_team_action_sends_audit_group_link() -> None:
     action = actions[0]
     assert action.template == "join_team"
     assert action.keywords == ["战队"]
-    assert action.action == "message"
+    assert action.action == "team_recommend"
     assert action.message == DEFAULT_JOIN_TEAM_MESSAGE
     assert "group_code=719544559" in action.message
 

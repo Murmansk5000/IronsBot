@@ -18,13 +18,32 @@ if TYPE_CHECKING:
     from ironsbot.plugins.seer_data.db import SeerAPISession
 
 RANK_LIST_SIZE = 20
-FIVE_ANGLE_ATTR_COUNT = 5
-FIVE_ANGLE_MARKERS = ("五角", "5角", "５角")
+ANGLE_MARKERS = {
+    "一角": 1,
+    "1角": 1,
+    "１角": 1,
+    "二角": 2,
+    "两角": 2,
+    "2角": 2,
+    "２角": 2,
+    "三角": 3,
+    "3角": 3,
+    "３角": 3,
+    "四角": 4,
+    "4角": 4,
+    "４角": 4,
+    "五角": 5,
+    "5角": 5,
+    "５角": 5,
+    "六角": 6,
+    "6角": 6,
+    "６角": 6,
+}
 MINTMARK_QUALITY_TABLE = "mintmark_quality"
 MISSING_MINTMARK_QUALITY_MESSAGE = (
     "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。"
 )
-AVAILABLE_STATS_TEXT = "攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 总和"
+AVAILABLE_STATS_TEXT = "攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 盾 / 双攻 / 总和"
 
 _MINTMARK_QUALITY_KEYS = ("Quality", "quality")
 
@@ -39,6 +58,7 @@ class StatSpec:
 class CountermarkStatRankCommand:
     stat: StatSpec | None
     scope: str
+    angle_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +78,15 @@ STAT_ALIASES: dict[str, StatSpec] = {
     "物防": StatSpec("def_", "防御"),
     "特攻": StatSpec("sp_atk", "特攻"),
     "特防": StatSpec("sp_def", "特防"),
+    "盾": StatSpec("shield", "盾"),
+    "双防": StatSpec("shield", "盾"),
+    "双防和": StatSpec("shield", "盾"),
+    "防御特防": StatSpec("shield", "盾"),
+    "防御加特防": StatSpec("shield", "盾"),
+    "双攻": StatSpec("dual_atk", "双攻"),
+    "双攻和": StatSpec("dual_atk", "双攻"),
+    "攻击特攻": StatSpec("dual_atk", "双攻"),
+    "攻击加特攻": StatSpec("dual_atk", "双攻"),
     "速度": StatSpec("spd", "速度"),
     "速": StatSpec("spd", "速度"),
     "体力": StatSpec("hp", "体力"),
@@ -91,7 +120,10 @@ def parse_countermark_stat_rank_command(
     text: str,
 ) -> CountermarkStatRankCommand | None:
     normalized = _normalize_command_text(text)
-    if not normalized.endswith("榜") or "刻印" not in normalized:
+    has_angle_marker = any(marker in normalized for marker in ANGLE_MARKERS)
+    if not normalized.endswith("榜") or (
+        "刻印" not in normalized and not has_angle_marker
+    ):
         return None
     if normalized in _NON_STAT_COUNTERMARK_RANK_COMMANDS:
         return None
@@ -107,16 +139,22 @@ def parse_countermark_stat_rank_command(
     if has_all_marker:
         scope = "all"
 
-    for marker in FIVE_ANGLE_MARKERS:
+    angle_count = None
+    for marker, marker_angle_count in ANGLE_MARKERS.items():
         if marker in stat_text:
-            scope = "five"
+            scope = "angle"
+            angle_count = marker_angle_count
             stat_text = stat_text.replace(marker, "")
 
     for marker in ("排行榜", "排行", "数值", "属性", "刻印", "榜"):
         stat_text = stat_text.replace(marker, "")
 
     stat = STAT_ALIASES.get(stat_text)
-    return CountermarkStatRankCommand(stat=stat, scope=scope)
+    return CountermarkStatRankCommand(
+        stat=stat,
+        scope=scope,
+        angle_count=angle_count,
+    )
 
 
 def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
@@ -177,7 +215,7 @@ def collect_countermark_rank_items(
     for mintmark in mintmarks:
         class_name = _mintmark_class_name(mintmark)
         angle_count = _mintmark_angle_count(mintmark, quality_map)
-        if command.scope == "five" and angle_count != FIVE_ANGLE_ATTR_COUNT:
+        if command.angle_count is not None and angle_count != command.angle_count:
             continue
 
         attrs = _mark_attributes(mintmark)
@@ -220,15 +258,15 @@ def build_countermark_stat_rank_message(
         return (
             "❌ 刻印数值榜需要指定属性。\n"
             f"可用属性：{AVAILABLE_STATS_TEXT}\n"
-            "例：刻印攻击榜 / 五角刻印速度榜 / 5角刻印速度榜 / 刻印总和榜"
+            "例：刻印攻击榜 / 六角双攻榜 / 刻印盾榜 / 刻印总和榜"
         )
 
-    scope_text = "五角刻印" if command.scope == "five" else "所有刻印"
+    scope_text = _scope_text(command)
     if not items:
         return (
             f"❌ 没有找到{scope_text}的{command.stat.title}数据。\n"
-            "默认已查询全部刻印；如果只想看五角，可以发送："
-            f"五角刻印{command.stat.title}榜 或 5角刻印{command.stat.title}榜"
+            "默认已查询全部刻印；如果只想筛选角数，可以发送："
+            f"六角刻印{command.stat.title}榜 或 2角刻印{command.stat.title}榜"
         )
 
     timestamp = _now_text() if now_text is None else now_text
@@ -246,6 +284,12 @@ def build_countermark_stat_rank_message(
 def _now_text() -> str:
     now = datetime.now(timezone(timedelta(hours=8)))
     return now.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _scope_text(command: CountermarkStatRankCommand) -> str:
+    if command.angle_count is not None:
+        return f"{command.angle_count}角刻印"
+    return "所有刻印"
 
 
 def _strip_single_all_marker(text: str) -> tuple[str, bool]:
@@ -346,6 +390,10 @@ def _format_number(value: float) -> str:
 def _get_stat_value(attrs: SixAttributes, stat: StatSpec) -> float:
     if stat.key == "total":
         return float(attrs.total)
+    if stat.key == "shield":
+        return float(attrs.def_ + attrs.sp_def)
+    if stat.key == "dual_atk":
+        return float(attrs.atk + attrs.sp_atk)
 
     return float(getattr(attrs, stat.key))
 

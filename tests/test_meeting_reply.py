@@ -7,11 +7,11 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, PrivateMessa
 _SERVICE_PATH = (
     Path(__file__).resolve().parents[1]
     / "ironsbot"
-    / "custom_plugins"
-    / "meeting_reply"
+    / "plugins"
+    / "meeting"
     / "service.py"
 )
-_SPEC = spec_from_file_location("meeting_reply_service_for_test", _SERVICE_PATH)
+_SPEC = spec_from_file_location("meeting_service_for_test", _SERVICE_PATH)
 assert _SPEC is not None and _SPEC.loader is not None
 _SERVICE = module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_SERVICE)
