@@ -38,3 +38,10 @@ def test_mentions_bot_does_not_treat_reply_as_mention() -> None:
     event.reply = {"sender": {"user_id": 100}}
 
     assert not mentions_bot(event)
+
+
+def test_mentions_bot_requires_explicit_at_even_when_to_me() -> None:
+    event = FakeGroupEvent([], to_me=True)
+    event.reply = {"sender": {"user_id": 100}}
+
+    assert not mentions_bot(event)
