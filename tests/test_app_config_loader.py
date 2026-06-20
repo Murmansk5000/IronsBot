@@ -43,6 +43,9 @@ def test_example_config_parses() -> None:
     assert config.ai.model == "deepseek-v4-pro"
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert config.message.meeting.commands == ["开播", "会议"]
+    assert not config.message.team_audit_welcome.enabled
+    assert config.message.team_audit_welcome.feature == "team_audit"
+    assert "米米号" in config.message.team_audit_welcome.message
     assert config.seer.team_shortcut.team_ids == []
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled

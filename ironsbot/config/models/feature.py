@@ -30,6 +30,7 @@ KNOWN_FEATURES = frozenset(
         "team",
         "ai_chat",
         "ai_intent",
+        "team_audit",
         "admin_notice",
     }
 )
@@ -57,6 +58,7 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
             "activity_link",
             "activity_link_push",
             "seerinfo",
+            "team_audit",
         }
     ),
 }
