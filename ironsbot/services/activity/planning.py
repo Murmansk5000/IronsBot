@@ -29,11 +29,32 @@ def activity_deadline(
     *,
     soon_ending_threshold: timedelta,
 ) -> ActivityDeadline | None:
-    if activity.offer_end_time is not None and activity.offer_end_time > now:
+    fallback_end = fallback_offer_window_end(activity)
+
+    if activity.offer_end_time is not None:
+        if fallback_end is not None and fallback_end > activity.offer_end_time:
+            if fallback_end >= now:
+                return ActivityDeadline(
+                    end_time=fallback_end,
+                    label=activity.offer_label or "限时优惠",
+                    display_end_time=False,
+                )
+        elif activity.offer_end_time >= now:
+            return ActivityDeadline(
+                end_time=activity.offer_end_time,
+                label=f"{activity.offer_label or '限时优惠'}截至",
+                display_end_time=True,
+            )
+
+    if (
+        fallback_end is not None
+        and activity.start_time is not None
+        and activity.start_time <= now <= fallback_end
+    ):
         return ActivityDeadline(
-            end_time=activity.offer_end_time,
-            label=f"{activity.offer_label or '限时优惠'}截至",
-            display_end_time=True,
+            end_time=fallback_end,
+            label=activity.offer_label or "限时优惠",
+            display_end_time=False,
         )
 
     if now < activity.end_time and activity.end_time - now < soon_ending_threshold:
@@ -41,22 +62,6 @@ def activity_deadline(
             end_time=activity.end_time,
             label="结束时间",
             display_end_time=True,
-        )
-
-    fallback_end = (
-        None
-        if activity.offer_end_time is not None
-        else fallback_offer_window_end(activity)
-    )
-    if (
-        fallback_end is not None
-        and activity.start_time is not None
-        and activity.start_time <= now < fallback_end
-    ):
-        return ActivityDeadline(
-            end_time=fallback_end,
-            label=activity.offer_label or "限时优惠",
-            display_end_time=False,
         )
 
     return None
@@ -110,12 +115,11 @@ def effective_reminder_send_time(
     return None
 
 
-def build_scheduled_reminders(  # noqa: PLR0913
+def build_scheduled_reminders(
     activities: Iterable[ActivityInfo],
     now: datetime,
     *,
     lead_hours: Iterable[int],
-    reminder_send_delay: timedelta,
     grace: timedelta,
     soon_ending_threshold: timedelta,
 ) -> list[ActivityReminder]:
@@ -131,11 +135,7 @@ def build_scheduled_reminders(  # noqa: PLR0913
             continue
 
         for lead_hour in lead_hours:
-            planned_send_time = (
-                deadline.end_time
-                - timedelta(hours=lead_hour)
-                + reminder_send_delay
-            )
+            planned_send_time = deadline.end_time - timedelta(hours=lead_hour)
             send_time = effective_reminder_send_time(
                 planned_send_time,
                 now,

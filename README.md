@@ -6,7 +6,7 @@
 
 IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
-当前主线已经转为自定义插件架构：用户可触发的功能由 `ironsbot/custom_plugins` 提供；原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
+用户可触发的功能已迁入 `ironsbot/plugins`。`ironsbot/app/bootstrap.py` 按 `ironsbot/app/plugin_manifest.py` 的唯一加载清单安装领域插件与运行时初始化；旧自定义目录不再作为功能入口。数据、渲染和协议能力继续由现有基础设施提供。
 
 ## 功能
 
@@ -106,31 +106,6 @@ services:
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 原版 `ironsbot/plugins` 不作为用户功能目录整目录加载；只显式加载数据库同步、无头登录、HTTP 客户端、赛尔号数据等基础设施。
-
-## TOML 行为配置（迁移中）
-
-部分功能已改为读取 TOML，尚未迁移的功能仍读取原 env 配置；不要把旧 env
-变量当作已迁移项的覆盖值。部署参数和密钥仍按当版 env 指引设置。
-
-在启动命令的当前工作目录创建 `config.toml`，或先设置进程环境变量
-`APP_CONFIG_PATH` 指向自建文件。例如 PowerShell：
-
-```powershell
-$env:APP_CONFIG_PATH = (Join-Path (Get-Location) "config.toml")
-```
-
-未设置 `APP_CONFIG_PATH` 时读取当前工作目录的 `config.toml`；该默认文件不存在
-时使用默认配置。显式指定的文件必须存在。TOML 顶层表为 `feature`、`ai`、
-`bilibili`、`activity`、`message`、`seer`、`runtime`，未知顶层字段会被拒绝。
-无身份、无凭据的最小行为示例：
-
-```toml
-[runtime.startup_notice]
-delay = 7
-```
-
-该项由启动通知的原配置 getter 读取；空 TOML 也可使用默认值。这不是将全部
-旧 env 转为 TOML 的承诺，需按本版本实际已迁移的功能配置。
 
 ## 常用变量
 

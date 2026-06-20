@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from pytest import MonkeyPatch
 
-from ironsbot.custom_plugins.bilibili_monitor import runtime as bili_runtime
+from ironsbot.plugins.bilibili import runtime as bili_runtime
 
 
 class FakeDriver:

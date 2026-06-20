@@ -7,7 +7,12 @@
 
 from typing import TYPE_CHECKING, Any, TypeAlias
 
-from nonebot.adapters import Event
+from nonebot.adapters import (  # noqa: TC002
+    Event,
+    Message,
+    MessageSegment,
+    MessageTemplate,
+)
 from nonebot.consts import REJECT_CACHE_TARGET, REJECT_TARGET
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher, current_bot, current_event, current_handler
@@ -15,8 +20,6 @@ from nonebot.rule import Rule
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    from nonebot.adapters import Message, MessageSegment, MessageTemplate
 
 T_Message: TypeAlias = "str | Message | MessageSegment | MessageTemplate"
 
@@ -51,7 +54,7 @@ class PromptSessionManager:
         """创建绑定版本号的 Rule。版本不匹配时返回 False。"""
         versions = self._versions
 
-        def _check(event: Event) -> bool:
+        def _check(event: "Event") -> bool:
             if versions.get(session_id) != version:
                 return False
             return content_check(event)
@@ -82,8 +85,7 @@ async def reject_with_rule(
     2. 将当前 handler 重新插回执行队列（等效 ``resolve_reject``）
     3. 调用 ``Matcher.new()`` 创建临时 Matcher，传入自定义 Rule
     4. 抛出 ``FinishedException`` 结束当前执行
-       （``run()`` 对 ``FinishedException`` 仅做 ``pass``，
-       不会再创建第二个临时 Matcher）
+       （``run()`` 对 ``FinishedException`` 仅做 ``pass``，不会再创建第二个临时 Matcher）
 
     Args:
         matcher: 当前 Matcher 实例。
@@ -145,8 +147,8 @@ async def _create_temp_matcher(
 ) -> None:
     """创建带自定义 Rule 的临时 Matcher（内部工具函数）。"""
     bot = current_bot.get()
-    current_event_obj = current_event.get()
-    permission = await matcher.update_permission(bot, current_event_obj)
+    event = current_event.get()
+    permission = await matcher.update_permission(bot, event)
 
     matcher.__class__.new(
         "message",

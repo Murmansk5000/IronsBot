@@ -30,12 +30,13 @@ KNOWN_FEATURES = frozenset(
         "team",
         "ai_chat",
         "ai_intent",
+        "team_audit",
         "admin_notice",
     }
 )
 FEATURE_ALIASES: dict[str, frozenset[str]] = {
     "all": KNOWN_FEATURES - {"admin_notice"},
-    "custom": frozenset(
+    "query": frozenset(
         {
             "seer",
             "image",
@@ -57,6 +58,7 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
             "activity_link",
             "activity_link_push",
             "seerinfo",
+            "team_audit",
         }
     ),
 }
@@ -102,24 +104,6 @@ class FeatureConfig(BaseModel):
         return _coerce_policy_mapping(value)
 
 
-class FeaturePolicyConfig(BaseModel):
-    group_aliases: dict[str, int] = Field(default_factory=dict)
-    user_aliases: dict[str, int] = Field(default_factory=dict)
-    feature_group_policy: dict[str, list[str]] = Field(default_factory=dict)
-    feature_user_policy: dict[str, list[str]] = Field(default_factory=dict)
-    feature_superuser_bypass: bool = True
-
-    @field_validator("group_aliases", "user_aliases", mode="before")
-    @classmethod
-    def normalize_aliases(cls, value: object) -> object:
-        return _coerce_int_mapping(value)
-
-    @field_validator("feature_group_policy", "feature_user_policy", mode="before")
-    @classmethod
-    def normalize_policy(cls, value: object) -> object:
-        return _coerce_policy_mapping(value)
-
-
 def unique_ints(values: Iterable[int]) -> list[int]:
     return unique_items(values)
 
@@ -128,6 +112,5 @@ __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
     "FeatureConfig",
-    "FeaturePolicyConfig",
     "unique_ints",
 ]

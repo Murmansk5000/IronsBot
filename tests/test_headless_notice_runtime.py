@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from pytest import MonkeyPatch
 
-from ironsbot.custom_plugins.headless_seer_notice import (
+from ironsbot.plugins.headless_seer_notice import (
     runtime as headless_notice_runtime,
 )
 

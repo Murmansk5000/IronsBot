@@ -14,7 +14,7 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.custom_plugins.custom_get_seer_info import runtime as seer_runtime
+from ironsbot.plugins.seer.query import runtime as seer_runtime
 
 
 class FakeDriver:

@@ -138,14 +138,12 @@ def scheduled_reminders(
     now: datetime,
     *,
     lead_hours: Iterable[int],
-    reminder_send_delay: timedelta,
     grace: timedelta,
 ) -> list[ActivityReminder]:
     return build_scheduled_reminders(
         soon_ending_activity_infos(source, now),
         now,
         lead_hours=lead_hours,
-        reminder_send_delay=reminder_send_delay,
         grace=grace,
         soon_ending_threshold=source.soon_ending_threshold,
     )

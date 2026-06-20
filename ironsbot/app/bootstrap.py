@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
@@ -30,6 +31,11 @@ class RuntimeSetupError(TypeError):
     @classmethod
     def not_callable(cls, setup_ref: str) -> RuntimeSetupError:
         return cls(f"runtime setup is not callable: {setup_ref}")
+
+
+def configure_third_party_logging() -> None:
+    for logger_name in ("httpx", "httpcore"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
 def load_manifest_plugins(
@@ -76,6 +82,7 @@ def run_runtime_setups(
 
 
 def bootstrap() -> BootstrapState:
+    configure_third_party_logging()
     nonebot.init()
 
     driver = nonebot.get_driver()
