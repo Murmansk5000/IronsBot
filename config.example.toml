@@ -349,6 +349,28 @@ template = "腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接
 # Example: ["会议"]
 commands = ["开播", "会议"]
 
+[message.team_audit_welcome]
+# Default: false
+# EN: Enable join guidance in team audit groups.
+# ZH: 启用战队审核群新人入群提示。
+enabled = false
+
+# Default: "team_audit"
+# EN: Feature gate checked for team audit welcome messages.
+# ZH: 战队审核入群提示使用的功能权限名。
+feature = "team_audit"
+
+# Default: []
+# EN: Target groups by group alias or QQ group number.
+# ZH: 战队审核入群提示生效群，可填写群别名或群号。
+# Example: ["xinghenshenhe"]
+groups = []
+
+# Default: built-in team audit guidance.
+# EN: Welcome message sent to newcomers. The bot will mention the newcomer first.
+# ZH: 发送给新人的战队审核说明；机器人会先 @ 新人。
+message = "欢迎加入战队审核群。\n如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，方便管理员审核。\n审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
+
 [message.sendpic]
 # Default: null/omitted
 # EN: CNB repository for configured image backend. Token stays in env.

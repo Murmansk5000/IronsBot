@@ -4,6 +4,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.feature import FEATURE_ALIASES, FeatureConfig
 from ironsbot.shared.features import service
+from ironsbot.shared.features.registry import features_for_module
 
 
 def test_feature_service_reads_app_config_feature(
@@ -55,3 +56,10 @@ def test_feature_service_reads_query_alias(
     assert feature_service.is_group_feature_allowed(999, 123, "bili_query")
     assert feature_service.is_group_feature_allowed(999, 123, "activity_query")
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
+
+
+def test_team_audit_feature_is_registered() -> None:
+    assert "team_audit" in FEATURE_ALIASES["message"]
+    assert features_for_module("ironsbot.plugins.team_audit_welcome") == (
+        "team_audit",
+    )

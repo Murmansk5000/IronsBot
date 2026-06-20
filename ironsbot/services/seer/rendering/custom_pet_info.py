@@ -3,12 +3,9 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, Literal, NamedTuple, TypedDict
 
-from httpx import HTTPStatusError, RequestError
 from nonebot_plugin_htmlkit import template_to_pic
 from seerapi_models import MintmarkORM, PetORM, SkillInPetORM, SoulmarkORM
 from seerapi_models.mintmark import PetMintmarkLink, SkillMintmarkLink
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import object_session
 from sqlmodel import col, select
 
@@ -17,7 +14,6 @@ from ironsbot.plugins.seer_data.image import (
     MintmarkBodyImageGetter,
     PetBodyImageGetter,
     PetHeadImageGetter,
-    SoulmarkIconImageGetter,
 )
 from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
@@ -36,7 +32,6 @@ STAT_BAR_MAX_WIDTH = 120
 STAT_MAX_VALUE = 200
 SPECIAL_SOULMARK_PET_ID = 2500
 HIDDEN_SKILL_ID = 19002
-SOULMARK_ICON_TABLE = "soulmark_icon"
 _ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
     "#f35555": lambda t: f'<b style="color:#60e0ff">{t}</b>',
 }
@@ -143,7 +138,6 @@ def _extract_skill(skill_in_pet: SkillInPetORM) -> list[SkillDict]:
 
 
 def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[SoulmarkDict]:
-    icon_ids = _load_soulmark_icon_ids(soulmarks, pet)
     results: list[SoulmarkDict] = []
     for sm in soulmarks:
         result = SoulmarkDict(
@@ -155,7 +149,7 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[Soulmar
             pve_effective=sm.pve_effective,
             tags=[t.name for t in sm.tag] if sm.tag else [],
             glossaries=set(),
-            icon_id=icon_ids.get(sm.id),
+            icon_id=None,
             icon=None,
         )
 
@@ -169,78 +163,6 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[Soulmar
             sm["glossaries"].add(GlossaryDict(name=glossary.name, desc=glossary.desc))
 
     return results
-
-
-def _load_soulmark_icon_ids(
-    soulmarks: list[SoulmarkORM],
-    pet: PetORM,
-) -> dict[int, int]:
-    soulmark_ids = [sm.id for sm in soulmarks]
-    if not soulmark_ids:
-        return {}
-
-    session = object_session(pet)
-    if session is None:
-        return {}
-
-    placeholders = ", ".join(f":soulmark_{index}" for index in range(len(soulmark_ids)))
-    params = {
-        f"soulmark_{index}": soulmark_id
-        for index, soulmark_id in enumerate(soulmark_ids)
-    }
-    params["pet_id"] = pet.id
-    try:
-        rows = session.execute(
-            text(
-                f"""
-                SELECT soulmark_id, pet_id, icon_id
-                FROM {SOULMARK_ICON_TABLE}
-                WHERE soulmark_id IN ({placeholders})
-                ORDER BY
-                    CASE WHEN pet_id = :pet_id THEN 0 ELSE 1 END,
-                    pet_id DESC
-                """
-            ),
-            params,
-        ).all()
-    except SQLAlchemyError:
-        return {}
-
-    result: dict[int, int] = {}
-    for row in rows:
-        mapping = row._mapping if hasattr(row, "_mapping") else None
-        soulmark_id = int(mapping["soulmark_id"] if mapping is not None else row[0])
-        icon_id = int(mapping["icon_id"] if mapping is not None else row[2])
-        result.setdefault(soulmark_id, icon_id)
-    return result
-
-
-async def _load_soulmark_icon_data_uri(icon_id: int) -> tuple[int, str | None]:
-    try:
-        icon_bytes = await SoulmarkIconImageGetter.get_bytes(str(icon_id))
-    except (HTTPStatusError, RequestError):
-        return icon_id, None
-    return icon_id, to_data_uri(icon_bytes)
-
-
-async def _attach_soulmark_icons(soulmarks: list[SoulmarkDict]) -> None:
-    icon_ids = sorted(
-        {
-            icon_id
-            for sm in soulmarks
-            if (icon_id := sm.get("icon_id")) is not None
-        }
-    )
-    if not icon_ids:
-        return
-
-    pairs = await asyncio.gather(
-        *(_load_soulmark_icon_data_uri(icon_id) for icon_id in icon_ids)
-    )
-    icon_map = {icon_id: data_uri for icon_id, data_uri in pairs if data_uri}
-    for sm in soulmarks:
-        icon_id = sm.get("icon_id")
-        sm["icon"] = icon_map.get(icon_id) if icon_id is not None else None
 
 
 def _pet_introduction(pet: PetORM) -> str:
@@ -284,8 +206,6 @@ async def render_custom_pet_info(pet: PetORM) -> bytes:
                 "icon": None,
             }
         )
-    await _attach_soulmark_icons(soulmarks)
-
     all_skills: list[SkillDict] = [
         skill
         for skill_list in [_extract_skill(sl) for sl in pet.skill_links]

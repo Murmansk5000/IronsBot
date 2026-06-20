@@ -16,10 +16,6 @@ def _segment_at_qq(segment: Any) -> str:
 
 
 def mentions_bot(event: GroupMessageEvent) -> bool:
-    is_tome = getattr(event, "is_tome", None)
-    if callable(is_tome) and is_tome():
-        return True
-
     self_id = _event_self_id(event)
     if not self_id:
         return False

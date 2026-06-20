@@ -43,6 +43,7 @@ FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.seer.query",
     "ironsbot.plugins.help",
     "ironsbot.plugins.help_hint",
+    "ironsbot.plugins.team_audit_welcome",
     "ironsbot.plugins.sendpic",
     "ironsbot.plugins.meeting",
     "ironsbot.plugins.seer.pet_config_reply",

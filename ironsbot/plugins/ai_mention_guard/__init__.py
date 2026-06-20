@@ -78,7 +78,7 @@ class AiMentionGuardPlugin:
             context.matcher or mention_guard_matcher,
             event,
             get_ai_config().mention_guard_message,
-            mention_sender=True,
+            mention_sender=False,
         )
 
 
