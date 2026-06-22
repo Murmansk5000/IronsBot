@@ -17,6 +17,7 @@ from ironsbot.plugins.seer_data.db import (
 from ironsbot.utils import build_sub_line
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
+from ..config import get_mintmark_query_config
 from ..depends import (
     GetMintmarkClassData,
     GetMintmarkData,
@@ -73,7 +74,7 @@ def _mark_type_description(attributes: SixAttributes | None) -> str:
     elif attributes.sp_atk and not attributes.atk:
         strings.append("特")
     elif attributes.atk and attributes.sp_atk:
-        strings.append("双刀")
+        strings.append("双攻")
 
     if (
         attributes.atk >= ATTACK_MARK_THRESHOLD
@@ -96,12 +97,16 @@ def _mark_type_description(attributes: SixAttributes | None) -> str:
 def _deduplicate_and_filter(
     mintmarks: Iterable[MintmarkORM],
 ) -> tuple[MintmarkORM, ...]:
+    merge_connected = get_mintmark_query_config().merge_connected
     seen_ids = set()
     result = []
     for mintmark in mintmarks:
-        if mintmark.id not in seen_ids and not mintmark.connected_universal_parts:
-            result.append(mintmark)
-            seen_ids.add(mintmark.id)
+        if mintmark.id in seen_ids:
+            continue
+        if merge_connected and mintmark.connected_universal_parts:
+            continue
+        result.append(mintmark)
+        seen_ids.add(mintmark.id)
 
     return tuple(result)
 

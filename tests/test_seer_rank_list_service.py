@@ -5,6 +5,7 @@ from ironsbot.services.seer.rank_list import (
     LocalRankSpec,
     RankCacheBatchCommand,
     RankListCommand,
+    RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
     batch_raw_start,
     build_local_rank_cache_full_message,
@@ -15,7 +16,10 @@ from ironsbot.services.seer.rank_list import (
     build_rank_batch_no_players_message,
     build_rank_batch_result_message,
     build_rank_batch_start_message,
+    build_rank_page_cache_overview_message,
     build_rank_page_cache_status_message,
+    build_rank_page_refresh_result_message,
+    build_rank_page_refresh_start_message,
     format_global_rank_line,
     format_global_rank_message,
     format_local_rank_message,
@@ -24,6 +28,7 @@ from ironsbot.services.seer.rank_list import (
     page_cache_rank_interval,
     parse_rank_cache_batch_command,
     parse_rank_list_command,
+    parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
     with_admin_prefix,
 )
@@ -84,6 +89,17 @@ def test_parse_rank_page_cache_status_command_reads_global_rank() -> None:
         RankPageCacheStatusCommand(rank_key="图鉴积分")
     )
     assert parse_rank_page_cache_status_command("/榜单缓存 样本图鉴榜") is None
+
+
+def test_parse_rank_page_cache_refresh_command_reads_optional_global_rank() -> None:
+    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存") == (
+        RankPageCacheRefreshCommand()
+    )
+    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 皮肤榜") == (
+        RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
+    )
+    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 样本图鉴榜") is None
+    assert parse_rank_page_cache_refresh_command("刷新榜单缓存 皮肤榜") is None
 
 
 def test_with_admin_prefix_adds_slash_to_commands() -> None:
@@ -185,6 +201,66 @@ def test_build_rank_page_cache_status_message_groups_valid_and_stale_pages() -> 
         [],
         ttl_seconds=3600,
     ) == "📦【测试榜缓存】\n当前没有缓存区间。"
+
+
+def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    pages = [
+        SimpleNamespace(
+            start_index=0,
+            item_count=99,
+            expected_count=100,
+            is_stale=False,
+            is_partial=True,
+        )
+    ]
+
+    assert build_rank_page_cache_status_message(
+        spec,
+        pages,
+        ttl_seconds=3600,
+        target_limit=500,
+        next_ranges=(("部分", 1, 100),),
+    ) == (
+        "📦【测试榜缓存】\n"
+        "目标：前 500 名\n"
+        "有效缓存：1 段，99 名\n"
+        "有效区间：1-100\n"
+        "部分缺失：1 段，现存 99 名\n"
+        "缺失区间：1-100\n"
+        "TTL：3600 秒\n"
+        "下一刷：部分:1-100"
+    )
+
+
+def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    target = SimpleNamespace(
+        reason="缺失",
+        start_rank=101,
+        end_rank=200,
+        spec=spec,
+    )
+    assert build_rank_page_cache_overview_message(
+        [
+            (
+                "测试",
+                spec,
+                [SimpleNamespace(item_count=100, is_partial=False, is_stale=False)],
+                [target],
+            )
+        ],
+        target_limit=500,
+    ) == (
+        "📦【榜单页缓存】目标：前 500 名\n"
+        "测试榜：100/500 名，部分 0 页，过期 0 页，下一刷 缺失:101-200"
+    )
+    assert build_rank_page_refresh_start_message(
+        RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
+    ) == "🔄 正在刷新皮肤图鉴榜缓存。"
+    assert build_rank_page_refresh_result_message(
+        SimpleNamespace(total=0, success=0, failed=0, refreshed=[], failures=[])
+    ) == "✅【榜单页缓存刷新】当前没有缺失、部分缺失或过期页面。"
 
 
 def test_format_local_rank_message_uses_sample_and_season_context() -> None:

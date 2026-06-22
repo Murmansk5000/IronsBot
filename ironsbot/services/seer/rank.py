@@ -303,13 +303,14 @@ async def _fetch_rank_item(
     return items[0] if items else None
 
 
-async def fetch_daily_rank_page(
+async def fetch_daily_rank_page(  # noqa: PLR0913
     game: Any,
     *,
     key: int,
     sub_key: int,
     start: int,
     count: int,
+    use_cache: bool = True,
 ) -> list[Any]:
     if count <= 0:
         return []
@@ -320,6 +321,7 @@ async def fetch_daily_rank_page(
         sub_key=sub_key,
         start=start,
         end=start + count - 1,
+        use_cache=use_cache,
     )
 
 

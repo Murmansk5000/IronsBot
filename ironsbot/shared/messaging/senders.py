@@ -9,6 +9,7 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.log import logger
 
+from .outbound_rate_limit import check_group_outbound_rate_limit
 from .targets import MessageTarget, TargetSendSummary, broadcast_targets
 from .text import build_message
 
@@ -35,7 +36,7 @@ def get_bot_or_none() -> OneBotMessageSender | None:
 def configure_sender_message_limiter(
     message_limiter: MessageLimiter | None,
 ) -> None:
-    global _message_limiter
+    global _message_limiter  # noqa: PLW0603
 
     _message_limiter = message_limiter
 
@@ -59,6 +60,15 @@ async def send_target_messages(  # noqa: PLR0913
 
     for target in deduped_targets:
         group_id = target.target_id if target.target_type == "group" else None
+        rate_limit = check_group_outbound_rate_limit(group_id)
+        if not rate_limit.allowed:
+            logger.info(
+                f"{action_name} suppressed by outbound rate limit for "
+                f"{target.target_type} {target.target_id}"
+            )
+            failed.append(target)
+            continue
+
         active_limiter = message_limiter or _message_limiter
         limited_message = (
             active_limiter(message, group_id)
@@ -85,6 +95,11 @@ async def send_target_messages(  # noqa: PLR0913
                     group_id=target.target_id,
                     message=rendered_message,
                 )
+                if rate_limit.cooldown_message is not None:
+                    await bot.send_group_msg(
+                        group_id=target.target_id,
+                        message=build_message(rate_limit.cooldown_message),
+                    )
 
             logger.info(
                 f"{action_name} sent to {target.target_type} {target.target_id}"

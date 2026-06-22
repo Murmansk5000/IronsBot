@@ -44,7 +44,9 @@ MINTMARK_QUALITY_TABLE = "mintmark_quality"
 MISSING_MINTMARK_QUALITY_MESSAGE = (
     "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。"
 )
-AVAILABLE_STATS_TEXT = "攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 盾 / 双攻 / 总和"
+AVAILABLE_STATS_TEXT = (
+    "攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 双防 / 双攻 / 盾 / 双刀 / 总和"
+)
 
 _MINTMARK_QUALITY_KEYS = ("Quality", "quality")
 
@@ -89,13 +91,16 @@ BASE_STAT_ALIASES: dict[str, StatSpec] = {
 }
 
 COMPOSITE_STAT_ALIASES: dict[str, StatSpec] = {
-    "盾": StatSpec("shield", "盾", ("def_", "sp_def")),
-    "双防": StatSpec("shield", "盾", ("def_", "sp_def")),
-    "双防和": StatSpec("shield", "盾", ("def_", "sp_def")),
-    "防御特防": StatSpec("shield", "盾", ("def_", "sp_def")),
-    "防御加特防": StatSpec("shield", "盾", ("def_", "sp_def")),
+    "双防": StatSpec("shield", "双防", ("def_", "sp_def")),
+    "盾": StatSpec("shield", "双防", ("def_", "sp_def")),
+    "双防和": StatSpec("shield", "双防", ("def_", "sp_def")),
+    "盾和": StatSpec("shield", "双防", ("def_", "sp_def")),
+    "防御特防": StatSpec("shield", "双防", ("def_", "sp_def")),
+    "防御加特防": StatSpec("shield", "双防", ("def_", "sp_def")),
     "双攻": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
+    "双刀": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
     "双攻和": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
+    "双刀和": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
     "攻击特攻": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
     "攻击加特攻": StatSpec("dual_atk", "双攻", ("atk", "sp_atk")),
     "总和": StatSpec("total", "总和", ("total",)),
@@ -113,9 +118,10 @@ COMBINABLE_STAT_ALIASES: tuple[tuple[str, StatSpec], ...] = tuple(
     sorted(
         {
             **BASE_STAT_ALIASES,
+            "双防": COMPOSITE_STAT_ALIASES["双防"],
             "盾": COMPOSITE_STAT_ALIASES["盾"],
-            "双防": COMPOSITE_STAT_ALIASES["盾"],
             "双攻": COMPOSITE_STAT_ALIASES["双攻"],
+            "双刀": COMPOSITE_STAT_ALIASES["双刀"],
         }.items(),
         key=lambda item: len(item[0]),
         reverse=True,
@@ -314,7 +320,7 @@ def build_countermark_stat_rank_message(
         return (
             "❌ 刻印数值榜需要指定属性。\n"
             f"可用属性：{AVAILABLE_STATS_TEXT}\n"
-            "例：刻印攻击榜 / 六角双攻榜 / 刻印盾体榜 / 特攻盾刻印榜 / 刻印总和榜"
+            "例：刻印攻击榜 / 六角双攻榜 / 刻印双防体榜 / 特攻双防刻印榜 / 刻印总和榜"
         )
 
     scope_text = _scope_text(command)

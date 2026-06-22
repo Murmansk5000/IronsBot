@@ -179,7 +179,7 @@ class FeatureService:
 
     def _feature_matches(self, features: Iterable[str], feature: str) -> bool:
         normalized = {item.strip() for item in features if item.strip()}
-        if "all" in normalized or feature in normalized:
+        if feature in normalized:
             return True
 
         return any(
