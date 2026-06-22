@@ -1,21 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import (
-    enter_event_reply_conversation,
-    finish_event_reply,
-    send_event_reply,
-)
 from ironsbot.plugins.seer_data.db import SeerAPISession
 from ironsbot.services.seer.autocard import (
     AUTOCARD_PROMPT_MAX_ITEMS,
     AUTOCARD_QUERY_PREFIXES,
     AUTOCARD_QUERY_SUFFIXES,
+    AutocardDataset,
     AutocardPromptValue,
+    autocard_image_url,
     build_autocard_prompt_text,
     build_autocard_prompt_values,
     extract_autocard_query_arg,
@@ -26,6 +23,11 @@ from ironsbot.services.seer.autocard import (
     is_autocard_help_query,
     load_autocard_dataset,
     search_autocard_items,
+)
+from ironsbot.shared.messaging import (
+    enter_event_reply_conversation,
+    finish_event_reply,
+    send_event_reply,
 )
 from ironsbot.shared.messaging.conversations import event_conversation_session_id
 from ironsbot.shared.plugin_system import (
@@ -60,6 +62,18 @@ def _invalidate_autocard_prompt(event: MessageEvent) -> None:
     prompt_session_manager.invalidate(
         event_conversation_session_id(AUTOCARD_PROMPT_NAMESPACE, event)
     )
+
+
+def _build_autocard_reply(
+    dataset: AutocardDataset,
+    kind: str,
+    item: dict[str, object],
+) -> Message:
+    message = Message()
+    if image_url := autocard_image_url(kind, item):
+        message += MessageSegment.image(image_url)
+    message += MessageSegment.text(format_autocard_entry(dataset, kind, item))
+    return message
 
 
 async def _enter_autocard_prompt(
@@ -155,7 +169,7 @@ class AutocardPlugin:
         await send_event_reply(
             matcher,
             event,
-            format_autocard_entry(dataset, value.kind, data),
+            _build_autocard_reply(dataset, value.kind, data),
         )
         await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
 
@@ -191,7 +205,7 @@ class AutocardPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                format_autocard_entry(dataset, kind, item),
+                _build_autocard_reply(dataset, kind, item),
             )
 
         if len(matches) > AUTOCARD_PROMPT_MAX_ITEMS:

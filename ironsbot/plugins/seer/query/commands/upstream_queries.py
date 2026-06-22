@@ -75,8 +75,6 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "peak_pet": "_handle_peak_pet",
     "peak_user": "_handle_peak_user",
 }
-
-
 async def _is_not_rank_query(event: Event) -> bool:
     return not is_rank_query_text(event.get_plaintext())
 
@@ -445,6 +443,7 @@ async def _pet_image_resolver(
 ) -> None:
     msg = await _build_pet_image_message(item, session)
     await msg.send()
+
 
 pet_info_matcher = matcher_group.on_message(
     rule=startswith_or_endswith(
@@ -867,10 +866,15 @@ preview_matcher = matcher_group.on_fullmatch("下周预告", rule=no_reply())
 
 
 @preview_matcher.handle()
-async def _handle_preview(event: Event, session: SeerAPISession) -> None:
+async def _handle_preview(
+    matcher: Matcher,
+    event: Event,
+    session: SeerAPISession,
+) -> None:
     await dispatch_plugin(
         plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
         event=event,
+        matcher=matcher,
         action="preview",
         session=session,
     )
