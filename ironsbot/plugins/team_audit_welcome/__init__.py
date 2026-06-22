@@ -13,6 +13,7 @@ from nonebot.rule import Rule
 
 from ironsbot.config import get_app_config
 from ironsbot.shared.features import is_group_feature_allowed, resolve_group_refs
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.outbound_rate_limit import (
     check_group_outbound_rate_limit,
 )
@@ -36,7 +37,7 @@ async def _is_group_increase(event: NoticeEvent) -> bool:
 
 team_audit_welcome_matcher = on_notice(
     rule=Rule(_is_group_increase),
-    priority=5,
+    priority=get_matcher_priority("team_audit", 5),
     block=False,
 )
 

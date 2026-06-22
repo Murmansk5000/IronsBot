@@ -224,12 +224,49 @@ def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() ->
     ) == (
         "📦【测试榜缓存】\n"
         "目标：前 500 名\n"
-        "有效缓存：1 段，99 名\n"
-        "有效区间：1-100\n"
+        "有效缓存：0 段，0 名\n"
+        "有效区间：无\n"
         "部分缺失：1 段，现存 99 名\n"
         "缺失区间：1-100\n"
         "TTL：3600 秒\n"
         "下一刷：部分:1-100"
+    )
+
+
+def test_build_rank_page_cache_status_does_not_double_count_partial_stale() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    pages = [
+        SimpleNamespace(
+            start_index=0,
+            item_count=90,
+            expected_count=100,
+            is_stale=True,
+            is_partial=True,
+        ),
+        SimpleNamespace(
+            start_index=100,
+            item_count=100,
+            expected_count=100,
+            is_stale=True,
+            is_partial=False,
+        ),
+    ]
+
+    assert build_rank_page_cache_status_message(
+        spec,
+        pages,
+        ttl_seconds=3600,
+        target_limit=500,
+    ) == (
+        "📦【测试榜缓存】\n"
+        "目标：前 500 名\n"
+        "有效缓存：0 段，0 名\n"
+        "有效区间：无\n"
+        "部分缺失：1 段，现存 90 名\n"
+        "缺失区间：1-100\n"
+        "过期缓存：1 段，100 名\n"
+        "过期区间：101-200\n"
+        "TTL：3600 秒"
     )
 
 

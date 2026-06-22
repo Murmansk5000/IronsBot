@@ -198,6 +198,31 @@ class SuperuserPriorityConfig(BaseModel):
     wait_timeout_seconds: float = Field(default=300.0, ge=0)
 
 
+class MatcherPriorityConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    about: int = Field(default=0, ge=0)
+    help: int = Field(default=0, ge=0)
+    help_hint: int = Field(default=0, ge=0)
+    ai_mention_guard: int = Field(default=0, ge=0)
+    ai_chat: int = Field(default=99, ge=0)
+    ai_intent: int = Field(default=4, ge=0)
+    seer_query: int = Field(default=2, ge=0)
+    seer_player: int = Field(default=1, ge=0)
+    seer_rank_help: int = Field(default=2, ge=0)
+    team_shortcut: int = Field(default=2, ge=0)
+    bilibili: int = Field(default=1, ge=0)
+    sendpic: int = Field(default=1, ge=0)
+    server_status: int = Field(default=0, ge=0)
+    server_status_admin: int = Field(default=1, ge=0)
+    message_commands: int = Field(default=4, ge=0)
+    meeting: int = Field(default=5, ge=0)
+    activity: int = Field(default=5, ge=0)
+    db_sync: int = Field(default=5, ge=0)
+    reply_limits: int = Field(default=5, ge=0)
+    team_audit: int = Field(default=5, ge=0)
+
+
 class LoggingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -259,6 +284,9 @@ class RuntimeConfig(BaseModel):
     restart: RestartConfig = Field(default_factory=RestartConfig)
     help: HelpConfig = Field(default_factory=HelpConfig)
     priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
+    matcher_priority: MatcherPriorityConfig = Field(
+        default_factory=MatcherPriorityConfig
+    )
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
@@ -274,6 +302,7 @@ __all__ = [
     "HeadlessNoticeConfig",
     "HelpConfig",
     "LoggingConfig",
+    "MatcherPriorityConfig",
     "RemoteBuildConfig",
     "RemoteBuildStepConfig",
     "RestartConfig",

@@ -55,6 +55,7 @@ from ironsbot.services.seer.rank_list import (
 from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_page_refresh import (
     configured_rank_specs,
+    filter_standard_rank_page_summaries,
     preview_rank_page_refresh_targets,
     refresh_rank_page_cache,
 )
@@ -333,7 +334,10 @@ class RankListPlugin:
             RANK_PAGE_CACHE_STATUS_COMMAND_KEY
         ]
         spec = GLOBAL_RANKS[command.rank_key]
-        pages = get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
+        pages = filter_standard_rank_page_summaries(
+            spec,
+            get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+        )
         targets = preview_rank_page_refresh_targets([command.rank_key])
         await finish_event_reply(
             matcher,
@@ -366,7 +370,10 @@ class RankListPlugin:
             (
                 rank_key,
                 spec,
-                get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+                filter_standard_rank_page_summaries(
+                    spec,
+                    get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+                ),
                 targets_by_rank.get(rank_key, ()),
             )
             for rank_key, spec in specs

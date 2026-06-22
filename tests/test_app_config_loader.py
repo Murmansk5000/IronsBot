@@ -17,6 +17,7 @@ from ironsbot.config import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_AI_CHAT_PRIORITY = 99
 HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
@@ -52,6 +53,12 @@ def test_example_config_parses() -> None:
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
     assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
+    assert (
+        config.runtime.matcher_priority.seer_query
+        < config.runtime.matcher_priority.ai_chat
+    )
+    assert config.runtime.matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
+    assert config.runtime.matcher_priority.seer_player == 1
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps

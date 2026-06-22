@@ -12,6 +12,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.reply_limits import (
     TEXT_SEND_APIS,
     build_reply_line_limit_decision,
@@ -23,6 +24,10 @@ from ironsbot.shared.messaging.reply_limits import (
 from ironsbot.shared.messaging.reply_limits import (
     limit_text_lines as service_limit_text_lines,
 )
+from ironsbot.shared.messaging.text import (
+    build_message,
+    strip_command_prefix,
+)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -31,10 +36,6 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from .config import get_reply_config
-from ironsbot.shared.messaging.text import (
-    build_message,
-    strip_command_prefix,
-)
 
 REPLY_LINE_LIMIT_ARG_KEY = "_message_reply_line_limit_arg"
 REPLY_LINE_LIMIT_PLUGIN_NAME = "message_reply_line_limit"
@@ -212,7 +213,7 @@ def setup_reply_line_limit_api_hook() -> None:
 
 reply_line_limit_matcher = on_message(
     rule=Rule(_is_reply_line_limit_command) & no_reply(),
-    priority=5,
+    priority=get_matcher_priority("reply_limits", 5),
     block=True,
 )
 

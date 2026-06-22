@@ -666,6 +666,30 @@ enabled = true
 # Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
 wait_timeout_seconds = 300.0
 
+[runtime.matcher_priority]
+# EN: NoneBot matcher priority. Smaller numbers run first.
+# ZH: NoneBot 事件匹配优先级，数字越小越先处理；把 ai_chat 调大即可让 AI 在其他功能之后兜底。
+about = 0
+help = 0
+help_hint = 0
+ai_mention_guard = 0
+ai_chat = 99
+ai_intent = 4
+seer_query = 2
+seer_player = 1
+seer_rank_help = 2
+team_shortcut = 2
+bilibili = 1
+sendpic = 1
+server_status = 0
+server_status_admin = 1
+message_commands = 4
+meeting = 5
+activity = 5
+db_sync = 5
+reply_limits = 5
+team_audit = 5
+
 [runtime.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
 file_enabled = false
