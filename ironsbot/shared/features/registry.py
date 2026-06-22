@@ -7,10 +7,7 @@ FeatureModuleRegistry = dict[str, tuple[str, ...]]
 FEATURE_REGISTRY: FeatureModuleRegistry = {
     "about": ("ironsbot.plugins.about",),
     "help": ("ironsbot.plugins.help",),
-    "seer": (
-        "ironsbot.plugins.seer.query",
-        "ironsbot.plugins.seer.pet_config_reply",
-    ),
+    "seer": ("ironsbot.plugins.seer.query",),
     "image": ("ironsbot.plugins.sendpic",),
     "rank": ("ironsbot.plugins.seer.rank_help",),
     "meeting": ("ironsbot.plugins.meeting",),

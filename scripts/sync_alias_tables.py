@@ -1,11 +1,6 @@
 # SPDX-License-Identifier: MIT
 # ruff: noqa: T201, TRY003
-"""Sync alias CSV tables from upstream and local custom additions.
-
-The generated ``tables/pet_aliases.csv`` follows the original IronsBot alias
-table, then appends rows from ``tables_custom/pet_aliases.csv`` and removes
-duplicate ``(name, target_id)`` pairs.
-"""
+"""Sync alias CSV tables from upstream and local custom additions."""
 
 from __future__ import annotations
 
@@ -20,6 +15,11 @@ ROOT = Path(__file__).resolve().parent.parent
 TABLES_DIR = ROOT / "tables"
 CUSTOM_TABLES_DIR = ROOT / "tables_custom"
 PET_ALIASES_TABLE = "pet_aliases"
+SUPPORTED_ALIAS_TABLES = {
+    "pet_aliases",
+    "mintmark_aliases",
+    "mintmark_class_aliases",
+}
 UPSTREAM_PET_ALIASES_URL = (
     "https://raw.githubusercontent.com/Nattsu39/IronsBot/main/"
     "tables/pet_aliases.csv"
@@ -100,10 +100,9 @@ def _custom_table_paths() -> list[Path]:
     return sorted(CUSTOM_TABLES_DIR.glob("*.csv"))
 
 
-def main() -> None:
-    TABLES_DIR.mkdir(parents=True, exist_ok=True)
-
-    output_path = TABLES_DIR / f"{PET_ALIASES_TABLE}.csv"
+def _load_base_rows(table_name: str, output_path: Path) -> list[AliasRow]:
+    if table_name != PET_ALIASES_TABLE:
+        return _read_alias_rows(output_path) if output_path.exists() else []
     try:
         base_rows = _fetch_upstream_pet_aliases()
         print(f"fetched upstream pet_aliases: {len(base_rows)} rows")
@@ -116,19 +115,33 @@ def main() -> None:
             file=sys.stderr,
         )
         base_rows = _read_alias_rows(output_path)
+    return base_rows
 
+
+def _sync_alias_table(table_name: str) -> None:
+    output_path = TABLES_DIR / f"{table_name}.csv"
+    base_rows = _load_base_rows(table_name, output_path)
+
+    custom_path = CUSTOM_TABLES_DIR / f"{table_name}.csv"
     custom_rows: list[AliasRow] = []
-    for path in _custom_table_paths():
-        if path.stem != PET_ALIASES_TABLE:
-            print(f"warning: ignoring unsupported custom alias table {path.name}")
-            continue
-        rows = _read_alias_rows(path)
-        custom_rows.extend(rows)
-        print(f"loaded custom {path.name}: {len(rows)} rows")
+    if custom_path.exists():
+        custom_rows = _read_alias_rows(custom_path)
+        print(f"loaded custom {custom_path.name}: {len(custom_rows)} rows")
 
     merged_rows = _merge_rows([*base_rows, *custom_rows])
     _write_alias_rows(output_path, merged_rows)
     print(f"wrote {output_path}: {len(merged_rows)} rows")
+
+
+def main() -> None:
+    TABLES_DIR.mkdir(parents=True, exist_ok=True)
+
+    for path in _custom_table_paths():
+        if path.stem not in SUPPORTED_ALIAS_TABLES:
+            print(f"warning: ignoring unsupported custom alias table {path.name}")
+
+    for table_name in sorted(SUPPORTED_ALIAS_TABLES):
+        _sync_alias_table(table_name)
 
 
 if __name__ == "__main__":

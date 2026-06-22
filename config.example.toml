@@ -621,8 +621,8 @@ wait_timeout_seconds = 300.0
 [runtime.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
 file_enabled = false
-# Default: "data/logs/ironsbot.log"; EN: File log path. ZH: 文件日志路径，建议放在 /app/data 下方便持久化。
-file_path = "data/logs/ironsbot.log"
+# Default: "/app/logs/ironsbot.log"; EN: File log path. ZH: 文件日志路径；Unraid 建议额外挂载 /app/logs 方便持久化，也可改成 /app/data/logs/ironsbot.log。
+file_path = "/app/logs/ironsbot.log"
 # Default: "INFO"; EN: Minimum file log level. ZH: 写入文件的最低日志等级，可填 DEBUG、INFO、WARNING、ERROR 等。
 file_level = "INFO"
 # Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。

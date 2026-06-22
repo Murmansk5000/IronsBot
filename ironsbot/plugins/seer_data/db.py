@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# ruff: noqa: N802
+# ruff: noqa: N802, TRY003
 
 import re
 from collections.abc import AsyncGenerator, Callable, Iterable
@@ -9,7 +9,6 @@ import httpx
 from nonebot import logger
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
-from pypinyin import lazy_pinyin
 from seerapi_models import (
     BattleEffectORM,
     ElementTypeORM,
@@ -26,8 +25,6 @@ from seerapi_models import (
     TypeCombinationORM,
 )
 from seerapi_models.build_model import BaseResModel
-from sqlalchemy import text
-from sqlalchemy.engine.base import Engine
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import and_, col, func, or_, select
@@ -44,7 +41,13 @@ from ironsbot.plugins.db_sync.manager import db_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 
 from .config import get_data_sync_config
-from .orm import BaseAliasORM, GemAliasORM, PetAliasORM
+from .orm import (
+    BaseAliasORM,
+    GemAliasORM,
+    MintmarkAliasORM,
+    MintmarkClassAliasORM,
+    PetAliasORM,
+)
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
@@ -100,48 +103,6 @@ def _register_source(name: str) -> None:
 
 _register_source(_SEERAPI_DB)
 _register_source(_ALIAS_DB)
-
-_PINYIN_FTS_TABLE = "pinyin_fts"
-
-_PINYIN_FTS_SOURCES: dict[str, str] = {
-    "pet": "SELECT id, name FROM pet",
-}
-
-
-def _build_pinyin_fts(engine: Engine) -> None:
-    """在内存引擎中为已注册的源表构建拼音 FTS5 索引。"""
-    with engine.connect() as conn:
-        conn.execute(
-            text(
-                f"CREATE VIRTUAL TABLE [{_PINYIN_FTS_TABLE}] USING fts5("
-                "source_table, pinyin_full, pinyin_initials, "
-                "tokenize='trigram')"
-            )
-        )
-        for source_table, query in _PINYIN_FTS_SOURCES.items():
-            rows = conn.execute(text(query)).fetchall()
-            for row_id, name in rows:
-                syllables = lazy_pinyin(_strip_special(name))
-                full = "".join(syllables)
-                initials = "".join(s[0] for s in syllables if s)
-                conn.execute(
-                    text(
-                        f"INSERT INTO [{_PINYIN_FTS_TABLE}]"
-                        "(rowid, source_table, pinyin_full, pinyin_initials) "
-                        "VALUES (:id, :src, :full, :initials)"
-                    ),
-                    {
-                        "id": row_id,
-                        "src": source_table,
-                        "full": full,
-                        "initials": initials,
-                    },
-                )
-        conn.commit()
-    logger.debug(f"已构建拼音 FTS5 索引，源表: {list(_PINYIN_FTS_SOURCES)}")
-
-
-db_manager.register_post_load_hook(_SEERAPI_DB, _build_pinyin_fts)
 
 _T_Model = TypeVar("_T_Model", bound=BaseResModel)
 _T_Model_co = TypeVar("_T_Model_co", bound=BaseResModel, covariant=True)
@@ -298,9 +259,11 @@ class AliasResolver(Generic[_T_Model]):
             return ()
 
         try:
-            stripped_arg = arg.strip()
+            stripped_arg = _strip_special(arg.strip()).casefold()
             statement = select(self.alias_model).where(
-                _col_strip_special(col(self.alias_model.name)).like(f"%{stripped_arg}%")
+                func.lower(_col_strip_special(col(self.alias_model.name))).like(
+                    f"%{stripped_arg}%"
+                )
             )
             aliases = alias_session.exec(statement).all()
             ids = {alias.target_id for alias in aliases}
@@ -319,121 +282,6 @@ class AliasResolver(Generic[_T_Model]):
         return data_session.exec(
             select(self.model).where(col(self.model.id).in_(ids))
         ).all()
-
-
-def _pinyin_syllables_contain(
-    target_syllables: list[str],
-    input_syllables: list[str],
-) -> bool:
-    """判断 input_syllables 是否作为连续子序列精确出现在 target_syllables 中。"""
-    n = len(input_syllables)
-    return any(
-        target_syllables[i : i + n] == input_syllables
-        for i in range(len(target_syllables) - n + 1)
-    )
-
-
-class PinyinResolver(Generic[_T_Model]):
-    """通过汉语拼音（全拼或首字母）搜索模型对象，基于 FTS5 索引。
-
-    当用户输入包含中文时，会按音节精确匹配，
-    例如"库马"(ku ma)匹配"库玛"但不匹配"库曼"(ku man)。
-    """
-
-    __slots__ = ("db_name", "model", "name_attr", "source_table")
-
-    def __init__(
-        self,
-        model: type[_T_Model],
-        *,
-        source_table: str,
-        db_name: str = _SEERAPI_DB,
-        name_attr: str = "name",
-    ) -> None:
-        self.model = model
-        self.source_table = source_table
-        self.db_name = db_name
-        self.name_attr = name_attr
-
-    def __repr__(self) -> str:
-        return (
-            "PinyinResolver("
-            f"model={self.model.resource_name()!r}, "
-            f"source_table={self.source_table!r}, "
-            f"db_name={self.db_name!r}"
-            ")"
-        )
-
-    @staticmethod
-    def _to_pinyin_needle(
-        arg: str,
-    ) -> tuple[str, list[str] | None] | None:
-        """将用户输入转换为拼音搜索字符串。
-
-        返回 (joined_pinyin, syllables)，其中 syllables 仅在输入包含
-        非 ASCII 字符（如中文）时非 None，用于后续音节级精确过滤。
-        """
-        stripped = _strip_special(arg)
-        if not stripped:
-            return None
-        if stripped.isascii():
-            if not stripped.isalpha():
-                return None
-            return (stripped.lower(), None)
-        syllables = [s.lower() for s in lazy_pinyin(stripped)]
-        needle = "".join(syllables)
-        return (needle, syllables) if needle else None
-
-    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[_T_Model]:
-        if len(arg) < 2:  # noqa: PLR2004
-            return ()
-        result = self._to_pinyin_needle(arg)
-        if result is None:
-            return ()
-        needle, input_syllables = result
-
-        session = sessions.get(self.db_name)
-        if session is None:
-            logger.warning(f"{self!r}: 未找到数据库会话")
-            return ()
-
-        try:
-            rows = session.execute(
-                text(
-                    f"SELECT rowid FROM [{_PINYIN_FTS_TABLE}] "
-                    "WHERE source_table = :src "
-                    "AND (pinyin_full MATCH :q OR pinyin_initials MATCH :q)"
-                ),
-                {"src": self.source_table, "q": f'"{needle}"'},
-            ).fetchall()
-        except OperationalError:
-            logger.opt(exception=True).debug(
-                f"{self!r}: FTS5 查询失败，索引可能尚未构建"
-            )
-            return ()
-
-        ids = [r[0] for r in rows]
-        if not ids:
-            return ()
-
-        objs = session.exec(select(self.model).where(col(self.model.id).in_(ids))).all()
-
-        if input_syllables is None:
-            return objs
-
-        return [
-            obj
-            for obj in objs
-            if _pinyin_syllables_contain(
-                [
-                    s.lower()
-                    for s in lazy_pinyin(
-                        _strip_special(getattr(obj, self.name_attr, ""))
-                    )
-                ],
-                input_syllables,
-            )
-        ]
 
 
 class Getter(Generic[_T_Model]):
@@ -486,7 +334,6 @@ PetDataGetter = Getter(
     IdResolver(PetORM),
     NameResolver(PetORM),
     AliasResolver(PetORM, PetAliasORM),
-    PinyinResolver(PetORM, source_table="pet"),
 )
 
 
@@ -498,6 +345,7 @@ MintmarkDataGetter = Getter(
     MintmarkORM,
     IdResolver(MintmarkORM),
     NameResolver(MintmarkORM),
+    AliasResolver(MintmarkORM, MintmarkAliasORM),
 )
 
 
@@ -509,6 +357,7 @@ MintmarkClassDataGetter = Getter(
     MintmarkClassCategoryORM,
     # IdResolver(MintmarkClassCategoryORM),
     NameResolver(MintmarkClassCategoryORM),
+    AliasResolver(MintmarkClassCategoryORM, MintmarkClassAliasORM),
 )
 
 
