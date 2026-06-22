@@ -202,7 +202,7 @@ class LoggingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     file_enabled: bool = False
-    file_path: str = "data/logs/ironsbot.log"
+    file_path: str = "/app/logs/ironsbot.log"
     file_level: str = "INFO"
     rotation: str = "20 MB"
     retention: str = "14 days"

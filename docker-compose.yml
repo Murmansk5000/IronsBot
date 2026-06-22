@@ -14,6 +14,7 @@ services:
       - "8085:8080"
     volumes:
       - /mnt/user/appdata/ironsbot/data:/app/data
+      - /mnt/user/appdata/ironsbot/logs:/app/logs
     dns:
       - 223.5.5.5
       - 119.29.29.29

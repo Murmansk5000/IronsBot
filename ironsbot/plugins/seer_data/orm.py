@@ -25,6 +25,18 @@ class PetAliasORM(BaseAliasORM, table=True):
         return "pet_aliases"
 
 
+class MintmarkAliasORM(BaseAliasORM, table=True):
+    @classmethod
+    def table_name(cls) -> str:
+        return "mintmark_aliases"
+
+
+class MintmarkClassAliasORM(BaseAliasORM, table=True):
+    @classmethod
+    def table_name(cls) -> str:
+        return "mintmark_class_aliases"
+
+
 class GemAliasORM(BaseAliasORM, table=True):
     @classmethod
     def table_name(cls) -> str:

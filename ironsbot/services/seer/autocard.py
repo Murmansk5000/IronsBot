@@ -26,6 +26,11 @@ _CARD_TYPE_NAMES = {
     3: "衍生精灵牌",
     4: "特殊牌",
 }
+_AUTOCARD_ASSET_BASE_URL = (
+    "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/"
+    "newseer/assets/art/autocard/texture"
+)
+_AUTOCARD_NON_PET_CARD_ID_START = 20000
 
 
 @dataclass(slots=True, frozen=True)
@@ -158,6 +163,15 @@ def format_autocard_entry(
     return _format_card(dataset, item)
 
 
+def autocard_image_url(kind: str, item: dict[str, Any]) -> str:
+    image_name = _autocard_image_name(kind, item)
+    if not image_name:
+        return ""
+    if kind == "role":
+        return f"{_AUTOCARD_ASSET_BASE_URL}/roles/card/{image_name}.png"
+    return f"{_AUTOCARD_ASSET_BASE_URL}/cards/{image_name}.png"
+
+
 def build_autocard_prompt_values(
     matches: list[tuple[str, dict[str, Any]]],
 ) -> tuple[AutocardPromptValue, ...]:
@@ -226,6 +240,22 @@ def _entry_name(item: dict[str, Any]) -> str:
 
 def _card_variant(item: dict[str, Any]) -> str:
     return "金色" if _int_field(item, "compose") else "普通"
+
+
+def _autocard_image_name(kind: str, item: dict[str, Any]) -> str:
+    if kind == "role":
+        pic_id = _int_field(item, "picID", "pic_id")
+        return f"role_{pic_id}" if pic_id > 0 else ""
+
+    item_id = _int_field(item, "id")
+    pic_id = _int_field(item, "picID", "pic_id")
+    is_composed = bool(_int_field(item, "compose"))
+    image_id = (
+        item_id
+        if is_composed or item_id >= _AUTOCARD_NON_PET_CARD_ID_START
+        else pic_id
+    )
+    return f"card_{image_id}" if image_id > 0 else ""
 
 
 def _nature_name(dataset: AutocardDataset, nature_id: int) -> str:

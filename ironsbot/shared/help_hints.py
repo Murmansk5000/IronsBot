@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 HELP_COMMAND_TEXT = "帮助"
-HELP_HINT_TEXT = f"不会用可以发送“{HELP_COMMAND_TEXT}”。"
-DIRECT_COMMAND_HELP_HINT_TEXT = f"直接发送指令就可以查询；{HELP_HINT_TEXT}"
-POKE_HELP_HINT_TEXT = f"需要查询功能可以直接发送指令；{HELP_HINT_TEXT}"
+DIRECT_COMMAND_HELP_HINT_TEXT = (
+    f"直接发送指令就可以查询；不会用可以发送“{HELP_COMMAND_TEXT}”。"
+)
+HELP_HINT_TEXT = DIRECT_COMMAND_HELP_HINT_TEXT
+POKE_HELP_HINT_TEXT = DIRECT_COMMAND_HELP_HINT_TEXT
 
 
 def append_help_hint(message: str, *, hint: str = HELP_HINT_TEXT) -> str:

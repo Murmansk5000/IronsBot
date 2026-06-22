@@ -50,7 +50,7 @@ def test_example_config_parses() -> None:
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
-    assert config.runtime.logging.file_path == "data/logs/ironsbot.log"
+    assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
