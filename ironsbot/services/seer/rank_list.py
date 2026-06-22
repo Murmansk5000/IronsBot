@@ -31,6 +31,11 @@ from ironsbot.services.seer.rank_constants import (
 RANK_LIST_SIZE = 20
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
 RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
+RANK_PAGE_CACHE_REFRESH_PREFIXES = (
+    "刷新榜单缓存",
+    "更新榜单缓存",
+    "重建榜单缓存",
+)
 MAX_CACHE_INTERVALS_SHOWN = 20
 
 
@@ -67,6 +72,11 @@ class RankCacheBatchCommand:
 @dataclass(frozen=True, slots=True)
 class RankPageCacheStatusCommand:
     rank_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class RankPageCacheRefreshCommand:
+    rank_key: str | None = None
 
 
 GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
@@ -180,11 +190,12 @@ def page_cache_rank_interval(
     page: Any,
     spec: GlobalRankSpec,
 ) -> tuple[int, int] | None:
-    if page.item_count <= 0:
+    expected_count = int(getattr(page, "expected_count", page.item_count))
+    if expected_count <= 0:
         return None
 
     start_rank = page.start_index + 1 + spec.rank_offset
-    end_rank = page.start_index + page.item_count + spec.rank_offset
+    end_rank = page.start_index + expected_count + spec.rank_offset
     return max(1, start_rank), max(1, end_rank)
 
 
@@ -221,12 +232,20 @@ def build_rank_page_cache_status_message(
     pages: Sequence[Any],
     *,
     ttl_seconds: int,
+    target_limit: int | None = None,
+    next_ranges: Sequence[tuple[str, int, int]] = (),
 ) -> str:
     if not pages:
-        return f"📦【{spec.title}缓存】\n当前没有缓存区间。"
+        lines = [f"📦【{spec.title}缓存】", "当前没有缓存区间。"]
+        if target_limit is not None:
+            lines.append(f"目标：前 {target_limit} 名")
+        if next_ranges:
+            lines.append(f"下一刷：{format_refresh_ranges(next_ranges)}")
+        return "\n".join(lines)
 
     valid_pages = [page for page in pages if not page.is_stale]
     stale_pages = [page for page in pages if page.is_stale]
+    partial_pages = [page for page in pages if getattr(page, "is_partial", False)]
     valid_intervals = merge_rank_intervals(
         [
             interval
@@ -241,14 +260,31 @@ def build_rank_page_cache_status_message(
             if (interval := page_cache_rank_interval(page, spec)) is not None
         ]
     )
+    partial_intervals = merge_rank_intervals(
+        [
+            interval
+            for page in partial_pages
+            if (interval := page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
 
     valid_count = sum(page.item_count for page in valid_pages)
     stale_count = sum(page.item_count for page in stale_pages)
+    partial_count = sum(page.item_count for page in partial_pages)
     lines = [
         f"📦【{spec.title}缓存】",
         f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
         f"有效区间：{format_rank_intervals(valid_intervals)}",
     ]
+    if target_limit is not None:
+        lines.insert(1, f"目标：前 {target_limit} 名")
+    if partial_pages:
+        lines.extend(
+            [
+                f"部分缺失：{len(partial_pages)} 段，现存 {partial_count} 名",
+                f"缺失区间：{format_rank_intervals(partial_intervals)}",
+            ]
+        )
     if stale_pages:
         lines.extend(
             [
@@ -257,6 +293,79 @@ def build_rank_page_cache_status_message(
             ]
         )
     lines.append(f"TTL：{ttl_seconds} 秒")
+    if next_ranges:
+        lines.append(f"下一刷：{format_refresh_ranges(next_ranges)}")
+    return "\n".join(lines)
+
+
+def format_refresh_ranges(ranges: Sequence[tuple[str, int, int]]) -> str:
+    if not ranges:
+        return "无"
+    return "、".join(f"{reason}:{start}-{end}" for reason, start, end in ranges)
+
+
+def build_rank_page_cache_overview_message(
+    entries: Sequence[tuple[str, GlobalRankSpec, Sequence[Any], Sequence[Any]]],
+    *,
+    target_limit: int,
+) -> str:
+    lines = [f"📦【榜单页缓存】目标：前 {target_limit} 名"]
+    if not entries:
+        lines.append("没有配置可刷新的全服榜。")
+        return "\n".join(lines)
+
+    for _rank_key, spec, pages, targets in entries:
+        cached_count = sum(page.item_count for page in pages)
+        partial_count = sum(1 for page in pages if getattr(page, "is_partial", False))
+        stale_count = sum(1 for page in pages if getattr(page, "is_stale", False))
+        next_text = "无"
+        if targets:
+            target = targets[0]
+            next_text = f"{target.reason}:{target.start_rank}-{target.end_rank}"
+        lines.append(
+            f"{spec.title}：{cached_count}/{target_limit} 名，"
+            f"部分 {partial_count} 页，过期 {stale_count} 页，下一刷 {next_text}"
+        )
+    return "\n".join(lines)
+
+
+def build_rank_page_refresh_start_message(
+    command: RankPageCacheRefreshCommand,
+) -> str:
+    if command.rank_key is None:
+        return "🔄 正在刷新榜单页缓存。"
+    return f"🔄 正在刷新{GLOBAL_RANKS[command.rank_key].title}缓存。"
+
+
+def build_rank_page_refresh_result_message(result: Any) -> str:
+    if result.total <= 0:
+        return "✅【榜单页缓存刷新】当前没有缺失、部分缺失或过期页面。"
+
+    lines = [
+        "✅【榜单页缓存刷新完成】",
+        f"本轮目标页面：{result.total} 页",
+        f"成功刷新：{result.success} 页",
+        f"失败：{result.failed} 页",
+    ]
+    if result.refreshed:
+        shown = result.refreshed[:10]
+        lines.append("")
+        lines.append("刷新区间：")
+        lines.extend(
+            f"- {target.spec.title} "
+            f"{target.reason}:{target.start_rank}-{target.end_rank}"
+            for target in shown
+        )
+        if len(result.refreshed) > len(shown):
+            lines.append(f"...另 {len(result.refreshed) - len(shown)} 页")
+    if result.failures:
+        lines.append("")
+        lines.append("失败示例：")
+        lines.extend(
+            f"- {failure.target.spec.title} "
+            f"{failure.target.start_rank}-{failure.target.end_rank}: {failure.reason}"
+            for failure in result.failures[:5]
+        )
     return "\n".join(lines)
 
 
@@ -478,6 +587,32 @@ def parse_rank_page_cache_status_command(
         return None
 
     return RankPageCacheStatusCommand(rank_key=rank_command[1])
+
+
+def parse_rank_page_cache_refresh_command(
+    text: str,
+) -> RankPageCacheRefreshCommand | None:
+    stripped = _strip_command_prefix(text)
+    if stripped is None:
+        return None
+
+    command = _normalize_command_text(stripped)
+    normalized_prefix = _matching_normalized_prefix(
+        command,
+        RANK_PAGE_CACHE_REFRESH_PREFIXES,
+    )
+    if normalized_prefix is None:
+        return None
+
+    rank_name = command[len(normalized_prefix) :]
+    if not rank_name:
+        return RankPageCacheRefreshCommand()
+
+    rank_command = _NORMALIZED_COMMANDS.get(rank_name)
+    if rank_command is None or rank_command[0] != "global":
+        return None
+
+    return RankPageCacheRefreshCommand(rank_key=rank_command[1])
 
 
 def _build_command_map() -> dict[str, tuple[str, str]]:

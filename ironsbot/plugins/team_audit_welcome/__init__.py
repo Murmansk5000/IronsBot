@@ -13,6 +13,9 @@ from nonebot.rule import Rule
 
 from ironsbot.config import get_app_config
 from ironsbot.shared.features import is_group_feature_allowed, resolve_group_refs
+from ironsbot.shared.messaging.outbound_rate_limit import (
+    check_group_outbound_rate_limit,
+)
 from ironsbot.shared.messaging.text import build_message, render_text
 
 TEAM_AUDIT_WELCOME_PLUGIN_NAME = "team_audit_welcome"
@@ -66,7 +69,16 @@ async def handle_team_audit_welcome(
     if not is_group_feature_allowed(event.user_id, event.group_id, config.feature):
         return
 
+    rate_limit = check_group_outbound_rate_limit(event.group_id)
+    if not rate_limit.allowed:
+        return
+
     await bot.send_group_msg(
         group_id=event.group_id,
         message=_welcome_message(event.user_id),
     )
+    if rate_limit.cooldown_message is not None:
+        await bot.send_group_msg(
+            group_id=event.group_id,
+            message=Message(rate_limit.cooldown_message),
+        )

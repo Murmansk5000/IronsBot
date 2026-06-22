@@ -25,10 +25,12 @@ from seerapi_models import (
     TypeCombinationORM,
 )
 from seerapi_models.build_model import BaseResModel
+from seerapi_models.mintmark import UniversalPartORM
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import and_, col, func, or_, select
 
+from ironsbot.config import get_app_config
 from ironsbot.config.models.runtime import RemoteBuildConfig
 
 # require("ironsbot.plugins.db_sync")
@@ -109,10 +111,125 @@ _T_Model_co = TypeVar("_T_Model_co", bound=BaseResModel, covariant=True)
 
 _IGNORED_CHARS = ".·・•‧∙⋅。—\u2013-_/ "
 _IGNORED_CHARS_PATTERN = re.compile(f"[{re.escape(_IGNORED_CHARS)}]")
+_SERIES_ORDINAL_PATTERN = re.compile(r"(?P<prefix>.+?)(?P<ordinal>\d{1,2})$")
+_MINTMARK_TYPE_SUFFIXES = (
+    "物攻盾体",
+    "特攻盾体",
+    "物攻盾",
+    "特攻盾",
+    "物攻体",
+    "特攻体",
+    "物盾体",
+    "特盾体",
+    "物速",
+    "特速",
+    "物攻",
+    "特攻",
+    "物体",
+    "特体",
+    "物盾",
+    "特盾",
+    "双攻",
+    "双刀",
+    "双防",
+    "盾体",
+    "双防体",
+    "攻盾",
+    "攻体",
+    "速",
+    "盾",
+    "体",
+    "物",
+    "特",
+    "攻",
+)
+_ATTACK_MARK_THRESHOLD = 54
+_SPEED_MARK_THRESHOLD = 40
+_DEFENSE_MARK_THRESHOLD = 40
+_HP_MARK_THRESHOLD = 100
 
 
 def _strip_special(text: str) -> str:
     return _IGNORED_CHARS_PATTERN.sub("", text)
+
+
+def _normalize_key(text: str) -> str:
+    return _strip_special(text).casefold()
+
+
+def _mintmark_type_description(mintmark: MintmarkORM) -> str:
+    part = mintmark.ability_part or mintmark.universal_part
+    if part is None:
+        return ""
+
+    attr = part.max_attr_value.to_model()
+    if isinstance(part, UniversalPartORM) and part.extra_attr_value:
+        attr = attr + part.extra_attr_value.to_model()
+    attr = attr.round()
+
+    strings: list[str] = []
+    if attr.atk and not attr.sp_atk:
+        strings.append("物")
+    elif attr.sp_atk and not attr.atk:
+        strings.append("特")
+    elif attr.atk and attr.sp_atk:
+        strings.append("双攻")
+
+    if (
+        attr.atk >= _ATTACK_MARK_THRESHOLD
+        or attr.sp_atk >= _ATTACK_MARK_THRESHOLD
+    ) and attr.spd < _SPEED_MARK_THRESHOLD:
+        strings.append("攻")
+    if attr.spd >= _SPEED_MARK_THRESHOLD:
+        strings.append("速")
+    if (
+        attr.def_ >= _DEFENSE_MARK_THRESHOLD
+        or attr.sp_def >= _DEFENSE_MARK_THRESHOLD
+    ):
+        strings.append("盾")
+    if attr.hp >= _HP_MARK_THRESHOLD:
+        strings.append("体")
+
+    return "".join(strings)
+
+
+def _split_series_type_arg(arg: str) -> tuple[str, str] | None:
+    normalized_arg = _normalize_key(arg)
+    for suffix in _MINTMARK_TYPE_SUFFIXES:
+        normalized_suffix = _normalize_key(suffix)
+        if normalized_arg.endswith(normalized_suffix):
+            prefix = arg[: len(arg) - len(suffix)].strip()
+            return (prefix, suffix) if prefix else None
+    return None
+
+
+def _mintmark_type_matches(description: str, query: str) -> bool:
+    if not description:
+        return False
+    query = query.replace("双刀", "双攻").replace("双防", "盾")
+
+    if query == "双攻":
+        return "双攻" in description
+    if query == "盾":
+        return "盾" in description
+
+    required = {
+        char
+        for char in ("物", "特", "攻", "速", "盾", "体")
+        if char in query
+    }
+    return bool(required) and all(
+        _mintmark_type_part_matches(description, char)
+        for char in required
+    )
+
+
+def _mintmark_type_part_matches(description: str, char: str) -> bool:
+    if char == "物":
+        return "物" in description or "双攻" in description
+    if char == "特":
+        return "特" in description or "双攻" in description
+    return char in description
 
 
 def _col_strip_special(column: Any) -> Any:
@@ -284,6 +401,177 @@ class AliasResolver(Generic[_T_Model]):
         ).all()
 
 
+class MintmarkSeriesOrdinalResolver:
+    """Resolve inputs like ``九霄05`` or ``k1405`` to a mintmark in a series."""
+
+    __slots__ = ("alias_db", "data_db")
+
+    def __init__(
+        self,
+        *,
+        alias_db: str = _ALIAS_DB,
+        data_db: str = _SEERAPI_DB,
+    ) -> None:
+        self.alias_db = alias_db
+        self.data_db = data_db
+
+    def __repr__(self) -> str:
+        return (
+            "MintmarkSeriesOrdinalResolver("
+            f"alias_db={self.alias_db!r}, data_db={self.data_db!r})"
+        )
+
+    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[MintmarkORM]:
+        match = _SERIES_ORDINAL_PATTERN.fullmatch(arg.strip())
+        if match is None:
+            return ()
+
+        ordinal = int(match.group("ordinal"))
+        if ordinal < 1:
+            return ()
+
+        class_ids = self._resolve_class_ids(sessions, match.group("prefix"))
+        if not class_ids:
+            return ()
+
+        data_session = sessions.get(self.data_db)
+        if data_session is None:
+            logger.warning(f"{self!r}: 未找到数据数据库会话")
+            return ()
+
+        merge_connected = get_app_config().seer.mintmark.merge_connected
+        for class_id in class_ids:
+            statement = (
+                select(MintmarkORM)
+                .join(
+                    UniversalPartORM,
+                    UniversalPartORM.mintmark_id == MintmarkORM.id,
+                )
+                .where(UniversalPartORM.mintmark_class_id == class_id)
+                .order_by(MintmarkORM.id)
+            )
+            mintmarks = list(data_session.exec(statement).all())
+            if merge_connected:
+                mintmarks = [
+                    mintmark
+                    for mintmark in mintmarks
+                    if not mintmark.connected_universal_parts
+                ]
+            if ordinal <= len(mintmarks):
+                return (mintmarks[ordinal - 1],)
+
+        return ()
+
+    def _resolve_class_ids(self, sessions: AllSessions, raw_prefix: str) -> list[int]:
+        data_session = sessions.get(self.data_db)
+        if data_session is None:
+            logger.warning(f"{self!r}: 未找到数据数据库会话")
+            return []
+
+        normalized_prefix = _normalize_key(raw_prefix)
+        candidates = {normalized_prefix}
+        if not normalized_prefix.endswith("系列"):
+            candidates.add(_normalize_key(f"{raw_prefix}系列"))
+
+        class_ids: list[int] = []
+        seen_ids: set[int] = set()
+
+        classes = data_session.exec(select(MintmarkClassCategoryORM)).all()
+        for mintmark_class in classes:
+            if _normalize_key(mintmark_class.name) in candidates:
+                class_ids.append(mintmark_class.id)
+                seen_ids.add(mintmark_class.id)
+
+        alias_session = sessions.get(self.alias_db)
+        if alias_session is None:
+            logger.warning(f"{self!r}: 未找到别名数据库会话")
+            return class_ids
+
+        try:
+            aliases = alias_session.exec(select(MintmarkClassAliasORM)).all()
+        except OperationalError as e:
+            logger.error(f"MintmarkSeriesOrdinalResolver error: {e}")
+            return class_ids
+
+        for alias in aliases:
+            if alias.target_id in seen_ids:
+                continue
+            if _normalize_key(alias.name) in candidates:
+                class_ids.append(alias.target_id)
+                seen_ids.add(alias.target_id)
+
+        return class_ids
+
+
+class MintmarkSeriesTypeResolver:
+    """Resolve inputs like ``九霄盾`` or ``k14特攻`` to mintmarks in a series."""
+
+    __slots__ = ("alias_db", "data_db")
+
+    def __init__(
+        self,
+        *,
+        alias_db: str = _ALIAS_DB,
+        data_db: str = _SEERAPI_DB,
+    ) -> None:
+        self.alias_db = alias_db
+        self.data_db = data_db
+
+    def __repr__(self) -> str:
+        return (
+            "MintmarkSeriesTypeResolver("
+            f"alias_db={self.alias_db!r}, data_db={self.data_db!r})"
+        )
+
+    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[MintmarkORM]:
+        parsed = _split_series_type_arg(arg)
+        if parsed is None:
+            return ()
+
+        raw_prefix, type_query = parsed
+        class_ids = MintmarkSeriesOrdinalResolver(
+            alias_db=self.alias_db,
+            data_db=self.data_db,
+        )._resolve_class_ids(sessions, raw_prefix)
+        if not class_ids:
+            return ()
+
+        data_session = sessions.get(self.data_db)
+        if data_session is None:
+            logger.warning(f"{self!r}: 未找到数据数据库会话")
+            return ()
+
+        merge_connected = get_app_config().seer.mintmark.merge_connected
+        result: list[MintmarkORM] = []
+        for class_id in class_ids:
+            statement = (
+                select(MintmarkORM)
+                .join(
+                    UniversalPartORM,
+                    UniversalPartORM.mintmark_id == MintmarkORM.id,
+                )
+                .where(UniversalPartORM.mintmark_class_id == class_id)
+                .order_by(MintmarkORM.id)
+            )
+            mintmarks = list(data_session.exec(statement).all())
+            if merge_connected:
+                mintmarks = [
+                    mintmark
+                    for mintmark in mintmarks
+                    if not mintmark.connected_universal_parts
+                ]
+            result.extend(
+                mintmark
+                for mintmark in mintmarks
+                if _mintmark_type_matches(
+                    _mintmark_type_description(mintmark),
+                    type_query,
+                )
+            )
+
+        return tuple(result)
+
+
 class Getter(Generic[_T_Model]):
     __slots__ = ("model", "resolvers")
 
@@ -346,6 +634,8 @@ MintmarkDataGetter = Getter(
     IdResolver(MintmarkORM),
     NameResolver(MintmarkORM),
     AliasResolver(MintmarkORM, MintmarkAliasORM),
+    MintmarkSeriesOrdinalResolver(),
+    MintmarkSeriesTypeResolver(),
 )
 
 

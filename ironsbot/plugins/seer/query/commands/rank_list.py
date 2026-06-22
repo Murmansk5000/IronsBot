@@ -29,6 +29,7 @@ from ironsbot.services.seer.rank_list import (
     LocalRankSpec,
     RankCacheBatchCommand,
     RankListCommand,
+    RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
     batch_raw_start,
     build_local_rank_cache_full_message,
@@ -39,15 +40,24 @@ from ironsbot.services.seer.rank_list import (
     build_rank_batch_no_players_message,
     build_rank_batch_result_message,
     build_rank_batch_start_message,
+    build_rank_page_cache_overview_message,
     build_rank_page_cache_status_message,
+    build_rank_page_refresh_result_message,
+    build_rank_page_refresh_start_message,
     format_global_rank_message,
     format_local_rank_message,
     parse_rank_cache_batch_command,
     parse_rank_list_command,
+    parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
     with_admin_prefix,
 )
 from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
+from ironsbot.services.seer.rank_page_refresh import (
+    configured_rank_specs,
+    preview_rank_page_refresh_targets,
+    refresh_rank_page_cache,
+)
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.messaging import (
     finish_event_reply,
@@ -66,6 +76,7 @@ from ..group import matcher_group
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
+RANK_PAGE_CACHE_REFRESH_COMMAND_KEY = "_rank_page_cache_refresh_command"
 RANK_LIST_PLUGIN_NAME = "seer_rank_list"
 
 
@@ -93,6 +104,15 @@ async def _is_rank_page_cache_status_command(event: Event, state: T_State) -> bo
         return False
 
     state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY] = command
+    return True
+
+
+async def _is_rank_page_cache_refresh_command(event: Event, state: T_State) -> bool:
+    command = parse_rank_page_cache_refresh_command(event.get_plaintext())
+    if command is None:
+        return False
+
+    state[RANK_PAGE_CACHE_REFRESH_COMMAND_KEY] = command
     return True
 
 
@@ -129,8 +149,17 @@ rank_cache_batch_matcher = matcher_group.on_message(
     rule=Rule(_is_rank_cache_batch_command) & no_reply(),
     permission=SUPERUSER,
 )
+rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
+    with_admin_prefix(("榜单缓存", "排行缓存", "全服榜缓存")),
+    rule=no_reply(),
+    permission=SUPERUSER,
+)
 rank_page_cache_status_matcher = matcher_group.on_message(
     rule=Rule(_is_rank_page_cache_status_command) & no_reply(),
+    permission=SUPERUSER,
+)
+rank_page_cache_refresh_matcher = matcher_group.on_message(
+    rule=Rule(_is_rank_page_cache_refresh_command) & no_reply(),
     permission=SUPERUSER,
 )
 
@@ -185,7 +214,11 @@ class RankListPlugin:
     feature = "rank"
     enabled = True
 
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
+    async def handle(  # noqa: PLR0911
+        self,
+        event: MessageEvent,
+        context: PluginContext,
+    ) -> None:
         matcher = context.matcher
         if matcher is None:
             return
@@ -202,6 +235,12 @@ class RankListPlugin:
             return
         if context.action == "page_cache_status":
             await self._handle_page_cache_status(matcher, event, state)
+            return
+        if context.action == "page_cache_overview":
+            await self._handle_page_cache_overview(matcher, event)
+            return
+        if context.action == "page_cache_refresh":
+            await self._handle_page_cache_refresh(matcher, event, state)
             return
         if context.action == "cache_status":
             await self._handle_cache_status(matcher, event)
@@ -295,6 +334,7 @@ class RankListPlugin:
         ]
         spec = GLOBAL_RANKS[command.rank_key]
         pages = get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
+        targets = preview_rank_page_refresh_targets([command.rank_key])
         await finish_event_reply(
             matcher,
             event,
@@ -302,7 +342,66 @@ class RankListPlugin:
                 spec,
                 pages,
                 ttl_seconds=get_rank_query_config().page_cache_ttl_seconds,
+                target_limit=get_rank_query_config().page_refresh.target_limit,
+                next_ranges=[
+                    (target.reason, target.start_rank, target.end_rank)
+                    for target in targets[:5]
+                ],
             ),
+        )
+
+    async def _handle_page_cache_overview(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        rank_config = get_rank_query_config()
+        specs = configured_rank_specs()
+        targets = preview_rank_page_refresh_targets()
+        targets_by_rank = {
+            rank_key: [target for target in targets if target.rank_key == rank_key]
+            for rank_key, _spec in specs
+        }
+        entries = [
+            (
+                rank_key,
+                spec,
+                get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+                targets_by_rank.get(rank_key, ()),
+            )
+            for rank_key, spec in specs
+        ]
+        await finish_event_reply(
+            matcher,
+            event,
+            build_rank_page_cache_overview_message(
+                entries,
+                target_limit=rank_config.page_refresh.target_limit,
+            ),
+        )
+
+    async def _handle_page_cache_refresh(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        ensure_extended_packets()
+        command: RankPageCacheRefreshCommand = state[
+            RANK_PAGE_CACHE_REFRESH_COMMAND_KEY
+        ]
+        await send_event_reply(
+            matcher,
+            event,
+            build_rank_page_refresh_start_message(command),
+        )
+        await release_superuser_priority(state)
+        rank_keys = None if command.rank_key is None else [command.rank_key]
+        result = await refresh_rank_page_cache(rank_keys)
+        await finish_event_reply(
+            matcher,
+            event,
+            build_rank_page_refresh_result_message(result),
         )
 
     async def _handle_cache_status(
@@ -421,6 +520,34 @@ async def handle_rank_page_cache_status(
         matcher=matcher,
         state=state,
         action="page_cache_status",
+    )
+
+
+@rank_page_cache_overview_matcher.handle()
+async def handle_rank_page_cache_overview(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        action="page_cache_overview",
+    )
+
+
+@rank_page_cache_refresh_matcher.handle()
+async def handle_rank_page_cache_refresh(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="page_cache_refresh",
     )
 
 

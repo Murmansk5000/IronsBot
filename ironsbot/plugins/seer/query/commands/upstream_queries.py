@@ -9,6 +9,7 @@ at the feature plugin priority so they win before lower-priority matchers.
 from typing import Annotated
 
 from httpx import HTTPStatusError, RequestError
+from nonebot import logger
 from nonebot.adapters import Event
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
@@ -23,6 +24,7 @@ from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.services.seer.query_guards import is_rank_query_text
+from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
@@ -475,7 +477,25 @@ async def _handle_pet_info(
 
 
 async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
-    pic_bytes = await render_custom_pet_info(pet)
+    logger.info(
+        "rendering pet info image: pet_id={} pet_name={} resource_id={}",
+        pet.id,
+        pet.name,
+        pet.resource_id,
+    )
+    with render_crash_marker(
+        operation="pet_info_render",
+        pet_id=pet.id,
+        pet_name=pet.name,
+        resource_id=pet.resource_id,
+    ):
+        pic_bytes = await render_custom_pet_info(pet)
+    logger.info(
+        "rendered pet info image: pet_id={} pet_name={} bytes={}",
+        pet.id,
+        pet.name,
+        len(pic_bytes),
+    )
     msg = MessageFactory()
     msg += Image(pic_bytes)
     return msg

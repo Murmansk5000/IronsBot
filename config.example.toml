@@ -324,6 +324,24 @@ max_lines = 80
 # Example: "data/messaging/reply_limits.sqlite"
 limit_path = "data/messaging/reply_limits.sqlite"
 
+[message.outbound_rate_limit]
+# Default: true
+# EN: Limit outgoing bot messages in non-admin groups.
+# ZH: 限制非管理群中的机器人出站消息频率。
+enabled = true
+# Default: 60.0
+# EN: Sliding window seconds.
+# ZH: 限流滑动窗口秒数。
+window_seconds = 60.0
+# Default: 10
+# EN: Max outgoing messages per window in non-admin groups.
+# ZH: 非管理群每个窗口最多发送多少条机器人消息。
+max_messages = 10
+# Default: built-in cooldown notice.
+# EN: Notice sent after the last allowed message enters cooldown.
+# ZH: 发送最后一条允许消息后追加的冷却提示。
+cooldown_message = "本群消息发送过于频繁，机器人进入冷却时间，请稍后再试。"
+
 [message.meeting]
 # Default: ""
 # EN: Tencent meeting number.
@@ -414,6 +432,12 @@ timeout_seconds = 20.0
 # Default: all team sections; EN: Enabled team sections. ZH: 战队展示区块。
 sections = ["all"]
 
+[seer.mintmark]
+# Default: true
+# EN: Merge connected mintmarks by hiding connected child entries in query choices.
+# ZH: 查询刻印时合并显示连接刻印；设为 false 可显示被连接的子刻印。
+merge_connected = true
+
 [seer.rank]
 # Default: 10000; EN: Max rank records. ZH: 榜单最大记录数。
 limit = 10000
@@ -435,6 +459,36 @@ refresh_stale_cache = true
 page_cache_path = "data/seer/rank_page_cache.sqlite"
 # Default: omitted/null; EN: Override peak subkey. ZH: 覆盖巅峰 subkey。
 # peak_subkey = 123
+
+[seer.rank.page_refresh]
+# Default: true
+# EN: Enable scheduled full-server rank page cache refresh.
+# ZH: 启用全服榜单页缓存定时刷新。
+enabled = true
+# Default: 50000
+# EN: Refresh rank pages up to this display rank.
+# ZH: 逐步缓存到榜单前多少名。
+target_limit = 50000
+# Default: 100
+# EN: Rank page request size.
+# ZH: 每页榜单请求人数。
+page_size = 100
+# Default: 10
+# EN: Maximum rank pages refreshed per scheduled/manual run.
+# ZH: 每轮最多刷新多少页，也就是最多多少次榜单请求。
+pages_per_run = 10
+# Default: 01:15 through 04:45 every half hour.
+# EN: Daily refresh times.
+# ZH: 每日刷榜时间点。
+times = ["01:15", "01:45", "02:15", "02:45", "03:15", "03:45", "04:15", "04:45"]
+# Default: collection-related global ranks.
+# EN: Global ranks included in scheduled page refresh.
+# ZH: 定时刷新的全服榜。
+rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴"]
+# Default: 24
+# EN: Refresh cached pages older than this many hours after missing/partial pages.
+# ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
+refresh_stale_after_hours = 24
 
 [seer.local_rank]
 # Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。

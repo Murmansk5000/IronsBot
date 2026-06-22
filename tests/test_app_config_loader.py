@@ -21,6 +21,7 @@ HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_REPLY_MAX_LINES = 80
+DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
@@ -206,6 +207,10 @@ def test_small_plugin_config_accessors_read_app_config(
         assert (
             message_config.get_message_config().reply.max_lines
             == DEFAULT_REPLY_MAX_LINES
+        )
+        assert (
+            message_config.get_message_config().outbound_rate_limit.max_messages
+            == DEFAULT_OUTBOUND_MAX_MESSAGES
         )
         assert message_config.get_message_config().meeting.commands == [
             "开播",
