@@ -9,6 +9,7 @@ from .config import get_local_rank_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
 _render_cache_runtime_state = {"registered": False}
+_render_crash_report_runtime_state = {"registered": False}
 
 
 async def _scheduled_local_rank_refresh() -> None:
@@ -71,7 +72,24 @@ def setup_render_cache_runtime() -> None:
     _setup_render_cache_runtime(get_driver())
 
 
+def _setup_render_crash_report_runtime(driver: Any) -> None:
+    if _render_crash_report_runtime_state["registered"]:
+        return
+
+    from ironsbot.services.seer.render_crash_report import (
+        report_previous_render_crash,
+    )
+
+    driver.on_bot_connect(report_previous_render_crash)
+    _render_crash_report_runtime_state["registered"] = True
+
+
+def setup_render_crash_report_runtime() -> None:
+    _setup_render_crash_report_runtime(get_driver())
+
+
 __all__ = [
     "setup_local_rank_scheduler_runtime",
     "setup_render_cache_runtime",
+    "setup_render_crash_report_runtime",
 ]
