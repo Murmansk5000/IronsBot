@@ -22,6 +22,47 @@ INVALID_RECONNECT_TIME_ERROR = (
 DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
+VALID_LOG_LEVELS = {"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"}
+
+
+class RemoteBuildStepConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = ""
+    repository: str = ""
+    workflow_id: str = ""
+    ref: str = "main"
+    timeout_seconds: float = Field(default=1200.0, gt=0)
+    poll_interval_seconds: float = Field(default=10.0, gt=0)
+
+    @property
+    def display_name(self) -> str:
+        if self.name:
+            return self.name
+        if self.repository and self.workflow_id:
+            return f"{self.repository}/{self.workflow_id}"
+        return "unnamed workflow"
+
+
+class RemoteBuildConfig(RemoteBuildStepConfig):
+    enabled: bool = False
+    steps: list[RemoteBuildStepConfig] = Field(default_factory=list)
+
+    def build_steps(self) -> list[RemoteBuildStepConfig]:
+        if self.steps:
+            return list(self.steps)
+        if not self.repository and not self.workflow_id:
+            return []
+        return [
+            RemoteBuildStepConfig(
+                name=self.name,
+                repository=self.repository,
+                workflow_id=self.workflow_id,
+                ref=self.ref,
+                timeout_seconds=self.timeout_seconds,
+                poll_interval_seconds=self.poll_interval_seconds,
+            )
+        ]
 
 
 class DataSourceConfig(BaseModel):
@@ -29,6 +70,7 @@ class DataSourceConfig(BaseModel):
     fingerprint_url: str = ""
     interval_minutes: int = Field(default=60, gt=0)
     local_path: str
+    remote_build: RemoteBuildConfig = Field(default_factory=RemoteBuildConfig)
 
 
 class DataSyncConfig(BaseModel):
@@ -156,6 +198,46 @@ class SuperuserPriorityConfig(BaseModel):
     wait_timeout_seconds: float = Field(default=300.0, ge=0)
 
 
+class LoggingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    file_enabled: bool = False
+    file_path: str = "/app/logs/ironsbot.log"
+    file_level: str = "INFO"
+    rotation: str = "20 MB"
+    retention: str = "14 days"
+    compression: str | None = "zip"
+
+    @field_validator("file_level")
+    @classmethod
+    def normalize_file_level(cls, value: str) -> str:
+        level = value.strip().upper()
+        if level not in VALID_LOG_LEVELS:
+            msg = (
+                "runtime.logging.file_level must be one of "
+                f"{sorted(VALID_LOG_LEVELS)}"
+            )
+            raise ValueError(msg)
+        return level
+
+    @field_validator("file_path", "rotation", "retention")
+    @classmethod
+    def normalize_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "runtime.logging fields must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("compression", mode="before")
+    @classmethod
+    def normalize_optional_string(cls, value: object) -> object:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+
 class HeadlessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -177,6 +259,7 @@ class RuntimeConfig(BaseModel):
     restart: RestartConfig = Field(default_factory=RestartConfig)
     help: HelpConfig = Field(default_factory=HelpConfig)
     priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 __all__ = [
@@ -190,6 +273,9 @@ __all__ = [
     "HeadlessConfig",
     "HeadlessNoticeConfig",
     "HelpConfig",
+    "LoggingConfig",
+    "RemoteBuildConfig",
+    "RemoteBuildStepConfig",
     "RestartConfig",
     "RuntimeConfig",
     "ServerStatusConfig",

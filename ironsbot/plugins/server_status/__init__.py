@@ -16,19 +16,14 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
+from ironsbot.plugins.headless_seer.exception import (
+    DisconnectedError,
+    NotLoggedInError,
+)
 from ironsbot.plugins.headless_seer_notice.service import login_headless_client
 from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
-)
-from ironsbot.shared.messaging import (
-    finish_event_reply,
-    send_broadcast_message,
-    send_event_reply,
-)
-from ironsbot.plugins.headless_seer.exception import (
-    DisconnectedError,
-    NotLoggedInError,
 )
 from ironsbot.shared.features import (
     groups_for_feature,
@@ -36,6 +31,11 @@ from ironsbot.shared.features import (
     is_superuser,
     users_for_feature,
     users_with_superusers,
+)
+from ironsbot.shared.messaging import (
+    finish_event_reply,
+    send_broadcast_message,
+    send_event_reply,
 )
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -51,7 +51,7 @@ NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
 NORMAL_SERVER_STATUS_COMMAND = "开服了吗"
 DISABLED_BARE_ADMIN_COMMAND = "开服查询"
 ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
-BOT_RESTART_COMMAND = "/机器人重启"
+BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 SERVER_STATUS_PLUGIN_NAME = "server_status"
 DEFAULT_UPDATE_WEEKDAY = 4
 DEFAULT_START_TIME = time(hour=10)
@@ -79,7 +79,7 @@ __plugin_meta__ = PluginMetadata(
     usage="""命令：
   开服了吗 — 普通用户查询当前是否仍有维护公告
   /开服查询 — 超级管理员查询，并在无头未登录时尝试重连
-  /机器人重启 — 超级管理员重启机器人进程
+  /机器人重启 / /重启机器人 — 超级管理员重启机器人进程
 
 说明：
   裸的“开服查询”已停用，避免和管理员命令混淆。
@@ -133,7 +133,7 @@ admin_server_status_matcher = on_fullmatch(
     block=True,
 )
 bot_restart_matcher = on_fullmatch(
-    BOT_RESTART_COMMAND,
+    BOT_RESTART_COMMANDS,
     rule=no_reply(),
     permission=SUPERUSER,
     priority=1,
