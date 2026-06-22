@@ -86,6 +86,14 @@ _PEAK_RANK_PAGE_METRIC_KEYS = {
     WILD_PEAK_USER_RANK_KEY: "peak_wild",
     EXPERT_PEAK_USER_RANK_KEY: "peak_expert",
 }
+_PEAK_RANK_NAMES = {
+    0: "学徒",
+    1: "猛将",
+    2: "天骄",
+    3: "王者",
+    4: "圣皇",
+    5: "宇宙圣皇",
+}
 
 
 def get_local_rank_config() -> LocalRankConfig:
@@ -162,6 +170,26 @@ def _rate_metric(
     )
 
 
+def _format_peak_rating_score(value: int) -> str:
+    rank, star = divmod(value, 100000)
+    name = _PEAK_RANK_NAMES.get(rank, f"段位{rank}")
+    return f"{name}{star}星"
+
+
+def _format_metric_display(
+    metric_key: str,
+    value: int,
+    display: object | None = None,
+) -> str:
+    if display not in (None, ""):
+        return str(display)
+    if metric_key in {"peak_standard", "peak_wild"}:
+        return _format_peak_rating_score(value)
+    if metric_key == "peak_expert":
+        return f"{value}分"
+    return str(value)
+
+
 def _collect_metrics(  # noqa: PLR0913
     *,
     more_info: Any,
@@ -200,9 +228,15 @@ def _collect_metrics(  # noqa: PLR0913
             + unity_peak.current_z_all
         )
         if unity_peak.current_j_all > 0:
+            standard_score = _positive_int(peak_standard_score)
             values["peak_standard"] = _metric(
-                _positive_int(peak_standard_score),
+                standard_score,
                 season_sub_key=peak_sub_key,
+                display=(
+                    _format_metric_display("peak_standard", standard_score)
+                    if standard_score is not None
+                    else None
+                ),
             )
             values["peak_standard_win_rate"] = _rate_metric(
                 unity_peak.current_j_win,
@@ -215,9 +249,15 @@ def _collect_metrics(  # noqa: PLR0913
                 display=f"{unity_peak.current_j_all}场",
             )
         if unity_peak.current_k_all > 0:
+            wild_score = _positive_int(peak_wild_score)
             values["peak_wild"] = _metric(
-                _positive_int(peak_wild_score),
+                wild_score,
                 season_sub_key=peak_sub_key,
+                display=(
+                    _format_metric_display("peak_wild", wild_score)
+                    if wild_score is not None
+                    else None
+                ),
             )
             values["peak_wild_win_rate"] = _rate_metric(
                 unity_peak.current_k_win,
@@ -230,9 +270,15 @@ def _collect_metrics(  # noqa: PLR0913
                 display=f"{unity_peak.current_k_all}场",
             )
         if unity_peak.current_z_all > 0:
+            expert_score = _positive_int(peak_expert_score)
             values["peak_expert"] = _metric(
-                _positive_int(peak_expert_score),
+                expert_score,
                 season_sub_key=peak_sub_key,
+                display=(
+                    _format_metric_display("peak_expert", expert_score)
+                    if expert_score is not None
+                    else None
+                ),
             )
             values["peak_expert_win_rate"] = _rate_metric(
                 unity_peak.current_z_win,
@@ -464,7 +510,7 @@ def _format_local_rank(  # noqa: PLR0913
     percent_text = _format_percent(rank / sample_count * 100)
     sample_rank_text = f"样本前{percent_text}%"
     tie_text = f"，并列 {tie_count} 人" if tie_count > 1 else ""
-    display_text = current_value if display_value in (None, "") else display_value
+    display_text = _format_metric_display(metric_key, current_value, display_value)
 
     summary_text = (
         f"{title}：样本前{percent_text}%"
@@ -588,7 +634,11 @@ def _get_local_rank_entries_sql(
                     user_id=int(row["user_id"]),
                     nick=str(row["nick"] or ""),
                     value=value,
-                    display=str(row["display"] or value),
+                    display=_format_metric_display(
+                        metric_key,
+                        value,
+                        row["display"],
+                    ),
                 )
             )
 
