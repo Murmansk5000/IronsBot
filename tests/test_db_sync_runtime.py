@@ -1,5 +1,8 @@
 import asyncio
+import hashlib
+import sqlite3
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -445,3 +448,77 @@ def test_sync_database_handles_connect_error(monkeypatch: MonkeyPatch) -> None:
     result = asyncio.run(db_sync.sync_database("network_fail"))
 
     assert result is False
+
+
+def test_sync_database_skips_download_when_local_matches_remote(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "data.sqlite"
+    con = sqlite3.connect(db_path)
+    con.execute("create table sample (id integer primary key)")
+    con.execute("insert into sample (id) values (1)")
+    con.commit()
+    con.close()
+    fingerprint = hashlib.sha256(db_path.read_bytes()).hexdigest()
+    streamed: list[bool] = []
+    loaded: list[tuple[str, str]] = []
+
+    async def fake_fingerprint(_client: object) -> str:
+        return f"{fingerprint}  data.sqlite\n"
+
+    class FakeHeadResponse:
+        def __init__(self) -> None:
+            self.headers = {"last-modified": "Mon, 22 Jun 2026 12:00:00 GMT"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def head(self, *_args: object, **_kwargs: object) -> FakeHeadResponse:
+            return FakeHeadResponse()
+
+        def stream(self, *_args: object, **_kwargs: object) -> object:
+            streamed.append(True)
+            msg = "matching fingerprint should skip download stream"
+            raise AssertionError(msg)
+
+    def fake_load_from_file(name: str, file_path: str) -> None:
+        loaded.append((name, file_path))
+
+    monkeypatch.setattr(db_sync.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(db_sync.db_manager, "load_from_file", fake_load_from_file)
+    monkeypatch.setattr(db_sync, "_last_sync_statuses", {})
+    monkeypatch.setattr(db_sync, "_fingerprints", {})
+    monkeypatch.setattr(
+        db_sync,
+        "_registered_syncs",
+        {
+            "same": db_sync._SyncEntry(
+                "https://example.invalid/data.sqlite",
+                60,
+                fake_fingerprint,
+                str(db_path),
+            )
+        },
+    )
+
+    result = asyncio.run(db_sync.sync_database("same"))
+
+    assert result is True
+    assert streamed == []
+    assert loaded == [("same", str(db_path))]
+    status = db_sync._last_sync_statuses["same"]
+    assert status.ok is True
+    assert status.skipped is True
+    assert status.local_before.fingerprint == fingerprint
+    assert status.remote.fingerprint == fingerprint
