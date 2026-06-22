@@ -1,6 +1,7 @@
 from ironsbot.services.seer.autocard import (
     AutocardDataset,
     AutocardPromptValue,
+    autocard_image_url,
     build_autocard_prompt_text,
     build_autocard_prompt_values,
     extract_autocard_query_arg,
@@ -26,6 +27,7 @@ def _dataset() -> AutocardDataset:
                 "attack": 3,
                 "health": 5,
                 "compose": 0,
+                "picID": 1,
                 "cardTxt": "回合开始时回复1点生命",
                 "des": "经典草系精灵牌",
             },
@@ -36,6 +38,7 @@ def _dataset() -> AutocardDataset:
                 "name": "破界者",
                 "nature": 2,
                 "health": 20,
+                "picID": 7,
                 "skillName": "破界",
                 "skillTxt": "造成2点伤害",
                 "skillUpgrade": "伤害+1",
@@ -93,6 +96,28 @@ def test_format_autocard_entry_renders_role_public_fields() -> None:
     assert "属性：火 | 生命：20" in message
     assert "技能：破界" in message
     assert "升级：伤害+1" in message
+
+
+def test_autocard_image_url_resolves_card_asset_paths() -> None:
+    dataset = _dataset()
+
+    assert autocard_image_url("card", dataset.cards[0]).endswith(
+        "/newseer/assets/art/autocard/texture/cards/card_1.png"
+    )
+    assert autocard_image_url(
+        "card",
+        {"id": 10001, "picID": 1, "compose": 1},
+    ).endswith("/newseer/assets/art/autocard/texture/cards/card_10001.png")
+    assert autocard_image_url(
+        "card",
+        {"id": 20001, "picID": 20001, "compose": 0},
+    ).endswith("/newseer/assets/art/autocard/texture/cards/card_20001.png")
+
+
+def test_autocard_image_url_resolves_role_asset_path() -> None:
+    assert autocard_image_url("role", _dataset().roles[0]).endswith(
+        "/newseer/assets/art/autocard/texture/roles/card/role_7.png"
+    )
 
 
 def test_prompt_helpers_keep_item_ids_and_descriptions() -> None:

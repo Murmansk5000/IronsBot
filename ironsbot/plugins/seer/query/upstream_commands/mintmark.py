@@ -93,11 +93,13 @@ def _mark_type_description(attributes: SixAttributes | None) -> str:
     return "".join(strings)
 
 
-def _deduplicate(mintmarks: Iterable[MintmarkORM]) -> tuple[MintmarkORM, ...]:
+def _deduplicate_and_filter(
+    mintmarks: Iterable[MintmarkORM],
+) -> tuple[MintmarkORM, ...]:
     seen_ids = set()
     result = []
     for mintmark in mintmarks:
-        if mintmark.id not in seen_ids:
+        if mintmark.id not in seen_ids and not mintmark.connected_universal_parts:
             result.append(mintmark)
             seen_ids.add(mintmark.id)
 
@@ -170,7 +172,7 @@ async def handle_mintmark(
 ) -> None:
 
     mintmarks = mintmarks + tuple(part.mintmark for c in classes for part in c.mintmark)
-    mintmarks = _deduplicate(mintmarks)
+    mintmarks = _deduplicate_and_filter(mintmarks)
 
     if not mintmarks:
         raise FinishedException
