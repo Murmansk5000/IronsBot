@@ -22,6 +22,7 @@ from ironsbot.services.ai.intent import (
     is_action_allowed,
     reply_is_yes,
 )
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
 )
@@ -93,7 +94,7 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
 
 ai_intent_action_matcher = on_message(
     rule=Rule(_match_ai_intent_action) & no_reply(),
-    priority=4,
+    priority=get_matcher_priority("ai_intent", 4),
     block=True,
 )
 

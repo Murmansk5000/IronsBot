@@ -23,6 +23,7 @@ from nonebot.rule import Rule
 
 from ironsbot.config import load_secrets_config
 from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
@@ -84,7 +85,7 @@ async def _is_manual_sync_command(event: Event) -> bool:
 manual_sync_matcher = on_message(
     rule=Rule(_is_manual_sync_command) & no_reply(),
     permission=SUPERUSER,
-    priority=5,
+    priority=get_matcher_priority("db_sync", 5),
     block=True,
 )
 

@@ -204,6 +204,34 @@ def select_rank_page_refresh_targets(
     return selected
 
 
+def filter_standard_rank_page_summaries(
+    spec: GlobalRankSpec,
+    pages: Sequence[CachedRankPageSummary],
+    *,
+    config: RankPageRefreshConfig | None = None,
+) -> list[CachedRankPageSummary]:
+    """Keep scheduled refresh pages for coverage stats.
+
+    Player lookups may cache narrow probe ranges such as 1-1 or 24-24. Those
+    fragments are still useful for future rank lookup, but including them in
+    coverage/status output makes the progress look broken.
+    """
+    refresh_config = config or get_rank_page_refresh_config()
+    standard_ranges = {
+        (raw_start, raw_end)
+        for _start_rank, _end_rank, raw_start, raw_end in page_refresh_rank_ranges(
+            spec,
+            target_limit=refresh_config.target_limit,
+            page_size=refresh_config.page_size,
+        )
+    }
+    return [
+        page
+        for page in pages
+        if (page.start_index, page.end_index) in standard_ranges
+    ]
+
+
 def preview_rank_page_refresh_targets(
     rank_keys: Sequence[str] | None = None,
 ) -> list[RankPageRefreshTarget]:

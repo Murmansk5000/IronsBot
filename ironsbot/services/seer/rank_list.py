@@ -243,9 +243,17 @@ def build_rank_page_cache_status_message(
             lines.append(f"下一刷：{format_refresh_ranges(next_ranges)}")
         return "\n".join(lines)
 
-    valid_pages = [page for page in pages if not page.is_stale]
-    stale_pages = [page for page in pages if page.is_stale]
     partial_pages = [page for page in pages if getattr(page, "is_partial", False)]
+    valid_pages = [
+        page
+        for page in pages
+        if not page.is_stale and not getattr(page, "is_partial", False)
+    ]
+    stale_pages = [
+        page
+        for page in pages
+        if page.is_stale and not getattr(page, "is_partial", False)
+    ]
     valid_intervals = merge_rank_intervals(
         [
             interval

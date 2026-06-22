@@ -7,12 +7,13 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.shared.messaging import (
-    finish_event_reply,
-)
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
+)
+from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.shared.messaging import (
+    finish_event_reply,
 )
 from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.shared.plugin_system import (
@@ -51,7 +52,7 @@ async def _is_meeting_command(event: MessageEvent) -> bool:
 
 meeting_matcher = on_message(
     rule=Rule(_is_meeting_command) & no_reply(),
-    priority=5,
+    priority=get_matcher_priority("meeting", 5),
     block=True,
 )
 

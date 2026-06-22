@@ -16,6 +16,7 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -98,13 +99,13 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
 
 private_command_matcher = on_message(
     rule=Rule(_match_private_command) & no_reply(),
-    priority=4,
+    priority=get_matcher_priority("message_commands", 4),
     block=True,
 )
 
 group_command_matcher = on_message(
     rule=Rule(_match_group_command) & no_reply(),
-    priority=4,
+    priority=get_matcher_priority("message_commands", 4),
     block=True,
 )
 

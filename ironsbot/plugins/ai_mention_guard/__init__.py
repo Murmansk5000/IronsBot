@@ -12,6 +12,7 @@ from ironsbot.shared.help_hints import (
     DIRECT_COMMAND_HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
 )
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -65,7 +66,7 @@ def _build_guard_message(event: MessageEvent) -> str:
 
 mention_guard_matcher = on_message(
     rule=Rule(_is_non_ai_group_at_guarded_user),
-    priority=0,
+    priority=get_matcher_priority("ai_mention_guard", 0),
     block=True,
 )
 

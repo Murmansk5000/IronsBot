@@ -6,6 +6,7 @@ from nonebot.rule import Rule
 
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -24,7 +25,7 @@ __plugin_meta__ = PluginMetadata(
 rank_help_entry = on_fullmatch(
     ("榜单", "排行榜"),
     rule=Rule(lambda event: is_event_feature_allowed(event, "rank")) & no_reply(),
-    priority=2,
+    priority=get_matcher_priority("seer_rank_help", 2),
     block=True,
 )
 

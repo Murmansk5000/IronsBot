@@ -32,6 +32,7 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_broadcast_message,
@@ -116,27 +117,27 @@ _open_broadcast_state = OpenBroadcastState()
 normal_server_status_matcher = on_fullmatch(
     NORMAL_SERVER_STATUS_COMMAND,
     rule=no_reply(),
-    priority=0,
+    priority=get_matcher_priority("server_status", 0),
     block=True,
 )
 disabled_bare_admin_status_matcher = on_fullmatch(
     DISABLED_BARE_ADMIN_COMMAND,
     rule=no_reply(),
-    priority=0,
+    priority=get_matcher_priority("server_status", 0),
     block=True,
 )
 admin_server_status_matcher = on_fullmatch(
     ADMIN_SERVER_STATUS_COMMAND,
     rule=no_reply(),
     permission=SUPERUSER,
-    priority=1,
+    priority=get_matcher_priority("server_status_admin", 1),
     block=True,
 )
 bot_restart_matcher = on_fullmatch(
     BOT_RESTART_COMMANDS,
     rule=no_reply(),
     permission=SUPERUSER,
-    priority=1,
+    priority=get_matcher_priority("server_status_admin", 1),
     block=True,
 )
 

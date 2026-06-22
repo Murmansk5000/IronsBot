@@ -4,6 +4,7 @@ from nonebot.plugin import on_fullmatch
 from nonebot.rule import Rule
 
 from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -58,7 +59,7 @@ for command, filename in IMAGE_COMMANDS.items():
     matcher = on_fullmatch(
         command,
         rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
-        priority=1,
+        priority=get_matcher_priority("sendpic", 1),
         block=True,
     )
 

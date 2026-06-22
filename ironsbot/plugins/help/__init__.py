@@ -15,6 +15,7 @@ from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
 from ironsbot.shared.features.visibility import plugin_visible_for_event
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
@@ -74,7 +75,12 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-help_cmd = on_fullmatch("帮助", rule=no_reply(), priority=0, block=True)
+help_cmd = on_fullmatch(
+    "帮助",
+    rule=no_reply(),
+    priority=get_matcher_priority("help", 0),
+    block=True,
+)
 
 
 def _plugin_module_name(plugin: "Plugin") -> str:
