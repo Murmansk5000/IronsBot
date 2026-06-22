@@ -10,6 +10,7 @@ class SecretsConfig(BaseModel):
     onebot_access_token: str = ""
     ai_key: str = ""
     sendpic_cnb_token: str | None = None
+    github_workflow_token: str = ""
 
 
 class CredentialsConfig(BaseModel):
