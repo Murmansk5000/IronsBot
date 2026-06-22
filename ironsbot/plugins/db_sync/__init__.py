@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+import hashlib
 import os
 import tempfile
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -38,12 +41,26 @@ class _SyncEntry(NamedTuple):
     remote_build: RemoteBuildConfig | None = None
 
 
+class _VersionInfo(NamedTuple):
+    fingerprint: str | None = None
+    timestamp: datetime | None = None
+
+
+class _SyncStatus(NamedTuple):
+    ok: bool
+    skipped: bool = False
+    local_before: _VersionInfo = _VersionInfo()
+    remote: _VersionInfo = _VersionInfo()
+    message: str = ""
+
+
 _sync_locks: dict[str, asyncio.Lock] = {}
 _sync_all_lock = asyncio.Lock()
 _registered_syncs: dict[str, _SyncEntry] = {}
 _registered_local_databases: dict[str, str] = {}
 _prepared_databases: set[str] = set()
 _fingerprints: dict[str, str] = {}
+_last_sync_statuses: dict[str, _SyncStatus] = {}
 _remote_build_results: dict[str, WorkflowRunResult] = {}
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 ADMIN_COMMAND_PREFIX = "/"
@@ -102,6 +119,74 @@ def _write_bytes_atomic(file_path: str, content: bytes) -> None:
             tmp_path.unlink()
 
 
+def _normalize_fingerprint(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+
+    text = raw.strip()
+    if not text:
+        return None
+
+    return text.split()[0].strip().lower() or None
+
+
+def _fingerprint_content(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _fingerprint_file(file_path: str | Path) -> str | None:
+    path = Path(file_path)
+    if not path.exists():
+        return None
+
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as file:
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        logger.exception(f"读取本地数据库指纹失败: {path}")
+        return None
+
+    return digest.hexdigest()
+
+
+def _file_timestamp(file_path: str | Path) -> datetime | None:
+    path = Path(file_path)
+    if not path.exists():
+        return None
+
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+    except OSError:
+        logger.exception(f"读取本地数据库时间失败: {path}")
+        return None
+
+
+def _parse_http_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    try:
+        return parsedate_to_datetime(value).astimezone()
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
+
+async def _fetch_remote_timestamp(
+    client: httpx.AsyncClient,
+    sync_url: str,
+) -> datetime | None:
+    try:
+        response = await client.head(sync_url)
+        response.raise_for_status()
+    except (AttributeError, httpx.HTTPError):
+        logger.debug(f"获取远端数据库时间失败: {sync_url}", exc_info=True)
+        return None
+
+    return _parse_http_datetime(response.headers.get("last-modified"))
+
+
 def is_sync_running() -> bool:
     return _sync_all_lock.locked() or any(
         _get_lock(name).locked()
@@ -150,7 +235,7 @@ def register_local_database(name: str, *, file_path: str) -> None:
     logger.debug(f"已登记本地数据库 '{name}': {file_path}")
 
 
-async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
+async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912, PLR0915
     """从远程 URL 下载 SQLite 数据库并导入到内存中。
 
     若注册时提供了 ``get_fingerprint``，会先获取远程指纹并与上次成功同步
@@ -161,6 +246,19 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
         return False
 
     async with _get_lock(name):
+        local_before = _VersionInfo(
+            fingerprint=(
+                _fingerprint_file(entry.local_path)
+                if entry.local_path is not None
+                else None
+            ),
+            timestamp=(
+                _file_timestamp(entry.local_path)
+                if entry.local_path is not None
+                else None
+            ),
+        )
+        remote = _VersionInfo()
         fd, tmp_name = tempfile.mkstemp(suffix=".sqlite")
         os.close(fd)
         tmp_path = AsyncPath(tmp_name)
@@ -173,17 +271,57 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
                 fingerprint: str | None = None
                 if entry.get_fingerprint is not None:
                     try:
-                        fingerprint = await entry.get_fingerprint(client)
-                        if fingerprint == _fingerprints.get(name):
-                            logger.debug(
-                                f"数据库 '{name}' 指纹未变化"
-                                f" ({fingerprint})，跳过同步"
-                            )
-                            return True
+                        fingerprint = _normalize_fingerprint(
+                            await entry.get_fingerprint(client)
+                        )
                     except Exception:  # noqa: BLE001
                         logger.opt(exception=True).warning(
                             f"获取数据库 '{name}' 指纹失败，将继续执行同步"
                         )
+
+                remote = _VersionInfo(
+                    fingerprint=fingerprint,
+                    timestamp=await _fetch_remote_timestamp(client, entry.sync_url),
+                )
+
+                if (
+                    fingerprint is not None
+                    and local_before.fingerprint is not None
+                    and fingerprint == local_before.fingerprint
+                    and entry.local_path
+                ):
+                    logger.info(
+                        f"数据库 '{name}' 本地缓存已是最新 "
+                        f"({fingerprint[:12]})，跳过下载"
+                    )
+                    db_manager.load_from_file(name, entry.local_path)
+                    _fingerprints[name] = fingerprint
+                    _last_sync_statuses[name] = _SyncStatus(
+                        ok=True,
+                        skipped=True,
+                        local_before=local_before,
+                        remote=remote,
+                        message="本地与远端一致，无需更新",
+                    )
+                    return True
+
+                if (
+                    fingerprint is not None
+                    and fingerprint == _fingerprints.get(name)
+                    and not entry.local_path
+                ):
+                    logger.debug(
+                        f"数据库 '{name}' 指纹未变化"
+                        f" ({fingerprint})，跳过同步"
+                    )
+                    _last_sync_statuses[name] = _SyncStatus(
+                        ok=True,
+                        skipped=True,
+                        local_before=local_before,
+                        remote=remote,
+                        message="内存版本与远端一致，无需更新",
+                    )
+                    return True
 
                 logger.info(f"开始从 {entry.sync_url} 同步数据库 '{name}'...")
                 content = bytearray()
@@ -193,6 +331,7 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
                         content.extend(chunk)
 
             content_bytes = bytes(content)
+            content_fingerprint = _fingerprint_content(content_bytes)
             await tmp_path.write_bytes(content_bytes)
             db_manager.load_from_file(name, str(tmp_path))
 
@@ -204,22 +343,56 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
                         entry.local_path,
                         content_bytes,
                     )
+                    local_timestamp_after = _file_timestamp(entry.local_path)
                 except OSError:
                     cache_saved = False
+                    local_timestamp_after = local_before.timestamp
                     logger.exception(
                         f"数据库 '{name}' 本地缓存写入失败: {entry.local_path}"
                     )
+            else:
+                local_timestamp_after = local_before.timestamp
 
             if fingerprint is not None:
                 _fingerprints[name] = fingerprint
+            else:
+                _fingerprints[name] = content_fingerprint
+
+            if remote.fingerprint is None:
+                remote = _VersionInfo(
+                    fingerprint=content_fingerprint,
+                    timestamp=remote.timestamp,
+                )
 
             size_mb = len(content) / (1024 * 1024)
             logger.info(f"数据库 '{name}' 已同步到内存，源文件大小: {size_mb:.2f} MB")
+            _last_sync_statuses[name] = _SyncStatus(
+                ok=cache_saved,
+                skipped=False,
+                local_before=local_before,
+                remote=remote,
+                message=(
+                    "已更新"
+                    if cache_saved
+                    else "已加载到内存，但本地缓存写入失败"
+                ),
+            )
+            if local_timestamp_after is not None:
+                logger.debug(
+                    f"数据库 '{name}' 本地缓存写入时间: "
+                    f"{local_timestamp_after.isoformat()}"
+                )
 
         except httpx.HTTPStatusError as e:
             logger.warning(
                 f"数据库 '{name}' 同步失败（HTTP {e.response.status_code}）："
                 f"{e.request.url}"
+            )
+            _last_sync_statuses[name] = _SyncStatus(
+                ok=False,
+                local_before=local_before,
+                remote=remote,
+                message=f"HTTP {e.response.status_code}",
             )
             return False
         except httpx.TransportError as e:
@@ -227,15 +400,33 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912
                 f"数据库 '{name}' 同步失败（网络连接错误）："
                 f"{type(e).__name__}: {e}"
             )
+            _last_sync_statuses[name] = _SyncStatus(
+                ok=False,
+                local_before=local_before,
+                remote=remote,
+                message=f"{type(e).__name__}: {e}",
+            )
             return False
         except httpx.HTTPError as e:
             logger.warning(
                 f"数据库 '{name}' 同步失败（HTTP 客户端错误）："
                 f"{type(e).__name__}: {e}"
             )
+            _last_sync_statuses[name] = _SyncStatus(
+                ok=False,
+                local_before=local_before,
+                remote=remote,
+                message=f"{type(e).__name__}: {e}",
+            )
             return False
         except (OSError, ValueError):
             logger.exception(f"数据库 '{name}' 同步失败（文件或导入错误）")
+            _last_sync_statuses[name] = _SyncStatus(
+                ok=False,
+                local_before=local_before,
+                remote=remote,
+                message="文件或导入错误",
+            )
             return False
         else:
             return cache_saved
@@ -479,21 +670,34 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
 
     failed = [name for name, ok in results.items() if not ok]
     succeeded = [name for name, ok in results.items() if ok]
+    status_text = _format_sync_statuses(results)
 
     if failed:
         remote_failure_text = _format_remote_build_failures(failed)
         extra_text = f"\n{remote_failure_text}" if remote_failure_text else ""
+        status_extra = f"\n{status_text}" if status_text else ""
         await finish_event_reply(
             matcher,
             event,
             "数据更新完成，但有失败项。\n"
             f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
             f"失败：{', '.join(failed)}"
+            f"{status_extra}"
             f"{extra_text}\n"
             "请查看容器日志确认网络或下载错误。"
         )
 
-    await finish_event_reply(matcher, event, f"数据更新完成：{', '.join(succeeded)}")
+    skipped = [
+        name
+        for name, ok in results.items()
+        if ok and _last_sync_statuses.get(name, _SyncStatus(ok=True)).skipped
+    ]
+    if skipped and len(skipped) == len(results):
+        title = f"数据已是最新，无需更新：{', '.join(skipped)}"
+    else:
+        title = f"数据更新完成：{', '.join(succeeded)}"
+    status_extra = f"\n{status_text}" if status_text else ""
+    await finish_event_reply(matcher, event, f"{title}{status_extra}")
 
 
 def _format_remote_build_failures(failed_names: list[str]) -> str:
@@ -505,4 +709,50 @@ def _format_remote_build_failures(failed_names: list[str]) -> str:
         lines.append(f"远程构建失败：{name}（{result.message}）")
         if result.html_url:
             lines.append(f"Actions: {result.html_url}")
+    return "\n".join(lines)
+
+
+def _format_timestamp(value: datetime | None) -> str:
+    if value is None:
+        return "未知"
+
+    return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _format_fingerprint(value: str | None) -> str:
+    if not value:
+        return "未知"
+
+    return value[:12]
+
+
+def _format_sync_statuses(results: dict[str, bool]) -> str:
+    lines: list[str] = []
+    for name in results:
+        status = _last_sync_statuses.get(name)
+        if status is None:
+            continue
+
+        state = (
+            "无需更新"
+            if status.ok and status.skipped
+            else "已更新"
+            if status.ok
+            else "失败"
+        )
+        lines.append(f"{name}：{state}")
+        lines.append(
+            "  本地："
+            f"{_format_timestamp(status.local_before.timestamp)} "
+            f"sha256={_format_fingerprint(status.local_before.fingerprint)}"
+        )
+        lines.append(
+            "  远端："
+            f"{_format_timestamp(status.remote.timestamp)} "
+            f"sha256={_format_fingerprint(status.remote.fingerprint)}"
+        )
+        hidden_messages = {"已更新", "本地与远端一致，无需更新"}
+        if status.message and status.message not in hidden_messages:
+            lines.append(f"  说明：{status.message}")
+
     return "\n".join(lines)
