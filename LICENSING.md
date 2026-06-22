@@ -6,8 +6,12 @@
 
 | 范围 | 协议 | 说明 |
 | --- | --- | --- |
-| 整机 / 组合作品（完整仓库、Docker 镜像、可运行的 bot） | **GPL-3.0-or-later** | 因包含下方两个 GPL 插件，整体作为"组合作品"对外分发时必须遵守 GPL-3.0。 |
-| `ironsbot/plugins/get_seer_info/**` | **GPL-3.0-or-later** | 见 [ironsbot/plugins/get_seer_info/LICENSE](ironsbot/plugins/get_seer_info/LICENSE) |
+| 整机 / 组合作品（完整仓库、Docker 镜像、可运行的 bot） | **GPL-3.0-or-later** | 因包含下方 GPL 组件，整体作为"组合作品"对外分发时必须遵守 GPL-3.0。 |
+| `ironsbot/plugins/seer/query/**` | **GPL-3.0-or-later** | 赛尔号查询插件适配层与仍在使用的 upstream-derived helper 边界。 |
+| `ironsbot/services/seer/**` | **GPL-3.0-or-later** | 从赛尔号查询插件抽出的领域服务、渲染与纯计算逻辑。 |
+| `ironsbot/plugins/seer/rank_help/**` | **GPL-3.0-or-later** | 榜单帮助入口，依赖 GPL Seer 榜单说明服务。 |
+| `ironsbot/plugins/seer/assets/**` | **GPL-3.0-or-later** | Seer 渲染模板、图片和 CSS 资产。 |
+| `ironsbot/vendor/seer_upstream/**` | **GPL-3.0-or-later** | 保留的 upstream 渲染模板、图片资产、文档与许可资料；不作为 NoneBot 插件加载。 |
 | `ironsbot/plugins/headless_seer/**` | **GPL-3.0-or-later** | 见 [ironsbot/plugins/headless_seer/LICENSE](ironsbot/plugins/headless_seer/LICENSE)，另见同目录 `NOTICE` |
 | 其余全部代码（其他插件、`ironsbot/utils`、`bot.py`、`docker/` 等） | **MIT** | 见根目录 [LICENSE](LICENSE) |
 
@@ -16,8 +20,8 @@ GPL-3.0 全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)。
 ## 这意味着什么
 
 - **单独复用非插件模块**：你可以单独提取以 MIT 标注的模块（例如 `ironsbot/plugins/seer_data`、`ironsbot/utils` 等），按 MIT 协议在你自己的项目中使用，无需承担 GPL 义务（可闭源、可商用）。
-- **分发整机仍受 GPL 约束**：由于 `get_seer_info` 与 `headless_seer` 两个 GPL 插件与 bot 在同一进程内紧密耦合，构成"组合作品"。当你分发**整个项目 / Docker 镜像 / 可运行的 bot** 时，整体必须按 GPL-3.0 分发（提供对应源码、保持 GPL 等）。MIT 标注**不会**解除整机的 GPL 义务。
-- **依赖方向**：两个 GPL 插件依赖（import）MIT 模块，而 MIT 模块不依赖这两个插件，因此 MIT 模块可独立提取使用。
+- **分发整机仍受 GPL 约束**：由于 Seer 查询、Seer 服务与 `headless_seer` 等 GPL 组件与 bot 在同一进程内紧密耦合，构成"组合作品"。当你分发**整个项目 / Docker 镜像 / 可运行的 bot** 时，整体必须按 GPL-3.0 分发（提供对应源码、保持 GPL 等）。MIT 标注**不会**解除整机的 GPL 义务。
+- **依赖方向**：GPL 组件依赖（import）部分 MIT 模块，而 MIT 模块不依赖这些 GPL 组件，因此未列入 GPL 范围的 MIT 模块可独立提取使用。
 
 ## 文件级标注
 
