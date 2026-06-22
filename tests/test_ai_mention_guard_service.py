@@ -1,3 +1,8 @@
+import asyncio
+
+from pytest import MonkeyPatch
+
+from ironsbot.services.ai import mention_guard
 from ironsbot.services.ai.mention_guard import GuardReplyLimiter
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
@@ -11,6 +16,10 @@ class FakeMessageEvent:
 
     def get_plaintext(self) -> str:
         return self.text
+
+
+class FakeGroupMessageEvent(FakeMessageEvent):
+    pass
 
 
 def test_guard_reply_limiter_caps_messages_per_window() -> None:
@@ -56,4 +65,46 @@ def test_guard_message_appends_config_notice() -> None:
 
     assert _build_guard_message(FakeMessageEvent("@bot 谱尼配置")) == (
         f"{HELP_HINT_TEXT}\n{PET_CONFIG_UNAVAILABLE_TEXT}"
+    )
+
+
+def test_config_mention_is_not_guarded_when_ai_is_allowed(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mention_guard, "GroupMessageEvent", FakeGroupMessageEvent)
+    monkeypatch.setattr(mention_guard, "mentions_bot", lambda _event: True)
+    monkeypatch.setattr(mention_guard, "is_ai_allowed", lambda _event: True)
+
+    assert not asyncio.run(
+        mention_guard.should_guard_non_ai_group_mention(
+            FakeGroupMessageEvent("@bot 谱尼配置")
+        )
+    )
+
+
+def test_plain_mention_is_not_guarded_when_ai_is_allowed(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mention_guard, "GroupMessageEvent", FakeGroupMessageEvent)
+    monkeypatch.setattr(mention_guard, "mentions_bot", lambda _event: True)
+    monkeypatch.setattr(mention_guard, "is_ai_allowed", lambda _event: True)
+
+    assert not asyncio.run(
+        mention_guard.should_guard_non_ai_group_mention(
+            FakeGroupMessageEvent("@bot 谱尼强吗")
+        )
+    )
+
+
+def test_config_mention_is_guarded_when_ai_is_not_allowed(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mention_guard, "GroupMessageEvent", FakeGroupMessageEvent)
+    monkeypatch.setattr(mention_guard, "mentions_bot", lambda _event: True)
+    monkeypatch.setattr(mention_guard, "is_ai_allowed", lambda _event: False)
+
+    assert asyncio.run(
+        mention_guard.should_guard_non_ai_group_mention(
+            FakeGroupMessageEvent("@bot 谱尼配置")
+        )
     )

@@ -23,7 +23,14 @@ def test_parse_countermark_stat_rank_command_reads_all_scope() -> None:
 
     assert command is not None
     assert command.scope == "all"
-    assert command.stat == StatSpec("atk", "攻击", ("atk",))
+    assert command.stat == StatSpec("atk", "物攻", ("atk",))
+
+
+def test_parse_countermark_stat_rank_command_rejects_ambiguous_attack() -> None:
+    command = parse_countermark_stat_rank_command("刻印攻榜")
+
+    assert command is not None
+    assert command.stat is None
 
 
 def test_parse_countermark_stat_rank_command_reads_five_angle_scope() -> None:
@@ -42,7 +49,7 @@ def test_parse_countermark_stat_rank_command_reads_two_angle_aliases() -> None:
         assert command is not None
         assert command.scope == "angle"
         assert command.angle_count == TWO_ANGLE_COUNT
-        assert command.stat == StatSpec("atk", "攻击", ("atk",))
+        assert command.stat == StatSpec("atk", "物攻", ("atk",))
 
 
 def test_parse_countermark_stat_rank_command_reads_six_angle_aliases() -> None:
@@ -91,7 +98,7 @@ def test_parse_countermark_stat_rank_command_reads_stat_combinations() -> None:
     assert attack_hp_command is not None
     assert attack_hp_command.stat == StatSpec(
         "combo:atk+hp",
-        "攻击体力",
+        "物攻体力",
         ("atk", "hp"),
     )
     assert special_attack_shield_command is not None
@@ -156,14 +163,14 @@ def test_build_countermark_message_renders_ranked_items() -> None:
     )
 
     message = build_countermark_stat_rank_message(
-        CountermarkStatRankCommand(stat=StatSpec("atk", "攻击"), scope="all"),
+        CountermarkStatRankCommand(stat=StatSpec("atk", "物攻"), scope="all"),
         [item],
         now_text="2026-06-12 09:30:00",
     )
 
-    assert "💮【所有刻印攻击榜】（截至2026-06-12 09:30:00）" in message
+    assert "💮【所有刻印物攻榜】（截至2026-06-12 09:30:00）" in message
     assert "范围：所有刻印 | 展示前 1 名" in message
-    assert "1. 怒火刻印（1001） 攻击42 | 总和66.5 | 限定 | 5角" in message
+    assert "1. 怒火刻印（1001） 物攻42 | 总和66.5 | 限定 | 5角" in message
 
 
 def test_build_countermark_message_renders_composite_stats() -> None:
