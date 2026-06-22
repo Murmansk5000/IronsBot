@@ -58,6 +58,31 @@ def test_feature_service_reads_query_alias(
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 
+def test_all_feature_alias_does_not_include_admin_notice(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    assert "all" in FEATURE_ALIASES
+    assert "admin_notice" not in FEATURE_ALIASES["all"]
+
+    feature_config = FeatureConfig(
+        group_aliases={"main": 123},
+        group_policy={"main": ["all"]},
+        superuser_bypass=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_app_config",
+        lambda: SimpleNamespace(feature=feature_config),
+    )
+
+    feature_service = service.FeatureService()
+
+    assert feature_service.is_group_feature_allowed(999, 123, "seer")
+    assert not feature_service.is_group_feature_allowed(999, 123, "admin_notice")
+    assert feature_service.groups_for_feature("seer") == [123]
+    assert feature_service.groups_for_feature("admin_notice") == []
+
+
 def test_team_audit_feature_is_registered() -> None:
     assert "team_audit" in FEATURE_ALIASES["message"]
     assert features_for_module("ironsbot.plugins.team_audit_welcome") == (
