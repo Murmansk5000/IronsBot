@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment, NoticeEvent, PokeNotifyE
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
 
-from ironsbot.services.help_hint import is_poke_at_bot
+from ironsbot.services.help_hint import can_send_group_help_hint, is_poke_at_bot
 from ironsbot.shared.help_hints import POKE_HELP_HINT_TEXT
 
 
@@ -25,6 +25,9 @@ poke_help_matcher = on_notice(
 
 @poke_help_matcher.handle()
 async def handle_poke_help(matcher: Matcher, event: PokeNotifyEvent) -> None:
+    if not can_send_group_help_hint(event.group_id):
+        await matcher.finish()
+
     if event.group_id is None:
         await matcher.finish(POKE_HELP_HINT_TEXT)
 
