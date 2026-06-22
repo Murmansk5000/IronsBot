@@ -138,12 +138,6 @@ mention_guard_reply_window_seconds = 60.0
 # Example: 5
 mention_guard_reply_max_per_window = 10
 
-# Default: built-in Chinese guard message.
-# EN: Message sent when a non-AI group mentions the bot.
-# ZH: 未开启 AI 群 @ 机器人时的提示文案。
-# Example: "直接发送帮助查看可用功能。"
-mention_guard_message = "这个群没有开启 AI 聊天，@我不会触发功能。直接发送指令就可以查询；不会用可以发送“帮助”。"
-
 # Default: 600.0
 # EN: Admin notice cooldown for AI failures.
 # ZH: AI 异常通知管理员的冷却秒数。

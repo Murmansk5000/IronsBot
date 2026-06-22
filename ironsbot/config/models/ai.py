@@ -13,7 +13,6 @@ from ironsbot.shared.config.parsing import (
     json_object,
     string_list,
 )
-from ironsbot.shared.help_hints import DIRECT_COMMAND_HELP_HINT_TEXT
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
@@ -21,10 +20,6 @@ AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
-)
-DEFAULT_AI_MENTION_GUARD_MESSAGE = (
-    "这个群没有开启 AI 聊天，@我不会触发功能。"
-    + DIRECT_COMMAND_HELP_HINT_TEXT
 )
 DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS = 60.0
 DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW = 10
@@ -168,7 +163,6 @@ class AiConfig(BaseModel):
         default=DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW,
         ge=1,
     )
-    mention_guard_message: str = DEFAULT_AI_MENTION_GUARD_MESSAGE
     admin_notice_cooldown_seconds: float = Field(
         default=DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
         ge=0,
@@ -260,7 +254,6 @@ def resolve_configured_actions(config: AiConfig) -> list[AiIntentAction]:
 __all__ = [
     "AI_REPLY_PROMPT_REQUIRED_ERROR",
     "DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS",
-    "DEFAULT_AI_MENTION_GUARD_MESSAGE",
     "DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW",
     "DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS",
     "DEFAULT_AI_PROMPT",

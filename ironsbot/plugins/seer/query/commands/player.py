@@ -11,19 +11,14 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.plugins.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
-from ironsbot.shared.messaging import (
-    enter_event_reply_conversation,
-    finish_event_reply,
-    send_event_reply,
-)
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
+)
+from ironsbot.plugins.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
 )
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.errors import format_player_query_error
@@ -69,6 +64,11 @@ from ironsbot.services.seer.sequ_extra import (
     UnityPeakInfo,
     fetch_unity_part_one,
     fetch_unity_peak,
+)
+from ironsbot.shared.messaging import (
+    enter_event_reply_conversation,
+    finish_event_reply,
+    send_event_reply,
 )
 from ironsbot.shared.messaging.conversations import command_reply_check
 from ironsbot.shared.messaging.query_guard import QueryGuard
@@ -194,6 +194,7 @@ class PlayerQueryPlugin:
         state: T_State,
     ) -> None:
         detail_request = resolve_player_detail_reply(event.get_plaintext())
+        detail_is_pending = _is_player_detail_task_pending(state)
         message = (
             await _get_player_detail_message(
                 state,
@@ -208,6 +209,20 @@ class PlayerQueryPlugin:
 
         if not message:
             raise FinishedException
+
+        if detail_is_pending:
+            await send_event_reply(
+                matcher,
+                event,
+                message,
+                mention_sender=True,
+            )
+            await _continue_player_detail_conversation(
+                matcher,
+                event,
+                state,
+                prompt=None,
+            )
 
         await _continue_player_detail_conversation(
             matcher,
@@ -414,6 +429,11 @@ async def _get_player_detail_message(
     return cached_player_detail_message(state, key)
 
 
+def _is_player_detail_task_pending(state: T_State) -> bool:
+    task = state.get(PLAYER_DETAIL_TASK_KEY)
+    return isinstance(task, asyncio.Task) and not task.done()
+
+
 def _schedule_player_detail_auto_reply(  # noqa: PLR0913
     matcher: Matcher,
     event: MessageEvent,
@@ -477,10 +497,12 @@ async def _continue_player_detail_conversation(
     event: MessageEvent,
     state: T_State,
     *,
-    prompt: str,
+    prompt: str | None,
 ) -> None:
     commands = tuple(state.get(PLAYER_DETAIL_COMMANDS_KEY) or ())
     if not commands:
+        if prompt is None:
+            raise FinishedException
         await finish_event_reply(
             matcher,
             event,

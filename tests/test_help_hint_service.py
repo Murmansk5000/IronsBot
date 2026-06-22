@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from ironsbot.services.help_hint import HelpHintLimiter, is_poke_at_bot
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
+    PET_CONFIG_UNAVAILABLE_TEXT,
     append_help_hint,
     unsupported_feature_help_message,
 )
@@ -24,6 +25,13 @@ def test_append_help_hint_adds_shared_hint_once() -> None:
 def test_unsupported_feature_help_message_uses_shared_hint() -> None:
     assert unsupported_feature_help_message("查询精灵配置") == (
         f"此机器人暂不支持查询精灵配置。{HELP_HINT_TEXT}"
+    )
+
+
+def test_shared_help_hint_text_mentions_help_command() -> None:
+    assert HELP_HINT_TEXT == "直接发送指令即可使用机器人功能；使用“帮助”指令获取帮助。"
+    assert PET_CONFIG_UNAVAILABLE_TEXT == (
+        "本机器人因无人搜集、整理、维护精灵配置图，无法开放配置查询功能。"
     )
 
 

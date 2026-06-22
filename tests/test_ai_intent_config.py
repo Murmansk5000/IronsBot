@@ -1,6 +1,5 @@
 from ironsbot.config.models.ai import (
     DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
-    DEFAULT_AI_MENTION_GUARD_MESSAGE,
     DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW,
     DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS,
     DEFAULT_JOIN_TEAM_MESSAGE,
@@ -32,7 +31,6 @@ def test_ai_mention_guard_defaults_live_in_ai_config() -> None:
         config.mention_guard_reply_max_per_window
         == DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW
     )
-    assert config.mention_guard_message == DEFAULT_AI_MENTION_GUARD_MESSAGE
     assert (
         config.admin_notice_cooldown_seconds
         == DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS

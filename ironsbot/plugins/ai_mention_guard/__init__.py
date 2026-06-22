@@ -8,6 +8,10 @@ from ironsbot.services.ai.mention_guard import (
     should_guard_non_ai_group_mention,
 )
 from ironsbot.services.help_hint import can_send_group_help_hint
+from ironsbot.shared.help_hints import (
+    DIRECT_COMMAND_HELP_HINT_TEXT,
+    PET_CONFIG_UNAVAILABLE_TEXT,
+)
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -52,6 +56,13 @@ def _get_guard_reply_limiter() -> GuardReplyLimiter:
     return _guard_reply_limiter
 
 
+def _build_guard_message(event: MessageEvent) -> str:
+    message = DIRECT_COMMAND_HELP_HINT_TEXT
+    if "配置" in event.get_plaintext():
+        message += f"\n{PET_CONFIG_UNAVAILABLE_TEXT}"
+    return message
+
+
 mention_guard_matcher = on_message(
     rule=Rule(_is_non_ai_group_at_guarded_user),
     priority=0,
@@ -77,7 +88,7 @@ class AiMentionGuardPlugin:
         await finish_event_reply(
             context.matcher or mention_guard_matcher,
             event,
-            get_ai_config().mention_guard_message,
+            _build_guard_message(event),
             mention_sender=False,
         )
 
