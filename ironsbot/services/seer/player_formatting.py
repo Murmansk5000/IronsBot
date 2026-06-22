@@ -83,8 +83,7 @@ def format_online_text(online_info: Any | None) -> str:
 
     return (
         "在线"
-        f"（服务器：{online_info.server_id}，"
-        f"地图类型：{online_info.map_type}，地图ID：{online_info.map_id}）"
+        f"（服务器：{online_info.server_id}，地图类型：{online_info.map_type}）"
     )
 
 

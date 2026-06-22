@@ -74,8 +74,8 @@ class CountermarkStatRankItem:
 
 
 BASE_STAT_ALIASES: dict[str, StatSpec] = {
-    "攻击": StatSpec("atk", "攻击", ("atk",)),
-    "物攻": StatSpec("atk", "攻击", ("atk",)),
+    "攻击": StatSpec("atk", "物攻", ("atk",)),
+    "物攻": StatSpec("atk", "物攻", ("atk",)),
     "防御": StatSpec("def_", "防御", ("def_",)),
     "物防": StatSpec("def_", "防御", ("def_",)),
     "特攻": StatSpec("sp_atk", "特攻", ("sp_atk",)),

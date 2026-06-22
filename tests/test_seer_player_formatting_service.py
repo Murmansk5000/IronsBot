@@ -100,7 +100,7 @@ def test_format_player_identity_team_vip_and_online_text() -> None:
     assert format_vip(user_info) == "是（等级：6）"
     assert (
         format_online_text(online_info)
-        == "在线（服务器：1，地图类型：2，地图ID：3）"
+        == "在线（服务器：1，地图类型：2）"
     )
     assert format_online_text(None) == "离线"
 
@@ -115,7 +115,7 @@ def test_format_login_timeline_orders_login_after_offline() -> None:
     assert format_login_timeline_lines(user_info, online_info) == [
         "最后离线：2026年5月29日 01:40:00",
         "最后登录：2026年5月29日 04:26:40",
-        "是否在线：在线（服务器：1，地图类型：2，地图ID：3）",
+        "是否在线：在线（服务器：1，地图类型：2）",
     ]
 
 
@@ -129,7 +129,7 @@ def test_format_login_timeline_orders_offline_after_login() -> None:
     assert format_login_timeline_lines(user_info, online_info) == [
         "最后登录：2026年5月29日 01:40:00",
         "最后离线：2026年5月29日 04:26:40",
-        "是否在线：在线（服务器：1，地图类型：2，地图ID：3）",
+        "是否在线：在线（服务器：1，地图类型：2）",
     ]
 
 
