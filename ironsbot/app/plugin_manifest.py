@@ -66,6 +66,7 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.activity.runtime:setup_activity_reminder_runtime",
     "ironsbot.plugins.seer.query.runtime:setup_local_rank_scheduler_runtime",
     "ironsbot.plugins.seer.query.runtime:setup_render_cache_runtime",
+    "ironsbot.plugins.seer.query.runtime:setup_render_crash_report_runtime",
 )
 
 PLUGIN_GROUPS: Final[tuple[PluginGroup, ...]] = (
