@@ -17,7 +17,7 @@ group_aliases = {}
 user_aliases = {}
 
 # Default: {}
-# EN: Group feature allowlist. Feature aliases include all, custom, bili, activity,
+# EN: Group feature allowlist. Feature aliases include all, query, bili, activity,
 # server_status, text, text_push, and message.
 # ZH: 群功能策略，控制每个群可用哪些功能。
 # Example: { main = ["seer", "image", "meeting"] }
@@ -138,12 +138,6 @@ mention_guard_reply_window_seconds = 60.0
 # Example: 5
 mention_guard_reply_max_per_window = 10
 
-# Default: built-in Chinese guard message.
-# EN: Message sent when a non-AI group mentions the bot.
-# ZH: 未开启 AI 群 @ 机器人时的提示文案。
-# Example: "直接发送帮助查看可用功能。"
-mention_guard_message = "这个群没有开启 AI 聊天，@或回复我不会触发功能。直接发送指令就可以查询；不会用可以发送“帮助”。"
-
 # Default: 600.0
 # EN: Admin notice cooldown for AI failures.
 # ZH: AI 异常通知管理员的冷却秒数。
@@ -161,6 +155,7 @@ intent_actions_enabled = true
 # intent, classifier_prompt, action, message, reply_prompt, team_ids,
 # include_team_resource_notice, exclude_commands.
 # ZH: 启用的意图动作。字段同上，可通过 template 复用内置模板。
+# Built-in join_team uses action = "team_recommend".
 # Example: [{ template = "join_team" }]
 intent_actions = [{ template = "join_team" }]
 
@@ -269,7 +264,7 @@ cache_path = "data/activity_reminder/sent.sqlite"
 # Default: built-in reminder template.
 # EN: Reminder message template.
 # ZH: 活动提醒消息模板。
-# Example: "还有约 {lead_hours} 小时结束\n{activity_list}"
+# Available fields: {lead_hours}, {activity_count}, {activity_list}
 message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
 
 # Default: 8.0
@@ -323,11 +318,11 @@ min_lines = 5
 # Example: 100
 max_lines = 80
 
-# Default: "data/message_actions/reply_limits.sqlite"
+# Default: "data/messaging/reply_limits.sqlite"
 # EN: SQLite path for per-group reply line limits.
 # ZH: 每群回复行数限制数据库。
-# Example: "data/message/reply_limits.sqlite"
-limit_path = "data/message_actions/reply_limits.sqlite"
+# Example: "data/messaging/reply_limits.sqlite"
+limit_path = "data/messaging/reply_limits.sqlite"
 
 [message.meeting]
 # Default: ""
@@ -347,6 +342,28 @@ template = "腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接
 # ZH: 会议回复触发口令。
 # Example: ["会议"]
 commands = ["开播", "会议"]
+
+[message.team_audit_welcome]
+# Default: false
+# EN: Enable join guidance in team audit groups.
+# ZH: 启用战队审核群新人入群提示。
+enabled = false
+
+# Default: "team_audit"
+# EN: Feature gate checked for team audit welcome messages.
+# ZH: 战队审核入群提示使用的功能权限名。
+feature = "team_audit"
+
+# Default: []
+# EN: Target groups by group alias or QQ group number.
+# ZH: 战队审核入群提示生效群，可填写群别名或群号。
+# Example: ["xinghenshenhe"]
+groups = []
+
+# Default: built-in team audit guidance.
+# EN: Welcome message sent to newcomers. The bot will mention the newcomer first.
+# ZH: 发送给新人的战队审核说明；机器人会先 @ 新人。
+message = "欢迎加入战队审核群。\n如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，方便管理员审核。\n审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
 
 [message.sendpic]
 # Default: null/omitted
@@ -412,10 +429,10 @@ page_cache_ttl_seconds = 3600
 allow_stale_cache = true
 # Default: true; EN: Refresh stale rank cache. ZH: 刷新过期缓存。
 refresh_stale_cache = true
-# Default: "data/custom_get_seer_info/rank_page_cache.sqlite"
+# Default: "data/seer/rank_page_cache.sqlite"
 # EN: Rank page cache SQLite path.
 # ZH: 榜单分页缓存数据库。
-page_cache_path = "data/custom_get_seer_info/rank_page_cache.sqlite"
+page_cache_path = "data/seer/rank_page_cache.sqlite"
 # Default: omitted/null; EN: Override peak subkey. ZH: 覆盖巅峰 subkey。
 # peak_subkey = 123
 
@@ -438,10 +455,10 @@ refresh_limit = 300
 refresh_max_age_hours = 24
 # Default: 0.5; EN: Delay between refresh queries. ZH: 刷新请求间隔秒数。
 refresh_interval_seconds = 0.5
-# Default: "data/custom_get_seer_info/player_query_cache.sqlite"
+# Default: "data/seer/player_query_cache.sqlite"
 # EN: Local rank SQLite path.
 # ZH: 本地样本榜数据库。
-path = "data/custom_get_seer_info/player_query_cache.sqlite"
+path = "data/seer/player_query_cache.sqlite"
 
 [seer.team_shortcut]
 # Default: []
@@ -489,9 +506,47 @@ interval_minutes = 60
 # Default: "data/ironsbot-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
 local_path = "data/ironsbot-data.sqlite"
 
+[runtime.data_sync.sources.seerapi.remote_build]
+# Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
+enabled = true
+
+# EN: Ordered GitHub Actions pipeline executed before downloading this database.
+# ZH: 下载该数据库前顺序执行的 GitHub Actions 流水线。
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "update_unity_config"
+repository = "Murmansk5000/seer-unity-config-parser"
+workflow_id = "schedule.yml"
+ref = "main"
+timeout_seconds = 1800
+poll_interval_seconds = 10
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "sync_config_sources"
+repository = "Murmansk5000/config-sources"
+workflow_id = "sync-upstream.yml"
+ref = "main"
+timeout_seconds = 600
+poll_interval_seconds = 10
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "build_seer_data"
+repository = "Murmansk5000/seer-data"
+workflow_id = "main.yml"
+ref = "main"
+timeout_seconds = 1800
+poll_interval_seconds = 10
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "build_ironsbot_data"
+repository = "Murmansk5000/seerapi"
+workflow_id = "build-ironsbot-data-db.yml"
+ref = "main"
+timeout_seconds = 1800
+poll_interval_seconds = 10
+
 [runtime.data_sync.sources.aliases]
-url = "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite"
-fingerprint_url = "https://github.com/Murmansk5000/seerapi/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
+url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
+fingerprint_url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
 interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
 
@@ -556,3 +611,17 @@ ignored_plugins = []
 enabled = true
 # Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
 wait_timeout_seconds = 300.0
+
+[runtime.logging]
+# Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
+file_enabled = false
+# Default: "/app/logs/ironsbot.log"; EN: File log path. ZH: 文件日志路径；Unraid 建议额外挂载 /app/logs 方便持久化，也可改成 /app/data/logs/ironsbot.log。
+file_path = "/app/logs/ironsbot.log"
+# Default: "INFO"; EN: Minimum file log level. ZH: 写入文件的最低日志等级，可填 DEBUG、INFO、WARNING、ERROR 等。
+file_level = "INFO"
+# Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。
+rotation = "20 MB"
+# Default: "14 days"; EN: Keep rotated logs for this duration. ZH: 轮转日志保留时间。
+retention = "14 days"
+# Default: "zip"; EN: Compress rotated logs. Set to "" or null to disable. ZH: 轮转旧日志压缩格式，设为空或 null 表示不压缩。
+compression = "zip"

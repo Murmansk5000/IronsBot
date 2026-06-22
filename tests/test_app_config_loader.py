@@ -48,6 +48,26 @@ def test_example_config_parses() -> None:
     assert "米米号" in config.message.team_audit_welcome.message
     assert config.seer.team_shortcut.team_ids == []
     assert config.runtime.data_sync.sources["seerapi"].local_path
+    assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
+    assert not config.runtime.logging.file_enabled
+    assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
+    remote_build_steps = config.runtime.data_sync.sources[
+        "seerapi"
+    ].remote_build.steps
+    assert [step.name for step in remote_build_steps] == [
+        "update_unity_config",
+        "sync_config_sources",
+        "build_seer_data",
+        "build_ironsbot_data",
+    ]
+    assert (
+        remote_build_steps[-1].repository
+        == "Murmansk5000/seerapi"
+    )
+    assert (
+        remote_build_steps[-1].workflow_id
+        == "build-ironsbot-data-db.yml"
+    )
     assert config.runtime.help.ignored_plugins == []
 
 
@@ -61,6 +81,7 @@ def test_env_secrets_credentials_and_deployment_are_separate() -> None:
         "ONEBOT_ACCESS_TOKEN": "token",
         "AI_KEY": "sk-test",
         "SENDPIC_CNB_TOKEN": "cnb-token",
+        "GITHUB_WORKFLOW_TOKEN": "gh-token",
         "HEADLESS_SEER_USER_ID": str(HEADLESS_USER_ID),
         "HEADLESS_SEER_PASSWORD": "md5",
         "ENVIRONMENT": "dev",
@@ -77,6 +98,7 @@ def test_env_secrets_credentials_and_deployment_are_separate() -> None:
     assert isinstance(credentials, CredentialsConfig)
     assert isinstance(deployment, DeploymentConfig)
     assert secrets.ai_key == "sk-test"
+    assert secrets.github_workflow_token == "gh-token"
     assert credentials.headless_seer_user_id == HEADLESS_USER_ID
     assert deployment.port == DEPLOYMENT_PORT
     assert deployment.command_start == ["/", ""]

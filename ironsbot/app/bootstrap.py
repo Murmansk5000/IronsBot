@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
+from ironsbot.app.file_logging import configure_file_logging
 from ironsbot.app.plugin_manifest import (
     RUNTIME_SETUP_CALLS,
     iter_plugin_modules,
@@ -84,6 +85,7 @@ def run_runtime_setups(
 def bootstrap() -> BootstrapState:
     configure_third_party_logging()
     nonebot.init()
+    configure_file_logging()
 
     driver = nonebot.get_driver()
     driver.register_adapter(ONEBOT_V11Adapter)
