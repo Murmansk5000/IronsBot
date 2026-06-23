@@ -157,9 +157,6 @@ async def _fetch_rank_page(  # noqa: PLR0913
             end=end,
         )
         if cached_items is not None:
-            from ironsbot.services.seer.local_rank import upsert_rank_page_metrics
-
-            upsert_rank_page_metrics(key=key, sub_key=sub_key, items=cached_items)
             return cached_items
 
     _head, rank_list = await game.send_and_wait(
@@ -169,9 +166,6 @@ async def _fetch_rank_page(  # noqa: PLR0913
     )
     items = list(rank_list.rank_list)
     save_rank_page(key=key, sub_key=sub_key, start=start, end=end, items=items)
-    from ironsbot.services.seer.local_rank import upsert_rank_page_metrics
-
-    upsert_rank_page_metrics(key=key, sub_key=sub_key, items=items)
     return items
 
 

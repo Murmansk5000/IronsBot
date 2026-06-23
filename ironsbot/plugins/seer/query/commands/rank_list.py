@@ -32,7 +32,6 @@ from ironsbot.services.seer.rank_list import (
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
     batch_raw_start,
-    build_local_rank_cache_full_message,
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
     build_local_rank_refresh_result_message,
@@ -177,9 +176,9 @@ async def _build_global_rank_message(spec: GlobalRankSpec) -> str:
     return format_global_rank_message(spec, items)
 
 
-async def _fetch_rank_batch_player_ids(
+async def _cache_global_rank_batch(
     command: RankCacheBatchCommand,
-) -> tuple[GlobalRankSpec, list[int], int]:
+) -> tuple[GlobalRankSpec, int, int]:
     spec = GLOBAL_RANKS[command.rank_key]
     requested_count = command.end_rank - command.start_rank + 1
     count = min(requested_count, get_local_rank_config().batch_limit)
@@ -190,9 +189,9 @@ async def _fetch_rank_batch_player_ids(
         sub_key=spec.sub_key,
         start=raw_start,
         count=count,
+        use_cache=False,
     )
-    player_ids = [int(item.id) for item in items if int(item.id) > 0]
-    return spec, player_ids, requested_count
+    return spec, len(items), requested_count
 
 
 def _build_local_rank_message(spec: LocalRankSpec) -> str:
@@ -281,16 +280,8 @@ class RankListPlugin:
     ) -> None:
         ensure_extended_packets()
         command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
-        before = get_local_rank_cache_stats()
-        if before.player_count >= before.max_players:
-            await finish_event_reply(
-                matcher,
-                event,
-                build_local_rank_cache_full_message(before),
-            )
-
-        spec, player_ids, requested_count = await _fetch_rank_batch_player_ids(command)
-        if not player_ids:
+        spec, item_count, requested_count = await _cache_global_rank_batch(command)
+        if item_count <= 0:
             await finish_event_reply(
                 matcher,
                 event,
@@ -303,14 +294,11 @@ class RankListPlugin:
             build_rank_batch_start_message(
                 spec,
                 command,
-                before,
-                player_id_count=len(player_ids),
+                item_count=item_count,
                 requested_count=requested_count,
             ),
         )
         await release_superuser_priority(state)
-        result = await refresh_local_rank_cache(player_ids)
-        after = get_local_rank_cache_stats()
 
         await finish_event_reply(
             matcher,
@@ -318,9 +306,8 @@ class RankListPlugin:
             build_rank_batch_result_message(
                 spec,
                 command,
-                result,
-                after,
-                failure_lines=format_refresh_failures(result.failures),
+                item_count=item_count,
+                requested_count=requested_count,
             ),
         )
 

@@ -400,36 +400,28 @@ def format_local_rank_message(
     return "\n".join(lines)
 
 
-def build_local_rank_cache_full_message(stats: Any) -> str:
-    return (
-        f"❌ 样本缓存已满：{stats.player_count}/{stats.max_players}。"
-        "请先调大 seer.local_rank.max_players。"
-    )
-
-
 def build_rank_batch_no_players_message(spec: GlobalRankSpec) -> str:
-    return f"❌ 没有从{spec.title}拿到可缓存的米米号。"
+    return f"❌ 没有从{spec.title}拿到可缓存的榜单数据。"
 
 
 def build_rank_batch_start_message(
     spec: GlobalRankSpec,
     command: RankCacheBatchCommand,
-    before_stats: Any,
     *,
-    player_id_count: int,
+    item_count: int,
     requested_count: int,
 ) -> str:
     truncated_text = ""
-    if requested_count > player_id_count:
+    if requested_count > item_count:
         truncated_text = (
             "\n本次按 seer.local_rank.batch_limit "
-            f"只处理前 {player_id_count} 个。"
+            f"只处理前 {item_count} 个。"
         )
 
     return (
         f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
-        f"\n实际拿到 {player_id_count} 个米米号。"
-        f"\n当前缓存：{before_stats.player_count}/{before_stats.max_players}。"
+        f"\n实际拿到 {item_count} 条榜单数据。"
+        "\n只写入全服榜单页缓存，不计入样本。"
         f"{truncated_text}"
     )
 
@@ -437,25 +429,23 @@ def build_rank_batch_start_message(
 def build_rank_batch_result_message(
     spec: GlobalRankSpec,
     command: RankCacheBatchCommand,
-    result: Any,
-    after_stats: Any,
     *,
-    failure_lines: Sequence[str] = (),
+    item_count: int,
+    requested_count: int,
 ) -> str:
+    truncated_text = ""
+    if requested_count > item_count:
+        truncated_text = f"\n本次实际缓存：{item_count}/{requested_count} 条"
+
     lines = [
         "✅【榜单区间缓存完成】",
         f"榜单：{spec.title}",
         f"请求区间：第 {command.start_rank}-{command.end_rank} 名",
-        f"本次处理：{result.total} 个",
-        f"成功写入/刷新：{result.success} 个",
-        f"缓存已满跳过：{result.skipped_full} 个",
-        f"失败：{result.failed} 个",
-        f"当前缓存：{after_stats.player_count}/{after_stats.max_players}",
+        f"写入榜单页缓存：{item_count} 条",
+        "样本缓存：未写入",
     ]
-    if failure_lines:
-        lines.append("")
-        lines.append("失败示例：")
-        lines.extend(failure_lines)
+    if truncated_text:
+        lines.append(truncated_text.strip())
     return "\n".join(lines)
 
 
