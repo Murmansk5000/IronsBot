@@ -81,30 +81,32 @@ def test_parse_rank_cache_batch_command_requires_admin_prefix_and_global_rank() 
 
 
 def test_parse_rank_page_cache_status_command_reads_global_rank() -> None:
-    assert parse_rank_page_cache_status_command("/榜单缓存 刻印榜") == (
+    assert parse_rank_page_cache_status_command("/榜单情况 刻印榜") == (
         RankPageCacheStatusCommand(rank_key="刻印图鉴")
     )
-    assert parse_rank_page_cache_status_command("/缓存区间图鉴榜") == (
+    assert parse_rank_page_cache_status_command("/榜单状态图鉴榜") == (
         RankPageCacheStatusCommand(rank_key="图鉴积分")
     )
-    assert parse_rank_page_cache_status_command("/榜单缓存 样本图鉴榜") is None
+    assert parse_rank_page_cache_status_command("/榜单情况 样本图鉴榜") is None
+    assert parse_rank_page_cache_status_command("/榜单缓存 刻印榜") is None
 
 
 def test_parse_rank_page_cache_refresh_command_reads_optional_global_rank() -> None:
-    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存") == (
+    assert parse_rank_page_cache_refresh_command("/刷新榜单") == (
         RankPageCacheRefreshCommand()
     )
-    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 皮肤榜") == (
+    assert parse_rank_page_cache_refresh_command("/刷新榜单 皮肤榜") == (
         RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
     )
-    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 样本图鉴榜") is None
-    assert parse_rank_page_cache_refresh_command("刷新榜单缓存 皮肤榜") is None
+    assert parse_rank_page_cache_refresh_command("/刷新榜单 样本图鉴榜") is None
+    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 皮肤榜") is None
+    assert parse_rank_page_cache_refresh_command("刷新榜单 皮肤榜") is None
 
 
 def test_with_admin_prefix_adds_slash_to_commands() -> None:
-    assert with_admin_prefix(("缓存状态", "刷新样本榜")) == (
-        "/缓存状态",
-        "/刷新样本榜",
+    assert with_admin_prefix(("样本情况", "刷新样本")) == (
+        "/样本情况",
+        "/刷新样本",
     )
 
 

@@ -30,11 +30,12 @@ from ironsbot.services.seer.rank_constants import (
 
 RANK_LIST_SIZE = 20
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
-RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
+RANK_PAGE_CACHE_STATUS_PREFIXES = (
+    "榜单情况",
+    "榜单状态",
+)
 RANK_PAGE_CACHE_REFRESH_PREFIXES = (
-    "刷新榜单缓存",
-    "更新榜单缓存",
-    "重建榜单缓存",
+    "刷新榜单",
 )
 MAX_CACHE_INTERVALS_SHOWN = 20
 

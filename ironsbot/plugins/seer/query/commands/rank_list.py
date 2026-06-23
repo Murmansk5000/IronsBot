@@ -125,23 +125,16 @@ rank_list_matcher = matcher_group.on_message(
 )
 rank_cache_status_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
-        "缓存情况",
-        "缓存状态",
-        "查询缓存",
-        "样本缓存",
-        "样本状态",
-        "样本缓存情况",
-        "样本缓存状态",
         "样本情况",
-        "样本榜状态",
-        "本地榜状态",
-        "机器人样本状态",
+        "样本状态",
     )),
     rule=no_reply(),
     permission=SUPERUSER,
 )
 rank_cache_refresh_matcher = matcher_group.on_fullmatch(
-    with_admin_prefix(("更新样本榜", "刷新样本榜", "重建样本榜")),
+    with_admin_prefix((
+        "刷新样本",
+    )),
     rule=no_reply(),
     permission=SUPERUSER,
 )
@@ -150,7 +143,10 @@ rank_cache_batch_matcher = matcher_group.on_message(
     permission=SUPERUSER,
 )
 rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
-    with_admin_prefix(("榜单缓存", "排行缓存", "全服榜缓存")),
+    with_admin_prefix((
+        "榜单情况",
+        "榜单状态",
+    )),
     rule=no_reply(),
     permission=SUPERUSER,
 )
