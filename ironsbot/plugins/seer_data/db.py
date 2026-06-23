@@ -147,6 +147,18 @@ _ATTACK_MARK_THRESHOLD = 54
 _SPEED_MARK_THRESHOLD = 40
 _DEFENSE_MARK_THRESHOLD = 40
 _HP_MARK_THRESHOLD = 100
+_SERIES_ORDINAL_SELECTORS = {
+    1: ("physical", "spd"),
+    2: ("special", "spd"),
+    3: ("physical", "atk"),
+    4: ("special", "sp_atk"),
+    5: ("physical", "hp"),
+    6: ("special", "hp"),
+    7: ("physical", "dual_def"),
+    8: ("special", "dual_def"),
+}
+_EQUAL_DUAL_ATTACK_HP_ORDINAL = 9
+_EQUAL_DUAL_ATTACK_SPEED_ORDINAL = 10
 
 
 def _strip_special(text: str) -> str:
@@ -191,6 +203,106 @@ def _mintmark_type_description(mintmark: MintmarkORM) -> str:
         strings.append("体")
 
     return "".join(strings)
+
+
+def _mintmark_attr(mintmark: MintmarkORM) -> Any | None:
+    part = mintmark.ability_part or mintmark.universal_part
+    if part is None:
+        return None
+
+    attr = part.max_attr_value.to_model()
+    if isinstance(part, UniversalPartORM) and part.extra_attr_value:
+        attr = attr + part.extra_attr_value.to_model()
+    return attr.round()
+
+
+def _select_series_ordinal_mintmarks(
+    mintmarks: list[MintmarkORM],
+    ordinal: int,
+) -> tuple[MintmarkORM, ...]:
+    if ordinal in _SERIES_ORDINAL_SELECTORS:
+        attack_kind, metric = _SERIES_ORDINAL_SELECTORS[ordinal]
+        candidates = [
+            mintmark
+            for mintmark in mintmarks
+            if _mintmark_attack_kind(mintmark) == attack_kind
+        ]
+        return _select_highest_metric(candidates, metric)
+
+    if ordinal == _EQUAL_DUAL_ATTACK_HP_ORDINAL:
+        return tuple(
+            mintmark
+            for mintmark in mintmarks
+            if _is_equal_dual_attack_mintmark(mintmark)
+            and (attr := _mintmark_attr(mintmark)) is not None
+            and attr.spd == 0
+            and attr.hp > 0
+        )
+
+    if ordinal == _EQUAL_DUAL_ATTACK_SPEED_ORDINAL:
+        return tuple(
+            mintmark
+            for mintmark in mintmarks
+            if _is_equal_dual_attack_mintmark(mintmark)
+            and (attr := _mintmark_attr(mintmark)) is not None
+            and attr.spd > 0
+            and attr.hp == 0
+        )
+
+    return ()
+
+
+def _mintmark_attack_kind(mintmark: MintmarkORM) -> str | None:
+    attr = _mintmark_attr(mintmark)
+    if attr is None:
+        return None
+    if attr.atk > 0 and attr.sp_atk == 0:
+        return "physical"
+    if attr.sp_atk > 0 and attr.atk == 0:
+        return "special"
+    return None
+
+
+def _is_equal_dual_attack_mintmark(mintmark: MintmarkORM) -> bool:
+    attr = _mintmark_attr(mintmark)
+    return attr is not None and attr.atk > 0 and attr.atk == attr.sp_atk
+
+
+def _select_highest_metric(
+    mintmarks: list[MintmarkORM],
+    metric: str,
+) -> tuple[MintmarkORM, ...]:
+    values = [
+        (mintmark, _mintmark_metric_value(mintmark, metric))
+        for mintmark in mintmarks
+    ]
+    values = [(mintmark, value) for mintmark, value in values if value > 0]
+    if not values:
+        return ()
+
+    highest = max(value for _mintmark, value in values)
+    return tuple(mintmark for mintmark, value in values if value == highest)
+
+
+def _mintmark_metric_value(mintmark: MintmarkORM, metric: str) -> int:
+    attr = _mintmark_attr(mintmark)
+    if attr is None:
+        return 0
+    if metric == "dual_def":
+        return attr.def_ + attr.sp_def
+    return int(getattr(attr, metric, 0))
+
+
+def _resolve_unique_partial_mintmark_class_id(
+    classes: Iterable[MintmarkClassCategoryORM],
+    normalized_prefix: str,
+) -> list[int]:
+    matches = [
+        mintmark_class.id
+        for mintmark_class in classes
+        if normalized_prefix in _normalize_key(mintmark_class.name)
+    ]
+    return matches if len(matches) == 1 else []
 
 
 def _split_series_type_arg(arg: str) -> tuple[str, str] | None:
@@ -457,8 +569,8 @@ class MintmarkSeriesOrdinalResolver:
                     for mintmark in mintmarks
                     if not mintmark.connected_universal_parts
                 ]
-            if ordinal <= len(mintmarks):
-                return (mintmarks[ordinal - 1],)
+            if result := _select_series_ordinal_mintmarks(mintmarks, ordinal):
+                return result
 
         return ()
 
@@ -473,34 +585,36 @@ class MintmarkSeriesOrdinalResolver:
         if not normalized_prefix.endswith("系列"):
             candidates.add(_normalize_key(f"{raw_prefix}系列"))
 
-        class_ids: list[int] = []
-        seen_ids: set[int] = set()
-
         classes = data_session.exec(select(MintmarkClassCategoryORM)).all()
-        for mintmark_class in classes:
-            if _normalize_key(mintmark_class.name) in candidates:
-                class_ids.append(mintmark_class.id)
-                seen_ids.add(mintmark_class.id)
+        class_ids: list[int] = [
+            mintmark_class.id
+            for mintmark_class in classes
+            if _normalize_key(mintmark_class.name) in candidates
+        ]
+        if class_ids:
+            return class_ids
 
         alias_session = sessions.get(self.alias_db)
         if alias_session is None:
             logger.warning(f"{self!r}: 未找到别名数据库会话")
-            return class_ids
+            return _resolve_unique_partial_mintmark_class_id(classes, normalized_prefix)
 
         try:
             aliases = alias_session.exec(select(MintmarkClassAliasORM)).all()
         except OperationalError as e:
             logger.error(f"MintmarkSeriesOrdinalResolver error: {e}")
-            return class_ids
+            return _resolve_unique_partial_mintmark_class_id(classes, normalized_prefix)
 
-        for alias in aliases:
-            if alias.target_id in seen_ids:
-                continue
-            if _normalize_key(alias.name) in candidates:
-                class_ids.append(alias.target_id)
-                seen_ids.add(alias.target_id)
+        class_ids.extend(
+            alias.target_id
+            for alias in aliases
+            if _normalize_key(alias.name) in candidates
+        )
 
-        return class_ids
+        return class_ids or _resolve_unique_partial_mintmark_class_id(
+            classes,
+            normalized_prefix,
+        )
 
 
 class MintmarkSeriesTypeResolver:
