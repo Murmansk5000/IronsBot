@@ -8,7 +8,6 @@ from ironsbot.services.seer.rank_list import (
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
     batch_raw_start,
-    build_local_rank_cache_full_message,
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
     build_local_rank_refresh_result_message,
@@ -82,30 +81,32 @@ def test_parse_rank_cache_batch_command_requires_admin_prefix_and_global_rank() 
 
 
 def test_parse_rank_page_cache_status_command_reads_global_rank() -> None:
-    assert parse_rank_page_cache_status_command("/榜单缓存 刻印榜") == (
+    assert parse_rank_page_cache_status_command("/榜单情况 刻印榜") == (
         RankPageCacheStatusCommand(rank_key="刻印图鉴")
     )
-    assert parse_rank_page_cache_status_command("/缓存区间图鉴榜") == (
+    assert parse_rank_page_cache_status_command("/榜单状态图鉴榜") == (
         RankPageCacheStatusCommand(rank_key="图鉴积分")
     )
-    assert parse_rank_page_cache_status_command("/榜单缓存 样本图鉴榜") is None
+    assert parse_rank_page_cache_status_command("/榜单情况 样本图鉴榜") is None
+    assert parse_rank_page_cache_status_command("/榜单缓存 刻印榜") is None
 
 
 def test_parse_rank_page_cache_refresh_command_reads_optional_global_rank() -> None:
-    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存") == (
+    assert parse_rank_page_cache_refresh_command("/刷新榜单") == (
         RankPageCacheRefreshCommand()
     )
-    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 皮肤榜") == (
+    assert parse_rank_page_cache_refresh_command("/刷新榜单 皮肤榜") == (
         RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
     )
-    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 样本图鉴榜") is None
-    assert parse_rank_page_cache_refresh_command("刷新榜单缓存 皮肤榜") is None
+    assert parse_rank_page_cache_refresh_command("/刷新榜单 样本图鉴榜") is None
+    assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 皮肤榜") is None
+    assert parse_rank_page_cache_refresh_command("刷新榜单 皮肤榜") is None
 
 
 def test_with_admin_prefix_adds_slash_to_commands() -> None:
-    assert with_admin_prefix(("缓存状态", "刷新样本榜")) == (
-        "/缓存状态",
-        "/刷新样本榜",
+    assert with_admin_prefix(("样本情况", "刷新样本")) == (
+        "/样本情况",
+        "/刷新样本",
     )
 
 
@@ -328,46 +329,33 @@ def test_format_local_rank_message_uses_sample_and_season_context() -> None:
 def test_build_rank_batch_admin_messages() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     command = RankCacheBatchCommand("图鉴积分", start_rank=1, end_rank=50)
-    before_stats = SimpleNamespace(player_count=10, max_players=100)
-    after_stats = SimpleNamespace(player_count=12, max_players=100)
-    result = SimpleNamespace(total=2, success=1, skipped_full=0, failed=1)
 
-    assert build_local_rank_cache_full_message(before_stats) == (
-        "❌ 样本缓存已满：10/100。请先调大 seer.local_rank.max_players。"
-    )
     assert build_rank_batch_no_players_message(spec) == (
-        "❌ 没有从测试榜拿到可缓存的米米号。"
+        "❌ 没有从测试榜拿到可缓存的榜单数据。"
     )
     assert build_rank_batch_start_message(
         spec,
         command,
-        before_stats,
-        player_id_count=20,
+        item_count=20,
         requested_count=50,
     ) == (
         "🔄 正在缓存测试榜第 1-50 名。\n"
-        "实际拿到 20 个米米号。\n"
-        "当前缓存：10/100。\n"
+        "实际拿到 20 条榜单数据。\n"
+        "只写入全服榜单页缓存，不计入样本。\n"
         "本次按 seer.local_rank.batch_limit 只处理前 20 个。"
     )
     assert build_rank_batch_result_message(
         spec,
         command,
-        result,
-        after_stats,
-        failure_lines=("- 123: 查询超时",),
+        item_count=20,
+        requested_count=50,
     ) == (
         "✅【榜单区间缓存完成】\n"
         "榜单：测试榜\n"
         "请求区间：第 1-50 名\n"
-        "本次处理：2 个\n"
-        "成功写入/刷新：1 个\n"
-        "缓存已满跳过：0 个\n"
-        "失败：1 个\n"
-        "当前缓存：12/100\n"
-        "\n"
-        "失败示例：\n"
-        "- 123: 查询超时"
+        "写入榜单页缓存：20 条\n"
+        "样本缓存：未写入\n"
+        "本次实际缓存：20/50 条"
     )
 
 
