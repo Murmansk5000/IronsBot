@@ -136,7 +136,10 @@ async def build_mintmark_message(mintmark: MintmarkORM) -> MessageFactory:
 
     part = mintmark.ability_part or mintmark.skill_part or mintmark.universal_part
     if isinstance(part, UniversalPartORM):
-        class_name = part.mintmark_class.name if part.mintmark_class else "无"
+        if part.mintmark_class:
+            class_name = f"{part.mintmark_class.name}（ID：{part.mintmark_class.id}）"
+        else:
+            class_name = "无"
         msg += f"系列：{class_name} \n"
     elif isinstance(part, SkillPartORM):
         skills = " | ".join(f"{skill.name}（{skill.id}）" for skill in mintmark.skill)

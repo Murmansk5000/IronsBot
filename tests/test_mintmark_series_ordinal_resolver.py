@@ -72,14 +72,14 @@ def test_mintmark_series_ordinal_resolves_class_alias(
     alias_session = _make_session()
     data_session.add(MintmarkClassCategoryORM(id=33, name="九天系列"))
     names = [
-        "九天之疾",
-        "九天之速",
-        "九曲之刃",
-        "九曲之光",
-        "九霄之钟",
+        ("九天之疾", (32, 0, 0, 0, 45, 0)),
+        ("九天之速", (0, 0, 32, 0, 45, 0)),
+        ("九曲之刃", (60, 0, 0, 0, 0, 0)),
+        ("九曲之光", (0, 0, 60, 0, 0, 0)),
+        ("九霄之钟", (32, 0, 0, 0, 0, 112)),
     ]
-    for offset, name in enumerate(names):
-        _add_mintmark(data_session, 41286 + offset, name, 33)
+    for offset, (name, attrs) in enumerate(names):
+        _add_mintmark(data_session, 41286 + offset, name, 33, attrs=attrs)
     alias_session.add(MintmarkClassAliasORM(name="九霄系列", target_id=33))
     data_session.commit()
     alias_session.commit()
@@ -100,13 +100,25 @@ def test_mintmark_series_ordinal_uses_merged_connected_order(
     alias_session.add(MintmarkClassAliasORM(name="k14", target_id=75))
     for offset in range(8):
         _add_mintmark(data_session, 42368 + offset, f"旧{offset + 1}", 75)
-    for offset in range(8):
+    for offset, attrs in enumerate(
+        [
+            (32, 0, 0, 0, 45, 0),
+            (0, 0, 32, 0, 45, 0),
+            (60, 0, 0, 0, 0, 0),
+            (0, 0, 60, 0, 0, 0),
+            (32, 0, 0, 0, 0, 112),
+            (0, 0, 32, 0, 0, 112),
+            (32, 45, 0, 45, 0, 0),
+            (0, 45, 32, 45, 0, 0),
+        ]
+    ):
         _add_mintmark(
             data_session,
             45039 + offset,
             f"新{offset + 1}",
             75,
             connect_id=42368 + offset,
+            attrs=attrs,
         )
     data_session.commit()
     alias_session.commit()
@@ -117,6 +129,114 @@ def test_mintmark_series_ordinal_uses_merged_connected_order(
     assert [item.id for item in result] == [45043]
 
 
+def test_mintmark_series_ordinal_uses_stat_based_slots(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_merge_connected(monkeypatch, value=True)
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=33, name="九天系列"))
+    examples = [
+        (41286, "九天之疾", (32, 0, 0, 0, 45, 0)),
+        (41287, "九天之速", (0, 0, 32, 0, 45, 0)),
+        (41288, "九曲之刃", (60, 0, 0, 0, 0, 0)),
+        (41289, "九曲之光", (0, 0, 60, 0, 0, 0)),
+        (41290, "九霄之钟", (32, 0, 0, 0, 0, 112)),
+        (41291, "九霄之灵", (0, 0, 32, 0, 0, 112)),
+        (41292, "九鼎之承", (32, 45, 0, 45, 0, 0)),
+        (41293, "九鼎之重", (0, 45, 32, 45, 0, 0)),
+        (41294, "九天双攻体", (32, 0, 32, 0, 0, 112)),
+        (41295, "九天双攻速", (32, 0, 32, 0, 45, 0)),
+    ]
+    for id_, name, attrs in examples:
+        _add_mintmark(data_session, id_, name, 33, attrs=attrs)
+    alias_session.add(MintmarkClassAliasORM(name="九霄系列", target_id=33))
+    data_session.commit()
+    alias_session.commit()
+
+    resolver = db.MintmarkSeriesOrdinalResolver()
+    sessions = {"seerapi": data_session, "aliases": alias_session}
+
+    assert [item.id for item in resolver(sessions, "九霄01")] == [41286]
+    assert [item.id for item in resolver(sessions, "九霄02")] == [41287]
+    assert [item.id for item in resolver(sessions, "九霄03")] == [41288]
+    assert [item.id for item in resolver(sessions, "九霄04")] == [41289]
+    assert [item.id for item in resolver(sessions, "九霄05")] == [41290]
+    assert [item.id for item in resolver(sessions, "九霄06")] == [41291]
+    assert [item.id for item in resolver(sessions, "九霄07")] == [41292]
+    assert [item.id for item in resolver(sessions, "九霄08")] == [41293]
+    assert [item.id for item in resolver(sessions, "九霄09")] == [41294]
+    assert [item.id for item in resolver(sessions, "九霄10")] == [41295]
+
+
+def test_mintmark_series_ordinal_returns_ties(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_merge_connected(monkeypatch, value=True)
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=101, name="星璨灵籁系列"))
+    examples = [
+        (45026, "灵籁一", (32, 45, 0, 45, 26, 112)),
+        (45027, "灵籁二", (32, 45, 0, 45, 26, 112)),
+        (45028, "灵籁三", (0, 45, 32, 45, 26, 112)),
+    ]
+    for id_, name, attrs in examples:
+        _add_mintmark(data_session, id_, name, 101, attrs=attrs)
+    data_session.commit()
+    alias_session.commit()
+
+    resolver = db.MintmarkSeriesOrdinalResolver()
+    sessions = {"seerapi": data_session, "aliases": alias_session}
+
+    assert [item.id for item in resolver(sessions, "星璨灵籁01")] == [45026, 45027]
+    assert [item.id for item in resolver(sessions, "星璨灵籁07")] == [45026, 45027]
+
+
+def test_mintmark_series_resolvers_use_unique_partial_class_name(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_merge_connected(monkeypatch, value=True)
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=71, name="四君子系列"))
+    examples = [
+        (43001, "四君子物速", (32, 0, 0, 0, 45, 0)),
+        (43002, "四君子特速", (0, 0, 32, 0, 45, 0)),
+    ]
+    for id_, name, attrs in examples:
+        _add_mintmark(data_session, id_, name, 71, attrs=attrs)
+    data_session.commit()
+    alias_session.commit()
+
+    sessions = {"seerapi": data_session, "aliases": alias_session}
+
+    ordinal = db.MintmarkSeriesOrdinalResolver()
+    assert [item.id for item in ordinal(sessions, "君子01")] == [43001]
+
+    series_type = db.MintmarkSeriesTypeResolver()
+    assert [item.id for item in series_type(sessions, "君子速")] == [43001, 43002]
+
+
+def test_mintmark_series_resolver_ignores_ambiguous_partial_class_name(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_merge_connected(monkeypatch, value=True)
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=1, name="四君子系列"))
+    data_session.add(MintmarkClassCategoryORM(id=2, name="小君子系列"))
+    _add_mintmark(data_session, 43001, "四君子物速", 1, attrs=(32, 0, 0, 0, 45, 0))
+    _add_mintmark(data_session, 43002, "小君子物速", 2, attrs=(32, 0, 0, 0, 45, 0))
+    data_session.commit()
+    alias_session.commit()
+
+    resolver = db.MintmarkSeriesOrdinalResolver()
+    result = resolver({"seerapi": data_session, "aliases": alias_session}, "君子01")
+
+    assert list(result) == []
+
+
 def test_mintmark_series_ordinal_is_used_after_mintmark_command_prefix(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -124,8 +244,22 @@ def test_mintmark_series_ordinal_is_used_after_mintmark_command_prefix(
     data_session = _make_session()
     alias_session = _make_session()
     data_session.add(MintmarkClassCategoryORM(id=33, name="九天系列"))
-    for offset in range(5):
-        _add_mintmark(data_session, 41286 + offset, f"九天{offset + 1}", 33)
+    for offset, attrs in enumerate(
+        [
+            (32, 0, 0, 0, 45, 0),
+            (0, 0, 32, 0, 45, 0),
+            (60, 0, 0, 0, 0, 0),
+            (0, 0, 60, 0, 0, 0),
+            (32, 0, 0, 0, 0, 112),
+        ]
+    ):
+        _add_mintmark(
+            data_session,
+            41286 + offset,
+            f"九天{offset + 1}",
+            33,
+            attrs=attrs,
+        )
     alias_session.add(MintmarkClassAliasORM(name="九霄系列", target_id=33))
     data_session.commit()
     alias_session.commit()
