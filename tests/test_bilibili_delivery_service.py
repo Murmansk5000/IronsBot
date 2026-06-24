@@ -6,6 +6,7 @@ from ironsbot.services.bilibili.delivery import (
     LINK_DYNAMIC_PUSH_ACTION,
     build_dynamic_push_deliveries,
 )
+from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 PUB_TS = 1781004683
 
@@ -69,8 +70,10 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets() -> None:
     link_rendered = str(deliveries[1].message)
     assert "正文内容" in full_rendered
     assert "[CQ:image" in full_rendered
+    assert FIRE_MANUAL_LINK_MESSAGE in full_rendered
     assert "正文内容" not in link_rendered
     assert "[CQ:image" not in link_rendered
+    assert FIRE_MANUAL_LINK_MESSAGE in link_rendered
 
 
 def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:

@@ -150,16 +150,17 @@ admin_notice_cooldown_seconds = 600.0
 # Example: false
 intent_actions_enabled = true
 
-# Default: [{ template = "join_team" }]
+# Default: [{ template = "join_team" }, { template = "fire_manual" }]
 # EN: Enabled intent actions. Fields: id, enabled, template, feature, keywords,
 # intent, classifier_prompt, action, message, reply_prompt, team_ids,
 # include_team_resource_notice, exclude_commands.
 # ZH: 启用的意图动作。字段同上，可通过 template 复用内置模板。
 # Built-in join_team uses action = "team_recommend".
-# Example: [{ template = "join_team" }]
-intent_actions = [{ template = "join_team" }]
+# Built-in fire_manual sends the 火火手册链接 when users ask for 手册.
+# Example: [{ template = "join_team" }, { template = "fire_manual" }]
+intent_actions = [{ template = "join_team" }, { template = "fire_manual" }]
 
-# Default: built-in join_team and keyword_info templates.
+# Default: built-in join_team, fire_manual, and keyword_info templates.
 # EN: Optional reusable intent action templates keyed by template ID.
 # ZH: 可选意图动作模板，按模板 ID 配置。
 # Example: { keyword_info = { id = "keyword_info", action = "ai_reply" } }
