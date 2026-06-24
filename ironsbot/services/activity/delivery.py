@@ -11,6 +11,7 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
+from ironsbot.shared.promotions import append_fire_manual_ad_text
 
 from .formatting import format_activity_list
 from .planning import filter_valid_reminders
@@ -95,11 +96,13 @@ def build_reminder_delivery(
 
     return ActivityReminderDelivery(
         status="send",
-        message=format_reminder_message(
-            lead_hours,
-            reminders,
-            template=template,
-            fallback_template=fallback_template,
+        message=append_fire_manual_ad_text(
+            format_reminder_message(
+                lead_hours,
+                reminders,
+                template=template,
+                fallback_template=fallback_template,
+            )
         ),
         group_ids=targets.group_ids,
         private_user_ids=targets.private_user_ids,

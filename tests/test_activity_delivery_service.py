@@ -12,6 +12,7 @@ from ironsbot.services.activity.delivery import (
     format_reminder_message,
 )
 from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
+from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GROUP_ID = 686376929
@@ -106,6 +107,7 @@ def test_build_reminder_delivery_builds_send_payload() -> None:
 
     assert delivery.should_send
     assert delivery.message.startswith("1 个活动：")
+    assert FIRE_MANUAL_LINK_MESSAGE in delivery.message
     assert delivery.group_ids == (GROUP_ID,)
     assert delivery.private_user_ids == (USER_ID,)
     assert delivery.action_name == "activity ending reminder 1h"

@@ -13,6 +13,7 @@ from ironsbot.shared.config.parsing import (
     json_object,
     string_list,
 )
+from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
@@ -37,6 +38,13 @@ DEFAULT_JOIN_TEAM_MESSAGE = (
     "k=zZcvC2GF9tB027Kyq04Fl9_7bF-_v8FB&"
     "authKey=ZTZrJewKretFEap44nIcKtMkF8zpI1nhcR6ok2%2FXM6LNMO%2BE8ZVdYWLvWvwEwVjM&"
     "noverify=0&group_code=719544559"
+)
+DEFAULT_FIRE_MANUAL_INTENT = (
+    "Judge whether the QQ group message means the sender wants a manual, "
+    "handbook, guide, reference page, or the Fire manual for Seer information. "
+    "Answer yes when the sender asks for 手册, 火火手册, or where to read the manual. "
+    "Answer no when the message only mentions a book-like item, a game skill, "
+    "or is unrelated to manuals."
 )
 DEFAULT_CLASSIFIER_PROMPT = (
     "You are a strict intent classifier for a QQ bot.\n"
@@ -130,11 +138,21 @@ def default_ai_templates() -> dict[str, AiActionTemplate]:
             ),
             reply_prompt=DEFAULT_KEYWORD_INFO_PROMPT,
         ),
+        "fire_manual": AiActionTemplate(
+            id="fire_manual",
+            keywords=["手册", "火火手册"],
+            action="message",
+            intent=DEFAULT_FIRE_MANUAL_INTENT,
+            message=FIRE_MANUAL_LINK_MESSAGE,
+        ),
     }
 
 
 def default_ai_actions() -> list[AiIntentAction]:
-    return [AiIntentAction(template="join_team")]
+    return [
+        AiIntentAction(template="join_team"),
+        AiIntentAction(template="fire_manual"),
+    ]
 
 
 class AiConfig(BaseModel):
@@ -258,6 +276,7 @@ __all__ = [
     "DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS",
     "DEFAULT_AI_PROMPT",
     "DEFAULT_CLASSIFIER_PROMPT",
+    "DEFAULT_FIRE_MANUAL_INTENT",
     "DEFAULT_JOIN_TEAM_INTENT",
     "DEFAULT_JOIN_TEAM_MESSAGE",
     "DEFAULT_KEYWORD_INFO_PROMPT",
