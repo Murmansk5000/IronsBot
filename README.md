@@ -44,7 +44,7 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `WebSocket Port`: `8085`
 - `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
 - `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 一致
-- `SUPERUSERS`: 超级管理员 QQ，例如 `["123456789"]`
+- `SUPERUSERS`: 超级管理员 QQ，例如 `["1234567890"]`
 
 NapCat 反向 WebSocket：
 
@@ -76,7 +76,7 @@ services:
       PORT: "8080"
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
-      SUPERUSERS: '["123456789"]'
+      SUPERUSERS: '["1234567890"]'
     restart: always
 ```
 
@@ -121,7 +121,7 @@ services:
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-SUPERUSERS=["123456789"]
+SUPERUSERS=["1234567890"]
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
@@ -131,8 +131,8 @@ HEADLESS_SEER_PASSWORD=
 
 ```toml
 [feature]
-group_aliases = { admin = 686376929, main = 123456789 }
-user_aliases = { owner = 123456789 }
+group_aliases = { admin = 123456789, main = 987654321 }
+user_aliases = { owner = 1234567890 }
 group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent", "fire_manual"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
@@ -142,7 +142,7 @@ groups = { main = { uids = [1310714247], mode = "full" } }
 
 [seer.team_shortcut]
 team_ids = [1234567]
-resource_users = [123456789]
+resource_users = [1234567890]
 ```
 
 配置字段、默认值、中英文说明和示例集中维护在

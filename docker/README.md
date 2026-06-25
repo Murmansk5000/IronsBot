@@ -69,7 +69,7 @@ services:
       PORT: "8080"
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
-      SUPERUSERS: '["123456789"]'
+      SUPERUSERS: '["1234567890"]'
     restart: always
 
   napcat:
@@ -118,7 +118,7 @@ Behavior config is file-based:
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-SUPERUSERS=["123456789"]
+SUPERUSERS=["1234567890"]
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
@@ -129,7 +129,7 @@ SENDPIC_CNB_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
+| `SUPERUSERS` | NoneBot superuser QQ list, for example `["1234567890"]`. |
 | `AI_KEY` | AI chat API key. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
 | `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
@@ -140,8 +140,8 @@ Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`,
 
 ```toml
 [feature]
-group_aliases = { admin = 686376929, main = 123456789 }
-user_aliases = { owner = 123456789 }
+group_aliases = { admin = 123456789, main = 987654321 }
+user_aliases = { owner = 1234567890 }
 group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
@@ -167,12 +167,12 @@ Configure it in `ironsbot.toml`:
 
 ```toml
 [feature]
-group_aliases = { team_group = 123456789 }
+group_aliases = { team_group = 987654321 }
 group_policy = { team_group = ["team"] }
 
 [seer.team_shortcut]
 team_ids = [1234567, 7654321]
-resource_users = [123456789]
+resource_users = [1234567890]
 commands = ["战队"]
 resource_threshold = 1000
 query_timeout_seconds = 20

@@ -15,8 +15,8 @@ from ironsbot.services.activity.delivery import (
 from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-GROUP_ID = 686376929
-USER_ID = 1621582661
+GROUP_ID = 987654321
+USER_ID = 1234567890
 SUPERUSER_ID = 10000
 
 

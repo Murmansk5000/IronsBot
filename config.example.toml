@@ -7,13 +7,13 @@
 # Default: {}
 # EN: Named QQ group IDs used by policies.
 # ZH: 群别名，把易读名称映射到 QQ 群号。
-# Example: { main = 123456789 }
+# Example: { main = 987654321 }
 group_aliases = {}
 
 # Default: {}
 # EN: Named QQ user IDs used by policies.
 # ZH: 用户别名，把易读名称映射到 QQ 号。
-# Example: { owner = 123456789 }
+# Example: { owner = 1234567890 }
 user_aliases = {}
 
 # Default: {}
@@ -543,7 +543,7 @@ team_ids = []
 # Default: []
 # EN: User IDs mentioned by low-resource notices.
 # ZH: 战队资源不足提醒时 @ 的用户 ID。
-# Example: [123456789]
+# Example: [1234567890]
 resource_users = []
 
 # Default: ["战队"]; EN: Team shortcut commands. ZH: 战队快捷查询口令。
