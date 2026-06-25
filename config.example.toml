@@ -364,6 +364,26 @@ groups = []
 # ZH: 发送给新人的战队审核说明；机器人会先 @ 新人。
 message = "欢迎加入战队审核群。\n如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，方便管理员审核。\n审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
 
+# Default: true
+# EN: Remind newcomers again if they are still in the audit group after the delay.
+# ZH: 新人入群超过指定时间仍在审核群时，再提醒一次。
+followup_enabled = true
+
+# Default: 24.0
+# EN: Hours after joining before sending the follow-up reminder.
+# ZH: 入群后多少小时发送二次提醒。
+followup_after_hours = 24.0
+
+# Default: built-in follow-up reminder.
+# EN: Follow-up message. Available placeholders: {hours}, {group_id}, {user_id}.
+# ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
+followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果不想加入战队，请退出本审核群。"
+
+# Default: "data/team_audit_welcome/pending.sqlite"
+# EN: SQLite path used to persist pending 24-hour reminders across restarts.
+# ZH: 保存待发送二次提醒的 SQLite 路径，防止机器人重启后丢失提醒。
+followup_cache_path = "data/team_audit_welcome/pending.sqlite"
+
 [message.sendpic]
 # Default: null/omitted
 # EN: CNB repository for configured image backend. Token stays in env.

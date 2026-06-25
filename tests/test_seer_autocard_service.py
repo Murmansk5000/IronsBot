@@ -6,6 +6,7 @@ from ironsbot.services.seer.autocard import (
     build_autocard_prompt_values,
     extract_autocard_query_arg,
     format_autocard_entry,
+    format_autocard_public_info,
     is_autocard_help_query,
     search_autocard_items,
 )
@@ -107,7 +108,7 @@ def test_autocard_image_url_resolves_card_asset_paths() -> None:
     assert autocard_image_url(
         "card",
         {"id": 10001, "picID": 1, "compose": 1},
-    ).endswith("/newseer/assets/art/autocard/texture/cards/card_10001.png")
+    ).endswith("/newseer/assets/art/autocard/texture/cards/card_1.png")
     assert autocard_image_url(
         "card",
         {"id": 20001, "picID": 20001, "compose": 0},
@@ -137,3 +138,10 @@ def test_prompt_helpers_keep_item_ids_and_descriptions() -> None:
     assert "1. 布布种子（精灵牌 101 普通 Lv2 草）" in text
     assert "2. 破界者（角色 201 火）" in text
     assert "输入 0 退出" in text
+
+
+def test_format_autocard_public_info_includes_query_examples() -> None:
+    text = format_autocard_public_info()
+
+    assert "群星牌布布种子" in text
+    assert "群星牌金币卡" in text

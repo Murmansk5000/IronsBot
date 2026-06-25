@@ -28,6 +28,7 @@ DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
+DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -50,6 +51,16 @@ def test_example_config_parses() -> None:
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
     assert "米米号" in config.message.team_audit_welcome.message
+    assert config.message.team_audit_welcome.followup_enabled
+    assert (
+        config.message.team_audit_welcome.followup_after_hours
+        == DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS
+    )
+    assert "退出本审核群" in config.message.team_audit_welcome.followup_message
+    assert (
+        config.message.team_audit_welcome.followup_cache_path
+        == "data/team_audit_welcome/pending.sqlite"
+    )
     assert config.seer.team_shortcut.team_ids == []
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT

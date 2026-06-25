@@ -140,7 +140,7 @@ def default_ai_templates() -> dict[str, AiActionTemplate]:
         ),
         "fire_manual": AiActionTemplate(
             id="fire_manual",
-            keywords=["手册", "火火手册"],
+            keywords=["手册"],
             action="message",
             intent=DEFAULT_FIRE_MANUAL_INTENT,
             message=FIRE_MANUAL_LINK_MESSAGE,

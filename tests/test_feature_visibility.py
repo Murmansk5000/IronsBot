@@ -141,9 +141,14 @@ def test_ai_intent_visibility_requires_key_and_feature(
         "ironsbot.plugins.ai_intent",
         _group_event(),
     )
-    assert visibility.plugin_visible_for_event(
+    assert not visibility.plugin_visible_for_event(
         "战队推荐",
         "ironsbot.plugins.team_recommend",
+        _group_event(),
+    )
+    assert not visibility.plugin_visible_for_event(
+        "战队审核入群提示",
+        "ironsbot.plugins.team_audit_welcome",
         _group_event(),
     )
 
