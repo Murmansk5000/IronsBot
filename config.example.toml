@@ -693,6 +693,10 @@ file_enabled = false
 file_path = "/app/logs/ironsbot.log"
 # Default: "INFO"; EN: Minimum file log level. ZH: 写入文件的最低日志等级，可填 DEBUG、INFO、WARNING、ERROR 等。
 file_level = "INFO"
+# Default: false; EN: Also write ERROR/CRITICAL logs to a separate file. ZH: 额外写入独立错误日志文件；只包含 ERROR/CRITICAL，便于排查崩溃。
+error_file_enabled = false
+# Default: "/app/logs/ironsbot.error.log"; EN: Error log file path. ZH: 错误日志路径；完整日志仍写入 /app/logs/ironsbot.log。
+error_file_path = "/app/logs/ironsbot.error.log"
 # Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。
 rotation = "20 MB"
 # Default: "14 days"; EN: Keep rotated logs for this duration. ZH: 轮转日志保留时间。
