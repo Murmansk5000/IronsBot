@@ -260,9 +260,31 @@ def _merge_template(
     return template_data
 
 
+def _action_key(action: AiIntentAction) -> str:
+    return action.id or action.template
+
+
+def _merge_default_actions(actions: list[AiIntentAction]) -> list[AiIntentAction]:
+    merged = default_ai_actions()
+    indexes = {
+        key: index
+        for index, action in enumerate(merged)
+        if (key := _action_key(action))
+    }
+
+    for action in actions:
+        key = _action_key(action)
+        if key and key in indexes:
+            merged[indexes[key]] = action
+            continue
+        merged.append(action)
+
+    return merged
+
+
 def resolve_configured_actions(config: AiConfig) -> list[AiIntentAction]:
     actions: list[AiIntentAction] = []
-    for action in config.intent_actions:
+    for action in _merge_default_actions(config.intent_actions):
         resolved_action = action
         if action.template:
             template = config.action_templates.get(action.template)
