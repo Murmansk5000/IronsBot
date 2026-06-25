@@ -13,6 +13,7 @@ from ironsbot.config.models.ai import (
 )
 from ironsbot.config.models.seer import TeamShortcutConfig
 from ironsbot.shared.features import (
+    group_has_feature,
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
@@ -62,6 +63,8 @@ def excluded_by_command(text: str, action: AiIntentAction) -> bool:
 
 def is_action_allowed(event: MessageEvent, action: AiIntentAction) -> bool:
     if isinstance(event, GroupMessageEvent):
+        if action.feature == "fire_manual":
+            return group_has_feature(event.group_id, action.feature)
         return is_group_feature_allowed(
             event.user_id,
             event.group_id,

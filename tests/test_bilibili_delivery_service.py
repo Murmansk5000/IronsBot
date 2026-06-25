@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from typing import Any
 
+from pytest import MonkeyPatch
+
 from ironsbot.plugins.fire_manual_ad.service import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.services.bilibili import delivery as delivery_service
 from ironsbot.services.bilibili.delivery import (
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
@@ -9,6 +12,7 @@ from ironsbot.services.bilibili.delivery import (
 )
 
 PUB_TS = 1781004683
+SPLIT_DELIVERY_COUNT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +49,15 @@ def _item(
     }
 
 
-def test_build_dynamic_push_deliveries_renders_full_and_link_targets() -> None:
+def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        delivery_service,
+        "split_fire_manual_ad_group_ids",
+        lambda group_ids: (group_ids, []),
+    )
+
     deliveries = build_dynamic_push_deliveries(
         _item(),
         PUB_TS,
@@ -74,6 +86,33 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets() -> None:
     assert "正文内容" not in link_rendered
     assert "[CQ:image" not in link_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in link_rendered
+
+
+def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        delivery_service,
+        "split_fire_manual_ad_group_ids",
+        lambda group_ids: ([group_ids[0]], group_ids[1:]),
+    )
+
+    deliveries = build_dynamic_push_deliveries(
+        _item(),
+        PUB_TS,
+        FakePushTargets(
+            full_group_ids=[1001, 1002],
+            link_group_ids=[],
+            full_user_ids=[],
+            link_user_ids=[],
+        ),
+    )
+
+    assert len(deliveries) == SPLIT_DELIVERY_COUNT
+    assert deliveries[0].group_ids == [1001]
+    assert FIRE_MANUAL_LINK_MESSAGE in str(deliveries[0].message)
+    assert deliveries[1].group_ids == [1002]
+    assert FIRE_MANUAL_LINK_MESSAGE not in str(deliveries[1].message)
 
 
 def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:

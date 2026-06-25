@@ -7,7 +7,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
 
-from ironsbot.plugins.fire_manual_ad.service import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.plugins.fire_manual_ad.service import (
+    FIRE_MANUAL_FEATURE,
+    FIRE_MANUAL_LINK_MESSAGE,
+)
 from ironsbot.shared.config.parsing import (
     int_list,
     json_array,
@@ -140,6 +143,7 @@ def default_ai_templates() -> dict[str, AiActionTemplate]:
         ),
         "fire_manual": AiActionTemplate(
             id="fire_manual",
+            feature=FIRE_MANUAL_FEATURE,
             keywords=["手册"],
             action="message",
             intent=DEFAULT_FIRE_MANUAL_INTENT,

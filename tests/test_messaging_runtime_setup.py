@@ -65,12 +65,21 @@ def test_scheduled_messages_append_fire_manual_ad(
         message: str,
         **kwargs: object,
     ) -> None:
+        limiter = kwargs.get("message_limiter")
+        group_ids = kwargs.get("group_ids")
+        if limiter is not None and isinstance(group_ids, list) and group_ids:
+            message = limiter(message, group_ids[0])  # type: ignore[operator]
         sent.append((message, kwargs))
 
     monkeypatch.setattr(runtime, "send_broadcast_message", fake_send_broadcast_message)
     monkeypatch.setattr(runtime, "users_for_feature", lambda _feature: [2001])
     monkeypatch.setattr(runtime, "users_with_superusers", list)
     monkeypatch.setattr(runtime, "groups_for_feature", lambda _feature: [1001])
+    monkeypatch.setattr(
+        runtime,
+        "append_fire_manual_ad_for_group",
+        lambda message, _group_id: f"{message}\n\n{FIRE_MANUAL_LINK_MESSAGE}",
+    )
 
     asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
     asyncio.run(

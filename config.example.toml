@@ -25,6 +25,7 @@ user_aliases = {}
 # 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能。
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
+# fire_manual 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 # Example: { main = ["seer_pet", "seer_mintmark", "seer_autocard"] }
 group_policy = {}
 
@@ -161,7 +162,8 @@ intent_actions_enabled = true
 # include_team_resource_notice, exclude_commands.
 # ZH: 启用的意图动作。字段同上，可通过 template 复用内置模板。
 # Built-in join_team uses action = "team_recommend".
-# Built-in fire_manual sends the 火火手册链接 when users ask for 手册.
+# Built-in fire_manual uses feature = "fire_manual" and sends the 火火手册链接
+# when users ask for 手册.
 # Example: [{ template = "join_team" }, { template = "fire_manual" }]
 intent_actions = [{ template = "join_team" }, { template = "fire_manual" }]
 

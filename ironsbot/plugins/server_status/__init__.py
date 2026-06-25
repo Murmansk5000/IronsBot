@@ -16,7 +16,7 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_text
+from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_for_group
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -428,11 +428,12 @@ async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
         return
 
     summary = await send_broadcast_message(
-        append_fire_manual_ad_text(config.broadcast_message),
+        config.broadcast_message,
         group_ids=group_ids,
         private_user_ids=user_ids,
         action_name="server status open broadcast",
         interval_seconds=1.2,
+        message_limiter=append_fire_manual_ad_for_group,
     )
     if summary.succeeded:
         _open_broadcast_state.last_at = now

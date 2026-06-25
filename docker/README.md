@@ -136,13 +136,13 @@ SENDPIC_CNB_TOKEN=
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
 
-Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
+Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `seer_activity_query`, `seer_activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, `fire_manual`, and `admin_notice`. `fire_manual` controls the "手册" AI intent and Fire manual links appended to proactive pushes. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `web_activity_link`, `web_activity_push`, or `seerinfo`.
 
 ```toml
 [feature]
 group_aliases = { admin = 686376929, main = 123456789 }
 user_aliases = { owner = 123456789 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "activity_link", "bili_query", "bili_push", "ai_chat"] }
+group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
 

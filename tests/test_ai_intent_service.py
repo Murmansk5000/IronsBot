@@ -1,3 +1,6 @@
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
+from pytest import MonkeyPatch
+
 from ironsbot.config.models.ai import AiIntentAction
 from ironsbot.services.ai import intent
 
@@ -30,3 +33,37 @@ def test_intent_template_preserves_unknown_fields() -> None:
 
 def test_intent_keyword_match_normalizes_text() -> None:
     assert intent.contains_any_keyword("我要 加 战队", ["加战队"])
+
+
+def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> None:
+    event = GroupMessageEvent(
+        time=0,
+        self_id=1,
+        post_type="message",
+        sub_type="normal",
+        user_id=2,
+        message_type="group",
+        message_id=3,
+        message=Message("手册在哪"),
+        original_message=Message("手册在哪"),
+        raw_message="手册在哪",
+        font=0,
+        group_id=4,
+        sender={},
+    )
+    action = AiIntentAction(
+        id="manual",
+        feature="fire_manual",
+        keywords=["手册"],
+        action="message",
+        message="ok",
+        intent="manual",
+    )
+    monkeypatch.setattr(intent, "group_has_feature", lambda _group_id, _feature: False)
+    monkeypatch.setattr(
+        intent,
+        "is_group_feature_allowed",
+        lambda _user_id, _group_id, _feature: True,
+    )
+
+    assert not intent.is_action_allowed(event, action)

@@ -107,7 +107,7 @@ def test_build_reminder_delivery_builds_send_payload() -> None:
 
     assert delivery.should_send
     assert delivery.message.startswith("1 个活动：")
-    assert FIRE_MANUAL_LINK_MESSAGE in delivery.message
+    assert FIRE_MANUAL_LINK_MESSAGE not in delivery.message
     assert delivery.group_ids == (GROUP_ID,)
     assert delivery.private_user_ids == (USER_ID,)
     assert delivery.action_name == "activity ending reminder 1h"

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
+from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_for_group
 from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
     build_reminder_delivery,
@@ -71,6 +72,7 @@ async def send_activity_reminder(
         private_user_ids=delivery.private_user_ids,
         action_name=delivery.action_name,
         interval_seconds=1.2,
+        message_limiter=append_fire_manual_ad_for_group,
     )
     if summary.succeeded:
         mark_sent(reminders)
