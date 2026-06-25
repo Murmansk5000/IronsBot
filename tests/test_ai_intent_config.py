@@ -7,7 +7,7 @@ from ironsbot.config.models.ai import (
     AiConfig,
     resolve_configured_actions,
 )
-from ironsbot.plugins.fire_manual_ad.service import (
+from ironsbot.shared.promotions import (
     FIRE_MANUAL_LINK_MESSAGE,
     FIRE_MANUAL_URL,
 )

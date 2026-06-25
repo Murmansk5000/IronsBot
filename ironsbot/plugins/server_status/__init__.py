@@ -16,7 +16,6 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_for_group
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -44,6 +43,7 @@ from ironsbot.shared.plugin_system import (
     dispatch_plugin,
     register_plugin,
 )
+from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 from ironsbot.utils.rule import no_reply
 
 from .config import Config, get_server_status_config

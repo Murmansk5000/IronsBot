@@ -3,11 +3,11 @@ from typing import Any, Protocol
 
 from nonebot.adapters.onebot.v11 import Message
 
-from ironsbot.plugins.fire_manual_ad.service import (
+from ironsbot.services.bilibili.parser import parse_single_item
+from ironsbot.shared.promotions import (
     append_fire_manual_ad_message,
     split_fire_manual_ad_group_ids,
 )
-from ironsbot.services.bilibili.parser import parse_single_item
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"

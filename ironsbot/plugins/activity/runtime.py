@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
-from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_for_group
 from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
     build_reminder_delivery,
@@ -21,6 +20,7 @@ from ironsbot.services.activity.seer_activity import (
     valid_reminders_before_send,
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
+from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 
 from . import _now, _seer_activity_source
 from .config import get_activity_config

@@ -10,8 +10,8 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.fire_manual_ad.service import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.plugins.messaging import runtime
+from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 
 class FakeDriver:

@@ -9,10 +9,6 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.plugins.fire_manual_ad.service import (
-    append_fire_manual_ad_for_group,
-    append_fire_manual_ad_text,
-)
 from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
@@ -30,6 +26,10 @@ from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
     register_plugin,
+)
+from ironsbot.shared.promotions import (
+    append_fire_manual_ad_for_group,
+    append_fire_manual_ad_text,
 )
 from ironsbot.utils.rule import no_reply
 
