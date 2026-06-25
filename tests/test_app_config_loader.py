@@ -42,6 +42,7 @@ def test_example_config_parses() -> None:
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
     assert config.bilibili.polling.windows[0].start == "07:00"
+    assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
