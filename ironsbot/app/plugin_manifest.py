@@ -31,6 +31,7 @@ INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
 )
 
 FEATURE_PLUGINS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.fire_manual_ad",
     "ironsbot.plugins.headless_seer_notice",
     "ironsbot.plugins.ai_chat",
     "ironsbot.plugins.team_shortcut",
@@ -56,7 +57,6 @@ RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime",
     "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",
     "ironsbot.plugins.headless_seer.runtime:setup_headless_seer_runtime",
-    "ironsbot.plugins.messaging.reply_limits:setup_reply_line_limit_api_hook",
     "ironsbot.plugins.messaging.runtime:setup_messaging_runtime",
     "ironsbot.plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
     "ironsbot.plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",

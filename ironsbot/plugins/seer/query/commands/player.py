@@ -65,6 +65,7 @@ from ironsbot.services.seer.sequ_extra import (
     fetch_unity_part_one,
     fetch_unity_peak,
 )
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
@@ -114,13 +115,13 @@ async def _is_invalid_player_text_query(event: Event) -> bool:
 
 player_invalid_text_matcher = matcher_group.on_message(
     rule=Rule(_is_invalid_player_text_query) & no_reply(),
-    priority=1,
+    priority=get_matcher_priority("seer_player", 1),
     block=True,
 )
 
 player_matcher = matcher_group.on_message(
     rule=Rule(_is_player_id_query) & no_reply(),
-    priority=1,
+    priority=get_matcher_priority("seer_player", 1),
     block=True,
 )
 

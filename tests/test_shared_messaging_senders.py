@@ -2,7 +2,10 @@ import asyncio
 from dataclasses import dataclass, field
 
 from nonebot.adapters.onebot.v11 import Message
+from pytest import MonkeyPatch
 
+from ironsbot.shared.messaging import senders
+from ironsbot.shared.messaging.outbound_rate_limit import OutboundRateLimitDecision
 from ironsbot.shared.messaging.senders import send_target_messages
 from ironsbot.shared.messaging.targets import MessageTarget
 
@@ -88,3 +91,38 @@ def test_send_target_messages_reports_failed_targets() -> None:
 
     assert summary.succeeded == [MessageTarget("private", PRIVATE_USER_ID)]
     assert summary.failed == [MessageTarget("group", GROUP_ID)]
+
+
+def test_send_target_messages_appends_outbound_cooldown_notice(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    bot = FakeBot()
+    decisions = [
+        OutboundRateLimitDecision(allowed=True, cooldown_message="进入冷却"),
+        OutboundRateLimitDecision(allowed=False),
+    ]
+
+    monkeypatch.setattr(
+        senders,
+        "check_group_outbound_rate_limit",
+        lambda _group_id: decisions.pop(0),
+    )
+
+    summary = asyncio.run(
+        send_target_messages(
+            [
+                MessageTarget("group", GROUP_ID),
+                MessageTarget("group", GROUP_ID + 1),
+            ],
+            "hello",
+            bot=bot,
+            interval_seconds=0,
+        )
+    )
+
+    assert summary.succeeded == [MessageTarget("group", GROUP_ID)]
+    assert summary.failed == [MessageTarget("group", GROUP_ID + 1)]
+    assert [message[-1].data["text"] for _group_id, message in bot.group_messages] == [
+        "hello",
+        "进入冷却",
+    ]

@@ -14,6 +14,9 @@ DEFAULT_SENDPIC_MESSAGE_TEMPLATE = "{image}"
 TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR = (
     "team_audit_welcome.message must not be empty"
 )
+OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR = (
+    "outbound_rate_limit.cooldown_message must not be empty"
+)
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
 
 
@@ -90,18 +93,21 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
         return int_list(value)
 
 
-class ReplyLineConfig(BaseModel):
-    default_lines: int = Field(default=-1, ge=-1)
-    min_lines: int = Field(default=5, ge=1)
-    max_lines: int = Field(default=80, ge=1)
-    limit_path: Path = Path("data/messaging/reply_limits.sqlite")
+class OutboundRateLimitConfig(BaseModel):
+    enabled: bool = True
+    window_seconds: float = Field(default=60.0, gt=0)
+    max_messages: int = Field(default=10, ge=1)
+    cooldown_message: str = (
+        "本群消息发送过于频繁，机器人进入冷却时间，请稍后再试。"
+    )
 
-    @model_validator(mode="after")
-    def validate_line_range(self) -> Self:
-        if self.min_lines > self.max_lines:
-            msg = "reply.min_lines must be less than or equal to reply.max_lines"
-            raise ValueError(msg)
-        return self
+    @field_validator("cooldown_message")
+    @classmethod
+    def validate_cooldown_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR)
+        return message
 
 
 class MeetingConfig(BaseModel):
@@ -218,7 +224,9 @@ class SendpicConfig(SendpicBehaviorConfig):
 class MessageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reply: ReplyLineConfig = Field(default_factory=ReplyLineConfig)
+    outbound_rate_limit: OutboundRateLimitConfig = Field(
+        default_factory=OutboundRateLimitConfig
+    )
     private_commands: list[PrivateCommandMessageAction] = Field(default_factory=list)
     private_schedules: list[PrivateScheduledMessageAction] = Field(
         default_factory=list

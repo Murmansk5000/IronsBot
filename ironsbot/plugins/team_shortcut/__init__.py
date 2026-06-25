@@ -8,16 +8,17 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.plugins.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
-from ironsbot.shared.messaging import finish_message_sequence
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.plugins.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
+)
 from ironsbot.shared.features import is_group_feature_allowed
+from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.shared.messaging import finish_message_sequence
 from ironsbot.shared.messaging.text import build_message, command_text_matches
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -80,7 +81,7 @@ async def _is_team_shortcut(event: MessageEvent) -> bool:
 
 team_shortcut_matcher = on_message(
     rule=Rule(_is_team_shortcut) & no_reply(),
-    priority=2,
+    priority=get_matcher_priority("team_shortcut", 2),
     block=True,
 )
 
