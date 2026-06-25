@@ -12,8 +12,8 @@ def test_normalize_command_text_removes_whitespace_and_lowercases() -> None:
 
 
 def test_strip_command_prefix_uses_slash_by_default() -> None:
-    assert strip_command_prefix("/回复行数 20") == "回复行数 20"
-    assert strip_command_prefix("回复行数 20") is None
+    assert strip_command_prefix("/更新数据") == "更新数据"
+    assert strip_command_prefix("更新数据") is None
 
 
 def test_command_text_matches_normalized_commands() -> None:

@@ -9,6 +9,10 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.plugins.fire_manual_ad.service import (
+    append_fire_manual_ad_for_group,
+    append_fire_manual_ad_text,
+)
 from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
@@ -16,6 +20,7 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -98,13 +103,13 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
 
 private_command_matcher = on_message(
     rule=Rule(_match_private_command) & no_reply(),
-    priority=4,
+    priority=get_matcher_priority("message_commands", 4),
     block=True,
 )
 
 group_command_matcher = on_message(
     rule=Rule(_match_group_command) & no_reply(),
-    priority=4,
+    priority=get_matcher_priority("message_commands", 4),
     block=True,
 )
 
@@ -188,7 +193,7 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
 
 async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
     await send_broadcast_message(
-        task.message,
+        append_fire_manual_ad_text(task.message),
         private_user_ids=users_with_superusers(users_for_feature(task.feature)),
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
     )
@@ -200,6 +205,7 @@ async def _send_group_schedule(task: GroupScheduledMessageAction) -> None:
         group_ids=groups_for_feature(task.feature),
         group_at_user_ids=task.at_user_ids,
         action_name=f"group scheduled message {task.id or '<unnamed>'}",
+        message_limiter=append_fire_manual_ad_for_group,
     )
 
 
