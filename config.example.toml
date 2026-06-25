@@ -17,10 +17,15 @@ group_aliases = {}
 user_aliases = {}
 
 # Default: {}
-# EN: Group feature allowlist. Feature aliases include all, query, bili, activity,
-# server_status, text, text_push, and message.
-# ZH: 群功能策略，控制每个群可用哪些功能。
-# Example: { main = ["seer", "image", "meeting"] }
+# EN: Group feature allowlist. Feature aliases include all, query, seer, bili,
+# seer_activity, server_status, text, text_push, and message. Seer sub-features:
+# seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
+# seer_peak, seer_autocard, seer_rank, seer_data.
+# ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询总别名；
+# 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能。
+# 游戏内每周活动使用 seer_activity_query / seer_activity_push；
+# 游戏外活动链接使用 web_activity_link / web_activity_push。
+# Example: { main = ["seer_pet", "seer_mintmark", "seer_autocard"] }
 group_policy = {}
 
 # Default: {}
@@ -228,8 +233,8 @@ users = {}
 # Default: built-in lottery/result suppression patterns.
 # EN: Regex patterns that suppress automatic pushes.
 # ZH: 抑制自动推送的正则表达式。
-# Example: ["中奖", "抽奖结果"]
-suppress_push_patterns = ["恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
+# Example: ["恭喜", "中奖", "抽奖结果"]
+suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
 
 [activity]
 # Default: true
@@ -300,31 +305,6 @@ group_commands = []
 # at_user_ids.
 group_schedules = []
 
-[message.reply]
-# Default: -1
-# EN: Default reply line limit. -1 means unlimited.
-# ZH: 默认回复行数限制，-1 表示不限。
-# Example: 30
-default_lines = -1
-
-# Default: 5
-# EN: Minimum user-settable reply line limit.
-# ZH: 用户可设置的最小回复行数。
-# Example: 5
-min_lines = 5
-
-# Default: 80
-# EN: Maximum user-settable reply line limit.
-# ZH: 用户可设置的最大回复行数。
-# Example: 100
-max_lines = 80
-
-# Default: "data/messaging/reply_limits.sqlite"
-# EN: SQLite path for per-group reply line limits.
-# ZH: 每群回复行数限制数据库。
-# Example: "data/messaging/reply_limits.sqlite"
-limit_path = "data/messaging/reply_limits.sqlite"
-
 [message.outbound_rate_limit]
 # Default: true
 # EN: Limit outgoing bot messages in non-admin groups.
@@ -383,6 +363,26 @@ groups = []
 # EN: Welcome message sent to newcomers. The bot will mention the newcomer first.
 # ZH: 发送给新人的战队审核说明；机器人会先 @ 新人。
 message = "欢迎加入战队审核群。\n如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，方便管理员审核。\n审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
+
+# Default: true
+# EN: Remind newcomers again if they are still in the audit group after the delay.
+# ZH: 新人入群超过指定时间仍在审核群时，再提醒一次。
+followup_enabled = true
+
+# Default: 24.0
+# EN: Hours after joining before sending the follow-up reminder.
+# ZH: 入群后多少小时发送二次提醒。
+followup_after_hours = 24.0
+
+# Default: built-in follow-up reminder.
+# EN: Follow-up message. Available placeholders: {hours}, {group_id}, {user_id}.
+# ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
+followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果不想加入战队，请退出本审核群。"
+
+# Default: "data/team_audit_welcome/pending.sqlite"
+# EN: SQLite path used to persist pending 24-hour reminders across restarts.
+# ZH: 保存待发送二次提醒的 SQLite 路径，防止机器人重启后丢失提醒。
+followup_cache_path = "data/team_audit_welcome/pending.sqlite"
 
 [message.sendpic]
 # Default: null/omitted
@@ -458,6 +458,22 @@ refresh_stale_cache = true
 # EN: Rank page cache SQLite path.
 # ZH: 榜单分页缓存数据库。
 page_cache_path = "data/seer/rank_page_cache.sqlite"
+# Default: 10
+# EN: Default rank rows shown by rank commands when no page/range is specified.
+# ZH: 榜单命令未指定页码或范围时，默认显示多少名。
+display_limit = 10
+# Default: 100
+# EN: Maximum allowed rank rows for configured defaults and group owner/admin changes.
+# ZH: 榜单默认显示条数的最大阈值，群主/管理员修改时不能超过此值。
+max_display_limit = 100
+# Default: {}
+# EN: Optional per-group display defaults. Keys can be group aliases or QQ group IDs.
+# ZH: 可选的按群默认显示条数；键可以写群别名或 QQ 群号。
+display_limits = {}
+# Default: "data/seer/rank_display_limits.sqlite"
+# EN: Runtime group overrides set by group owners/admins.
+# ZH: 群主/管理员在群内修改榜单默认显示条数后的持久化 SQLite。
+display_limit_path = "data/seer/rank_display_limits.sqlite"
 # Default: omitted/null; EN: Override peak subkey. ZH: 覆盖巅峰 subkey。
 # peak_subkey = 123
 
@@ -688,7 +704,6 @@ message_commands = 4
 meeting = 5
 activity = 5
 db_sync = 5
-reply_limits = 5
 team_audit = 5
 
 [runtime.logging]
@@ -698,6 +713,10 @@ file_enabled = false
 file_path = "/app/logs/ironsbot.log"
 # Default: "INFO"; EN: Minimum file log level. ZH: 写入文件的最低日志等级，可填 DEBUG、INFO、WARNING、ERROR 等。
 file_level = "INFO"
+# Default: false; EN: Also write ERROR/CRITICAL logs to a separate file. ZH: 额外写入独立错误日志文件；只包含 ERROR/CRITICAL，便于排查崩溃。
+error_file_enabled = false
+# Default: "/app/logs/ironsbot.error.log"; EN: Error log file path. ZH: 错误日志路径；完整日志仍写入 /app/logs/ironsbot.log。
+error_file_path = "/app/logs/ironsbot.error.log"
 # Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。
 rotation = "20 MB"
 # Default: "14 days"; EN: Keep rotated logs for this duration. ZH: 轮转日志保留时间。

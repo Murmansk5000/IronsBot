@@ -566,8 +566,12 @@ def _get_local_rank_entries_sql(
     metric_key: str,
     *,
     limit: int,
+    start_rank: int,
     season_sub_key: int | None,
 ) -> tuple[list[LocalRankEntry], int]:
+    requested_limit = max(0, limit)
+    safe_start_rank = max(1, start_rank)
+    fetch_limit = safe_start_rank + requested_limit - 1
     where, params = _get_metric_where(metric_key, season_sub_key)
     with _connect_cache() as conn:
         sample_count = _count_metric_rows(conn, metric_key, season_sub_key)
@@ -581,7 +585,7 @@ def _get_local_rank_entries_sql(
             ORDER BY m.value DESC, p.user_id ASC
             LIMIT ?
             """,
-            (*params, max(0, limit)),
+            (*params, fetch_limit),
         ).fetchall()
 
         entries: list[LocalRankEntry] = []
@@ -607,7 +611,8 @@ def _get_local_rank_entries_sql(
                 )
             )
 
-        return entries, sample_count
+        start_index = safe_start_rank - 1
+        return entries[start_index : start_index + requested_limit], sample_count
 
 
 def _get_cached_player_ids_sql() -> list[int]:
@@ -758,11 +763,13 @@ def get_local_rank_entries(
     metric_key: str,
     *,
     limit: int = 20,
+    start_rank: int = 1,
     season_sub_key: int | None = None,
 ) -> tuple[list[LocalRankEntry], int]:
     return _get_local_rank_entries_sql(
         metric_key,
         limit=limit,
+        start_rank=start_rank,
         season_sub_key=season_sub_key,
     )
 

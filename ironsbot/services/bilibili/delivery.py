@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Message
 
+from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_message
 from ironsbot.services.bilibili.parser import parse_single_item
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE, FIRE_MANUAL_URL
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
@@ -23,13 +23,6 @@ class DynamicPushDelivery:
     group_ids: list[int]
     private_user_ids: list[int]
     action_name: str
-
-
-def append_fire_manual_ad_message(message: Message) -> Message:
-    if FIRE_MANUAL_URL in str(message):
-        return message
-    message += MessageSegment.text(f"\n\n{FIRE_MANUAL_LINK_MESSAGE}")
-    return message
 
 
 def build_dynamic_push_deliveries(

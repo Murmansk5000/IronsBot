@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from ironsbot.services.seer.query_help import seer_query_help_message
+
 if TYPE_CHECKING:
     from ironsbot.plugins.seer_data.db import SeerAPISession
 
@@ -88,15 +90,10 @@ def load_autocard_dataset(session: SeerAPISession) -> AutocardDataset:
 
 
 def format_autocard_public_info() -> str:
-    return "\n".join(
-        (
-            "🃏【群星牌查询】",
-            "发送“群星牌+名字”或“名字+群星牌”查询卡牌/赛尔角色资料。",
-            "示例：群星牌布布种子、金币卡群星牌、卡牌金币卡、群星牌破界者",
-            "",
-            "当前查询公开配置：卡牌、属性、等级、费用、基础攻血、效果文本、赛尔角色技能。",
-            "个人积分、常用卡、历史对局暂不支持。",
-        )
+    return (
+        f"{seer_query_help_message('autocard')}\n\n"
+        "当前查询公开配置：卡牌、属性、等级、费用、基础攻血、效果文本、赛尔角色技能。\n"
+        "个人积分、常用卡、历史对局暂不支持。"
     )
 
 
@@ -249,11 +246,10 @@ def _autocard_image_name(kind: str, item: dict[str, Any]) -> str:
 
     item_id = _int_field(item, "id")
     pic_id = _int_field(item, "picID", "pic_id")
-    is_composed = bool(_int_field(item, "compose"))
     image_id = (
-        item_id
-        if is_composed or item_id >= _AUTOCARD_NON_PET_CARD_ID_START
-        else pic_id
+        pic_id
+        if item_id < _AUTOCARD_NON_PET_CARD_ID_START and pic_id > 0
+        else item_id
     )
     return f"card_{image_id}" if image_id > 0 else ""
 

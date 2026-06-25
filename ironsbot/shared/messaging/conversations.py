@@ -8,7 +8,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
-from .replies import event_sender_at_user_ids, limit_reply_message
+from .replies import event_sender_at_user_ids
 from .text import build_message, command_text_matches
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         None
         if prompt is None
         else build_message(
-            limit_reply_message(prompt, event=event),
+            prompt,
             at_user_ids=event_sender_at_user_ids(
                 event,
                 mention_sender=mention_sender,

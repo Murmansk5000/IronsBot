@@ -20,39 +20,21 @@ if TYPE_CHECKING:
 
 ReplyMessage = str | Message | MessageSegment
 BeforeReplySendHook = Callable[[MessageEvent | None], Awaitable[None]]
-ReplyMessageLimiter = Callable[
-    [ReplyMessage, MessageEvent | None, int | None],
-    ReplyMessage,
-]
-
-
 async def _noop_before_reply_send(_event: MessageEvent | None) -> None:
     return
 
 
-def _identity_reply_message_limiter(
-    message: ReplyMessage,
-    _event: MessageEvent | None,
-    _group_id: int | None,
-) -> ReplyMessage:
-    return message
-
-
 _before_reply_send_hook: BeforeReplySendHook = _noop_before_reply_send
-_reply_message_limiter: ReplyMessageLimiter = _identity_reply_message_limiter
 
 
 def configure_reply_delivery_policy(
     *,
     before_send: BeforeReplySendHook | None = None,
-    message_limiter: ReplyMessageLimiter | None = None,
 ) -> None:
-    global _before_reply_send_hook, _reply_message_limiter  # noqa: PLW0603
+    global _before_reply_send_hook  # noqa: PLW0603
 
     if before_send is not None:
         _before_reply_send_hook = before_send
-    if message_limiter is not None:
-        _reply_message_limiter = message_limiter
 
 
 def event_sender_at_user_ids(
@@ -74,15 +56,6 @@ async def apply_reply_before_send(event: MessageEvent | None) -> None:
     await _before_reply_send_hook(event)
 
 
-def limit_reply_message(
-    message: ReplyMessage,
-    *,
-    event: MessageEvent | None = None,
-    group_id: int | None = None,
-) -> ReplyMessage:
-    return _reply_message_limiter(message, event, group_id)
-
-
 async def send_matcher_message(
     matcher: Matcher,
     message: ReplyMessage,
@@ -91,7 +64,6 @@ async def send_matcher_message(
     event: MessageEvent | None = None,
 ) -> None:
     await apply_reply_before_send(event)
-    message = limit_reply_message(message, event=event)
     group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
     rate_limit = check_group_outbound_rate_limit(group_id)
     if not rate_limit.allowed:
@@ -109,7 +81,6 @@ async def finish_matcher_message(
     event: MessageEvent | None = None,
 ) -> None:
     await apply_reply_before_send(event)
-    message = limit_reply_message(message, event=event)
     group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
     rate_limit = check_group_outbound_rate_limit(group_id)
     if not rate_limit.allowed:

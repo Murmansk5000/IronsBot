@@ -23,9 +23,12 @@ HIDDEN_MODULE_PREFIXES = (
     "ironsbot.plugins.startup_notice",
     "ironsbot.plugins.admin_priority",
     "ironsbot.plugins.db_sync",
+    "ironsbot.plugins.fire_manual_ad",
     "ironsbot.plugins.headless_seer",
     "ironsbot.plugins.http_client",
     "ironsbot.plugins.seer_data",
+    "ironsbot.plugins.team_audit_welcome",
+    "ironsbot.plugins.team_recommend",
 )
 
 ALWAYS_VISIBLE_MODULE_PREFIXES = (
@@ -113,7 +116,6 @@ SPECIAL_MODULE_VISIBILITY: tuple[tuple[str, VisibilityRule], ...] = (
     ("ironsbot.plugins.team_shortcut", _team_shortcut_visible),
     ("ironsbot.plugins.ai_chat", _ai_chat_visible),
     ("ironsbot.plugins.ai_intent", _ai_intent_visible),
-    ("ironsbot.plugins.team_recommend", _ai_intent_visible),
     ("ironsbot.plugins.headless_seer_notice", _superuser_visible),
 )
 

@@ -93,20 +93,6 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
         return int_list(value)
 
 
-class ReplyLineConfig(BaseModel):
-    default_lines: int = Field(default=-1, ge=-1)
-    min_lines: int = Field(default=5, ge=1)
-    max_lines: int = Field(default=80, ge=1)
-    limit_path: Path = Path("data/messaging/reply_limits.sqlite")
-
-    @model_validator(mode="after")
-    def validate_line_range(self) -> Self:
-        if self.min_lines > self.max_lines:
-            msg = "reply.min_lines must be less than or equal to reply.max_lines"
-            raise ValueError(msg)
-        return self
-
-
 class OutboundRateLimitConfig(BaseModel):
     enabled: bool = True
     window_seconds: float = Field(default=60.0, gt=0)
@@ -149,6 +135,14 @@ class TeamAuditWelcomeConfig(BaseModel):
         "方便管理员审核。\n"
         "审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
     )
+    followup_enabled: bool = True
+    followup_after_hours: float = Field(default=24.0, gt=0)
+    followup_message: str = (
+        "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n"
+        "如果想加入战队，请发送“米米号+你的米米号”供管理员审核；"
+        "如果不想加入战队，请退出本审核群。"
+    )
+    followup_cache_path: str = "data/team_audit_welcome/pending.sqlite"
 
     @field_validator("feature")
     @classmethod
@@ -166,7 +160,7 @@ class TeamAuditWelcomeConfig(BaseModel):
             return string_list(stripped) if stripped else []
         return value
 
-    @field_validator("message")
+    @field_validator("message", "followup_message", "followup_cache_path")
     @classmethod
     def validate_message(cls, value: str) -> str:
         message = value.strip()
@@ -238,7 +232,6 @@ class SendpicConfig(SendpicBehaviorConfig):
 class MessageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reply: ReplyLineConfig = Field(default_factory=ReplyLineConfig)
     outbound_rate_limit: OutboundRateLimitConfig = Field(
         default_factory=OutboundRateLimitConfig
     )

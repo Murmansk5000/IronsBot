@@ -28,7 +28,8 @@ from ironsbot.services.seer.rank_constants import (
     SKIN_RANK_SUB_KEY,
 )
 
-RANK_LIST_SIZE = 20
+RANK_LIST_SIZE = 10
+RANK_LIST_MAX_SIZE = 100
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
 RANK_PAGE_CACHE_STATUS_PREFIXES = (
     "榜单情况",
@@ -61,6 +62,8 @@ class LocalRankSpec:
 class RankListCommand:
     kind: str
     rank_key: str
+    start_rank: int = 1
+    limit: int = RANK_LIST_SIZE
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,16 +174,38 @@ def format_global_rank_message(
     items: Sequence[Any],
     *,
     timestamp: str | None = None,
+    start_rank: int = 1,
+    requested_count: int = RANK_LIST_SIZE,
 ) -> str:
     if not items:
         return f"❌找不到{spec.title}数据。"
 
-    lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
+    range_text = format_rank_window(start_rank, len(items), requested_count)
+    if range_text:
+        lines = [f"{spec.title}（{range_text}，截至{timestamp or now_text()}）"]
+    else:
+        lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
     lines.extend(
-        format_global_rank_line(item, index=spec.start + index, spec=spec)
+        format_global_rank_line(
+            item,
+            index=batch_raw_start(spec, start_rank) + index,
+            spec=spec,
+        )
         for index, item in enumerate(items)
     )
     return "\n".join(lines)
+
+
+def format_rank_window(
+    start_rank: int,
+    actual_count: int,
+    requested_count: int,
+) -> str:
+    if start_rank == 1 and requested_count == RANK_LIST_SIZE:
+        return ""
+    if actual_count <= 1 or requested_count <= 1:
+        return f"第 {start_rank} 名"
+    return f"第 {start_rank}-{start_rank + actual_count - 1} 名"
 
 
 def batch_raw_start(spec: GlobalRankSpec, start_rank: int) -> int:
@@ -378,18 +403,27 @@ def build_rank_page_refresh_result_message(result: Any) -> str:
     return "\n".join(lines)
 
 
-def format_local_rank_message(
+def format_local_rank_message(  # noqa: PLR0913
     spec: LocalRankSpec,
     entries: Sequence[Any],
     *,
     sample_count: int,
     timestamp: str | None = None,
     season_sub_key: str | None = None,
+    start_rank: int = 1,
+    requested_count: int = RANK_LIST_SIZE,
 ) -> str:
     if not entries:
         return f"❌暂无{spec.title}数据。先查询一些米米号后再试。"
 
-    title = f"{spec.title}（样本{sample_count}人，截至{timestamp or now_text()}）"
+    range_text = format_rank_window(start_rank, len(entries), requested_count)
+    if range_text:
+        title = (
+            f"{spec.title}（{range_text}，样本{sample_count}人，"
+            f"截至{timestamp or now_text()}）"
+        )
+    else:
+        title = f"{spec.title}（样本{sample_count}人，截至{timestamp or now_text()}）"
     if season_sub_key is not None:
         title += f"\n赛季样本：{season_sub_key}"
 
@@ -450,13 +484,14 @@ def build_rank_batch_result_message(
     return "\n".join(lines)
 
 
-def build_local_rank_cache_status_message(
+def build_local_rank_cache_status_message(  # noqa: PLR0913
     stats: Any,
     *,
     rank_limit: int,
     batch_limit: int,
     refresh_limit: int,
     refresh_max_age_hours: int,
+    display_limit: int = RANK_LIST_SIZE,
 ) -> str:
     lines = [
         "📊【样本榜缓存状态】",
@@ -468,7 +503,7 @@ def build_local_rank_cache_status_message(
         f"单轮刷新上限：{refresh_limit} 个",
         f"刷新过期时间：{refresh_max_age_hours} 小时",
         "巅峰样本：按当前赛季单独比较",
-        f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
+        f"榜单命令展示：前 {display_limit} 名",
         "",
         "可参与排行人数：",
     ]
@@ -520,14 +555,33 @@ def build_local_rank_refresh_result_message(
     return "\n".join(lines)
 
 
-def parse_rank_list_command(text: str) -> RankListCommand | None:
+def parse_rank_list_command(
+    text: str,
+    *,
+    default_limit: int = RANK_LIST_SIZE,
+    max_limit: int = RANK_LIST_MAX_SIZE,
+) -> RankListCommand | None:
     command = _normalize_command_text(text)
-    parsed = _NORMALIZED_COMMANDS.get(command)
+    parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
 
-    kind, rank_key = parsed
-    return RankListCommand(kind=kind, rank_key=rank_key)
+    kind, rank_key, suffix = parsed
+    window = _parse_rank_window(
+        suffix,
+        default_limit=default_limit,
+        max_limit=max_limit,
+    )
+    if window is None:
+        return None
+
+    start_rank, limit = window
+    return RankListCommand(
+        kind=kind,
+        rank_key=rank_key,
+        start_rank=start_rank,
+        limit=limit,
+    )
 
 
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
@@ -687,6 +741,52 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
 
 def _normalize_command_text(text: str) -> str:
     return "".join(text.split()).lower()
+
+
+def _match_rank_list_command(command: str) -> tuple[str, str, str] | None:
+    for prefix, value in sorted(
+        _NORMALIZED_COMMANDS.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if command.startswith(prefix):
+            kind, rank_key = value
+            return kind, rank_key, command[len(prefix) :]
+    return None
+
+
+def _parse_rank_window(  # noqa: PLR0911
+    suffix: str,
+    *,
+    default_limit: int = RANK_LIST_SIZE,
+    max_limit: int = RANK_LIST_MAX_SIZE,
+) -> tuple[int, int] | None:
+    if not suffix:
+        return 1, default_limit
+
+    page_match = re.fullmatch(r"第?(\d+)页", suffix)
+    if page_match is not None:
+        page = int(page_match.group(1))
+        if page <= 0:
+            return None
+        return (page - 1) * default_limit + 1, default_limit
+
+    range_match = re.fullmatch(r"第?(\d+)(?:-|~|到|至)(\d+)名?", suffix)
+    if range_match is not None:
+        start_rank = int(range_match.group(1))
+        end_rank = int(range_match.group(2))
+        if start_rank <= 0 or end_rank < start_rank:
+            return None
+        return start_rank, min(end_rank - start_rank + 1, max_limit)
+
+    single_match = re.fullmatch(r"第?(\d+)名?", suffix)
+    if single_match is not None:
+        start_rank = int(single_match.group(1))
+        if start_rank <= 0:
+            return None
+        return start_rank, 1
+
+    return None
 
 
 def _strip_command_prefix(text: str, prefixes: tuple[str, ...] = ("/",)) -> str | None:

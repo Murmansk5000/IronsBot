@@ -23,7 +23,7 @@ NORMALIZED_SOON_ENDING_ACTIVITY_COMMANDS = {
 }
 
 
-def is_current_activity_query_text(text: str) -> bool:
+def is_current_seer_activity_text(text: str) -> bool:
     command = strip_command_prefix(text)
     if command is None:
         return False
@@ -32,7 +32,7 @@ def is_current_activity_query_text(text: str) -> bool:
     return normalized in NORMALIZED_CURRENT_ACTIVITY_COMMANDS
 
 
-def is_soon_ending_activity_query_text(text: str) -> bool:
+def is_soon_ending_seer_activity_text(text: str) -> bool:
     text_value = text.strip()
     command = strip_command_prefix(text_value) or text_value
 
