@@ -16,6 +16,7 @@ INVALID_INTERVAL_TIME_ERROR = (
 
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
+    "恭喜",
     "恭喜.*获得",
     "记得及时查看私信通知",
     "中奖",
