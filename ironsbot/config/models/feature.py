@@ -13,18 +13,28 @@ if TYPE_CHECKING:
 KNOWN_FEATURES = frozenset(
     {
         "seer",
+        "seer_player",
+        "seer_team",
+        "seer_pet",
+        "seer_mintmark",
+        "seer_equipment",
+        "seer_type",
+        "seer_peak",
+        "seer_autocard",
+        "seer_rank",
+        "seer_data",
         "image",
         "rank",
         "meeting",
         "text",
         "text_push",
-        "activity_link",
-        "activity_link_push",
+        "web_activity_link",
+        "web_activity_push",
         "seerinfo",
         "bili_query",
         "bili_push",
-        "activity_query",
-        "activity_push",
+        "seer_activity_query",
+        "seer_activity_push",
         "server_status_query",
         "server_status_push",
         "team",
@@ -34,29 +44,46 @@ KNOWN_FEATURES = frozenset(
         "admin_notice",
     }
 )
+SEER_FEATURES = frozenset(
+    {
+        "seer_player",
+        "seer_team",
+        "seer_pet",
+        "seer_mintmark",
+        "seer_equipment",
+        "seer_type",
+        "seer_peak",
+        "seer_autocard",
+        "seer_rank",
+        "seer_data",
+    }
+)
 FEATURE_ALIASES: dict[str, frozenset[str]] = {
-    "all": KNOWN_FEATURES - {"admin_notice"},
+    "all": (KNOWN_FEATURES - {"admin_notice", "seer"}) | SEER_FEATURES,
+    "seer": SEER_FEATURES,
     "query": frozenset(
         {
-            "seer",
+            *SEER_FEATURES,
             "image",
             "rank",
             "bili_query",
-            "activity_query",
+            "seer_activity_query",
             "server_status_query",
         }
     ),
+    "rank": frozenset({"rank", "seer_rank"}),
     "bili": frozenset({"bili_query", "bili_push"}),
-    "activity": frozenset({"activity_query", "activity_push"}),
+    "activity": frozenset({"seer_activity_query", "seer_activity_push"}),
+    "seer_activity": frozenset({"seer_activity_query", "seer_activity_push"}),
     "server_status": frozenset({"server_status_query", "server_status_push"}),
-    "text": frozenset({"text", "activity_link", "seerinfo"}),
-    "text_push": frozenset({"text_push", "activity_link_push"}),
+    "text": frozenset({"text", "web_activity_link", "seerinfo"}),
+    "text_push": frozenset({"text_push", "web_activity_push"}),
     "message": frozenset(
         {
             "text",
             "text_push",
-            "activity_link",
-            "activity_link_push",
+            "web_activity_link",
+            "web_activity_push",
             "seerinfo",
             "team_audit",
         }
@@ -111,6 +138,7 @@ def unique_ints(values: Iterable[int]) -> list[int]:
 __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
+    "SEER_FEATURES",
     "FeatureConfig",
     "unique_ints",
 ]

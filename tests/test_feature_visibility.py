@@ -80,6 +80,22 @@ def test_feature_module_visibility_uses_feature_service(
     )
 
 
+def test_seer_query_visible_when_any_seer_subfeature_allowed(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        visibility,
+        "is_event_feature_allowed",
+        lambda _event, feature: feature == "seer_pet",
+    )
+
+    assert visibility.plugin_visible_for_event(
+        "扩展赛尔号查询",
+        "ironsbot.plugins.seer.query",
+        _group_event(),
+    )
+
+
 def test_messaging_visibility_reads_app_config(
     monkeypatch: MonkeyPatch,
 ) -> None:

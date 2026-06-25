@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
@@ -21,10 +21,17 @@ from ironsbot.services.seer.rank import (
     fetch_daily_rank_page,
     get_current_peak_sub_key,
 )
+from ironsbot.services.seer.rank_display import (
+    build_rank_display_limit_denied_message,
+    build_rank_display_limit_invalid_message,
+    build_rank_display_limit_message,
+    parse_rank_display_limit_command,
+    rank_display_limit_for_group,
+    set_group_rank_display_limit,
+)
 from ironsbot.services.seer.rank_list import (
     GLOBAL_RANKS,
     LOCAL_RANKS,
-    RANK_LIST_SIZE,
     GlobalRankSpec,
     LocalRankSpec,
     RankCacheBatchCommand,
@@ -59,6 +66,7 @@ from ironsbot.services.seer.rank_page_refresh import (
     refresh_rank_page_cache,
 )
 from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.shared.features import is_superuser
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
@@ -71,21 +79,34 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_rule
 
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 RANK_PAGE_CACHE_REFRESH_COMMAND_KEY = "_rank_page_cache_refresh_command"
+RANK_DISPLAY_LIMIT_COMMAND_KEY = "_rank_display_limit_command"
 RANK_LIST_PLUGIN_NAME = "seer_rank_list"
 
 
 async def _is_rank_list_command(event: Event, state: T_State) -> bool:
-    command = parse_rank_list_command(event.get_plaintext())
+    command = parse_rank_list_command(
+        event.get_plaintext(),
+        default_limit=rank_display_limit_for_group(_event_group_id(event)),
+    )
     if command is None:
         return False
 
     state[RANK_LIST_COMMAND_KEY] = command
+    return True
+
+
+async def _is_rank_display_limit_command(event: Event, state: T_State) -> bool:
+    command = parse_rank_display_limit_command(event.get_plaintext())
+    if command is None:
+        return False
+
+    state[RANK_DISPLAY_LIMIT_COMMAND_KEY] = command
     return True
 
 
@@ -118,28 +139,30 @@ async def _is_rank_page_cache_refresh_command(event: Event, state: T_State) -> b
 
 rank_help_matcher = matcher_group.on_fullmatch(
     ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_rank") & no_reply(),
 )
 rank_list_matcher = matcher_group.on_message(
-    rule=Rule(_is_rank_list_command) & no_reply(),
+    rule=seer_feature_rule("seer_rank") & Rule(_is_rank_list_command) & no_reply(),
 )
 rank_cache_status_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
         "样本情况",
         "样本状态",
     )),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
 )
 rank_cache_refresh_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
         "刷新样本",
     )),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
 )
 rank_cache_batch_matcher = matcher_group.on_message(
-    rule=Rule(_is_rank_cache_batch_command) & no_reply(),
+    rule=seer_feature_rule("seer_rank")
+    & Rule(_is_rank_cache_batch_command)
+    & no_reply(),
     permission=SUPERUSER,
 )
 rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
@@ -147,29 +170,46 @@ rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
         "榜单情况",
         "榜单状态",
     )),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
 )
 rank_page_cache_status_matcher = matcher_group.on_message(
-    rule=Rule(_is_rank_page_cache_status_command) & no_reply(),
+    rule=seer_feature_rule("seer_rank")
+    & Rule(_is_rank_page_cache_status_command)
+    & no_reply(),
     permission=SUPERUSER,
 )
 rank_page_cache_refresh_matcher = matcher_group.on_message(
-    rule=Rule(_is_rank_page_cache_refresh_command) & no_reply(),
+    rule=seer_feature_rule("seer_rank")
+    & Rule(_is_rank_page_cache_refresh_command)
+    & no_reply(),
     permission=SUPERUSER,
+)
+rank_display_limit_matcher = matcher_group.on_message(
+    rule=seer_feature_rule("seer_rank")
+    & Rule(_is_rank_display_limit_command)
+    & no_reply(),
 )
 
 
-async def _build_global_rank_message(spec: GlobalRankSpec) -> str:
+async def _build_global_rank_message(
+    spec: GlobalRankSpec,
+    command: RankListCommand,
+) -> str:
     game = get_game_client()
     items = await fetch_daily_rank_page(
         game,
         key=spec.key,
         sub_key=spec.sub_key,
-        start=spec.start,
-        count=RANK_LIST_SIZE,
+        start=batch_raw_start(spec, command.start_rank),
+        count=command.limit,
     )
-    return format_global_rank_message(spec, items)
+    return format_global_rank_message(
+        spec,
+        items,
+        start_rank=command.start_rank,
+        requested_count=command.limit,
+    )
 
 
 async def _cache_global_rank_batch(
@@ -190,11 +230,12 @@ async def _cache_global_rank_batch(
     return spec, len(items), requested_count
 
 
-def _build_local_rank_message(spec: LocalRankSpec) -> str:
+def _build_local_rank_message(spec: LocalRankSpec, command: RankListCommand) -> str:
     season_sub_key = get_current_peak_sub_key() if spec.season_limited else None
     entries, sample_count = get_local_rank_entries(
         spec.metric_key,
-        limit=RANK_LIST_SIZE,
+        limit=command.limit,
+        start_rank=command.start_rank,
         season_sub_key=season_sub_key,
     )
     return format_local_rank_message(
@@ -202,15 +243,17 @@ def _build_local_rank_message(spec: LocalRankSpec) -> str:
         entries,
         sample_count=sample_count,
         season_sub_key=season_sub_key,
+        start_rank=command.start_rank,
+        requested_count=command.limit,
     )
 
 
 class RankListPlugin:
     name = RANK_LIST_PLUGIN_NAME
-    feature = "rank"
+    feature = "seer_rank"
     enabled = True
 
-    async def handle(  # noqa: PLR0911
+    async def handle(  # noqa: C901, PLR0911
         self,
         event: MessageEvent,
         context: PluginContext,
@@ -243,6 +286,9 @@ class RankListPlugin:
             return
         if context.action == "cache_refresh":
             await self._handle_cache_refresh(matcher, event, state)
+            return
+        if context.action == "display_limit":
+            await self._handle_display_limit(matcher, event, state)
 
     async def _handle_help(self, matcher: Matcher, event: MessageEvent) -> None:
         await finish_event_reply(matcher, event, build_rank_help_message())
@@ -259,13 +305,16 @@ class RankListPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                await _build_global_rank_message(GLOBAL_RANKS[command.rank_key]),
+                await _build_global_rank_message(
+                    GLOBAL_RANKS[command.rank_key],
+                    command,
+                ),
             )
 
         await finish_event_reply(
             matcher,
             event,
-            _build_local_rank_message(LOCAL_RANKS[command.rank_key]),
+            _build_local_rank_message(LOCAL_RANKS[command.rank_key], command),
         )
 
     async def _handle_cache_batch(
@@ -412,6 +461,7 @@ class RankListPlugin:
                 refresh_max_age_hours=(
                     query_config.local_rank.refresh_max_age_hours
                 ),
+                display_limit=rank_display_limit_for_group(_event_group_id(event)),
             ),
         )
 
@@ -451,6 +501,48 @@ class RankListPlugin:
                 result,
                 after,
                 failure_lines=format_refresh_failures(result.failures),
+            ),
+        )
+
+    async def _handle_display_limit(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        command = state[RANK_DISPLAY_LIMIT_COMMAND_KEY]
+        if not isinstance(event, GroupMessageEvent):
+            await finish_event_reply(matcher, event, "❌ 这个设置只能在群聊中修改。")
+            return
+
+        if not _can_manage_group_rank_display(event):
+            await finish_event_reply(
+                matcher,
+                event,
+                build_rank_display_limit_denied_message(),
+            )
+            return
+
+        rank_config = get_rank_query_config()
+        if command.limit < 1 or command.limit > rank_config.max_display_limit:
+            await finish_event_reply(
+                matcher,
+                event,
+                build_rank_display_limit_invalid_message(command.limit),
+            )
+            return
+
+        set_group_rank_display_limit(
+            int(event.group_id),
+            int(event.user_id),
+            command.limit,
+        )
+        await finish_event_reply(
+            matcher,
+            event,
+            build_rank_display_limit_message(
+                group_id=int(event.group_id),
+                limit=command.limit,
             ),
         )
 
@@ -567,3 +659,30 @@ async def handle_rank_cache_refresh(
         state=state,
         action="cache_refresh",
     )
+
+
+@rank_display_limit_matcher.handle()
+async def handle_rank_display_limit(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="display_limit",
+    )
+
+
+def _event_group_id(event: Event) -> int | None:
+    group_id = getattr(event, "group_id", None)
+    return int(group_id) if group_id is not None else None
+
+
+def _can_manage_group_rank_display(event: GroupMessageEvent) -> bool:
+    if is_superuser(int(event.user_id)):
+        return True
+    role = getattr(getattr(event, "sender", None), "role", "")
+    return role in {"owner", "admin"}

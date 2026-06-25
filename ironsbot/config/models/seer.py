@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ironsbot.shared.config.parsing import int_list, string_list
 from ironsbot.shared.config.time import normalized_daily_times
@@ -58,6 +58,7 @@ DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "座驾图鉴",
     "刻印图鉴",
 )
+MAX_RANK_DISPLAY_LIMIT = 100
 
 
 def _coerce_sections(value: object) -> object:
@@ -166,6 +167,14 @@ class RankQueryConfig(BaseModel):
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
     page_size: int = Field(default=100, ge=1)
+    display_limit: int = Field(default=10, ge=1, le=MAX_RANK_DISPLAY_LIMIT)
+    max_display_limit: int = Field(
+        default=MAX_RANK_DISPLAY_LIMIT,
+        ge=1,
+        le=MAX_RANK_DISPLAY_LIMIT,
+    )
+    display_limits: dict[str, int] = Field(default_factory=dict)
+    display_limit_path: Path = Path("data/seer/rank_display_limits.sqlite")
     page_cache: bool = True
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
@@ -183,7 +192,34 @@ class RankQueryConfig(BaseModel):
             return None
         return value
 
-    @field_validator("page_cache_path")
+    @field_validator("display_limits", mode="before")
+    @classmethod
+    def normalize_display_limits(cls, value: object) -> object:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            return value
+        return {str(key).strip(): int(limit) for key, limit in value.items()}
+
+    @field_validator("display_limits")
+    @classmethod
+    def validate_display_limits(cls, value: dict[str, int]) -> dict[str, int]:
+        return {
+            key: limit
+            for key, limit in value.items()
+            if key and 1 <= limit <= MAX_RANK_DISPLAY_LIMIT
+        }
+
+    @model_validator(mode="after")
+    def validate_display_limit_bounds(self) -> "RankQueryConfig":
+        self.display_limit = min(self.display_limit, self.max_display_limit)
+        self.display_limits = {
+            key: min(limit, self.max_display_limit)
+            for key, limit in self.display_limits.items()
+        }
+        return self
+
+    @field_validator("page_cache_path", "display_limit_path")
     @classmethod
     def validate_sqlite_cache_path(cls, value: Path) -> Path:
         return _validate_sqlite_path(value)

@@ -21,12 +21,13 @@ DEFAULT_AI_CHAT_PRIORITY = 99
 HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
-DEFAULT_REPLY_MAX_LINES = 80
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
+DEFAULT_RANK_DISPLAY_LIMIT = 10
+DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -44,11 +45,15 @@ def test_example_config_parses() -> None:
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
     assert config.bilibili.polling.windows[0].start == "07:00"
+    assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
     assert "米米号" in config.message.team_audit_welcome.message
     assert config.seer.team_shortcut.team_ids == []
+    assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
+    assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
+    assert config.seer.rank.display_limits == {}
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
@@ -212,10 +217,6 @@ def test_small_plugin_config_accessors_read_app_config(
         )
         assert headless_notice_config.get_headless_notice_config().login_notice
         assert (
-            message_config.get_message_config().reply.max_lines
-            == DEFAULT_REPLY_MAX_LINES
-        )
-        assert (
             message_config.get_message_config().outbound_rate_limit.max_messages
             == DEFAULT_OUTBOUND_MAX_MESSAGES
         )
@@ -252,6 +253,14 @@ def test_seer_plugin_config_accessors_read_app_config(
             == DEFAULT_PLAYER_TIMEOUT_SECONDS
         )
         assert seer_query_config.get_local_rank_config().enabled
+        assert (
+            seer_query_config.get_rank_query_config().display_limit
+            == DEFAULT_RANK_DISPLAY_LIMIT
+        )
+        assert (
+            seer_query_config.get_rank_query_config().max_display_limit
+            == DEFAULT_RANK_MAX_DISPLAY_LIMIT
+        )
         assert (
             seer_render_cache.get_render_config().cache_max_size_mb
             == DEFAULT_RENDER_CACHE_MAX_SIZE_MB

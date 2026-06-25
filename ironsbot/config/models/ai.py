@@ -7,13 +7,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Self
 
+from ironsbot.plugins.fire_manual_ad.service import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.shared.config.parsing import (
     int_list,
     json_array,
     json_object,
     string_list,
 )
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"

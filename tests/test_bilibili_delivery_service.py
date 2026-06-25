@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from typing import Any
 
+from ironsbot.plugins.fire_manual_ad.service import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.services.bilibili.delivery import (
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     build_dynamic_push_deliveries,
 )
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 PUB_TS = 1781004683
 

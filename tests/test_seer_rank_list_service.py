@@ -42,6 +42,41 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         kind="global",
         rank_key="刻印图鉴",
     )
+    assert parse_rank_list_command("皮肤榜第2页") == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+        start_rank=11,
+        limit=10,
+    )
+    assert parse_rank_list_command("成就榜第100名") == RankListCommand(
+        kind="global",
+        rank_key="成就点数",
+        start_rank=100,
+        limit=1,
+    )
+
+
+def test_parse_rank_list_command_uses_configured_default_limit() -> None:
+    assert parse_rank_list_command("皮肤榜", default_limit=30) == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+        limit=30,
+    )
+    assert parse_rank_list_command(
+        "皮肤榜第2页",
+        default_limit=30,
+    ) == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+        start_rank=31,
+        limit=30,
+    )
+    assert parse_rank_list_command("皮肤榜1-200") == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+        start_rank=1,
+        limit=100,
+    )
 
 
 def test_parse_rank_list_command_reads_local_aliases() -> None:
@@ -53,11 +88,19 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         kind="local",
         rank_key="精灵数量",
     )
+    assert parse_rank_list_command("样本皮肤榜21-40") == RankListCommand(
+        kind="local",
+        rank_key="皮肤图鉴",
+        start_rank=21,
+        limit=20,
+    )
 
 
 def test_parse_rank_list_command_ignores_unknown_text() -> None:
     assert parse_rank_list_command("榜单帮助") is None
     assert parse_rank_list_command("米米号查询") is None
+    assert parse_rank_list_command("图鉴榜第0页") is None
+    assert parse_rank_list_command("图鉴榜100-1") is None
 
 
 def test_parse_rank_cache_batch_command_requires_admin_prefix_and_global_rank() -> None:
@@ -135,6 +178,13 @@ def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
         [item],
         timestamp="2026-06-12 10:00:00",
     ) == "测试榜（截至2026-06-12 10:00:00）\n1. Alice（100） 123分"
+    assert format_global_rank_message(
+        spec,
+        [item],
+        timestamp="2026-06-12 10:00:00",
+        start_rank=21,
+        requested_count=20,
+    ) == "测试榜（第 21 名，截至2026-06-12 10:00:00）\n21. Alice（100） 123分"
     assert format_global_rank_message(spec, []) == "❌找不到测试榜数据。"
 
 
@@ -382,7 +432,7 @@ def test_build_local_rank_cache_status_message() -> None:
         "单轮刷新上限：500 个\n"
         "刷新过期时间：24 小时\n"
         "巅峰样本：按当前赛季单独比较\n"
-        "榜单命令展示：前 20 名\n"
+        "榜单命令展示：前 10 名\n"
         "\n"
         "可参与排行人数：\n"
         "图鉴积分：8\n"

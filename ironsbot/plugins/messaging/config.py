@@ -8,7 +8,6 @@ from ironsbot.config.models.message import (
     MessageConfig,
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
-    ReplyLineConfig,
     ScheduledMessageAction,
 )
 
@@ -19,9 +18,6 @@ def get_message_config() -> MessageConfig:
     return get_app_config().message
 
 
-def get_reply_config() -> ReplyLineConfig:
-    return get_message_config().reply
-
 __all__ = [
     "ENABLED_COMMANDS_REQUIRED_ERROR",
     "BaseMessageAction",
@@ -31,8 +27,6 @@ __all__ = [
     "GroupScheduledMessageAction",
     "PrivateCommandMessageAction",
     "PrivateScheduledMessageAction",
-    "ReplyLineConfig",
     "ScheduledMessageAction",
     "get_message_config",
-    "get_reply_config",
 ]

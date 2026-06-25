@@ -7,13 +7,18 @@ from ironsbot.config.models.ai import (
     AiConfig,
     resolve_configured_actions,
 )
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE, FIRE_MANUAL_URL
+from ironsbot.plugins.fire_manual_ad.service import (
+    FIRE_MANUAL_LINK_MESSAGE,
+    FIRE_MANUAL_URL,
+)
+
+DEFAULT_AI_ACTION_COUNT = 2
 
 
 def test_default_ai_actions_include_join_team_and_fire_manual() -> None:
     actions = resolve_configured_actions(AiConfig())
 
-    assert len(actions) == 2
+    assert len(actions) == DEFAULT_AI_ACTION_COUNT
     action = actions[0]
     assert action.template == "join_team"
     assert action.keywords == ["战队"]

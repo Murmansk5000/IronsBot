@@ -133,7 +133,7 @@ HEADLESS_SEER_PASSWORD=
 [feature]
 group_aliases = { admin = 686376929, main = 123456789 }
 user_aliases = { owner = 123456789 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "activity_query", "activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent"] }
+group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
 
@@ -148,8 +148,9 @@ resource_users = [123456789]
 配置字段、默认值、中英文说明和示例集中维护在
 [config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
-`all` 里。消息动作可以使用自己的 feature 名，例如 `activity_link` 或
-`seerinfo`。
+`all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
+游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
+使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。
 
 ## 数据与缓存
 

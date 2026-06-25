@@ -13,17 +13,17 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.services.activity.commands import (
-    is_current_activity_query_text,
-    is_soon_ending_activity_query_text,
+    is_current_seer_activity_text,
+    is_soon_ending_seer_activity_text,
 )
 from ironsbot.services.activity.models import (
     ActivityInfoCache,
 )
-from ironsbot.services.activity.query import (
-    ActivityQuerySource,
-    build_activity_query_message,
-)
 from ironsbot.services.activity.repository import load_activity_rows
+from ironsbot.services.activity.seer_activity import (
+    SeerActivitySource,
+    build_seer_activity_message,
+)
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.plugin_system import (
@@ -42,12 +42,12 @@ SOON_ENDING_THRESHOLD = timedelta(days=7)
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 
 
-async def _is_current_activity_query_command(event: Event) -> bool:
-    return is_current_activity_query_text(event.get_plaintext())
+async def _is_current_seer_activity_command(event: Event) -> bool:
+    return is_current_seer_activity_text(event.get_plaintext())
 
 
-async def _is_soon_ending_activity_query_command(event: Event) -> bool:
-    return is_soon_ending_activity_query_text(event.get_plaintext())
+async def _is_soon_ending_seer_activity_command(event: Event) -> bool:
+    return is_soon_ending_seer_activity_text(event.get_plaintext())
 
 
 __plugin_meta__ = PluginMetadata(
@@ -56,8 +56,8 @@ __plugin_meta__ = PluginMetadata(
     usage=(
         "【活动结束提醒】\n"
         "按 activity.lead_hours 配置提前提醒活动即将结束。\n"
-        "Target groups use FEATURE_GROUP_POLICY feature: activity_push.\n"
-        "Target users use FEATURE_USER_POLICY feature: activity_push.\n"
+        "Target groups use feature: seer_activity_push.\n"
+        "Target users use feature: seer_activity_push.\n"
         "超级管理员可发 /当前活动、活动列表、活动时间 查看当前活动和剩余时间；"
         "发送 快结束活动 查看不足 7 天结束的活动。"
     ),
@@ -87,7 +87,7 @@ def _load_activity_rows() -> list[Mapping[str, Any]]:
     )
 
 
-_activity_query_source = ActivityQuerySource(
+_seer_activity_source = SeerActivitySource(
     cache=_activity_info_cache,
     load_rows=_load_activity_rows,
     cache_ttl=ACTIVITY_INFO_CACHE_TTL,
@@ -102,8 +102,8 @@ def build_current_activity_message(
     soon_only: bool = False,
 ) -> str:
     current_time = now or _now()
-    return build_activity_query_message(
-        _activity_query_source,
+    return build_seer_activity_message(
+        _seer_activity_source,
         current_time,
         limit=limit,
         soon_only=soon_only,
@@ -111,7 +111,7 @@ def build_current_activity_message(
 
 
 current_activity_matcher = on_message(
-    rule=Rule(_is_current_activity_query_command) & no_reply(),
+    rule=Rule(_is_current_seer_activity_command) & no_reply(),
     permission=SUPERUSER,
     priority=get_matcher_priority("activity", 5),
     block=True,
@@ -119,8 +119,8 @@ current_activity_matcher = on_message(
 
 soon_ending_activity_matcher = on_message(
     rule=(
-        Rule(lambda event: is_event_feature_allowed(event, "activity_query"))
-        & Rule(_is_soon_ending_activity_query_command)
+        Rule(lambda event: is_event_feature_allowed(event, "seer_activity_query"))
+        & Rule(_is_soon_ending_seer_activity_command)
         & no_reply()
     ),
     priority=get_matcher_priority("activity", 5),
@@ -130,7 +130,7 @@ soon_ending_activity_matcher = on_message(
 
 class ActivityReminderPlugin:
     name = ACTIVITY_REMINDER_PLUGIN_NAME
-    feature = "activity_query"
+    feature = "seer_activity_query"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:
@@ -157,7 +157,7 @@ register_plugin(ActivityReminderPlugin())
 
 
 @current_activity_matcher.handle()
-async def handle_current_activity_query(
+async def handle_current_seer_activity(
     event: MessageEvent,
 ) -> None:
     await dispatch_plugin(
@@ -169,7 +169,7 @@ async def handle_current_activity_query(
 
 
 @soon_ending_activity_matcher.handle()
-async def handle_soon_ending_activity_query(event: MessageEvent) -> None:
+async def handle_soon_ending_seer_activity(event: MessageEvent) -> None:
     await dispatch_plugin(
         plugin_name=ACTIVITY_REMINDER_PLUGIN_NAME,
         event=event,

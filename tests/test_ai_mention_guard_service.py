@@ -96,6 +96,20 @@ def test_plain_mention_is_not_guarded_when_ai_is_allowed(
     )
 
 
+def test_foreign_mention_is_not_guarded(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mention_guard, "GroupMessageEvent", FakeGroupMessageEvent)
+    monkeypatch.setattr(mention_guard, "mentions_bot", lambda _event: False)
+    monkeypatch.setattr(mention_guard, "is_ai_allowed", lambda _event: False)
+
+    assert not asyncio.run(
+        mention_guard.should_guard_non_ai_group_mention(
+            FakeGroupMessageEvent("@someone 帮助")
+        )
+    )
+
+
 def test_config_mention_is_guarded_when_ai_is_not_allowed(
     monkeypatch: MonkeyPatch,
 ) -> None:

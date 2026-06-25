@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Literal
 
 from nonebot.log import logger
 
+from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_text
 from ironsbot.shared.features import (
     groups_for_feature,
     users_for_feature,
     users_with_superusers,
 )
-from ironsbot.shared.promotions import append_fire_manual_ad_text
 
 from .formatting import format_activity_list
 from .planning import filter_valid_reminders
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .models import ActivityInfo, ActivityReminder
 
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-ACTIVITY_PUSH_FEATURE = "activity_push"
+ACTIVITY_PUSH_FEATURE = "seer_activity_push"
 ActivityReminderDeliveryStatus = Literal["skip_empty", "skip_no_targets", "send"]
 
 

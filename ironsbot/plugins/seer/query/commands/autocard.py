@@ -39,14 +39,15 @@ from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_rule
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
 AUTOCARD_PLUGIN_NAME = "seer_autocard"
 
 autocard_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_autocard")
+    & startswith_or_endswith(
         prefixes=AUTOCARD_QUERY_PREFIXES,
         suffixes=AUTOCARD_QUERY_SUFFIXES,
     )
@@ -112,7 +113,7 @@ async def _handle_autocard_prompt_reply(
 
 class AutocardPlugin:
     name = AUTOCARD_PLUGIN_NAME
-    feature = "seer"
+    feature = "seer_autocard"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:

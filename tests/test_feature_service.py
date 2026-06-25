@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.feature import FEATURE_ALIASES, FeatureConfig
+from ironsbot.config.models.feature import FEATURE_ALIASES, SEER_FEATURES, FeatureConfig
 from ironsbot.shared.features import service
 from ironsbot.shared.features.registry import features_for_module
 
@@ -27,9 +27,9 @@ def test_feature_service_reads_app_config_feature(
 
     assert feature_service.groups_for_feature("seer") == [123]
     assert feature_service.users_for_feature("ai_chat") == [456]
-    assert feature_service.resolve_group_policy(123) == ["seer"]
+    assert set(feature_service.resolve_group_policy(123)) == SEER_FEATURES
     assert feature_service.resolve_user_policy(456) == ["ai_chat"]
-    assert feature_service.is_group_feature_allowed(999, 123, "seer")
+    assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 
@@ -52,10 +52,53 @@ def test_feature_service_reads_query_alias(
 
     feature_service = service.FeatureService()
 
-    assert feature_service.is_group_feature_allowed(999, 123, "seer")
+    assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert feature_service.is_group_feature_allowed(999, 123, "bili_query")
-    assert feature_service.is_group_feature_allowed(999, 123, "activity_query")
+    assert feature_service.is_group_feature_allowed(999, 123, "seer_activity_query")
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
+
+
+def test_seer_alias_enables_all_seer_subfeatures(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    assert FEATURE_ALIASES["seer"] == SEER_FEATURES
+
+    feature_config = FeatureConfig(
+        group_aliases={"main": 123},
+        group_policy={"main": ["seer"]},
+        superuser_bypass=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_app_config",
+        lambda: SimpleNamespace(feature=feature_config),
+    )
+
+    feature_service = service.FeatureService()
+
+    for feature in SEER_FEATURES:
+        assert feature_service.is_group_feature_allowed(999, 123, feature)
+
+
+def test_rank_alias_enables_seer_rank(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    feature_config = FeatureConfig(
+        group_aliases={"main": 123},
+        group_policy={"main": ["rank"]},
+        superuser_bypass=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_app_config",
+        lambda: SimpleNamespace(feature=feature_config),
+    )
+
+    feature_service = service.FeatureService()
+
+    assert feature_service.is_group_feature_allowed(999, 123, "rank")
+    assert feature_service.is_group_feature_allowed(999, 123, "seer_rank")
+    assert not feature_service.is_group_feature_allowed(999, 123, "seer_pet")
 
 
 def test_all_feature_alias_does_not_include_admin_notice(
@@ -77,9 +120,9 @@ def test_all_feature_alias_does_not_include_admin_notice(
 
     feature_service = service.FeatureService()
 
-    assert feature_service.is_group_feature_allowed(999, 123, "seer")
+    assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert not feature_service.is_group_feature_allowed(999, 123, "admin_notice")
-    assert feature_service.groups_for_feature("seer") == [123]
+    assert feature_service.groups_for_feature("seer_pet") == [123]
     assert feature_service.groups_for_feature("admin_notice") == []
 
 

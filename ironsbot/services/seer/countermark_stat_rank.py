@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from ironsbot.plugins.seer_data.db import SeerAPISession
 
-RANK_LIST_SIZE = 20
+RANK_LIST_SIZE = 10
 MIN_COMBINATION_PARTS = 2
 ANGLE_MARKERS = {
     "一角": 1,

@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_text
 from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
@@ -189,7 +190,7 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
 
 async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
     await send_broadcast_message(
-        task.message,
+        append_fire_manual_ad_text(task.message),
         private_user_ids=users_with_superusers(users_for_feature(task.feature)),
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
     )
@@ -197,7 +198,7 @@ async def _send_private_schedule(task: PrivateScheduledMessageAction) -> None:
 
 async def _send_group_schedule(task: GroupScheduledMessageAction) -> None:
     await send_broadcast_message(
-        task.message,
+        append_fire_manual_ad_text(task.message),
         group_ids=groups_for_feature(task.feature),
         group_at_user_ids=task.at_user_ids,
         action_name=f"group scheduled message {task.id or '<unnamed>'}",

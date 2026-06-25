@@ -219,7 +219,6 @@ class MatcherPriorityConfig(BaseModel):
     meeting: int = Field(default=5, ge=0)
     activity: int = Field(default=5, ge=0)
     db_sync: int = Field(default=5, ge=0)
-    reply_limits: int = Field(default=5, ge=0)
     team_audit: int = Field(default=5, ge=0)
 
 

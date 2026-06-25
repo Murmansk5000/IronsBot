@@ -93,20 +93,6 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
         return int_list(value)
 
 
-class ReplyLineConfig(BaseModel):
-    default_lines: int = Field(default=-1, ge=-1)
-    min_lines: int = Field(default=5, ge=1)
-    max_lines: int = Field(default=80, ge=1)
-    limit_path: Path = Path("data/messaging/reply_limits.sqlite")
-
-    @model_validator(mode="after")
-    def validate_line_range(self) -> Self:
-        if self.min_lines > self.max_lines:
-            msg = "reply.min_lines must be less than or equal to reply.max_lines"
-            raise ValueError(msg)
-        return self
-
-
 class OutboundRateLimitConfig(BaseModel):
     enabled: bool = True
     window_seconds: float = Field(default=60.0, gt=0)
@@ -238,7 +224,6 @@ class SendpicConfig(SendpicBehaviorConfig):
 class MessageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reply: ReplyLineConfig = Field(default_factory=ReplyLineConfig)
     outbound_rate_limit: OutboundRateLimitConfig = Field(
         default_factory=OutboundRateLimitConfig
     )

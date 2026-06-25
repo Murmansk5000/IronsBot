@@ -33,6 +33,12 @@ def test_mentions_bot_matches_direct_at() -> None:
     assert mentions_bot(event)
 
 
+def test_mentions_bot_ignores_foreign_at() -> None:
+    event = FakeGroupEvent([FakeSegment("at", {"qq": "200"})])
+
+    assert not mentions_bot(event)
+
+
 def test_mentions_bot_does_not_treat_reply_as_mention() -> None:
     event = FakeGroupEvent([])
     event.reply = {"sender": {"user_id": 100}}
