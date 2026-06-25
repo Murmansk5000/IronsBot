@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 
@@ -7,6 +8,22 @@ from nonebot.params import Depends
 from nonebot_plugin_saa import Image, MessageSegmentFactory, Text
 
 from .parse_arg import parse_string_arg
+
+_image_fetch_locks: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+
+
+class MissingImageUrlTemplateError(ValueError):
+    """Raised when a GetImage instance is created without URL templates."""
+
+
+def _get_image_fetch_lock() -> asyncio.Lock:
+    """Return a loop-local lock for shared image HTTP cache access."""
+    loop = asyncio.get_running_loop()
+    lock = _image_fetch_locks.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _image_fetch_locks[loop] = lock
+    return lock
 
 
 class GetImage:
@@ -17,14 +34,18 @@ class GetImage:
         client_getter: Callable[[], AsyncClient],
     ) -> None:
         if not url_templates:
-            raise ValueError("至少需要一个 URL 模板")
+            raise MissingImageUrlTemplateError
 
         self._client_getter = client_getter
         self.url_templates = url_templates
         self.fallback = fallback
 
     async def _fetch_image_bytes(self, url: str) -> bytes:
-        response = await self.client.get(url)
+        # The shared hishel client writes response metadata into a SQLite cache.
+        # Concurrent image downloads can otherwise collide inside the cache
+        # transaction and raise "cannot start a transaction within a transaction".
+        async with _get_image_fetch_lock():
+            response = await self.client.get(url)
         response.raise_for_status()
         return response.content
 
