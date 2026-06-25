@@ -687,11 +687,12 @@ wait_timeout_seconds = 300.0
 
 [runtime.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
-# ZH: NoneBot 事件匹配优先级，数字越小越先处理；把 ai_chat 调大即可让 AI 在其他功能之后兜底。
+# ZH: NoneBot 事件匹配优先级，数字越小越先处理；群聊 @ 机器人只走 ai_group_at 或 ai_mention_guard，普通 ai_chat 继续作为兜底。
 about = 0
 help = 0
 help_hint = 0
-ai_mention_guard = 0
+ai_group_at = -1
+ai_mention_guard = -1
 ai_chat = 99
 ai_intent = 4
 seer_query = 2

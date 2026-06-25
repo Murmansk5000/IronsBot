@@ -8,4 +8,8 @@ def get_matcher_priority(name: str, fallback: int) -> int:
     return int(value)
 
 
-__all__ = ["get_matcher_priority"]
+def get_pre_command_matcher_priority(name: str, fallback: int = -1) -> int:
+    return min(get_matcher_priority(name, fallback), -1)
+
+
+__all__ = ["get_matcher_priority", "get_pre_command_matcher_priority"]
