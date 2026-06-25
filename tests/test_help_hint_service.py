@@ -44,13 +44,13 @@ def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
     now = 100.0
     limiter = HelpHintLimiter(clock=lambda: now)
 
-    assert limiter.can_send(686376929)
-    assert limiter.can_send(686376929)
-    assert limiter.can_send(686376929)
-    assert not limiter.can_send(686376929)
+    assert limiter.can_send(987654321)
+    assert limiter.can_send(987654321)
+    assert limiter.can_send(987654321)
+    assert not limiter.can_send(987654321)
 
     now = 160.0
-    assert limiter.can_send(686376929)
+    assert limiter.can_send(987654321)
 
 
 def test_help_hint_limiter_counts_groups_independently() -> None:

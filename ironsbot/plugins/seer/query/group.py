@@ -6,6 +6,7 @@ from nonebot.adapters import Event
 from nonebot.rule import Rule
 
 from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.matcher_priority import get_matcher_priority
 
 
 async def is_seer_event_allowed(event: Event) -> bool:
@@ -29,6 +30,6 @@ class CustomFeatureMatcherGroup(MatcherGroup):
 
 matcher_group = CustomFeatureMatcherGroup(
     block=True,
-    priority=2,
+    priority=get_matcher_priority("seer_query", 2),
     rule=Rule(is_seer_event_allowed),
 )

@@ -28,6 +28,7 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_update_allowed,
 )
 from ironsbot.services.bilibili.state import query_uids_for_event
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
@@ -81,13 +82,13 @@ def _is_dynamic_select_reply(event: MessageEvent) -> bool:
 
 dynamic_menu_matcher = on_message(
     rule=Rule(_is_dynamic_menu_command),
-    priority=1,
+    priority=get_matcher_priority("bilibili", 1),
     block=True,
 )
 
 update_dynamic_matcher = on_message(
     rule=Rule(_is_update_dynamic_command),
-    priority=1,
+    priority=get_matcher_priority("bilibili", 1),
     block=True,
 )
 

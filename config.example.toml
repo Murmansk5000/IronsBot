@@ -299,30 +299,6 @@ group_commands = []
 # at_user_ids.
 group_schedules = []
 
-[message.reply]
-# Default: -1
-# EN: Default reply line limit. -1 means unlimited.
-# ZH: 默认回复行数限制，-1 表示不限。
-# Example: 30
-default_lines = -1
-
-# Default: 5
-# EN: Minimum user-settable reply line limit.
-# ZH: 用户可设置的最小回复行数。
-# Example: 5
-min_lines = 5
-
-# Default: 80
-# EN: Maximum user-settable reply line limit.
-# ZH: 用户可设置的最大回复行数。
-# Example: 100
-max_lines = 80
-
-# Default: "data/messaging/reply_limits.sqlite"
-# EN: SQLite path for per-group reply line limits.
-# ZH: 每群回复行数限制数据库。
-# Example: "data/messaging/reply_limits.sqlite"
-limit_path = "data/messaging/reply_limits.sqlite"
 
 [message.meeting]
 # Default: ""

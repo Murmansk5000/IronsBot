@@ -8,6 +8,7 @@ from nonebot.rule import Rule
 
 from ironsbot.services.help_hint import can_send_group_help_hint, is_poke_at_bot
 from ironsbot.shared.help_hints import POKE_HELP_HINT_TEXT
+from ironsbot.shared.matcher_priority import get_matcher_priority
 
 
 async def _is_poke_at_bot(event: NoticeEvent) -> bool:
@@ -18,7 +19,7 @@ async def _is_poke_at_bot(event: NoticeEvent) -> bool:
 
 poke_help_matcher = on_notice(
     rule=Rule(_is_poke_at_bot),
-    priority=0,
+    priority=get_matcher_priority("help_hint", 0),
     block=True,
 )
 

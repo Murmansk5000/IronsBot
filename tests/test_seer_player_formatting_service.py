@@ -15,7 +15,7 @@ from ironsbot.services.seer.player_formatting import (
 )
 
 PLAYER_ID = 105023264
-TEAM_ID = 686376929
+TEAM_ID = 987654321
 REG_TIME = 946684800
 
 
@@ -95,7 +95,7 @@ def test_format_player_identity_team_vip_and_online_text() -> None:
     )
     assert (
         format_team_text(user_info, "测试战队")
-        == "测试战队（战队ID：686376929，隐藏）"
+        == "测试战队（战队ID：987654321，隐藏）"
     )
     assert format_vip(user_info) == "是（等级：6）"
     assert (

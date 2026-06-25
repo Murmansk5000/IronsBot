@@ -25,6 +25,7 @@ from ironsbot.services.activity.query import (
 )
 from ironsbot.services.activity.repository import load_activity_rows
 from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -112,7 +113,7 @@ def build_current_activity_message(
 current_activity_matcher = on_message(
     rule=Rule(_is_current_activity_query_command) & no_reply(),
     permission=SUPERUSER,
-    priority=5,
+    priority=get_matcher_priority("activity", 5),
     block=True,
 )
 
@@ -122,7 +123,7 @@ soon_ending_activity_matcher = on_message(
         & Rule(_is_soon_ending_activity_query_command)
         & no_reply()
     ),
-    priority=5,
+    priority=get_matcher_priority("activity", 5),
     block=True,
 )
 
