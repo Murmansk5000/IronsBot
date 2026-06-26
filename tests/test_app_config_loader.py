@@ -96,6 +96,7 @@ def test_example_config_parses() -> None:
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
+    assert remote_build_steps[2].inputs == {"debug_enabled": False}
     assert config.runtime.help.ignored_plugins == []
 
 
