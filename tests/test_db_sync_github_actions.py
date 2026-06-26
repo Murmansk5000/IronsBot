@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
+
 from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.plugins.db_sync.github_actions import (
     WorkflowRunResult,
@@ -58,6 +60,24 @@ class FakeGitHubClient:
         assert headers["Authorization"] == "Bearer token"
         payload = self.get_payloads.pop(0)
         return FakeResponse(payload=payload)
+
+
+class FlakyDispatchGitHubClient(FakeGitHubClient):
+    def __init__(self, get_payloads: list[dict[str, Any]]) -> None:
+        super().__init__(get_payloads)
+        self.failed_once = False
+
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, object],
+    ) -> FakeResponse:
+        if not self.failed_once:
+            self.failed_once = True
+            raise httpx.ConnectTimeout("connect timeout")  # noqa: TRY003
+        return await super().post(url, headers=headers, json=json)
 
 
 def _config() -> RemoteBuildConfig:
@@ -155,3 +175,20 @@ def test_trigger_and_wait_workflow_dispatches_inputs() -> None:
         "ref": "main",
         "inputs": {"debug_enabled": False},
     }
+
+
+def test_trigger_and_wait_workflow_retries_transient_dispatch_timeout() -> None:
+    client = FlakyDispatchGitHubClient(
+        [
+            {"workflow_runs": [_run_payload(status="queued", conclusion=None)]},
+            _run_payload(status="completed", conclusion="success"),
+        ]
+    )
+
+    result = asyncio.run(
+        trigger_and_wait_workflow(_config(), token="token", client=client)
+    )
+
+    assert result.ok
+    assert client.failed_once
+    assert len(client.posts) == 1
