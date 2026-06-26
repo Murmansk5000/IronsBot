@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 GITHUB_API_BASE_URL = "https://api.github.com"
 RUN_MATCH_WINDOW_SECONDS = 30
 HTTP_NO_CONTENT = 204
+REQUEST_RETRY_ATTEMPTS = 3
+REQUEST_RETRY_BASE_DELAY_SECONDS = 2.0
 
 
 class GitHubActionsClientError(RuntimeError):
@@ -95,10 +97,15 @@ async def _dispatch_workflow(
     config: RemoteBuildStepConfig,
     token: str,
 ) -> None:
-    response = await client.post(
+    payload: dict[str, object] = {"ref": config.ref}
+    if config.inputs:
+        payload["inputs"] = dict(config.inputs)
+
+    response = await _post_with_retries(
+        client,
         f"{_workflow_url(config.repository, config.workflow_id)}/dispatches",
         headers=_headers(token),
-        json={"ref": config.ref},
+        json=payload,
     )
     if response.status_code != HTTP_NO_CONTENT:
         msg = f"GitHub workflow dispatch failed: HTTP {response.status_code}"
@@ -112,7 +119,8 @@ async def _find_dispatched_run(
     token: str,
     started_at: datetime,
 ) -> dict[str, Any] | None:
-    response = await client.get(
+    response = await _get_with_retries(
+        client,
         f"{_workflow_url(config.repository, config.workflow_id)}/runs",
         headers=_headers(token),
         params={
@@ -136,7 +144,8 @@ async def _get_run(
     run_id: int,
     token: str,
 ) -> dict[str, Any]:
-    response = await client.get(
+    response = await _get_with_retries(
+        client,
         _run_url(repository, run_id),
         headers=_headers(token),
     )
@@ -164,6 +173,44 @@ def _completed_result(run: dict[str, Any]) -> WorkflowRunResult:
             else f"GitHub workflow completed with conclusion: {conclusion_text}"
         ),
     )
+
+
+async def _post_with_retries(
+    client: AsyncGitHubClient,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json: dict[str, object],
+) -> httpx.Response:
+    last_error: httpx.TransportError | None = None
+    for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
+        try:
+            return await client.post(url, headers=headers, json=json)
+        except httpx.TransportError as e:  # noqa: PERF203
+            last_error = e
+            if attempt >= REQUEST_RETRY_ATTEMPTS:
+                raise
+            await asyncio.sleep(REQUEST_RETRY_BASE_DELAY_SECONDS * attempt)
+    raise GitHubActionsClientError(str(last_error or "GitHub POST failed"))
+
+
+async def _get_with_retries(
+    client: AsyncGitHubClient,
+    url: str,
+    *,
+    headers: dict[str, str],
+    params: dict[str, object] | None = None,
+) -> httpx.Response:
+    last_error: httpx.TransportError | None = None
+    for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
+        try:
+            return await client.get(url, headers=headers, params=params)
+        except httpx.TransportError as e:  # noqa: PERF203
+            last_error = e
+            if attempt >= REQUEST_RETRY_ATTEMPTS:
+                raise
+            await asyncio.sleep(REQUEST_RETRY_BASE_DELAY_SECONDS * attempt)
+    raise GitHubActionsClientError(str(last_error or "GitHub GET failed"))
 
 
 async def trigger_and_wait_workflow(
