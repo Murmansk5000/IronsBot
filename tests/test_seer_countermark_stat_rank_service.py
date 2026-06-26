@@ -64,11 +64,12 @@ def test_parse_countermark_stat_rank_command_reads_six_angle_aliases() -> None:
 def test_parse_countermark_stat_rank_command_reads_composite_stats() -> None:
     shield_command = parse_countermark_stat_rank_command("刻印盾榜")
     dual_attack_command = parse_countermark_stat_rank_command("六角双攻榜")
+    dual_blade_command = parse_countermark_stat_rank_command("五角刻印双刀榜")
 
     assert shield_command is not None
     assert shield_command.stat == StatSpec(
         "shield",
-        "盾",
+        "双防",
         ("def_", "sp_def"),
     )
     assert shield_command.scope == "all"
@@ -80,6 +81,14 @@ def test_parse_countermark_stat_rank_command_reads_composite_stats() -> None:
     )
     assert dual_attack_command.scope == "angle"
     assert dual_attack_command.angle_count == SIX_ANGLE_COUNT
+    assert dual_blade_command is not None
+    assert dual_blade_command.stat == StatSpec(
+        "dual_atk",
+        "双攻",
+        ("atk", "sp_atk"),
+    )
+    assert dual_blade_command.scope == "angle"
+    assert dual_blade_command.angle_count == FIVE_ANGLE_COUNT
 
 
 def test_parse_countermark_stat_rank_command_reads_stat_combinations() -> None:
@@ -92,7 +101,7 @@ def test_parse_countermark_stat_rank_command_reads_stat_combinations() -> None:
     assert shield_hp_command is not None
     assert shield_hp_command.stat == StatSpec(
         "combo:def_+sp_def+hp",
-        "盾体力",
+        "双防体力",
         ("def_", "sp_def", "hp"),
     )
     assert attack_hp_command is not None
@@ -104,7 +113,7 @@ def test_parse_countermark_stat_rank_command_reads_stat_combinations() -> None:
     assert special_attack_shield_command is not None
     assert special_attack_shield_command.stat == StatSpec(
         "combo:sp_atk+def_+sp_def",
-        "特攻盾",
+        "特攻双防",
         ("sp_atk", "def_", "sp_def"),
     )
 
@@ -127,7 +136,8 @@ def test_build_countermark_message_prompts_when_stat_is_missing() -> None:
 
     assert "刻印数值榜需要指定属性" in message
     assert (
-        "可用属性：攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / 盾 / 双攻 / 总和"
+        "可用属性：攻击 / 防御 / 特攻 / 特防 / 速度 / 体力 / "
+        "双防 / 双攻 / 盾 / 双刀 / 总和"
         in message
     )
 
@@ -191,7 +201,7 @@ def test_build_countermark_message_renders_composite_stats() -> None:
 
     message = build_countermark_stat_rank_message(
         CountermarkStatRankCommand(
-            stat=StatSpec("shield", "盾"),
+            stat=StatSpec("shield", "双防"),
             scope="angle",
             angle_count=SIX_ANGLE_COUNT,
         ),
@@ -199,8 +209,8 @@ def test_build_countermark_message_renders_composite_stats() -> None:
         now_text="2026-06-12 09:30:00",
     )
 
-    assert "💮【6角刻印盾榜】（截至2026-06-12 09:30:00）" in message
-    assert "1. 守护刻印（1002） 盾37 | 总和66.5 | 限定 | 6角" in message
+    assert "💮【6角刻印双防榜】（截至2026-06-12 09:30:00）" in message
+    assert "1. 守护刻印（1002） 双防37 | 总和66.5 | 限定 | 6角" in message
 
 
 def test_build_countermark_message_renders_stat_combinations() -> None:
@@ -223,7 +233,7 @@ def test_build_countermark_message_renders_stat_combinations() -> None:
         CountermarkStatRankCommand(
             stat=StatSpec(
                 "combo:def_+sp_def+hp",
-                "盾体力",
+                "双防体力",
                 ("def_", "sp_def", "hp"),
             ),
             scope="angle",
@@ -233,5 +243,5 @@ def test_build_countermark_message_renders_stat_combinations() -> None:
         now_text="2026-06-12 09:30:00",
     )
 
-    assert "💮【2角刻印盾体力榜】（截至2026-06-12 09:30:00）" in message
-    assert "1. 厚重刻印（1003） 盾体力57 | 总和66.5 | 限定 | 2角" in message
+    assert "💮【2角刻印双防体力榜】（截至2026-06-12 09:30:00）" in message
+    assert "1. 厚重刻印（1003） 双防体力57 | 总和66.5 | 限定 | 2角" in message
