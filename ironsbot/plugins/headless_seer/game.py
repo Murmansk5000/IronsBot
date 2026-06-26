@@ -170,8 +170,8 @@ class SeerGame:
 
     async def _send_heartbeat(self) -> None:
         """心跳回调，由连接层周期性调用。"""
-        logger.info(f"{self.user_id}：发送心跳包")
-        await self.get_team_info(8847403)
+        logger.debug(f"{self.user_id}：发送心跳包")
+        await self.get_user_info(self.user_id)
 
     async def login(self) -> None:
         """完整的登录流程：登录服务器认证 -> 获取服务器列表 -> 连接游戏服务器。"""
