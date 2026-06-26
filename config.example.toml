@@ -603,6 +603,7 @@ workflow_id = "main.yml"
 ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
+inputs = { debug_enabled = false }
 
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"

@@ -23,6 +23,7 @@ DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 VALID_LOG_LEVELS = {"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"}
+WorkflowInputValue = str | int | float | bool
 
 
 class RemoteBuildStepConfig(BaseModel):
@@ -34,6 +35,7 @@ class RemoteBuildStepConfig(BaseModel):
     ref: str = "main"
     timeout_seconds: float = Field(default=1200.0, gt=0)
     poll_interval_seconds: float = Field(default=10.0, gt=0)
+    inputs: dict[str, WorkflowInputValue] = Field(default_factory=dict)
 
     @property
     def display_name(self) -> str:
@@ -61,6 +63,7 @@ class RemoteBuildConfig(RemoteBuildStepConfig):
                 ref=self.ref,
                 timeout_seconds=self.timeout_seconds,
                 poll_interval_seconds=self.poll_interval_seconds,
+                inputs=dict(self.inputs),
             )
         ]
 

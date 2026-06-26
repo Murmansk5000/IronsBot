@@ -95,10 +95,14 @@ async def _dispatch_workflow(
     config: RemoteBuildStepConfig,
     token: str,
 ) -> None:
+    payload: dict[str, object] = {"ref": config.ref}
+    if config.inputs:
+        payload["inputs"] = dict(config.inputs)
+
     response = await client.post(
         f"{_workflow_url(config.repository, config.workflow_id)}/dispatches",
         headers=_headers(token),
-        json={"ref": config.ref},
+        json=payload,
     )
     if response.status_code != HTTP_NO_CONTENT:
         msg = f"GitHub workflow dispatch failed: HTTP {response.status_code}"
