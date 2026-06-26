@@ -102,7 +102,7 @@ def _custom_table_paths() -> list[Path]:
 
 def _load_base_rows(table_name: str, output_path: Path) -> list[AliasRow]:
     if table_name != PET_ALIASES_TABLE:
-        return _read_alias_rows(output_path) if output_path.exists() else []
+        return []
     try:
         base_rows = _fetch_upstream_pet_aliases()
         print(f"fetched upstream pet_aliases: {len(base_rows)} rows")

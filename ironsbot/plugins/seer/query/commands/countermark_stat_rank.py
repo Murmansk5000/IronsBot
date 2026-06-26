@@ -23,7 +23,7 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_rule
 
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 COUNTERMARK_STAT_RANK_PLUGIN_NAME = "seer_countermark_stat_rank"
@@ -39,13 +39,15 @@ async def _is_countermark_stat_rank_command(event: Event, state: T_State) -> boo
 
 
 countermark_stat_rank_matcher = matcher_group.on_message(
-    rule=Rule(_is_countermark_stat_rank_command) & no_reply(),
+    rule=seer_feature_rule("seer_mintmark")
+    & Rule(_is_countermark_stat_rank_command)
+    & no_reply(),
 )
 
 
 class CountermarkStatRankPlugin:
     name = COUNTERMARK_STAT_RANK_PLUGIN_NAME
-    feature = "rank"
+    feature = "seer_mintmark"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:

@@ -37,8 +37,10 @@ class CachedRankPageSummary:
     start_index: int
     end_index: int
     item_count: int
+    expected_count: int
     fetched_at: float
     is_stale: bool = False
+    is_partial: bool = False
 
 
 def _cache_path() -> Path:
@@ -229,11 +231,26 @@ def get_rank_page_cache_summary(
         with _connect() as conn:
             rows = conn.execute(
                 """
-                SELECT start_index, end_index, fetched_at, item_count
-                FROM pages
-                WHERE key = ?
-                  AND sub_key = ?
-                ORDER BY start_index, end_index
+                SELECT
+                    p.start_index,
+                    p.end_index,
+                    p.fetched_at,
+                    p.item_count AS expected_count,
+                    COUNT(i.position) AS actual_count
+                FROM pages p
+                LEFT JOIN items i
+                  ON i.key = p.key
+                 AND i.sub_key = p.sub_key
+                 AND i.start_index = p.start_index
+                 AND i.end_index = p.end_index
+                WHERE p.key = ?
+                  AND p.sub_key = ?
+                GROUP BY
+                    p.start_index,
+                    p.end_index,
+                    p.fetched_at,
+                    p.item_count
+                ORDER BY p.start_index, p.end_index
                 """,
                 (key, sub_key),
             ).fetchall()
@@ -247,11 +264,13 @@ def get_rank_page_cache_summary(
         CachedRankPageSummary(
             start_index=int(start_index),
             end_index=int(end_index),
+            item_count=int(actual_count),
+            expected_count=int(expected_count),
             fetched_at=float(fetched_at),
-            item_count=int(item_count),
             is_stale=ttl <= 0 or now - float(fetched_at) > ttl,
+            is_partial=int(actual_count) < int(expected_count),
         )
-        for start_index, end_index, fetched_at, item_count in rows
+        for start_index, end_index, fetched_at, expected_count, actual_count in rows
     ]
 
 
@@ -268,6 +287,11 @@ def save_rank_page(
 
     try:
         with _connect() as conn:
+            user_ids = [
+                int(getattr(item, "id", 0))
+                for item in items
+                if int(getattr(item, "id", 0)) > 0
+            ]
             conn.execute(
                 """
                 REPLACE INTO pages (
@@ -287,6 +311,18 @@ def save_rank_page(
                 """,
                 (key, sub_key, start, end),
             )
+            if user_ids:
+                placeholders = ",".join("?" for _ in user_ids)
+                conn.execute(
+                    f"""
+                    DELETE FROM items
+                    WHERE key = ?
+                      AND sub_key = ?
+                      AND user_id IN ({placeholders})
+                      AND NOT (start_index = ? AND end_index = ?)
+                    """,
+                    (key, sub_key, *user_ids, start, end),
+                )
             conn.executemany(
                 """
                 INSERT INTO items (

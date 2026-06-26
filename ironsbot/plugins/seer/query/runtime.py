@@ -5,7 +5,7 @@ from typing import Any
 
 from nonebot import get_driver, logger, require
 
-from .config import get_local_rank_config
+from .config import get_local_rank_config, get_rank_query_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
 _render_cache_runtime_state = {"registered": False}
@@ -40,6 +40,37 @@ def register_local_rank_refresh_job(scheduler: Any) -> None:
     )
 
 
+async def _scheduled_rank_page_refresh() -> None:
+    from ironsbot.services.seer.rank_page_refresh import refresh_rank_page_cache
+
+    rank_config = get_rank_query_config().page_refresh
+    if not rank_config.enabled:
+        return
+
+    result = await refresh_rank_page_cache()
+    logger.info(
+        "rank page cache auto refresh finished: "
+        f"total={result.total}, success={result.success}, failed={result.failed}"
+    )
+
+
+def register_rank_page_refresh_jobs(scheduler: Any) -> None:
+    rank_config = get_rank_query_config().page_refresh
+    if not rank_config.enabled:
+        return
+
+    for refresh_time in rank_config.times:
+        hour_text, minute_text = refresh_time.split(":", maxsplit=1)
+        scheduler.add_job(
+            _scheduled_rank_page_refresh,
+            "cron",
+            hour=int(hour_text),
+            minute=int(minute_text),
+            id=f"seer_rank_page_refresh_{hour_text}{minute_text}",
+            replace_existing=True,
+        )
+
+
 def _setup_local_rank_scheduler_runtime(driver: Any, scheduler: Any) -> None:
     if _local_rank_scheduler_runtime_state["registered"]:
         return
@@ -47,6 +78,7 @@ def _setup_local_rank_scheduler_runtime(driver: Any, scheduler: Any) -> None:
     @driver.on_startup
     async def _register_local_rank_refresh_job_on_startup() -> None:
         register_local_rank_refresh_job(scheduler)
+        register_rank_page_refresh_jobs(scheduler)
 
     _local_rank_scheduler_runtime_state["registered"] = True
 
