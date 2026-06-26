@@ -107,6 +107,10 @@ class TeamQueryConfig(BaseModel):
         return _normalize_sections(value, TEAM_SECTION_KEYS)
 
 
+class MintmarkQueryConfig(BaseModel):
+    merge_connected: bool = True
+
+
 class RankQueryConfig(BaseModel):
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
@@ -182,6 +186,7 @@ class SeerConfig(BaseModel):
 
     player: PlayerQueryConfig = Field(default_factory=PlayerQueryConfig)
     team: TeamQueryConfig = Field(default_factory=TeamQueryConfig)
+    mintmark: MintmarkQueryConfig = Field(default_factory=MintmarkQueryConfig)
     rank: RankQueryConfig = Field(default_factory=RankQueryConfig)
     local_rank: LocalRankConfig = Field(default_factory=LocalRankConfig)
     team_shortcut: TeamShortcutConfig = Field(default_factory=TeamShortcutConfig)
@@ -192,6 +197,7 @@ __all__ = [
     "PLAYER_SECTION_KEYS",
     "TEAM_SECTION_KEYS",
     "LocalRankConfig",
+    "MintmarkQueryConfig",
     "PlayerQueryConfig",
     "RankQueryConfig",
     "RenderConfig",

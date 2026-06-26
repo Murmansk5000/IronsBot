@@ -4,6 +4,7 @@ from ironsbot.config.models.seer import (
     PLAYER_SECTION_KEYS,
     TEAM_SECTION_KEYS,
     LocalRankConfig,
+    MintmarkQueryConfig,
     PlayerQueryConfig,
     RankQueryConfig,
     SeerConfig,
@@ -25,6 +26,10 @@ def get_team_query_config() -> TeamQueryConfig:
     return get_seer_config().team
 
 
+def get_mintmark_query_config() -> MintmarkQueryConfig:
+    return get_seer_config().mintmark
+
+
 def get_rank_query_config() -> RankQueryConfig:
     return get_seer_config().rank
 
@@ -37,10 +42,12 @@ __all__ = [
     "TEAM_SECTION_KEYS",
     "Config",
     "LocalRankConfig",
+    "MintmarkQueryConfig",
     "PlayerQueryConfig",
     "RankQueryConfig",
     "TeamQueryConfig",
     "get_local_rank_config",
+    "get_mintmark_query_config",
     "get_player_query_config",
     "get_rank_query_config",
     "get_seer_config",
