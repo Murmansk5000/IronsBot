@@ -53,7 +53,7 @@ DEFAULT_FIRE_MANUAL_INTENT = (
     "handbook, guide, reference page, or the Fire manual for Seer information. "
     "Answer yes when the sender asks for 手册, 火火手册, or where to read the manual. "
     "Answer no when the message only mentions a book-like item, a game skill, "
-    "or is unrelated to manuals."
+    "announces or shares a manual release/link, or is unrelated to manuals."
 )
 DEFAULT_CLASSIFIER_PROMPT = (
     "You are a strict intent classifier for a QQ bot.\n"

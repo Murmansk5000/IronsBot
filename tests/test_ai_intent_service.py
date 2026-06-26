@@ -35,6 +35,35 @@ def test_intent_keyword_match_normalizes_text() -> None:
     assert intent.contains_any_keyword("我要 加 战队", ["加战队"])
 
 
+def test_fire_manual_announcement_or_share_is_not_request() -> None:
+    text = "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict"
+    action = AiIntentAction(
+        id="manual",
+        feature="fire_manual",
+        keywords=["手册"],
+        action="message",
+        message="ok",
+        intent="manual",
+    )
+
+    assert intent.contains_any_keyword(text, action.keywords)
+    assert intent.excluded_by_context(text, action)
+
+
+def test_fire_manual_request_is_not_context_excluded() -> None:
+    action = AiIntentAction(
+        id="manual",
+        feature="fire_manual",
+        keywords=["手册"],
+        action="message",
+        message="ok",
+        intent="manual",
+    )
+
+    assert not intent.excluded_by_context("手册在哪", action)
+    assert not intent.excluded_by_context("求火火手册链接", action)
+
+
 def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> None:
     event = GroupMessageEvent(
         time=0,
