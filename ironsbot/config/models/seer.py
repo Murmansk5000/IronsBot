@@ -18,6 +18,7 @@ PLAYER_SECTION_KEYS: tuple[str, ...] = (
     "social",
     "collection",
     "rank",
+    "autocard",
     "local_rank",
     "achievement",
     "peak",

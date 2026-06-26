@@ -63,6 +63,7 @@ def test_example_config_parses() -> None:
         == "data/team_audit_welcome/pending.sqlite"
     )
     assert config.seer.team_shortcut.team_ids == []
+    assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}

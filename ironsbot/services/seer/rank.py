@@ -14,6 +14,8 @@ from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
+    AUTOCARD_RANK_KEY,
+    AUTOCARD_RANK_SUB_KEY,
     BOOK_RANK_KEY,
     BOOK_RANK_SUB_KEY,
     COUNTERMARK_RANK_KEY,
@@ -696,6 +698,20 @@ async def fetch_peak_season_rank_summary(
             target_score=expert_score,
         )
     return summary
+
+
+async def fetch_autocard_rank_summary(
+    game: Any,
+    user_id: int,
+) -> RankLookupResult:
+    return await _find_rank(
+        game,
+        user_id=user_id,
+        title="群星之巅榜",
+        score_name="分",
+        key=AUTOCARD_RANK_KEY,
+        sub_key=AUTOCARD_RANK_SUB_KEY,
+    )
 
 
 async def fetch_player_rank_summary(  # noqa: PLR0913

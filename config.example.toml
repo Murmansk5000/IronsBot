@@ -417,7 +417,8 @@ failure_rate_limit_seconds = 10
 timeout_seconds = 30.0
 # Default: 90.0; EN: Player detail timeout seconds. ZH: 玩家详情查询超时秒数。
 detail_timeout_seconds = 90.0
-# Default: all player sections; EN: Enabled player sections. ZH: 玩家展示区块。
+# Default: all player sections; EN: Enabled player sections.
+# ZH: 玩家展示区块；可填 basic/collection/rank/autocard/local_rank/peak 等，all 表示全部。
 sections = ["all"]
 
 [seer.team]
