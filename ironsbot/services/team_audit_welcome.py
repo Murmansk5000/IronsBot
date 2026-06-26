@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: MIT
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class TeamAuditPendingReminder:
+    group_id: int
+    user_id: int
+    joined_at: datetime
+    remind_at: datetime
+
+
+def record_team_audit_pending_reminder(
+    cache_path: str | Path,
+    *,
+    group_id: int,
+    user_id: int,
+    joined_at: datetime,
+    delay_hours: float,
+) -> TeamAuditPendingReminder:
+    joined_at = _as_utc(joined_at)
+    reminder = TeamAuditPendingReminder(
+        group_id=group_id,
+        user_id=user_id,
+        joined_at=joined_at,
+        remind_at=joined_at + timedelta(hours=delay_hours),
+    )
+    with _connect(cache_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO pending_team_audit_reminders (
+                group_id, user_id, joined_at, remind_at
+            )
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(group_id, user_id) DO UPDATE SET
+                joined_at = excluded.joined_at,
+                remind_at = excluded.remind_at
+            """,
+            (
+                reminder.group_id,
+                reminder.user_id,
+                _datetime_text(reminder.joined_at),
+                _datetime_text(reminder.remind_at),
+            ),
+        )
+    return reminder
+
+
+def list_team_audit_pending_reminders(
+    cache_path: str | Path,
+) -> list[TeamAuditPendingReminder]:
+    with _connect(cache_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT group_id, user_id, joined_at, remind_at
+            FROM pending_team_audit_reminders
+            ORDER BY remind_at, group_id, user_id
+            """
+        ).fetchall()
+
+    return [
+        TeamAuditPendingReminder(
+            group_id=int(row["group_id"]),
+            user_id=int(row["user_id"]),
+            joined_at=_parse_datetime(row["joined_at"]),
+            remind_at=_parse_datetime(row["remind_at"]),
+        )
+        for row in rows
+    ]
+
+
+def clear_team_audit_pending_reminder(
+    cache_path: str | Path,
+    *,
+    group_id: int,
+    user_id: int,
+) -> None:
+    with _connect(cache_path) as conn:
+        conn.execute(
+            """
+            DELETE FROM pending_team_audit_reminders
+            WHERE group_id = ? AND user_id = ?
+            """,
+            (group_id, user_id),
+        )
+
+
+def _connect(cache_path: str | Path) -> sqlite3.Connection:
+    path = Path(cache_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (
+            group_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            joined_at TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            PRIMARY KEY (group_id, user_id)
+        )
+        """
+    )
+    return conn
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _datetime_text(value: datetime) -> str:
+    return _as_utc(value).isoformat()
+
+
+def _parse_datetime(value: str) -> datetime:
+    return _as_utc(datetime.fromisoformat(value))
+
+
+__all__ = [
+    "TeamAuditPendingReminder",
+    "clear_team_audit_pending_reminder",
+    "list_team_audit_pending_reminders",
+    "record_team_audit_pending_reminder",
+]
