@@ -85,7 +85,7 @@ from ..config import (
     get_player_query_config,
     get_team_query_config,
 )
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_rule
 from ._args import parse_numeric_id
 
 PLAYER_ID_KEY = "player_id"
@@ -114,13 +114,15 @@ async def _is_invalid_player_text_query(event: Event) -> bool:
 
 
 player_invalid_text_matcher = matcher_group.on_message(
-    rule=Rule(_is_invalid_player_text_query) & no_reply(),
+    rule=seer_feature_rule("seer_player")
+    & Rule(_is_invalid_player_text_query)
+    & no_reply(),
     priority=get_matcher_priority("seer_player", 1),
     block=True,
 )
 
 player_matcher = matcher_group.on_message(
-    rule=Rule(_is_player_id_query) & no_reply(),
+    rule=seer_feature_rule("seer_player") & Rule(_is_player_id_query) & no_reply(),
     priority=get_matcher_priority("seer_player", 1),
     block=True,
 )
@@ -137,7 +139,7 @@ def _log_player_extra_error(label: str, _error: Exception) -> None:
 
 class PlayerQueryPlugin:
     name = PLAYER_PLUGIN_NAME
-    feature = "seer"
+    feature = "seer_player"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:

@@ -41,7 +41,7 @@ from ..depends import (
     PetDataGetter,
     SeerAPISession,
 )
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_rule
 from ..prompt import (
     Prompt,
     PromptItem,
@@ -85,7 +85,8 @@ not_rank_query = Rule(_is_not_rank_query)
 
 
 pet_image_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_pet")
+    & startswith_or_endswith(
         prefixes=("立绘", "皮肤", "查询立绘"),
     )
     & not_rank_query
@@ -448,7 +449,8 @@ async def _pet_image_resolver(
 
 
 pet_info_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_pet")
+    & startswith_or_endswith(
         prefixes=("精灵", "查询精灵信息", "魂印", "技能"),
         suffixes=("查询精灵信息", "魂印", "技能"),
     )
@@ -501,7 +503,10 @@ async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
     return msg
 
 mintmark_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith("刻印") & not_rank_query & no_reply()
+    rule=seer_feature_rule("seer_mintmark")
+    & startswith_or_endswith("刻印")
+    & not_rank_query
+    & no_reply()
 )
 
 
@@ -530,7 +535,9 @@ async def _handle_mintmark(
     )
 
 gem_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith("宝石") & no_reply()
+    rule=seer_feature_rule("seer_mintmark")
+    & startswith_or_endswith("宝石")
+    & no_reply()
 )
 
 
@@ -554,7 +561,9 @@ async def _handle_gem(
     )
 
 type_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith("属性") & no_reply()
+    rule=seer_feature_rule("seer_type")
+    & startswith_or_endswith("属性")
+    & no_reply()
 )
 
 
@@ -580,7 +589,8 @@ async def _handle_type(
     )
 
 battle_effect_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_type")
+    & startswith_or_endswith(
         ("异常", "查询异常状态"),
         suffixes="异常",
     )
@@ -608,7 +618,8 @@ async def _handle_battle_effect(
     )
 
 suit_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_equipment")
+    & startswith_or_endswith(
         ("套装", "查询套装信息"),
         suffixes="套装",
     )
@@ -637,7 +648,8 @@ async def _handle_suit(
     )
 
 equip_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_equipment")
+    & startswith_or_endswith(
         ("部件", "查询部件信息"),
         suffixes="部件",
     )
@@ -666,7 +678,8 @@ async def _handle_equip(
     )
 
 title_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_equipment")
+    & startswith_or_endswith(
         ("称号", "查询称号信息"),
         suffixes="称号",
     )
@@ -696,7 +709,7 @@ async def _handle_title(
 
 peak_pool_matcher = matcher_group.on_fullmatch(
     ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -718,7 +731,7 @@ async def _handle_peak_pool(
 
 peak_expert_pool_matcher = matcher_group.on_fullmatch(
     ("专家池", "巅峰专家池", "专家禁用池"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -740,7 +753,7 @@ async def _handle_peak_expert_pool(
 
 peak_vote_matcher = matcher_group.on_fullmatch(
     ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -762,7 +775,7 @@ async def _handle_peak_vote(
 
 peak_suit_matcher = matcher_group.on_fullmatch(
     ("竞技套装榜", "狂野套装榜", "专家套装榜"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -788,7 +801,7 @@ async def _handle_peak_suit(  # noqa: PLR0913
 
 peak_title_matcher = matcher_group.on_fullmatch(
     ("竞技称号榜", "狂野称号榜", "专家称号榜"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -821,7 +834,7 @@ peak_pet_matcher = matcher_group.on_fullmatch(
         "狂野精灵总榜",
         "专家精灵总榜",
     ),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -851,7 +864,7 @@ async def _handle_peak_pet(  # noqa: PLR0913
 
 peak_user_matcher = matcher_group.on_fullmatch(
     ("竞技段位榜", "狂野段位榜", "专家段位榜"),
-    rule=no_reply(),
+    rule=seer_feature_rule("seer_peak") & no_reply(),
 )
 
 
@@ -882,7 +895,10 @@ async def _fetch_weekly_preview_image(image_url: str):
         return await PreviewImageGetter.get("")
 
 
-preview_matcher = matcher_group.on_fullmatch("下周预告", rule=no_reply())
+preview_matcher = matcher_group.on_fullmatch(
+    "下周预告",
+    rule=seer_feature_rule("seer_data") & no_reply(),
+)
 
 
 @preview_matcher.handle()
@@ -899,7 +915,10 @@ async def _handle_preview(
         session=session,
     )
 
-data_version_matcher = matcher_group.on_fullmatch("数据版本", rule=no_reply())
+data_version_matcher = matcher_group.on_fullmatch(
+    "数据版本",
+    rule=seer_feature_rule("seer_data") & no_reply(),
+)
 
 
 @data_version_matcher.handle()

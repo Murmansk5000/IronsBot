@@ -48,6 +48,34 @@ def test_sync_alias_tables_merges_supported_custom_tables(
     ) == "name,target_id\nk16,89\n"
 
 
+def test_sync_alias_tables_does_not_keep_old_non_pet_alias_output(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    tables_dir = tmp_path / "tables"
+    custom_dir = tmp_path / "tables_custom"
+    tables_dir.mkdir()
+    custom_dir.mkdir()
+    (tables_dir / "mintmark_class_aliases.csv").write_text(
+        "name,target_id\n沧吟星海,75\nk14,75\n",
+        encoding="utf-8",
+    )
+    (custom_dir / "mintmark_class_aliases.csv").write_text(
+        "name,target_id\nk14,75\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(sync_alias_tables, "TABLES_DIR", tables_dir)
+    monkeypatch.setattr(sync_alias_tables, "CUSTOM_TABLES_DIR", custom_dir)
+    monkeypatch.setattr(sync_alias_tables, "_fetch_upstream_pet_aliases", list)
+
+    sync_alias_tables.main()
+
+    assert (tables_dir / "mintmark_class_aliases.csv").read_text(
+        encoding="utf-8"
+    ) == "name,target_id\nk14,75\n"
+
+
 def test_build_alias_db_builds_all_alias_tables(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

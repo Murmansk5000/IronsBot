@@ -28,9 +28,16 @@ from ironsbot.services.seer.rank_constants import (
     SKIN_RANK_SUB_KEY,
 )
 
-RANK_LIST_SIZE = 20
+RANK_LIST_SIZE = 10
+RANK_LIST_MAX_SIZE = 100
 BATCH_CACHE_PREFIXES = ("缓存榜单", "批量缓存榜单", "缓存排行", "批量缓存排行")
-RANK_PAGE_CACHE_STATUS_PREFIXES = ("榜单缓存", "排行缓存", "全服榜缓存", "缓存区间")
+RANK_PAGE_CACHE_STATUS_PREFIXES = (
+    "榜单情况",
+    "榜单状态",
+)
+RANK_PAGE_CACHE_REFRESH_PREFIXES = (
+    "刷新榜单",
+)
 MAX_CACHE_INTERVALS_SHOWN = 20
 
 
@@ -55,6 +62,8 @@ class LocalRankSpec:
 class RankListCommand:
     kind: str
     rank_key: str
+    start_rank: int = 1
+    limit: int = RANK_LIST_SIZE
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +76,11 @@ class RankCacheBatchCommand:
 @dataclass(frozen=True, slots=True)
 class RankPageCacheStatusCommand:
     rank_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class RankPageCacheRefreshCommand:
+    rank_key: str | None = None
 
 
 GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
@@ -160,16 +174,38 @@ def format_global_rank_message(
     items: Sequence[Any],
     *,
     timestamp: str | None = None,
+    start_rank: int = 1,
+    requested_count: int = RANK_LIST_SIZE,
 ) -> str:
     if not items:
         return f"❌找不到{spec.title}数据。"
 
-    lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
+    range_text = format_rank_window(start_rank, len(items), requested_count)
+    if range_text:
+        lines = [f"{spec.title}（{range_text}，截至{timestamp or now_text()}）"]
+    else:
+        lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
     lines.extend(
-        format_global_rank_line(item, index=spec.start + index, spec=spec)
+        format_global_rank_line(
+            item,
+            index=batch_raw_start(spec, start_rank) + index,
+            spec=spec,
+        )
         for index, item in enumerate(items)
     )
     return "\n".join(lines)
+
+
+def format_rank_window(
+    start_rank: int,
+    actual_count: int,
+    requested_count: int,
+) -> str:
+    if start_rank == 1 and requested_count == RANK_LIST_SIZE:
+        return ""
+    if actual_count <= 1 or requested_count <= 1:
+        return f"第 {start_rank} 名"
+    return f"第 {start_rank}-{start_rank + actual_count - 1} 名"
 
 
 def batch_raw_start(spec: GlobalRankSpec, start_rank: int) -> int:
@@ -180,11 +216,12 @@ def page_cache_rank_interval(
     page: Any,
     spec: GlobalRankSpec,
 ) -> tuple[int, int] | None:
-    if page.item_count <= 0:
+    expected_count = int(getattr(page, "expected_count", page.item_count))
+    if expected_count <= 0:
         return None
 
     start_rank = page.start_index + 1 + spec.rank_offset
-    end_rank = page.start_index + page.item_count + spec.rank_offset
+    end_rank = page.start_index + expected_count + spec.rank_offset
     return max(1, start_rank), max(1, end_rank)
 
 
@@ -221,12 +258,28 @@ def build_rank_page_cache_status_message(
     pages: Sequence[Any],
     *,
     ttl_seconds: int,
+    target_limit: int | None = None,
+    next_ranges: Sequence[tuple[str, int, int]] = (),
 ) -> str:
     if not pages:
-        return f"📦【{spec.title}缓存】\n当前没有缓存区间。"
+        lines = [f"📦【{spec.title}缓存】", "当前没有缓存区间。"]
+        if target_limit is not None:
+            lines.append(f"目标：前 {target_limit} 名")
+        if next_ranges:
+            lines.append(f"下一刷：{format_refresh_ranges(next_ranges)}")
+        return "\n".join(lines)
 
-    valid_pages = [page for page in pages if not page.is_stale]
-    stale_pages = [page for page in pages if page.is_stale]
+    partial_pages = [page for page in pages if getattr(page, "is_partial", False)]
+    valid_pages = [
+        page
+        for page in pages
+        if not page.is_stale and not getattr(page, "is_partial", False)
+    ]
+    stale_pages = [
+        page
+        for page in pages
+        if page.is_stale and not getattr(page, "is_partial", False)
+    ]
     valid_intervals = merge_rank_intervals(
         [
             interval
@@ -241,14 +294,31 @@ def build_rank_page_cache_status_message(
             if (interval := page_cache_rank_interval(page, spec)) is not None
         ]
     )
+    partial_intervals = merge_rank_intervals(
+        [
+            interval
+            for page in partial_pages
+            if (interval := page_cache_rank_interval(page, spec)) is not None
+        ]
+    )
 
     valid_count = sum(page.item_count for page in valid_pages)
     stale_count = sum(page.item_count for page in stale_pages)
+    partial_count = sum(page.item_count for page in partial_pages)
     lines = [
         f"📦【{spec.title}缓存】",
         f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
         f"有效区间：{format_rank_intervals(valid_intervals)}",
     ]
+    if target_limit is not None:
+        lines.insert(1, f"目标：前 {target_limit} 名")
+    if partial_pages:
+        lines.extend(
+            [
+                f"部分缺失：{len(partial_pages)} 段，现存 {partial_count} 名",
+                f"缺失区间：{format_rank_intervals(partial_intervals)}",
+            ]
+        )
     if stale_pages:
         lines.extend(
             [
@@ -257,21 +327,103 @@ def build_rank_page_cache_status_message(
             ]
         )
     lines.append(f"TTL：{ttl_seconds} 秒")
+    if next_ranges:
+        lines.append(f"下一刷：{format_refresh_ranges(next_ranges)}")
     return "\n".join(lines)
 
 
-def format_local_rank_message(
+def format_refresh_ranges(ranges: Sequence[tuple[str, int, int]]) -> str:
+    if not ranges:
+        return "无"
+    return "、".join(f"{reason}:{start}-{end}" for reason, start, end in ranges)
+
+
+def build_rank_page_cache_overview_message(
+    entries: Sequence[tuple[str, GlobalRankSpec, Sequence[Any], Sequence[Any]]],
+    *,
+    target_limit: int,
+) -> str:
+    lines = [f"📦【榜单页缓存】目标：前 {target_limit} 名"]
+    if not entries:
+        lines.append("没有配置可刷新的全服榜。")
+        return "\n".join(lines)
+
+    for _rank_key, spec, pages, targets in entries:
+        cached_count = sum(page.item_count for page in pages)
+        partial_count = sum(1 for page in pages if getattr(page, "is_partial", False))
+        stale_count = sum(1 for page in pages if getattr(page, "is_stale", False))
+        next_text = "无"
+        if targets:
+            target = targets[0]
+            next_text = f"{target.reason}:{target.start_rank}-{target.end_rank}"
+        lines.append(
+            f"{spec.title}：{cached_count}/{target_limit} 名，"
+            f"部分 {partial_count} 页，过期 {stale_count} 页，下一刷 {next_text}"
+        )
+    return "\n".join(lines)
+
+
+def build_rank_page_refresh_start_message(
+    command: RankPageCacheRefreshCommand,
+) -> str:
+    if command.rank_key is None:
+        return "🔄 正在刷新榜单页缓存。"
+    return f"🔄 正在刷新{GLOBAL_RANKS[command.rank_key].title}缓存。"
+
+
+def build_rank_page_refresh_result_message(result: Any) -> str:
+    if result.total <= 0:
+        return "✅【榜单页缓存刷新】当前没有缺失、部分缺失或过期页面。"
+
+    lines = [
+        "✅【榜单页缓存刷新完成】",
+        f"本轮目标页面：{result.total} 页",
+        f"成功刷新：{result.success} 页",
+        f"失败：{result.failed} 页",
+    ]
+    if result.refreshed:
+        shown = result.refreshed[:10]
+        lines.append("")
+        lines.append("刷新区间：")
+        lines.extend(
+            f"- {target.spec.title} "
+            f"{target.reason}:{target.start_rank}-{target.end_rank}"
+            for target in shown
+        )
+        if len(result.refreshed) > len(shown):
+            lines.append(f"...另 {len(result.refreshed) - len(shown)} 页")
+    if result.failures:
+        lines.append("")
+        lines.append("失败示例：")
+        lines.extend(
+            f"- {failure.target.spec.title} "
+            f"{failure.target.start_rank}-{failure.target.end_rank}: {failure.reason}"
+            for failure in result.failures[:5]
+        )
+    return "\n".join(lines)
+
+
+def format_local_rank_message(  # noqa: PLR0913
     spec: LocalRankSpec,
     entries: Sequence[Any],
     *,
     sample_count: int,
     timestamp: str | None = None,
     season_sub_key: str | None = None,
+    start_rank: int = 1,
+    requested_count: int = RANK_LIST_SIZE,
 ) -> str:
     if not entries:
         return f"❌暂无{spec.title}数据。先查询一些米米号后再试。"
 
-    title = f"{spec.title}（样本{sample_count}人，截至{timestamp or now_text()}）"
+    range_text = format_rank_window(start_rank, len(entries), requested_count)
+    if range_text:
+        title = (
+            f"{spec.title}（{range_text}，样本{sample_count}人，"
+            f"截至{timestamp or now_text()}）"
+        )
+    else:
+        title = f"{spec.title}（样本{sample_count}人，截至{timestamp or now_text()}）"
     if season_sub_key is not None:
         title += f"\n赛季样本：{season_sub_key}"
 
@@ -283,36 +435,28 @@ def format_local_rank_message(
     return "\n".join(lines)
 
 
-def build_local_rank_cache_full_message(stats: Any) -> str:
-    return (
-        f"❌ 样本缓存已满：{stats.player_count}/{stats.max_players}。"
-        "请先调大 seer.local_rank.max_players。"
-    )
-
-
 def build_rank_batch_no_players_message(spec: GlobalRankSpec) -> str:
-    return f"❌ 没有从{spec.title}拿到可缓存的米米号。"
+    return f"❌ 没有从{spec.title}拿到可缓存的榜单数据。"
 
 
 def build_rank_batch_start_message(
     spec: GlobalRankSpec,
     command: RankCacheBatchCommand,
-    before_stats: Any,
     *,
-    player_id_count: int,
+    item_count: int,
     requested_count: int,
 ) -> str:
     truncated_text = ""
-    if requested_count > player_id_count:
+    if requested_count > item_count:
         truncated_text = (
             "\n本次按 seer.local_rank.batch_limit "
-            f"只处理前 {player_id_count} 个。"
+            f"只处理前 {item_count} 个。"
         )
 
     return (
         f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
-        f"\n实际拿到 {player_id_count} 个米米号。"
-        f"\n当前缓存：{before_stats.player_count}/{before_stats.max_players}。"
+        f"\n实际拿到 {item_count} 条榜单数据。"
+        "\n只写入全服榜单页缓存，不计入样本。"
         f"{truncated_text}"
     )
 
@@ -320,35 +464,34 @@ def build_rank_batch_start_message(
 def build_rank_batch_result_message(
     spec: GlobalRankSpec,
     command: RankCacheBatchCommand,
-    result: Any,
-    after_stats: Any,
     *,
-    failure_lines: Sequence[str] = (),
+    item_count: int,
+    requested_count: int,
 ) -> str:
+    truncated_text = ""
+    if requested_count > item_count:
+        truncated_text = f"\n本次实际缓存：{item_count}/{requested_count} 条"
+
     lines = [
         "✅【榜单区间缓存完成】",
         f"榜单：{spec.title}",
         f"请求区间：第 {command.start_rank}-{command.end_rank} 名",
-        f"本次处理：{result.total} 个",
-        f"成功写入/刷新：{result.success} 个",
-        f"缓存已满跳过：{result.skipped_full} 个",
-        f"失败：{result.failed} 个",
-        f"当前缓存：{after_stats.player_count}/{after_stats.max_players}",
+        f"写入榜单页缓存：{item_count} 条",
+        "样本缓存：未写入",
     ]
-    if failure_lines:
-        lines.append("")
-        lines.append("失败示例：")
-        lines.extend(failure_lines)
+    if truncated_text:
+        lines.append(truncated_text.strip())
     return "\n".join(lines)
 
 
-def build_local_rank_cache_status_message(
+def build_local_rank_cache_status_message(  # noqa: PLR0913
     stats: Any,
     *,
     rank_limit: int,
     batch_limit: int,
     refresh_limit: int,
     refresh_max_age_hours: int,
+    display_limit: int = RANK_LIST_SIZE,
 ) -> str:
     lines = [
         "📊【样本榜缓存状态】",
@@ -360,7 +503,7 @@ def build_local_rank_cache_status_message(
         f"单轮刷新上限：{refresh_limit} 个",
         f"刷新过期时间：{refresh_max_age_hours} 小时",
         "巅峰样本：按当前赛季单独比较",
-        f"榜单命令展示：前 {RANK_LIST_SIZE} 名",
+        f"榜单命令展示：前 {display_limit} 名",
         "",
         "可参与排行人数：",
     ]
@@ -412,14 +555,33 @@ def build_local_rank_refresh_result_message(
     return "\n".join(lines)
 
 
-def parse_rank_list_command(text: str) -> RankListCommand | None:
+def parse_rank_list_command(
+    text: str,
+    *,
+    default_limit: int = RANK_LIST_SIZE,
+    max_limit: int = RANK_LIST_MAX_SIZE,
+) -> RankListCommand | None:
     command = _normalize_command_text(text)
-    parsed = _NORMALIZED_COMMANDS.get(command)
+    parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
 
-    kind, rank_key = parsed
-    return RankListCommand(kind=kind, rank_key=rank_key)
+    kind, rank_key, suffix = parsed
+    window = _parse_rank_window(
+        suffix,
+        default_limit=default_limit,
+        max_limit=max_limit,
+    )
+    if window is None:
+        return None
+
+    start_rank, limit = window
+    return RankListCommand(
+        kind=kind,
+        rank_key=rank_key,
+        start_rank=start_rank,
+        limit=limit,
+    )
 
 
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
@@ -478,6 +640,32 @@ def parse_rank_page_cache_status_command(
         return None
 
     return RankPageCacheStatusCommand(rank_key=rank_command[1])
+
+
+def parse_rank_page_cache_refresh_command(
+    text: str,
+) -> RankPageCacheRefreshCommand | None:
+    stripped = _strip_command_prefix(text)
+    if stripped is None:
+        return None
+
+    command = _normalize_command_text(stripped)
+    normalized_prefix = _matching_normalized_prefix(
+        command,
+        RANK_PAGE_CACHE_REFRESH_PREFIXES,
+    )
+    if normalized_prefix is None:
+        return None
+
+    rank_name = command[len(normalized_prefix) :]
+    if not rank_name:
+        return RankPageCacheRefreshCommand()
+
+    rank_command = _NORMALIZED_COMMANDS.get(rank_name)
+    if rank_command is None or rank_command[0] != "global":
+        return None
+
+    return RankPageCacheRefreshCommand(rank_key=rank_command[1])
 
 
 def _build_command_map() -> dict[str, tuple[str, str]]:
@@ -553,6 +741,52 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
 
 def _normalize_command_text(text: str) -> str:
     return "".join(text.split()).lower()
+
+
+def _match_rank_list_command(command: str) -> tuple[str, str, str] | None:
+    for prefix, value in sorted(
+        _NORMALIZED_COMMANDS.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if command.startswith(prefix):
+            kind, rank_key = value
+            return kind, rank_key, command[len(prefix) :]
+    return None
+
+
+def _parse_rank_window(  # noqa: PLR0911
+    suffix: str,
+    *,
+    default_limit: int = RANK_LIST_SIZE,
+    max_limit: int = RANK_LIST_MAX_SIZE,
+) -> tuple[int, int] | None:
+    if not suffix:
+        return 1, default_limit
+
+    page_match = re.fullmatch(r"第?(\d+)页", suffix)
+    if page_match is not None:
+        page = int(page_match.group(1))
+        if page <= 0:
+            return None
+        return (page - 1) * default_limit + 1, default_limit
+
+    range_match = re.fullmatch(r"第?(\d+)(?:-|~|到|至)(\d+)名?", suffix)
+    if range_match is not None:
+        start_rank = int(range_match.group(1))
+        end_rank = int(range_match.group(2))
+        if start_rank <= 0 or end_rank < start_rank:
+            return None
+        return start_rank, min(end_rank - start_rank + 1, max_limit)
+
+    single_match = re.fullmatch(r"第?(\d+)名?", suffix)
+    if single_match is not None:
+        start_rank = int(single_match.group(1))
+        if start_rank <= 0:
+            return None
+        return start_rank, 1
+
+    return None
 
 
 def _strip_command_prefix(text: str, prefixes: tuple[str, ...] = ("/",)) -> str | None:
