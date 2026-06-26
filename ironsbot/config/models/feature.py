@@ -13,6 +13,16 @@ if TYPE_CHECKING:
 KNOWN_FEATURES = frozenset(
     {
         "seer",
+        "seer_player",
+        "seer_team",
+        "seer_pet",
+        "seer_mintmark",
+        "seer_equipment",
+        "seer_type",
+        "seer_peak",
+        "seer_autocard",
+        "seer_rank",
+        "seer_data",
         "image",
         "rank",
         "meeting",
@@ -34,11 +44,26 @@ KNOWN_FEATURES = frozenset(
         "admin_notice",
     }
 )
+SEER_FEATURES = frozenset(
+    {
+        "seer_player",
+        "seer_team",
+        "seer_pet",
+        "seer_mintmark",
+        "seer_equipment",
+        "seer_type",
+        "seer_peak",
+        "seer_autocard",
+        "seer_rank",
+        "seer_data",
+    }
+)
 FEATURE_ALIASES: dict[str, frozenset[str]] = {
-    "all": KNOWN_FEATURES - {"admin_notice"},
+    "all": (KNOWN_FEATURES - {"admin_notice", "seer"}) | SEER_FEATURES,
+    "seer": SEER_FEATURES,
     "query": frozenset(
         {
-            "seer",
+            *SEER_FEATURES,
             "image",
             "rank",
             "bili_query",
@@ -46,6 +71,7 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
             "server_status_query",
         }
     ),
+    "rank": frozenset({"rank", "seer_rank"}),
     "bili": frozenset({"bili_query", "bili_push"}),
     "activity": frozenset({"activity_query", "activity_push"}),
     "server_status": frozenset({"server_status_query", "server_status_push"}),
@@ -111,6 +137,7 @@ def unique_ints(values: Iterable[int]) -> list[int]:
 __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
+    "SEER_FEATURES",
     "FeatureConfig",
     "unique_ints",
 ]
