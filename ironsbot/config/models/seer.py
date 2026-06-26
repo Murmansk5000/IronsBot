@@ -57,6 +57,7 @@ DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "部件图鉴",
     "座驾图鉴",
     "刻印图鉴",
+    "群星牌",
 )
 MAX_RANK_DISPLAY_LIMIT = 100
 

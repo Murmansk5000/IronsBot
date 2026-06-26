@@ -7,6 +7,7 @@ def test_rank_help_message_lists_core_rank_commands() -> None:
     assert "📊【可用榜单】" in message
     assert "【全服图鉴榜】" in message
     assert "图鉴榜 / 成就榜 / 精灵榜 / 皮肤榜" in message
+    assert "群星牌榜" in message
     assert "【刻印数值榜】" in message
     assert "别名：双刀=双攻，盾=双防。" in message
     assert "【巅峰样本榜】" in message

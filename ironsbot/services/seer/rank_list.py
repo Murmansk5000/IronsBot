@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
+    AUTOCARD_RANK_KEY,
+    AUTOCARD_RANK_SUB_KEY,
     BOOK_RANK_KEY,
     BOOK_RANK_SUB_KEY,
     COUNTERMARK_RANK_KEY,
@@ -106,6 +108,9 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
     "座驾图鉴": GlobalRankSpec("座驾图鉴榜", OUTFIT_RANK_KEY, MOUNT_RANK_SUB_KEY, "个"),
     "刻印图鉴": GlobalRankSpec(
         "刻印图鉴榜", COUNTERMARK_RANK_KEY, COUNTERMARK_RANK_SUB_KEY, "枚"
+    ),
+    "群星牌": GlobalRankSpec(
+        "群星之巅榜", AUTOCARD_RANK_KEY, AUTOCARD_RANK_SUB_KEY, "分"
     ),
 }
 
@@ -680,6 +685,7 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
         "部件图鉴": ("部件图鉴榜", "部件榜"),
         "座驾图鉴": ("座驾图鉴榜", "座驾榜"),
         "刻印图鉴": ("刻印图鉴榜", "刻印榜"),
+        "群星牌": ("群星牌榜", "群星之巅榜", "群星百强榜", "群星牌百强榜"),
     }
     for key, names in aliases.items():
         for name in names:
@@ -722,6 +728,8 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
         ),
     }
     for key, spec in GLOBAL_RANKS.items():
+        if key not in LOCAL_RANKS:
+            continue
         names = (
             f"样本{key}榜",
             f"机器人{key}榜",

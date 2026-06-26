@@ -498,7 +498,7 @@ times = ["01:15", "01:45", "02:15", "02:45", "03:15", "03:45", "04:15", "04:45"]
 # Default: collection-related global ranks.
 # EN: Global ranks included in scheduled page refresh.
 # ZH: 定时刷新的全服榜。
-rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴"]
+rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴", "群星牌"]
 # Default: 24
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。

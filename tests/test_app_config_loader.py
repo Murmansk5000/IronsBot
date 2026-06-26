@@ -65,6 +65,7 @@ def test_example_config_parses() -> None:
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}
+    assert "群星牌" in config.seer.rank.page_refresh.rank_keys
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
