@@ -4,6 +4,7 @@ from ironsbot.config.models.ai import (
     DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS,
     DEFAULT_FIRE_MANUAL_INTENT,
     DEFAULT_JOIN_TEAM_MESSAGE,
+    UNKNOWN_AI_ACTION_ERROR,
     AiConfig,
     AiIntentAction,
     resolve_configured_actions,
@@ -21,14 +22,14 @@ def test_default_ai_actions_include_join_team_and_fire_manual() -> None:
 
     assert len(actions) == DEFAULT_AI_ACTION_COUNT
     action = actions[0]
-    assert action.template == "join_team"
+    assert action.id == "join_team"
     assert action.keywords == ["战队"]
     assert action.action == "team_recommend"
     assert action.message == DEFAULT_JOIN_TEAM_MESSAGE
     assert "group_code=719544559" in action.message
 
     manual_action = actions[1]
-    assert manual_action.template == "fire_manual"
+    assert manual_action.id == "fire_manual"
     assert manual_action.feature == "fire_manual"
     assert manual_action.keywords == ["手册"]
     assert manual_action.action == "message"
@@ -54,30 +55,47 @@ def test_ai_mention_guard_defaults_live_in_ai_config() -> None:
     )
 
 
-def test_configured_actions_keep_unspecified_default_actions() -> None:
+def test_configured_actions_override_builtin_actions_by_id() -> None:
     actions = resolve_configured_actions(
         AiConfig(
-            intent_actions=[
-                AiIntentAction(
-                    template="join_team",
+            intent_actions={
+                "join_team": AiIntentAction(
                     action="message",
                     message="自定义战队回复",
                 )
-            ]
+            }
         )
     )
 
-    assert [action.template for action in actions] == ["join_team", "fire_manual"]
+    assert [action.id for action in actions] == ["join_team", "fire_manual"]
     assert actions[0].message == "自定义战队回复"
     assert actions[1].message == FIRE_MANUAL_LINK_MESSAGE
 
 
 def test_default_actions_can_be_disabled_explicitly() -> None:
     actions = resolve_configured_actions(
-        AiConfig(intent_actions=[AiIntentAction(template="fire_manual", enabled=False)])
+        AiConfig(intent_actions={"fire_manual": AiIntentAction(enabled=False)})
     )
 
     manual_action = next(
-        action for action in actions if action.template == "fire_manual"
+        action for action in actions if action.id == "fire_manual"
     )
     assert not manual_action.enabled
+
+
+def test_custom_action_requires_complete_definition() -> None:
+    try:
+        AiConfig(intent_actions={"custom": AiIntentAction()})
+    except ValueError as e:
+        assert UNKNOWN_AI_ACTION_ERROR in str(e)
+    else:
+        raise AssertionError
+
+
+def test_custom_action_requires_explicit_action() -> None:
+    try:
+        AiConfig(intent_actions={"custom": AiIntentAction(keywords=["测试"])})
+    except ValueError as e:
+        assert UNKNOWN_AI_ACTION_ERROR in str(e)
+    else:
+        raise AssertionError

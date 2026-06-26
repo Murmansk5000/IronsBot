@@ -77,7 +77,7 @@ def is_action_allowed(event: MessageEvent, action: AiIntentAction) -> bool:
 def format_action_template(action: AiIntentAction, template: str, text: str) -> str:
     return template.format_map(
         TemplateContext(
-            action_id=action.id or action.template or "unnamed",
+            action_id=action.id or "unnamed",
             feature=action.feature,
             intent=action.intent,
             keywords=", ".join(action.keywords),
