@@ -480,6 +480,13 @@ def _remote_build_failure(
     )
 
 
+def _format_exception_message(error: Exception) -> str:
+    text = str(error).strip()
+    if text:
+        return f"{type(error).__name__}: {text}"
+    return type(error).__name__
+
+
 def _configured_remote_build_steps(
     config: RemoteBuildConfig,
 ) -> list[RemoteBuildStepConfig]:
@@ -538,7 +545,9 @@ async def _run_remote_build(name: str, entry: _SyncEntry) -> bool:
             )
             result = _remote_build_failure(
                 config=step,
-                message=f"{step.display_name}: {e}",
+                message=(
+                    f"{step.display_name}: {_format_exception_message(e)}"
+                ),
             )
 
         _remote_build_results[name] = result
