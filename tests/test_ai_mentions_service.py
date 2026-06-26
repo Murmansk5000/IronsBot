@@ -16,8 +16,17 @@ class FakeGroupEvent:
     self_id = 100
     reply = None
 
-    def __init__(self, message: list[FakeSegment], *, to_me: bool = False) -> None:
+    def __init__(
+        self,
+        message: list[FakeSegment],
+        *,
+        original_message: list[FakeSegment] | None = None,
+        raw_message: str = "",
+        to_me: bool = False,
+    ) -> None:
         self._message = message
+        self.original_message = original_message
+        self.raw_message = raw_message
         self._to_me = to_me
 
     def get_message(self) -> list[FakeSegment]:
@@ -46,8 +55,29 @@ def test_mentions_bot_does_not_treat_reply_as_mention() -> None:
     assert not mentions_bot(event)
 
 
-def test_mentions_bot_requires_explicit_at_even_when_to_me() -> None:
+def test_mentions_bot_treats_stripped_to_me_as_mention() -> None:
+    event = FakeGroupEvent([], to_me=True)
+
+    assert mentions_bot(event)
+
+
+def test_mentions_bot_does_not_treat_reply_only_to_me_as_mention() -> None:
     event = FakeGroupEvent([], to_me=True)
     event.reply = {"sender": {"user_id": 100}}
 
     assert not mentions_bot(event)
+
+
+def test_mentions_bot_matches_original_message_after_preprocessing() -> None:
+    event = FakeGroupEvent(
+        [],
+        original_message=[FakeSegment("at", {"qq": "100"})],
+    )
+
+    assert mentions_bot(event)
+
+
+def test_mentions_bot_matches_raw_cq_at_after_preprocessing() -> None:
+    event = FakeGroupEvent([], raw_message="[CQ:at,qq=100] ")
+
+    assert mentions_bot(event)
