@@ -236,6 +236,7 @@ class AbstractSocketConnect(
     async def _heartbeat_loop(self) -> None:
         assert self._heartbeat_interval is not None
         assert self._on_heartbeat is not None
+        connection_lost = False
         try:
             while self.is_connected:
                 await asyncio.sleep(self._heartbeat_interval)
@@ -243,10 +244,20 @@ class AbstractSocketConnect(
                     break
                 try:
                     await self._on_heartbeat()
-                except Exception:
-                    logger.exception("心跳包发送失败")
+                except (
+                    asyncio.TimeoutError,
+                    BrokenPipeError,
+                    ConnectionError,
+                    OSError,
+                ) as e:
+                    logger.warning(f"心跳包发送失败，准备重连: {e}")
+                    connection_lost = True
+                    break
         except asyncio.CancelledError:
-            pass
+            return
+
+        if connection_lost:
+            self._on_connection_lost()
 
     def _start_heartbeat(self) -> None:
         if self._heartbeat_interval is None or self._on_heartbeat is None:
