@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .models import ActivityInfo, ActivityReminder
 
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-ACTIVITY_PUSH_FEATURE = "activity_push"
+ACTIVITY_PUSH_FEATURE = "seer_activity_push"
 ActivityReminderDeliveryStatus = Literal["skip_empty", "skip_no_targets", "send"]
 
 

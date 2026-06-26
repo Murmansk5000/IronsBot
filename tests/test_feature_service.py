@@ -54,7 +54,7 @@ def test_feature_service_reads_query_alias(
 
     assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert feature_service.is_group_feature_allowed(999, 123, "bili_query")
-    assert feature_service.is_group_feature_allowed(999, 123, "activity_query")
+    assert feature_service.is_group_feature_allowed(999, 123, "seer_activity_query")
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 

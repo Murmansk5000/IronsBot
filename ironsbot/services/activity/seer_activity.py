@@ -27,7 +27,7 @@ EMPTY_SOON_ENDING_ACTIVITY_MESSAGE = "📭 当前没有读到不足 7 天结束�
 
 
 @dataclass(frozen=True, slots=True)
-class ActivityQuerySource:
+class SeerActivitySource:
     cache: ActivityInfoCache
     load_rows: LoadActivityRows
     cache_ttl: timedelta
@@ -35,7 +35,7 @@ class ActivityQuerySource:
 
 
 def active_activity_infos(
-    source: ActivityQuerySource,
+    source: SeerActivitySource,
     now: datetime,
 ) -> list[ActivityInfo]:
     if source.cache.expires_at is not None and source.cache.expires_at > now:
@@ -53,7 +53,7 @@ def active_activity_infos(
 
 
 def soon_ending_activity_infos(
-    source: ActivityQuerySource,
+    source: SeerActivitySource,
     now: datetime,
 ) -> list[ActivityInfo]:
     activities = [
@@ -79,8 +79,8 @@ def soon_ending_activity_infos(
     )
 
 
-def build_activity_query_message(
-    source: ActivityQuerySource,
+def build_seer_activity_message(
+    source: SeerActivitySource,
     now: datetime,
     *,
     limit: int | None = None,
@@ -134,7 +134,7 @@ def build_activity_query_message(
 
 
 def scheduled_reminders(
-    source: ActivityQuerySource,
+    source: SeerActivitySource,
     now: datetime,
     *,
     lead_hours: Iterable[int],
@@ -150,7 +150,7 @@ def scheduled_reminders(
 
 
 def valid_reminders_before_send(
-    source: ActivityQuerySource,
+    source: SeerActivitySource,
     reminders: Iterable[ActivityReminder],
     *,
     now: datetime,
