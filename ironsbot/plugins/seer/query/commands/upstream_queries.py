@@ -11,6 +11,7 @@ from typing import Annotated
 from httpx import HTTPStatusError, RequestError
 from nonebot import logger
 from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends, Fullmatch
@@ -24,10 +25,12 @@ from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.services.seer.query_guards import is_rank_query_text
+from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -84,6 +87,17 @@ async def _is_not_rank_query(event: Event) -> bool:
 not_rank_query = Rule(_is_not_rank_query)
 
 
+async def _finish_query_help(
+    matcher: Matcher,
+    event: Event,
+    kind: str,
+) -> None:
+    message = seer_query_help_message(kind)
+    if isinstance(event, MessageEvent):
+        await finish_event_reply(matcher, event, message)
+    await matcher.finish(message)
+
+
 pet_image_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_pet")
     & startswith_or_endswith(
@@ -123,6 +137,9 @@ class UpstreamQueryPlugin:
         arg = str(context.data.get("arg", ""))
         items: list[PromptItem[int]] = context.data["items"]
 
+        if not arg.strip():
+            await _finish_query_help(matcher, event, "skin")
+
         if not items:
             raise FinishedException
 
@@ -155,6 +172,9 @@ class UpstreamQueryPlugin:
             return
         arg = str(context.data.get("arg", ""))
         pets: tuple[PetORM, ...] = context.data["pets"]
+
+        if not arg.strip():
+            await _finish_query_help(matcher, event, "pet")
 
         if not pets:
             raise FinishedException
@@ -219,6 +239,9 @@ class UpstreamQueryPlugin:
         event: Event,
         context: PluginContext,
     ) -> None:
+        if not str(context.data.get("arg", "")).strip():
+            await _finish_query_help(matcher, event, "mintmark")
+
         await upstream_mintmark.handle_mintmark(
             matcher=matcher,
             state=context.state if context.state is not None else {},
@@ -233,6 +256,9 @@ class UpstreamQueryPlugin:
         event: Event,
         context: PluginContext,
     ) -> None:
+        if not str(context.data.get("arg", "")).strip():
+            await _finish_query_help(matcher, event, "gem")
+
         await upstream_mintmark.handle_gem(
             matcher=matcher,
             state=context.state if context.state is not None else {},
@@ -511,10 +537,11 @@ mintmark_matcher = matcher_group.on_message(
 
 
 @mintmark_matcher.handle()
-async def _handle_mintmark(
+async def _handle_mintmark(  # noqa: PLR0913
     matcher: Matcher,
     state: T_State,
     event: Event,
+    arg: str = Depends(parse_string_arg),
     mintmarks: tuple[
         upstream_mintmark.MintmarkORM,
         ...,
@@ -530,6 +557,7 @@ async def _handle_mintmark(
         matcher=matcher,
         state=state,
         action="mintmark",
+        arg=arg,
         mintmarks=mintmarks,
         classes=classes,
     )
@@ -546,6 +574,7 @@ async def _handle_gem(
     matcher: Matcher,
     state: T_State,
     event: Event,
+    arg: str = Depends(parse_string_arg),
     categories: tuple[
         upstream_mintmark.GemCategoryORM,
         ...,
@@ -557,6 +586,7 @@ async def _handle_gem(
         matcher=matcher,
         state=state,
         action="gem",
+        arg=arg,
         categories=categories,
     )
 
