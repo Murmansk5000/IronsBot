@@ -169,6 +169,27 @@ def _normalize_key(text: str) -> str:
     return _strip_special(text).casefold()
 
 
+def _is_valid_series_ordinal_prefix(prefix: str) -> bool:
+    normalized = _normalize_key(prefix)
+    return bool(normalized) and not normalized.isdigit()
+
+
+def _parse_series_ordinal_arg(arg: str) -> tuple[str, int] | None:
+    match = _SERIES_ORDINAL_PATTERN.fullmatch(arg.strip())
+    if match is None:
+        return None
+
+    raw_prefix = match.group("prefix")
+    if not _is_valid_series_ordinal_prefix(raw_prefix):
+        return None
+
+    ordinal = int(match.group("ordinal"))
+    if ordinal < 1:
+        return None
+
+    return raw_prefix, ordinal
+
+
 def _mintmark_type_description(mintmark: MintmarkORM) -> str:
     part = mintmark.ability_part or mintmark.universal_part
     if part is None:
@@ -534,15 +555,12 @@ class MintmarkSeriesOrdinalResolver:
         )
 
     def __call__(self, sessions: AllSessions, arg: str) -> Iterable[MintmarkORM]:
-        match = _SERIES_ORDINAL_PATTERN.fullmatch(arg.strip())
-        if match is None:
+        parsed = _parse_series_ordinal_arg(arg)
+        if parsed is None:
             return ()
 
-        ordinal = int(match.group("ordinal"))
-        if ordinal < 1:
-            return ()
-
-        class_ids = self._resolve_class_ids(sessions, match.group("prefix"))
+        raw_prefix, ordinal = parsed
+        class_ids = self._resolve_class_ids(sessions, raw_prefix)
         if not class_ids:
             return ()
 
