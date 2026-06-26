@@ -417,7 +417,8 @@ failure_rate_limit_seconds = 10
 timeout_seconds = 30.0
 # Default: 90.0; EN: Player detail timeout seconds. ZH: 玩家详情查询超时秒数。
 detail_timeout_seconds = 90.0
-# Default: all player sections; EN: Enabled player sections. ZH: 玩家展示区块。
+# Default: all player sections; EN: Enabled player sections.
+# ZH: 玩家展示区块；可填 basic/collection/rank/autocard/local_rank/peak 等，all 表示全部。
 sections = ["all"]
 
 [seer.team]
@@ -498,7 +499,7 @@ times = ["01:15", "01:45", "02:15", "02:45", "03:15", "03:45", "04:15", "04:45"]
 # Default: collection-related global ranks.
 # EN: Global ranks included in scheduled page refresh.
 # ZH: 定时刷新的全服榜。
-rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴"]
+rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴", "群星牌"]
 # Default: 24
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
@@ -683,27 +684,36 @@ wait_timeout_seconds = 300.0
 
 [runtime.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
-# ZH: NoneBot 事件匹配优先级，数字越小越先处理；群聊 @ 机器人只走 ai_group_at 或 ai_mention_guard，普通 ai_chat 继续作为兜底。
-about = 0
-help = 0
+# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
+about = 18
+help = 17
 help_hint = 0
-ai_group_at = -1
-ai_mention_guard = -1
+ai_group_at = -10
+ai_mention_guard = -20
 ai_chat = 99
-ai_intent = 4
-seer_query = 2
-seer_player = 1
-seer_rank_help = 2
-team_shortcut = 2
-bilibili = 1
-sendpic = 1
-server_status = 0
-server_status_admin = 1
-message_commands = 4
-meeting = 5
-activity = 5
-db_sync = 5
-team_audit = 5
+ai_intent = 40
+seer_query = 90
+seer_player = 5
+seer_team = 6
+seer_rank = 7
+seer_rank_help = 8
+seer_autocard = 9
+seer_mintmark = 10
+seer_pet = 11
+seer_type = 12
+seer_equipment = 13
+seer_peak = 14
+seer_data = 15
+team_shortcut = 16
+bilibili = 3
+sendpic = 4
+server_status = 1
+server_status_admin = 2
+message_commands = 30
+meeting = 50
+activity = 60
+db_sync = 70
+team_audit = 80
 
 [runtime.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。

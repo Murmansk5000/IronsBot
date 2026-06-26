@@ -79,7 +79,7 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
-from ..group import matcher_group, seer_feature_rule
+from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
@@ -140,9 +140,11 @@ async def _is_rank_page_cache_refresh_command(event: Event, state: T_State) -> b
 rank_help_matcher = matcher_group.on_fullmatch(
     ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
     rule=seer_feature_rule("seer_rank") & no_reply(),
+    priority=seer_feature_priority("seer_rank_help"),
 )
 rank_list_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank") & Rule(_is_rank_list_command) & no_reply(),
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_status_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
@@ -151,6 +153,7 @@ rank_cache_status_matcher = matcher_group.on_fullmatch(
     )),
     rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_refresh_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
@@ -158,12 +161,14 @@ rank_cache_refresh_matcher = matcher_group.on_fullmatch(
     )),
     rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_batch_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_cache_batch_command)
     & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
@@ -172,23 +177,27 @@ rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
     )),
     rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_page_cache_status_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_page_cache_status_command)
     & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_page_cache_refresh_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_page_cache_refresh_command)
     & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_display_limit_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_display_limit_command)
     & no_reply(),
+    priority=seer_feature_priority("seer_rank"),
 )
 
 

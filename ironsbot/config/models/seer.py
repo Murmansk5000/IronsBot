@@ -18,6 +18,7 @@ PLAYER_SECTION_KEYS: tuple[str, ...] = (
     "social",
     "collection",
     "rank",
+    "autocard",
     "local_rank",
     "achievement",
     "peak",
@@ -57,6 +58,7 @@ DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "部件图鉴",
     "座驾图鉴",
     "刻印图鉴",
+    "群星牌",
 )
 MAX_RANK_DISPLAY_LIMIT = 100
 

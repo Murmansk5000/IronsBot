@@ -29,6 +29,7 @@ DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
+DEFAULT_SEER_PLAYER_PRIORITY = 5
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -62,9 +63,11 @@ def test_example_config_parses() -> None:
         == "data/team_audit_welcome/pending.sqlite"
     )
     assert config.seer.team_shortcut.team_ids == []
+    assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}
+    assert "群星牌" in config.seer.rank.page_refresh.rank_keys
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
@@ -78,7 +81,12 @@ def test_example_config_parses() -> None:
     assert config.runtime.matcher_priority.ai_group_at < 0
     assert config.runtime.matcher_priority.ai_mention_guard < 0
     assert config.runtime.matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
-    assert config.runtime.matcher_priority.seer_player == 1
+    assert config.runtime.matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
+    matcher_priorities = config.runtime.matcher_priority.model_dump()
+    non_negative_priorities = [
+        value for value in matcher_priorities.values() if value >= 0
+    ]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps

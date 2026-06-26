@@ -54,6 +54,16 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         start_rank=100,
         limit=1,
     )
+    assert parse_rank_list_command("群星牌榜") == RankListCommand(
+        kind="global",
+        rank_key="群星牌",
+    )
+    assert parse_rank_list_command("群星之巅榜第2页") == RankListCommand(
+        kind="global",
+        rank_key="群星牌",
+        start_rank=11,
+        limit=10,
+    )
 
 
 def test_parse_rank_list_command_uses_configured_default_limit() -> None:
@@ -94,6 +104,7 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         start_rank=21,
         limit=20,
     )
+    assert parse_rank_list_command("样本群星牌榜") is None
 
 
 def test_parse_rank_list_command_ignores_unknown_text() -> None:
@@ -129,6 +140,9 @@ def test_parse_rank_page_cache_status_command_reads_global_rank() -> None:
     )
     assert parse_rank_page_cache_status_command("/榜单状态图鉴榜") == (
         RankPageCacheStatusCommand(rank_key="图鉴积分")
+    )
+    assert parse_rank_page_cache_status_command("/榜单情况 群星牌榜") == (
+        RankPageCacheStatusCommand(rank_key="群星牌")
     )
     assert parse_rank_page_cache_status_command("/榜单情况 样本图鉴榜") is None
     assert parse_rank_page_cache_status_command("/榜单缓存 刻印榜") is None
