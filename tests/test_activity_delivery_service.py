@@ -3,7 +3,6 @@ from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
 
-from ironsbot.plugins.fire_manual_ad.service import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.services.activity import delivery as delivery_service
 from ironsbot.services.activity.delivery import (
     ActivityReminderTargets,
@@ -13,10 +12,11 @@ from ironsbot.services.activity.delivery import (
     format_reminder_message,
 )
 from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
+from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-GROUP_ID = 686376929
-USER_ID = 1621582661
+GROUP_ID = 987654321
+USER_ID = 1234567890
 SUPERUSER_ID = 10000
 
 
@@ -107,7 +107,7 @@ def test_build_reminder_delivery_builds_send_payload() -> None:
 
     assert delivery.should_send
     assert delivery.message.startswith("1 个活动：")
-    assert FIRE_MANUAL_LINK_MESSAGE in delivery.message
+    assert FIRE_MANUAL_LINK_MESSAGE not in delivery.message
     assert delivery.group_ids == (GROUP_ID,)
     assert delivery.private_user_ids == (USER_ID,)
     assert delivery.action_name == "activity ending reminder 1h"

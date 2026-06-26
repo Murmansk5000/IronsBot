@@ -1,7 +1,6 @@
 from ironsbot.config import AppConfig, get_app_config
 from ironsbot.config.models.ai import (
     AiActionBase,
-    AiActionTemplate,
     AiIntentAction,
 )
 from ironsbot.config.models.ai import (
@@ -24,7 +23,6 @@ def get_ai_config() -> AiIntentConfig:
 
 __all__ = [
     "AiActionBase",
-    "AiActionTemplate",
     "AiIntentAction",
     "AiIntentConfig",
     "Config",

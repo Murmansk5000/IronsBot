@@ -75,6 +75,8 @@ def test_example_config_parses() -> None:
         config.runtime.matcher_priority.seer_query
         < config.runtime.matcher_priority.ai_chat
     )
+    assert config.runtime.matcher_priority.ai_group_at < 0
+    assert config.runtime.matcher_priority.ai_mention_guard < 0
     assert config.runtime.matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
     assert config.runtime.matcher_priority.seer_player == 1
     remote_build_steps = config.runtime.data_sync.sources[

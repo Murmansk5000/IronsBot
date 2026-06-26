@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Literal
 
 from nonebot.log import logger
 
-from ironsbot.plugins.fire_manual_ad.service import append_fire_manual_ad_text
 from ironsbot.shared.features import (
     groups_for_feature,
     users_for_feature,
@@ -96,13 +95,11 @@ def build_reminder_delivery(
 
     return ActivityReminderDelivery(
         status="send",
-        message=append_fire_manual_ad_text(
-            format_reminder_message(
-                lead_hours,
-                reminders,
-                template=template,
-                fallback_template=fallback_template,
-            )
+        message=format_reminder_message(
+            lead_hours,
+            reminders,
+            template=template,
+            fallback_template=fallback_template,
         ),
         group_ids=targets.group_ids,
         private_user_ids=targets.private_user_ids,

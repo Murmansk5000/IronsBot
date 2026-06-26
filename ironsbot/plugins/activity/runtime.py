@@ -20,6 +20,7 @@ from ironsbot.services.activity.seer_activity import (
     valid_reminders_before_send,
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
+from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 
 from . import _now, _seer_activity_source
 from .config import get_activity_config
@@ -71,6 +72,7 @@ async def send_activity_reminder(
         private_user_ids=delivery.private_user_ids,
         action_name=delivery.action_name,
         interval_seconds=1.2,
+        message_limiter=append_fire_manual_ad_for_group,
     )
     if summary.succeeded:
         mark_sent(reminders)
