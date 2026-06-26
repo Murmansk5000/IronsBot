@@ -58,6 +58,8 @@ def test_example_config_parses() -> None:
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
     assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
+    assert not config.runtime.logging.error_file_enabled
+    assert config.runtime.logging.error_file_path == "/app/logs/ironsbot.error.log"
     assert (
         config.runtime.matcher_priority.seer_query
         < config.runtime.matcher_priority.ai_chat

@@ -12,11 +12,12 @@ if TYPE_CHECKING:
     from ironsbot.config.models.runtime import LoggingConfig
 
 _FILE_LOG_SINK_ID: int | None = None
+_ERROR_FILE_LOG_SINK_ID: int | None = None
 
 
 def configure_file_logging(config: LoggingConfig | None = None) -> int | None:
     """Attach an optional rotating file sink to the shared NoneBot logger."""
-    global _FILE_LOG_SINK_ID  # noqa: PLW0603
+    global _ERROR_FILE_LOG_SINK_ID, _FILE_LOG_SINK_ID  # noqa: PLW0603
 
     log_config = config or get_app_config().runtime.logging
     if not log_config.file_enabled:
@@ -40,6 +41,23 @@ def configure_file_logging(config: LoggingConfig | None = None) -> int | None:
         diagnose=False,
     )
     logger.info(f"file logging enabled: {log_path}")
+
+    if log_config.error_file_enabled:
+        error_log_path = Path(log_config.error_file_path)
+        error_log_path.parent.mkdir(parents=True, exist_ok=True)
+        _ERROR_FILE_LOG_SINK_ID = logger.add(
+            error_log_path,
+            level="ERROR",
+            rotation=log_config.rotation,
+            retention=log_config.retention,
+            compression=log_config.compression,
+            encoding="utf-8",
+            enqueue=True,
+            backtrace=True,
+            diagnose=False,
+        )
+        logger.info(f"error file logging enabled: {error_log_path}")
+
     return _FILE_LOG_SINK_ID
 
 
