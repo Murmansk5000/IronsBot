@@ -11,17 +11,17 @@ from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
     build_reminder_delivery,
 )
-from ironsbot.services.activity.query import (
-    scheduled_reminders,
-    valid_reminders_before_send,
-)
 from ironsbot.services.activity.scheduler import (
     register_scan_jobs,
     schedule_reminder_jobs,
 )
+from ironsbot.services.activity.seer_activity import (
+    scheduled_reminders,
+    valid_reminders_before_send,
+)
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 
-from . import _activity_query_source, _now
+from . import _now, _seer_activity_source
 from .config import get_activity_config
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ async def send_activity_reminder(
 
     now = _now()
     reminders = valid_reminders_before_send(
-        _activity_query_source,
+        _seer_activity_source,
         reminders,
         now=now,
         dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
@@ -89,7 +89,7 @@ async def schedule_activity_reminders() -> None:
     try:
         reminders = filter_unsent(
             scheduled_reminders(
-                _activity_query_source,
+                _seer_activity_source,
                 _now(),
                 lead_hours=config.lead_hours,
                 grace=timedelta(minutes=config.grace_minutes),

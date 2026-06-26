@@ -6,15 +6,14 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.plugins.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
-from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.plugins.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
+)
+from ironsbot.plugins.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
 )
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.errors import format_socket_recv_error
@@ -27,6 +26,7 @@ from ironsbot.services.seer.team import (
     team_query_in_progress_message,
     team_query_wait_message,
 )
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -36,7 +36,7 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import get_team_query_config
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_rule
 from ._args import has_numeric_arg, parse_numeric_id
 
 TEAM_ID_KEY = "team_id"
@@ -49,7 +49,8 @@ TEAM_QUERY_GUARD = QueryGuard(
 )
 
 team_matcher = matcher_group.on_message(
-    rule=(
+    rule=seer_feature_rule("seer_team")
+    & (
         startswith_or_endswith(prefixes=("战队", "查询战队信息"), suffixes=())
         & has_numeric_arg
         & no_reply()
@@ -74,7 +75,7 @@ async def _finish_team_query_failure(
 
 class CustomTeamPlugin:
     name = TEAM_PLUGIN_NAME
-    feature = "seer"
+    feature = "seer_team"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:

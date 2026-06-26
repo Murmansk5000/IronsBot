@@ -4,7 +4,7 @@ from typing import Any
 
 from pytest import MonkeyPatch
 
-from ironsbot.services.activity import query
+from ironsbot.services.activity import seer_activity
 from ironsbot.services.activity.models import (
     ActivityInfo,
     ActivityInfoCache,
@@ -53,13 +53,13 @@ def _second_rows() -> list[Mapping[str, Any]]:
     return [{"id": ACTIVITY_ID_TWO}]
 
 
-def _query_source(
+def _seer_activity_source(
     cache: ActivityInfoCache,
-    load_rows: query.LoadActivityRows = _empty_rows,
+    load_rows: seer_activity.LoadActivityRows = _empty_rows,
     *,
     cache_ttl: timedelta | None = None,
-) -> query.ActivityQuerySource:
-    return query.ActivityQuerySource(
+) -> seer_activity.SeerActivitySource:
+    return seer_activity.SeerActivitySource(
         cache=cache,
         load_rows=load_rows,
         cache_ttl=cache_ttl or timedelta(minutes=1),
@@ -91,18 +91,18 @@ def test_active_activity_infos_reuses_cache_and_filters_against_now(
         return [_activity()]
 
     monkeypatch.setattr(
-        query,
+        seer_activity,
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
-    source = _query_source(cache, _first_rows, cache_ttl=timedelta(days=2))
+    source = _seer_activity_source(cache, _first_rows, cache_ttl=timedelta(days=2))
 
-    first = query.active_activity_infos(
+    first = seer_activity.active_activity_infos(
         source,
         dt(2026, 6, 11, 10),
     )
-    second = query.active_activity_infos(
-        query.ActivityQuerySource(
+    second = seer_activity.active_activity_infos(
+        seer_activity.SeerActivitySource(
             cache=cache,
             load_rows=_second_rows,
             cache_ttl=timedelta(days=2),
@@ -116,7 +116,7 @@ def test_active_activity_infos_reuses_cache_and_filters_against_now(
     assert build_calls == [[{"id": ACTIVITY_ID_ONE}]]
 
 
-def test_build_activity_query_message_renders_current_activity(
+def test_build_seer_activity_message_renders_current_activity(
     monkeypatch: MonkeyPatch,
 ) -> None:
     cache = ActivityInfoCache()
@@ -131,13 +131,13 @@ def test_build_activity_query_message_renders_current_activity(
         ]
 
     monkeypatch.setattr(
-        query,
+        seer_activity,
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
-    source = _query_source(cache)
+    source = _seer_activity_source(cache)
 
-    message = query.build_activity_query_message(
+    message = seer_activity.build_seer_activity_message(
         source,
         dt(2026, 6, 11, 10),
         limit=1,
@@ -148,7 +148,7 @@ def test_build_activity_query_message_renders_current_activity(
     assert "...还有 1 个活动未显示" in message
 
 
-def test_build_activity_query_message_handles_empty_soon_ending_list(
+def test_build_seer_activity_message_handles_empty_soon_ending_list(
     monkeypatch: MonkeyPatch,
 ) -> None:
     cache = ActivityInfoCache()
@@ -160,22 +160,22 @@ def test_build_activity_query_message_handles_empty_soon_ending_list(
         return []
 
     monkeypatch.setattr(
-        query,
+        seer_activity,
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
-    source = _query_source(cache)
+    source = _seer_activity_source(cache)
 
-    message = query.build_activity_query_message(
+    message = seer_activity.build_seer_activity_message(
         source,
         dt(2026, 6, 11, 10),
         soon_only=True,
     )
 
-    assert message == query.EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
+    assert message == seer_activity.EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
 
 
-def test_scheduled_reminders_uses_query_source_activities(
+def test_scheduled_reminders_uses_seer_activity_source_activities(
     monkeypatch: MonkeyPatch,
 ) -> None:
     cache = ActivityInfoCache()
@@ -187,13 +187,13 @@ def test_scheduled_reminders_uses_query_source_activities(
         return [_activity()]
 
     monkeypatch.setattr(
-        query,
+        seer_activity,
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
 
-    reminders = query.scheduled_reminders(
-        _query_source(cache),
+    reminders = seer_activity.scheduled_reminders(
+        _seer_activity_source(cache),
         dt(2026, 6, 12, 8, 50),
         lead_hours=[1],
         grace=timedelta(minutes=15),
@@ -203,7 +203,7 @@ def test_scheduled_reminders_uses_query_source_activities(
     assert reminders[0].send_time == dt(2026, 6, 12, 9)
 
 
-def test_valid_reminders_before_send_filters_against_current_query(
+def test_valid_reminders_before_send_filters_against_current_seer_activity(
     monkeypatch: MonkeyPatch,
 ) -> None:
     cache = ActivityInfoCache()
@@ -216,13 +216,13 @@ def test_valid_reminders_before_send_filters_against_current_query(
         return [_activity()]
 
     monkeypatch.setattr(
-        query,
+        seer_activity,
         "build_active_activity_infos",
         fake_build_active_activity_infos,
     )
 
-    assert query.valid_reminders_before_send(
-        _query_source(cache),
+    assert seer_activity.valid_reminders_before_send(
+        _seer_activity_source(cache),
         [reminder],
         now=dt(2026, 6, 12, 9),
         dispatch_tolerance=timedelta(minutes=1),
