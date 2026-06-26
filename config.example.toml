@@ -683,27 +683,36 @@ wait_timeout_seconds = 300.0
 
 [runtime.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
-# ZH: NoneBot 事件匹配优先级，数字越小越先处理；群聊 @ 机器人只走 ai_group_at 或 ai_mention_guard，普通 ai_chat 继续作为兜底。
-about = 0
-help = 0
+# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
+about = 18
+help = 17
 help_hint = 0
-ai_group_at = -1
-ai_mention_guard = -1
+ai_group_at = -10
+ai_mention_guard = -20
 ai_chat = 99
-ai_intent = 4
-seer_query = 2
-seer_player = 1
-seer_rank_help = 2
-team_shortcut = 2
-bilibili = 1
-sendpic = 1
-server_status = 0
-server_status_admin = 1
-message_commands = 4
-meeting = 5
-activity = 5
-db_sync = 5
-team_audit = 5
+ai_intent = 40
+seer_query = 90
+seer_player = 5
+seer_team = 6
+seer_rank = 7
+seer_rank_help = 8
+seer_autocard = 9
+seer_mintmark = 10
+seer_pet = 11
+seer_type = 12
+seer_equipment = 13
+seer_peak = 14
+seer_data = 15
+team_shortcut = 16
+bilibili = 3
+sendpic = 4
+server_status = 1
+server_status_admin = 2
+message_commands = 30
+meeting = 50
+activity = 60
+db_sync = 70
+team_audit = 80
 
 [runtime.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
