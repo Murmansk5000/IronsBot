@@ -4,9 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ironsbot.shared.config.parsing import int_list, string_list
+from ironsbot.shared.config.time import normalized_daily_times
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -34,6 +35,30 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "logo",
     "text",
 )
+RANK_PAGE_REFRESH_TIME_ERROR = (
+    "APP_CONFIG.seer.rank.page_refresh.times must contain daily HH:MM times"
+)
+DEFAULT_RANK_PAGE_REFRESH_TIMES = (
+    "01:15",
+    "01:45",
+    "02:15",
+    "02:45",
+    "03:15",
+    "03:45",
+    "04:15",
+    "04:45",
+)
+DEFAULT_RANK_PAGE_REFRESH_KEYS = (
+    "图鉴积分",
+    "成就点数",
+    "精灵图鉴",
+    "皮肤图鉴",
+    "套装图鉴",
+    "部件图鉴",
+    "座驾图鉴",
+    "刻印图鉴",
+)
+MAX_RANK_DISPLAY_LIMIT = 100
 
 
 def _coerce_sections(value: object) -> object:
@@ -111,16 +136,54 @@ class MintmarkQueryConfig(BaseModel):
     merge_connected: bool = True
 
 
+class RankPageRefreshConfig(BaseModel):
+    enabled: bool = True
+    target_limit: int = Field(default=50000, ge=1)
+    page_size: int = Field(default=100, ge=1)
+    pages_per_run: int = Field(default=10, ge=1)
+    times: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_RANK_PAGE_REFRESH_TIMES)
+    )
+    rank_keys: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_RANK_PAGE_REFRESH_KEYS)
+    )
+    refresh_stale_after_hours: int = Field(default=24, ge=0)
+
+    @field_validator("times", mode="before")
+    @classmethod
+    def normalize_times(cls, value: object) -> object:
+        return normalized_daily_times(
+            value,
+            error_message=RANK_PAGE_REFRESH_TIME_ERROR,
+        )
+
+    @field_validator("rank_keys", mode="before")
+    @classmethod
+    def normalize_rank_keys(cls, value: object) -> object:
+        return string_list(value)
+
+
 class RankQueryConfig(BaseModel):
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
     page_size: int = Field(default=100, ge=1)
+    display_limit: int = Field(default=10, ge=1, le=MAX_RANK_DISPLAY_LIMIT)
+    max_display_limit: int = Field(
+        default=MAX_RANK_DISPLAY_LIMIT,
+        ge=1,
+        le=MAX_RANK_DISPLAY_LIMIT,
+    )
+    display_limits: dict[str, int] = Field(default_factory=dict)
+    display_limit_path: Path = Path("data/seer/rank_display_limits.sqlite")
     page_cache: bool = True
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
     refresh_stale_cache: bool = True
     page_cache_path: Path = Path("data/seer/rank_page_cache.sqlite")
     peak_subkey: int | None = Field(default=None, ge=0)
+    page_refresh: RankPageRefreshConfig = Field(
+        default_factory=RankPageRefreshConfig
+    )
 
     @field_validator("peak_subkey", mode="before")
     @classmethod
@@ -129,7 +192,34 @@ class RankQueryConfig(BaseModel):
             return None
         return value
 
-    @field_validator("page_cache_path")
+    @field_validator("display_limits", mode="before")
+    @classmethod
+    def normalize_display_limits(cls, value: object) -> object:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            return value
+        return {str(key).strip(): int(limit) for key, limit in value.items()}
+
+    @field_validator("display_limits")
+    @classmethod
+    def validate_display_limits(cls, value: dict[str, int]) -> dict[str, int]:
+        return {
+            key: limit
+            for key, limit in value.items()
+            if key and 1 <= limit <= MAX_RANK_DISPLAY_LIMIT
+        }
+
+    @model_validator(mode="after")
+    def validate_display_limit_bounds(self) -> "RankQueryConfig":
+        self.display_limit = min(self.display_limit, self.max_display_limit)
+        self.display_limits = {
+            key: min(limit, self.max_display_limit)
+            for key, limit in self.display_limits.items()
+        }
+        return self
+
+    @field_validator("page_cache_path", "display_limit_path")
     @classmethod
     def validate_sqlite_cache_path(cls, value: Path) -> Path:
         return _validate_sqlite_path(value)
@@ -195,10 +285,12 @@ class SeerConfig(BaseModel):
 
 __all__ = [
     "PLAYER_SECTION_KEYS",
+    "RANK_PAGE_REFRESH_TIME_ERROR",
     "TEAM_SECTION_KEYS",
     "LocalRankConfig",
     "MintmarkQueryConfig",
     "PlayerQueryConfig",
+    "RankPageRefreshConfig",
     "RankQueryConfig",
     "RenderConfig",
     "SeerConfig",

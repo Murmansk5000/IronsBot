@@ -13,6 +13,13 @@ async def is_seer_event_allowed(event: Event) -> bool:
     return is_event_feature_allowed(event, "seer")
 
 
+def seer_feature_rule(feature: str) -> Rule:
+    async def _is_feature_allowed(event: Event) -> bool:
+        return is_event_feature_allowed(event, feature)
+
+    return Rule(_is_feature_allowed)
+
+
 class CustomFeatureMatcherGroup(MatcherGroup):
     def _get_final_kwargs(
         self,
@@ -31,5 +38,4 @@ class CustomFeatureMatcherGroup(MatcherGroup):
 matcher_group = CustomFeatureMatcherGroup(
     block=True,
     priority=get_matcher_priority("seer_query", 2),
-    rule=Rule(is_seer_event_allowed),
 )

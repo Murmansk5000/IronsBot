@@ -1,7 +1,6 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import sqlite3
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,25 +12,6 @@ from ironsbot.services.seer.rank import (
     PlayerRankSummary,
     RankLookupResult,
     is_pet_kind_rank_anomaly_user,
-)
-from ironsbot.services.seer.rank_constants import (
-    ACHIEVE_RANK_KEY,
-    ACHIEVE_RANK_SUB_KEY,
-    BOOK_RANK_KEY,
-    BOOK_RANK_SUB_KEY,
-    COUNTERMARK_RANK_KEY,
-    COUNTERMARK_RANK_SUB_KEY,
-    EXPERT_PEAK_USER_RANK_KEY,
-    MOUNT_RANK_SUB_KEY,
-    OUTFIT_PART_RANK_SUB_KEY,
-    OUTFIT_RANK_KEY,
-    OUTFIT_SUIT_RANK_SUB_KEY,
-    PET_KIND_RANK_KEY,
-    PET_KIND_RANK_SUB_KEY,
-    SKIN_RANK_KEY,
-    SKIN_RANK_SUB_KEY,
-    STANDARD_PEAK_USER_RANK_KEY,
-    WILD_PEAK_USER_RANK_KEY,
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
@@ -71,21 +51,6 @@ _LOCAL_METRICS: tuple[_MetricSpec, ...] = (
 
 _CACHE_LOCK = asyncio.Lock()
 PERCENT_FINE_THRESHOLD = 10
-_RANK_PAGE_METRIC_KEYS = {
-    (BOOK_RANK_KEY, BOOK_RANK_SUB_KEY): "book_score",
-    (ACHIEVE_RANK_KEY, ACHIEVE_RANK_SUB_KEY): "achievement_score",
-    (PET_KIND_RANK_KEY, PET_KIND_RANK_SUB_KEY): "pet_kind_count",
-    (COUNTERMARK_RANK_KEY, COUNTERMARK_RANK_SUB_KEY): "countermark_count",
-    (SKIN_RANK_KEY, SKIN_RANK_SUB_KEY): "skin_count",
-    (OUTFIT_RANK_KEY, OUTFIT_SUIT_RANK_SUB_KEY): "outfit_suit_count",
-    (OUTFIT_RANK_KEY, OUTFIT_PART_RANK_SUB_KEY): "outfit_part_count",
-    (OUTFIT_RANK_KEY, MOUNT_RANK_SUB_KEY): "mount_count",
-}
-_PEAK_RANK_PAGE_METRIC_KEYS = {
-    STANDARD_PEAK_USER_RANK_KEY: "peak_standard",
-    WILD_PEAK_USER_RANK_KEY: "peak_wild",
-    EXPERT_PEAK_USER_RANK_KEY: "peak_expert",
-}
 _PEAK_RANK_NAMES = {
     0: "学徒",
     1: "猛将",
@@ -601,8 +566,12 @@ def _get_local_rank_entries_sql(
     metric_key: str,
     *,
     limit: int,
+    start_rank: int,
     season_sub_key: int | None,
 ) -> tuple[list[LocalRankEntry], int]:
+    requested_limit = max(0, limit)
+    safe_start_rank = max(1, start_rank)
+    fetch_limit = safe_start_rank + requested_limit - 1
     where, params = _get_metric_where(metric_key, season_sub_key)
     with _connect_cache() as conn:
         sample_count = _count_metric_rows(conn, metric_key, season_sub_key)
@@ -616,7 +585,7 @@ def _get_local_rank_entries_sql(
             ORDER BY m.value DESC, p.user_id ASC
             LIMIT ?
             """,
-            (*params, max(0, limit)),
+            (*params, fetch_limit),
         ).fetchall()
 
         entries: list[LocalRankEntry] = []
@@ -642,7 +611,8 @@ def _get_local_rank_entries_sql(
                 )
             )
 
-        return entries, sample_count
+        start_index = safe_start_rank - 1
+        return entries[start_index : start_index + requested_limit], sample_count
 
 
 def _get_cached_player_ids_sql() -> list[int]:
@@ -741,60 +711,6 @@ def _can_cache_player_id_sql(player_id: int) -> bool:
         return player_count < _max_cached_players()
 
 
-def _rank_page_metric(
-    *,
-    key: int,
-    sub_key: int,
-) -> tuple[str, int | None] | None:
-    metric_key = _RANK_PAGE_METRIC_KEYS.get((key, sub_key))
-    if metric_key is not None:
-        return metric_key, None
-
-    metric_key = _PEAK_RANK_PAGE_METRIC_KEYS.get(key)
-    if metric_key is not None:
-        return metric_key, sub_key
-
-    return None
-
-
-def upsert_rank_page_metrics(
-    *,
-    key: int,
-    sub_key: int,
-    items: Sequence[object],
-) -> None:
-    metric_info = _rank_page_metric(key=key, sub_key=sub_key)
-    if metric_info is None or not items:
-        return
-
-    metric_key, season_sub_key = metric_info
-    with _connect_cache() as conn:
-        for item in items:
-            player_id = _positive_int(getattr(item, "id", None))
-            score = _positive_int(getattr(item, "score", None))
-            if player_id is None or score is None:
-                continue
-            if metric_key == "pet_kind_count" and is_pet_kind_rank_anomaly_user(
-                player_id
-            ):
-                continue
-
-            _write_player_metrics(
-                conn,
-                player_id=player_id,
-                nick=str(getattr(item, "nick", "")),
-                metrics={
-                    metric_key: _metric(
-                        score,
-                        season_sub_key=season_sub_key,
-                        display=str(score),
-                    )
-                },
-                sample_enabled=False,
-            )
-        conn.commit()
-
-
 async def _upsert_local_rank_metrics_sql(
     *,
     player_id: int,
@@ -847,11 +763,13 @@ def get_local_rank_entries(
     metric_key: str,
     *,
     limit: int = 20,
+    start_rank: int = 1,
     season_sub_key: int | None = None,
 ) -> tuple[list[LocalRankEntry], int]:
     return _get_local_rank_entries_sql(
         metric_key,
         limit=limit,
+        start_rank=start_rank,
         season_sub_key=season_sub_key,
     )
 
