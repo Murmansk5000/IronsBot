@@ -11,8 +11,8 @@ from ironsbot.config import get_app_config, load_secrets_config
 from ironsbot.shared.features.registry import features_for_module
 
 from .service import (
+    group_has_feature,
     is_event_feature_allowed,
-    is_group_feature_allowed,
     is_private_feature_allowed,
     is_superuser,
 )
@@ -26,6 +26,8 @@ HIDDEN_MODULE_PREFIXES = (
     "ironsbot.plugins.headless_seer",
     "ironsbot.plugins.http_client",
     "ironsbot.plugins.seer_data",
+    "ironsbot.plugins.team_audit_welcome",
+    "ironsbot.plugins.team_recommend",
 )
 
 ALWAYS_VISIBLE_MODULE_PREFIXES = (
@@ -40,12 +42,18 @@ def _module_startswith(module_name: str, prefixes: tuple[str, ...]) -> bool:
     return any(module_name.startswith(prefix) for prefix in prefixes)
 
 
-def _feature_visible(event: Event, feature: str) -> bool:
+def feature_visible_for_help(event: Event, feature: str) -> bool:
+    if isinstance(event, GroupMessageEvent):
+        return group_has_feature(event.group_id, feature)
+
+    if isinstance(event, PrivateMessageEvent):
+        return is_private_feature_allowed(event.user_id, feature)
+
     return is_event_feature_allowed(event, feature)
 
 
 def _any_feature_visible(event: Event, features: tuple[str, ...]) -> bool:
-    return any(_feature_visible(event, feature) for feature in features)
+    return any(feature_visible_for_help(event, feature) for feature in features)
 
 
 def _ai_key_configured() -> bool:
@@ -63,7 +71,7 @@ def _messaging_visible(event: Event) -> bool:
     if isinstance(event, GroupMessageEvent):
         return any(
             action.enabled
-            and is_group_feature_allowed(event.user_id, event.group_id, action.feature)
+            and group_has_feature(event.group_id, action.feature)
             for action in [
                 *msg_config.group_commands,
                 *msg_config.group_schedules,
@@ -87,19 +95,19 @@ def _team_shortcut_visible(event: Event) -> bool:
     return (
         bool(get_app_config().seer.team_shortcut.team_ids)
         and isinstance(event, GroupMessageEvent)
-        and is_group_feature_allowed(event.user_id, event.group_id, "team")
+        and group_has_feature(event.group_id, "team")
     )
 
 
 def _ai_chat_visible(event: Event) -> bool:
-    return _ai_key_configured() and _feature_visible(event, "ai_chat")
+    return _ai_key_configured() and feature_visible_for_help(event, "ai_chat")
 
 
 def _ai_intent_visible(event: Event) -> bool:
     return (
         _ai_key_configured()
         and get_app_config().ai.intent_actions_enabled
-        and _feature_visible(event, "ai_intent")
+        and feature_visible_for_help(event, "ai_intent")
     )
 
 
@@ -113,7 +121,6 @@ SPECIAL_MODULE_VISIBILITY: tuple[tuple[str, VisibilityRule], ...] = (
     ("ironsbot.plugins.team_shortcut", _team_shortcut_visible),
     ("ironsbot.plugins.ai_chat", _ai_chat_visible),
     ("ironsbot.plugins.ai_intent", _ai_intent_visible),
-    ("ironsbot.plugins.team_recommend", _ai_intent_visible),
     ("ironsbot.plugins.headless_seer_notice", _superuser_visible),
 )
 
