@@ -16,7 +16,10 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     "seer_type": ("ironsbot.plugins.seer.query",),
     "seer_peak": ("ironsbot.plugins.seer.query",),
     "seer_autocard": ("ironsbot.plugins.seer.query",),
-    "seer_rank": ("ironsbot.plugins.seer.query",),
+    "seer_rank": (
+        "ironsbot.plugins.seer.query",
+        "ironsbot.plugins.seer.rank_help",
+    ),
     "seer_data": ("ironsbot.plugins.seer.query",),
     "image": ("ironsbot.plugins.sendpic",),
     "rank": ("ironsbot.plugins.seer.rank_help",),

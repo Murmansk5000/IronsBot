@@ -14,6 +14,7 @@ from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
+from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
@@ -51,6 +52,41 @@ DEFAULT_IGNORED_PLUGINS = [
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_PLUGIN_NAME = "help"
 Config = AppConfig
+HELP_GROUP_ORDER = (
+    "core",
+    "seer",
+    "message",
+    "ai_team",
+    "admin",
+    "other",
+)
+HELP_GROUP_TITLES = {
+    "core": "基础",
+    "seer": "赛尔查询",
+    "message": "消息与推送",
+    "ai_team": "AI 与战队",
+    "admin": "管理工具",
+    "other": "其他",
+}
+HELP_ENTRY_ORDER = {
+    "帮助": ("core", 10),
+    "关于": ("core", 20),
+    "赛尔号查询": ("seer", 10),
+    "榜单": ("seer", 20),
+    "图片发送": ("seer", 30),
+    "活动结束提醒": ("message", 10),
+    "B站动态": ("message", 20),
+    "文本发送": ("message", 30),
+    "会议回复": ("message", 40),
+    "AI聊天": ("ai_team", 10),
+    "AI意图分析": ("ai_team", 20),
+    "战队推荐": ("ai_team", 30),
+    "战队快捷": ("ai_team", 40),
+    "战队审核入群提示": ("ai_team", 50),
+    "开服查询": ("admin", 10),
+    "数据库同步": ("admin", 20),
+    "自定义无头登录": ("admin", 30),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +157,16 @@ def _entry_from_plugin(plugin: "Plugin") -> HelpEntry:
     )
 
 
+def _entry_sort_key(entry: HelpEntry) -> tuple[int, int, str]:
+    group, order = HELP_ENTRY_ORDER.get(entry.name, ("other", 1000))
+    group_index = (
+        HELP_GROUP_ORDER.index(group)
+        if group in HELP_GROUP_ORDER
+        else len(HELP_GROUP_ORDER)
+    )
+    return (group_index, order, entry.name)
+
+
 def _visible_help_entries(bot: Bot, event: Event) -> list[HelpEntry]:
     entries: list[HelpEntry] = []
     seen_names: set[str] = set()
@@ -149,7 +195,7 @@ def _visible_help_entries(bot: Bot, event: Event) -> list[HelpEntry]:
         entries.append(_entry_from_plugin(plugin))
         seen_names.add(metadata.name)
 
-    return entries
+    return sorted(entries, key=_entry_sort_key)
 
 
 def _format_plugin_list(entries: list[HelpEntry]) -> str:
@@ -157,7 +203,13 @@ def _format_plugin_list(entries: list[HelpEntry]) -> str:
         return "当前会话没有可用的功能。"
 
     lines = ["📖 可用功能："]
+    current_group = ""
     for index, entry in enumerate(entries, start=1):
+        group = HELP_ENTRY_ORDER.get(entry.name, ("other", 1000))[0]
+        if group != current_group:
+            current_group = group
+            title = HELP_GROUP_TITLES.get(group, "其他")
+            lines.extend(("", f"【{title}】"))
         lines.append(f"{index}. {entry.name} — {entry.description}")
     lines.append(
         "\n💬 直接发送序号查看详细帮助 · 输入 0 退出\n"
@@ -167,7 +219,10 @@ def _format_plugin_list(entries: list[HelpEntry]) -> str:
     return "\n".join(lines)
 
 
-def _format_plugin_detail(entry: HelpEntry) -> str:
+def _format_plugin_detail(entry: HelpEntry, event: Event) -> str:
+    if entry.key.startswith("ironsbot.plugins.seer.query"):
+        return f"📖 {entry.name}\n\n{build_seer_query_usage_message(event)}"
+
     return f"📖 {entry.name}\n\n{entry.usage}"
 
 
@@ -278,7 +333,7 @@ def _create_selection_handler(
         await _send_help_reply(
             matcher,
             event,
-            _format_plugin_detail(entries[index - 1]),
+            _format_plugin_detail(entries[index - 1], event),
         )
 
         rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
