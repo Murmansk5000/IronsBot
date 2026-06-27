@@ -142,12 +142,7 @@ class RankPageRefreshConfig(BaseModel):
     enabled: bool = True
     target_limit: int = Field(default=50000, ge=1)
     target_limits: dict[str, int] = Field(default_factory=dict)
-    stale_priority_limit: int = Field(default=2000, ge=0)
-    rank_position_weight: float = Field(default=1.0, ge=0)
-    rank_position_power: float = Field(default=0.5, ge=0)
-    rank_position_max_multiplier: float = Field(default=10.0, ge=1)
-    reason_weights: dict[str, float] = Field(default_factory=dict)
-    stale_age_weight: float = Field(default=0.2, ge=0)
+    stale_age_weight: float = Field(default=0.08, ge=0)
     stale_age_max_multiplier: float = Field(default=5.0, ge=1)
     page_size: int = Field(default=100, ge=1)
     pages_per_run: int = Field(default=10, ge=1)
@@ -185,20 +180,6 @@ class RankPageRefreshConfig(BaseModel):
     @classmethod
     def validate_target_limits(cls, value: dict[str, int]) -> dict[str, int]:
         return {key: limit for key, limit in value.items() if key and limit >= 1}
-
-    @field_validator("reason_weights", mode="before")
-    @classmethod
-    def normalize_reason_weights(cls, value: object) -> object:
-        if value is None:
-            return {}
-        if not isinstance(value, dict):
-            return value
-        return {str(key).strip(): float(weight) for key, weight in value.items()}
-
-    @field_validator("reason_weights")
-    @classmethod
-    def validate_reason_weights(cls, value: dict[str, float]) -> dict[str, float]:
-        return {key: weight for key, weight in value.items() if key and weight > 0}
 
 
 class RankQueryConfig(BaseModel):

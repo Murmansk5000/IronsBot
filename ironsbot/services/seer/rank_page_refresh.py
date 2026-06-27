@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from math import log1p, sqrt
 from typing import TYPE_CHECKING
 
 from ironsbot.config import get_app_config
@@ -32,23 +33,6 @@ REFRESH_REASONS = (
     REFRESH_REASON_PARTIAL,
     REFRESH_REASON_STALE,
 )
-DEFAULT_REASON_WEIGHTS = {
-    REFRESH_REASON_MISSING: 1.0,
-    REFRESH_REASON_PARTIAL: 1.2,
-    REFRESH_REASON_STALE: 1.0,
-}
-REASON_WEIGHT_ALIASES = {
-    "missing": REFRESH_REASON_MISSING,
-    "缺失": REFRESH_REASON_MISSING,
-    "partial": REFRESH_REASON_PARTIAL,
-    "部分": REFRESH_REASON_PARTIAL,
-    "部分缺失": REFRESH_REASON_PARTIAL,
-    "stale": REFRESH_REASON_STALE,
-    "expired": REFRESH_REASON_STALE,
-    "过期": REFRESH_REASON_STALE,
-}
-
-
 @dataclass(frozen=True, slots=True)
 class RankPageRefreshTarget:
     rank_key: str
@@ -98,15 +82,6 @@ def get_rank_page_refresh_config() -> RankPageRefreshConfig:
 
 def rank_target_limit(config: RankPageRefreshConfig, rank_key: str) -> int:
     return config.target_limits.get(rank_key, config.target_limit)
-
-
-def _reason_weight(config: RankPageRefreshConfig, reason: str) -> float:
-    weights = dict(DEFAULT_REASON_WEIGHTS)
-    for raw_key, weight in config.reason_weights.items():
-        key = REASON_WEIGHT_ALIASES.get(raw_key.strip().lower(), raw_key.strip())
-        if key in REFRESH_REASONS:
-            weights[key] = weight
-    return weights.get(reason, 1.0)
 
 
 def configured_rank_specs(
@@ -175,56 +150,9 @@ def _page_defect_ratio(
     return max(expected_count - item_count, 0) / expected_count
 
 
-def _overlap_ratio(
-    *,
-    page_start: int,
-    page_end: int,
-    band_start: int,
-    band_end: int,
-) -> float:
-    overlap_start = max(page_start, band_start)
-    overlap_end = min(page_end, band_end)
-    if overlap_end < overlap_start:
-        return 0.0
-    page_size = max(page_end - page_start + 1, 1)
-    return (overlap_end - overlap_start + 1) / page_size
-
-
-def _rank_position_multiplier(
-    config: RankPageRefreshConfig,
-    *,
-    start_rank: int,
-    end_rank: int,
-    target_limit: int,
-) -> float:
-    if config.rank_position_weight <= 0 or config.rank_position_power <= 0:
-        return 1.0
-    midpoint = max((start_rank + end_rank) / 2, 1.0)
-    ratio = max(target_limit / midpoint, 1.0)
-    multiplier = 1.0 + config.rank_position_weight * (
-        ratio**config.rank_position_power - 1.0
-    )
-    return min(multiplier, config.rank_position_max_multiplier)
-
-
-def _front_stale_priority_weight(
-    config: RankPageRefreshConfig,
-    *,
-    start_rank: int,
-    end_rank: int,
-    reason: str,
-) -> float:
-    if config.stale_priority_limit <= 0 or reason == REFRESH_REASON_MISSING:
-        return 1.0
-    ratio = _overlap_ratio(
-        page_start=start_rank,
-        page_end=end_rank,
-        band_start=1,
-        band_end=config.stale_priority_limit,
-    )
-    if ratio <= 0:
-        return 1.0
-    return 1.0 + ratio
+def _rank_position_score(*, end_rank: int, page_size: int) -> float:
+    page_index = max((end_rank + page_size - 1) // page_size, 1)
+    return 1 / sqrt(page_index)
 
 
 def _stale_age_multiplier(
@@ -238,8 +166,8 @@ def _stale_age_multiplier(
     age_seconds = max(time.time() - page.fetched_at, 0.0)
     if age_seconds <= stale_after_seconds:
         return 1.0
-    overdue_units = (age_seconds - stale_after_seconds) / stale_after_seconds
-    multiplier = 1.0 + overdue_units * config.stale_age_weight
+    overdue_hours = (age_seconds - stale_after_seconds) / 3600
+    multiplier = 1.0 + log1p(overdue_hours) * config.stale_age_weight
     return min(multiplier, config.stale_age_max_multiplier)
 
 
@@ -248,23 +176,13 @@ def _rank_page_candidate_score(
     *,
     target: RankPageRefreshTarget,
     page: CachedRankPageSummary | None,
-    target_limit: int,
     stale_after_seconds: int,
 ) -> float:
     return (
-        _rank_position_multiplier(
-            config,
-            start_rank=target.start_rank,
+        _rank_position_score(
             end_rank=target.end_rank,
-            target_limit=target_limit,
+            page_size=config.page_size,
         )
-        * _front_stale_priority_weight(
-            config,
-            start_rank=target.start_rank,
-            end_rank=target.end_rank,
-            reason=target.reason,
-        )
-        * _reason_weight(config, target.reason)
         * _page_defect_ratio(page, reason=target.reason)
         * _stale_age_multiplier(
             config,
@@ -310,7 +228,6 @@ def _build_rank_page_candidates(  # noqa: PLR0913
                     config,
                     target=target,
                     page=page,
-                    target_limit=target_limit,
                     stale_after_seconds=stale_after_seconds,
                 ),
                 rank_order=rank_order,
