@@ -156,8 +156,10 @@ class ServerStatusPlugin:
             )
             return
         if context.action == "disabled_bare_admin":
-            logger.info(
-                "bare server status command ignored: admin command is /开服查询"
+            await finish_event_reply(
+                context.matcher or disabled_bare_admin_status_matcher,
+                event,
+                str(__plugin_meta__.usage or "暂无详细帮助。"),
             )
             return
         if context.action == "admin":

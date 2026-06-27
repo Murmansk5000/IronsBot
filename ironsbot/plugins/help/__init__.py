@@ -14,6 +14,7 @@ from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.config import AppConfig, get_app_config
+from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
@@ -69,20 +70,20 @@ HELP_GROUP_TITLES = {
 }
 HELP_ENTRY_ORDER = {
     "帮助": ("core", 10),
-    "关于 IronsBot": ("core", 20),
-    "扩展赛尔号查询": ("seer", 10),
-    "榜单查询帮助": ("seer", 20),
-    "发图": ("seer", 30),
+    "关于": ("core", 20),
+    "赛尔号查询": ("seer", 10),
+    "榜单": ("seer", 20),
+    "图片发送": ("seer", 30),
     "活动结束提醒": ("message", 10),
-    "B站动态监控": ("message", 20),
-    "文本消息动作": ("message", 30),
+    "B站动态": ("message", 20),
+    "文本发送": ("message", 30),
     "会议回复": ("message", 40),
     "AI聊天": ("ai_team", 10),
-    "AI 意图动作": ("ai_team", 20),
+    "AI意图分析": ("ai_team", 20),
     "战队推荐": ("ai_team", 30),
-    "战队快捷查询": ("ai_team", 40),
+    "战队快捷": ("ai_team", 40),
     "战队审核入群提示": ("ai_team", 50),
-    "开服状态": ("admin", 10),
+    "开服查询": ("admin", 10),
     "数据库同步": ("admin", 20),
     "自定义无头登录": ("admin", 30),
 }
@@ -218,7 +219,10 @@ def _format_plugin_list(entries: list[HelpEntry]) -> str:
     return "\n".join(lines)
 
 
-def _format_plugin_detail(entry: HelpEntry) -> str:
+def _format_plugin_detail(entry: HelpEntry, event: Event) -> str:
+    if entry.key.startswith("ironsbot.plugins.seer.query"):
+        return f"📖 {entry.name}\n\n{build_seer_query_usage_message(event)}"
+
     return f"📖 {entry.name}\n\n{entry.usage}"
 
 
@@ -329,7 +333,7 @@ def _create_selection_handler(
         await _send_help_reply(
             matcher,
             event,
-            _format_plugin_detail(entries[index - 1]),
+            _format_plugin_detail(entries[index - 1], event),
         )
 
         rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)

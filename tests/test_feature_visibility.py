@@ -64,12 +64,12 @@ def test_feature_module_visibility_uses_feature_service(
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "is_event_feature_allowed",
+        "group_has_feature",
         lambda _event, feature: feature == "seer",
     )
 
     assert visibility.plugin_visible_for_event(
-        "扩展赛尔号查询",
+        "赛尔号查询",
         "ironsbot.plugins.seer.query",
         _group_event(),
     )
@@ -85,13 +85,29 @@ def test_seer_query_visible_when_any_seer_subfeature_allowed(
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "is_event_feature_allowed",
+        "group_has_feature",
         lambda _event, feature: feature == "seer_pet",
     )
 
     assert visibility.plugin_visible_for_event(
-        "扩展赛尔号查询",
+        "赛尔号查询",
         "ironsbot.plugins.seer.query",
+        _group_event(),
+    )
+
+
+def test_rank_help_visible_when_seer_rank_allowed(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        visibility,
+        "group_has_feature",
+        lambda _event, feature: feature == "seer_rank",
+    )
+
+    assert visibility.plugin_visible_for_event(
+        "榜单",
+        "ironsbot.plugins.seer.rank_help",
         _group_event(),
     )
 
@@ -106,8 +122,8 @@ def test_messaging_visibility_reads_app_config(
     )
     monkeypatch.setattr(
         visibility,
-        "is_group_feature_allowed",
-        lambda _user_id, _group_id, feature: feature == "text",
+        "group_has_feature",
+        lambda _group_id, feature: feature == "text",
     )
 
     assert visibility.plugin_visible_for_event(
@@ -132,7 +148,7 @@ def test_ai_intent_visibility_requires_key_and_feature(
     )
     monkeypatch.setattr(
         visibility,
-        "is_event_feature_allowed",
+        "group_has_feature",
         lambda _event, feature: feature == "ai_intent",
     )
 
@@ -163,8 +179,8 @@ def test_team_shortcut_visibility_reads_app_config(
     )
     monkeypatch.setattr(
         visibility,
-        "is_group_feature_allowed",
-        lambda _user_id, _group_id, feature: feature == "team",
+        "group_has_feature",
+        lambda _group_id, feature: feature == "team",
     )
 
     assert visibility.plugin_visible_for_event(
