@@ -128,11 +128,10 @@ def test_select_rank_page_refresh_targets_uses_stale_after_complete_pages() -> N
     ]
 
 
-def test_select_rank_page_refresh_targets_prioritizes_front_stale_pages() -> None:
+def test_select_rank_page_refresh_targets_prioritizes_front_pages_by_index() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(
         target_limit=500,
-        stale_priority_limit=200,
         page_size=100,
         pages_per_run=2,
         refresh_stale_after_hours=24,
@@ -169,11 +168,10 @@ def test_select_rank_page_refresh_targets_prioritizes_front_stale_pages() -> Non
     ]
 
 
-def test_select_rank_page_refresh_targets_uses_rank_position_weight() -> None:
+def test_select_rank_page_refresh_targets_uses_rank_position_page_index() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(
         target_limit=5000,
-        stale_priority_limit=0,
         page_size=100,
         pages_per_run=2,
         refresh_stale_after_hours=24,
@@ -208,7 +206,6 @@ def test_select_rank_page_refresh_targets_scores_partial_by_missing_ratio() -> N
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(
         target_limit=300,
-        stale_priority_limit=0,
         page_size=100,
         pages_per_run=1,
         refresh_stale_after_hours=24,
@@ -248,7 +245,6 @@ def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> N
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(
         target_limit=300,
-        stale_priority_limit=0,
         stale_age_weight=2.0,
         stale_age_max_multiplier=10.0,
         page_size=100,
@@ -294,12 +290,52 @@ def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> N
     ]
 
 
+def test_select_rank_page_refresh_targets_caps_stale_age_score() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    config = RankPageRefreshConfig(
+        target_limit=200,
+        stale_age_weight=100.0,
+        stale_age_max_multiplier=2.0,
+        page_size=100,
+        pages_per_run=1,
+        refresh_stale_after_hours=24,
+    )
+    pages = [
+        SimpleNamespace(
+            start_index=0,
+            end_index=99,
+            item_count=100,
+            expected_count=100,
+            fetched_at=time.time() - 25 * 3600,
+            is_partial=False,
+        ),
+        SimpleNamespace(
+            start_index=100,
+            end_index=199,
+            item_count=100,
+            expected_count=100,
+            fetched_at=time.time() - 240 * 3600,
+            is_partial=False,
+        ),
+    ]
+
+    targets = select_rank_page_refresh_targets(
+        [("测试", spec)],
+        {"测试": pages},
+        config=config,
+    )
+
+    actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
+    assert actual == [
+        (REFRESH_REASON_STALE, 1, 100)
+    ]
+
+
 def test_rank_page_refresh_uses_per_rank_target_limit() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(
         target_limit=500,
         target_limits={"测试": PER_RANK_TARGET_LIMIT},
-        stale_priority_limit=0,
         page_size=100,
         pages_per_run=5,
     )

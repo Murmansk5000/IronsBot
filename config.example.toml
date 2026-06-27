@@ -489,31 +489,12 @@ target_limit = 50000
 # ZH: 可选的按榜单单独设置缓存目标；键写全服榜名称。
 target_limits = {}
 # Example: target_limits = { "群星牌" = 10000, "成就点数" = 50000 }
-# Default: 2000
-# EN: Refresh stale/partial pages within the top N before filling deeper missing pages.
-# ZH: 前 N 名内的过期页/部分缺失页优先刷新，再补更后面的缺失页。
-stale_priority_limit = 2000
-# Default: 1.0
-# EN: Strength of automatic rank-position priority. 0 disables rank-position weighting.
-# ZH: 自动名次权重强度；越大越偏向前排页面，0 表示关闭名次权重。
-rank_position_weight = 1.0
-# Default: 0.5
-# EN: Curve of automatic rank-position priority. Higher values make top ranks more dominant.
-# ZH: 自动名次权重曲线；越大越偏向极前排。
-rank_position_power = 0.5
-# Default: 10.0
-# EN: Maximum score multiplier from rank position.
-# ZH: 名次位置带来的最大分数倍率，防止前排页面完全压死后排。
-rank_position_max_multiplier = 10.0
-# Default: {}
-# EN: Optional page-state weights. Keys can be missing/partial/stale or 缺失/部分/过期.
-# ZH: 可选的页面状态权重；键可以写 missing/partial/stale 或 缺失/部分/过期。
-reason_weights = {}
-# Example: reason_weights = { "缺失" = 1.0, "部分" = 1.2, "过期" = 1.0 }
-# Default: 0.2
-# EN: Extra score added for stale pages per overdue TTL period.
-# ZH: 过期页面每多超过 1 个 TTL 周期，额外增加多少分数倍率。
-stale_age_weight = 0.2
+# EN: Rank-position score is calculated automatically as 1 / sqrt(page_index).
+# ZH: 名次位置分数自动按页序号平方根衰减，例如 1-100 为 1，101-200 约 0.707，1901-2000 约 0.224。
+# Default: 0.08
+# EN: Extra stale-page multiplier strength. Uses ln(1 + overdue_hours).
+# ZH: 过期页面倍率强度；按 ln(1 + 过期小时数) 增长，避免极旧页面差距过大。
+stale_age_weight = 0.08
 # Default: 5.0
 # EN: Maximum score multiplier from stale age.
 # ZH: 过期时间带来的最大分数倍率，防止极旧页面一直霸占刷新。
