@@ -344,16 +344,16 @@ def format_refresh_ranges(ranges: Sequence[tuple[str, int, int]]) -> str:
 
 
 def build_rank_page_cache_overview_message(
-    entries: Sequence[tuple[str, GlobalRankSpec, Sequence[Any], Sequence[Any]]],
-    *,
-    target_limit: int,
+    entries: Sequence[
+        tuple[str, GlobalRankSpec, Sequence[Any], Sequence[Any], int]
+    ],
 ) -> str:
-    lines = [f"📦【榜单页缓存】目标：前 {target_limit} 名"]
+    lines = ["📦【榜单页缓存】"]
     if not entries:
         lines.append("没有配置可刷新的全服榜。")
         return "\n".join(lines)
 
-    for _rank_key, spec, pages, targets in entries:
+    for _rank_key, spec, pages, targets, target_limit in entries:
         cached_count = sum(page.item_count for page in pages)
         partial_count = sum(1 for page in pages if getattr(page, "is_partial", False))
         stale_count = sum(1 for page in pages if getattr(page, "is_stale", False))

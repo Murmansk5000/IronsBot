@@ -28,6 +28,12 @@ DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
+DEFAULT_RANK_STALE_PRIORITY_LIMIT = 2000
+DEFAULT_RANK_POSITION_WEIGHT = 1.0
+DEFAULT_RANK_POSITION_POWER = 0.5
+DEFAULT_RANK_POSITION_MAX_MULTIPLIER = 10.0
+DEFAULT_RANK_STALE_AGE_WEIGHT = 0.2
+DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_SEER_PLAYER_PRIORITY = 5
 
@@ -68,6 +74,32 @@ def test_example_config_parses() -> None:
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}
     assert "群星牌" in config.seer.rank.page_refresh.rank_keys
+    assert config.seer.rank.page_refresh.target_limits == {}
+    assert (
+        config.seer.rank.page_refresh.rank_position_weight
+        == DEFAULT_RANK_POSITION_WEIGHT
+    )
+    assert (
+        config.seer.rank.page_refresh.rank_position_power
+        == DEFAULT_RANK_POSITION_POWER
+    )
+    assert (
+        config.seer.rank.page_refresh.rank_position_max_multiplier
+        == DEFAULT_RANK_POSITION_MAX_MULTIPLIER
+    )
+    assert config.seer.rank.page_refresh.reason_weights == {}
+    assert (
+        config.seer.rank.page_refresh.stale_priority_limit
+        == DEFAULT_RANK_STALE_PRIORITY_LIMIT
+    )
+    assert (
+        config.seer.rank.page_refresh.stale_age_weight
+        == DEFAULT_RANK_STALE_AGE_WEIGHT
+    )
+    assert (
+        config.seer.rank.page_refresh.stale_age_max_multiplier
+        == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
+    )
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled

@@ -350,11 +350,11 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
                 spec,
                 [SimpleNamespace(item_count=100, is_partial=False, is_stale=False)],
                 [target],
+                500,
             )
         ],
-        target_limit=500,
     ) == (
-        "📦【榜单页缓存】目标：前 500 名\n"
+        "📦【榜单页缓存】\n"
         "测试榜：100/500 名，部分 0 页，过期 0 页，下一刷 缺失:101-200"
     )
     assert build_rank_page_refresh_start_message(
