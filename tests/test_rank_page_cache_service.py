@@ -6,12 +6,17 @@ from pytest import MonkeyPatch
 from ironsbot.services.seer import rank_page_cache
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
+    get_cached_rank_item_by_index,
+    get_cached_rank_page_result,
     get_rank_page_cache_summary,
     save_rank_page,
 )
 
 MOVED_RANK_INDEX = 100
 MOVED_SCORE = 1001
+FETCHED_AT = 1_781_234_567.0
+CACHED_PAGE_LOOKUP_INDEX = 123
+CACHED_PAGE_LOOKUP_SCORE = 977
 
 
 def test_save_rank_page_deduplicates_user_within_same_rank(
@@ -60,3 +65,76 @@ def test_save_rank_page_deduplicates_user_within_same_rank(
         (0, 0, 1, True),
         (100, 1, 1, False),
     ]
+
+
+def test_cached_rank_page_result_preserves_fetched_at(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "rank_page_cache.sqlite"
+    monkeypatch.setattr(
+        rank_page_cache,
+        "get_rank_query_config",
+        lambda: SimpleNamespace(
+            page_cache=True,
+            page_cache_path=cache_path,
+            page_cache_ttl_seconds=3600,
+            allow_stale_cache=True,
+        ),
+    )
+
+    save_rank_page(
+        key=1,
+        sub_key=2,
+        start=0,
+        end=0,
+        items=[SimpleNamespace(id=100, nick="Alice", score=999)],
+        fetched_at=FETCHED_AT,
+    )
+
+    cached = get_cached_rank_page_result(key=1, sub_key=2, start=0, end=0)
+
+    assert cached is not None
+    assert cached.fetched_at == FETCHED_AT
+    assert cached.items[0].nick == "Alice"
+
+
+def test_cached_rank_item_by_index_reads_containing_page(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "rank_page_cache.sqlite"
+    monkeypatch.setattr(
+        rank_page_cache,
+        "get_rank_query_config",
+        lambda: SimpleNamespace(
+            page_cache=True,
+            page_cache_path=cache_path,
+            page_cache_ttl_seconds=3600,
+            allow_stale_cache=True,
+        ),
+    )
+
+    save_rank_page(
+        key=1,
+        sub_key=2,
+        start=100,
+        end=199,
+        items=[
+            SimpleNamespace(id=100 + index, nick=f"Player{index}", score=1000 - index)
+            for index in range(100)
+        ],
+        fetched_at=FETCHED_AT,
+    )
+
+    cached = get_cached_rank_item_by_index(
+        key=1,
+        sub_key=2,
+        rank_index=CACHED_PAGE_LOOKUP_INDEX,
+    )
+
+    assert cached is not None
+    assert cached.id == CACHED_PAGE_LOOKUP_INDEX
+    assert cached.rank_index == CACHED_PAGE_LOOKUP_INDEX
+    assert cached.score == CACHED_PAGE_LOOKUP_SCORE
+    assert cached.fetched_at == FETCHED_AT

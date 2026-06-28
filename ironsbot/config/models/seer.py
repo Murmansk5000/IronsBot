@@ -198,6 +198,8 @@ class RankQueryConfig(BaseModel):
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
     refresh_stale_cache: bool = True
+    score_search_probe_limit: int = Field(default=32, ge=1)
+    score_search_tie_page_limit: int = Field(default=5, ge=1)
     page_cache_path: Path = Path("data/seer/rank_page_cache.sqlite")
     peak_subkey: int | None = Field(default=None, ge=0)
     page_refresh: RankPageRefreshConfig = Field(
@@ -290,6 +292,25 @@ class RenderConfig(BaseModel):
     clear_on_startup: bool = True
 
 
+class SeasonCountdownConfig(BaseModel):
+    autocard_name: str = "群星牌赛季"
+    autocard_start_time: object | None = None
+    autocard_end_time: object | None = None
+
+    @field_validator("autocard_start_time", "autocard_end_time", mode="before")
+    @classmethod
+    def empty_time_as_none(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        from datetime import datetime
+
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            return datetime.fromisoformat(value)
+        raise ValueError("season time must be an ISO datetime")  # noqa: TRY003
+
+
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -300,6 +321,7 @@ class SeerConfig(BaseModel):
     local_rank: LocalRankConfig = Field(default_factory=LocalRankConfig)
     team_shortcut: TeamShortcutConfig = Field(default_factory=TeamShortcutConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
+    season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
 
 
 __all__ = [
@@ -312,6 +334,7 @@ __all__ = [
     "RankPageRefreshConfig",
     "RankQueryConfig",
     "RenderConfig",
+    "SeasonCountdownConfig",
     "SeerConfig",
     "TeamConfig",
     "TeamQueryConfig",

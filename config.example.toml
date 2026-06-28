@@ -452,6 +452,10 @@ page_cache_ttl_seconds = 3600
 allow_stale_cache = true
 # Default: true; EN: Refresh stale rank cache. ZH: 刷新过期缓存。
 refresh_stale_cache = true
+# Default: 32; EN: Max point probes for score-based binary rank lookup.
+score_search_probe_limit = 32
+# Default: 5; EN: Max tied-score pages scanned after binary lookup.
+score_search_tie_page_limit = 5
 # Default: "data/seer/rank_page_cache.sqlite"
 # EN: Rank page cache SQLite path.
 # ZH: 榜单分页缓存数据库。
@@ -519,6 +523,20 @@ rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "�
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
 refresh_stale_after_hours = 24
+
+[seer.season]
+# Default: "群星牌赛季"
+# EN: Display name for the autocard season countdown.
+# ZH: 群星牌赛季倒计时显示名称。
+autocard_name = "群星牌赛季"
+# Default: omitted/null
+# EN: Optional autocard season start time. Database currently does not provide it.
+# ZH: 可选的群星牌赛季开始时间；当前数据库暂未收录官方字段。
+# autocard_start_time = 2026-06-20T10:00:00+08:00
+# Default: omitted/null
+# EN: Optional autocard season end time. Fill it to show autocard countdown.
+# ZH: 可选的群星牌赛季结束时间；填写后“赛季倒计时”会显示群星牌剩余时间。
+# autocard_end_time = 2026-07-17T10:00:00+08:00
 
 [seer.local_rank]
 # Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。

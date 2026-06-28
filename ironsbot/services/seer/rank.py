@@ -36,12 +36,15 @@ from ironsbot.services.seer.rank_constants import (
 )
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
-    get_cached_rank_page,
+    get_cached_rank_item_by_index,
+    get_cached_rank_page_result,
     save_rank_page,
 )
 
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
+DEFAULT_SCORE_SEARCH_PROBE_LIMIT = 32
+DEFAULT_SCORE_SEARCH_TIE_PAGE_LIMIT = 5
 _RANK_WINDOW_REFRESH_KEYS: set[tuple[int, int, int, int]] = set()
 _RANK_WINDOW_REFRESH_TASKS: set[asyncio.Task[None]] = set()
 
@@ -66,6 +69,12 @@ class RankLookupResult:
     score: int | None = None
     searched_limit: int = 0
     queried: bool = False
+
+
+@dataclass(slots=True)
+class RankPageResult:
+    items: list[Any]
+    fetched_at: float
 
 
 @dataclass(slots=True)
@@ -142,6 +151,46 @@ class PeakSeasonRankSummary:
         )
 
 
+async def _fetch_rank_page_result(  # noqa: PLR0913
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    start: int,
+    end: int,
+    use_cache: bool = True,
+) -> RankPageResult:
+    if use_cache:
+        cached_page = get_cached_rank_page_result(
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=end,
+        )
+        if cached_page is not None:
+            return RankPageResult(
+                items=list(cached_page.items),
+                fetched_at=cached_page.fetched_at,
+            )
+
+    _head, rank_list = await game.send_and_wait(
+        COMMAND_ID.GET_DAILY_RANK_INFO,
+        DailyRankParam(key=key, sub_key=sub_key, start=start, end=end),
+        timeout=15.0,
+    )
+    fetched_at = time.time()
+    items = list(rank_list.rank_list)
+    save_rank_page(
+        key=key,
+        sub_key=sub_key,
+        start=start,
+        end=end,
+        items=items,
+        fetched_at=fetched_at,
+    )
+    return RankPageResult(items=items, fetched_at=fetched_at)
+
+
 async def _fetch_rank_page(  # noqa: PLR0913
     game: Any,
     *,
@@ -151,24 +200,15 @@ async def _fetch_rank_page(  # noqa: PLR0913
     end: int,
     use_cache: bool = True,
 ) -> list[Any]:
-    if use_cache:
-        cached_items = get_cached_rank_page(
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-        )
-        if cached_items is not None:
-            return cached_items
-
-    _head, rank_list = await game.send_and_wait(
-        COMMAND_ID.GET_DAILY_RANK_INFO,
-        DailyRankParam(key=key, sub_key=sub_key, start=start, end=end),
-        timeout=15.0,
+    result = await _fetch_rank_page_result(
+        game,
+        key=key,
+        sub_key=sub_key,
+        start=start,
+        end=end,
+        use_cache=use_cache,
     )
-    items = list(rank_list.rank_list)
-    save_rank_page(key=key, sub_key=sub_key, start=start, end=end, items=items)
-    return items
+    return result.items
 
 
 def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:
@@ -289,6 +329,14 @@ async def _fetch_rank_item(
     sub_key: int,
     index: int,
 ) -> Any | None:
+    cached_item = get_cached_rank_item_by_index(
+        key=key,
+        sub_key=sub_key,
+        rank_index=index,
+    )
+    if cached_item is not None:
+        return cached_item
+
     items = await _fetch_rank_page(
         game,
         key=key,
@@ -311,7 +359,30 @@ async def fetch_daily_rank_page(  # noqa: PLR0913
     if count <= 0:
         return []
 
-    return await _fetch_rank_page(
+    result = await fetch_daily_rank_page_result(
+        game,
+        key=key,
+        sub_key=sub_key,
+        start=start,
+        count=count,
+        use_cache=use_cache,
+    )
+    return result.items
+
+
+async def fetch_daily_rank_page_result(  # noqa: PLR0913
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    start: int,
+    count: int,
+    use_cache: bool = True,
+) -> RankPageResult:
+    if count <= 0:
+        return RankPageResult(items=[], fetched_at=time.time())
+
+    return await _fetch_rank_page_result(
         game,
         key=key,
         sub_key=sub_key,
@@ -387,7 +458,33 @@ async def _find_rank_by_linear_scan(  # noqa: PLR0913
     return result
 
 
-async def _find_rank_by_score(  # noqa: C901, PLR0913
+class RankSearchBudgetExhaustedError(RuntimeError):
+    pass
+
+
+def _score_search_probe_limit(limit: int) -> int:
+    configured = int(
+        getattr(
+            get_rank_query_config(),
+            "score_search_probe_limit",
+            DEFAULT_SCORE_SEARCH_PROBE_LIMIT,
+        )
+    )
+    return max(1, min(configured, max(limit, 1)))
+
+
+def _score_search_tie_page_limit() -> int:
+    configured = int(
+        getattr(
+            get_rank_query_config(),
+            "score_search_tie_page_limit",
+            DEFAULT_SCORE_SEARCH_TIE_PAGE_LIMIT,
+        )
+    )
+    return max(1, configured)
+
+
+async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
     game: Any,
     *,
     user_id: int,
@@ -399,42 +496,81 @@ async def _find_rank_by_score(  # noqa: C901, PLR0913
     result: RankLookupResult,
 ) -> RankLookupResult:
     result.score = target_score
+    remaining_probes = _score_search_probe_limit(limit)
+    item_cache: dict[int, Any | None] = {}
+
+    async def item_at(index: int) -> Any | None:
+        nonlocal remaining_probes
+
+        if index in item_cache:
+            return item_cache[index]
+
+        if remaining_probes <= 0:
+            raise RankSearchBudgetExhaustedError
+
+        remaining_probes -= 1
+        item = await _fetch_rank_item(game, key=key, sub_key=sub_key, index=index)
+        item_cache[index] = item
+        return item
 
     async def score_at(index: int) -> int | None:
-        item = await _fetch_rank_item(game, key=key, sub_key=sub_key, index=index)
+        item = await item_at(index)
         return None if item is None else item.score
+
+    try:
+        boundary_score = await score_at(limit - 1)
+    except RankSearchBudgetExhaustedError:
+        return result
+
+    if boundary_score is None or target_score < boundary_score:
+        return result
 
     low = 0
     high = limit
-    while low < high:
-        mid = (low + high) // 2
-        score = await score_at(mid)
-        if score is None or score <= target_score:
-            high = mid
-        else:
-            low = mid + 1
+    try:
+        while low < high:
+            mid = (low + high) // 2
+            score = await score_at(mid)
+            if score is None or score <= target_score:
+                high = mid
+            else:
+                low = mid + 1
+    except RankSearchBudgetExhaustedError:
+        return result
 
     first_same_or_lower = low
     if first_same_or_lower >= limit:
         return result
 
-    first_score = await score_at(first_same_or_lower)
+    try:
+        first_score = await score_at(first_same_or_lower)
+    except RankSearchBudgetExhaustedError:
+        return result
     if first_score != target_score:
         return result
 
     low = first_same_or_lower
     high = limit
-    while low < high:
-        mid = (low + high) // 2
-        score = await score_at(mid)
-        if score is None or score < target_score:
-            high = mid
-        else:
-            low = mid + 1
+    tie_end = limit
+    try:
+        while low < high:
+            mid = (low + high) // 2
+            score = await score_at(mid)
+            if score is None or score < target_score:
+                high = mid
+            else:
+                low = mid + 1
+        tie_end = low
+    except RankSearchBudgetExhaustedError:
+        tie_end = min(
+            limit,
+            first_same_or_lower + page_size * _score_search_tie_page_limit(),
+        )
 
-    tie_end = min(low, limit)
+    tie_end = min(tie_end, limit)
     start = first_same_or_lower
-    while start < tie_end:
+    remaining_tie_pages = _score_search_tie_page_limit()
+    while start < tie_end and remaining_tie_pages > 0:
         end = min(start + page_size - 1, tie_end - 1)
         items = await _fetch_rank_page(
             game,
@@ -453,6 +589,7 @@ async def _find_rank_by_score(  # noqa: C901, PLR0913
         if len(items) < end - start + 1:
             return result
 
+        remaining_tie_pages -= 1
         start = end + 1
 
     return result

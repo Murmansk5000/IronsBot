@@ -28,6 +28,7 @@ from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
+from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.shared.messaging import finish_event_reply
@@ -65,6 +66,7 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "pet_info": "_handle_pet_info",
     "preview": "_handle_preview",
     "data_version": "_handle_data_version",
+    "season_countdown": "_handle_season_countdown",
     "mintmark": "_handle_mintmark",
     "gem": "_handle_gem",
     "type": "_handle_type",
@@ -233,6 +235,17 @@ class UpstreamQueryPlugin:
             matcher=matcher,
             session=context.data["session"],
         )
+
+    async def _handle_season_countdown(
+        self,
+        matcher: Matcher,
+        event: Event,
+        context: PluginContext,
+    ) -> None:
+        message = format_season_countdown(context.data["session"])
+        if isinstance(event, MessageEvent):
+            await finish_event_reply(matcher, event, message)
+        await matcher.finish(message)
 
     async def _handle_mintmark(
         self,
@@ -980,5 +993,27 @@ async def _handle_data_version(
         event=event,
         matcher=matcher,
         action="data_version",
+        session=session,
+    )
+
+
+season_countdown_matcher = matcher_group.on_fullmatch(
+    ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
+    rule=seer_feature_rule("seer_data") & no_reply(),
+    priority=seer_feature_priority("seer_data"),
+)
+
+
+@season_countdown_matcher.handle()
+async def _handle_season_countdown(
+    matcher: Matcher,
+    event: Event,
+    session: SeerAPISession,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        action="season_countdown",
         session=session,
     )

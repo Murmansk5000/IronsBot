@@ -79,6 +79,9 @@ def test_example_config_parses() -> None:
         config.seer.rank.page_refresh.stale_age_max_multiplier
         == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
     )
+    assert config.seer.season.autocard_name == "群星牌赛季"
+    assert config.seer.season.autocard_start_time is None
+    assert config.seer.season.autocard_end_time is None
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
