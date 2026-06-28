@@ -29,6 +29,7 @@ from ironsbot.services.seer.rank_list import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    timestamp_text,
     with_admin_prefix,
 )
 
@@ -165,6 +166,10 @@ def test_with_admin_prefix_adds_slash_to_commands() -> None:
         "/样本情况",
         "/刷新样本",
     )
+
+
+def test_timestamp_text_uses_china_timezone() -> None:
+    assert timestamp_text(0) == "1970-01-01 08:00:00"
 
 
 def test_format_global_rank_line_applies_spec_rank_offset() -> None:

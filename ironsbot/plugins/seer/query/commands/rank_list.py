@@ -19,6 +19,7 @@ from ironsbot.services.seer.local_rank_refresh import (
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank import (
     fetch_daily_rank_page,
+    fetch_daily_rank_page_result,
     get_current_peak_sub_key,
 )
 from ironsbot.services.seer.rank_display import (
@@ -56,6 +57,7 @@ from ironsbot.services.seer.rank_list import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    timestamp_text,
     with_admin_prefix,
 )
 from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
@@ -207,7 +209,7 @@ async def _build_global_rank_message(
     command: RankListCommand,
 ) -> str:
     game = get_game_client()
-    items = await fetch_daily_rank_page(
+    result = await fetch_daily_rank_page_result(
         game,
         key=spec.key,
         sub_key=spec.sub_key,
@@ -216,7 +218,8 @@ async def _build_global_rank_message(
     )
     return format_global_rank_message(
         spec,
-        items,
+        result.items,
+        timestamp=timestamp_text(result.fetched_at),
         start_rank=command.start_rank,
         requested_count=command.limit,
     )

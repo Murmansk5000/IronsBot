@@ -164,6 +164,11 @@ def now_text() -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def timestamp_text(timestamp: float) -> str:
+    value = datetime.fromtimestamp(timestamp, timezone(timedelta(hours=8)))
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def format_global_rank_line(
     item: Any,
     *,

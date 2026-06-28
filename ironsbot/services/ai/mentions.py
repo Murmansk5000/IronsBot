@@ -78,6 +78,9 @@ def _has_explicit_bot_at(event: GroupMessageEvent, self_id: str) -> bool:
 
 
 def mentions_bot(event: GroupMessageEvent) -> bool:
+    if _has_reply(event):
+        return False
+
     self_id = _event_self_id(event)
     if not self_id:
         return False
@@ -86,5 +89,5 @@ def mentions_bot(event: GroupMessageEvent) -> bool:
         return True
 
     # OneBot v11 preprocessing may strip a leading @bot segment and only leave
-    # the to_me flag. Treat that as a mention unless it was only a reply.
-    return _event_is_to_me(event) and not _has_reply(event)
+    # the to_me flag. Reply events were filtered above.
+    return _event_is_to_me(event)

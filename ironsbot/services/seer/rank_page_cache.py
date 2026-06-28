@@ -23,6 +23,12 @@ class CachedRankItem:
 
 
 @dataclass(frozen=True, slots=True)
+class CachedRankPage:
+    items: list[CachedRankItem]
+    fetched_at: float
+
+
+@dataclass(frozen=True, slots=True)
 class CachedRankLookup:
     id: int
     nick: str
@@ -102,6 +108,24 @@ def get_cached_rank_page(
     end: int,
     allow_stale: bool | None = None,
 ) -> list[CachedRankItem] | None:
+    page = get_cached_rank_page_result(
+        key=key,
+        sub_key=sub_key,
+        start=start,
+        end=end,
+        allow_stale=allow_stale,
+    )
+    return None if page is None else page.items
+
+
+def get_cached_rank_page_result(
+    *,
+    key: int,
+    sub_key: int,
+    start: int,
+    end: int,
+    allow_stale: bool | None = None,
+) -> CachedRankPage | None:
     if not _is_cache_enabled():
         return None
 
@@ -148,10 +172,13 @@ def get_cached_rank_page(
             if len(rows) != int(item_count):
                 return None
 
-            return [
-                CachedRankItem(id=int(user_id), nick=str(nick), score=int(score))
-                for user_id, nick, score in rows
-            ]
+            return CachedRankPage(
+                items=[
+                    CachedRankItem(id=int(user_id), nick=str(nick), score=int(score))
+                    for user_id, nick, score in rows
+                ],
+                fetched_at=float(fetched_at),
+            )
     except sqlite3.Error as e:
         logger.warning(f"failed to read Seer rank page cache: {e}")
         return None
@@ -219,6 +246,71 @@ def get_cached_rank_item(
         return None
 
 
+def get_cached_rank_item_by_index(
+    *,
+    key: int,
+    sub_key: int,
+    rank_index: int,
+    allow_stale: bool | None = None,
+) -> CachedRankLookup | None:
+    if not _is_cache_enabled():
+        return None
+
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    i.user_id,
+                    i.nick,
+                    i.score,
+                    i.start_index,
+                    i.position,
+                    p.fetched_at
+                FROM pages p
+                JOIN items i
+                  ON i.key = p.key
+                 AND i.sub_key = p.sub_key
+                 AND i.start_index = p.start_index
+                 AND i.end_index = p.end_index
+                 AND i.position = ? - p.start_index
+                WHERE p.key = ?
+                  AND p.sub_key = ?
+                  AND p.start_index <= ?
+                  AND p.end_index >= ?
+                ORDER BY p.fetched_at DESC
+                LIMIT 1
+                """,
+                (rank_index, key, sub_key, rank_index, rank_index),
+            ).fetchone()
+            if row is None:
+                return None
+
+            user_id, nick, score, start_index, position, fetched_at = row
+            fetched_at_float = float(fetched_at)
+            rank_config = get_rank_query_config()
+            ttl = rank_config.page_cache_ttl_seconds
+            is_stale = ttl <= 0 or time.time() - fetched_at_float > ttl
+            stale_allowed = (
+                rank_config.allow_stale_cache
+                if allow_stale is None
+                else allow_stale
+            )
+            if is_stale and not stale_allowed:
+                return None
+            return CachedRankLookup(
+                id=int(user_id),
+                nick=str(nick),
+                score=int(score),
+                rank_index=int(start_index) + int(position),
+                fetched_at=fetched_at_float,
+                is_stale=is_stale,
+            )
+    except sqlite3.Error as e:
+        logger.warning(f"failed to read cached Seer rank item by index: {e}")
+        return None
+
+
 def get_rank_page_cache_summary(
     *,
     key: int,
@@ -274,13 +366,14 @@ def get_rank_page_cache_summary(
     ]
 
 
-def save_rank_page(
+def save_rank_page(  # noqa: PLR0913
     *,
     key: int,
     sub_key: int,
     start: int,
     end: int,
     items: Sequence[object],
+    fetched_at: float | None = None,
 ) -> None:
     if not _is_cache_enabled():
         return
@@ -299,7 +392,14 @@ def save_rank_page(
                 )
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (key, sub_key, start, end, time.time(), len(items)),
+                (
+                    key,
+                    sub_key,
+                    start,
+                    end,
+                    time.time() if fetched_at is None else fetched_at,
+                    len(items),
+                ),
             )
             conn.execute(
                 """
