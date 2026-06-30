@@ -44,7 +44,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `bilibili`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
-- `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.
+- `team_resource_subscription`: query subscribed teams from a short command and remind configured users when resources are low.
 - `scheduled_restart`: restart the bot container at configured daily times from APP_CONFIG.
 
 Behavior values such as group IDs, user IDs, team IDs, meeting numbers, feature policies, Bilibili subscriptions, and private reply text belong in a mounted TOML config file. Environment variables are reserved for secrets, credentials, and deployment runtime knobs. They are intentionally not baked into the image.
@@ -136,7 +136,7 @@ SENDPIC_CNB_TOKEN=
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
 
-Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `seer_activity_query`, `seer_activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, `fire_manual`, and `admin_notice`. `fire_manual` controls the "手册" AI intent and Fire manual links appended to proactive pushes. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `web_activity_link`, `web_activity_push`, or `seerinfo`.
+Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `seer_activity_query`, `seer_activity_push`, `server_status_query`, `server_status_push`, `team_resource_subscription`, `ai_chat`, `ai_intent`, `fire_manual`, and `admin_notice`. `fire_manual` controls the "手册" AI intent and Fire manual links appended to proactive pushes. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `web_activity_link`, `web_activity_push`, or `seerinfo`.
 
 ```toml
 [feature]
@@ -150,9 +150,9 @@ superuser_bypass = true
 groups = { main = { uids = [1310714247], mode = "full" } }
 ```
 
-## Team Group Shortcut
+## Team Resource Subscription
 
-If you use this Docker image for a Seer team/guild QQ group, you can enable a short group command that expands to one or more fixed team queries.
+If you use this Docker image for a Seer team/guild QQ group, you can subscribe that group to one or more teams. The same subscription lets members query those teams with a short command and lets the bot remind configured users when team resources are low.
 
 Example behavior:
 
@@ -167,16 +167,22 @@ Configure it in `ironsbot.toml`:
 
 ```toml
 [feature]
-group_aliases = { team_group = 987654321 }
-group_policy = { team_group = ["team"] }
+group_aliases = { xinghen = 987654321 }
+user_aliases = { owner = 1234567890 }
+group_policy = { xinghen = ["team_resource_subscription"] }
 
-[seer.team_shortcut]
-team_ids = [1234567, 7654321]
-resource_users = [1234567890]
+[seer.team_resource]
+times = ["23:00"]
 commands = ["战队"]
-resource_threshold = 1000
 query_timeout_seconds = 20
+resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
 resource_message = "出来买资源，别逼我求你😡"
+
+[[seer.team_resource.subscriptions]]
+group = "xinghen"
+team_ids = [1234567, 7654321]
+threshold = 1000
+at_users = ["owner"]
 ```
 
 Keep real QQ group IDs and team IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Do not commit them to GitHub.

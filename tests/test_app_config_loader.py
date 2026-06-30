@@ -15,6 +15,7 @@ from ironsbot.config import (
     load_deployment_config,
     load_secrets_config,
 )
+from ironsbot.config.models.seer import TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 99
@@ -32,6 +33,7 @@ DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_SEER_PLAYER_PRIORITY = 5
+TEAM_RESOURCE_THRESHOLD = 2000
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -64,7 +66,8 @@ def test_example_config_parses() -> None:
         config.message.team_audit_welcome.followup_cache_path
         == "data/team_audit_welcome/pending.sqlite"
     )
-    assert config.seer.team_shortcut.team_ids == []
+    assert config.seer.team_resource.subscriptions == []
+    assert config.seer.team_resource.commands == ["战队"]
     assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
@@ -125,6 +128,26 @@ def test_example_config_parses() -> None:
 def test_dev_and_prod_configs_parse() -> None:
     assert load_app_config(ROOT / "config.dev.toml").feature.group_aliases == {}
     assert not load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+
+
+def test_team_resource_config_accepts_subscription_shapes() -> None:
+    config = TeamResourceConfig(
+        times="08:30,23:00",
+        subscriptions=[
+            {
+                "group": "anjie",
+                "team_ids": "1234567,2345678",
+                "threshold": TEAM_RESOURCE_THRESHOLD,
+                "at_users": "owner,1234567890",
+            }
+        ],
+    )
+
+    assert config.times == ["08:30", "23:00"]
+    assert config.subscriptions[0].group == "anjie"
+    assert config.subscriptions[0].team_ids == [1234567, 2345678]
+    assert config.subscriptions[0].threshold == TEAM_RESOURCE_THRESHOLD
+    assert config.subscriptions[0].at_users == ["owner", "1234567890"]
 
 
 def test_env_secrets_credentials_and_deployment_are_separate() -> None:
@@ -226,8 +249,8 @@ def test_small_plugin_config_accessors_read_app_config(
         "startup_notice_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "startup_notice" / "config.py",
     )
-    team_shortcut_config = _load_module_from_path(
-        "team_shortcut_config_for_app_config_test",
+    team_resource_config = _load_module_from_path(
+        "team_resource_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "team_shortcut" / "config.py",
     )
 
@@ -235,7 +258,7 @@ def test_small_plugin_config_accessors_read_app_config(
         assert ai_chat_config.get_ai_config().model == "deepseek-v4-pro"
         assert ai_chat_config.get_ai_key() == "sk-test"
         assert ai_intent_config.get_configured_actions()
-        assert ai_intent_config.get_team_shortcut_config().commands == ["战队"]
+        assert ai_intent_config.get_team_resource_config().commands == ["战队"]
         assert (
             ai_mention_config.get_ai_config().mention_guard_reply_max_per_window
             == DEFAULT_MENTION_GUARD_MAX_PER_WINDOW
@@ -268,7 +291,7 @@ def test_small_plugin_config_accessors_read_app_config(
         assert not scheduled_restart_config.get_restart_config().enabled
         assert "aliases" in seer_data_config.get_data_sync_config().sources
         assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled
-        assert team_shortcut_config.get_team_shortcut_config().commands == ["战队"]
+        assert team_resource_config.get_team_resource_config().commands == ["战队"]
     finally:
         clear_app_config_cache()
 

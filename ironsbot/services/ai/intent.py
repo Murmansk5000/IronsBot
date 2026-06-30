@@ -11,7 +11,7 @@ from ironsbot.config.models.ai import (
     AiIntentAction,
     resolve_configured_actions,
 )
-from ironsbot.config.models.seer import TeamShortcutConfig
+from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.shared.features import (
     group_has_feature,
     is_group_feature_allowed,
@@ -78,20 +78,12 @@ def get_ai_intent_config() -> AiConfig:
     return get_app_config().ai
 
 
-def get_team_shortcut_config() -> TeamShortcutConfig:
-    return get_app_config().seer.team_shortcut
+def get_team_resource_config() -> TeamResourceConfig:
+    return get_app_config().seer.team_resource
 
 
 def get_configured_actions() -> list[AiIntentAction]:
     return resolve_configured_actions(get_ai_intent_config())
-
-
-def get_team_ids() -> list[int]:
-    return get_team_shortcut_config().team_ids
-
-
-def get_team_resource_users() -> list[int]:
-    return get_team_shortcut_config().resource_users
 
 
 def contains_any_keyword(text: str, keywords: list[str]) -> bool:
@@ -126,8 +118,8 @@ def is_fire_manual_announcement_or_share(text: str) -> bool:
 
 def excluded_by_command(text: str, action: AiIntentAction) -> bool:
     exclude_commands = list(action.exclude_commands)
-    if action.action == "team_shortcut":
-        exclude_commands.extend(get_team_shortcut_config().commands)
+    if action.action == "team_resource":
+        exclude_commands.extend(get_team_resource_config().commands)
 
     return bool(exclude_commands) and command_text_matches(text, exclude_commands)
 

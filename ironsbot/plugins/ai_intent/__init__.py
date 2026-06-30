@@ -39,7 +39,7 @@ from .config import Config
 ACTION_KEY = "_ai_intent_action"
 AI_INTENT_PLUGIN_NAME = "ai_intent"
 TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
-TEAM_ACTIONS = {"team_recommend", "team_shortcut"}
+TEAM_ACTIONS = {"team_recommend", "team_resource"}
 
 
 __plugin_meta__ = PluginMetadata(
