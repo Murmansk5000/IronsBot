@@ -385,9 +385,40 @@ def save_rank_page(  # noqa: PLR0913
                 for item in items
                 if int(getattr(item, "id", 0)) > 0
             ]
+            overlapping_pages = conn.execute(
+                """
+                SELECT start_index, end_index
+                FROM pages
+                WHERE key = ?
+                  AND sub_key = ?
+                  AND NOT (end_index < ? OR start_index > ?)
+                """,
+                (key, sub_key, start, end),
+            ).fetchall()
+            for old_start, old_end in overlapping_pages:
+                conn.execute(
+                    """
+                    DELETE FROM items
+                    WHERE key = ?
+                      AND sub_key = ?
+                      AND start_index = ?
+                      AND end_index = ?
+                    """,
+                    (key, sub_key, old_start, old_end),
+                )
+                conn.execute(
+                    """
+                    DELETE FROM pages
+                    WHERE key = ?
+                      AND sub_key = ?
+                      AND start_index = ?
+                      AND end_index = ?
+                    """,
+                    (key, sub_key, old_start, old_end),
+                )
             conn.execute(
                 """
-                REPLACE INTO pages (
+                INSERT INTO pages (
                     key, sub_key, start_index, end_index, fetched_at, item_count
                 )
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -400,16 +431,6 @@ def save_rank_page(  # noqa: PLR0913
                     time.time() if fetched_at is None else fetched_at,
                     len(items),
                 ),
-            )
-            conn.execute(
-                """
-                DELETE FROM items
-                WHERE key = ?
-                  AND sub_key = ?
-                  AND start_index = ?
-                  AND end_index = ?
-                """,
-                (key, sub_key, start, end),
             )
             if user_ids:
                 placeholders = ",".join("?" for _ in user_ids)

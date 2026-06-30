@@ -438,9 +438,13 @@ sections = ["all"]
 merge_connected = true
 
 [seer.rank]
-# Default: 10000; EN: Max rank records. ZH: 榜单最大记录数。
+# Default: 10000
+# EN: Score-known binary rank lookup limit.
+# ZH: 已知分数时允许二分查找的最大榜单范围。
 limit = 10000
-# Default: 2000; EN: Online rank limit. ZH: 在线榜查询限制。
+# Default: 2000
+# EN: Score-unknown linear online scan limit.
+# ZH: 未知分数时允许从前往后线性扫描的在线查询范围。
 online_limit = 2000
 # Default: 100; EN: Rank page size. ZH: 榜单分页大小。
 page_size = 100

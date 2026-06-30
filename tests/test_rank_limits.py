@@ -5,6 +5,7 @@ import nonebot
 from pytest import MonkeyPatch
 
 ONLINE_LIMIT = 2000
+RANK_LIMIT = 10000
 CACHED_RANK = 50000
 CACHED_RANK_INDEX = CACHED_RANK - 1
 CACHED_SCORE = 12345
@@ -12,11 +13,13 @@ LOW_TARGET_SCORE = 99
 BINARY_ONLINE_LIMIT = 1000
 BINARY_TARGET_INDEX = 250
 BINARY_TARGET_RANK = BINARY_TARGET_INDEX + 1
-BINARY_TARGET_SCORE = BINARY_ONLINE_LIMIT - BINARY_TARGET_INDEX
+BINARY_TARGET_SCORE = RANK_LIMIT - BINARY_TARGET_INDEX
 DEFAULT_PROBE_LIMIT = 32
 TIED_PAGE_SIZE = 10
 TIED_PAGE_LIMIT = 3
 TIED_PROBE_LIMIT = 12
+FETCHED_AT = 1_781_234_567.0
+LOOKUP_INDEX = 14
 
 try:
     nonebot.get_driver()
@@ -34,16 +37,17 @@ from ironsbot.services.seer.rank_page_cache import (
 )
 
 
-def _patch_rank_config(
+def _patch_rank_config(  # noqa: PLR0913
     monkeypatch: MonkeyPatch,
     *,
     online_limit: int = ONLINE_LIMIT,
+    rank_limit: int = RANK_LIMIT,
     page_size: int = 100,
     score_search_probe_limit: int = 32,
     score_search_tie_page_limit: int = 5,
 ) -> None:
     rank_config = SimpleNamespace(
-        limit=10000,
+        limit=rank_limit,
         online_limit=online_limit,
         page_size=page_size,
         page_cache=True,
@@ -67,7 +71,7 @@ def _patch_rank_config(
     )
 
 
-def test_score_rank_online_lookup_is_capped_by_online_limit(
+def test_score_rank_lookup_uses_rank_limit_not_online_limit(
     monkeypatch: MonkeyPatch,
 ) -> None:
     _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT)
@@ -97,9 +101,50 @@ def test_score_rank_online_lookup_is_capped_by_online_limit(
         )
     )
 
-    assert result.searched_limit == ONLINE_LIMIT
+    assert result.searched_limit == RANK_LIMIT
     assert requested_indexes
-    assert max(requested_indexes) < ONLINE_LIMIT
+    assert max(requested_indexes) == RANK_LIMIT - 1
+    assert max(requested_indexes) >= ONLINE_LIMIT
+
+
+def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    online_limit = 250
+    page_size = 100
+    _patch_rank_config(monkeypatch, online_limit=online_limit, page_size=page_size)
+    requested_pages: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(_rank, "get_cached_rank_item", lambda **_: None)
+
+    async def fake_fetch_rank_page(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> list[SimpleNamespace]:
+        requested_pages.append((start, end))
+        return [
+            SimpleNamespace(id=rank_index, score=online_limit - rank_index)
+            for rank_index in range(start, end + 1)
+        ]
+
+    monkeypatch.setattr(_rank, "_fetch_rank_page", fake_fetch_rank_page)
+
+    result = asyncio.run(
+        _rank._find_rank(
+            object(),
+            user_id=105023264,
+            title="autocard",
+            score_name="score",
+            key=240,
+            sub_key=1,
+        )
+    )
+
+    assert result.rank is None
+    assert result.searched_limit == online_limit
+    assert requested_pages == [(0, 99), (100, 199), (200, 249)]
 
 
 def test_score_rank_lookup_rejects_target_below_boundary(
@@ -134,7 +179,7 @@ def test_score_rank_lookup_rejects_target_below_boundary(
 
     assert result.rank is None
     assert result.score == LOW_TARGET_SCORE
-    assert requested_indexes == [ONLINE_LIMIT - 1]
+    assert requested_indexes == [RANK_LIMIT - 1]
 
 
 def test_score_rank_lookup_finds_rank_with_binary_search(
@@ -152,7 +197,7 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
         **_kwargs: object,
     ) -> SimpleNamespace:
         requested_indexes.append(index)
-        return SimpleNamespace(score=BINARY_ONLINE_LIMIT - index)
+        return SimpleNamespace(score=RANK_LIMIT - index)
 
     async def fake_fetch_rank_page(
         *_args: object,
@@ -164,7 +209,7 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
         return [
             SimpleNamespace(
                 id=105023264 if rank_index == BINARY_TARGET_INDEX else rank_index,
-                score=BINARY_ONLINE_LIMIT - rank_index,
+                score=RANK_LIMIT - rank_index,
             )
             for rank_index in range(start, end + 1)
         ]
@@ -186,7 +231,7 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
 
     assert result.rank == BINARY_TARGET_RANK
     assert result.score == BINARY_TARGET_SCORE
-    assert max(requested_indexes) < BINARY_ONLINE_LIMIT
+    assert max(requested_indexes) == RANK_LIMIT - 1
     assert len(requested_indexes) <= DEFAULT_PROBE_LIMIT
     assert requested_pages == [(BINARY_TARGET_INDEX, BINARY_TARGET_INDEX)]
 
@@ -197,6 +242,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
     _patch_rank_config(
         monkeypatch,
         online_limit=BINARY_ONLINE_LIMIT,
+        rank_limit=BINARY_ONLINE_LIMIT,
         page_size=TIED_PAGE_SIZE,
         score_search_probe_limit=TIED_PROBE_LIMIT,
         score_search_tie_page_limit=TIED_PAGE_LIMIT,
@@ -247,33 +293,30 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
     ]
 
 
-def test_cached_rank_is_returned_even_when_cache_is_stale(
+def test_fresh_cached_rank_is_returned_when_score_matches(
     monkeypatch: MonkeyPatch,
 ) -> None:
     _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT)
-    scheduled: list[tuple[int, int, int]] = []
     cached_item = CachedRankLookup(
         id=105023264,
         nick="cached",
         score=CACHED_SCORE,
         rank_index=CACHED_RANK_INDEX,
-        fetched_at=0,
-        is_stale=True,
+        fetched_at=FETCHED_AT,
+        is_stale=False,
     )
 
     monkeypatch.setattr(_rank, "get_cached_rank_item", lambda **_: cached_item)
     monkeypatch.setattr(
         _rank,
         "_schedule_cached_rank_window_refresh",
-        lambda _game, *, key, sub_key, center_index, **_kwargs: scheduled.append(
-            (key, sub_key, center_index)
-        ),
+        lambda *_, **__: None,
     )
 
     async def unexpected_fetch(*_args: object, **_kwargs: object) -> None:
         raise AssertionError
 
-    monkeypatch.setattr(_rank, "_fetch_rank_item", unexpected_fetch)
+    monkeypatch.setattr(_rank, "_fetch_rank_page", unexpected_fetch)
 
     result = asyncio.run(
         _rank._find_rank(
@@ -283,11 +326,134 @@ def test_cached_rank_is_returned_even_when_cache_is_stale(
             score_name="score",
             key=156,
             sub_key=1,
-            target_score=100,
+            target_score=CACHED_SCORE,
         )
     )
 
     assert result.queried is True
     assert result.rank == CACHED_RANK
     assert result.score == CACHED_SCORE
-    assert scheduled == [(156, 1, CACHED_RANK_INDEX)]
+
+
+def test_cached_rank_without_target_score_is_verified_nearby(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT, page_size=100)
+    requested_ranges: list[tuple[int, int]] = []
+    cached_item = CachedRankLookup(
+        id=105023264,
+        nick="cached",
+        score=CACHED_SCORE,
+        rank_index=LOOKUP_INDEX,
+        fetched_at=FETCHED_AT,
+        is_stale=False,
+    )
+
+    monkeypatch.setattr(_rank, "get_cached_rank_item", lambda **_: cached_item)
+
+    async def fake_fetch_rank_page(
+        _game: object,
+        *,
+        key: int,
+        sub_key: int,
+        start: int,
+        end: int,
+        use_cache: bool = True,
+    ) -> list[SimpleNamespace]:
+        _ = (key, sub_key, use_cache)
+        requested_ranges.append((start, end))
+        return [
+            SimpleNamespace(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
+        ]
+
+    monkeypatch.setattr(_rank, "_fetch_rank_page", fake_fetch_rank_page)
+
+    result = asyncio.run(
+        _rank._find_rank(
+            object(),
+            user_id=105023264,
+            title="autocard",
+            score_name="score",
+            key=156,
+            sub_key=1,
+        )
+    )
+
+    assert requested_ranges == [(0, 99)]
+    assert result.rank == 1
+    assert result.score == CACHED_SCORE + 1
+
+
+def test_fetch_rank_item_fetches_aligned_page_on_cache_miss(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(monkeypatch, page_size=100)
+    requested_ranges: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(_rank, "get_cached_rank_item_by_index", lambda **_: None)
+    monkeypatch.setattr(_rank, "save_rank_page", lambda **_: None)
+
+    class FakeGame:
+        async def send_and_wait(
+            self,
+            *_args: object,
+            **_kwargs: object,
+        ) -> tuple[None, SimpleNamespace]:
+            param = _args[1]
+            requested_ranges.append((param.start, param.end))
+            return None, SimpleNamespace(
+                rank_list=[
+                    SimpleNamespace(id=index, nick=f"Player{index}", score=1000 - index)
+                    for index in range(param.start, param.end + 1)
+                ]
+            )
+
+    item = asyncio.run(
+        _rank._fetch_rank_item(FakeGame(), key=1, sub_key=2, index=LOOKUP_INDEX)
+    )
+
+    assert requested_ranges == [(0, 99)]
+    assert item is not None
+    assert item.id == LOOKUP_INDEX
+
+
+def test_daily_rank_page_result_fetches_aligned_page_and_slices(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(monkeypatch, page_size=100)
+    requested_ranges: list[tuple[int, int]] = []
+
+    async def fake_fetch_rank_page_result(
+        _game: object,
+        *,
+        key: int,
+        sub_key: int,
+        start: int,
+        end: int,
+        use_cache: bool = True,
+    ) -> _rank.RankPageResult:
+        _ = (key, sub_key, use_cache)
+        requested_ranges.append((start, end))
+        return _rank.RankPageResult(
+            items=[
+                SimpleNamespace(id=index, nick=f"Player{index}", score=1000 - index)
+                for index in range(start, end + 1)
+            ],
+            fetched_at=FETCHED_AT,
+        )
+
+    monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
+
+    result = asyncio.run(
+        _rank.fetch_daily_rank_page_result(
+            object(),
+            key=1,
+            sub_key=2,
+            start=LOOKUP_INDEX,
+            count=1,
+        )
+    )
+
+    assert requested_ranges == [(0, 99)]
+    assert [item.id for item in result.items] == [LOOKUP_INDEX]
+    assert result.fetched_at == FETCHED_AT
