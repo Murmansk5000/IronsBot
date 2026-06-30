@@ -1,4 +1,4 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import sqlite3
 import time
 from collections.abc import Sequence
@@ -61,36 +61,55 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS pages (
+        CREATE TABLE IF NOT EXISTS rank_players (
+            user_id INTEGER PRIMARY KEY,
+            nick TEXT NOT NULL DEFAULT '',
+            updated_at REAL NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rank_pages (
             key INTEGER NOT NULL,
             sub_key INTEGER NOT NULL,
             start_index INTEGER NOT NULL,
             end_index INTEGER NOT NULL,
+            page_size INTEGER NOT NULL,
             fetched_at REAL NOT NULL,
-            item_count INTEGER NOT NULL,
+            expected_count INTEGER NOT NULL,
+            actual_count INTEGER NOT NULL,
             PRIMARY KEY (key, sub_key, start_index, end_index)
         )
         """
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS items (
+        CREATE TABLE IF NOT EXISTS player_rank_facts (
             key INTEGER NOT NULL,
             sub_key INTEGER NOT NULL,
-            start_index INTEGER NOT NULL,
-            end_index INTEGER NOT NULL,
-            position INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
-            nick TEXT NOT NULL,
+            rank_index INTEGER NOT NULL,
             score INTEGER NOT NULL,
-            PRIMARY KEY (key, sub_key, start_index, end_index, position)
+            display TEXT NOT NULL DEFAULT '',
+            fetched_at REAL NOT NULL,
+            source_start_index INTEGER NOT NULL,
+            source_end_index INTEGER NOT NULL,
+            PRIMARY KEY (key, sub_key, user_id),
+            UNIQUE (key, sub_key, rank_index)
         )
         """
     )
     conn.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_rank_page_items
-        ON items (key, sub_key, start_index, end_index, position)
+        CREATE INDEX IF NOT EXISTS idx_player_rank_facts_rank
+        ON player_rank_facts (key, sub_key, rank_index)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_player_rank_facts_score
+        ON player_rank_facts (key, sub_key, score DESC, rank_index)
         """
     )
     return conn
@@ -98,6 +117,17 @@ def _connect() -> sqlite3.Connection:
 
 def _is_cache_enabled() -> bool:
     return get_rank_query_config().page_cache
+
+
+def _is_stale(fetched_at: float) -> bool:
+    ttl = get_rank_query_config().page_cache_ttl_seconds
+    return ttl <= 0 or time.time() - fetched_at > ttl
+
+
+def _is_stale_allowed(*, allow_stale: bool | None) -> bool:
+    if allow_stale is None:
+        return get_rank_query_config().allow_stale_cache
+    return allow_stale
 
 
 def get_cached_rank_page(
@@ -133,8 +163,8 @@ def get_cached_rank_page_result(
         with _connect() as conn:
             row = conn.execute(
                 """
-                SELECT fetched_at, item_count
-                FROM pages
+                SELECT fetched_at, expected_count
+                FROM rank_pages
                 WHERE key = ?
                   AND sub_key = ?
                   AND start_index = ?
@@ -145,31 +175,30 @@ def get_cached_rank_page_result(
             if row is None:
                 return None
 
-            fetched_at, item_count = row
-            rank_config = get_rank_query_config()
-            ttl = rank_config.page_cache_ttl_seconds
-            is_stale = ttl <= 0 or time.time() - float(fetched_at) > ttl
-            stale_allowed = (
-                rank_config.allow_stale_cache
-                if allow_stale is None
-                else allow_stale
-            )
-            if is_stale and not stale_allowed:
+            fetched_at, expected_count = row
+            fetched_at_float = float(fetched_at)
+            if _is_stale(fetched_at_float) and not _is_stale_allowed(
+                allow_stale=allow_stale,
+            ):
                 return None
 
             rows = conn.execute(
                 """
-                SELECT user_id, nick, score
-                FROM items
-                WHERE key = ?
-                  AND sub_key = ?
-                  AND start_index = ?
-                  AND end_index = ?
-                ORDER BY position
+                SELECT
+                    f.user_id,
+                    COALESCE(NULLIF(f.display, ''), p.nick, '') AS nick,
+                    f.score
+                FROM player_rank_facts f
+                LEFT JOIN rank_players p
+                  ON p.user_id = f.user_id
+                WHERE f.key = ?
+                  AND f.sub_key = ?
+                  AND f.rank_index BETWEEN ? AND ?
+                ORDER BY f.rank_index
                 """,
                 (key, sub_key, start, end),
             ).fetchall()
-            if len(rows) != int(item_count):
+            if len(rows) != int(expected_count):
                 return None
 
             return CachedRankPage(
@@ -177,7 +206,7 @@ def get_cached_rank_page_result(
                     CachedRankItem(id=int(user_id), nick=str(nick), score=int(score))
                     for user_id, nick, score in rows
                 ],
-                fetched_at=float(fetched_at),
+                fetched_at=fetched_at_float,
             )
     except sqlite3.Error as e:
         logger.warning(f"failed to read Seer rank page cache: {e}")
@@ -199,47 +228,34 @@ def get_cached_rank_item(
             row = conn.execute(
                 """
                 SELECT
-                    i.nick,
-                    i.score,
-                    i.start_index,
-                    i.position,
-                    p.fetched_at
-                FROM items i
-                JOIN pages p
-                  ON p.key = i.key
-                 AND p.sub_key = i.sub_key
-                 AND p.start_index = i.start_index
-                 AND p.end_index = i.end_index
-                WHERE i.key = ?
-                  AND i.sub_key = ?
-                  AND i.user_id = ?
-                ORDER BY p.fetched_at DESC
-                LIMIT 1
+                    COALESCE(NULLIF(f.display, ''), p.nick, '') AS nick,
+                    f.score,
+                    f.rank_index,
+                    f.fetched_at
+                FROM player_rank_facts f
+                LEFT JOIN rank_players p
+                  ON p.user_id = f.user_id
+                WHERE f.key = ?
+                  AND f.sub_key = ?
+                  AND f.user_id = ?
                 """,
                 (key, sub_key, user_id),
             ).fetchone()
             if row is None:
                 return None
 
-            nick, score, start_index, position, fetched_at = row
+            nick, score, rank_index, fetched_at = row
             fetched_at_float = float(fetched_at)
-            rank_config = get_rank_query_config()
-            ttl = rank_config.page_cache_ttl_seconds
-            is_stale = ttl <= 0 or time.time() - fetched_at_float > ttl
-            stale_allowed = (
-                rank_config.allow_stale_cache
-                if allow_stale is None
-                else allow_stale
-            )
-            if is_stale and not stale_allowed:
+            stale = _is_stale(fetched_at_float)
+            if stale and not _is_stale_allowed(allow_stale=allow_stale):
                 return None
             return CachedRankLookup(
                 id=user_id,
                 nick=str(nick),
                 score=int(score),
-                rank_index=int(start_index) + int(position),
+                rank_index=int(rank_index),
                 fetched_at=fetched_at_float,
-                is_stale=is_stale,
+                is_stale=stale,
             )
     except sqlite3.Error as e:
         logger.warning(f"failed to read cached Seer rank item: {e}")
@@ -261,50 +277,34 @@ def get_cached_rank_item_by_index(
             row = conn.execute(
                 """
                 SELECT
-                    i.user_id,
-                    i.nick,
-                    i.score,
-                    i.start_index,
-                    i.position,
-                    p.fetched_at
-                FROM pages p
-                JOIN items i
-                  ON i.key = p.key
-                 AND i.sub_key = p.sub_key
-                 AND i.start_index = p.start_index
-                 AND i.end_index = p.end_index
-                 AND i.position = ? - p.start_index
-                WHERE p.key = ?
-                  AND p.sub_key = ?
-                  AND p.start_index <= ?
-                  AND p.end_index >= ?
-                ORDER BY p.fetched_at DESC
-                LIMIT 1
+                    f.user_id,
+                    COALESCE(NULLIF(f.display, ''), p.nick, '') AS nick,
+                    f.score,
+                    f.fetched_at
+                FROM player_rank_facts f
+                LEFT JOIN rank_players p
+                  ON p.user_id = f.user_id
+                WHERE f.key = ?
+                  AND f.sub_key = ?
+                  AND f.rank_index = ?
                 """,
-                (rank_index, key, sub_key, rank_index, rank_index),
+                (key, sub_key, rank_index),
             ).fetchone()
             if row is None:
                 return None
 
-            user_id, nick, score, start_index, position, fetched_at = row
+            user_id, nick, score, fetched_at = row
             fetched_at_float = float(fetched_at)
-            rank_config = get_rank_query_config()
-            ttl = rank_config.page_cache_ttl_seconds
-            is_stale = ttl <= 0 or time.time() - fetched_at_float > ttl
-            stale_allowed = (
-                rank_config.allow_stale_cache
-                if allow_stale is None
-                else allow_stale
-            )
-            if is_stale and not stale_allowed:
+            stale = _is_stale(fetched_at_float)
+            if stale and not _is_stale_allowed(allow_stale=allow_stale):
                 return None
             return CachedRankLookup(
                 id=int(user_id),
                 nick=str(nick),
                 score=int(score),
-                rank_index=int(start_index) + int(position),
+                rank_index=rank_index,
                 fetched_at=fetched_at_float,
-                is_stale=is_stale,
+                is_stale=stale,
             )
     except sqlite3.Error as e:
         logger.warning(f"failed to read cached Seer rank item by index: {e}")
@@ -327,21 +327,20 @@ def get_rank_page_cache_summary(
                     p.start_index,
                     p.end_index,
                     p.fetched_at,
-                    p.item_count AS expected_count,
-                    COUNT(i.position) AS actual_count
-                FROM pages p
-                LEFT JOIN items i
-                  ON i.key = p.key
-                 AND i.sub_key = p.sub_key
-                 AND i.start_index = p.start_index
-                 AND i.end_index = p.end_index
+                    p.expected_count,
+                    COUNT(f.user_id) AS actual_count
+                FROM rank_pages p
+                LEFT JOIN player_rank_facts f
+                  ON f.key = p.key
+                 AND f.sub_key = p.sub_key
+                 AND f.rank_index BETWEEN p.start_index AND p.end_index
                 WHERE p.key = ?
                   AND p.sub_key = ?
                 GROUP BY
                     p.start_index,
                     p.end_index,
                     p.fetched_at,
-                    p.item_count
+                    p.expected_count
                 ORDER BY p.start_index, p.end_index
                 """,
                 (key, sub_key),
@@ -378,17 +377,29 @@ def save_rank_page(  # noqa: PLR0913
     if not _is_cache_enabled():
         return
 
+    fetched_at_value = time.time() if fetched_at is None else fetched_at
+    normalized_items = [
+        (
+            start + position,
+            int(getattr(item, "id", 0)),
+            str(getattr(item, "nick", "")),
+            int(getattr(item, "score", 0)),
+        )
+        for position, item in enumerate(items)
+        if int(getattr(item, "id", 0)) > 0
+    ]
+    user_ids = [user_id for _rank_index, user_id, _nick, _score in normalized_items]
+    expected_count = max(0, end - start + 1)
+    actual_count = len(
+        {user_id for _rank_index, user_id, _nick, _score in normalized_items}
+    )
+
     try:
         with _connect() as conn:
-            user_ids = [
-                int(getattr(item, "id", 0))
-                for item in items
-                if int(getattr(item, "id", 0)) > 0
-            ]
             overlapping_pages = conn.execute(
                 """
                 SELECT start_index, end_index
-                FROM pages
+                FROM rank_pages
                 WHERE key = ?
                   AND sub_key = ?
                   AND NOT (end_index < ? OR start_index > ?)
@@ -398,17 +409,17 @@ def save_rank_page(  # noqa: PLR0913
             for old_start, old_end in overlapping_pages:
                 conn.execute(
                     """
-                    DELETE FROM items
+                    DELETE FROM player_rank_facts
                     WHERE key = ?
                       AND sub_key = ?
-                      AND start_index = ?
-                      AND end_index = ?
+                      AND source_start_index = ?
+                      AND source_end_index = ?
                     """,
                     (key, sub_key, old_start, old_end),
                 )
                 conn.execute(
                     """
-                    DELETE FROM pages
+                    DELETE FROM rank_pages
                     WHERE key = ?
                       AND sub_key = ?
                       AND start_index = ?
@@ -418,52 +429,89 @@ def save_rank_page(  # noqa: PLR0913
                 )
             conn.execute(
                 """
-                INSERT INTO pages (
-                    key, sub_key, start_index, end_index, fetched_at, item_count
+                DELETE FROM player_rank_facts
+                WHERE key = ?
+                  AND sub_key = ?
+                  AND rank_index BETWEEN ? AND ?
+                """,
+                (key, sub_key, start, end),
+            )
+            if user_ids:
+                placeholders = ",".join("?" for _ in user_ids)
+                conn.execute(
+                    f"""
+                    DELETE FROM player_rank_facts
+                    WHERE key = ?
+                      AND sub_key = ?
+                      AND user_id IN ({placeholders})
+                    """,
+                    (key, sub_key, *user_ids),
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+            conn.execute(
+                """
+                INSERT INTO rank_pages (
+                    key, sub_key, start_index, end_index,
+                    page_size, fetched_at, expected_count, actual_count
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key, sub_key, start_index, end_index) DO UPDATE SET
+                    page_size = excluded.page_size,
+                    fetched_at = excluded.fetched_at,
+                    expected_count = excluded.expected_count,
+                    actual_count = excluded.actual_count
                 """,
                 (
                     key,
                     sub_key,
                     start,
                     end,
-                    time.time() if fetched_at is None else fetched_at,
-                    len(items),
+                    expected_count,
+                    fetched_at_value,
+                    expected_count,
+                    actual_count,
                 ),
             )
-            if user_ids:
-                placeholders = ",".join("?" for _ in user_ids)
-                conn.execute(
-                    f"""
-                    DELETE FROM items
-                    WHERE key = ?
-                      AND sub_key = ?
-                      AND user_id IN ({placeholders})
-                      AND NOT (start_index = ? AND end_index = ?)
-                    """,
-                    (key, sub_key, *user_ids, start, end),
-                )
             conn.executemany(
                 """
-                INSERT INTO items (
-                    key, sub_key, start_index, end_index,
-                    position, user_id, nick, score
+                INSERT INTO rank_players (user_id, nick, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    nick = excluded.nick,
+                    updated_at = excluded.updated_at
+                """,
+                [
+                    (user_id, nick, fetched_at_value)
+                    for _rank_index, user_id, nick, _score in normalized_items
+                ],
+            )
+            conn.executemany(
+                """
+                INSERT INTO player_rank_facts (
+                    key, sub_key, user_id, rank_index, score, display, fetched_at,
+                    source_start_index, source_end_index
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key, sub_key, user_id) DO UPDATE SET
+                    rank_index = excluded.rank_index,
+                    score = excluded.score,
+                    display = excluded.display,
+                    fetched_at = excluded.fetched_at,
+                    source_start_index = excluded.source_start_index,
+                    source_end_index = excluded.source_end_index
                 """,
                 [
                     (
                         key,
                         sub_key,
+                        user_id,
+                        rank_index,
+                        score,
+                        nick,
+                        fetched_at_value,
                         start,
                         end,
-                        position,
-                        int(getattr(item, "id", 0)),
-                        str(getattr(item, "nick", "")),
-                        int(getattr(item, "score", 0)),
                     )
-                    for position, item in enumerate(items)
+                    for rank_index, user_id, nick, score in normalized_items
                 ],
             )
     except sqlite3.Error as e:

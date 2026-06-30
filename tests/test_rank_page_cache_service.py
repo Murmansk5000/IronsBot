@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -64,9 +65,46 @@ def test_save_rank_page_deduplicates_user_within_same_rank(
         for page in summaries
     ]
     assert actual == [
-        (0, 0, 1, True),
-        (100, 1, 1, False),
+        (0, 0, 100, True),
+        (100, 1, 100, True),
     ]
+
+
+def test_rank_page_cache_uses_player_rank_fact_schema(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "rank_page_cache.sqlite"
+    monkeypatch.setattr(
+        rank_page_cache,
+        "get_rank_query_config",
+        lambda: SimpleNamespace(
+            page_cache=True,
+            page_cache_path=cache_path,
+            page_cache_ttl_seconds=3600,
+            allow_stale_cache=True,
+        ),
+    )
+
+    save_rank_page(
+        key=1,
+        sub_key=2,
+        start=0,
+        end=99,
+        items=[SimpleNamespace(id=100, nick="Alice", score=999)],
+    )
+
+    with sqlite3.connect(cache_path) as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+
+    assert {"rank_players", "rank_pages", "player_rank_facts"} <= tables
+    assert "pages" not in tables
+    assert "items" not in tables
 
 
 def test_save_rank_page_replaces_overlapping_ranges(
@@ -106,6 +144,7 @@ def test_save_rank_page_replaces_overlapping_ranges(
     )
 
     assert get_cached_rank_item(key=1, sub_key=2, user_id=1014) is None
+    assert get_cached_rank_item(key=1, sub_key=2, user_id=1000) is None
 
     cached = get_cached_rank_item_by_index(
         key=1,
@@ -115,6 +154,11 @@ def test_save_rank_page_replaces_overlapping_ranges(
     assert cached is not None
     assert cached.id == OVERLAP_NEW_USER_ID
     assert cached.rank_index == OVERLAP_LOOKUP_INDEX
+
+    summaries = get_rank_page_cache_summary(key=1, sub_key=2)
+    assert [(page.start_index, page.end_index) for page in summaries] == [
+        (OVERLAP_LOOKUP_INDEX, OVERLAP_LOOKUP_INDEX),
+    ]
 
 
 def test_cached_rank_page_result_preserves_fetched_at(
