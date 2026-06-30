@@ -2,6 +2,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
+from nonebot.adapters.onebot.v11 import Message
+
 from ironsbot.utils.rule import NoAt
 
 
@@ -44,3 +46,9 @@ def test_no_at_blocks_foreign_mentions() -> None:
             ]
         )
     )
+
+
+def test_no_at_blocks_onebot_at_segments() -> None:
+    event = FakeEvent(Message("[CQ:at,qq=2947993138] 帮助"))  # type: ignore[arg-type]
+
+    assert not _matches_no_at(event)
