@@ -23,6 +23,7 @@ HIDDEN_MODULE_PREFIXES = (
     "ironsbot.plugins.startup_notice",
     "ironsbot.plugins.admin_priority",
     "ironsbot.plugins.db_sync",
+    "ironsbot.plugins.fire_manual_ad",
     "ironsbot.plugins.headless_seer",
     "ironsbot.plugins.http_client",
     "ironsbot.plugins.seer_data",

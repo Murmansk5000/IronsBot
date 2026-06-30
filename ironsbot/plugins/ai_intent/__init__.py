@@ -16,6 +16,7 @@ from ironsbot.services.ai.intent import (
     build_intent_prompt,
     contains_any_keyword,
     excluded_by_command,
+    excluded_by_context,
     format_action_template,
     get_ai_intent_config,
     get_configured_actions,
@@ -38,7 +39,7 @@ from .config import Config
 ACTION_KEY = "_ai_intent_action"
 AI_INTENT_PLUGIN_NAME = "ai_intent"
 TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
-TEAM_ACTIONS = {"team_recommend", "team_shortcut"}
+TEAM_ACTIONS = {"team_recommend", "team_resource"}
 
 
 __plugin_meta__ = PluginMetadata(
@@ -69,6 +70,7 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
             or not is_action_allowed(event, action)
             or not contains_any_keyword(text, action.keywords)
             or excluded_by_command(text, action)
+            or excluded_by_context(text, action)
         ):
             continue
 

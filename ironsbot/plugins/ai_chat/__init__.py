@@ -20,7 +20,10 @@ from ironsbot.services.ai.history import is_reset_prompt
 from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
-from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.shared.matcher_priority import (
+    get_matcher_priority,
+    get_pre_command_matcher_priority,
+)
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
@@ -35,6 +38,7 @@ from .config import Config, get_ai_config
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)
+AI_GROUP_AT_CHAT_PRIORITY = get_pre_command_matcher_priority("ai_group_at")
 
 __plugin_meta__ = PluginMetadata(
     name="AI聊天",
@@ -60,6 +64,17 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
         return False
 
     state[AI_CHAT_PROMPT_KEY] = prompt
+    return True
+
+
+async def _ai_chat_group_at_rule(event: GroupMessageEvent, state: T_State) -> bool:
+    if not is_allowed(event):
+        return False
+
+    if not mentions_bot(event):
+        return False
+
+    state[AI_CHAT_PROMPT_KEY] = event.get_plaintext().strip()
     return True
 
 
@@ -169,6 +184,12 @@ ai_chat_matcher = on_message(
     block=True,
 )
 
+ai_chat_group_at_matcher = on_message(
+    rule=Rule(_ai_chat_group_at_rule),
+    priority=AI_GROUP_AT_CHAT_PRIORITY,
+    block=True,
+)
+
 
 async def _finish_admin_notice_or_silent(
     event: MessageEvent,
@@ -191,5 +212,15 @@ async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
         plugin_name="ai_chat",
         event=event,
         matcher=ai_chat_matcher,
+        state=state,
+    )
+
+
+@ai_chat_group_at_matcher.handle()
+async def handle_group_at_ai_chat(event: GroupMessageEvent, state: T_State) -> None:
+    await dispatch_plugin(
+        plugin_name="ai_chat",
+        event=event,
+        matcher=ai_chat_group_at_matcher,
         state=state,
     )
