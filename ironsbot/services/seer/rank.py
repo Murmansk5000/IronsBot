@@ -57,6 +57,16 @@ def get_local_rank_config() -> LocalRankConfig:
     return get_app_config().seer.local_rank
 
 
+def _rank_page_size() -> int:
+    configured = int(get_rank_query_config().page_size)
+    return max(1, min(configured, 100))
+
+
+def _rank_page_start(index: int) -> int:
+    page_size = _rank_page_size()
+    return max(0, index) // page_size * page_size
+
+
 def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
     return user_id in PET_KIND_RANK_ANOMALY_USER_IDS
 
@@ -299,25 +309,55 @@ async def _find_rank_by_cached_position(  # noqa: PLR0913
     key: int,
     sub_key: int,
     page_size: int,
+    target_score: int | None = None,
     result: RankLookupResult,
 ) -> RankLookupResult | None:
     cached_item = get_cached_rank_item(key=key, sub_key=sub_key, user_id=user_id)
     if cached_item is None:
         return None
 
+    should_verify_online = (
+        cached_item.is_stale
+        or target_score is None
+        or (target_score > 0 and cached_item.score != target_score)
+    )
+    if should_verify_online:
+        result.queried = True
+        for start in _rank_window_page_starts(
+            center_index=cached_item.rank_index,
+            page_size=page_size,
+        ):
+            items = await _fetch_rank_page(
+                game,
+                key=key,
+                sub_key=sub_key,
+                start=start,
+                end=start + page_size - 1,
+                use_cache=False,
+            )
+            for offset, item in enumerate(items):
+                if item.id == user_id:
+                    result.rank = start + offset + 1
+                    result.score = item.score
+                    return result
+
+            if len(items) < page_size and start > cached_item.rank_index:
+                break
+
+        return None
+
     result.queried = True
     result.rank = cached_item.rank_index + 1
     result.score = cached_item.score
 
-    if cached_item.is_stale:
-        _schedule_cached_rank_window_refresh(
-            game,
-            key=key,
-            sub_key=sub_key,
-            center_index=cached_item.rank_index,
-            page_size=page_size,
-            fetched_at=cached_item.fetched_at,
-        )
+    _schedule_cached_rank_window_refresh(
+        game,
+        key=key,
+        sub_key=sub_key,
+        center_index=cached_item.rank_index,
+        page_size=page_size,
+        fetched_at=cached_item.fetched_at,
+    )
 
     return result
 
@@ -337,14 +377,17 @@ async def _fetch_rank_item(
     if cached_item is not None:
         return cached_item
 
+    page_size = _rank_page_size()
+    page_start = _rank_page_start(index)
     items = await _fetch_rank_page(
         game,
         key=key,
         sub_key=sub_key,
-        start=index,
-        end=index,
+        start=page_start,
+        end=page_start + page_size - 1,
     )
-    return items[0] if items else None
+    offset = index - page_start
+    return items[offset] if 0 <= offset < len(items) else None
 
 
 async def fetch_daily_rank_page(  # noqa: PLR0913
@@ -382,13 +425,37 @@ async def fetch_daily_rank_page_result(  # noqa: PLR0913
     if count <= 0:
         return RankPageResult(items=[], fetched_at=time.time())
 
-    return await _fetch_rank_page_result(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        end=start + count - 1,
-        use_cache=use_cache,
+    request_start = max(0, start)
+    request_end = request_start + count - 1
+    page_size = _rank_page_size()
+    first_page_start = request_start // page_size * page_size
+    last_page_start = request_end // page_size * page_size
+    items: list[Any] = []
+    fetched_times: list[float] = []
+
+    for page_start in range(first_page_start, last_page_start + 1, page_size):
+        page_result = await _fetch_rank_page_result(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=page_start,
+            end=page_start + page_size - 1,
+            use_cache=use_cache,
+        )
+        fetched_times.append(page_result.fetched_at)
+        for offset, item in enumerate(page_result.items):
+            rank_index = page_start + offset
+            if rank_index > request_end:
+                break
+            if rank_index >= request_start:
+                items.append(item)
+
+        if len(page_result.items) < page_size:
+            break
+
+    return RankPageResult(
+        items=items,
+        fetched_at=max(fetched_times, default=time.time()),
     )
 
 
@@ -602,6 +669,13 @@ def _online_search_limit(search_limit: int | None = None) -> int:
     return min(requested_limit, max(0, rank_config.online_limit))
 
 
+def _score_search_limit(search_limit: int | None = None) -> int:
+    rank_config = get_rank_query_config()
+    configured_limit = max(0, rank_config.limit)
+    requested_limit = configured_limit if search_limit is None else max(0, search_limit)
+    return min(requested_limit, configured_limit)
+
+
 async def _find_rank(  # noqa: PLR0913
     game: Any,
     *,
@@ -613,7 +687,12 @@ async def _find_rank(  # noqa: PLR0913
     target_score: int | None = None,
     search_limit: int | None = None,
 ) -> RankLookupResult:
-    limit = _online_search_limit(search_limit)
+    has_target_score = target_score is not None and target_score > 0
+    limit = (
+        _score_search_limit(search_limit)
+        if has_target_score
+        else _online_search_limit(search_limit)
+    )
     page_size = max(1, min(get_rank_query_config().page_size, 100))
 
     result = RankLookupResult(
@@ -629,6 +708,7 @@ async def _find_rank(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         page_size=page_size,
+        target_score=target_score,
         result=result,
     )
     if cached_result is not None:
@@ -637,7 +717,7 @@ async def _find_rank(  # noqa: PLR0913
     if limit <= 0:
         return result
 
-    if target_score is not None and target_score > 0:
+    if has_target_score:
         return await _find_rank_by_score(
             game,
             user_id=user_id,
@@ -689,6 +769,7 @@ async def _find_pet_kind_rank(
         key=PET_KIND_RANK_KEY,
         sub_key=PET_KIND_RANK_SUB_KEY,
         page_size=max(1, min(get_rank_query_config().page_size, 100)),
+        target_score=pet_kind_count,
         result=result,
     )
     if cached_result is not None:
