@@ -4,6 +4,10 @@ from typing import Any, Protocol
 from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.services.bilibili.parser import parse_single_item
+from ironsbot.shared.promotions import (
+    append_fire_manual_ad_message,
+    split_fire_manual_ad_group_ids,
+)
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
@@ -34,9 +38,9 @@ def build_dynamic_push_deliveries(
     if targets.full_group_ids or targets.full_user_ids:
         full_message = parse_single_item(item, pub_ts, mode="full")
         if full_message:
-            deliveries.append(
-                DynamicPushDelivery(
-                    message=full_message,
+            deliveries.extend(
+                _build_delivery_variants(
+                    full_message,
                     group_ids=targets.full_group_ids,
                     private_user_ids=targets.full_user_ids,
                     action_name=FULL_DYNAMIC_PUSH_ACTION,
@@ -46,13 +50,46 @@ def build_dynamic_push_deliveries(
     if targets.link_group_ids or targets.link_user_ids:
         link_message = parse_single_item(item, pub_ts, mode="link")
         if link_message:
-            deliveries.append(
-                DynamicPushDelivery(
-                    message=link_message,
+            deliveries.extend(
+                _build_delivery_variants(
+                    link_message,
                     group_ids=targets.link_group_ids,
                     private_user_ids=targets.link_user_ids,
                     action_name=LINK_DYNAMIC_PUSH_ACTION,
                 )
             )
+
+    return deliveries
+
+
+def _build_delivery_variants(
+    message: Message,
+    *,
+    group_ids: list[int],
+    private_user_ids: list[int],
+    action_name: str,
+) -> list[DynamicPushDelivery]:
+    ad_group_ids, plain_group_ids = split_fire_manual_ad_group_ids(group_ids)
+    deliveries: list[DynamicPushDelivery] = []
+
+    if ad_group_ids or private_user_ids:
+        deliveries.append(
+            DynamicPushDelivery(
+                message=append_fire_manual_ad_message(message.copy()),
+                group_ids=ad_group_ids,
+                private_user_ids=private_user_ids,
+                action_name=action_name,
+            )
+        )
+
+    if plain_group_ids:
+        deliveries.append(
+            DynamicPushDelivery(
+                message=message,
+                group_ids=plain_group_ids,
+                private_user_ids=[],
+                action_name=action_name,
+            )
+        )
 
     return deliveries

@@ -12,7 +12,7 @@ from ironsbot.shared.help_hints import (
     DIRECT_COMMAND_HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
 )
-from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.shared.matcher_priority import get_pre_command_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -24,6 +24,7 @@ from .config import get_ai_config
 
 _guard_reply_limiter: GuardReplyLimiter | None = None
 AI_MENTION_GUARD_PLUGIN_NAME = "ai_mention_guard"
+AI_MENTION_GUARD_PRIORITY = get_pre_command_matcher_priority("ai_mention_guard")
 
 __plugin_meta__ = PluginMetadata(
     name="AI @ 提示拦截",
@@ -66,7 +67,7 @@ def _build_guard_message(event: MessageEvent) -> str:
 
 mention_guard_matcher = on_message(
     rule=Rule(_is_non_ai_group_at_guarded_user),
-    priority=get_matcher_priority("ai_mention_guard", 0),
+    priority=AI_MENTION_GUARD_PRIORITY,
     block=True,
 )
 
