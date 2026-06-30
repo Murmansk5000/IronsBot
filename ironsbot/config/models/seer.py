@@ -39,6 +39,9 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
 RANK_PAGE_REFRESH_TIME_ERROR = (
     "APP_CONFIG.seer.rank.page_refresh.times must contain daily HH:MM times"
 )
+TEAM_RESOURCE_TIME_ERROR = (
+    "APP_CONFIG.seer.team_resource.times must contain daily HH:MM times"
+)
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
     "01:15",
     "01:45",
@@ -121,7 +124,7 @@ class TeamQueryConfig(BaseModel):
     rate_limit_seconds: int = Field(default=60, ge=0)
     failure_rate_limit_seconds: int = Field(default=10, ge=0)
     timeout_seconds: float = Field(default=20, gt=0)
-    sections: list[str] = Field(default_factory=lambda: list(TEAM_SECTION_KEYS))
+    sections: list[str] = Field(default_factory=lambda: ["basic", "resource"])
 
     @field_validator("sections", mode="before")
     @classmethod
@@ -264,26 +267,50 @@ class LocalRankConfig(BaseModel):
         return _validate_sqlite_path(value)
 
 
-class TeamConfig(BaseModel):
+class TeamResourceSubscriptionConfig(BaseModel):
+    group: str | int = ""
+    team_ids: list[int] = Field(default_factory=list)
+    threshold: int = Field(default=1000, ge=0)
+    at_users: list[str] = Field(default_factory=list)
+
+    @field_validator("group", mode="before")
+    @classmethod
+    def normalize_group(cls, value: object) -> str | int:
+        if isinstance(value, int):
+            return value
+        return "" if value is None else str(value).strip()
+
+    @field_validator("team_ids", mode="before")
+    @classmethod
+    def normalize_team_ids(cls, value: object) -> object:
+        return int_list(value)
+
+    @field_validator("at_users", mode="before")
+    @classmethod
+    def normalize_at_users(cls, value: object) -> object:
+        return string_list(value)
+
+
+class TeamResourceConfig(BaseModel):
+    enabled: bool = True
+    times: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=lambda: ["战队"])
-    resource_threshold: int = Field(default=1000, ge=0)
     query_timeout_seconds: int = Field(default=20, gt=0)
+    resource_line: str = (
+        "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
+    )
     resource_message: str = "出来买资源，别逼我求你😡"
+    subscriptions: list[TeamResourceSubscriptionConfig] = Field(default_factory=list)
+
+    @field_validator("times", mode="before")
+    @classmethod
+    def normalize_times(cls, value: object) -> object:
+        return normalized_daily_times(value, error_message=TEAM_RESOURCE_TIME_ERROR)
 
     @field_validator("commands", mode="before")
     @classmethod
     def normalize_commands(cls, value: object) -> object:
         return string_list(value)
-
-
-class TeamShortcutConfig(TeamConfig):
-    team_ids: list[int] = Field(default_factory=list)
-    resource_users: list[int] = Field(default_factory=list)
-
-    @field_validator("team_ids", "resource_users", mode="before")
-    @classmethod
-    def normalize_int_lists(cls, value: object) -> object:
-        return int_list(value)
 
 
 class RenderConfig(BaseModel):
@@ -319,7 +346,7 @@ class SeerConfig(BaseModel):
     mintmark: MintmarkQueryConfig = Field(default_factory=MintmarkQueryConfig)
     rank: RankQueryConfig = Field(default_factory=RankQueryConfig)
     local_rank: LocalRankConfig = Field(default_factory=LocalRankConfig)
-    team_shortcut: TeamShortcutConfig = Field(default_factory=TeamShortcutConfig)
+    team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
 
@@ -327,6 +354,7 @@ class SeerConfig(BaseModel):
 __all__ = [
     "PLAYER_SECTION_KEYS",
     "RANK_PAGE_REFRESH_TIME_ERROR",
+    "TEAM_RESOURCE_TIME_ERROR",
     "TEAM_SECTION_KEYS",
     "LocalRankConfig",
     "MintmarkQueryConfig",
@@ -336,7 +364,7 @@ __all__ = [
     "RenderConfig",
     "SeasonCountdownConfig",
     "SeerConfig",
-    "TeamConfig",
     "TeamQueryConfig",
-    "TeamShortcutConfig",
+    "TeamResourceConfig",
+    "TeamResourceSubscriptionConfig",
 ]

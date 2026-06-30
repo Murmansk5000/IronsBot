@@ -97,7 +97,7 @@ services:
 | `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
 | `bilibili` | B站动态监控与点播。 |
 | `meeting` | 腾讯会议回复。 |
-| `team_shortcut` | 战队群快捷查询与资源提醒。 |
+| `team_resource_subscription` | 战队资源订阅、群内订阅战队查询与低资源提醒。 |
 | `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
@@ -131,18 +131,23 @@ HEADLESS_SEER_PASSWORD=
 
 ```toml
 [feature]
-group_aliases = { admin = 123456789, main = 987654321 }
+group_aliases = { admin = 123456789, xinghen = 987654321 }
 user_aliases = { owner = 1234567890 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent", "fire_manual"] }
+group_policy = { admin = ["admin_notice"], xinghen = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
 
 [bilibili.push]
-groups = { main = { uids = [1310714247], mode = "full" } }
+groups = { xinghen = { uids = [1310714247], mode = "full" } }
 
-[seer.team_shortcut]
+[seer.team_resource]
+times = ["23:00"]
+
+[[seer.team_resource.subscriptions]]
+group = "xinghen"
 team_ids = [1234567]
-resource_users = [1234567890]
+threshold = 1000
+at_users = ["owner"]
 ```
 
 配置字段、默认值、中英文说明和示例集中维护在

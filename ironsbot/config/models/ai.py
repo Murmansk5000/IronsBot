@@ -79,7 +79,7 @@ class AiActionBase(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     intent: str = DEFAULT_JOIN_TEAM_INTENT
     classifier_prompt: str = DEFAULT_CLASSIFIER_PROMPT
-    action: Literal["message", "team_recommend", "team_shortcut", "ai_reply"] = (
+    action: Literal["message", "team_recommend", "team_resource", "ai_reply"] = (
         "team_recommend"
     )
     message: str = ""

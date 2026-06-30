@@ -26,7 +26,8 @@ user_aliases = {}
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
 # fire_manual 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
-# Example: { main = ["seer_pet", "seer_mintmark", "seer_autocard"] }
+# team_resource_subscription 控制战队订阅查询和低资源定时提醒。
+# Example: { xinghen = ["seer_pet", "seer_mintmark", "seer_autocard", "team_resource_subscription"] }
 group_policy = {}
 
 # Default: {}
@@ -428,8 +429,8 @@ rate_limit_seconds = 60
 failure_rate_limit_seconds = 10
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
-# Default: all team sections; EN: Enabled team sections. ZH: 战队展示区块。
-sections = ["all"]
+# Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。
+sections = ["basic", "resource"]
 
 [seer.mintmark]
 # Default: true
@@ -566,27 +567,28 @@ refresh_interval_seconds = 0.5
 # ZH: 本地样本榜数据库。
 path = "data/seer/player_query_cache.sqlite"
 
-[seer.team_shortcut]
-# Default: []
-# EN: Default team IDs used by team shortcut actions.
-# ZH: 战队快捷动作使用的默认战队 ID。
-# Example: [12345]
-team_ids = []
-
-# Default: []
-# EN: User IDs mentioned by low-resource notices.
-# ZH: 战队资源不足提醒时 @ 的用户 ID。
-# Example: [1234567890]
-resource_users = []
-
-# Default: ["战队"]; EN: Team shortcut commands. ZH: 战队快捷查询口令。
+[seer.team_resource]
+# Default: true; EN: Enable subscribed team query and resource notices. ZH: 启用战队订阅查询与资源提醒。
+enabled = true
+# Default: []; EN: Daily low-resource scan times. Empty disables scheduled notices.
+# ZH: 每日资源扫描时间；为空时不定时提醒，只保留群内“战队”订阅查询。
+times = []
+# Default: ["战队"]; EN: Subscribed team query commands. ZH: 本群订阅战队查询口令。
 commands = ["战队"]
-# Default: 1000; EN: Low resource threshold. ZH: 战队低资源提醒阈值。
-resource_threshold = 1000
-# Default: 20; EN: Team shortcut query timeout seconds. ZH: 战队快捷查询超时秒数。
+# Default: 20; EN: Team subscription query timeout seconds. ZH: 战队订阅查询超时秒数。
 query_timeout_seconds = 20
-# Default: built-in message; EN: Resource notice message. ZH: 战队资源提醒文案。
+# Default: built-in line; EN: Resource notice status line. ZH: 战队资源提醒状态行。
+resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
+# Default: built-in message; EN: Resource notice extra message. ZH: 战队资源提醒附加文案。
 resource_message = "出来买资源，别逼我求你😡"
+
+# EN: Add one subscription per group/threshold/mention target set.
+# ZH: 每个群、阈值、提醒对象组合写一条订阅；同一条订阅可包含多个战队号。
+# [[seer.team_resource.subscriptions]]
+# group = "xinghen"
+# team_ids = [1234567, 2345678]
+# threshold = 1000
+# at_users = ["owner"]
 
 [seer.render]
 # Default: "render_cache"; EN: Render cache directory. ZH: 渲染缓存目录。
@@ -741,7 +743,7 @@ seer_type = 12
 seer_equipment = 13
 seer_peak = 14
 seer_data = 15
-team_shortcut = 16
+team_resource_subscription = 16
 bilibili = 3
 sendpic = 4
 server_status = 1

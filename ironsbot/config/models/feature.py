@@ -37,7 +37,7 @@ KNOWN_FEATURES = frozenset(
         "seer_activity_push",
         "server_status_query",
         "server_status_push",
-        "team",
+        "team_resource_subscription",
         "ai_chat",
         "ai_intent",
         "fire_manual",
@@ -87,6 +87,7 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
             "web_activity_push",
             "seerinfo",
             "team_audit",
+            "team_resource_subscription",
         }
     ),
 }

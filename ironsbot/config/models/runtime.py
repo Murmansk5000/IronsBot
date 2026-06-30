@@ -223,7 +223,7 @@ class MatcherPriorityConfig(BaseModel):
     seer_equipment: int = Field(default=13, ge=0)
     seer_peak: int = Field(default=14, ge=0)
     seer_data: int = Field(default=15, ge=0)
-    team_shortcut: int = Field(default=16, ge=0)
+    team_resource_subscription: int = Field(default=16, ge=0)
     bilibili: int = Field(default=3, ge=0)
     sendpic: int = Field(default=4, ge=0)
     server_status: int = Field(default=1, ge=0)

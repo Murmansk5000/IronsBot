@@ -9,9 +9,7 @@ from ironsbot.config.models.ai import (
 from ironsbot.services.ai.client import get_ai_key
 from ironsbot.services.ai.intent import (
     get_configured_actions,
-    get_team_ids,
-    get_team_resource_users,
-    get_team_shortcut_config,
+    get_team_resource_config,
 )
 
 Config = AppConfig
@@ -29,7 +27,5 @@ __all__ = [
     "get_ai_config",
     "get_ai_key",
     "get_configured_actions",
-    "get_team_ids",
-    "get_team_resource_users",
-    "get_team_shortcut_config",
+    "get_team_resource_config",
 ]

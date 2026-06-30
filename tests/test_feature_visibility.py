@@ -34,7 +34,7 @@ def _group_event(text: str = "帮助") -> GroupMessageEvent:
 def _config(
     *,
     ai_intent_enabled: bool = True,
-    team_ids: list[int] | None = None,
+    team_subscriptions: list[object] | None = None,
     group_actions: list[Action] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
@@ -46,7 +46,9 @@ def _config(
             private_schedules=[],
         ),
         seer=SimpleNamespace(
-            team_shortcut=SimpleNamespace(team_ids=team_ids or []),
+            team_resource=SimpleNamespace(
+                subscriptions=team_subscriptions or [],
+            ),
         ),
     )
 
@@ -169,22 +171,22 @@ def test_ai_intent_visibility_requires_key_and_feature(
     )
 
 
-def test_team_shortcut_visibility_reads_app_config(
+def test_team_resource_visibility_reads_app_config(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         visibility,
         "get_app_config",
-        lambda: _config(team_ids=[123456]),
+        lambda: _config(team_subscriptions=[object()]),
     )
     monkeypatch.setattr(
         visibility,
         "group_has_feature",
-        lambda _group_id, feature: feature == "team",
+        lambda _group_id, feature: feature == "team_resource_subscription",
     )
 
     assert visibility.plugin_visible_for_event(
-        "战队快捷",
+        "战队资源订阅",
         "ironsbot.plugins.team_shortcut",
         _group_event(),
     )
