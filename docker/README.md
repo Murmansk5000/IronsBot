@@ -170,13 +170,16 @@ Configure it in `ironsbot.toml`:
 group_aliases = { team_group = 123456789 }
 group_policy = { team_group = ["team"] }
 
-[seer.team_shortcut]
-team_ids = [1234567, 7654321]
-resource_users = [123456789]
-commands = ["战队"]
-resource_threshold = 1000
+# 战队资源功能默认停用；本示例不创建群订阅或通知目标。
+# 部署启用时，请按正式订阅结构配置明确的 group；threshold 属于每条 subscriptions 条目。
+[seer.team_resource]
+enabled = false
+subscriptions = []
+commands = [
+    "战队",
+]
 query_timeout_seconds = 20
-resource_message = "出来买资源，别逼我求你😡"
+resource_message = "战队资源不足，请联系本群管理员确认补充安排。"
 ```
 
 Keep real QQ group IDs and team IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Do not commit them to GitHub.

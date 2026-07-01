@@ -140,9 +140,16 @@ superuser_bypass = true
 [bilibili.push]
 groups = { main = { uids = [1310714247], mode = "full" } }
 
-[seer.team_shortcut]
-team_ids = [1234567]
-resource_users = [123456789]
+# 战队资源功能默认停用；本示例不创建群订阅或通知目标。
+# 部署启用时，请按正式订阅结构配置明确的 group；threshold 属于每条 subscriptions 条目。
+[seer.team_resource]
+enabled = false
+subscriptions = []
+commands = [
+    "战队",
+]
+query_timeout_seconds = 20
+resource_message = "战队资源不足，请联系本群管理员确认补充安排。"
 ```
 
 配置字段、默认值、中英文说明和示例集中维护在

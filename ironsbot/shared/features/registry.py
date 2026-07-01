@@ -35,7 +35,7 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     "seer_activity_push": ("ironsbot.plugins.activity",),
     "server_status_query": ("ironsbot.plugins.server_status",),
     "server_status_push": ("ironsbot.plugins.server_status",),
-    "team": ("ironsbot.plugins.team_shortcut",),
+    "team_resource_subscription": ("ironsbot.plugins.team_shortcut",),
     "team_audit": ("ironsbot.plugins.team_audit_welcome",),
     "ai_chat": ("ironsbot.plugins.ai_chat",),
     "ai_intent": (
