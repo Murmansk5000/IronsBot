@@ -134,6 +134,14 @@ def test_team_audit_feature_is_registered() -> None:
     )
 
 
+def test_team_resource_feature_is_registered() -> None:
+    assert "team_resource_subscription" in FEATURE_ALIASES["message"]
+    assert "team_resource_subscription" in FEATURE_ALIASES["all"]
+    assert features_for_module("ironsbot.plugins.team_shortcut") == (
+        "team_resource_subscription",
+    )
+
+
 def test_fire_manual_feature_is_registered() -> None:
     assert "fire_manual" in FEATURE_ALIASES["all"]
     assert features_for_module("ironsbot.plugins.fire_manual_ad") == ("fire_manual",)

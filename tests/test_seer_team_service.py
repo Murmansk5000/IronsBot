@@ -46,10 +46,11 @@ def _team_info() -> SimpleNamespace:
 def test_format_team_info_respects_enabled_sections() -> None:
     message = format_team_info(_team_info(), {"basic", "resource"})
 
-    assert "【战队扩展信息：测试战队】" in message
+    assert "【战队信息：测试战队】" in message
     assert "战队ID：123456" in message
-    assert "【等级与资源】" in message
-    assert "最近缴纳时间：2000年1月1日 08:00:00（946684800）" in message
+    assert "战队等级：9" in message
+    assert "战队资源：777" in message
+    assert "最近缴纳时间" not in message
     assert "【设施等级】" not in message
     assert "【文本】" not in message
 

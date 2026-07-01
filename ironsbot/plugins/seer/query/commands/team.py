@@ -36,7 +36,7 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import get_team_query_config
-from ..group import matcher_group, seer_feature_rule
+from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ._args import has_numeric_arg, parse_numeric_id
 
 TEAM_ID_KEY = "team_id"
@@ -55,6 +55,7 @@ team_matcher = matcher_group.on_message(
         & has_numeric_arg
         & no_reply()
     ),
+    priority=seer_feature_priority("seer_team"),
 )
 
 
