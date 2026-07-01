@@ -290,6 +290,28 @@ private_commands = []
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
 private_schedules = []
 
+[message.private_unsubscribe]
+# Default: true
+# EN: Enable private scheduled push unsubscribe menu.
+# ZH: 启用私聊定时推送退订菜单。
+enabled = true
+# Default: ["td", "退订"]
+# EN: Private commands that open the unsubscribe menu. Matching is case-insensitive.
+# ZH: 打开退订菜单的私聊口令；大小写不敏感，所以 TD 自动生效。
+commands = ["td", "退订"]
+# Default: ["订阅", "恢复订阅"]
+# EN: Private commands that restore unsubscribed scheduled pushes.
+# ZH: 恢复已退订私聊推送的私聊口令。
+restore_commands = ["订阅", "恢复订阅"]
+# Default: "data/messaging/private_push_unsubscriptions.sqlite"
+# EN: SQLite path for private push unsubscribe records.
+# ZH: 私聊推送退订记录 SQLite 路径。
+data_path = "data/messaging/private_push_unsubscriptions.sqlite"
+# Default: built-in hint.
+# EN: Hint appended to private scheduled pushes.
+# ZH: 追加到私聊定时推送末尾的退订提示。
+hint = "回复 TD 可管理私聊推送订阅。"
+
 # Default: []
 # EN: Group fixed command replies.
 # ZH: 群聊固定文本回复动作。
