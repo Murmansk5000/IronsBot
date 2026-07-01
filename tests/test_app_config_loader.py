@@ -34,6 +34,9 @@ DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_SEER_PLAYER_PRIORITY = 5
+DEFAULT_PRIVATE_UNSUBSCRIBE_DATA_PATH = (
+    "data/messaging/private_push_unsubscriptions.sqlite"
+)
 TEAM_RESOURCE_THRESHOLD = 2000
 
 
@@ -54,6 +57,17 @@ def test_example_config_parses() -> None:
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
+    private_unsubscribe = config.message.private_unsubscribe
+    assert (
+        private_unsubscribe.commands,
+        private_unsubscribe.restore_commands,
+        private_unsubscribe.data_path,
+    ) == (
+        ["td", "退订"],
+        ["订阅", "恢复订阅"],
+        DEFAULT_PRIVATE_UNSUBSCRIBE_DATA_PATH,
+    )
+    assert private_unsubscribe.enabled and "TD" in private_unsubscribe.hint
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
     assert "米米号" in config.message.team_audit_welcome.message
