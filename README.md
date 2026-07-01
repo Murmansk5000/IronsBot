@@ -44,7 +44,7 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `WebSocket Port`: `8085`
 - `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
 - `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 一致
-- `SUPERUSERS`: 超级管理员 QQ，例如 `["123456789"]`
+- `SUPERUSERS`: 超级管理员 QQ，例如 `["1234567890"]`
 
 NapCat 反向 WebSocket：
 
@@ -76,7 +76,7 @@ services:
       PORT: "8080"
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
-      SUPERUSERS: '["123456789"]'
+      SUPERUSERS: '["1234567890"]'
     restart: always
 ```
 
@@ -97,7 +97,7 @@ services:
 | `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
 | `bilibili` | B站动态监控与点播。 |
 | `meeting` | 腾讯会议回复。 |
-| `team_shortcut` | 战队群快捷查询与资源提醒。 |
+| `team_resource_subscription` | 战队资源订阅、群内订阅战队查询与低资源提醒。 |
 | `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
@@ -121,7 +121,7 @@ services:
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-SUPERUSERS=["123456789"]
+SUPERUSERS=["1234567890"]
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
@@ -131,32 +131,32 @@ HEADLESS_SEER_PASSWORD=
 
 ```toml
 [feature]
-group_aliases = { admin = 686376929, main = 123456789 }
-user_aliases = { owner = 123456789 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "activity_query", "activity_push", "server_status_query", "server_status_push", "team", "ai_chat", "ai_intent"] }
+group_aliases = { admin = 123456789, xinghen = 987654321 }
+user_aliases = { owner = 1234567890 }
+group_policy = { admin = ["admin_notice"], xinghen = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
 
 [bilibili.push]
-groups = { main = { uids = [1310714247], mode = "full" } }
+groups = { xinghen = { uids = [1310714247], mode = "full" } }
 
-# 战队资源功能默认停用；本示例不创建群订阅或通知目标。
-# 部署启用时，请按正式订阅结构配置明确的 group；threshold 属于每条 subscriptions 条目。
 [seer.team_resource]
-enabled = false
-subscriptions = []
-commands = [
-    "战队",
-]
-query_timeout_seconds = 20
-resource_message = "战队资源不足，请联系本群管理员确认补充安排。"
+times = ["23:00"]
+
+[[seer.team_resource.subscriptions]]
+group = "xinghen"
+team_ids = [1234567]
+threshold = 1000
+at_users = ["owner"]
 ```
 
 配置字段、默认值、中英文说明和示例集中维护在
 [config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
-`all` 里。消息动作可以使用自己的 feature 名，例如 `activity_link` 或
-`seerinfo`。
+`all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
+游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
+使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual`
+控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 
 ## 数据与缓存
 

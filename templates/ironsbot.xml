@@ -26,7 +26,7 @@ Version scheme:
 Recent changes:
 - Added DeepSeek/OpenAI-compatible AI chat through bot mentions.
 - Added persistent Bilibili login data under /app/data.
-- Added startup notice, scheduled private messages, team group query shortcuts, and manual database refresh.
+- Added startup notice, scheduled private messages, team resource subscriptions, and manual database refresh.
 - Switched Unraid behavior configuration to a mounted TOML file via APP_CONFIG_PATH.
 - Kept Unraid environment variables minimal: secrets, credentials, and deployment runtime only.
   </Changes>
