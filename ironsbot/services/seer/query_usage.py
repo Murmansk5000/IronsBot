@@ -91,7 +91,7 @@ SEER_QUERY_USAGE_SECTIONS = (
         feature="seer_data",
         lines=(
             "【数据工具】feature: seer_data",
-            "下周预告 / 数据版本",
+            "下周预告 / 数据版本 / 赛季倒计时",
         ),
     ),
 )

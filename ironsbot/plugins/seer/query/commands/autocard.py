@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
+from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.plugins.seer_data.db import SeerAPISession
@@ -24,6 +27,7 @@ from ironsbot.services.seer.autocard import (
     load_autocard_dataset,
     search_autocard_items,
 )
+from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
@@ -39,18 +43,26 @@ from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import matcher_group
+from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
 AUTOCARD_PLUGIN_NAME = "seer_autocard"
 
+
+async def _is_not_rank_query(event: MessageEvent) -> bool:
+    return not is_rank_query_text(event.get_plaintext())
+
+
 autocard_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(
+    rule=seer_feature_rule("seer_autocard")
+    & startswith_or_endswith(
         prefixes=AUTOCARD_QUERY_PREFIXES,
         suffixes=AUTOCARD_QUERY_SUFFIXES,
     )
-    & no_reply()
+    & Rule(_is_not_rank_query)
+    & no_reply(),
+    priority=seer_feature_priority("seer_autocard"),
 )
 
 
@@ -76,6 +88,72 @@ def _build_autocard_reply(
     return message
 
 
+def _build_autocard_text_reply(
+    dataset: AutocardDataset,
+    kind: str,
+    item: dict[str, object],
+) -> Message:
+    return Message(format_autocard_entry(dataset, kind, item))
+
+
+async def _send_autocard_reply(
+    matcher: Matcher,
+    event: MessageEvent,
+    dataset: AutocardDataset,
+    kind: str,
+    item: dict[str, object],
+) -> None:
+    try:
+        await send_event_reply(
+            matcher,
+            event,
+            _build_autocard_reply(dataset, kind, item),
+        )
+    except ActionFailed as e:
+        logger.warning(
+            "autocard image reply failed, falling back to text: "
+            "kind={} id={} name={} error={}",
+            kind,
+            item.get("id"),
+            item.get("name"),
+            e,
+        )
+        await send_event_reply(
+            matcher,
+            event,
+            _build_autocard_text_reply(dataset, kind, item),
+        )
+
+
+async def _finish_autocard_reply(
+    matcher: Matcher,
+    event: MessageEvent,
+    dataset: AutocardDataset,
+    kind: str,
+    item: dict[str, object],
+) -> None:
+    try:
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_autocard_reply(dataset, kind, item),
+        )
+    except ActionFailed as e:
+        logger.warning(
+            "autocard image finish failed, falling back to text: "
+            "kind={} id={} name={} error={}",
+            kind,
+            item.get("id"),
+            item.get("name"),
+            e,
+        )
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_autocard_text_reply(dataset, kind, item),
+        )
+
+
 async def _enter_autocard_prompt(
     matcher: Matcher,
     event: MessageEvent,
@@ -84,6 +162,7 @@ async def _enter_autocard_prompt(
     prompt: str | None,
 ) -> None:
     state[AUTOCARD_PROMPT_STATE_KEY] = values
+    matcher.state[AUTOCARD_PROMPT_STATE_KEY] = values
     await enter_event_reply_conversation(
         matcher,
         event,
@@ -112,7 +191,7 @@ async def _handle_autocard_prompt_reply(
 
 class AutocardPlugin:
     name = AUTOCARD_PLUGIN_NAME
-    feature = "seer"
+    feature = "seer_autocard"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:
@@ -166,11 +245,7 @@ class AutocardPlugin:
                 "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。",
             )
 
-        await send_event_reply(
-            matcher,
-            event,
-            _build_autocard_reply(dataset, value.kind, data),
-        )
+        await _send_autocard_reply(matcher, event, dataset, value.kind, data)
         await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
 
     async def _handle_query(
@@ -202,11 +277,7 @@ class AutocardPlugin:
 
         if len(matches) == 1:
             kind, item = matches[0]
-            await finish_event_reply(
-                matcher,
-                event,
-                _build_autocard_reply(dataset, kind, item),
-            )
+            await _finish_autocard_reply(matcher, event, dataset, kind, item)
 
         if len(matches) > AUTOCARD_PROMPT_MAX_ITEMS:
             message = (

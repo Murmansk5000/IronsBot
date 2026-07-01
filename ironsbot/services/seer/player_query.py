@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
+PLAYER_AUTOCARD_KEY = "_player_autocard_message"
 PLAYER_DETAIL_TASK_KEY = "_player_detail_task"
 PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
 PLAYER_DETAIL_AUTO_REPLY_KEYS = "_player_detail_auto_reply_keys"
@@ -21,6 +22,7 @@ PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY = "_player_detail_auto_reply_tasks"
 class PlayerDetailMessages:
     collection_message: str = ""
     peak_message: str = ""
+    autocard_message: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +30,7 @@ class PlayerQuerySectionPlan:
     show_local_rank: bool
     has_collection: bool
     needs_peak_section: bool
+    has_autocard_rank: bool
     needs_online_info: bool
     local_rank_enabled: bool
 
@@ -36,6 +39,7 @@ class PlayerQuerySectionPlan:
         return (
             self.has_collection
             or self.needs_peak_section
+            or self.has_autocard_rank
             or self.local_rank_enabled
         )
 
@@ -45,6 +49,7 @@ class PlayerDetailFetchPlan:
     needs_unity_part_one: bool
     needs_unity_peak: bool
     needs_rank_summary: bool
+    needs_autocard_rank: bool
     needs_local_rank: bool
 
 
@@ -161,6 +166,11 @@ def resolve_player_detail_reply(text_value: str) -> PlayerDetailReplyRequest | N
             key=PLAYER_PEAK_KEY,
             label="巅峰之战",
         )
+    if normalized == "群星牌":
+        return PlayerDetailReplyRequest(
+            key=PLAYER_AUTOCARD_KEY,
+            label="群星牌排名",
+        )
     return None
 
 
@@ -170,6 +180,7 @@ def store_player_detail_messages(
 ) -> None:
     state[PLAYER_COLLECTION_KEY] = detail_messages.collection_message
     state[PLAYER_PEAK_KEY] = detail_messages.peak_message
+    state[PLAYER_AUTOCARD_KEY] = detail_messages.autocard_message
 
 
 def cached_player_detail_message(
@@ -212,6 +223,7 @@ def plan_player_query_sections(
         show_local_rank="local_rank" in enabled_sections,
         has_collection=has_collection,
         needs_peak_section="peak" in enabled_sections,
+        has_autocard_rank="autocard" in enabled_sections,
         needs_online_info="basic" in enabled_sections,
         local_rank_enabled=local_rank_enabled,
     )
@@ -221,6 +233,7 @@ def plan_player_detail_fetches(
     *,
     has_collection: bool,
     needs_peak_section: bool,
+    has_autocard_rank: bool,
     local_rank_enabled: bool,
 ) -> PlayerDetailFetchPlan:
     needs_unity_part_one = has_collection
@@ -235,6 +248,7 @@ def plan_player_detail_fetches(
         needs_unity_part_one=needs_unity_part_one,
         needs_unity_peak=needs_unity_peak,
         needs_rank_summary=needs_rank_summary,
+        needs_autocard_rank=has_autocard_rank,
         needs_local_rank=local_rank_enabled,
     )
 
@@ -243,12 +257,15 @@ def player_detail_commands(
     *,
     has_collection: bool,
     has_peak: bool,
+    has_autocard: bool,
 ) -> tuple[str, ...]:
     commands: list[str] = []
     if has_collection:
         commands.append("收集")
     if has_peak:
         commands.append("巅峰")
+    if has_autocard:
+        commands.append("群星牌")
     return tuple(commands)
 
 
@@ -256,11 +273,13 @@ def plan_player_detail_prompt(
     *,
     has_collection: bool,
     has_peak: bool,
+    has_autocard: bool,
     supports_conversation: bool,
 ) -> PlayerDetailPromptPlan:
     commands = player_detail_commands(
         has_collection=has_collection,
         has_peak=has_peak,
+        has_autocard=has_autocard,
     )
     return PlayerDetailPromptPlan(
         commands=commands,

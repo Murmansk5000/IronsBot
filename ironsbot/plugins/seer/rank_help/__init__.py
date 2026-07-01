@@ -24,7 +24,7 @@ __plugin_meta__ = PluginMetadata(
 
 rank_help_entry = on_fullmatch(
     ("榜单", "排行榜"),
-    rule=Rule(lambda event: is_event_feature_allowed(event, "rank")) & no_reply(),
+    rule=Rule(lambda event: is_event_feature_allowed(event, "seer_rank")) & no_reply(),
     priority=get_matcher_priority("seer_rank_help", 2),
     block=True,
 )
@@ -32,7 +32,7 @@ rank_help_entry = on_fullmatch(
 
 class RankHelpPlugin:
     name = RANK_HELP_PLUGIN_NAME
-    feature = "rank"
+    feature = "seer_rank"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:  # noqa: ARG002

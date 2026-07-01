@@ -1,6 +1,7 @@
 import asyncio
 
 from ironsbot.services.seer.player_query import (
+    PLAYER_AUTOCARD_KEY,
     PLAYER_COLLECTION_KEY,
     PLAYER_DETAIL_AUTO_REPLY_KEYS,
     PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY,
@@ -83,6 +84,7 @@ def test_player_detail_messages_defaults_to_empty_messages() -> None:
 
     assert messages.collection_message == ""
     assert messages.peak_message == ""
+    assert messages.autocard_message == ""
 
 
 def test_resolve_player_detail_reply_maps_text_to_detail_request() -> None:
@@ -93,6 +95,10 @@ def test_resolve_player_detail_reply_maps_text_to_detail_request() -> None:
     assert resolve_player_detail_reply(" 巅 峰 ") == PlayerDetailReplyRequest(
         key=PLAYER_PEAK_KEY,
         label="巅峰之战",
+    )
+    assert resolve_player_detail_reply("群星牌") == PlayerDetailReplyRequest(
+        key=PLAYER_AUTOCARD_KEY,
+        label="群星牌排名",
     )
     assert resolve_player_detail_reply("战队") is None
 
@@ -105,11 +111,13 @@ def test_store_and_read_cached_player_detail_messages() -> None:
         PlayerDetailMessages(
             collection_message="collection",
             peak_message="peak",
+            autocard_message="autocard",
         ),
     )
 
     assert cached_player_detail_message(state, PLAYER_COLLECTION_KEY) == "collection"
     assert cached_player_detail_message(state, PLAYER_PEAK_KEY) == "peak"
+    assert cached_player_detail_message(state, PLAYER_AUTOCARD_KEY) == "autocard"
     assert cached_player_detail_message(state, "missing") == ""
 
 
@@ -234,7 +242,7 @@ def test_optional_player_extra_records_errors_and_uses_logger_callback() -> None
 
 def test_plan_player_query_sections_maps_configured_sections() -> None:
     plan = plan_player_query_sections(
-        ("basic", "collection", "local_rank", "peak"),
+        ("basic", "collection", "local_rank", "peak", "autocard"),
         local_rank_enabled=True,
     )
 
@@ -242,6 +250,7 @@ def test_plan_player_query_sections_maps_configured_sections() -> None:
         show_local_rank=True,
         has_collection=True,
         needs_peak_section=True,
+        has_autocard_rank=True,
         needs_online_info=True,
         local_rank_enabled=True,
     )
@@ -254,26 +263,41 @@ def test_plan_player_query_sections_keeps_cache_refresh_detail_task() -> None:
     assert plan.show_local_rank is False
     assert plan.has_collection is False
     assert plan.needs_peak_section is False
+    assert plan.has_autocard_rank is False
     assert plan.needs_online_info is True
     assert plan.needs_detail_task is True
 
 
 def test_player_detail_commands_follow_available_detail_sections() -> None:
-    assert player_detail_commands(has_collection=True, has_peak=True) == (
+    assert player_detail_commands(
+        has_collection=True,
+        has_peak=True,
+        has_autocard=True,
+    ) == (
         "收集",
         "巅峰",
+        "群星牌",
     )
-    assert player_detail_commands(has_collection=False, has_peak=True) == ("巅峰",)
-    assert player_detail_commands(has_collection=False, has_peak=False) == ()
+    assert player_detail_commands(
+        has_collection=False,
+        has_peak=True,
+        has_autocard=False,
+    ) == ("巅峰",)
+    assert player_detail_commands(
+        has_collection=False,
+        has_peak=False,
+        has_autocard=False,
+    ) == ()
 
 
 def test_plan_player_detail_prompt_enters_available_conversation() -> None:
     assert plan_player_detail_prompt(
         has_collection=True,
         has_peak=True,
+        has_autocard=True,
         supports_conversation=True,
     ) == PlayerDetailPromptPlan(
-        commands=("收集", "巅峰"),
+        commands=("收集", "巅峰", "群星牌"),
         should_enter_conversation=True,
     )
 
@@ -282,6 +306,7 @@ def test_plan_player_detail_prompt_finishes_when_no_commands_are_available() -> 
     assert plan_player_detail_prompt(
         has_collection=False,
         has_peak=False,
+        has_autocard=False,
         supports_conversation=True,
     ) == PlayerDetailPromptPlan(
         commands=(),
@@ -293,6 +318,7 @@ def test_plan_player_detail_prompt_keeps_commands_without_event() -> None:
     assert plan_player_detail_prompt(
         has_collection=False,
         has_peak=True,
+        has_autocard=False,
         supports_conversation=False,
     ) == PlayerDetailPromptPlan(
         commands=("巅峰",),
@@ -304,11 +330,13 @@ def test_plan_player_detail_fetches_for_collection_and_peak() -> None:
     assert plan_player_detail_fetches(
         has_collection=True,
         needs_peak_section=True,
+        has_autocard_rank=True,
         local_rank_enabled=False,
     ) == PlayerDetailFetchPlan(
         needs_unity_part_one=True,
         needs_unity_peak=True,
         needs_rank_summary=True,
+        needs_autocard_rank=True,
         needs_local_rank=False,
     )
 
@@ -317,11 +345,13 @@ def test_plan_player_detail_fetches_expands_for_local_rank_cache_update() -> Non
     assert plan_player_detail_fetches(
         has_collection=False,
         needs_peak_section=False,
+        has_autocard_rank=False,
         local_rank_enabled=True,
     ) == PlayerDetailFetchPlan(
         needs_unity_part_one=True,
         needs_unity_peak=True,
         needs_rank_summary=True,
+        needs_autocard_rank=False,
         needs_local_rank=True,
     )
 
@@ -330,10 +360,12 @@ def test_plan_player_detail_fetches_can_skip_all_optional_fetches() -> None:
     assert plan_player_detail_fetches(
         has_collection=False,
         needs_peak_section=False,
+        has_autocard_rank=False,
         local_rank_enabled=False,
     ) == PlayerDetailFetchPlan(
         needs_unity_part_one=False,
         needs_unity_peak=False,
         needs_rank_summary=False,
+        needs_autocard_rank=False,
         needs_local_rank=False,
     )
