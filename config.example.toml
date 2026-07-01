@@ -498,6 +498,12 @@ target_limit = 50000
 # ZH: 可选的按榜单单独设置缓存目标；键写全服榜名称。
 target_limits = {}
 # Example: target_limits = { "群星牌" = 10000, "成就点数" = 50000 }
+# Default: { "群星牌" = 1000 }
+# EN: Optional per-rank score cutoffs. For these ranks, refresh pages until the
+# first cached page falls below the score; target_limit remains a safety cap.
+# ZH: 可选的按榜单分数线停止刷新。比如群星牌默认刷到页面最低分低于 1000 分；
+# 想收 0 分以上玩家时改成 { "群星牌" = 1 }。target_limit 仍作为保险上限。
+score_cutoffs = { "群星牌" = 1000 }
 # EN: Rank-position score is calculated automatically as 1 / sqrt(page_index).
 # ZH: 名次位置分数自动按页序号平方根衰减，例如 1-100 为 1，101-200 约 0.707，1901-2000 约 0.224。
 # Default: 0.08

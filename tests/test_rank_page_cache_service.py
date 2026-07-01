@@ -61,12 +61,19 @@ def test_save_rank_page_deduplicates_user_within_same_rank(
 
     summaries = get_rank_page_cache_summary(key=1, sub_key=2)
     actual = [
-        (page.start_index, page.item_count, page.expected_count, page.is_partial)
+        (
+            page.start_index,
+            page.item_count,
+            page.expected_count,
+            page.min_score,
+            page.max_score,
+            page.is_partial,
+        )
         for page in summaries
     ]
     assert actual == [
-        (0, 0, 100, True),
-        (100, 1, 100, True),
+        (0, 0, 100, None, None, True),
+        (100, 1, 100, MOVED_SCORE, MOVED_SCORE, True),
     ]
 
 

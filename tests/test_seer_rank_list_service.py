@@ -289,11 +289,11 @@ def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() ->
         spec,
         pages,
         ttl_seconds=3600,
-        target_limit=500,
+        target_limit="分数 >= 1000（最多前 500 名）",
         next_ranges=(("部分", 1, 100),),
     ) == (
         "📦【测试榜缓存】\n"
-        "目标：前 500 名\n"
+        "目标：分数 >= 1000（最多前 500 名）\n"
         "有效缓存：0 段，0 名\n"
         "有效区间：无\n"
         "部分缺失：1 段，现存 99 名\n"

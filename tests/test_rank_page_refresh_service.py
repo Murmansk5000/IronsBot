@@ -8,11 +8,15 @@ from ironsbot.services.seer.rank_page_refresh import (
     REFRESH_REASON_PARTIAL,
     REFRESH_REASON_STALE,
     filter_standard_rank_page_summaries,
+    rank_refresh_target_label,
+    rank_score_cutoff,
     rank_target_limit,
     select_rank_page_refresh_targets,
 )
 
 PER_RANK_TARGET_LIMIT = 200
+TEST_SCORE_CUTOFF = 1000
+TEST_SCORE_TARGET_LABEL = "分数 >= 1000（最多前 500 名）"
 
 
 def test_select_rank_page_refresh_targets_prefers_first_missing_gap() -> None:
@@ -353,6 +357,48 @@ def test_rank_page_refresh_uses_per_rank_target_limit() -> None:
     ]
 
 
+def test_rank_page_refresh_score_cutoff_stops_after_boundary_page() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    config = RankPageRefreshConfig(
+        target_limit=500,
+        score_cutoffs={"测试": TEST_SCORE_CUTOFF},
+        page_size=100,
+        pages_per_run=5,
+        refresh_stale_after_hours=24,
+    )
+    pages = [
+        SimpleNamespace(
+            start_index=0,
+            end_index=99,
+            item_count=100,
+            expected_count=100,
+            fetched_at=time.time(),
+            min_score=1200,
+            is_partial=False,
+        ),
+        SimpleNamespace(
+            start_index=100,
+            end_index=199,
+            item_count=100,
+            expected_count=100,
+            fetched_at=time.time() - 48 * 3600,
+            min_score=900,
+            is_partial=False,
+        ),
+    ]
+
+    targets = select_rank_page_refresh_targets(
+        [("测试", spec)],
+        {"测试": pages},
+        config=config,
+    )
+
+    assert rank_score_cutoff(config, "测试") == TEST_SCORE_CUTOFF
+    assert rank_refresh_target_label(config, "测试") == TEST_SCORE_TARGET_LABEL
+    actual = [(target.reason, target.start_rank, target.end_rank) for target in targets]
+    assert actual == [(REFRESH_REASON_STALE, 101, 200)]
+
+
 def test_filter_standard_rank_page_summaries_ignores_lookup_fragments() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(target_limit=300, page_size=100)
@@ -386,6 +432,32 @@ def test_filter_standard_rank_page_summaries_uses_per_rank_target_limit() -> Non
         SimpleNamespace(start_index=0, end_index=99),
         SimpleNamespace(start_index=100, end_index=199),
         SimpleNamespace(start_index=200, end_index=299),
+    ]
+
+    filtered = filter_standard_rank_page_summaries(
+        spec,
+        pages,
+        rank_key="测试",
+        config=config,
+    )
+
+    assert [(page.start_index, page.end_index) for page in filtered] == [
+        (0, 99),
+        (100, 199),
+    ]
+
+
+def test_filter_standard_rank_page_summaries_stops_at_score_cutoff() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    config = RankPageRefreshConfig(
+        target_limit=300,
+        score_cutoffs={"测试": TEST_SCORE_CUTOFF},
+        page_size=100,
+    )
+    pages = [
+        SimpleNamespace(start_index=0, end_index=99, min_score=1200),
+        SimpleNamespace(start_index=100, end_index=199, min_score=900),
+        SimpleNamespace(start_index=200, end_index=299, min_score=100),
     ]
 
     filtered = filter_standard_rank_page_summaries(

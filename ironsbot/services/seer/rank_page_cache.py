@@ -45,6 +45,8 @@ class CachedRankPageSummary:
     item_count: int
     expected_count: int
     fetched_at: float
+    min_score: int | None = None
+    max_score: int | None = None
     is_stale: bool = False
     is_partial: bool = False
 
@@ -328,7 +330,9 @@ def get_rank_page_cache_summary(
                     p.end_index,
                     p.fetched_at,
                     p.expected_count,
-                    COUNT(f.user_id) AS actual_count
+                    COUNT(f.user_id) AS actual_count,
+                    MIN(f.score) AS min_score,
+                    MAX(f.score) AS max_score
                 FROM rank_pages p
                 LEFT JOIN player_rank_facts f
                   ON f.key = p.key
@@ -358,10 +362,20 @@ def get_rank_page_cache_summary(
             item_count=int(actual_count),
             expected_count=int(expected_count),
             fetched_at=float(fetched_at),
+            min_score=None if min_score is None else int(min_score),
+            max_score=None if max_score is None else int(max_score),
             is_stale=ttl <= 0 or now - float(fetched_at) > ttl,
             is_partial=int(actual_count) < int(expected_count),
         )
-        for start_index, end_index, fetched_at, expected_count, actual_count in rows
+        for (
+            start_index,
+            end_index,
+            fetched_at,
+            expected_count,
+            actual_count,
+            min_score,
+            max_score,
+        ) in rows
     ]
 
 

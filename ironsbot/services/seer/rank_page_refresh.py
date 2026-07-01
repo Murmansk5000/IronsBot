@@ -84,6 +84,18 @@ def rank_target_limit(config: RankPageRefreshConfig, rank_key: str) -> int:
     return config.target_limits.get(rank_key, config.target_limit)
 
 
+def rank_score_cutoff(config: RankPageRefreshConfig, rank_key: str) -> int | None:
+    return config.score_cutoffs.get(rank_key)
+
+
+def rank_refresh_target_label(config: RankPageRefreshConfig, rank_key: str) -> str:
+    target_limit = rank_target_limit(config, rank_key)
+    score_cutoff = rank_score_cutoff(config, rank_key)
+    if score_cutoff is not None:
+        return f"分数 >= {score_cutoff}（最多前 {target_limit} 名）"
+    return f"前 {target_limit} 名"
+
+
 def configured_rank_specs(
     rank_keys: Sequence[str] | None = None,
 ) -> list[tuple[str, GlobalRankSpec]]:
@@ -192,6 +204,17 @@ def _rank_page_candidate_score(
     )
 
 
+def _page_reaches_score_cutoff(
+    page: CachedRankPageSummary | None,
+    *,
+    score_cutoff: int | None,
+) -> bool:
+    if page is None or score_cutoff is None:
+        return False
+    min_score = getattr(page, "min_score", None)
+    return min_score is not None and int(min_score) < score_cutoff
+
+
 def _build_rank_page_candidates(  # noqa: PLR0913
     *,
     rank_key: str,
@@ -203,6 +226,7 @@ def _build_rank_page_candidates(  # noqa: PLR0913
     rank_order: int,
 ) -> list[_RankPageRefreshCandidate]:
     candidates: list[_RankPageRefreshCandidate] = []
+    score_cutoff = rank_score_cutoff(config, rank_key)
     for start_rank, end_rank, raw_start, raw_end in page_refresh_rank_ranges(
         spec,
         target_limit=target_limit,
@@ -233,6 +257,8 @@ def _build_rank_page_candidates(  # noqa: PLR0913
                 rank_order=rank_order,
             )
         )
+        if _page_reaches_score_cutoff(page, score_cutoff=score_cutoff):
+            break
     return candidates
 
 
@@ -304,11 +330,25 @@ def filter_standard_rank_page_summaries(
             page_size=refresh_config.page_size,
         )
     }
-    return [
+    filtered = [
         page
         for page in pages
         if (page.start_index, page.end_index) in standard_ranges
     ]
+    score_cutoff = (
+        rank_score_cutoff(refresh_config, rank_key)
+        if rank_key is not None
+        else None
+    )
+    if score_cutoff is None:
+        return filtered
+
+    result: list[CachedRankPageSummary] = []
+    for page in sorted(filtered, key=lambda item: (item.start_index, item.end_index)):
+        result.append(page)
+        if _page_reaches_score_cutoff(page, score_cutoff=score_cutoff):
+            break
+    return result
 
 
 def preview_rank_page_refresh_targets(
