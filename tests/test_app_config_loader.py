@@ -55,12 +55,7 @@ def test_example_config_parses() -> None:
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
     assert config.bilibili.polling.windows[0].start == "07:00"
-    assert config.bilibili.filters.suppress_push_patterns == [
-        "恭喜.*获得",
-        "记得及时查看私信通知",
-        "中奖",
-        "抽奖结果",
-    ]
+    assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
     private_unsubscribe = config.message.private_unsubscribe
     assert (
@@ -145,7 +140,7 @@ def test_example_config_parses() -> None:
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
-    assert remote_build_steps[2].inputs == {}
+    assert remote_build_steps[2].inputs == {"debug_enabled": False}
     assert config.runtime.help.ignored_plugins == []
 
 

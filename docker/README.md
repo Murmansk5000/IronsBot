@@ -44,7 +44,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `bilibili`: monitor Bilibili dynamic updates and send them to configured groups/users.
 - `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
 - `startup_notice`: notify superusers when the bot starts and connects.
-- `team_shortcut`: trigger preconfigured team queries from a short command, intended for team/guild groups.
+- `team_resource_subscription`: query subscribed teams from a short command and remind configured users when resources are low.
 - `scheduled_restart`: restart the bot container at configured daily times from APP_CONFIG.
 
 Behavior values such as group IDs, user IDs, team IDs, meeting numbers, feature policies, Bilibili subscriptions, and private reply text belong in a mounted TOML config file. Environment variables are reserved for secrets, credentials, and deployment runtime knobs. They are intentionally not baked into the image.
@@ -69,7 +69,7 @@ services:
       PORT: "8080"
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
-      SUPERUSERS: '["123456789"]'
+      SUPERUSERS: '["1234567890"]'
     restart: always
 
   napcat:
@@ -118,7 +118,7 @@ Behavior config is file-based:
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-SUPERUSERS=["123456789"]
+SUPERUSERS=["1234567890"]
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
@@ -129,20 +129,20 @@ SENDPIC_CNB_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `SUPERUSERS` | NoneBot superuser QQ list, for example `["123456789"]`. |
+| `SUPERUSERS` | NoneBot superuser QQ list, for example `["1234567890"]`. |
 | `AI_KEY` | AI chat API key. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
 | `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
 
-Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `activity_query`, `activity_push`, `server_status_query`, `server_status_push`, `team`, `ai_chat`, `ai_intent`, and `admin_notice`. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `activity_link`, `activity_link_push`, or `seerinfo`.
+Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `seer_activity_query`, `seer_activity_push`, `server_status_query`, `server_status_push`, `team_resource_subscription`, `ai_chat`, `ai_intent`, `fire_manual`, and `admin_notice`. `fire_manual` controls the "手册" AI intent and Fire manual links appended to proactive pushes. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `web_activity_link`, `web_activity_push`, or `seerinfo`.
 
 ```toml
 [feature]
-group_aliases = { admin = 686376929, main = 123456789 }
-user_aliases = { owner = 123456789 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "activity_link", "bili_query", "bili_push", "ai_chat"] }
+group_aliases = { admin = 123456789, main = 987654321 }
+user_aliases = { owner = 1234567890 }
+group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"] }
 user_policy = { owner = ["all"] }
 superuser_bypass = true
 
@@ -150,9 +150,9 @@ superuser_bypass = true
 groups = { main = { uids = [1310714247], mode = "full" } }
 ```
 
-## Team Group Shortcut
+## Team Resource Subscription
 
-If you use this Docker image for a Seer team/guild QQ group, you can enable a short group command that expands to one or more fixed team queries.
+If you use this Docker image for a Seer team/guild QQ group, you can subscribe that group to one or more teams. The same subscription lets members query those teams with a short command and lets the bot remind configured users when team resources are low.
 
 Example behavior:
 
@@ -167,19 +167,22 @@ Configure it in `ironsbot.toml`:
 
 ```toml
 [feature]
-group_aliases = { team_group = 123456789 }
-group_policy = { team_group = ["team"] }
+group_aliases = { xinghen = 987654321 }
+user_aliases = { owner = 1234567890 }
+group_policy = { xinghen = ["team_resource_subscription"] }
 
-# 战队资源功能默认停用；本示例不创建群订阅或通知目标。
-# 部署启用时，请按正式订阅结构配置明确的 group；threshold 属于每条 subscriptions 条目。
 [seer.team_resource]
-enabled = false
-subscriptions = []
-commands = [
-    "战队",
-]
+times = ["23:00"]
+commands = ["战队"]
 query_timeout_seconds = 20
-resource_message = "战队资源不足，请联系本群管理员确认补充安排。"
+resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
+resource_message = "出来买资源，别逼我求你😡"
+
+[[seer.team_resource.subscriptions]]
+group = "xinghen"
+team_ids = [1234567, 7654321]
+threshold = 1000
+at_users = ["owner"]
 ```
 
 Keep real QQ group IDs and team IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Do not commit them to GitHub.
