@@ -42,6 +42,13 @@ def test_mentions_bot_matches_direct_at() -> None:
     assert mentions_bot(event)
 
 
+def test_mentions_bot_ignores_direct_at_when_message_is_reply() -> None:
+    event = FakeGroupEvent([FakeSegment("at", {"qq": "100"})])
+    event.reply = {"sender": {"user_id": 200}}
+
+    assert not mentions_bot(event)
+
+
 def test_mentions_bot_ignores_foreign_at() -> None:
     event = FakeGroupEvent([FakeSegment("at", {"qq": "200"})])
 
@@ -77,7 +84,24 @@ def test_mentions_bot_matches_original_message_after_preprocessing() -> None:
     assert mentions_bot(event)
 
 
+def test_mentions_bot_ignores_original_message_at_when_message_is_reply() -> None:
+    event = FakeGroupEvent(
+        [],
+        original_message=[FakeSegment("at", {"qq": "100"})],
+    )
+    event.reply = {"sender": {"user_id": 200}}
+
+    assert not mentions_bot(event)
+
+
 def test_mentions_bot_matches_raw_cq_at_after_preprocessing() -> None:
     event = FakeGroupEvent([], raw_message="[CQ:at,qq=100] ")
 
     assert mentions_bot(event)
+
+
+def test_mentions_bot_ignores_raw_cq_at_when_message_is_reply() -> None:
+    event = FakeGroupEvent([], raw_message="[CQ:at,qq=100] ")
+    event.reply = {"sender": {"user_id": 200}}
+
+    assert not mentions_bot(event)
