@@ -65,7 +65,7 @@ from ironsbot.services.seer.rank_page_refresh import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
     preview_rank_page_refresh_targets,
-    rank_target_limit,
+    rank_refresh_target_label,
     refresh_rank_page_cache,
 )
 from ironsbot.services.seer.rank_usage import build_rank_help_message
@@ -393,7 +393,10 @@ class RankListPlugin:
                 spec,
                 pages,
                 ttl_seconds=get_rank_query_config().page_cache_ttl_seconds,
-                target_limit=rank_target_limit(refresh_config, command.rank_key),
+                target_limit=rank_refresh_target_label(
+                    refresh_config,
+                    command.rank_key,
+                ),
                 next_ranges=[
                     (target.reason, target.start_rank, target.end_rank)
                     for target in targets[:5]
@@ -423,7 +426,7 @@ class RankListPlugin:
                     rank_key=rank_key,
                 ),
                 targets_by_rank.get(rank_key, ()),
-                rank_target_limit(rank_config.page_refresh, rank_key),
+                rank_refresh_target_label(rank_config.page_refresh, rank_key),
             )
             for rank_key, spec in specs
         ]

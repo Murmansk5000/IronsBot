@@ -145,6 +145,9 @@ class RankPageRefreshConfig(BaseModel):
     enabled: bool = True
     target_limit: int = Field(default=50000, ge=1)
     target_limits: dict[str, int] = Field(default_factory=dict)
+    score_cutoffs: dict[str, int] = Field(
+        default_factory=lambda: {"群星牌": 1000},
+    )
     stale_age_weight: float = Field(default=0.08, ge=0)
     stale_age_max_multiplier: float = Field(default=5.0, ge=1)
     page_size: int = Field(default=100, ge=1)
@@ -183,6 +186,20 @@ class RankPageRefreshConfig(BaseModel):
     @classmethod
     def validate_target_limits(cls, value: dict[str, int]) -> dict[str, int]:
         return {key: limit for key, limit in value.items() if key and limit >= 1}
+
+    @field_validator("score_cutoffs", mode="before")
+    @classmethod
+    def normalize_score_cutoffs(cls, value: object) -> object:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            return value
+        return {str(key).strip(): int(score) for key, score in value.items()}
+
+    @field_validator("score_cutoffs")
+    @classmethod
+    def validate_score_cutoffs(cls, value: dict[str, int]) -> dict[str, int]:
+        return {key: score for key, score in value.items() if key and score >= 1}
 
 
 class RankQueryConfig(BaseModel):

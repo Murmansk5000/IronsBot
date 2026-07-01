@@ -268,13 +268,16 @@ def build_rank_page_cache_status_message(
     pages: Sequence[Any],
     *,
     ttl_seconds: int,
-    target_limit: int | None = None,
+    target_limit: int | str | None = None,
     next_ranges: Sequence[tuple[str, int, int]] = (),
 ) -> str:
+    target_text = (
+        f"前 {target_limit} 名" if isinstance(target_limit, int) else target_limit
+    )
     if not pages:
         lines = [f"📦【{spec.title}缓存】", "当前没有缓存区间。"]
-        if target_limit is not None:
-            lines.append(f"目标：前 {target_limit} 名")
+        if target_text is not None:
+            lines.append(f"目标：{target_text}")
         if next_ranges:
             lines.append(f"下一刷：{format_refresh_ranges(next_ranges)}")
         return "\n".join(lines)
@@ -320,8 +323,8 @@ def build_rank_page_cache_status_message(
         f"有效缓存：{len(valid_pages)} 段，{valid_count} 名",
         f"有效区间：{format_rank_intervals(valid_intervals)}",
     ]
-    if target_limit is not None:
-        lines.insert(1, f"目标：前 {target_limit} 名")
+    if target_text is not None:
+        lines.insert(1, f"目标：{target_text}")
     if partial_pages:
         lines.extend(
             [
@@ -350,7 +353,7 @@ def format_refresh_ranges(ranges: Sequence[tuple[str, int, int]]) -> str:
 
 def build_rank_page_cache_overview_message(
     entries: Sequence[
-        tuple[str, GlobalRankSpec, Sequence[Any], Sequence[Any], int]
+        tuple[str, GlobalRankSpec, Sequence[Any], Sequence[Any], int | str]
     ],
 ) -> str:
     lines = ["📦【榜单页缓存】"]
@@ -358,17 +361,24 @@ def build_rank_page_cache_overview_message(
         lines.append("没有配置可刷新的全服榜。")
         return "\n".join(lines)
 
-    for _rank_key, spec, pages, targets, target_limit in entries:
+    for _rank_key, spec, pages, targets, target_label in entries:
         cached_count = sum(page.item_count for page in pages)
         partial_count = sum(1 for page in pages if getattr(page, "is_partial", False))
         stale_count = sum(1 for page in pages if getattr(page, "is_stale", False))
         next_text = "无"
         if targets:
-            target = targets[0]
-            next_text = f"{target.reason}:{target.start_rank}-{target.end_rank}"
+            next_target = targets[0]
+            next_text = (
+                f"{next_target.reason}:"
+                f"{next_target.start_rank}-{next_target.end_rank}"
+            )
+        if isinstance(target_label, int):
+            prefix = f"{spec.title}：{cached_count}/{target_label} 名"
+        else:
+            prefix = f"{spec.title}：{cached_count} 名，目标 {target_label}"
         lines.append(
-            f"{spec.title}：{cached_count}/{target_limit} 名，"
-            f"部分 {partial_count} 页，过期 {stale_count} 页，下一刷 {next_text}"
+            f"{prefix}，部分 {partial_count} 页，"
+            f"过期 {stale_count} 页，下一刷 {next_text}"
         )
     return "\n".join(lines)
 
