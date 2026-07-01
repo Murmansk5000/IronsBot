@@ -29,6 +29,7 @@ from ironsbot.services.seer.rank_list import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    timestamp_text,
     with_admin_prefix,
 )
 
@@ -53,6 +54,16 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         rank_key="成就点数",
         start_rank=100,
         limit=1,
+    )
+    assert parse_rank_list_command("群星牌榜") == RankListCommand(
+        kind="global",
+        rank_key="群星牌",
+    )
+    assert parse_rank_list_command("群星之巅榜第2页") == RankListCommand(
+        kind="global",
+        rank_key="群星牌",
+        start_rank=11,
+        limit=10,
     )
 
 
@@ -94,6 +105,7 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         start_rank=21,
         limit=20,
     )
+    assert parse_rank_list_command("样本群星牌榜") is None
 
 
 def test_parse_rank_list_command_ignores_unknown_text() -> None:
@@ -130,6 +142,9 @@ def test_parse_rank_page_cache_status_command_reads_global_rank() -> None:
     assert parse_rank_page_cache_status_command("/榜单状态图鉴榜") == (
         RankPageCacheStatusCommand(rank_key="图鉴积分")
     )
+    assert parse_rank_page_cache_status_command("/榜单情况 群星牌榜") == (
+        RankPageCacheStatusCommand(rank_key="群星牌")
+    )
     assert parse_rank_page_cache_status_command("/榜单情况 样本图鉴榜") is None
     assert parse_rank_page_cache_status_command("/榜单缓存 刻印榜") is None
 
@@ -151,6 +166,10 @@ def test_with_admin_prefix_adds_slash_to_commands() -> None:
         "/样本情况",
         "/刷新样本",
     )
+
+
+def test_timestamp_text_uses_china_timezone() -> None:
+    assert timestamp_text(0) == "1970-01-01 08:00:00"
 
 
 def test_format_global_rank_line_applies_spec_rank_offset() -> None:
@@ -270,11 +289,11 @@ def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() ->
         spec,
         pages,
         ttl_seconds=3600,
-        target_limit=500,
+        target_limit="分数 >= 1000（最多前 500 名）",
         next_ranges=(("部分", 1, 100),),
     ) == (
         "📦【测试榜缓存】\n"
-        "目标：前 500 名\n"
+        "目标：分数 >= 1000（最多前 500 名）\n"
         "有效缓存：0 段，0 名\n"
         "有效区间：无\n"
         "部分缺失：1 段，现存 99 名\n"
@@ -336,11 +355,11 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
                 spec,
                 [SimpleNamespace(item_count=100, is_partial=False, is_stale=False)],
                 [target],
+                500,
             )
         ],
-        target_limit=500,
     ) == (
-        "📦【榜单页缓存】目标：前 500 名\n"
+        "📦【榜单页缓存】\n"
         "测试榜：100/500 名，部分 0 页，过期 0 页，下一刷 缺失:101-200"
     )
     assert build_rank_page_refresh_start_message(

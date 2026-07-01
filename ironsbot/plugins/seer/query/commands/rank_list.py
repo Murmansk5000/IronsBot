@@ -19,6 +19,7 @@ from ironsbot.services.seer.local_rank_refresh import (
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank import (
     fetch_daily_rank_page,
+    fetch_daily_rank_page_result,
     get_current_peak_sub_key,
 )
 from ironsbot.services.seer.rank_display import (
@@ -56,6 +57,7 @@ from ironsbot.services.seer.rank_list import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    timestamp_text,
     with_admin_prefix,
 )
 from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
@@ -63,6 +65,7 @@ from ironsbot.services.seer.rank_page_refresh import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
     preview_rank_page_refresh_targets,
+    rank_refresh_target_label,
     refresh_rank_page_cache,
 )
 from ironsbot.services.seer.rank_usage import build_rank_help_message
@@ -79,7 +82,7 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
-from ..group import matcher_group, seer_feature_rule
+from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
@@ -140,9 +143,11 @@ async def _is_rank_page_cache_refresh_command(event: Event, state: T_State) -> b
 rank_help_matcher = matcher_group.on_fullmatch(
     ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
     rule=seer_feature_rule("seer_rank") & no_reply(),
+    priority=seer_feature_priority("seer_rank_help"),
 )
 rank_list_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank") & Rule(_is_rank_list_command) & no_reply(),
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_status_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
@@ -151,6 +156,7 @@ rank_cache_status_matcher = matcher_group.on_fullmatch(
     )),
     rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_refresh_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
@@ -158,12 +164,14 @@ rank_cache_refresh_matcher = matcher_group.on_fullmatch(
     )),
     rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_batch_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_cache_batch_command)
     & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
     with_admin_prefix((
@@ -172,23 +180,27 @@ rank_page_cache_overview_matcher = matcher_group.on_fullmatch(
     )),
     rule=seer_feature_rule("seer_rank") & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_page_cache_status_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_page_cache_status_command)
     & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_page_cache_refresh_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_page_cache_refresh_command)
     & no_reply(),
     permission=SUPERUSER,
+    priority=seer_feature_priority("seer_rank"),
 )
 rank_display_limit_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank")
     & Rule(_is_rank_display_limit_command)
     & no_reply(),
+    priority=seer_feature_priority("seer_rank"),
 )
 
 
@@ -197,7 +209,7 @@ async def _build_global_rank_message(
     command: RankListCommand,
 ) -> str:
     game = get_game_client()
-    items = await fetch_daily_rank_page(
+    result = await fetch_daily_rank_page_result(
         game,
         key=spec.key,
         sub_key=spec.sub_key,
@@ -206,7 +218,8 @@ async def _build_global_rank_message(
     )
     return format_global_rank_message(
         spec,
-        items,
+        result.items,
+        timestamp=timestamp_text(result.fetched_at),
         start_rank=command.start_rank,
         requested_count=command.limit,
     )
@@ -369,8 +382,10 @@ class RankListPlugin:
         pages = filter_standard_rank_page_summaries(
             spec,
             get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+            rank_key=command.rank_key,
         )
         targets = preview_rank_page_refresh_targets([command.rank_key])
+        refresh_config = get_rank_query_config().page_refresh
         await finish_event_reply(
             matcher,
             event,
@@ -378,7 +393,10 @@ class RankListPlugin:
                 spec,
                 pages,
                 ttl_seconds=get_rank_query_config().page_cache_ttl_seconds,
-                target_limit=get_rank_query_config().page_refresh.target_limit,
+                target_limit=rank_refresh_target_label(
+                    refresh_config,
+                    command.rank_key,
+                ),
                 next_ranges=[
                     (target.reason, target.start_rank, target.end_rank)
                     for target in targets[:5]
@@ -405,8 +423,10 @@ class RankListPlugin:
                 filter_standard_rank_page_summaries(
                     spec,
                     get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+                    rank_key=rank_key,
                 ),
                 targets_by_rank.get(rank_key, ()),
+                rank_refresh_target_label(rank_config.page_refresh, rank_key),
             )
             for rank_key, spec in specs
         ]
@@ -415,7 +435,6 @@ class RankListPlugin:
             event,
             build_rank_page_cache_overview_message(
                 entries,
-                target_limit=rank_config.page_refresh.target_limit,
             ),
         )
 

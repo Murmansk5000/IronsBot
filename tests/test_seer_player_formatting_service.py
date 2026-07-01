@@ -55,6 +55,21 @@ def _peak_summary() -> SimpleNamespace:
     )
 
 
+def _autocard_rank_summary(
+    *,
+    rank: int | None = 12,
+    score: int | None = 3456,
+    queried: bool = True,
+    searched_limit: int = 2000,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        rank=rank,
+        score=score,
+        queried=queried,
+        searched_limit=searched_limit,
+    )
+
+
 def _unity_peak() -> SimpleNamespace:
     return SimpleNamespace(
         current_j_rank=3,
@@ -172,6 +187,7 @@ def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
         local_summary=_LocalSummary(),
         has_collection=True,
         has_peak=True,
+        has_autocard=True,
         show_peak=False,
         extra_errors=["在线状态失败"],
     )
@@ -182,6 +198,7 @@ def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
     assert "战队：未加入" in message
     assert "回复“收集”查看收集与排行" in message
     assert "回复“巅峰”查看巅峰之战" in message
+    assert "回复“群星牌”查看群星之巅排名" in message
     assert "在线状态失败" in message
 
 
@@ -198,10 +215,12 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
         unity_peak=_unity_peak(),
         rank_summary=_rank_summary(),
         peak_rank_summary=_peak_summary(),
+        autocard_rank_summary=_autocard_rank_summary(),
         local_rank_summary=_LocalSummary("样本第1"),
         empty_local_rank_summary=_LocalSummary(),
         has_collection=True,
         needs_peak_section=True,
+        has_autocard_rank=True,
         show_local_rank=True,
         extra_errors=["全服排行失败"],
     )
@@ -213,8 +232,12 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     assert "【巅峰之战】" in messages.peak_message
     assert "竞技：" in messages.peak_message
     assert "样本段位第1" in messages.peak_message
+    assert "🃏【群星牌排名】" in messages.autocard_message
+    assert "群星之巅：3456分" in messages.autocard_message
+    assert "全服第12" in messages.autocard_message
     assert "全服排行失败" in messages.collection_message
     assert "全服排行失败" in messages.peak_message
+    assert "全服排行失败" in messages.autocard_message
 
 
 def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
@@ -230,16 +253,19 @@ def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
         unity_peak=_unity_peak(),
         rank_summary=_rank_summary(),
         peak_rank_summary=_peak_summary(),
+        autocard_rank_summary=_autocard_rank_summary(),
         local_rank_summary=_LocalSummary("样本第1"),
         empty_local_rank_summary=_LocalSummary(),
         has_collection=True,
         needs_peak_section=False,
+        has_autocard_rank=False,
         show_local_rank=False,
         extra_errors=[],
     )
 
     assert "样本第1" not in messages.collection_message
     assert messages.peak_message == ""
+    assert messages.autocard_message == ""
 
 
 def test_append_extra_errors_preserves_existing_message_when_empty() -> None:

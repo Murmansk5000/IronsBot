@@ -28,6 +28,7 @@ from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
+from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.shared.messaging import finish_event_reply
@@ -44,7 +45,7 @@ from ..depends import (
     PetDataGetter,
     SeerAPISession,
 )
-from ..group import matcher_group, seer_feature_rule
+from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ..prompt import (
     Prompt,
     PromptItem,
@@ -65,6 +66,7 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "pet_info": "_handle_pet_info",
     "preview": "_handle_preview",
     "data_version": "_handle_data_version",
+    "season_countdown": "_handle_season_countdown",
     "mintmark": "_handle_mintmark",
     "gem": "_handle_gem",
     "type": "_handle_type",
@@ -104,7 +106,8 @@ pet_image_matcher = matcher_group.on_message(
         prefixes=("立绘", "皮肤", "查询立绘"),
     )
     & not_rank_query
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_pet"),
 )
 
 
@@ -232,6 +235,17 @@ class UpstreamQueryPlugin:
             matcher=matcher,
             session=context.data["session"],
         )
+
+    async def _handle_season_countdown(
+        self,
+        matcher: Matcher,
+        event: Event,
+        context: PluginContext,
+    ) -> None:
+        message = format_season_countdown(context.data["session"])
+        if isinstance(event, MessageEvent):
+            await finish_event_reply(matcher, event, message)
+        await matcher.finish(message)
 
     async def _handle_mintmark(
         self,
@@ -481,7 +495,8 @@ pet_info_matcher = matcher_group.on_message(
         suffixes=("查询精灵信息", "魂印", "技能"),
     )
     & not_rank_query
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_pet"),
 )
 
 
@@ -532,7 +547,8 @@ mintmark_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_mintmark")
     & startswith_or_endswith("刻印")
     & not_rank_query
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_mintmark"),
 )
 
 
@@ -565,7 +581,8 @@ async def _handle_mintmark(  # noqa: PLR0913
 gem_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_mintmark")
     & startswith_or_endswith("宝石")
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_mintmark"),
 )
 
 
@@ -593,7 +610,8 @@ async def _handle_gem(
 type_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_type")
     & startswith_or_endswith("属性")
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_type"),
 )
 
 
@@ -624,7 +642,8 @@ battle_effect_matcher = matcher_group.on_message(
         ("异常", "查询异常状态"),
         suffixes="异常",
     )
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_type"),
 )
 
 
@@ -654,7 +673,8 @@ suit_matcher = matcher_group.on_message(
         suffixes="套装",
     )
     & not_rank_query
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_equipment"),
 )
 
 
@@ -684,7 +704,8 @@ equip_matcher = matcher_group.on_message(
         suffixes="部件",
     )
     & not_rank_query
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_equipment"),
 )
 
 
@@ -714,7 +735,8 @@ title_matcher = matcher_group.on_message(
         suffixes="称号",
     )
     & not_rank_query
-    & no_reply()
+    & no_reply(),
+    priority=seer_feature_priority("seer_equipment"),
 )
 
 
@@ -740,6 +762,7 @@ async def _handle_title(
 peak_pool_matcher = matcher_group.on_fullmatch(
     ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -762,6 +785,7 @@ async def _handle_peak_pool(
 peak_expert_pool_matcher = matcher_group.on_fullmatch(
     ("专家池", "巅峰专家池", "专家禁用池"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -784,6 +808,7 @@ async def _handle_peak_expert_pool(
 peak_vote_matcher = matcher_group.on_fullmatch(
     ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -806,6 +831,7 @@ async def _handle_peak_vote(
 peak_suit_matcher = matcher_group.on_fullmatch(
     ("竞技套装榜", "狂野套装榜", "专家套装榜"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -832,6 +858,7 @@ async def _handle_peak_suit(  # noqa: PLR0913
 peak_title_matcher = matcher_group.on_fullmatch(
     ("竞技称号榜", "狂野称号榜", "专家称号榜"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -865,6 +892,7 @@ peak_pet_matcher = matcher_group.on_fullmatch(
         "专家精灵总榜",
     ),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -895,6 +923,7 @@ async def _handle_peak_pet(  # noqa: PLR0913
 peak_user_matcher = matcher_group.on_fullmatch(
     ("竞技段位榜", "狂野段位榜", "专家段位榜"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
+    priority=seer_feature_priority("seer_peak"),
 )
 
 
@@ -928,6 +957,7 @@ async def _fetch_weekly_preview_image(image_url: str):
 preview_matcher = matcher_group.on_fullmatch(
     "下周预告",
     rule=seer_feature_rule("seer_data") & no_reply(),
+    priority=seer_feature_priority("seer_data"),
 )
 
 
@@ -948,6 +978,7 @@ async def _handle_preview(
 data_version_matcher = matcher_group.on_fullmatch(
     "数据版本",
     rule=seer_feature_rule("seer_data") & no_reply(),
+    priority=seer_feature_priority("seer_data"),
 )
 
 
@@ -962,5 +993,27 @@ async def _handle_data_version(
         event=event,
         matcher=matcher,
         action="data_version",
+        session=session,
+    )
+
+
+season_countdown_matcher = matcher_group.on_fullmatch(
+    ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
+    rule=seer_feature_rule("seer_data") & no_reply(),
+    priority=seer_feature_priority("seer_data"),
+)
+
+
+@season_countdown_matcher.handle()
+async def _handle_season_countdown(
+    matcher: Matcher,
+    event: Event,
+    session: SeerAPISession,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        action="season_countdown",
         session=session,
     )

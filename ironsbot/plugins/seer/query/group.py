@@ -20,6 +20,12 @@ def seer_feature_rule(feature: str) -> Rule:
     return Rule(_is_feature_allowed)
 
 
+def seer_feature_priority(feature: str, fallback: int | None = None) -> int:
+    if fallback is None:
+        fallback = get_matcher_priority("seer_query", 90)
+    return get_matcher_priority(feature, fallback)
+
+
 class CustomFeatureMatcherGroup(MatcherGroup):
     def _get_final_kwargs(
         self,
