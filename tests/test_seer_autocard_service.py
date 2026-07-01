@@ -108,7 +108,7 @@ def test_autocard_image_url_resolves_card_asset_paths() -> None:
     assert autocard_image_url(
         "card",
         {"id": 10001, "picID": 1, "compose": 1},
-    ).endswith("/newseer/assets/art/autocard/texture/cards/card_10001.png")
+    ).endswith("/newseer/assets/art/autocard/texture/cards/card_1.png")
     assert autocard_image_url(
         "card",
         {"id": 20001, "picID": 20001, "compose": 0},

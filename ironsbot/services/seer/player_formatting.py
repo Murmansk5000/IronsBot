@@ -399,6 +399,28 @@ def format_collection_info(
     return "\n".join(lines)
 
 
+def format_autocard_rank_info(
+    result: RankLookupResult,
+    *,
+    player_identity: str,
+) -> str:
+    lines = ["🃏【群星牌排名】", player_identity]
+    if not result.queried:
+        lines.append("群星之巅：未查询")
+    elif result.rank is None:
+        if result.score is None:
+            lines.append(f"群星之巅：前 {result.searched_limit} 名未上榜")
+        else:
+            lines.append(
+                f"群星之巅：{result.score}分"
+                f"{METRIC_SEPARATOR}前 {result.searched_limit} 名未上榜"
+            )
+    else:
+        score_text = "未知分" if result.score is None else f"{result.score}分"
+        lines.append(f"群星之巅：{score_text}{METRIC_SEPARATOR}全服第{result.rank}")
+    return "\n".join(lines)
+
+
 def format_compact_player_info(  # noqa: PLR0913
     user_info: Any,
     more_info: Any,
@@ -410,6 +432,7 @@ def format_compact_player_info(  # noqa: PLR0913
     local_summary: LocalRankSummary,
     has_collection: bool,
     has_peak: bool,
+    has_autocard: bool,
     show_peak: bool,
     extra_errors: list[str],
 ) -> str:
@@ -444,6 +467,9 @@ def format_compact_player_info(  # noqa: PLR0913
     if has_peak and not show_peak:
         lines.extend(("", "回复“巅峰”查看巅峰之战"))
 
+    if has_autocard:
+        lines.extend(("", "回复“群星牌”查看群星之巅排名"))
+
     if extra_errors:
         lines.extend(("", "【扩展数据提示】", "；".join(extra_errors)))
 
@@ -459,10 +485,12 @@ def format_player_detail_messages(  # noqa: PLR0913
     unity_peak: UnityPeakInfo,
     rank_summary: PlayerRankSummary,
     peak_rank_summary: PeakSeasonRankSummary,
+    autocard_rank_summary: RankLookupResult,
     local_rank_summary: LocalRankSummary,
     empty_local_rank_summary: LocalRankSummary,
     has_collection: bool,
     needs_peak_section: bool,
+    has_autocard_rank: bool,
     show_local_rank: bool,
     extra_errors: list[str],
 ) -> PlayerDetailMessages:
@@ -491,12 +519,23 @@ def format_player_detail_messages(  # noqa: PLR0913
         if needs_peak_section
         else ""
     )
+    autocard_message = (
+        format_autocard_rank_info(
+            autocard_rank_summary,
+            player_identity=format_player_identity(player_id, user_info.nick),
+        )
+        if has_autocard_rank
+        else ""
+    )
     return PlayerDetailMessages(
         collection_message=append_extra_errors(collection_message, extra_errors)
         if collection_message
         else "",
         peak_message=append_extra_errors(peak_message, extra_errors)
         if peak_message
+        else "",
+        autocard_message=append_extra_errors(autocard_message, extra_errors)
+        if autocard_message
         else "",
     )
 

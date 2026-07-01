@@ -55,6 +55,8 @@ from ironsbot.services.seer.player_query import (
 from ironsbot.services.seer.rank import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
+    RankLookupResult,
+    fetch_autocard_rank_summary,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
     get_current_peak_sub_key,
@@ -292,10 +294,11 @@ class PlayerQueryPlugin:
                     player_id=player_id,
                     user_info=user_info,
                     more_info=more_info,
-                    has_collection=section_plan.has_collection,
-                    needs_peak_section=section_plan.needs_peak_section,
-                    show_local_rank=section_plan.show_local_rank,
-                )
+                has_collection=section_plan.has_collection,
+                needs_peak_section=section_plan.needs_peak_section,
+                has_autocard_rank=section_plan.has_autocard_rank,
+                show_local_rank=section_plan.show_local_rank,
+            )
 
             player_message = format_compact_player_info(
                 user_info,
@@ -307,6 +310,7 @@ class PlayerQueryPlugin:
                 local_summary=LocalRankSummary(),
                 has_collection=section_plan.has_collection,
                 has_peak=section_plan.needs_peak_section,
+                has_autocard=section_plan.has_autocard_rank,
                 show_peak=False,
                 extra_errors=extra_errors,
             )
@@ -356,6 +360,7 @@ class PlayerQueryPlugin:
             detail_task=detail_task,
             has_collection=section_plan.has_collection,
             has_peak=section_plan.needs_peak_section,
+            has_autocard=section_plan.has_autocard_rank,
         )
 
 
@@ -533,10 +538,12 @@ async def _send_player_info_with_detail_prompt(  # noqa: PLR0913
     detail_task: asyncio.Task[PlayerDetailMessages] | None = None,
     has_collection: bool = False,
     has_peak: bool = False,
+    has_autocard: bool = False,
 ) -> None:
     prompt_plan = plan_player_detail_prompt(
         has_collection=has_collection,
         has_peak=has_peak,
+        has_autocard=has_autocard,
         supports_conversation=isinstance(event, MessageEvent),
     )
 
@@ -589,6 +596,7 @@ def _create_player_detail_task(  # noqa: PLR0913
     more_info: Any,
     has_collection: bool,
     needs_peak_section: bool,
+    has_autocard_rank: bool,
     show_local_rank: bool,
 ) -> asyncio.Task[PlayerDetailMessages]:
     task = asyncio.create_task(
@@ -599,6 +607,7 @@ def _create_player_detail_task(  # noqa: PLR0913
                 more_info=more_info,
                 has_collection=has_collection,
                 needs_peak_section=needs_peak_section,
+                has_autocard_rank=has_autocard_rank,
                 show_local_rank=show_local_rank,
             ),
             timeout=get_player_query_config().detail_timeout_seconds,
@@ -615,6 +624,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     more_info: Any,
     has_collection: bool,
     needs_peak_section: bool,
+    has_autocard_rank: bool,
     show_local_rank: bool,
 ) -> PlayerDetailMessages:
     game = get_game_client()
@@ -622,6 +632,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     fetch_plan = plan_player_detail_fetches(
         has_collection=has_collection,
         needs_peak_section=needs_peak_section,
+        has_autocard_rank=has_autocard_rank,
         local_rank_enabled=get_local_rank_config().enabled,
     )
 
@@ -673,6 +684,14 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         extra_errors,
         on_error=_log_player_extra_error,
     )
+    autocard_rank_summary = await optional_player_extra(
+        "群星牌排行",
+        fetch_plan.needs_autocard_rank,
+        lambda: fetch_autocard_rank_summary(game, player_id),
+        RankLookupResult(title="群星之巅榜", score_name="分"),
+        extra_errors,
+        on_error=_log_player_extra_error,
+    )
     local_rank_summary = await optional_player_extra(
         "机器人查询排行",
         fetch_plan.needs_local_rank,
@@ -700,10 +719,12 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         unity_peak=unity_peak,
         rank_summary=rank_summary,
         peak_rank_summary=peak_rank_summary,
+        autocard_rank_summary=autocard_rank_summary,
         local_rank_summary=local_rank_summary,
         empty_local_rank_summary=LocalRankSummary(),
         has_collection=has_collection,
         needs_peak_section=needs_peak_section,
+        has_autocard_rank=has_autocard_rank,
         show_local_rank=show_local_rank,
         extra_errors=extra_errors,
     )

@@ -246,11 +246,10 @@ def _autocard_image_name(kind: str, item: dict[str, Any]) -> str:
 
     item_id = _int_field(item, "id")
     pic_id = _int_field(item, "picID", "pic_id")
-    is_composed = bool(_int_field(item, "compose"))
     image_id = (
-        item_id
-        if is_composed or item_id >= _AUTOCARD_NON_PET_CARD_ID_START
-        else pic_id
+        pic_id
+        if item_id < _AUTOCARD_NON_PET_CARD_ID_START and pic_id > 0
+        else item_id
     )
     return f"card_{image_id}" if image_id > 0 else ""
 
