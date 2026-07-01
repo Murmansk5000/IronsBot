@@ -53,6 +53,9 @@ __plugin_meta__ = PluginMetadata(
 
 
 async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
+    if getattr(event, "reply", None) is not None:
+        return False
+
     if not is_allowed(event):
         return False
 
@@ -68,6 +71,9 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
 
 
 async def _ai_chat_group_at_rule(event: GroupMessageEvent, state: T_State) -> bool:
+    if getattr(event, "reply", None) is not None:
+        return False
+
     if not is_allowed(event):
         return False
 

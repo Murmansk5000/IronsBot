@@ -59,6 +59,9 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         if is_self_message_event(next_event):
             return False
 
+        if getattr(next_event, "reply", None) is not None:
+            return False
+
         return reply_check(next_event)
 
     prompt_message = (

@@ -40,6 +40,7 @@ from ironsbot.shared.plugin_system import (
     dispatch_plugin,
     register_plugin,
 )
+from ironsbot.utils.rule import no_reply
 
 from .auth import send_bili_login_qrcode_to_superusers
 from .config import get_bili_config
@@ -81,13 +82,13 @@ def _is_dynamic_select_reply(event: MessageEvent) -> bool:
 
 
 dynamic_menu_matcher = on_message(
-    rule=Rule(_is_dynamic_menu_command),
+    rule=Rule(_is_dynamic_menu_command) & no_reply(),
     priority=get_matcher_priority("bilibili", 1),
     block=True,
 )
 
 update_dynamic_matcher = on_message(
-    rule=Rule(_is_update_dynamic_command),
+    rule=Rule(_is_update_dynamic_command) & no_reply(),
     priority=get_matcher_priority("bilibili", 1),
     block=True,
 )
