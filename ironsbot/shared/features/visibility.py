@@ -92,11 +92,11 @@ def _messaging_visible(event: Event) -> bool:
     return False
 
 
-def _team_shortcut_visible(event: Event) -> bool:
+def _team_resource_visible(event: Event) -> bool:
     return (
-        bool(get_app_config().seer.team_shortcut.team_ids)
+        bool(get_app_config().seer.team_resource.subscriptions)
         and isinstance(event, GroupMessageEvent)
-        and group_has_feature(event.group_id, "team")
+        and group_has_feature(event.group_id, "team_resource_subscription")
     )
 
 
@@ -119,7 +119,7 @@ def _superuser_visible(event: Event) -> bool:
 
 SPECIAL_MODULE_VISIBILITY: tuple[tuple[str, VisibilityRule], ...] = (
     ("ironsbot.plugins.messaging", _messaging_visible),
-    ("ironsbot.plugins.team_shortcut", _team_shortcut_visible),
+    ("ironsbot.plugins.team_shortcut", _team_resource_visible),
     ("ironsbot.plugins.ai_chat", _ai_chat_visible),
     ("ironsbot.plugins.ai_intent", _ai_intent_visible),
     ("ironsbot.plugins.headless_seer_notice", _superuser_visible),

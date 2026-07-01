@@ -437,27 +437,16 @@ refresh_interval_seconds = 0.5
 # ZH: 本地样本榜数据库。
 path = "data/seer/player_query_cache.sqlite"
 
-[seer.team_shortcut]
-# Default: []
-# EN: Default team IDs used by team shortcut actions.
-# ZH: 战队快捷动作使用的默认战队 ID。
-# Example: [12345]
-team_ids = []
-
-# Default: []
-# EN: User IDs mentioned by low-resource notices.
-# ZH: 战队资源不足提醒时 @ 的用户 ID。
-# Example: [123456789]
-resource_users = []
-
-# Default: ["战队"]; EN: Team shortcut commands. ZH: 战队快捷查询口令。
-commands = ["战队"]
-# Default: 1000; EN: Low resource threshold. ZH: 战队低资源提醒阈值。
-resource_threshold = 1000
-# Default: 20; EN: Team shortcut query timeout seconds. ZH: 战队快捷查询超时秒数。
+# 战队资源功能默认停用；本示例不创建群订阅或通知目标。
+# 部署启用时，请按正式订阅结构配置明确的 group；threshold 属于每条 subscriptions 条目。
+[seer.team_resource]
+enabled = false
+subscriptions = []
+commands = [
+    "战队",
+]
 query_timeout_seconds = 20
-# Default: built-in message; EN: Resource notice message. ZH: 战队资源提醒文案。
-resource_message = "出来买资源，别逼我求你😡"
+resource_message = "战队资源不足，请联系本群管理员确认补充安排。"
 
 [seer.render]
 # Default: "render_cache"; EN: Render cache directory. ZH: 渲染缓存目录。

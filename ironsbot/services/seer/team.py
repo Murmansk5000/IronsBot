@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from typing import Any
 
-from ironsbot.services.seer.formatting import format_possible_datetime
-
 
 def team_query_in_progress_message(team_id: int) -> str:
     return (
@@ -55,7 +53,7 @@ def format_team_info(info: Any, enabled_sections: set[str]) -> str:
     slogan = info.slogan or "（无）"
     notice = info.notice or "（无）"
 
-    lines = [f"🏰【战队扩展信息：{info.name}】"]
+    lines = [f"🏰【战队信息：{info.name}】"]
     _append_section(
         lines,
         enabled_sections,
@@ -63,7 +61,7 @@ def format_team_info(info: Any, enabled_sections: set[str]) -> str:
         [
             f"战队ID：{info.team_id}",
             f"队长：{info.leader}（米米号）",
-            f"成员数：{info.member_count}",
+            f"战队等级：{info.new_team_level}",
         ],
     )
     _append_section(
@@ -71,12 +69,8 @@ def format_team_info(info: Any, enabled_sections: set[str]) -> str:
         enabled_sections,
         "resource",
         [
-            "【等级与资源】",
-            f"战队等级：{info.new_team_level}",
-            f"战队经验：{info.exp}",
+            f"成员数：{info.member_count}",
             f"战队资源：{info.score}",
-            f"超级核心数量：{info.super_core_num}",
-            f"最近缴纳时间：{format_possible_datetime(info.last_pay_time)}",
         ],
     )
     _append_section(
