@@ -62,7 +62,7 @@ services:
       - "8085:8080"
     volumes:
       - ./ironsbot-data:/app/data
-      - ./ironsbot-config:/config:ro
+      - ./ironsbot-config:/config
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
@@ -90,8 +90,28 @@ services:
     restart: always
 ```
 
-Create `./ironsbot-config/ironsbot.toml` by copying `config.prod.toml` or
-`config.example.toml` from the repository, then edit behavior values there.
+On first startup, if `./ironsbot-config/ironsbot.toml` does not exist, IronsBot
+copies `/app/config.example.toml` to that path automatically. Edit the generated
+file before production use. Existing config files are never overwritten.
+
+On Windows Docker Desktop, the left side of the volume is a Windows directory.
+For example:
+
+```powershell
+mkdir C:\ironsbot\config, C:\ironsbot\data, C:\ironsbot\logs
+docker run --name ironsbot `
+  -p 8085:8080 `
+  -v C:\ironsbot\config:/config `
+  -v C:\ironsbot\data:/app/data `
+  -v C:\ironsbot\logs:/app/logs `
+  -e APP_CONFIG_PATH=/config/ironsbot.toml `
+  -e ONEBOT_ACCESS_TOKEN=change-me `
+  -e SUPERUSERS='["1234567890"]' `
+  murmansk5000/ironsbot:latest
+```
+
+In this example, `/config/ironsbot.toml` inside the container is
+`C:\ironsbot\config\ironsbot.toml` on Windows.
 
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 
@@ -111,7 +131,8 @@ The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 
 Behavior config is file-based:
 
-- Mount a directory containing `ironsbot.toml` to `/config`.
+- Mount a writable directory to `/config` for first startup, or pre-create
+  `ironsbot.toml` before using a read-only mount.
 - Set `APP_CONFIG_PATH=/config/ironsbot.toml`.
 - Use `config.example.toml` for all fields, defaults, English descriptions, Chinese descriptions, and examples.
 
@@ -136,18 +157,73 @@ SENDPIC_CNB_TOKEN=
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
 
-Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `seer_activity_query`, `seer_activity_push`, `server_status_query`, `server_status_push`, `team_resource_subscription`, `ai_chat`, `ai_intent`, `fire_manual`, and `admin_notice`. `fire_manual` controls the "手册" AI intent and Fire manual links appended to proactive pushes. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `web_activity_link`, `web_activity_push`, or `seerinfo`.
+Feature names are used in `[feature.group_policy]` and
+`[feature.user_policy]`:
+
+| feature | Meaning |
+| --- | --- |
+| `all` | Most features except `admin_notice`; admin notices are explicit. |
+| `query` | Common query bundle: Seer queries, image, rank, Bilibili query, activity query, server status query. |
+| `seer` | All Seer query sub-features. |
+| `seer_player` | Mimi ID/player info, collection/peak/Autocard follow-up replies. |
+| `seer_team` | Team ID query. |
+| `seer_pet` | Pet, skill, soul mark, illustration, and skin queries. |
+| `seer_mintmark` | Mintmark, mintmark series, gem, and mintmark stat ranks. |
+| `seer_equipment` | Suit, equipment part, and title queries. |
+| `seer_type` | Type matchup and abnormal status queries. |
+| `seer_peak` | Peak pools, votes, peak ranks, and pet usage ranks. |
+| `seer_autocard` | Autocard data and Autocard global rank. |
+| `seer_rank` / `rank` | Global ranks, sample ranks, rank/sample status, and rank cache commands. |
+| `seer_data` | Weekly preview, data version, and data tools. |
+| `image` | Fixed/local image replies. |
+| `meeting` | Tencent Meeting reply. |
+| `text` | Generic text command replies. |
+| `text_push` | Generic scheduled text pushes. |
+| `web_activity_link` | External web activity link commands, such as sign-in links. |
+| `web_activity_push` | External web activity link scheduled pushes. |
+| `seerinfo` | Custom text entry for seerinfo / Fire manual links. |
+| `bili_query` | Manual Bilibili dynamic query, refresh, history, and detail lookup. |
+| `bili_push` | Automatic Bilibili dynamic pushes. |
+| `bili` | `bili_query` + `bili_push`. |
+| `seer_activity_query` | In-game activity and ending-soon activity queries. |
+| `seer_activity_push` | In-game activity ending reminders. |
+| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
+| `server_status_query` | Server status / open-server query. |
+| `server_status_push` | Server status broadcast pushes. |
+| `server_status` | `server_status_query` + `server_status_push`. |
+| `team_resource_subscription` | Subscribed team query and low-resource @ reminders. |
+| `team_audit` | Team audit group join prompt and 24-hour follow-up. |
+| `ai_chat` | AI chat by bot mention or authorized private chat. |
+| `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
+| `fire_manual` | "手册" AI intent and Fire manual links appended to proactive pushes. |
+| `admin_notice` | Startup/error/admin notices; not included by `all`. |
+
+Message actions may also use feature names such as `web_activity_link`,
+`web_activity_push`, or `seerinfo`.
 
 ```toml
 [feature]
-group_aliases = { admin = 123456789, main = 987654321 }
-user_aliases = { owner = 1234567890 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"] }
-user_policy = { owner = ["all"] }
 superuser_bypass = true
 
+[feature.group_aliases]
+admin = 123456789
+main = 987654321
+
+[feature.user_aliases]
+owner = 1234567890
+
+[feature.group_policy]
+admin = ["admin_notice"]
+main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"]
+
+[feature.user_policy]
+owner = ["all"]
+
 [bilibili.push]
-groups = { main = { uids = [1310714247], mode = "full" } }
+
+[bilibili.push.groups.main]
+uids = [1310714247]
+mode = "full"
 ```
 
 ## Team Resource Subscription
@@ -167,9 +243,15 @@ Configure it in `ironsbot.toml`:
 
 ```toml
 [feature]
-group_aliases = { xinghen = 987654321 }
-user_aliases = { owner = 1234567890 }
-group_policy = { xinghen = ["team_resource_subscription"] }
+
+[feature.group_aliases]
+example = 987654321
+
+[feature.user_aliases]
+owner = 1234567890
+
+[feature.group_policy]
+example = ["team_resource_subscription"]
 
 [seer.team_resource]
 times = ["23:00"]
@@ -179,7 +261,7 @@ resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}�
 resource_message = "出来买资源，别逼我求你😡"
 
 [[seer.team_resource.subscriptions]]
-group = "xinghen"
+group = "example"
 team_ids = [1234567, 7654321]
 threshold = 1000
 at_users = ["owner"]

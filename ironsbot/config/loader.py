@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -23,7 +25,15 @@ else:  # pragma: no cover - exercised on Python 3.10 in deployment
     import tomli as tomllib
 
 APP_CONFIG_PATH_ENV = "APP_CONFIG_PATH"
+CONFIG_EXAMPLE_PATH_ENV = "IRONSBOT_CONFIG_EXAMPLE_PATH"
 DEFAULT_CONFIG_PATH = Path("config.toml")
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_EXAMPLE_CONFIG_PATHS = (
+    _PROJECT_ROOT / "config.example.toml",
+    Path.cwd() / "config.example.toml",
+    Path("/app/config.example.toml"),
+)
+_LOGGER = logging.getLogger("ironsbot.config")
 
 
 def parse_toml_file(path: str | Path) -> dict[str, Any]:
@@ -50,6 +60,60 @@ def resolve_app_config_path(
     return None
 
 
+def resolve_example_config_path(env: Mapping[str, str] | None = None) -> Path | None:
+    values = env if env is not None else os.environ
+    raw_path = values.get(CONFIG_EXAMPLE_PATH_ENV, "").strip()
+    if raw_path:
+        path = Path(raw_path)
+        return path if path.exists() else None
+
+    seen: set[Path] = set()
+    for path in DEFAULT_EXAMPLE_CONFIG_PATHS:
+        normalized = path.resolve() if path.exists() else path.absolute()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if path.exists():
+            return path
+    return None
+
+
+def ensure_app_config_file(
+    path: str | Path,
+    env: Mapping[str, str] | None = None,
+) -> bool:
+    config_path = Path(path)
+    if config_path.exists():
+        return False
+
+    example_path = resolve_example_config_path(env)
+    if example_path is None:
+        msg = (
+            f"app config file does not exist: {config_path}. "
+            "No config.example.toml was found to create it automatically. "
+            f"Set {APP_CONFIG_PATH_ENV} to an existing TOML file, or copy "
+            "config.example.toml manually."
+        )
+        raise FileNotFoundError(msg)
+
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(example_path, config_path)
+    except OSError as exc:
+        msg = (
+            f"app config file does not exist and could not be created: {config_path}. "
+            f"Copy {example_path} to this path manually, or make the config "
+            "directory writable for first startup."
+        )
+        raise RuntimeError(msg) from exc
+
+    _LOGGER.warning(
+        f"Created app config from example: {config_path} (source: {example_path}). "
+        "Edit this file before production use."
+    )
+    return True
+
+
 def load_app_config(
     path: str | Path | None = None,
     *,
@@ -58,6 +122,7 @@ def load_app_config(
     resolved_path = Path(path) if path is not None else resolve_app_config_path(env)
     if resolved_path is None:
         return AppConfig()
+    ensure_app_config_file(resolved_path, env)
     return AppConfig.model_validate(parse_toml_file(resolved_path))
 
 

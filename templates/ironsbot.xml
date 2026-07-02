@@ -10,7 +10,7 @@
   <Support>https://github.com/Murmansk5000/IronsBot/issues</Support>
   <Project>https://github.com/Murmansk5000/IronsBot</Project>
   <Overview>IronsBot custom image for Seer information queries, NoneBot2/OneBot v11 messaging, and personal Unraid-friendly plugins. Version tags use latest plus project-version.revision tags and exact sha tags; behavior config is file-based through APP_CONFIG_PATH, with environment variables kept for secrets, credentials, and deployment runtime only.</Overview>
-  <Description>IronsBot 是一个基于 NoneBot2 和 OneBot v11 的 QQ 机器人。这个镜像面向赛尔号查询、群聊回复、B 站动态监控、活动提醒、AI 聊天和 Unraid 部署。行为配置写在 /config/ironsbot.toml，环境变量只保留 OneBot token、AI Key、米米号凭据和部署运行参数，数据缓存保存在 /app/data。超级管理员可使用 /更新数据 手动刷新 SQLite 数据。</Description>
+  <Description>IronsBot 是一个基于 NoneBot2 和 OneBot v11 的 QQ 机器人。这个镜像面向赛尔号查询、群聊回复、B 站动态监控、活动提醒、AI 聊天和 Unraid 部署。行为配置写在 /config/ironsbot.toml；首次启动时如果该文件不存在，会从镜像内 config.example.toml 自动创建一份。环境变量只保留 OneBot token、AI Key、米米号凭据和部署运行参数，数据缓存保存在 /app/data。超级管理员可使用 /更新数据 手动刷新 SQLite 数据。</Description>
   <Category>Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
@@ -28,19 +28,20 @@ Recent changes:
 - Added persistent Bilibili login data under /app/data.
 - Added startup notice, scheduled private messages, team resource subscriptions, and manual database refresh.
 - Switched Unraid behavior configuration to a mounted TOML file via APP_CONFIG_PATH.
+- Auto-create /config/ironsbot.toml from config.example.toml on first startup when missing.
 - Kept Unraid environment variables minimal: secrets, credentials, and deployment runtime only.
   </Changes>
   <Config Name="WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="主机端口映射到容器内 8080，NapCat/OneBot 反向 WebSocket 连接这个端口。" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="IronsBot Data" Target="/app/data" Default="/mnt/user/appdata/ironsbot/data" Mode="rw" Description="持久化数据目录，用来保存插件缓存、B站 Cookie、SQLite 数据库和本地缓存文件。" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/data</Config>
   <Config Name="IronsBot Logs" Target="/app/logs" Default="/mnt/user/appdata/ironsbot/logs" Mode="rw" Description="持久化日志目录。启用 runtime.logging.file_enabled 后，默认文件日志写入 /app/logs/ironsbot.log；也可在 /config/ironsbot.toml 的 runtime.logging.file_path 中改到其它路径。" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/ironsbot/logs</Config>
-  <Config Name="IronsBot Config" Target="/config" Default="/mnt/user/appdata/ironsbot/config" Mode="ro" Description="只读挂载配置目录，目录内放 ironsbot.toml。可从仓库的 config.prod.toml 或 config.example.toml 复制后修改。" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/config</Config>
+  <Config Name="IronsBot Config" Target="/config" Default="/mnt/user/appdata/ironsbot/config" Mode="rw" Description="配置目录，容器内路径为 /config。首次启动如果 /config/ironsbot.toml 不存在，会自动从镜像内 config.example.toml 创建；之后请编辑该文件。" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/config</Config>
   <Config Name="Environment" Target="ENVIRONMENT" Default="prod" Mode="" Description="NoneBot 运行环境名，生产环境通常填 prod。" Type="Variable" Display="advanced" Required="true" Mask="false">prod</Config>
   <Config Name="Driver" Target="DRIVER" Default="~fastapi+~httpx" Mode="" Description="NoneBot 驱动配置，保持 ~fastapi+~httpx 即可支持 OneBot 反向 WebSocket 和 HTTP 请求。" Type="Variable" Display="advanced" Required="true" Mask="false">~fastapi+~httpx</Config>
   <Config Name="Host" Target="HOST" Default="0.0.0.0" Mode="" Description="容器内监听地址，Docker/Unraid 中建议 0.0.0.0。" Type="Variable" Display="advanced" Required="true" Mask="false">0.0.0.0</Config>
   <Config Name="Port" Target="PORT" Default="8080" Mode="" Description="容器内监听端口，需与端口映射的容器端口一致。" Type="Variable" Display="advanced" Required="true" Mask="false">8080</Config>
   <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="日志级别，可填 TRACE、DEBUG、INFO、WARNING 或 ERROR。" Type="Variable" Display="advanced" Required="true" Mask="false">INFO</Config>
   <Config Name="Command Start" Target="COMMAND_START" Default="[&quot;/&quot;, &quot;&quot;]" Mode="" Description="命令前缀列表，包含空字符串时可直接发送口令。" Type="Variable" Display="advanced" Required="false" Mask="false">["/", ""]</Config>
-  <Config Name="App Config Path" Target="APP_CONFIG_PATH" Default="/config/ironsbot.toml" Mode="" Description="行为配置 TOML 文件路径。Unraid 中保持 /config/ironsbot.toml，并在上方 Config 目录里放置该文件。" Type="Variable" Display="always" Required="true" Mask="false">/config/ironsbot.toml</Config>
+  <Config Name="App Config Path" Target="APP_CONFIG_PATH" Default="/config/ironsbot.toml" Mode="" Description="行为配置 TOML 文件路径。Unraid 中保持 /config/ironsbot.toml；如果文件不存在，首次启动会自动创建示例配置。" Type="Variable" Display="always" Required="true" Mask="false">/config/ironsbot.toml</Config>
   <Config Name="OneBot Access Token" Target="ONEBOT_ACCESS_TOKEN" Default="" Mode="" Description="OneBot 连接令牌，必须和 NapCat 等 OneBot 客户端的 access_token 一致。" Type="Variable" Display="always" Required="true" Mask="true" />
   <Config Name="Superusers" Target="SUPERUSERS" Default="[]" Mode="" Description="超级管理员 QQ 列表，必填。示例：[123456789] 或 [&quot;123456789&quot;]。" Type="Variable" Display="always" Required="true" Mask="false">[]</Config>
   <Config Name="Headless Seer User ID" Target="HEADLESS_SEER_USER_ID" Default="" Mode="" Description="可选。米米号账号；只有需要无头登录/自动化赛尔号操作时填写，不使用时留空。" Type="Variable" Display="always" Required="false" Mask="false" />

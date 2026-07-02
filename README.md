@@ -69,7 +69,7 @@ services:
       - "8085:8080"
     volumes:
       - ./ironsbot-data:/app/data
-      - ./ironsbot-config:/config:ro
+      - ./ironsbot-config:/config
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
@@ -80,8 +80,9 @@ services:
     restart: always
 ```
 
-把 [config.prod.toml](config.prod.toml) 或 [config.example.toml](config.example.toml)
-复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
+首次启动时，如果 `./ironsbot-config/ironsbot.toml` 不存在，IronsBot 会自动从镜像内的
+`/app/config.example.toml` 复制一份示例配置。启动后请先修改这份 TOML，再正式使用。
+完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
 ## 插件架构
@@ -127,24 +128,49 @@ HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
 ```
 
+`APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
+宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
+Desktop 可以把 `C:\ironsbot\config` 挂载到 `/config`，那么实际配置文件就是：
+
+```text
+C:\ironsbot\config\ironsbot.toml
+```
+
+如果这个文件不存在，首次启动会自动按 [config.example.toml](config.example.toml)
+创建一份。已有文件不会被覆盖。若你把 `/config` 挂成只读，需要先手动创建
+`ironsbot.toml`，或首次启动时改成可写挂载。
+
 示例 TOML：
 
 ```toml
 [feature]
-group_aliases = { admin = 123456789, xinghen = 987654321 }
-user_aliases = { owner = 1234567890 }
-group_policy = { admin = ["admin_notice"], xinghen = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"] }
-user_policy = { owner = ["all"] }
 superuser_bypass = true
 
+[feature.group_aliases]
+admin = 123456789
+example = 987654321
+
+[feature.user_aliases]
+owner = 1234567890
+
+[feature.group_policy]
+admin = ["admin_notice"]
+example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"]
+
+[feature.user_policy]
+owner = ["all"]
+
 [bilibili.push]
-groups = { xinghen = { uids = [1310714247], mode = "full" } }
+
+[bilibili.push.groups.example]
+uids = [1310714247]
+mode = "full"
 
 [seer.team_resource]
 times = ["23:00"]
 
 [[seer.team_resource.subscriptions]]
-group = "xinghen"
+group = "example"
 team_ids = [1234567]
 threshold = 1000
 at_users = ["owner"]
@@ -157,6 +183,46 @@ at_users = ["owner"]
 游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
 使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual`
 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
+
+### Feature 对照表
+
+| feature | 作用 |
+| --- | --- |
+| `all` | 除 `admin_notice` 外的大多数功能总开关；不包含管理通知。 |
+| `query` | 常用查询组合：赛尔查询、图片、榜单、B站查询、活动查询、开服查询。 |
+| `seer` | 全部赛尔查询子功能总开关。 |
+| `seer_player` | 米米号、玩家基础信息、收集/巅峰/群星牌二级回复。 |
+| `seer_team` | 战队 ID 查询。 |
+| `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |
+| `seer_mintmark` | 刻印、刻印系列、宝石、刻印数值榜。 |
+| `seer_equipment` | 套装、部件、称号查询。 |
+| `seer_type` | 属性克制、异常状态查询。 |
+| `seer_peak` | 巅峰池、票选、巅峰榜、精灵出场榜。 |
+| `seer_autocard` | 群星牌资料和群星之巅榜。 |
+| `seer_rank` / `rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
+| `seer_data` | 下周预告、数据版本等数据工具。 |
+| `image` | 固定图片/本地图发送。 |
+| `meeting` | 腾讯会议回复。 |
+| `text` | 通用文本口令回复。 |
+| `text_push` | 通用定时文本推送。 |
+| `web_activity_link` | 游戏外活动链接口令，例如签到/活动/链接。 |
+| `web_activity_push` | 游戏外活动链接定时推送。 |
+| `seerinfo` | seerinfo/火火手册等自定义文本入口。 |
+| `bili_query` | B站动态手动查询、刷新、历史点播。 |
+| `bili_push` | B站动态自动推送。 |
+| `bili` | `bili_query` + `bili_push`。 |
+| `seer_activity_query` | 游戏内活动、快结束活动手动查询。 |
+| `seer_activity_push` | 游戏内活动结束提醒推送。 |
+| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
+| `server_status_query` | 开服查询、服务器状态查询。 |
+| `server_status_push` | 开服状态广播推送。 |
+| `server_status` | `server_status_query` + `server_status_push`。 |
+| `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
+| `team_audit` | 战队审核群入群提示和 24 小时 follow-up。 |
+| `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
+| `ai_intent` | AI 意图分析，用于战队推荐、手册等意图动作。 |
+| `fire_manual` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
+| `admin_notice` | 管理通知：开机通知、AI/渲染错误通知等；必须显式配置。 |
 
 ## 数据与缓存
 
