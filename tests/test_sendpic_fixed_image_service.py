@@ -16,6 +16,7 @@ assert _SPEC is not None and _SPEC.loader is not None
 _SERVICE = module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_SERVICE)
 build_fixed_image_segment = _SERVICE.build_fixed_image_segment
+FIXED_IMAGE_COMMANDS = _SERVICE.FIXED_IMAGE_COMMANDS
 
 
 def test_build_fixed_image_segment_returns_none_for_missing_file(
@@ -35,3 +36,8 @@ def test_build_fixed_image_segment_encodes_file_as_base64_image(
     assert segment is not None
     assert segment.type == "image"
     assert segment.data["file"] == "base64://YWJj"
+
+
+def test_anniversary_random_table_commands_use_same_fixed_image() -> None:
+    assert FIXED_IMAGE_COMMANDS["周年庆伪随机表"] == "周年庆伪随机表.png"
+    assert FIXED_IMAGE_COMMANDS["伪随机表"] == "周年庆伪随机表.png"

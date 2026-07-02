@@ -2,21 +2,31 @@
 # IronsBot behavior config example.
 # Copy to config.dev.toml or /config/ironsbot.toml and edit behavior values here.
 # Keep secrets and credentials in environment variables, not in this file.
+# See README.md "Feature 对照表" for every feature key and its meaning.
 
 [feature]
-# Default: {}
+# Default: true
+# EN: Let NoneBot superusers bypass feature restrictions.
+# ZH: 是否允许超级管理员绕过功能策略限制。
+# Example: false
+superuser_bypass = true
+
+[feature.group_aliases]
+# Default: empty table
 # EN: Named QQ group IDs used by policies.
 # ZH: 群别名，把易读名称映射到 QQ 群号。
-# Example: { main = 987654321 }
-group_aliases = {}
+# Example:
+# main = 987654321
 
-# Default: {}
+[feature.user_aliases]
+# Default: empty table
 # EN: Named QQ user IDs used by policies.
 # ZH: 用户别名，把易读名称映射到 QQ 号。
-# Example: { owner = 1234567890 }
-user_aliases = {}
+# Example:
+# owner = 1234567890
 
-# Default: {}
+[feature.group_policy]
+# Default: empty table
 # EN: Group feature allowlist. Feature aliases include all, query, seer, bili,
 # seer_activity, server_status, text, text_push, and message. Seer sub-features:
 # seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
@@ -27,20 +37,16 @@ user_aliases = {}
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
 # fire_manual 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 # team_resource_subscription 控制战队订阅查询和低资源定时提醒。
-# Example: { xinghen = ["seer_pet", "seer_mintmark", "seer_autocard", "team_resource_subscription"] }
-group_policy = {}
+# admin_notice 不包含在 all 里；管理群要收开机/错误通知时需要显式写 admin_notice。
+# Example:
+# example = ["seer_pet", "seer_mintmark", "seer_autocard", "team_resource_subscription"]
 
-# Default: {}
+[feature.user_policy]
+# Default: empty table
 # EN: Private/user feature allowlist.
 # ZH: 私聊/用户功能策略，也用于私聊推送目标。
-# Example: { owner = ["all"] }
-user_policy = {}
-
-# Default: true
-# EN: Let NoneBot superusers bypass feature restrictions.
-# ZH: 是否允许超级管理员绕过功能策略限制。
-# Example: false
-superuser_bypass = true
+# Example:
+# owner = ["all"]
 
 [ai]
 # Default: "https://api.deepseek.com"
@@ -376,7 +382,7 @@ feature = "team_audit"
 # Default: []
 # EN: Target groups by group alias or QQ group number.
 # ZH: 战队审核入群提示生效群，可填写群别名或群号。
-# Example: ["xinghenshenhe"]
+# Example: ["audit_group"]
 groups = []
 
 # Default: built-in team audit guidance.
@@ -613,7 +619,7 @@ resource_message = "出来买资源，别逼我求你😡"
 # EN: Add one subscription per group/threshold/mention target set.
 # ZH: 每个群、阈值、提醒对象组合写一条订阅；同一条订阅可包含多个战队号。
 # [[seer.team_resource.subscriptions]]
-# group = "xinghen"
+# group = "example"
 # team_ids = [1234567, 2345678]
 # threshold = 1000
 # at_users = ["owner"]
@@ -785,14 +791,14 @@ team_audit = 80
 [runtime.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
 file_enabled = false
-# Default: "/app/logs/ironsbot.log"; EN: File log path. ZH: 文件日志路径；Unraid 建议额外挂载 /app/logs 方便持久化，也可改成 /app/data/logs/ironsbot.log。
-file_path = "/app/logs/ironsbot.log"
+# Default: "logs/ironsbot.log"; EN: File log path. ZH: 文件日志路径；相对路径会落在当前工作目录。Docker 中当前工作目录是 /app，因此默认等价于 /app/logs/ironsbot.log。
+file_path = "logs/ironsbot.log"
 # Default: "INFO"; EN: Minimum file log level. ZH: 写入文件的最低日志等级，可填 DEBUG、INFO、WARNING、ERROR 等。
 file_level = "INFO"
 # Default: false; EN: Also write ERROR/CRITICAL logs to a separate file. ZH: 额外写入独立错误日志文件；只包含 ERROR/CRITICAL，便于排查崩溃。
 error_file_enabled = false
-# Default: "/app/logs/ironsbot.error.log"; EN: Error log file path. ZH: 错误日志路径；完整日志仍写入 /app/logs/ironsbot.log。
-error_file_path = "/app/logs/ironsbot.error.log"
+# Default: "logs/ironsbot.error.log"; EN: Error log file path. ZH: 错误日志路径；完整日志仍写入 logs/ironsbot.log。
+error_file_path = "logs/ironsbot.error.log"
 # Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。
 rotation = "20 MB"
 # Default: "14 days"; EN: Keep rotated logs for this duration. ZH: 轮转日志保留时间。

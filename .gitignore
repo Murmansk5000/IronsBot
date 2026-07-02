@@ -144,6 +144,8 @@ dmypy.json
 
 # Local custom plugin runtime data
 data/
+/config/
+/logs/
 /aliases-data.sqlite
 /aliases-data.sqlite.sha256
 /ironsbot-data.sqlite
