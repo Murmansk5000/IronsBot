@@ -95,15 +95,17 @@ copies `/app/config.example.toml` to that path automatically. Edit the generated
 file before production use. Existing config files are never overwritten.
 
 On Windows Docker Desktop, the left side of the volume is a Windows directory.
-For example:
+Choose any writable directory on any drive. For example:
 
 ```powershell
-mkdir C:\ironsbot\config, C:\ironsbot\data, C:\ironsbot\logs
+$IRONSBOT_HOME = "D:\DockerData\ironsbot"
+New-Item -ItemType Directory -Force `
+  "$IRONSBOT_HOME\config", "$IRONSBOT_HOME\data", "$IRONSBOT_HOME\logs"
 docker run --name ironsbot `
   -p 8085:8080 `
-  -v C:\ironsbot\config:/config `
-  -v C:\ironsbot\data:/app/data `
-  -v C:\ironsbot\logs:/app/logs `
+  -v "${IRONSBOT_HOME}\config:/config" `
+  -v "${IRONSBOT_HOME}\data:/app/data" `
+  -v "${IRONSBOT_HOME}\logs:/app/logs" `
   -e APP_CONFIG_PATH=/config/ironsbot.toml `
   -e ONEBOT_ACCESS_TOKEN=change-me `
   -e SUPERUSERS='["1234567890"]' `
@@ -111,7 +113,7 @@ docker run --name ironsbot `
 ```
 
 In this example, `/config/ironsbot.toml` inside the container is
-`C:\ironsbot\config\ironsbot.toml` on Windows.
+`D:\DockerData\ironsbot\config\ironsbot.toml` on Windows.
 
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 
@@ -135,6 +137,18 @@ Behavior config is file-based:
   `ironsbot.toml` before using a read-only mount.
 - Set `APP_CONFIG_PATH=/config/ironsbot.toml`.
 - Use `config.example.toml` for all fields, defaults, English descriptions, Chinese descriptions, and examples.
+
+When IronsBot creates a missing `ironsbot.toml`, it also writes
+`ironsbot.env.example` next to it. This is only a sample for secrets and
+runtime environment variables. Real env files such as `ironsbot.env.prod` are
+not created automatically; copy the example, fill your token / superusers /
+keys, and reference it from Compose if you use `env_file`.
+
+If `APP_CONFIG_PATH` is not set, IronsBot falls back to
+`config/ironsbot.toml` in the current working directory. Missing config files
+are created from `config.example.toml` automatically on any operating system,
+as long as the target directory is writable. Relative `data/` and `logs/`
+paths also live under the current working directory.
 
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml

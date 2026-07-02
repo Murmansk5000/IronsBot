@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nonebot import get_driver, require
+from nonebot.adapters.onebot.v11 import Bot  # noqa: TC002
 
 from . import (
     register_team_audit_followup_scan,
     schedule_pending_team_audit_followups,
 )
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
 
 _team_audit_welcome_runtime_state = {"registered": False}
 

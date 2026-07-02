@@ -239,10 +239,10 @@ class LoggingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     file_enabled: bool = False
-    file_path: str = "/app/logs/ironsbot.log"
+    file_path: str = "logs/ironsbot.log"
     file_level: str = "INFO"
     error_file_enabled: bool = False
-    error_file_path: str = "/app/logs/ironsbot.error.log"
+    error_file_path: str = "logs/ironsbot.error.log"
     rotation: str = "20 MB"
     retention: str = "14 days"
     compression: str | None = "zip"

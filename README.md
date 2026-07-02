@@ -130,15 +130,26 @@ HEADLESS_SEER_PASSWORD=
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
-Desktop 可以把 `C:\ironsbot\config` 挂载到 `/config`，那么实际配置文件就是：
+Desktop 可以把任意可写目录挂载到 `/config`：
 
 ```text
-C:\ironsbot\config\ironsbot.toml
+<你的 Windows 配置目录>\ironsbot.toml -> /config/ironsbot.toml
 ```
 
 如果这个文件不存在，首次启动会自动按 [config.example.toml](config.example.toml)
 创建一份。已有文件不会被覆盖。若你把 `/config` 挂成只读，需要先手动创建
 `ironsbot.toml`，或首次启动时改成可写挂载。
+
+自动创建 `ironsbot.toml` 时，IronsBot 还会在同目录生成
+`ironsbot.env.example`。它只是环境变量示例，真实的 `ironsbot.env.prod`
+不会自动创建，因为里面需要填写 OneBot token、超级管理员、AI key 和无头账号等密钥。
+如果使用 Docker Compose 的 `env_file`，请复制示例并手动填写后再引用。
+
+如果没有设置 `APP_CONFIG_PATH`，IronsBot 会默认读取当前工作目录的
+`config/ironsbot.toml`；这个文件不存在时也会自动从 `config.example.toml`
+创建。也就是说，无论 Windows、Linux、macOS、Docker 还是源码运行，只要程序能
+找到示例配置且目标目录可写，缺少 TOML 时都会自动生成一份。日志默认写入当前工作
+目录的 `logs/`，运行数据默认写入 `data/`。
 
 示例 TOML：
 

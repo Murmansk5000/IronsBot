@@ -15,7 +15,7 @@ from ironsbot.config import (
     load_deployment_config,
     load_secrets_config,
 )
-from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV
+from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
 from ironsbot.config.models.seer import TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,9 +108,9 @@ def test_example_config_parses() -> None:
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
-    assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
+    assert config.runtime.logging.file_path == "logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
-    assert config.runtime.logging.error_file_path == "/app/logs/ironsbot.error.log"
+    assert config.runtime.logging.error_file_path == "logs/ironsbot.error.log"
     assert (
         config.runtime.matcher_priority.seer_query
         < config.runtime.matcher_priority.ai_chat
@@ -149,12 +149,37 @@ def test_missing_app_config_is_created_from_example(tmp_path: Path) -> None:
     config_path = tmp_path / "config" / "ironsbot.toml"
     config = load_app_config(
         config_path,
-        env={CONFIG_EXAMPLE_PATH_ENV: str(ROOT / "config.example.toml")},
+        env={
+            CONFIG_EXAMPLE_PATH_ENV: str(ROOT / "config.example.toml"),
+            ENV_EXAMPLE_PATH_ENV: str(ROOT / ".env.example"),
+        },
     )
 
     assert config_path.exists()
+    env_example_path = tmp_path / "config" / "ironsbot.env.example"
+    assert env_example_path.exists()
     assert config.ai.model == "deepseek-v4-pro"
     assert "SPDX-License-Identifier" in config_path.read_text(encoding="utf-8")
+    assert "ONEBOT_ACCESS_TOKEN" in env_example_path.read_text(encoding="utf-8")
+
+
+def test_default_app_config_is_created_when_path_env_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    config = load_app_config(
+        env={
+            CONFIG_EXAMPLE_PATH_ENV: str(ROOT / "config.example.toml"),
+            ENV_EXAMPLE_PATH_ENV: str(ROOT / ".env.example"),
+        },
+    )
+
+    config_path = tmp_path / "config" / "ironsbot.toml"
+    assert config_path.exists()
+    assert (tmp_path / "config" / "ironsbot.env.example").exists()
+    assert config.ai.model == "deepseek-v4-pro"
 
 
 def test_dev_and_prod_configs_parse() -> None:
