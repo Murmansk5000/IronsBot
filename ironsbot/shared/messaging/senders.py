@@ -9,7 +9,13 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.log import logger
 
+from ironsbot.config import get_app_config
+
 from .outbound_rate_limit import check_group_outbound_rate_limit
+from .push_subscriptions import (
+    PushUnsubscribeStore,
+    append_push_unsubscribe_hint,
+)
 from .targets import MessageTarget, TargetSendSummary, broadcast_targets
 from .text import build_message
 
@@ -49,8 +55,12 @@ async def send_target_messages(  # noqa: PLR0913
     action_name: str = "message action",
     interval_seconds: float = 1.5,
     message_limiter: MessageLimiter | None = None,
+    subscription_key: str | None = None,
 ) -> TargetSendSummary:
     deduped_targets = list(dict.fromkeys(targets))
+    if subscription_key:
+        deduped_targets = _filter_subscribed_targets(deduped_targets, subscription_key)
+
     bot = bot or get_bot_or_none()
     if not bot:
         return TargetSendSummary([], deduped_targets)
@@ -75,6 +85,12 @@ async def send_target_messages(  # noqa: PLR0913
             if active_limiter is not None
             else message
         )
+        if subscription_key:
+            limited_message = append_push_unsubscribe_hint(
+                limited_message,
+                get_app_config().message.push_unsubscribe,
+                target_type=target.target_type,
+            )
         rendered_message = build_message(
             limited_message,
             at_user_ids=(
@@ -126,6 +142,7 @@ async def send_broadcast_message(  # noqa: PLR0913
     action_name: str = "message action",
     interval_seconds: float = 1.5,
     message_limiter: MessageLimiter | None = None,
+    subscription_key: str | None = None,
 ) -> TargetSendSummary:
     return await send_target_messages(
         broadcast_targets(
@@ -138,4 +155,38 @@ async def send_broadcast_message(  # noqa: PLR0913
         action_name=action_name,
         interval_seconds=interval_seconds,
         message_limiter=message_limiter,
+        subscription_key=subscription_key,
     )
+
+
+def _filter_subscribed_targets(
+    targets: list[MessageTarget],
+    subscription_key: str,
+) -> list[MessageTarget]:
+    config = get_app_config().message.push_unsubscribe
+    if not config.enabled:
+        return targets
+
+    store = PushUnsubscribeStore(config.data_path)
+    private_ids = store.filter_subscribed_user_ids(
+        [target.target_id for target in targets if target.target_type == "private"],
+        subscription_key,
+    )
+    group_ids = store.filter_subscribed_group_ids(
+        [target.target_id for target in targets if target.target_type == "group"],
+        subscription_key,
+    )
+    allowed_private_ids = set(private_ids)
+    allowed_group_ids = set(group_ids)
+    return [
+        target
+        for target in targets
+        if (
+            target.target_type == "private"
+            and target.target_id in allowed_private_ids
+        )
+        or (
+            target.target_type == "group"
+            and target.target_id in allowed_group_ids
+        )
+    ]

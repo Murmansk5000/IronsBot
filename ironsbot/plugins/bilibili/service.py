@@ -87,6 +87,7 @@ async def _send_dynamic_push(
             bot=bot,
             action_name=delivery.action_name,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            subscription_key="bili_push",
         )
 
 

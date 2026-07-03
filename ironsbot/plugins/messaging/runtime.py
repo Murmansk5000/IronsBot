@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from nonebot import get_driver, on_message, require
 from nonebot.adapters.onebot.v11 import (
@@ -24,6 +24,16 @@ from ironsbot.shared.messaging import (
     event_sender_at_user_ids,
     finish_matcher_message,
     send_broadcast_message,
+)
+from ironsbot.shared.messaging.push_subscriptions import (
+    BUILTIN_PUSH_OPTIONS,
+    PushSubscriptionOption,
+    PushTargetType,
+    PushUnsubscribeStore,
+    build_push_subscription_menu,
+    build_schedule_subscription_options,
+    group_schedule_key,
+    private_schedule_key,
 )
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -52,24 +62,18 @@ from .runtime_service import (
     build_schedule_trigger_kwargs,
     find_command_action,
 )
-from .unsubscribe import (
-    PrivatePushUnsubscribeStore,
-    PrivateScheduleSubscriptionOption,
-    append_private_unsubscribe_hint,
-    build_private_schedule_menu,
-    build_private_schedule_options,
-    private_schedule_key,
-)
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
-PRIVATE_SUBSCRIPTION_MODE_KEY = "_message_private_subscription_mode"
-PRIVATE_SUBSCRIPTION_OPTIONS_KEY = "_message_private_subscription_options"
-PRIVATE_SUBSCRIPTION_SESSION_KEY = "_message_private_subscription_session"
-PRIVATE_SUBSCRIPTION_VERSION_KEY = "_message_private_subscription_version"
-PRIVATE_SUBSCRIPTION_NAMESPACE = "message_private_subscription"
-PRIVATE_SUBSCRIPTION_UNSUBSCRIBE_MODE = "unsubscribe"
-PRIVATE_SUBSCRIPTION_RESTORE_MODE = "restore"
+PUSH_SUBSCRIPTION_MODE_KEY = "_message_push_subscription_mode"
+PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
+PUSH_SUBSCRIPTION_SESSION_KEY = "_message_push_subscription_session"
+PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
+PUSH_SUBSCRIPTION_TARGET_TYPE_KEY = "_message_push_subscription_target_type"
+PUSH_SUBSCRIPTION_VERSION_KEY = "_message_push_subscription_version"
+PUSH_SUBSCRIPTION_NAMESPACE = "message_push_subscription"
+PUSH_SUBSCRIPTION_UNSUBSCRIBE_MODE = "unsubscribe"
+PUSH_SUBSCRIPTION_RESTORE_MODE = "restore"
 MESSAGE_PLUGIN_NAME = "message"
 _messaging_runtime_state = {"registered": False}
 
@@ -124,23 +128,32 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
     return False
 
 
-async def _match_private_subscription_command(
+def _is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
+    role = getattr(event.sender, "role", None)
+    return role in {"owner", "admin"}
+
+
+async def _match_push_subscription_command(
     event: MessageEvent,
     state: T_State,
 ) -> bool:
-    if not isinstance(event, PrivateMessageEvent):
+    if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
 
-    config = get_message_config().private_unsubscribe
+    config = get_message_config().push_unsubscribe
     if not config.enabled:
+        return False
+    if isinstance(event, GroupMessageEvent) and not _is_group_push_subscription_manager(
+        event
+    ):
         return False
 
     text = event.get_plaintext()
     if command_text_matches(text, config.commands):
-        state[PRIVATE_SUBSCRIPTION_MODE_KEY] = PRIVATE_SUBSCRIPTION_UNSUBSCRIBE_MODE
+        state[PUSH_SUBSCRIPTION_MODE_KEY] = PUSH_SUBSCRIPTION_UNSUBSCRIBE_MODE
         return True
     if command_text_matches(text, config.restore_commands):
-        state[PRIVATE_SUBSCRIPTION_MODE_KEY] = PRIVATE_SUBSCRIPTION_RESTORE_MODE
+        state[PUSH_SUBSCRIPTION_MODE_KEY] = PUSH_SUBSCRIPTION_RESTORE_MODE
         return True
     return False
 
@@ -155,8 +168,8 @@ private_command_matcher = on_message(
     block=True,
 )
 
-private_subscription_matcher = on_message(
-    rule=Rule(_match_private_subscription_command) & no_reply(),
+push_subscription_matcher = on_message(
+    rule=Rule(_match_push_subscription_command) & no_reply(),
     priority=_message_subscription_priority(),
     block=True,
 )
@@ -234,42 +247,118 @@ async def handle_private_command(
     )
 
 
-def _private_subscription_store() -> PrivatePushUnsubscribeStore:
-    return PrivatePushUnsubscribeStore(
-        get_message_config().private_unsubscribe.data_path
-    )
+def _push_subscription_store() -> PushUnsubscribeStore:
+    return PushUnsubscribeStore(get_message_config().push_unsubscribe.data_path)
 
 
-def _private_schedule_eligible_user_ids_by_feature() -> dict[str, set[int]]:
-    tasks = get_message_config().private_schedules
-    features = {task.feature for task in tasks if task.enabled}
+def _target_type_and_id(event: MessageEvent) -> tuple[PushTargetType, int]:
+    if isinstance(event, GroupMessageEvent):
+        return "group", int(event.group_id)
+    return "private", int(event.user_id)
+
+
+def _eligible_target_ids_by_feature(
+    target_type: PushTargetType,
+    features: set[str],
+) -> dict[str, set[int]]:
+    if target_type == "group":
+        return {
+            feature: set(groups_for_feature(feature))
+            for feature in features
+        }
+
     return {
         feature: set(users_with_superusers(users_for_feature(feature)))
         for feature in features
     }
 
 
-def _private_subscription_options(
-    user_id: int,
+def _builtin_subscription_options(
     *,
+    target_type: PushTargetType,
+    target_id: int,
+    store: PushUnsubscribeStore,
     include_unsubscribed: bool,
-) -> list[PrivateScheduleSubscriptionOption]:
-    return build_private_schedule_options(
-        user_id=user_id,
-        tasks=get_message_config().private_schedules,
-        eligible_user_ids_for_feature=_private_schedule_eligible_user_ids_by_feature(),
-        store=_private_subscription_store(),
+) -> list[PushSubscriptionOption]:
+    unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
+    eligible = _eligible_target_ids_by_feature(
+        target_type,
+        {option.feature for option in BUILTIN_PUSH_OPTIONS},
+    )
+    options: list[PushSubscriptionOption] = []
+    for option in BUILTIN_PUSH_OPTIONS:
+        if target_id not in eligible.get(option.feature, set()):
+            continue
+        is_unsubscribed = option.key in unsubscribed
+        if include_unsubscribed != is_unsubscribed:
+            continue
+        options.append(option)
+    return options
+
+
+def _schedule_subscription_options(
+    *,
+    target_type: PushTargetType,
+    target_id: int,
+    store: PushUnsubscribeStore,
+    include_unsubscribed: bool,
+) -> list[PushSubscriptionOption]:
+    config = get_message_config()
+    tasks = (
+        config.group_schedules
+        if target_type == "group"
+        else config.private_schedules
+    )
+    features = {task.feature for task in tasks if task.enabled}
+    return build_schedule_subscription_options(
+        target_type=target_type,
+        target_id=target_id,
+        tasks=tasks,
+        eligible_target_ids_for_feature=_eligible_target_ids_by_feature(
+            target_type,
+            features,
+        ),
+        store=store,
         include_unsubscribed=include_unsubscribed,
     )
 
 
-def _private_subscription_selection_rule(session_id: str, version: int) -> Rule:
+def _push_subscription_options(
+    target_type: PushTargetType,
+    target_id: int,
+    *,
+    include_unsubscribed: bool,
+) -> list[PushSubscriptionOption]:
+    store = _push_subscription_store()
+    return [
+        *_builtin_subscription_options(
+            target_type=target_type,
+            target_id=target_id,
+            store=store,
+            include_unsubscribed=include_unsubscribed,
+        ),
+        *_schedule_subscription_options(
+            target_type=target_type,
+            target_id=target_id,
+            store=store,
+            include_unsubscribed=include_unsubscribed,
+        ),
+    ]
+
+
+def _push_subscription_selection_rule(
+    session_id: str,
+    version: int,
+    target_type: PushTargetType,
+) -> Rule:
+    event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
+
     def _check(next_event: MessageEvent) -> bool:
-        if not isinstance(next_event, PrivateMessageEvent):
+        if not isinstance(next_event, event_type):
             return False
         if (
             event_conversation_session_id(
-                PRIVATE_SUBSCRIPTION_NAMESPACE,
+                PUSH_SUBSCRIPTION_NAMESPACE,
                 next_event,
             )
             != session_id
@@ -284,91 +373,112 @@ def _private_subscription_selection_rule(session_id: str, version: int) -> Rule:
     return prompt_session_manager.make_rule(session_id, version, _check)
 
 
-async def _reject_private_subscription_selection(
+async def _reject_push_subscription_selection(
     matcher: Matcher,
     state: T_State,
     prompt: str,
 ) -> None:
-    session_id = state.get(PRIVATE_SUBSCRIPTION_SESSION_KEY)
-    version = state.get(PRIVATE_SUBSCRIPTION_VERSION_KEY)
-    if not isinstance(session_id, str) or not isinstance(version, int):
+    session_id = state.get(PUSH_SUBSCRIPTION_SESSION_KEY)
+    version = state.get(PUSH_SUBSCRIPTION_VERSION_KEY)
+    target_type = state.get(PUSH_SUBSCRIPTION_TARGET_TYPE_KEY)
+    if (
+        not isinstance(session_id, str)
+        or not isinstance(version, int)
+        or target_type not in {"private", "group"}
+    ):
         await matcher.finish(prompt)
+    target_type = cast("PushTargetType", target_type)
 
     await reject_with_rule(
         matcher,
-        _private_subscription_selection_rule(session_id, version),
+        _push_subscription_selection_rule(
+            session_id,
+            version,
+            target_type,
+        ),
         prompt=prompt,
     )
 
 
-@private_subscription_matcher.handle()
-async def handle_private_subscription_menu(
+@push_subscription_matcher.handle()
+async def handle_push_subscription_menu(
     matcher: Matcher,
-    event: PrivateMessageEvent,
+    event: MessageEvent,
     state: T_State,
 ) -> None:
-    mode = state.get(PRIVATE_SUBSCRIPTION_MODE_KEY)
-    include_unsubscribed = mode == PRIVATE_SUBSCRIPTION_RESTORE_MODE
-    options = _private_subscription_options(
-        event.user_id,
+    target_type, target_id = _target_type_and_id(event)
+    mode = state.get(PUSH_SUBSCRIPTION_MODE_KEY)
+    include_unsubscribed = mode == PUSH_SUBSCRIPTION_RESTORE_MODE
+    options = _push_subscription_options(
+        target_type,
+        target_id,
         include_unsubscribed=include_unsubscribed,
     )
     if not options:
         if include_unsubscribed:
-            await matcher.finish("当前没有可恢复的私聊定时推送。")
-        await matcher.finish("当前没有可退订的私聊定时推送。")
+            await matcher.finish("当前没有可恢复的推送订阅。")
+        await matcher.finish("当前没有可退订的推送订阅。")
 
-    state[PRIVATE_SUBSCRIPTION_OPTIONS_KEY] = options
+    state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = options
     session_id = event_conversation_session_id(
-        PRIVATE_SUBSCRIPTION_NAMESPACE,
+        PUSH_SUBSCRIPTION_NAMESPACE,
         event,
     )
     version = prompt_session_manager.acquire(session_id)
-    state[PRIVATE_SUBSCRIPTION_SESSION_KEY] = session_id
-    state[PRIVATE_SUBSCRIPTION_VERSION_KEY] = version
+    state[PUSH_SUBSCRIPTION_SESSION_KEY] = session_id
+    state[PUSH_SUBSCRIPTION_TARGET_ID_KEY] = target_id
+    state[PUSH_SUBSCRIPTION_TARGET_TYPE_KEY] = target_type
+    state[PUSH_SUBSCRIPTION_VERSION_KEY] = version
 
+    scope = "本群" if target_type == "group" else "私聊"
     title = (
-        "请选择要恢复订阅的私聊推送："
+        f"请选择要恢复订阅的{scope}推送："
         if include_unsubscribed
-        else "请选择要退订的私聊推送："
+        else f"请选择要退订的{scope}推送："
     )
     await enter_prompt_loop(
         matcher,
-        handlers=[handle_private_subscription_select],
-        rule=_private_subscription_selection_rule(session_id, version),
-        prompt=build_private_schedule_menu(title=title, options=options),
+        handlers=[handle_push_subscription_select],
+        rule=_push_subscription_selection_rule(session_id, version, target_type),
+        prompt=build_push_subscription_menu(title=title, options=options),
     )
 
 
-async def handle_private_subscription_select(
+async def handle_push_subscription_select(
     matcher: Matcher,
-    event: PrivateMessageEvent,
+    event: MessageEvent,
     state: T_State,
 ) -> None:
-    raw_options = state.get(PRIVATE_SUBSCRIPTION_OPTIONS_KEY)
+    raw_options = state.get(PUSH_SUBSCRIPTION_OPTIONS_KEY)
     if not isinstance(raw_options, list):
         await matcher.finish()
-    options: list[PrivateScheduleSubscriptionOption] = raw_options
+    options: list[PushSubscriptionOption] = raw_options
 
     text = event.get_plaintext().strip()
     if text == "0":
         await matcher.finish("已退出。")
     index = int(text)
     if index < 1 or index > len(options):
-        await _reject_private_subscription_selection(
+        await _reject_push_subscription_selection(
             matcher,
             state,
             "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
         )
 
     option = options[index - 1]
-    mode = state.get(PRIVATE_SUBSCRIPTION_MODE_KEY)
-    store = _private_subscription_store()
-    if mode == PRIVATE_SUBSCRIPTION_RESTORE_MODE:
-        store.restore(event.user_id, option.key)
+    mode = state.get(PUSH_SUBSCRIPTION_MODE_KEY)
+    target_type = state.get(PUSH_SUBSCRIPTION_TARGET_TYPE_KEY)
+    target_id = state.get(PUSH_SUBSCRIPTION_TARGET_ID_KEY)
+    if target_type not in {"private", "group"} or not isinstance(target_id, int):
+        await matcher.finish()
+    target_type = cast("PushTargetType", target_type)
+
+    store = _push_subscription_store()
+    if mode == PUSH_SUBSCRIPTION_RESTORE_MODE:
+        store.restore_target(target_type, target_id, option.key)
         await matcher.finish(f"已恢复订阅：{option.label}。")
 
-    store.unsubscribe(event.user_id, option.key, option.feature)
+    store.unsubscribe_target(target_type, target_id, option.key, option.feature)
     await matcher.finish(f"已退订：{option.label}。\n发送“订阅”可恢复。")
 
 
@@ -388,32 +498,26 @@ async def _send_private_schedule(
     index: int = 1,
 ) -> None:
     private_user_ids = users_with_superusers(users_for_feature(task.feature))
-    unsubscribe_config = get_message_config().private_unsubscribe
-    if unsubscribe_config.enabled:
-        private_user_ids = PrivatePushUnsubscribeStore(
-            unsubscribe_config.data_path
-        ).filter_subscribed_user_ids(
-            private_user_ids,
-            private_schedule_key(index, task),
-        )
 
     await send_broadcast_message(
-        append_private_unsubscribe_hint(
-            append_fire_manual_ad_text(task.message),
-            unsubscribe_config,
-        ),
+        append_fire_manual_ad_text(task.message),
         private_user_ids=private_user_ids,
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
+        subscription_key=private_schedule_key(index, task),
     )
 
 
-async def _send_group_schedule(task: GroupScheduledMessageAction) -> None:
+async def _send_group_schedule(
+    task: GroupScheduledMessageAction,
+    index: int = 1,
+) -> None:
     await send_broadcast_message(
         task.message,
         group_ids=groups_for_feature(task.feature),
         group_at_user_ids=task.at_user_ids,
         action_name=f"group scheduled message {task.id or '<unnamed>'}",
         message_limiter=append_fire_manual_ad_for_group,
+        subscription_key=group_schedule_key(index, task),
     )
 
 
@@ -446,7 +550,7 @@ def _register_group_schedule(
     scheduler.add_job(
         _send_group_schedule,
         "cron",
-        kwargs={"task": task},
+        kwargs={"task": task, "index": index},
         id=build_schedule_job_id("group_schedule", index, task.id),
         replace_existing=True,
         **build_schedule_trigger_kwargs(task),

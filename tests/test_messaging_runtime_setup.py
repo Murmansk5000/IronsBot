@@ -11,12 +11,9 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.config.models.message import PrivateUnsubscribeConfig
+from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.plugins.messaging import runtime
-from ironsbot.plugins.messaging.unsubscribe import PrivatePushUnsubscribeStore
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
-
-PRIVATE_UNSUBSCRIBE_HINT = "回复 TD 可管理私聊推送订阅。"
 
 
 class FakeDriver:
@@ -45,7 +42,7 @@ class FakeGroupSchedule:
 
 @dataclass(frozen=True, slots=True)
 class FakeMessageConfig:
-    private_unsubscribe: PrivateUnsubscribeConfig
+    push_unsubscribe: PushUnsubscribeConfig
 
 
 def test_messaging_runtime_setup_registers_startup_once(
@@ -87,7 +84,7 @@ def test_scheduled_messages_append_fire_manual_ad(
         runtime,
         "get_message_config",
         lambda: FakeMessageConfig(
-            private_unsubscribe=PrivateUnsubscribeConfig(
+            push_unsubscribe=PushUnsubscribeConfig(
                 data_path=str(tmp_path / "unsubscribe.sqlite")
             )
         ),
@@ -109,21 +106,22 @@ def test_scheduled_messages_append_fire_manual_ad(
     )
 
     assert [message for message, _kwargs in sent] == [
-        f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}\n\n{PRIVATE_UNSUBSCRIBE_HINT}",
+        f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
         f"群定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
     ]
     assert sent[0][1]["private_user_ids"] == [2001]
+    assert sent[0][1]["subscription_key"] == "private"
     assert sent[1][1]["group_ids"] == [1001]
     assert sent[1][1]["group_at_user_ids"] == [3001]
+    assert sent[1][1]["subscription_key"] == "group"
 
 
-def test_private_schedule_filters_unsubscribed_users(
+def test_private_schedule_passes_subscription_key(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     data_path = tmp_path / "unsubscribe.sqlite"
-    PrivatePushUnsubscribeStore(data_path).unsubscribe(2001, "private", "text_push")
 
     async def fake_send_broadcast_message(
         message: str,
@@ -136,7 +134,7 @@ def test_private_schedule_filters_unsubscribed_users(
         runtime,
         "get_message_config",
         lambda: FakeMessageConfig(
-            private_unsubscribe=PrivateUnsubscribeConfig(data_path=str(data_path))
+            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
         ),
     )
     monkeypatch.setattr(runtime, "users_for_feature", lambda _feature: [2001, 2002])
@@ -144,16 +142,16 @@ def test_private_schedule_filters_unsubscribed_users(
 
     asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
 
-    assert sent[0][1]["private_user_ids"] == [2002]
+    assert sent[0][1]["private_user_ids"] == [2001, 2002]
+    assert sent[0][1]["subscription_key"] == "private"
 
 
-def test_private_schedule_unsubscribe_disabled_keeps_recipients_and_omits_hint(
+def test_private_schedule_passes_subscription_key_when_unsubscribe_disabled(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     data_path = tmp_path / "unsubscribe.sqlite"
-    PrivatePushUnsubscribeStore(data_path).unsubscribe(2001, "private", "text_push")
 
     async def fake_send_broadcast_message(
         message: str,
@@ -166,7 +164,7 @@ def test_private_schedule_unsubscribe_disabled_keeps_recipients_and_omits_hint(
         runtime,
         "get_message_config",
         lambda: FakeMessageConfig(
-            private_unsubscribe=PrivateUnsubscribeConfig(
+            push_unsubscribe=PushUnsubscribeConfig(
                 enabled=False,
                 data_path=str(data_path),
             )

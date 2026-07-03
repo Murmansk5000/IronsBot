@@ -16,6 +16,7 @@ from ironsbot.config import (
     load_secrets_config,
 )
 from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
+from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.seer import TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,8 +36,8 @@ DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_SEER_PLAYER_PRIORITY = 5
-DEFAULT_PRIVATE_UNSUBSCRIBE_DATA_PATH = (
-    "data/messaging/private_push_unsubscriptions.sqlite"
+DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
+    "data/messaging/push_unsubscriptions.sqlite"
 )
 TEAM_RESOURCE_THRESHOLD = 2000
 
@@ -50,6 +51,22 @@ def _load_module_from_path(name: str, path: Path) -> ModuleType:
     return module
 
 
+def _assert_default_push_unsubscribe(
+    push_unsubscribe: PushUnsubscribeConfig,
+) -> None:
+    assert (
+        push_unsubscribe.commands,
+        push_unsubscribe.restore_commands,
+        push_unsubscribe.data_path,
+    ) == (
+        ["td", "退订"],
+        ["订阅", "恢复订阅"],
+        DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH,
+    )
+    assert push_unsubscribe.enabled and "TD" in push_unsubscribe.hint
+    assert "群主/管理员" in push_unsubscribe.group_hint
+
+
 def test_example_config_parses() -> None:
     config = load_app_config(ROOT / "config.example.toml")
 
@@ -58,17 +75,7 @@ def test_example_config_parses() -> None:
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
-    private_unsubscribe = config.message.private_unsubscribe
-    assert (
-        private_unsubscribe.commands,
-        private_unsubscribe.restore_commands,
-        private_unsubscribe.data_path,
-    ) == (
-        ["td", "退订"],
-        ["订阅", "恢复订阅"],
-        DEFAULT_PRIVATE_UNSUBSCRIBE_DATA_PATH,
-    )
-    assert private_unsubscribe.enabled and "TD" in private_unsubscribe.hint
+    _assert_default_push_unsubscribe(config.message.push_unsubscribe)
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
     assert "米米号" in config.message.team_audit_welcome.message

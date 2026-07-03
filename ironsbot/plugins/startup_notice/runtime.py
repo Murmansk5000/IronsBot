@@ -44,6 +44,7 @@ async def send_startup_notice(bot: Bot) -> None:
             bot=bot,
             action_name="startup notice",
             interval_seconds=1.2,
+            subscription_key="admin_notice",
         )
 
         startup_notice_service.mark_result(summary.succeeded)

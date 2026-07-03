@@ -17,8 +17,8 @@ TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR = (
 OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR = (
     "outbound_rate_limit.cooldown_message must not be empty"
 )
-PRIVATE_UNSUBSCRIBE_REQUIRED_ERROR = (
-    "private_unsubscribe enabled requires non-empty commands and restore_commands"
+PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
+    "push_unsubscribe enabled requires non-empty commands and restore_commands"
 )
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
 
@@ -113,32 +113,33 @@ class OutboundRateLimitConfig(BaseModel):
         return message
 
 
-class PrivateUnsubscribeConfig(BaseModel):
+class PushUnsubscribeConfig(BaseModel):
     enabled: bool = True
     commands: list[str] = Field(default_factory=lambda: ["td", "退订"])
     restore_commands: list[str] = Field(
         default_factory=lambda: ["订阅", "恢复订阅"]
     )
-    data_path: str = "data/messaging/private_push_unsubscriptions.sqlite"
-    hint: str = "回复 TD 可管理私聊推送订阅。"
+    data_path: str = "data/messaging/push_unsubscriptions.sqlite"
+    hint: str = "回复 TD 可管理推送订阅。"
+    group_hint: str = "群主/管理员发送 TD 可管理本群推送订阅。"
 
     @field_validator("commands", "restore_commands", mode="before")
     @classmethod
     def normalize_commands(cls, value: object) -> object:
         return string_list(value)
 
-    @field_validator("data_path", "hint")
+    @field_validator("data_path", "hint", "group_hint")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         text = value.strip()
         if not text:
-            raise ValueError(PRIVATE_UNSUBSCRIBE_REQUIRED_ERROR)
+            raise ValueError(PUSH_UNSUBSCRIBE_REQUIRED_ERROR)
         return text
 
     @model_validator(mode="after")
     def validate_enabled_commands(self) -> Self:
         if self.enabled and (not self.commands or not self.restore_commands):
-            raise ValueError(PRIVATE_UNSUBSCRIBE_REQUIRED_ERROR)
+            raise ValueError(PUSH_UNSUBSCRIBE_REQUIRED_ERROR)
         return self
 
 
@@ -267,8 +268,8 @@ class MessageConfig(BaseModel):
     outbound_rate_limit: OutboundRateLimitConfig = Field(
         default_factory=OutboundRateLimitConfig
     )
-    private_unsubscribe: PrivateUnsubscribeConfig = Field(
-        default_factory=PrivateUnsubscribeConfig
+    push_unsubscribe: PushUnsubscribeConfig = Field(
+        default_factory=PushUnsubscribeConfig
     )
     private_commands: list[PrivateCommandMessageAction] = Field(default_factory=list)
     private_schedules: list[PrivateScheduledMessageAction] = Field(
@@ -285,6 +286,6 @@ class MessageConfig(BaseModel):
 
 __all__ = [
     "MessageConfig",
-    "PrivateUnsubscribeConfig",
+    "PushUnsubscribeConfig",
     "SendpicBehaviorConfig",
 ]

@@ -34,6 +34,7 @@ async def _send_admin_notice(message: str) -> None:
         group_ids=group_ids,
         bot=_get_first_bot(),
         action_name="AI chat error notice",
+        subscription_key="admin_notice",
     )
 
 
