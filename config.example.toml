@@ -278,6 +278,8 @@ message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_lis
 notice_timeout_seconds = 8.0
 
 [message]
+group_commands = []
+group_schedules = []
 # Default: []
 # EN: Private fixed command replies.
 # ZH: 私聊固定文本回复动作。
@@ -316,14 +318,12 @@ hint = "回复 TD 可管理私聊推送订阅。"
 # EN: Group fixed command replies.
 # ZH: 群聊固定文本回复动作。
 # Example action fields: id, enabled, feature, message, commands, at_user_ids.
-group_commands = []
 
 # Default: []
 # EN: Group scheduled messages.
 # ZH: 群聊定时文本动作。
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week,
 # at_user_ids.
-group_schedules = []
 
 [message.outbound_rate_limit]
 # Default: true
