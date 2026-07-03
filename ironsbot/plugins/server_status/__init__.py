@@ -436,6 +436,7 @@ async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
         action_name="server status open broadcast",
         interval_seconds=1.2,
         message_limiter=append_fire_manual_ad_for_group,
+        subscription_key="server_status_push",
     )
     if summary.succeeded:
         _open_broadcast_state.last_at = now

@@ -65,6 +65,7 @@ async def _startup_check(bot: Bot) -> None:
         bot=bot,
         action_name="headless seer failure notice",
         interval_seconds=1.2,
+        subscription_key="admin_notice",
     )
 
 
