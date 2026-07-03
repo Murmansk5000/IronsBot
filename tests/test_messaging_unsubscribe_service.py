@@ -62,11 +62,6 @@ def test_append_push_unsubscribe_hint_is_last_line() -> None:
         )
         == "正文\n\n管理员发送 TD 可退订。"
     )
-    assert append_push_unsubscribe_hint(
-        "正文",
-        PushUnsubscribeConfig(enabled=False),
-        target_type="private",
-    ) == "正文"
 
 
 def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:

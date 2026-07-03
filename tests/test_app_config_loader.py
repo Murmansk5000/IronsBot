@@ -63,7 +63,7 @@ def _assert_default_push_unsubscribe(
         ["订阅", "恢复订阅"],
         DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH,
     )
-    assert push_unsubscribe.enabled and "TD" in push_unsubscribe.hint
+    assert "TD" in push_unsubscribe.hint
     assert "群主/管理员" in push_unsubscribe.group_hint
 
 

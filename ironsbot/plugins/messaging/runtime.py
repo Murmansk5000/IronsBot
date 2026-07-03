@@ -141,8 +141,6 @@ async def _match_push_subscription_command(
         return False
 
     config = get_message_config().push_unsubscribe
-    if not config.enabled:
-        return False
     if isinstance(event, GroupMessageEvent) and not _is_group_push_subscription_manager(
         event
     ):

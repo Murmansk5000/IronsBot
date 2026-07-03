@@ -80,15 +80,12 @@ def schedule_label(scope: str, index: int, task: ScheduledPushTask) -> str:
     return f"{name}（{time_label}，feature: {task.feature}）"
 
 
-def append_push_unsubscribe_hint(  # noqa: PLR0911
+def append_push_unsubscribe_hint(
     message: str | Message,
     config: PushUnsubscribeConfig,
     *,
     target_type: PushTargetType,
 ) -> str | Message:
-    if not config.enabled:
-        return message.rstrip() if isinstance(message, str) else message
-
     hint = (
         config.group_hint.strip()
         if target_type == "group"

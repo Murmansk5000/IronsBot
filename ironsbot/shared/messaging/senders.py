@@ -164,9 +164,6 @@ def _filter_subscribed_targets(
     subscription_key: str,
 ) -> list[MessageTarget]:
     config = get_app_config().message.push_unsubscribe
-    if not config.enabled:
-        return targets
-
     store = PushUnsubscribeStore(config.data_path)
     private_ids = store.filter_subscribed_user_ids(
         [target.target_id for target in targets if target.target_type == "private"],

@@ -310,10 +310,6 @@ group_commands = []
 group_schedules = []
 
 [message.push_unsubscribe]
-# Default: true
-# EN: Enable push unsubscribe menus for private users and group admins/owners.
-# ZH: 启用推送退订菜单；私聊用户管理自己，群聊由群主/管理员管理本群。
-enabled = true
 # Default: ["td", "退订"]
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.
 # ZH: 打开退订菜单的口令；大小写不敏感，所以 TD 自动生效。

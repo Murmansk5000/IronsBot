@@ -144,36 +144,3 @@ def test_private_schedule_passes_subscription_key(
 
     assert sent[0][1]["private_user_ids"] == [2001, 2002]
     assert sent[0][1]["subscription_key"] == "private"
-
-
-def test_private_schedule_passes_subscription_key_when_unsubscribe_disabled(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    sent: list[tuple[str, dict[str, object]]] = []
-    data_path = tmp_path / "unsubscribe.sqlite"
-
-    async def fake_send_broadcast_message(
-        message: str,
-        **kwargs: object,
-    ) -> None:
-        sent.append((message, kwargs))
-
-    monkeypatch.setattr(runtime, "send_broadcast_message", fake_send_broadcast_message)
-    monkeypatch.setattr(
-        runtime,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(
-                enabled=False,
-                data_path=str(data_path),
-            )
-        ),
-    )
-    monkeypatch.setattr(runtime, "users_for_feature", lambda _feature: [2001, 2002])
-    monkeypatch.setattr(runtime, "users_with_superusers", list)
-
-    asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
-
-    assert sent[0][0] == f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}"
-    assert sent[0][1]["private_user_ids"] == [2001, 2002]
