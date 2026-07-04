@@ -21,6 +21,7 @@ from ironsbot.services.ai.intent import (
     get_ai_intent_config,
     get_configured_actions,
     is_action_allowed,
+    passes_action_prefilter,
     reply_is_yes,
 )
 from ironsbot.shared.matcher_priority import get_matcher_priority
@@ -68,6 +69,7 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
             not action.enabled
             or not is_action_allowed(event, action)
             or not contains_any_keyword(text, action.keywords)
+            or not passes_action_prefilter(text, action)
             or excluded_by_command(text, action)
             or excluded_by_context(text, action)
         ):

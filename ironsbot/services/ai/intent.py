@@ -42,8 +42,6 @@ FIRE_MANUAL_LINK_MARKERS = (
     "firedict",
 )
 FIRE_MANUAL_REQUEST_MARKERS = (
-    "?",
-    "？",
     "在哪",
     "哪里",
     "哪儿",
@@ -60,13 +58,11 @@ FIRE_MANUAL_REQUEST_MARKERS = (
     "发我",
     "发一下",
     "发个",
-    "有没有",
-    "有吗",
     "谁有",
     "来个",
-    "怎么",
-    "如何",
+    "下载",
 )
+FIRE_MANUAL_SUBJECT_MARKERS = ("火火手册", "手册")
 
 
 class TemplateContext(dict[str, str]):
@@ -114,6 +110,20 @@ def is_fire_manual_announcement_or_share(text: str) -> bool:
         return True
 
     return has_manual_link and not has_request
+
+
+def has_fire_manual_strong_request(text: str) -> bool:
+    return (
+        _contains_any_normalized(text, FIRE_MANUAL_SUBJECT_MARKERS)
+        and _contains_any_normalized(text, FIRE_MANUAL_REQUEST_MARKERS)
+        and not is_fire_manual_announcement_or_share(text)
+    )
+
+
+def passes_action_prefilter(text: str, action: AiIntentAction) -> bool:
+    if action.feature == FIRE_MANUAL_FEATURE:
+        return has_fire_manual_strong_request(text)
+    return True
 
 
 def excluded_by_command(text: str, action: AiIntentAction) -> bool:
