@@ -69,6 +69,12 @@ class RankListCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class RankScoreCommand:
+    rank_key: str
+    score: int
+
+
+@dataclass(frozen=True, slots=True)
 class RankCacheBatchCommand:
     rank_key: str
     start_rank: int
@@ -204,6 +210,49 @@ def format_global_rank_message(
         )
         for index, item in enumerate(items)
     )
+    return "\n".join(lines)
+
+
+def format_global_rank_score_message(
+    spec: GlobalRankSpec,
+    result: Any,
+    *,
+    display_limit: int = RANK_LIST_MAX_SIZE,
+    timestamp: str | None = None,
+) -> str:
+    score_text = f"{result.target_score}{spec.unit}"
+    if not result.queried:
+        return f"❌{spec.title}分数查询未启用。"
+    if result.boundary_score is None:
+        return f"❌找不到{spec.title}数据。"
+    if result.target_score < result.boundary_score:
+        return (
+            f"❌{score_text}不在{spec.title}前 {result.searched_limit} 名范围内。\n"
+            f"当前范围末位约为 {result.boundary_score}{spec.unit}。"
+        )
+    if not result.items:
+        return (
+            f"❌{spec.title}前 {result.searched_limit} 名没有"
+            f"{score_text}的用户。"
+        )
+
+    shown = result.items[: max(1, display_limit)]
+    start_rank = result.start_rank or shown[0].rank_index + 1 + spec.rank_offset
+    end_rank = result.end_rank or shown[-1].rank_index + 1 + spec.rank_offset
+    lines = [
+        (
+            f"{spec.title}（{score_text}，第 {start_rank}-{end_rank} 名，"
+            f"共 {result.total_count} 人，截至{timestamp or now_text()}）"
+        )
+    ]
+    lines.extend(
+        format_global_rank_line(item, index=item.rank_index, spec=spec)
+        for item in shown
+    )
+    if len(result.items) > len(shown):
+        lines.append(f"...另 {len(result.items) - len(shown)} 人未展示")
+    if result.truncated:
+        lines.append("同分段过长，已按安全上限停止继续翻页。")
     return "\n".join(lines)
 
 
@@ -603,6 +652,39 @@ def parse_rank_list_command(
         start_rank=start_rank,
         limit=limit,
     )
+
+
+def parse_rank_score_command(text: str) -> RankScoreCommand | None:
+    command = _normalize_command_text(text)
+    parsed = _match_rank_list_command(command)
+    if parsed is None:
+        return None
+
+    kind, rank_key, suffix = parsed
+    if kind != "global":
+        return None
+
+    spec = GLOBAL_RANKS[rank_key]
+    unit_pattern = "|".join(
+        re.escape(unit)
+        for unit in sorted(
+            {rank_spec.unit for rank_spec in GLOBAL_RANKS.values()}
+            | {spec.unit, "分数", "积分"},
+            key=len,
+            reverse=True,
+        )
+    )
+    score_match = re.fullmatch(
+        rf"(\d+)(?:{unit_pattern})",
+        suffix,
+    )
+    if score_match is None:
+        return None
+
+    score = int(score_match.group(1))
+    if score <= 0:
+        return None
+    return RankScoreCommand(rank_key=rank_key, score=score)
 
 
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:

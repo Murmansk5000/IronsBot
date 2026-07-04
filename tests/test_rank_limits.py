@@ -18,6 +18,13 @@ DEFAULT_PROBE_LIMIT = 32
 TIED_PAGE_SIZE = 10
 TIED_PAGE_LIMIT = 3
 TIED_PROBE_LIMIT = 12
+TIED_SCORE = 100
+SEGMENT_SCORE = 150
+SEGMENT_START_INDEX = 20
+SEGMENT_END_INDEX = 45
+SEGMENT_START_RANK = SEGMENT_START_INDEX + 1
+SEGMENT_COUNT = SEGMENT_END_INDEX - SEGMENT_START_INDEX
+SEGMENT_BOUNDARY_SCORE = 100
 FETCHED_AT = 1_781_234_567.0
 LOOKUP_INDEX = 14
 
@@ -256,7 +263,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
         index: int,  # noqa: ARG001
         **_kwargs: object,
     ) -> SimpleNamespace:
-        return SimpleNamespace(score=100)
+        return SimpleNamespace(score=TIED_SCORE)
 
     async def fake_fetch_rank_page(
         *_args: object,
@@ -266,7 +273,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
     ) -> list[SimpleNamespace]:
         requested_pages.append((start, end))
         return [
-            SimpleNamespace(id=rank_index, score=100)
+            SimpleNamespace(id=rank_index, score=TIED_SCORE)
             for rank_index in range(start, end + 1)
         ]
 
@@ -281,7 +288,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
             score_name="score",
             key=17,
             sub_key=0,
-            target_score=100,
+            target_score=TIED_SCORE,
         )
     )
 
@@ -291,6 +298,125 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
         (TIED_PAGE_SIZE, TIED_PAGE_SIZE * 2 - 1),
         (TIED_PAGE_SIZE * 2, TIED_PAGE_SIZE * TIED_PAGE_LIMIT - 1),
     ]
+
+
+def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(
+        monkeypatch,
+        online_limit=100,
+        rank_limit=100,
+        page_size=TIED_PAGE_SIZE,
+        score_search_probe_limit=20,
+        score_search_tie_page_limit=5,
+    )
+    requested_pages: list[tuple[int, int]] = []
+    probe_use_cache_values: list[bool] = []
+    page_use_cache_values: list[bool] = []
+
+    async def fake_fetch_rank_item(
+        *_args: object,
+        index: int,
+        use_cache: bool = True,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        probe_use_cache_values.append(use_cache)
+        if index < SEGMENT_START_INDEX:
+            score = 200
+        elif index < SEGMENT_END_INDEX:
+            score = SEGMENT_SCORE
+        else:
+            score = SEGMENT_BOUNDARY_SCORE
+        return SimpleNamespace(id=index, nick=f"Player{index}", score=score)
+
+    async def fake_fetch_rank_page_result(
+        *_args: object,
+        start: int,
+        end: int,
+        use_cache: bool = True,
+        **_kwargs: object,
+    ) -> _rank.RankPageResult:
+        requested_pages.append((start, end))
+        page_use_cache_values.append(use_cache)
+        items = []
+        for rank_index in range(start, end + 1):
+            if rank_index < SEGMENT_START_INDEX:
+                score = 200
+            elif rank_index < SEGMENT_END_INDEX:
+                score = SEGMENT_SCORE
+            else:
+                score = SEGMENT_BOUNDARY_SCORE
+            items.append(
+                SimpleNamespace(
+                    id=rank_index,
+                    nick=f"Player{rank_index}",
+                    score=score,
+                )
+            )
+        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+
+    monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
+
+    result = asyncio.run(
+        _rank.fetch_rank_score_segment(
+            object(),
+            title="achievement",
+            score_name="score",
+            key=17,
+            sub_key=0,
+            target_score=SEGMENT_SCORE,
+        )
+    )
+
+    assert result.start_rank == SEGMENT_START_RANK
+    assert result.end_rank == SEGMENT_END_INDEX
+    assert result.total_count == SEGMENT_COUNT
+    assert result.scanned_count == SEGMENT_COUNT
+    assert [item.id for item in result.items] == list(
+        range(SEGMENT_START_INDEX, SEGMENT_END_INDEX)
+    )
+    assert probe_use_cache_values
+    assert all(use_cache is False for use_cache in probe_use_cache_values)
+    assert page_use_cache_values == [False, False, False]
+    assert requested_pages == [(20, 29), (30, 39), (40, 49)]
+
+
+def test_fetch_rank_score_segment_rejects_score_below_boundary(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(monkeypatch, rank_limit=100)
+    requested_indexes: list[int] = []
+
+    async def fake_fetch_rank_item(
+        *_args: object,
+        index: int,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        requested_indexes.append(index)
+        return SimpleNamespace(
+            id=index,
+            nick=f"Player{index}",
+            score=SEGMENT_BOUNDARY_SCORE,
+        )
+
+    monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
+
+    result = asyncio.run(
+        _rank.fetch_rank_score_segment(
+            object(),
+            title="achievement",
+            score_name="score",
+            key=17,
+            sub_key=0,
+            target_score=99,
+        )
+    )
+
+    assert result.boundary_score == SEGMENT_BOUNDARY_SCORE
+    assert result.items == []
+    assert requested_indexes == [99]
 
 
 def test_fresh_cached_rank_is_returned_when_score_matches(
