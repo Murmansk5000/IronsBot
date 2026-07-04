@@ -70,6 +70,8 @@ services:
     volumes:
       - ./ironsbot-data:/app/data
       - ./ironsbot-config:/config
+      # 可选：只有需要 /更新镜像 自更新容器时才挂载。
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
@@ -272,6 +274,30 @@ startup_trigger_remote_build = true
 ```
 
 开机同步的成功、失败、无需更新状态会追加到“机器人已开启。”通知中。
+
+## Docker 自更新
+
+超级管理员可以发送 `/更新镜像`（兼容 `/更新Docker`、`/更新docker`）
+让机器人启动一次性 Watchtower 更新当前容器。它会拉取
+`murmansk5000/ironsbot:latest` 并重建 `ironsbot` 容器，重建期间机器人会短暂离线。
+
+这个能力需要把宿主机 Docker socket 挂进容器：
+
+```text
+/var/run/docker.sock -> /var/run/docker.sock
+```
+
+TOML 可调整容器名、目标镜像和 Watchtower 镜像：
+
+```toml
+[runtime.docker_update]
+image = "murmansk5000/ironsbot:latest"
+container_name = "ironsbot"
+docker_socket_path = "/var/run/docker.sock"
+watchtower_image = "containrrr/watchtower:latest"
+```
+
+没有挂载 Docker socket 时，`/更新镜像` 会给出明确错误，不会影响正常运行。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 

@@ -63,6 +63,8 @@ services:
     volumes:
       - ./ironsbot-data:/app/data
       - ./ironsbot-config:/config
+      # Optional: required only for the /更新镜像 self-update command.
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: "prod"
       HOST: "0.0.0.0"
@@ -114,6 +116,18 @@ docker run --name ironsbot `
 
 In this example, `/config/ironsbot.toml` inside the container is
 `D:\DockerData\ironsbot\config\ironsbot.toml` on Windows.
+
+Optional Docker self-update: superusers can send `/更新镜像` to start a
+one-shot Watchtower updater that pulls the latest image and recreates the
+current container. This requires mounting the Docker Engine socket into the
+IronsBot container, for example on Unraid/Linux:
+
+```text
+/var/run/docker.sock:/var/run/docker.sock
+```
+
+Without that socket mount, `/更新镜像` only reports that self-update is not
+available; the bot continues to run normally.
 
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 

@@ -739,6 +739,18 @@ broadcast_message = "赛尔号已经开服了。"
 # Default: 1440; EN: Broadcast cooldown minutes. ZH: 开服广播冷却分钟。
 broadcast_cooldown_minutes = 1440
 
+[runtime.docker_update]
+# Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
+image = "murmansk5000/ironsbot:latest"
+# Default: "ironsbot"; EN: Container name to update; HOST_CONTAINERNAME env wins if present. ZH: 要更新的容器名；如果存在 HOST_CONTAINERNAME 环境变量则优先使用它。
+container_name = "ironsbot"
+# Default: "/var/run/docker.sock"; EN: Docker Engine socket mounted into the bot container. ZH: 挂载进机器人容器的 Docker Engine socket。
+docker_socket_path = "/var/run/docker.sock"
+# Default: "containrrr/watchtower:latest"; EN: Temporary updater image used by /更新镜像. ZH: /更新镜像 使用的一次性更新器镜像。
+watchtower_image = "containrrr/watchtower:latest"
+# Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
+timeout_seconds = 300.0
+
 [runtime.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
 enabled = false

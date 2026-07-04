@@ -19,6 +19,7 @@ from ironsbot.config import (
 )
 from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
 from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
 from ironsbot.config.models.seer import TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,7 @@ DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
+DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
@@ -67,6 +69,27 @@ def _assert_default_push_unsubscribe(
     )
     assert "TD" in push_unsubscribe.hint
     assert "群主/管理员" in push_unsubscribe.group_hint
+
+
+def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
+    assert docker_update.image == "murmansk5000/ironsbot:latest"
+    assert docker_update.container_name == "ironsbot"
+    assert docker_update.docker_socket_path == "/var/run/docker.sock"
+    assert docker_update.watchtower_image == "containrrr/watchtower:latest"
+    assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
+
+
+def _assert_default_matcher_priorities(
+    matcher_priority: MatcherPriorityConfig,
+) -> None:
+    assert matcher_priority.seer_query < matcher_priority.ai_chat
+    assert matcher_priority.ai_group_at < 0
+    assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
+    assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
+    priorities = matcher_priority.model_dump()
+    non_negative_priorities = [value for value in priorities.values() if value >= 0]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
 
 
 def test_example_config_parses() -> None:
@@ -118,23 +141,12 @@ def test_example_config_parses() -> None:
     assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
+    _assert_default_docker_update(config.runtime.docker_update)
     assert not config.runtime.logging.file_enabled
     assert config.runtime.logging.file_path == "logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
     assert config.runtime.logging.error_file_path == "logs/ironsbot.error.log"
-    assert (
-        config.runtime.matcher_priority.seer_query
-        < config.runtime.matcher_priority.ai_chat
-    )
-    assert config.runtime.matcher_priority.ai_group_at < 0
-    assert config.runtime.matcher_priority.ai_mention_guard < 0
-    assert config.runtime.matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
-    assert config.runtime.matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
-    matcher_priorities = config.runtime.matcher_priority.model_dump()
-    non_negative_priorities = [
-        value for value in matcher_priorities.values() if value >= 0
-    ]
-    assert len(non_negative_priorities) == len(set(non_negative_priorities))
+    _assert_default_matcher_priorities(config.runtime.matcher_priority)
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
@@ -410,6 +422,10 @@ def test_small_plugin_config_accessors_read_app_config(
         assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
         assert startup_config.get_startup_config().message == "机器人已开启。"
         assert not server_status_config.get_server_status_config().broadcast
+        assert (
+            server_status_config.get_docker_update_config().image
+            == "murmansk5000/ironsbot:latest"
+        )
         assert not scheduled_restart_config.get_restart_config().enabled
         assert "aliases" in seer_data_config.get_data_sync_config().sources
         assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled

@@ -122,6 +122,30 @@ class ServerStatusConfig(BaseModel):
         return message or DEFAULT_BROADCAST_MESSAGE
 
 
+class DockerUpdateConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image: str = "murmansk5000/ironsbot:latest"
+    container_name: str = "ironsbot"
+    docker_socket_path: str = "/var/run/docker.sock"
+    watchtower_image: str = "containrrr/watchtower:latest"
+    timeout_seconds: float = Field(default=300.0, gt=0)
+
+    @field_validator(
+        "image",
+        "container_name",
+        "docker_socket_path",
+        "watchtower_image",
+    )
+    @classmethod
+    def normalize_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "runtime.docker_update string fields must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+
 class RestartConfig(BaseModel):
     enabled: bool = False
     times: str = "04:30"
@@ -296,6 +320,7 @@ class RuntimeConfig(BaseModel):
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
     server_status: ServerStatusConfig = Field(default_factory=ServerStatusConfig)
+    docker_update: DockerUpdateConfig = Field(default_factory=DockerUpdateConfig)
     restart: RestartConfig = Field(default_factory=RestartConfig)
     help: HelpConfig = Field(default_factory=HelpConfig)
     priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
@@ -313,6 +338,7 @@ __all__ = [
     "SEERAPI_DATA_RELEASE",
     "DataSourceConfig",
     "DataSyncConfig",
+    "DockerUpdateConfig",
     "HeadlessConfig",
     "HeadlessNoticeConfig",
     "HelpConfig",
