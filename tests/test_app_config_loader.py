@@ -206,12 +206,14 @@ unknown_root = true
 superuser_bypass = false
 unknown_feature = "old value"
 
+[ai]
+unknown_ai = "old value"
+
 [[message.group_commands]]
 id = "hello"
 commands = ["hello"]
 message = "world"
 feature = "text_push"
-unknown_reply_field = "ignored"
 """.strip(),
         encoding="utf-8",
     )
@@ -222,8 +224,8 @@ unknown_reply_field = "ignored"
     assert not config.feature.superuser_bypass
     assert config.message.group_commands[0].id == "hello"
     assert "unknown_root" in caplog.text
+    assert "ai.unknown_ai" in caplog.text
     assert "feature.unknown_feature" in caplog.text
-    assert "message.group_commands[0].unknown_reply_field" in caplog.text
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:

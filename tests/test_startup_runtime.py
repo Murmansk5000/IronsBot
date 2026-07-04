@@ -98,8 +98,13 @@ def test_startup_notice_appends_db_sync_notice(
     )
     monkeypatch.setattr(
         startup_notice_runtime.startup_notice_service,
-        "get_targets",
-        lambda: SimpleNamespace(is_empty=False, private_user_ids=[1], group_ids=[]),
+        "superuser_loader",
+        lambda: {1},
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service,
+        "feature_group_loader",
+        lambda _feature: [],
     )
     monkeypatch.setattr(
         "ironsbot.plugins.db_sync.runtime.get_startup_sync_notice",
