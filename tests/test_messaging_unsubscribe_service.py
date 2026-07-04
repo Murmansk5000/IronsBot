@@ -8,7 +8,9 @@ from ironsbot.shared.messaging.push_subscriptions import (
     PushUnsubscribeStore,
     append_push_unsubscribe_hint,
     build_schedule_subscription_options,
+    group_schedule_label,
     private_schedule_key,
+    private_schedule_label,
 )
 
 
@@ -16,6 +18,7 @@ from ironsbot.shared.messaging.push_subscriptions import (
 class FakePrivateSchedule:
     id: str
     feature: str
+    name: str = ""
     message: str = "消息"
     hour: int = 23
     minute: int = 0
@@ -32,6 +35,36 @@ def test_private_schedule_key_prefers_id_and_falls_back_to_job_id() -> None:
         private_schedule_key(2, FakePrivateSchedule(id="", feature="push"))
         == "message_action_private_schedule_task_2"
     )
+
+
+def test_schedule_label_uses_configured_name_before_internal_id() -> None:
+    task = FakePrivateSchedule(
+        id="activity_link_daily_private",
+        name="周年庆签到提醒",
+        feature="web_activity_push",
+    )
+
+    assert private_schedule_label(1, task) == "周年庆签到提醒（23:00）"
+
+
+def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
+    task = FakePrivateSchedule(
+        id="activity_link_daily_private",
+        feature="web_activity_push",
+        message="周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign",
+    )
+
+    assert private_schedule_label(1, task) == "周年庆主题站签到活动（23:00）"
+
+
+def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> None:
+    task = FakePrivateSchedule(
+        id="activity_link_daily_private",
+        feature="web_activity_push",
+        message="https://seerm.61.com/events/17years/#sign",
+    )
+
+    assert group_schedule_label(1, task) == "游戏外活动推送（23:00）"
 
 
 def test_append_push_unsubscribe_hint_is_last_line() -> None:
