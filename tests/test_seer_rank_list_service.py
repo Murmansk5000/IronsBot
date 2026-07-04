@@ -105,7 +105,14 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         start_rank=21,
         limit=20,
     )
-    assert parse_rank_list_command("样本群星牌榜") is None
+    assert parse_rank_list_command("样本群星牌榜") == RankListCommand(
+        kind="local",
+        rank_key="群星牌",
+    )
+    assert parse_rank_list_command("样本群星牌积分榜") == RankListCommand(
+        kind="local",
+        rank_key="群星牌",
+    )
 
 
 def test_parse_rank_list_command_ignores_unknown_text() -> None:

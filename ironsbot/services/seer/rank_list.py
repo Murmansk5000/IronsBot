@@ -124,6 +124,7 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
     "部件图鉴": LocalRankSpec("样本部件图鉴榜", "outfit_part_count"),
     "座驾图鉴": LocalRankSpec("样本座驾图鉴榜", "mount_count"),
     "刻印图鉴": LocalRankSpec("样本刻印图鉴榜", "countermark_count"),
+    "群星牌": LocalRankSpec("样本群星牌积分榜", "autocard_score"),
     "已解锁图鉴": LocalRankSpec("样本已解锁图鉴榜", "unlocked_book_entries"),
     "成就数量": LocalRankSpec("样本成就数量榜", "achievement_count"),
     "竞技段位": LocalRankSpec(
@@ -717,6 +718,7 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
             "机器人精灵总数榜",
         ),
         "精灵图鉴": ("样本精灵榜", "机器人精灵榜"),
+        "群星牌": ("样本群星牌积分榜", "机器人群星牌积分榜"),
         "已解锁图鉴": ("样本已解锁图鉴榜", "机器人已解锁图鉴榜", "解锁图鉴榜"),
         "成就数量": ("样本成就数量榜", "机器人成就数量榜"),
         "竞技段位": ("样本竞技段位榜", "机器人竞技段位榜", "样本竞技榜"),

@@ -702,6 +702,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             unity_part_one=unity_part_one,
             unity_peak=unity_peak,
             rank_summary=rank_summary,
+            autocard_rank_summary=autocard_rank_summary,
             peak_sub_key=peak_sub_key,
             peak_standard_score=peak_scores.standard,
             peak_wild_score=peak_scores.wild,
