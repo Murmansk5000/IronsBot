@@ -73,6 +73,7 @@ async def send_activity_reminder(
         action_name=delivery.action_name,
         interval_seconds=1.2,
         message_limiter=append_fire_manual_ad_for_group,
+        subscription_key="seer_activity_push",
     )
     if summary.succeeded:
         mark_sent(reminders)

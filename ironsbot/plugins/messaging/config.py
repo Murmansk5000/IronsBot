@@ -8,7 +8,7 @@ from ironsbot.config.models.message import (
     MessageConfig,
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
-    PrivateUnsubscribeConfig,
+    PushUnsubscribeConfig,
     ScheduledMessageAction,
 )
 
@@ -28,7 +28,7 @@ __all__ = [
     "GroupScheduledMessageAction",
     "PrivateCommandMessageAction",
     "PrivateScheduledMessageAction",
-    "PrivateUnsubscribeConfig",
+    "PushUnsubscribeConfig",
     "ScheduledMessageAction",
     "get_message_config",
 ]
