@@ -56,11 +56,10 @@ async def _start_db_sync_runtime(scheduler: Any) -> None:
 
     _register_interval_jobs(scheduler)
 
-    for name in db_sync._registered_syncs:
-        db_sync.load_cached_database(name)
-
     # Keep startup sync behind a switch to avoid slow container startup.
     if not config.on_startup:
+        for name in db_sync._registered_syncs:
+            db_sync.load_cached_database(name)
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
         return
 
@@ -72,6 +71,14 @@ async def _start_db_sync_runtime(scheduler: Any) -> None:
     did_run, results = await db_sync.run_sync_all_databases(
         trigger_remote_build=trigger_remote_build
     )
+    if not did_run:
+        for name in db_sync._registered_syncs:
+            db_sync.load_cached_database(name)
+    else:
+        for name, ok in results.items():
+            if not ok:
+                db_sync.load_cached_database(name)
+
     _startup_sync_state["notice"] = db_sync.format_sync_result_notice(
         results if did_run else {},
         title_prefix="启动数据同步",

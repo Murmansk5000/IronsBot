@@ -183,6 +183,64 @@ def test_db_sync_startup_can_trigger_remote_build(
     )
 
 
+def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    loaded: list[str] = []
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(
+        db_sync,
+        "_registered_syncs",
+        {
+            "unit": db_sync._SyncEntry(
+                "https://example.invalid/unit.sqlite",
+                15,
+                None,
+                None,
+                None,
+            )
+        },
+    )
+    monkeypatch.setattr(db_sync, "_registered_local_databases", {})
+    monkeypatch.setattr(db_sync, "_prepared_databases", set())
+    monkeypatch.setattr(db_sync.db_manager, "register", lambda _name: None)
+    monkeypatch.setattr(db_sync, "load_cached_database", loaded.append)
+    monkeypatch.setattr(
+        db_sync_runtime,
+        "get_data_sync_config",
+        lambda: SimpleNamespace(
+            interval_enabled=False,
+            on_startup=True,
+            startup_trigger_remote_build=False,
+        ),
+    )
+
+    async def fake_run_sync_all_databases(
+        *,
+        trigger_remote_build: bool = False,
+    ) -> tuple[bool, dict[str, bool]]:
+        assert not trigger_remote_build
+        return True, {"unit": False}
+
+    monkeypatch.setattr(
+        db_sync,
+        "run_sync_all_databases",
+        fake_run_sync_all_databases,
+    )
+    monkeypatch.setattr(
+        db_sync,
+        "format_sync_result_notice",
+        lambda results, *, title_prefix: f"{title_prefix}:{results}",
+    )
+
+    asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
+
+    assert loaded == ["unit"]
+    assert db_sync_runtime.get_startup_sync_notice() == (
+        "启动数据同步:{'unit': False}"
+    )
+
+
 def _remote_build_config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
