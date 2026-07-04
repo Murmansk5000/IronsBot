@@ -278,8 +278,6 @@ message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_lis
 notice_timeout_seconds = 8.0
 
 [message]
-group_commands = []
-group_schedules = []
 # Default: []
 # EN: Private fixed command replies.
 # ZH: 私聊固定文本回复动作。
@@ -291,27 +289,29 @@ private_commands = []
 # ZH: 私聊定时文本动作。
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
 private_schedules = []
+group_commands = []
+group_schedules = []
 
-[message.private_unsubscribe]
-# Default: true
-# EN: Enable private scheduled push unsubscribe menu.
-# ZH: 启用私聊定时推送退订菜单。
-enabled = true
+[message.push_unsubscribe]
+# EN: Built-in private/group push subscription controls; there is no enabled switch.
+# ZH: 内置私聊/群聊推送订阅管理，无 enabled 开关。
 # Default: ["td", "退订"]
-# EN: Private commands that open the unsubscribe menu. Matching is case-insensitive.
-# ZH: 打开退订菜单的私聊口令；大小写不敏感，所以 TD 自动生效。
+# EN: Case-insensitive unsubscribe menu commands. Private chats manage their own subscriptions;
+# group menu entry requires the sender to be the group owner or an administrator.
+# ZH: 退订菜单口令不区分大小写；私聊管理自己的订阅，群菜单入口仅限群主/管理员。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅"]
-# EN: Private commands that restore unsubscribed scheduled pushes.
-# ZH: 恢复已退订私聊推送的私聊口令。
+# EN: Restore menu commands for private/group push subscriptions, with the same scope and role checks.
+# ZH: 恢复私聊/群聊推送订阅的菜单口令，适用相同的会话范围和角色检查。
 restore_commands = ["订阅", "恢复订阅"]
-# Default: "data/messaging/private_push_unsubscriptions.sqlite"
-# EN: SQLite path for private push unsubscribe records.
-# ZH: 私聊推送退订记录 SQLite 路径。
+# Default: "data/messaging/push_unsubscriptions.sqlite"
+# EN: Shared subscription SQLite path. The example below explicitly retains the older filename;
+# this does not automatically migrate records from the old private-only store.
+# ZH: 统一订阅 SQLite 路径；下例显式保留旧文件名，不代表会自动迁移旧私聊退订记录。
 data_path = "data/messaging/private_push_unsubscriptions.sqlite"
-# Default: built-in hint.
-# EN: Hint appended to private scheduled pushes.
-# ZH: 追加到私聊定时推送末尾的退订提示。
+# Model default: "回复 TD 可管理推送订阅。"
+# EN: Private-target push hint; the example is an explicit override. Group targets use group_hint.
+# ZH: 私聊目标的推送提示，下例为显式覆盖；群目标使用 group_hint。
 hint = "回复 TD 可管理私聊推送订阅。"
 
 # Default: []
