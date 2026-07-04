@@ -29,9 +29,15 @@ def _default_sendpic_local_root() -> Path:
 
 class BaseMessageAction(BaseModel):
     id: str = ""
+    name: str = ""
     enabled: bool = True
     feature: str = "text"
     message: str
+
+    @field_validator("id", "name")
+    @classmethod
+    def normalize_optional_text(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("feature")
     @classmethod

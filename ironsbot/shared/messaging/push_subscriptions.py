@@ -20,6 +20,7 @@ PushTargetType = Literal["private", "group"]
 
 class ScheduledPushTask(Protocol):
     id: str
+    name: str
     enabled: bool
     feature: str
     message: str
@@ -73,11 +74,49 @@ def group_schedule_label(index: int, task: ScheduledPushTask) -> str:
 
 
 def schedule_label(scope: str, index: int, task: ScheduledPushTask) -> str:
-    name = task.id.strip() or f"{scope}{index}"
+    name = _schedule_display_name(scope, index, task)
     time_label = f"{task.hour:02d}:{task.minute:02d}"
     if task.day_of_week:
         time_label = f"{task.day_of_week} {time_label}"
-    return f"{name}（{time_label}，feature: {task.feature}）"
+    return f"{name}（{time_label}）"
+
+
+def _schedule_display_name(scope: str, index: int, task: ScheduledPushTask) -> str:
+    configured_name = getattr(task, "name", "").strip()
+    if configured_name:
+        return configured_name
+
+    message_name = _schedule_display_name_from_message(task.message)
+    if message_name:
+        return message_name
+
+    return _schedule_display_name_from_feature(scope, index, task)
+
+
+def _schedule_display_name_from_message(message: str) -> str:
+    for raw_line in message.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.split(r"https?://", line, maxsplit=1)[0]
+        line = line.rstrip("：:，,。；; \t")
+        if line:
+            return line[:24]
+    return ""
+
+
+def _schedule_display_name_from_feature(
+    scope: str,
+    index: int,
+    task: ScheduledPushTask,
+) -> str:
+    feature_names = {
+        "text_push": "定时文本推送",
+        "web_activity_push": "游戏外活动推送",
+    }
+    if task.feature in feature_names:
+        return feature_names[task.feature]
+    return task.id.strip() or f"{scope}{index}"
 
 
 def append_push_unsubscribe_hint(

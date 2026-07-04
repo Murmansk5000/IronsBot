@@ -293,7 +293,8 @@ private_commands = []
 # Default: []
 # EN: Private scheduled messages.
 # ZH: 私聊定时文本动作。
-# Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
+# Example action fields: id, name, enabled, feature, message, hour, minute, day_of_week.
+# `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
 private_schedules = []
 
 # Default: []
@@ -305,8 +306,9 @@ group_commands = []
 # Default: []
 # EN: Group scheduled messages.
 # ZH: 群聊定时文本动作。
-# Example action fields: id, enabled, feature, message, hour, minute, day_of_week,
-# at_user_ids.
+# Example action fields: id, name, enabled, feature, message, hour, minute,
+# day_of_week, at_user_ids.
+# `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
 group_schedules = []
 
 [message.push_unsubscribe]
