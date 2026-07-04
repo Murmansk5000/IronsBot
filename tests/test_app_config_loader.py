@@ -1,9 +1,11 @@
+import logging
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+from pydantic import ValidationError
 
 from ironsbot.config import (
     CredentialsConfig,
@@ -112,6 +114,8 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
+    assert config.runtime.data_sync.on_startup
+    assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     assert not config.runtime.logging.file_enabled
@@ -189,9 +193,61 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
+def test_unknown_app_config_fields_are_ignored_with_warning(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+unknown_root = true
+
+[feature]
+superuser_bypass = false
+unknown_feature = "old value"
+
+[[message.group_commands]]
+id = "hello"
+commands = ["hello"]
+message = "world"
+feature = "text_push"
+unknown_reply_field = "ignored"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
+        config = load_app_config(config_path)
+
+    assert not config.feature.superuser_bypass
+    assert config.message.group_commands[0].id == "hello"
+    assert "unknown_root" in caplog.text
+    assert "feature.unknown_feature" in caplog.text
+    assert "message.group_commands[0].unknown_reply_field" in caplog.text
+
+
+def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.rank]
+display_limit = "not an integer"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        load_app_config(config_path)
+
+
 def test_dev_and_prod_configs_parse() -> None:
     assert load_app_config(ROOT / "config.dev.toml").feature.group_aliases == {}
-    assert not load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+    assert load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+    assert (
+        not load_app_config(ROOT / "config.prod.toml")
+        .runtime.data_sync
+        .startup_trigger_remote_build
+    )
 
 
 def test_team_resource_config_accepts_subscription_shapes() -> None:
