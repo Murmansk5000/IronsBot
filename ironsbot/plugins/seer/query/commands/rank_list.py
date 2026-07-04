@@ -20,6 +20,7 @@ from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank import (
     fetch_daily_rank_page,
     fetch_daily_rank_page_result,
+    fetch_rank_score_segment,
     get_current_peak_sub_key,
 )
 from ironsbot.services.seer.rank_display import (
@@ -39,6 +40,7 @@ from ironsbot.services.seer.rank_list import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
+    RankScoreCommand,
     batch_raw_start,
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
@@ -52,11 +54,13 @@ from ironsbot.services.seer.rank_list import (
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
     format_global_rank_message,
+    format_global_rank_score_message,
     format_local_rank_message,
     parse_rank_cache_batch_command,
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    parse_rank_score_command,
     timestamp_text,
     with_admin_prefix,
 )
@@ -85,6 +89,7 @@ from ..config import get_local_rank_config, get_rank_query_config, get_seer_conf
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
+RANK_SCORE_COMMAND_KEY = "_rank_score_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 RANK_PAGE_CACHE_REFRESH_COMMAND_KEY = "_rank_page_cache_refresh_command"
@@ -101,6 +106,15 @@ async def _is_rank_list_command(event: Event, state: T_State) -> bool:
         return False
 
     state[RANK_LIST_COMMAND_KEY] = command
+    return True
+
+
+async def _is_rank_score_command(event: Event, state: T_State) -> bool:
+    command = parse_rank_score_command(event.get_plaintext())
+    if command is None:
+        return False
+
+    state[RANK_SCORE_COMMAND_KEY] = command
     return True
 
 
@@ -147,6 +161,10 @@ rank_help_matcher = matcher_group.on_fullmatch(
 )
 rank_list_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank") & Rule(_is_rank_list_command) & no_reply(),
+    priority=seer_feature_priority("seer_rank"),
+)
+rank_score_matcher = matcher_group.on_message(
+    rule=seer_feature_rule("seer_rank") & Rule(_is_rank_score_command) & no_reply(),
     priority=seer_feature_priority("seer_rank"),
 )
 rank_cache_status_matcher = matcher_group.on_fullmatch(
@@ -225,6 +243,31 @@ async def _build_global_rank_message(
     )
 
 
+async def _build_global_rank_score_message(
+    spec: GlobalRankSpec,
+    command: RankScoreCommand,
+    *,
+    display_limit: int,
+) -> str:
+    game = get_game_client()
+    result = await fetch_rank_score_segment(
+        game,
+        key=spec.key,
+        sub_key=spec.sub_key,
+        title=spec.title,
+        score_name=spec.unit,
+        target_score=command.score,
+        start_index=spec.start,
+        rank_offset=spec.rank_offset,
+    )
+    return format_global_rank_score_message(
+        spec,
+        result,
+        timestamp=timestamp_text(result.fetched_at) if result.fetched_at else None,
+        display_limit=display_limit,
+    )
+
+
 async def _cache_global_rank_batch(
     command: RankCacheBatchCommand,
 ) -> tuple[GlobalRankSpec, int, int]:
@@ -282,6 +325,9 @@ class RankListPlugin:
         if context.action == "list":
             await self._handle_list(matcher, event, state)
             return
+        if context.action == "score":
+            await self._handle_score(matcher, event, state)
+            return
         if context.action == "cache_batch":
             await self._handle_cache_batch(matcher, event, state)
             return
@@ -328,6 +374,23 @@ class RankListPlugin:
             matcher,
             event,
             _build_local_rank_message(LOCAL_RANKS[command.rank_key], command),
+        )
+
+    async def _handle_score(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        command: RankScoreCommand = state[RANK_SCORE_COMMAND_KEY]
+        await finish_event_reply(
+            matcher,
+            event,
+            await _build_global_rank_score_message(
+                GLOBAL_RANKS[command.rank_key],
+                command,
+                display_limit=rank_display_limit_for_group(_event_group_id(event)),
+            ),
         )
 
     async def _handle_cache_batch(
@@ -591,6 +654,21 @@ async def handle_rank_list(
         matcher=matcher,
         state=state,
         action="list",
+    )
+
+
+@rank_score_matcher.handle()
+async def handle_rank_score(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=RANK_LIST_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="score",
     )
 
 

@@ -1,7 +1,7 @@
 ﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -79,6 +79,31 @@ class RankLookupResult:
     score: int | None = None
     searched_limit: int = 0
     queried: bool = False
+
+
+@dataclass(slots=True)
+class RankScoreSearchItem:
+    id: int
+    nick: str
+    score: int
+    rank_index: int
+
+
+@dataclass(slots=True)
+class RankScoreSearchResult:
+    title: str
+    score_name: str
+    target_score: int
+    searched_limit: int = 0
+    queried: bool = False
+    boundary_score: int | None = None
+    start_rank: int | None = None
+    end_rank: int | None = None
+    total_count: int = 0
+    scanned_count: int = 0
+    truncated: bool = False
+    fetched_at: float = 0.0
+    items: list[RankScoreSearchItem] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -368,14 +393,16 @@ async def _fetch_rank_item(
     key: int,
     sub_key: int,
     index: int,
+    use_cache: bool = True,
 ) -> Any | None:
-    cached_item = get_cached_rank_item_by_index(
-        key=key,
-        sub_key=sub_key,
-        rank_index=index,
-    )
-    if cached_item is not None:
-        return cached_item
+    if use_cache:
+        cached_item = get_cached_rank_item_by_index(
+            key=key,
+            sub_key=sub_key,
+            rank_index=index,
+        )
+        if cached_item is not None:
+            return cached_item
 
     page_size = _rank_page_size()
     page_start = _rank_page_start(index)
@@ -385,6 +412,7 @@ async def _fetch_rank_item(
         sub_key=sub_key,
         start=page_start,
         end=page_start + page_size - 1,
+        use_cache=use_cache,
     )
     offset = index - page_start
     return items[offset] if 0 <= offset < len(items) else None
@@ -659,6 +687,161 @@ async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
         remaining_tie_pages -= 1
         start = end + 1
 
+    return result
+
+
+async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    title: str,
+    score_name: str,
+    target_score: int,
+    search_limit: int | None = None,
+    start_index: int = 0,
+    rank_offset: int = 0,
+) -> RankScoreSearchResult:
+    limit = _score_search_limit(search_limit)
+    result = RankScoreSearchResult(
+        title=title,
+        score_name=score_name,
+        target_score=target_score,
+        searched_limit=limit,
+        queried=limit > 0,
+    )
+    if target_score <= 0 or limit <= 0:
+        return result
+
+    start_index = max(0, start_index)
+    end_index = start_index + limit
+    page_size = _rank_page_size()
+    remaining_probes = _score_search_probe_limit(limit)
+    item_cache: dict[int, Any | None] = {}
+
+    async def item_at(index: int) -> Any | None:
+        nonlocal remaining_probes
+
+        if index in item_cache:
+            return item_cache[index]
+
+        if remaining_probes <= 0:
+            raise RankSearchBudgetExhaustedError
+
+        remaining_probes -= 1
+        item = await _fetch_rank_item(
+            game,
+            key=key,
+            sub_key=sub_key,
+            index=index,
+            use_cache=False,
+        )
+        item_cache[index] = item
+        return item
+
+    async def score_at(index: int) -> int | None:
+        item = await item_at(index)
+        return None if item is None else int(item.score)
+
+    try:
+        boundary_score = await score_at(end_index - 1)
+    except RankSearchBudgetExhaustedError:
+        return result
+
+    result.boundary_score = boundary_score
+    if boundary_score is None or target_score < boundary_score:
+        return result
+
+    low = start_index
+    high = end_index
+    try:
+        while low < high:
+            mid = (low + high) // 2
+            score = await score_at(mid)
+            if score is None or score <= target_score:
+                high = mid
+            else:
+                low = mid + 1
+    except RankSearchBudgetExhaustedError:
+        return result
+
+    first_same_or_lower = low
+    if first_same_or_lower >= end_index:
+        return result
+
+    try:
+        first_score = await score_at(first_same_or_lower)
+    except RankSearchBudgetExhaustedError:
+        return result
+    if first_score != target_score:
+        return result
+
+    low = first_same_or_lower
+    high = end_index
+    tie_end = end_index
+    try:
+        while low < high:
+            mid = (low + high) // 2
+            score = await score_at(mid)
+            if score is None or score < target_score:
+                high = mid
+            else:
+                low = mid + 1
+        tie_end = low
+    except RankSearchBudgetExhaustedError:
+        tie_end = min(
+            end_index,
+            first_same_or_lower + page_size * _score_search_tie_page_limit(),
+        )
+        result.truncated = True
+
+    tie_end = min(tie_end, end_index)
+    result.start_rank = first_same_or_lower + 1 + rank_offset
+    result.end_rank = tie_end + rank_offset
+    result.total_count = max(0, tie_end - first_same_or_lower)
+
+    first_page_start = _rank_page_start(first_same_or_lower)
+    last_page_start = _rank_page_start(max(first_same_or_lower, tie_end - 1))
+    max_pages = _score_search_tie_page_limit()
+    fetched_pages = 0
+    fetched_times: list[float] = []
+
+    for page_start in range(first_page_start, last_page_start + 1, page_size):
+        if fetched_pages >= max_pages:
+            result.truncated = True
+            break
+
+        page_result = await _fetch_rank_page_result(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=page_start,
+            end=page_start + page_size - 1,
+            use_cache=False,
+        )
+        fetched_times.append(page_result.fetched_at)
+        fetched_pages += 1
+
+        for offset, item in enumerate(page_result.items):
+            rank_index = page_start + offset
+            if rank_index < first_same_or_lower or rank_index >= tie_end:
+                continue
+            if int(item.score) != target_score:
+                continue
+            result.items.append(
+                RankScoreSearchItem(
+                    id=int(item.id),
+                    nick=str(item.nick),
+                    score=int(item.score),
+                    rank_index=rank_index,
+                )
+            )
+
+        if len(page_result.items) < page_size:
+            break
+
+    result.scanned_count = len(result.items)
+    result.fetched_at = max(fetched_times, default=time.time())
     return result
 
 
