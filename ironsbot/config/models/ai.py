@@ -49,11 +49,12 @@ DEFAULT_JOIN_TEAM_MESSAGE = (
     "noverify=0&group_code=719544559"
 )
 DEFAULT_FIRE_MANUAL_INTENT = (
-    "Judge whether the QQ group message means the sender wants a manual, "
-    "handbook, guide, reference page, or the Fire manual for Seer information. "
-    "Answer yes when the sender asks for 手册, 火火手册, or where to read the manual. "
-    "Answer no when the message only mentions a book-like item, a game skill, "
-    "announces or shares a manual release/link, or is unrelated to manuals."
+    "Judge whether the QQ group message explicitly asks for the Fire manual "
+    "entry, link, address, URL, download, or where to read it. Answer yes only "
+    "when the sender is requesting the manual link/入口/地址/下载. Answer no when "
+    "the message only mentions 手册 or 火火手册, discusses manual content, cites the "
+    "manual as a source, asks why it has not updated or cannot open, announces "
+    "or shares a manual release/link, or is unrelated to asking for the link."
 )
 DEFAULT_CLASSIFIER_PROMPT = (
     "You are a strict intent classifier for a QQ bot.\n"

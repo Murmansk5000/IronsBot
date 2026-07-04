@@ -1,9 +1,11 @@
+import logging
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+from pydantic import ValidationError
 
 from ironsbot.config import (
     CredentialsConfig,
@@ -17,6 +19,7 @@ from ironsbot.config import (
 )
 from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
 from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
 from ironsbot.config.models.seer import TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +32,7 @@ DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
+DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
@@ -65,6 +69,27 @@ def _assert_default_push_unsubscribe(
     )
     assert "TD" in push_unsubscribe.hint
     assert "群主/管理员" in push_unsubscribe.group_hint
+
+
+def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
+    assert docker_update.image == "murmansk5000/ironsbot:latest"
+    assert docker_update.container_name == "ironsbot"
+    assert docker_update.docker_socket_path == "/var/run/docker.sock"
+    assert docker_update.watchtower_image == "containrrr/watchtower:latest"
+    assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
+
+
+def _assert_default_matcher_priorities(
+    matcher_priority: MatcherPriorityConfig,
+) -> None:
+    assert matcher_priority.seer_query < matcher_priority.ai_chat
+    assert matcher_priority.ai_group_at < 0
+    assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
+    assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
+    priorities = matcher_priority.model_dump()
+    non_negative_priorities = [value for value in priorities.values() if value >= 0]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
 
 
 def test_example_config_parses() -> None:
@@ -112,25 +137,16 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
+    assert config.runtime.data_sync.on_startup
+    assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
+    _assert_default_docker_update(config.runtime.docker_update)
     assert not config.runtime.logging.file_enabled
     assert config.runtime.logging.file_path == "logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
     assert config.runtime.logging.error_file_path == "logs/ironsbot.error.log"
-    assert (
-        config.runtime.matcher_priority.seer_query
-        < config.runtime.matcher_priority.ai_chat
-    )
-    assert config.runtime.matcher_priority.ai_group_at < 0
-    assert config.runtime.matcher_priority.ai_mention_guard < 0
-    assert config.runtime.matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
-    assert config.runtime.matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
-    matcher_priorities = config.runtime.matcher_priority.model_dump()
-    non_negative_priorities = [
-        value for value in matcher_priorities.values() if value >= 0
-    ]
-    assert len(non_negative_priorities) == len(set(non_negative_priorities))
+    _assert_default_matcher_priorities(config.runtime.matcher_priority)
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
@@ -189,9 +205,63 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
+def test_unknown_app_config_fields_are_ignored_with_warning(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+unknown_root = true
+
+[feature]
+superuser_bypass = false
+unknown_feature = "old value"
+
+[ai]
+unknown_ai = "old value"
+
+[[message.group_commands]]
+id = "hello"
+commands = ["hello"]
+message = "world"
+feature = "text_push"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
+        config = load_app_config(config_path)
+
+    assert not config.feature.superuser_bypass
+    assert config.message.group_commands[0].id == "hello"
+    assert "unknown_root" in caplog.text
+    assert "ai.unknown_ai" in caplog.text
+    assert "feature.unknown_feature" in caplog.text
+
+
+def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.rank]
+display_limit = "not an integer"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        load_app_config(config_path)
+
+
 def test_dev_and_prod_configs_parse() -> None:
     assert load_app_config(ROOT / "config.dev.toml").feature.group_aliases == {}
-    assert not load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+    assert load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+    assert (
+        not load_app_config(ROOT / "config.prod.toml")
+        .runtime.data_sync
+        .startup_trigger_remote_build
+    )
 
 
 def test_team_resource_config_accepts_subscription_shapes() -> None:
@@ -352,6 +422,10 @@ def test_small_plugin_config_accessors_read_app_config(
         assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
         assert startup_config.get_startup_config().message == "机器人已开启。"
         assert not server_status_config.get_server_status_config().broadcast
+        assert (
+            server_status_config.get_docker_update_config().image
+            == "murmansk5000/ironsbot:latest"
+        )
         assert not scheduled_restart_config.get_restart_config().enabled
         assert "aliases" in seer_data_config.get_data_sync_config().sources
         assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled
