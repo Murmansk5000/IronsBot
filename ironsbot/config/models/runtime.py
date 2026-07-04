@@ -77,7 +77,8 @@ class DataSourceConfig(BaseModel):
 
 
 class DataSyncConfig(BaseModel):
-    on_startup: bool = False
+    on_startup: bool = True
+    startup_trigger_remote_build: bool = False
     interval_enabled: bool = True
     sources: dict[str, DataSourceConfig] = Field(
         default_factory=lambda: {

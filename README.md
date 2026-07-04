@@ -254,8 +254,24 @@ GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例
 3. `Murmansk5000/seer-data`：构建 SeerAPI 基础 SQLite。
 4. `Murmansk5000/seerapi`：合并基础库、官方 ConfigPackage 补充表和自定义表，发布 IronsBot 运行库。
 
-启用远程构建时，环境变量需要填写 `GITHUB_WORKFLOW_TOKEN`。启动同步和定时同步只下载
-已有 release，不触发 Actions，避免容器启动过慢或频繁消耗 GitHub Actions。
+启用远程构建时，环境变量需要填写 `GITHUB_WORKFLOW_TOKEN`。默认情况下，启动同步和定时同步只下载
+已有 release，不触发 Actions，避免容器启动过慢或频繁消耗 GitHub Actions。启动同步默认开启；
+如不希望开机下载 release，可设置：
+
+```toml
+[runtime.data_sync]
+on_startup = false
+```
+
+若希望开机时近似执行一次 `/更新数据`，可同时设置：
+
+```toml
+[runtime.data_sync]
+on_startup = true
+startup_trigger_remote_build = true
+```
+
+开机同步的成功、失败、无需更新状态会追加到“机器人已开启。”通知中。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 

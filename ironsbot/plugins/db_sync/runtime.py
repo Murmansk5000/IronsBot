@@ -11,6 +11,11 @@ from ironsbot.plugins import db_sync
 from .config import get_data_sync_config
 
 _db_sync_runtime_state = {"registered": False}
+_startup_sync_state: dict[str, str | None] = {"notice": None}
+
+
+def get_startup_sync_notice() -> str | None:
+    return _startup_sync_state["notice"]
 
 
 def _register_interval_jobs(scheduler: Any) -> None:
@@ -34,10 +39,12 @@ def _register_interval_jobs(scheduler: Any) -> None:
 
 
 async def _start_db_sync_runtime(scheduler: Any) -> None:
+    _startup_sync_state["notice"] = None
     if not db_sync._registered_syncs and not db_sync._registered_local_databases:
         logger.debug("无已注册的同步数据库，db_sync 插件未激活")
         return
 
+    config = get_data_sync_config()
     for name, entry in db_sync._registered_syncs.items():
         db_sync._prepare_remote_database(name)
         logger.info(
@@ -53,13 +60,22 @@ async def _start_db_sync_runtime(scheduler: Any) -> None:
         db_sync.load_cached_database(name)
 
     # Keep startup sync behind a switch to avoid slow container startup.
-    if not get_data_sync_config().on_startup:
+    if not config.on_startup:
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
         return
 
-    async with db_sync._sync_all_lock:
-        for name in db_sync._registered_syncs:
-            await db_sync.sync_database(name)
+    trigger_remote_build = getattr(config, "startup_trigger_remote_build", False)
+    logger.info(
+        "启动时数据库同步已开启"
+        + ("，将触发远程构建流水线" if trigger_remote_build else "")
+    )
+    did_run, results = await db_sync.run_sync_all_databases(
+        trigger_remote_build=trigger_remote_build
+    )
+    _startup_sync_state["notice"] = db_sync.format_sync_result_notice(
+        results if did_run else {},
+        title_prefix="启动数据同步",
+    )
 
 
 def _setup_db_sync_runtime(driver: Any, scheduler: Any) -> None:
@@ -80,4 +96,4 @@ def setup_db_sync_runtime() -> None:
     _setup_db_sync_runtime(get_driver(), scheduler)
 
 
-__all__ = ["setup_db_sync_runtime"]
+__all__ = ["get_startup_sync_notice", "setup_db_sync_runtime"]

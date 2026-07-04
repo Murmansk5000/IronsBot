@@ -1,7 +1,10 @@
+import asyncio
 from collections.abc import Callable
+from types import SimpleNamespace
 
 from pytest import MonkeyPatch
 
+from ironsbot.plugins.startup_notice import runtime as startup_notice_runtime
 from ironsbot.plugins.startup_notice.runtime import (
     _setup_startup_notice_runtime,
     _startup_notice_runtime_state,
@@ -56,3 +59,59 @@ def test_startup_notice_runtime_setup_registers_bot_connect_once(
     _setup_startup_notice_runtime(driver)
 
     assert driver.bot_connect_handlers == [send_startup_notice]
+
+
+def test_startup_notice_appends_db_sync_notice(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    sent_messages: list[str] = []
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service.state,
+        "sent",
+        False,
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service.state,
+        "sending",
+        False,
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime,
+        "get_startup_config",
+        lambda: SimpleNamespace(enabled=True, message="机器人已开启。", delay=0),
+    )
+
+    async def fake_ensure_startup_ready(_bot: object) -> None:
+        return None
+
+    async def fake_send_broadcast_message(
+        message: object,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        sent_messages.append(str(message))
+        return SimpleNamespace(succeeded=[1])
+
+    monkeypatch.setattr(
+        startup_notice_runtime,
+        "ensure_startup_ready",
+        fake_ensure_startup_ready,
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service,
+        "get_targets",
+        lambda: SimpleNamespace(is_empty=False, private_user_ids=[1], group_ids=[]),
+    )
+    monkeypatch.setattr(
+        "ironsbot.plugins.db_sync.runtime.get_startup_sync_notice",
+        lambda: "启动数据同步已是最新，无需更新：seerapi, aliases",
+    )
+    monkeypatch.setattr(
+        "ironsbot.shared.messaging.send_broadcast_message",
+        fake_send_broadcast_message,
+    )
+
+    asyncio.run(startup_notice_runtime.send_startup_notice(object()))
+
+    assert sent_messages == [
+        "机器人已开启。\n\n启动数据同步已是最新，无需更新：seerapi, aliases"
+    ]

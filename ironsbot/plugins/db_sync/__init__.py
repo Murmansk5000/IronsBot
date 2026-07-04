@@ -766,3 +766,42 @@ def _format_sync_statuses(results: dict[str, bool]) -> str:
             lines.append(f"  说明：{status.message}")
 
     return "\n".join(lines)
+
+
+def format_sync_result_notice(
+    results: dict[str, bool],
+    *,
+    title_prefix: str = "数据更新",
+) -> str:
+    if not results:
+        return f"{title_prefix}未执行。"
+
+    failed = [name for name, ok in results.items() if not ok]
+    succeeded = [name for name, ok in results.items() if ok]
+    skipped = [
+        name
+        for name, ok in results.items()
+        if ok and _last_sync_statuses.get(name, _SyncStatus(ok=True)).skipped
+    ]
+    if failed:
+        title = (
+            f"{title_prefix}完成，但有失败项。\n"
+            f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
+            f"失败：{', '.join(failed)}"
+        )
+    elif skipped and len(skipped) == len(results):
+        title = f"{title_prefix}已是最新，无需更新：{', '.join(skipped)}"
+    else:
+        title = f"{title_prefix}完成：{', '.join(succeeded)}"
+
+    sections = [title]
+    status_text = _format_sync_statuses(results)
+    if status_text:
+        sections.append(status_text)
+
+    if failed:
+        remote_failure_text = _format_remote_build_failures(failed)
+        if remote_failure_text:
+            sections.append(remote_failure_text)
+
+    return "\n".join(sections)

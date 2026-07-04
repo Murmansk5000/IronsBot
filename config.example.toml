@@ -635,8 +635,10 @@ cache_max_size_mb = 200
 clear_on_startup = true
 
 [runtime.data_sync]
-# Default: false; EN: Sync remote SQLite DBs on startup. ZH: 启动时同步远程 SQLite。
-on_startup = false
+# Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
+on_startup = true
+# Default: false; EN: Trigger remote build pipeline during startup sync. ZH: 启动同步时先触发远程构建流水线；开启后才近似等同 /更新数据。
+startup_trigger_remote_build = false
 # Default: true; EN: Enable scheduled DB sync. ZH: 启用定时数据库同步。
 interval_enabled = true
 

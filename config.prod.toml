@@ -10,5 +10,6 @@ user_policy = {}
 superuser_bypass = true
 
 [runtime.data_sync]
-on_startup = false
+on_startup = true
+startup_trigger_remote_build = false
 interval_enabled = true

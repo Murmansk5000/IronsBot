@@ -97,6 +97,7 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
                 15,
                 None,
                 None,
+                None,
             )
         },
     )
@@ -122,6 +123,64 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
             "replace_existing": True,
         }
     ]
+
+
+def test_db_sync_startup_can_trigger_remote_build(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(
+        db_sync,
+        "_registered_syncs",
+        {
+            "unit": db_sync._SyncEntry(
+                "https://example.invalid/unit.sqlite",
+                15,
+                None,
+                None,
+                _remote_build_config(),
+            )
+        },
+    )
+    monkeypatch.setattr(db_sync, "_registered_local_databases", {})
+    monkeypatch.setattr(db_sync, "_prepared_databases", set())
+    monkeypatch.setattr(db_sync.db_manager, "register", lambda _name: None)
+    monkeypatch.setattr(db_sync, "load_cached_database", lambda _name: False)
+    monkeypatch.setattr(
+        db_sync_runtime,
+        "get_data_sync_config",
+        lambda: SimpleNamespace(
+            interval_enabled=False,
+            on_startup=True,
+            startup_trigger_remote_build=True,
+        ),
+    )
+
+    async def fake_run_sync_all_databases(
+        *,
+        trigger_remote_build: bool = False,
+    ) -> tuple[bool, dict[str, bool]]:
+        calls.append(trigger_remote_build)
+        return True, {"unit": True}
+
+    monkeypatch.setattr(
+        db_sync,
+        "run_sync_all_databases",
+        fake_run_sync_all_databases,
+    )
+    monkeypatch.setattr(
+        db_sync,
+        "format_sync_result_notice",
+        lambda results, *, title_prefix: f"{title_prefix}:{results}",
+    )
+
+    asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
+
+    assert calls == [True]
+    assert db_sync_runtime.get_startup_sync_notice() == (
+        "启动数据同步:{'unit': True}"
+    )
 
 
 def _remote_build_config() -> RemoteBuildConfig:
