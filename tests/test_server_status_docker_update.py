@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -197,12 +198,31 @@ def test_startup_docker_update_records_notice(
     assert "Docker 自更新任务已启动" in notice
 
 
-def test_restart_service_without_restart_check() -> None:
+def test_restart_service_without_restart_check_uses_process_without_socket() -> None:
     service = RestartService(SimpleNamespace(check_on_restart=False))
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert should_restart
+    assert restart_action == "process"
+    assert "正在重启机器人进程" in message
+
+
+def test_restart_service_without_restart_check_uses_docker_socket(
+    tmp_path: Path,
+) -> None:
+    socket_path = tmp_path / "docker.sock"
+    socket_path.touch()
+    service = RestartService(
+        SimpleNamespace(
+            check_on_restart=False,
+            docker_socket_path=str(socket_path),
+        )
+    )
+
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
+
+    assert restart_action == "docker"
+    assert "正在重启机器人容器" in message
     assert "未启用重启前镜像检查" in message
 
 
@@ -222,10 +242,10 @@ def test_restart_service_missing_socket_continues_restart(
         )
     )
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert should_restart
-    assert "跳过镜像检查并继续普通重启" in message
+    assert restart_action == "process"
+    assert "跳过镜像检查并继续普通进程重启" in message
 
 
 def test_restart_service_up_to_date_continues_restart(
@@ -244,10 +264,10 @@ def test_restart_service_up_to_date_continues_restart(
         )
     )
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert should_restart
-    assert "镜像已是最新，继续普通重启" in message
+    assert restart_action == "docker"
+    assert "镜像已是最新，正在重启当前容器" in message
 
 
 def test_restart_service_started_update_skips_extra_restart(
@@ -269,7 +289,7 @@ def test_restart_service_started_update_skips_extra_restart(
         )
     )
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert not should_restart
+    assert restart_action == "none"
     assert "Docker 自更新任务已启动" in message

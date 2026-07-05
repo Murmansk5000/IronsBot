@@ -7,6 +7,7 @@ import re
 import signal
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
+from typing import Literal
 from urllib.parse import quote, urlparse
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -67,6 +68,8 @@ NOTICE_MAINTENANCE_TYPE = 3
 BOT_RESTART_DELAY_SECONDS = 1.0
 PARENT_EXIT_WAIT_SECONDS = 5.0
 GITHUB_REPO_PATH_PARTS = 2
+RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
+RestartAction = Literal["none", "process", "docker"]
 
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
 DOCKER_TIMESTAMP_PATTERN = re.compile(
@@ -186,14 +189,9 @@ class RestartService:
     def __init__(self, config: object) -> None:
         self._config = config
 
-    async def prepare_manual_restart(self) -> tuple[str, bool]:
+    async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
         if not bool(self._config.check_on_restart):
-            return (
-                "正在重启机器人进程。\n"
-                "当前配置未启用重启前镜像检查；如果运行在 Docker/Unraid，"
-                "会按重启策略拉起同一镜像。",
-                True,
-            )
+            return await self._prepare_restart_without_image_check()
 
         container_name, result = await DockerSelfUpdateService(self._config).run()
         reply = _format_docker_update_reply(
@@ -202,13 +200,39 @@ class RestartService:
             result=result,
         )
         if _is_docker_update_started(result):
-            return reply, False
+            message = reply
+            action: RestartAction = "none"
+        elif result.up_to_date:
+            message = f"{reply}\n\n镜像已是最新，正在重启当前容器。"
+            action = "docker"
+        elif result.missing_socket:
+            message = f"{reply}\n\n将跳过镜像检查并继续普通进程重启。"
+            action = "process"
+        else:
+            action = await self._ordinary_restart_action()
+            if action == "docker":
+                message = f"{reply}\n\n镜像检查失败，仍将重启当前容器。"
+            else:
+                message = f"{reply}\n\n镜像检查失败，继续普通进程重启。"
 
-        if result.up_to_date:
-            return f"{reply}\n\n镜像已是最新，继续普通重启。", True
-        if result.missing_socket:
-            return f"{reply}\n\n将跳过镜像检查并继续普通重启。", True
-        return f"{reply}\n\n镜像检查失败，继续普通重启。", True
+        return message, action
+
+    async def _prepare_restart_without_image_check(self) -> tuple[str, RestartAction]:
+        action = await self._ordinary_restart_action()
+        if action == "docker":
+            message = (
+                "正在重启机器人容器。\n"
+                "当前配置未启用重启前镜像检查；将直接重启当前 Docker 容器。"
+            )
+        else:
+            message = "正在重启机器人进程。"
+        return message, action
+
+    async def _ordinary_restart_action(self) -> RestartAction:
+        socket_path = str(getattr(self._config, "docker_socket_path", "")).strip()
+        if socket_path and await AsyncPath(socket_path).exists():
+            return "docker"
+        return "process"
 
 normal_server_status_matcher = on_fullmatch(
     NORMAL_SERVER_STATUS_COMMAND,
@@ -388,14 +412,29 @@ class ServerStatusPlugin:
     async def _handle_restart(self, matcher: Matcher, event: MessageEvent) -> None:
         config = get_docker_update_config()
         restart_service = RestartService(config)
-        message, should_restart = await restart_service.prepare_manual_restart()
+        message, restart_action = await restart_service.prepare_manual_restart()
         await send_event_reply(
             matcher,
             event,
             message,
             mention_sender=True,
         )
-        if should_restart:
+        if restart_action == "docker":
+            await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
+            try:
+                await _restart_docker_container(
+                    container_name=_resolve_docker_container_name(
+                        str(config.container_name)
+                    ),
+                    socket_path=str(config.docker_socket_path),
+                    timeout_seconds=float(config.timeout_seconds),
+                )
+            except Exception:  # noqa: BLE001
+                logger.opt(exception=True).warning(
+                    "docker container restart failed; falling back to process restart"
+                )
+                await _restart_bot_process()
+        elif restart_action == "process":
             await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
             await _restart_bot_process()
 
@@ -659,6 +698,30 @@ async def _restart_bot_process() -> None:
             current_pid,
         )
         os.kill(current_pid, signal.SIGTERM)
+
+
+async def _restart_docker_container(
+    *,
+    container_name: str,
+    socket_path: str,
+    timeout_seconds: float,
+) -> None:
+    if not await AsyncPath(socket_path).exists():
+        msg = f"Docker socket not found: {socket_path}"
+        raise RuntimeError(msg)
+
+    logger.warning("admin requested docker container restart: {}", container_name)
+    transport = httpx.AsyncHTTPTransport(uds=socket_path)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://docker",
+        timeout=httpx.Timeout(timeout_seconds),
+    ) as client:
+        response = await client.post(
+            f"/containers/{quote(container_name, safe='')}/restart",
+            params={"t": RESTART_CONTAINER_STOP_TIMEOUT_SECONDS},
+        )
+        response.raise_for_status()
 
 
 async def _start_watchtower_update(
