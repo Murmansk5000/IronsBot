@@ -37,7 +37,8 @@ superuser_bypass = true
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
 # fire_manual 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 # team_resource_subscription 控制战队订阅查询和低资源定时提醒。
-# admin_notice 不包含在 all 里；管理群要收开机/错误通知时需要显式写 admin_notice。
+# admin_notice 不包含在 all 里；管理群要收启动、异常等管理通知时需要显式写 admin_notice。
+# 具体推送项可在 TD 菜单里分别退订。
 # Example:
 # example = ["seer_pet", "seer_mintmark", "seer_autocard", "team_resource_subscription"]
 
@@ -315,6 +316,13 @@ group_schedules = []
 # Default: ["td", "退订"]
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.
 # ZH: 打开退订菜单的口令；大小写不敏感，所以 TD 自动生效。
+# Built-in push categories include startup_notice, startup_docker_update,
+# startup_data_sync, ai_chat_error_notice, bili_login_notice,
+# headless_seer_notice, render_crash_notice, admin_notice, bili_push,
+# seer_activity_push, and server_status_push.
+# 内置推送项包括机器人启动、启动镜像检查、启动数据同步、AI 聊天异常、
+# B站登录、无头赛尔号、精灵渲染崩溃、其它管理通知、B站动态、
+# 活动结束提醒和开服推送。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅"]
 # EN: Commands that restore unsubscribed pushes.

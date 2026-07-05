@@ -148,5 +148,5 @@ async def _send_headless_state_notice(
         private_user_ids=target_users,
         action_name="headless state notice",
         interval_seconds=1.2,
-        subscription_key="admin_notice",
+        subscription_key="headless_seer_notice",
     )

@@ -62,7 +62,7 @@ async def _send_private_to_superusers(
         bot=bot or get_first_bot(),
         action_name="Bilibili login notice",
         interval_seconds=1.2,
-        subscription_key="admin_notice",
+        subscription_key="bili_login_notice",
     )
 
 

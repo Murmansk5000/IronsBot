@@ -6,15 +6,19 @@ networks:
 
 services:
   ironsbot:
-    image: ghcr.io/murmansk5000/ironsbot:latest
+    image: murmansk5000/ironsbot:latest
     container_name: ironsbot
     networks:
       - ironsbot_net
     ports:
       - "8085:8080"
     volumes:
+      - /mnt/user/appdata/ironsbot/config:/config
       - /mnt/user/appdata/ironsbot/data:/app/data
       - /mnt/user/appdata/ironsbot/logs:/app/logs
+      # 可选但推荐：用于 /重启机器人、/更新镜像 和启动镜像检查。
+      # 该挂载等同授予容器控制宿主机 Docker 的权限。
+      # - /var/run/docker.sock:/var/run/docker.sock
     dns:
       - 223.5.5.5
       - 119.29.29.29
@@ -28,27 +32,7 @@ services:
       PORT: "8080"
       LOG_LEVEL: "INFO"
       COMMAND_START: '["/",""]'
-      DB_SYNC_ON_STARTUP: "false"
-      DB_SYNC_INTERVAL_ENABLED: "true"
-
-      # IronsBot 主数据库在线同步配置
-      SEERAPI_SYNC_URL: "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
-      SEERAPI_FINGERPRINT_URL: "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
-      SEERAPI_SYNC_INTERVAL_MINUTES: "60"
-      SEERAPI_LOCAL_PATH: "data/ironsbot-data.sqlite"
-
-      # 别名数据库在线同步配置
-      ALIAS_SYNC_URL: "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
-      ALIAS_FINGERPRINT_URL: "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
-      ALIAS_SYNC_INTERVAL_MINUTES: "65"
-      ALIAS_LOCAL_PATH: "data/aliases-data.sqlite"
-
-      # 渲染缓存
-      RENDER_CACHE_DIR: "render_cache"
-      RENDER_CACHE_MAX_SIZE_MB: "200"
-
-      # 无头客户端重连策略
-      HEADLESS_SEER_RECONNECT_RETRIES: "3"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
     logging:
       driver: "json-file"
       options:

@@ -35,16 +35,20 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 
 ## Included Plugins
 
-- `ai_chat`: chat with DeepSeek through mentions or authorized private messages.
-- `sendpic`: reply with fixed local images by command keywords.
+- `seer.query`: Seer player, pet, mintmark, rank, Autocard, activity, and data tools.
 - `help`: show only features enabled for the current group or private user.
-- `about`: show the current IronsBot project information.
-- `meeting`: reply with Tencent Meeting information from APP_CONFIG.
-- `messaging`: generic private/group command replies and scheduled messages.
+- `about`: show current IronsBot project information.
+- `sendpic`: reply with fixed local images by command keywords.
+- `messaging`: generic private/group command replies, scheduled messages, and push unsubscribe management.
 - `bilibili`: monitor Bilibili dynamic updates and send them to configured groups/users.
-- `pet_config_reply`: reply when users ask for pet configuration queries that are not supported by this bot.
-- `startup_notice`: notify superusers when the bot starts and connects.
-- `team_resource_subscription`: query subscribed teams from a short command and remind configured users when resources are low.
+- `activity`: query in-game activities and send ending-soon reminders.
+- `server_status`: query open-server status, restart the bot, and optionally check/update the Docker image.
+- `startup_notice`: send separate startup, Docker update, and startup data sync notices.
+- `team_shortcut`: team resource subscriptions; feature key `team_resource_subscription`.
+- `team_audit_welcome`: dedicated team audit group join prompt and 24-hour follow-up.
+- `fire_manual_ad`: Fire manual AI intent and Fire manual link appended to proactive pushes.
+- `ai_chat`: chat with DeepSeek/OpenAI-compatible APIs through mentions or authorized private messages.
+- `ai_intent`: classify configured intent actions such as team recommendation and Fire manual link requests.
 - `scheduled_restart`: restart the bot container at configured daily times from APP_CONFIG.
 
 Behavior values such as group IDs, user IDs, team IDs, meeting numbers, feature policies, Bilibili subscriptions, and private reply text belong in a mounted TOML config file. Environment variables are reserved for secrets, credentials, and deployment runtime knobs. They are intentionally not baked into the image.
@@ -63,7 +67,9 @@ services:
     volumes:
       - ./ironsbot-data:/app/data
       - ./ironsbot-config:/config
-      # Optional: required only when Docker image checks are enabled.
+      - ./ironsbot-logs:/app/logs
+      # Optional but recommended: default config checks the image and can
+      # restart/update the current container when this socket is mounted.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: "prod"
@@ -119,10 +125,12 @@ In this example, `/config/ironsbot.toml` inside the container is
 
 Optional Docker image check/update: superusers can send `/重启机器人`;
 `/更新镜像` and `/更新Docker` are compatible aliases for the same restart flow.
-By default the bot only restarts its process and does not access the Docker
-socket. If `check_on_restart` is enabled, the bot checks the target image first;
-when a new image exists it starts a one-shot Watchtower updater that pulls the
-latest image and recreates the current container. This requires mounting the
+By default the generated TOML checks the target image on startup and before
+manual restart/update commands. When a new image exists, IronsBot starts a
+one-shot Watchtower updater that pulls the latest image and recreates the
+current container. When the image is already current and Docker socket is
+mounted, `/重启机器人` restarts the current Docker container through the Docker
+API instead of relying on container restart policy. This requires mounting the
 Docker Engine socket into the IronsBot container, for example on Unraid/Linux:
 
 ```text
@@ -130,10 +138,10 @@ Docker Engine socket into the IronsBot container, for example on Unraid/Linux:
 ```
 
 Without that socket mount, image checks are skipped and the bot continues to run
-normally.
+normally; manual restart falls back to process restart.
 
-To check for a new image before other startup tasks such as data sync, or before
-manual restart commands, enable the explicit switches you need:
+Generated TOML already includes explicit switches for checking the image before
+other startup tasks such as data sync and before manual restart commands:
 
 ```toml
 [runtime.docker_update]
@@ -142,10 +150,19 @@ check_on_restart = true
 watchtower_docker_api_version = "1.40"
 ```
 
-Both switches are disabled by default. Keep them disabled when running directly
-from source on Windows/macOS/Linux without Docker socket access.
+Both switches are enabled by default so operators can see where to disable
+them. Set one or both to `false` when running directly from source on
+Windows/macOS/Linux without Docker socket access, or when you prefer manual
+image updates.
 Keep `watchtower_docker_api_version = "1.40"` on recent Unraid/Docker Engine
 versions if Watchtower reports that client API version 1.25 is too old.
+
+Push notices are split into separate subscriptions, such as bot startup,
+Docker image check, startup data sync, AI chat errors, Bilibili login notices,
+headless Seer notices, render crash notices, Bilibili pushes, activity
+reminders, and open-server pushes. Private users can send `TD`; group owners
+or admins can send `TD` in a group to unsubscribe from each push category
+independently.
 
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 
@@ -242,7 +259,7 @@ Feature names are used in `[feature.group_policy]` and
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
 | `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
 | `fire_manual` | "手册" AI intent and Fire manual links appended to proactive pushes. |
-| `admin_notice` | Startup/error/admin notices; not included by `all`. |
+| `admin_notice` | Target permission for admin notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.

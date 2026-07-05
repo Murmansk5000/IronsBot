@@ -137,7 +137,12 @@ async def report_previous_render_crash() -> None:
         f"【最近日志】\n{log_tail}"
     )
     key = "seer-render-crash-" + str(marker.get("started_at", "unknown"))
-    await notify_superusers_once(key, notice)
+    await notify_superusers_once(
+        key,
+        notice,
+        subscription_key="render_crash_notice",
+        action_name="render crash notice",
+    )
 
 
 __all__ = [
