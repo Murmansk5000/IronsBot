@@ -11,7 +11,7 @@ IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2
 ## 功能
 
 - 自定义米米号查询：基础信息先返回，收集与巅峰通过二级回复查看。
-- 自定义战队查询：支持快捷战队、资源不足提醒和战队详情展示。
+- 战队资源订阅：群内发送“战队”查询订阅战队，低资源时定时 @ 提醒。
 - 精灵、技能、魂印、皮肤、刻印、套装、部件、称号、属性、异常状态查询。
 - 全服榜、样本榜、巅峰榜、刻印数值榜与缓存状态查询。
 - 群星牌公开资料查询。
@@ -42,7 +42,10 @@ ghcr.io/murmansk5000/ironsbot:latest
 
 - `Repository`: `murmansk5000/ironsbot:latest`
 - `WebSocket Port`: `8085`
+- `IronsBot Config`: `/mnt/user/appdata/ironsbot/config` -> `/config`
 - `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
+- `IronsBot Logs`: `/mnt/user/appdata/ironsbot/logs` -> `/app/logs`
+- `Docker Socket`: `/var/run/docker.sock` -> `/var/run/docker.sock`，用于镜像检查、容器重启和自更新
 - `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 一致
 - `SUPERUSERS`: 超级管理员 QQ，例如 `["1234567890"]`
 
@@ -70,7 +73,8 @@ services:
     volumes:
       - ./ironsbot-data:/app/data
       - ./ironsbot-config:/config
-      # 可选：只有启用 Docker 镜像检查时才挂载。
+      - ./ironsbot-logs:/app/logs
+      # 可选但推荐：默认会检查镜像；挂载后 /重启机器人 和 /更新镜像 可重启/更新容器。
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: "prod"
@@ -100,7 +104,7 @@ services:
 | `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
 | `bilibili` | B站动态监控与点播。 |
 | `meeting` | 腾讯会议回复。 |
-| `team_resource_subscription` | 战队资源订阅、群内订阅战队查询与低资源提醒。 |
+| `team_shortcut` | 战队资源订阅、群内订阅战队查询与低资源提醒；feature key 为 `team_resource_subscription`。 |
 | `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
@@ -151,7 +155,8 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 `config/ironsbot.toml`；这个文件不存在时也会自动从 `config.example.toml`
 创建。也就是说，无论 Windows、Linux、macOS、Docker 还是源码运行，只要程序能
 找到示例配置且目标目录可写，缺少 TOML 时都会自动生成一份。日志默认写入当前工作
-目录的 `logs/`，运行数据默认写入 `data/`。
+目录的 `logs/`，运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载
+`/app/logs`，启用文件日志后完整日志和错误日志都能在宿主机上直接查看。
 
 示例 TOML：
 
@@ -235,7 +240,7 @@ at_users = ["owner"]
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
 | `ai_intent` | AI 意图分析，用于战队推荐、手册等意图动作。 |
 | `fire_manual` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
-| `admin_notice` | 管理通知：开机通知、AI/渲染错误通知等；必须显式配置。 |
+| `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃等具体推送可在 TD 菜单中单独退订。 |
 
 ## 数据与缓存
 
@@ -275,12 +280,13 @@ startup_trigger_remote_build = true
 
 开机同步的成功、失败、无需更新状态会追加到“机器人已开启。”通知中。
 
-## Docker 自更新
+## Docker 自更新与重启
 
 超级管理员可以发送 `/重启机器人`（兼容 `/机器人重启`、`/更新镜像`、`/更新Docker`）
-进入同一套重启流程。默认只做普通进程重启，不访问 Docker socket；如果开启
-`check_on_restart`，重启前会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像。
-检测到新镜像时会启动一次性 Watchtower 更新当前容器，不再额外执行普通 SIGTERM。
+进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
+检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
+Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
+进程重启。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -292,8 +298,8 @@ TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 
 ```toml
 [runtime.docker_update]
-check_on_startup = false
-check_on_restart = false
+check_on_startup = true
+check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
@@ -301,26 +307,32 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 ```
 
-如果想让机器人自然启动时先检查镜像，可改为：
+如果不想让机器人自然启动时检查镜像，可改为：
 
 ```toml
 [runtime.docker_update]
-check_on_startup = true
+check_on_startup = false
 ```
 
-如果想让手动 `/重启机器人` 或 `/更新镜像` 时先检查镜像，可改为：
+如果不想让手动 `/重启机器人` 或 `/更新镜像` 时检查镜像，可改为：
 
 ```toml
 [runtime.docker_update]
-check_on_restart = true
+check_on_restart = false
 ```
 
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
-本轮启动会被新容器替换。
+本轮启动会被新容器替换。镜像通知会显示当前/最新镜像短号、北京时间构建时间，
+并在镜像带有 OCI revision label 时附上对应 Git commit 摘要。
 
-没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行建议保持两个开关默认 `false`。
+没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行可把两个开关改成 `false`。
 新版 Unraid / Docker Engine 如果提示 `client version 1.25 is too old`，保持
 `watchtower_docker_api_version = "1.40"` 即可。
+
+推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、B站动态、活动结束提醒和
+开服推送。私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
+这些推送。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 

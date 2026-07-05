@@ -201,7 +201,11 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
         intent="manual",
     )
 
-    async def fake_call_ai_chat(_prompt: str, _history: list[object]) -> str:
+    async def fake_call_ai_chat(
+        _prompt: str,
+        _history: list[object],
+        **_kwargs: object,
+    ) -> str:
         nonlocal called
         called = True
         return "yes"
@@ -244,7 +248,11 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
         intent="manual",
     )
 
-    async def fake_call_ai_chat(prompt: str, _history: list[object]) -> str:
+    async def fake_call_ai_chat(
+        prompt: str,
+        _history: list[object],
+        **_kwargs: object,
+    ) -> str:
         prompts.append(prompt)
         return "yes"
 
@@ -286,7 +294,11 @@ async def test_fire_manual_strong_intent_respects_ai_no(
         intent="manual",
     )
 
-    async def fake_call_ai_chat(_prompt: str, _history: list[object]) -> str:
+    async def fake_call_ai_chat(
+        _prompt: str,
+        _history: list[object],
+        **_kwargs: object,
+    ) -> str:
         return "no"
 
     monkeypatch.setattr(

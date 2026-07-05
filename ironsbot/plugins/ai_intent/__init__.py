@@ -24,6 +24,7 @@ from ironsbot.services.ai.intent import (
     passes_action_prefilter,
     reply_is_yes,
 )
+from ironsbot.services.ai.source_context import build_ai_notice_source_context
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
@@ -76,7 +77,11 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
             continue
 
         try:
-            reply = await call_ai_chat(build_intent_prompt(action, text), [])
+            reply = await call_ai_chat(
+                build_intent_prompt(action, text),
+                [],
+                source_context=build_ai_notice_source_context(event, text),
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning(f"AI intent action failed to classify {action.id}: {e}")
             return False
@@ -112,7 +117,14 @@ async def _handle_ai_reply_action(
         action.reply_prompt,
         event.get_plaintext().strip(),
     )
-    reply = await call_ai_chat(prompt, [])
+    reply = await call_ai_chat(
+        prompt,
+        [],
+        source_context=build_ai_notice_source_context(
+            event,
+            event.get_plaintext().strip(),
+        ),
+    )
     if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
         return
 

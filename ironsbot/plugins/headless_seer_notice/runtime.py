@@ -7,9 +7,9 @@ from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
+from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 
 from .config import INVALID_RECONNECT_TIME_ERROR, get_headless_notice_config
 from .state import mark_headless_available, mark_headless_unavailable
@@ -65,7 +65,7 @@ async def _startup_check(bot: Bot) -> None:
         bot=bot,
         action_name="headless seer failure notice",
         interval_seconds=1.2,
-        subscription_key="admin_notice",
+        subscription_key="headless_seer_notice",
     )
 
 
