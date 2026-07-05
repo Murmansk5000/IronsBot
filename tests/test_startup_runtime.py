@@ -64,7 +64,7 @@ def test_startup_notice_runtime_setup_registers_bot_connect_once(
 def test_startup_notice_appends_db_sync_notice(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    sent_messages: list[str] = []
+    sent_messages: list[tuple[str, object]] = []
     monkeypatch.setattr(
         startup_notice_runtime.startup_notice_service.state,
         "sent",
@@ -86,9 +86,9 @@ def test_startup_notice_appends_db_sync_notice(
 
     async def fake_send_broadcast_message(
         message: object,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> SimpleNamespace:
-        sent_messages.append(str(message))
+        sent_messages.append((str(message), kwargs.get("subscription_key")))
         return SimpleNamespace(succeeded=[1])
 
     monkeypatch.setattr(
@@ -122,14 +122,18 @@ def test_startup_notice_appends_db_sync_notice(
     asyncio.run(startup_notice_runtime.send_startup_notice(object()))
 
     assert sent_messages == [
-        "机器人已开启。\n\n启动数据同步已是最新，无需更新：seerapi, aliases"
+        ("机器人已开启。", "startup_notice"),
+        (
+            "启动数据同步已是最新，无需更新：seerapi, aliases",
+            "startup_data_sync",
+        ),
     ]
 
 
 def test_startup_notice_appends_docker_update_before_db_sync(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    sent_messages: list[str] = []
+    sent_messages: list[tuple[str, object]] = []
     monkeypatch.setattr(
         startup_notice_runtime.startup_notice_service.state,
         "sent",
@@ -151,9 +155,9 @@ def test_startup_notice_appends_docker_update_before_db_sync(
 
     async def fake_send_broadcast_message(
         message: object,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> SimpleNamespace:
-        sent_messages.append(str(message))
+        sent_messages.append((str(message), kwargs.get("subscription_key")))
         return SimpleNamespace(succeeded=[1])
 
     monkeypatch.setattr(
@@ -187,9 +191,10 @@ def test_startup_notice_appends_docker_update_before_db_sync(
     asyncio.run(startup_notice_runtime.send_startup_notice(object()))
 
     assert sent_messages == [
+        ("机器人已开启。", "startup_notice"),
         (
-            "机器人已开启。\n\n"
-            "Docker 自更新任务已启动：ironsbot\n\n"
-            "启动数据同步已是最新，无需更新：seerapi"
-        )
+            "Docker 自更新任务已启动：ironsbot",
+            "startup_docker_update",
+        ),
+        ("启动数据同步已是最新，无需更新：seerapi", "startup_data_sync"),
     ]

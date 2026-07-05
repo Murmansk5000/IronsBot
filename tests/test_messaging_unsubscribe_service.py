@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging.push_subscriptions import (
+    BUILTIN_PUSH_OPTIONS,
     PushUnsubscribeStore,
     append_push_unsubscribe_hint,
     build_schedule_subscription_options,
@@ -65,6 +66,15 @@ def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> Non
     )
 
     assert group_schedule_label(1, task) == "游戏外活动推送（23:00）"
+
+
+def test_builtin_push_options_split_startup_admin_notices() -> None:
+    labels = {option.key: option.label for option in BUILTIN_PUSH_OPTIONS}
+
+    assert labels["startup_notice"] == "机器人启动通知"
+    assert labels["startup_docker_update"] == "启动镜像检查通知"
+    assert labels["startup_data_sync"] == "启动数据同步通知"
+    assert labels["admin_notice"] == "其他管理通知"
 
 
 def test_append_push_unsubscribe_hint_is_last_line() -> None:

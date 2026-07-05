@@ -5,9 +5,9 @@ import asyncio
 import os
 import re
 import signal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -66,8 +66,14 @@ HTTP_TIMEOUT_SECONDS = 12.0
 NOTICE_MAINTENANCE_TYPE = 3
 BOT_RESTART_DELAY_SECONDS = 1.0
 PARENT_EXIT_WAIT_SECONDS = 5.0
+GITHUB_REPO_PATH_PARTS = 2
 
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
+DOCKER_TIMESTAMP_PATTERN = re.compile(
+    r"^(?P<head>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+    r"(?:\.\d+)?"
+    r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
+)
 MAINTENANCE_RANGE_PATTERN = re.compile(
     r"(?:(?P<year>\d{4})\s*年\s*)?"
     r"(?P<month>\d{1,2})\s*月\s*(?P<day>\d{1,2})\s*日?"
@@ -123,6 +129,7 @@ class HeadlessStatus:
 class DockerImageInfo:
     image_id: str
     created: str = ""
+    labels: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,8 +146,10 @@ class DockerUpdateResult:
     up_to_date: bool = False
     current_image_id: str = ""
     current_image_created: str = ""
+    current_image_commit: str = ""
     target_image_id: str = ""
     target_image_created: str = ""
+    target_image_commit: str = ""
     missing_socket: bool = False
 
 
@@ -686,14 +695,24 @@ async def _start_watchtower_update(
             )
             current_image_info = await _inspect_image_info(client, current_image_id)
             target_image_info = await _pull_docker_image(client, image)
+            current_commit = await _resolve_image_commit_summary(
+                current_image_info,
+                fallback_repo=("Murmansk5000", "IronsBot"),
+            )
+            target_commit = await _resolve_image_commit_summary(
+                target_image_info,
+                fallback_repo=("Murmansk5000", "IronsBot"),
+            )
             if current_image_info.image_id == target_image_info.image_id:
                 return DockerUpdateResult(
                     ok=True,
                     up_to_date=True,
                     current_image_id=current_image_info.image_id,
                     current_image_created=current_image_info.created,
+                    current_image_commit=current_commit,
                     target_image_id=target_image_info.image_id,
                     target_image_created=target_image_info.created,
+                    target_image_commit=target_commit,
                 )
 
             await _pull_docker_image(client, watchtower.image)
@@ -714,8 +733,10 @@ async def _start_watchtower_update(
         updater_container_id=updater_id,
         current_image_id=current_image_info.image_id,
         current_image_created=current_image_info.created,
+        current_image_commit=current_commit,
         target_image_id=target_image_info.image_id,
         target_image_created=target_image_info.created,
+        target_image_commit=target_commit,
     )
 
 
@@ -755,10 +776,89 @@ async def _inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerIm
         msg = "Docker API did not return target image id"
         raise RuntimeError(msg)
     created = data.get("Created")
+    raw_labels = {}
+    config = data.get("Config")
+    if isinstance(config, dict):
+        labels = config.get("Labels")
+        if isinstance(labels, dict):
+            raw_labels = {
+                str(key): str(value)
+                for key, value in labels.items()
+                if value is not None
+            }
     return DockerImageInfo(
         image_id=image_id,
         created=created if isinstance(created, str) else "",
+        labels=raw_labels,
     )
+
+
+async def _resolve_image_commit_summary(
+    image_info: DockerImageInfo,
+    *,
+    fallback_repo: tuple[str, str] | None = None,
+) -> str:
+    revision = image_info.labels.get("org.opencontainers.image.revision", "").strip()
+    if not revision:
+        return ""
+
+    short_revision = revision[:12]
+    summary = short_revision
+    repo = _github_repo_from_image_labels(image_info.labels) or fallback_repo
+    if repo is not None:
+        owner, name = repo
+        try:
+            async with httpx.AsyncClient(
+                timeout=8.0,
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(
+                    f"https://api.github.com/repos/{owner}/{name}/commits/{revision}",
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": "IronsBot-DockerUpdate",
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "failed to fetch docker image commit message: "
+                "repo={}/{} revision={} error={}",
+                owner,
+                name,
+                short_revision,
+                e,
+            )
+        else:
+            commit = data.get("commit")
+            if isinstance(commit, dict):
+                message = commit.get("message")
+                if isinstance(message, str):
+                    first_line = (
+                        message.strip().splitlines()[0].strip()
+                        if message.strip()
+                        else ""
+                    )
+                    if first_line:
+                        summary = f"{short_revision} {first_line}"
+    return summary
+
+
+def _github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
+    source = labels.get("org.opencontainers.image.source", "").strip()
+    if not source:
+        return None
+    parsed = urlparse(source)
+    if parsed.netloc.lower() != "github.com":
+        return None
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(parts) < GITHUB_REPO_PATH_PARTS:
+        return None
+    repo = parts[1].removesuffix(".git")
+    if not parts[0] or not repo:
+        return None
+    return parts[0], repo
 
 
 async def _create_watchtower_container(
@@ -814,22 +914,33 @@ def _format_docker_update_reply(
         )
 
     if result.up_to_date:
-        return (
-            f"Docker 镜像已是最新：{container_name}\n"
-            f"目标镜像：{image}\n"
-            f"镜像版本：{target_version}"
-        )
+        lines = [
+            f"Docker 镜像已是最新：{container_name}",
+            f"目标镜像：{image}",
+            f"镜像版本：{target_version}",
+        ]
+        if result.target_image_commit:
+            lines.append(f"镜像提交：{result.target_image_commit}")
+        return "\n".join(lines)
 
     if result.ok:
-        return (
-            f"检测到新镜像，Docker 自更新任务已启动：{container_name}\n"
-            f"目标镜像：{image}\n"
-            f"当前镜像：{current_version}\n"
-            f"最新镜像：{target_version}\n"
-            "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
-            "机器人可能会短暂离线；重启后才算真正使用新镜像。\n"
-            f"更新任务容器：{result.updater_container_id[:12]}"
+        lines = [
+            f"检测到新镜像，Docker 自更新任务已启动：{container_name}",
+            f"目标镜像：{image}",
+            f"当前镜像版本：{current_version}",
+            f"最新镜像版本：{target_version}",
+        ]
+        if result.current_image_commit:
+            lines.append(f"当前提交：{result.current_image_commit}")
+        if result.target_image_commit:
+            lines.append(f"最新提交：{result.target_image_commit}")
+        lines.extend(
+            [
+                "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
+                "机器人可能会短暂离线；重启后才算真正使用新镜像。",
+            ]
         )
+        return "\n".join(lines)
 
     return (
         f"Docker 镜像检查失败：{container_name}\n"
@@ -871,10 +982,19 @@ def _format_image_version(image_id: str, created: str) -> str:
 def _format_docker_image_created(created: str) -> str:
     if not created:
         return ""
+    created = created.strip()
+    match = DOCKER_TIMESTAMP_PATTERN.match(created)
+    if match is not None:
+        tz_text = match.group("tz") or ""
+        if tz_text == "Z":
+            tz_text = "+00:00"
+        created = f"{match.group('head')}{tz_text}"
     try:
         value = datetime.fromisoformat(created.replace("Z", "+00:00"))
     except ValueError:
         return created
+    if value.tzinfo is None:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
     return value.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 

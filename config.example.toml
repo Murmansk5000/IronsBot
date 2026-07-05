@@ -740,10 +740,10 @@ broadcast_message = "赛尔号已经开服了。"
 broadcast_cooldown_minutes = 1440
 
 [runtime.docker_update]
-# Default: false; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；默认关闭。
-check_on_startup = false
-# Default: false; EN: Check Docker image before manual restart/update commands. ZH: 手动 /重启机器人、/更新镜像 前先检查 Docker 镜像；默认关闭。
-check_on_restart = false
+# Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
+check_on_startup = true
+# Default: true; EN: Check Docker image before manual restart/update commands. ZH: 手动 /重启机器人、/更新镜像 前先检查 Docker 镜像；不需要可改为 false。
+check_on_restart = true
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
 image = "murmansk5000/ironsbot:latest"
 # Default: "ironsbot"; EN: Container name to update; HOST_CONTAINERNAME env wins if present. ZH: 要更新的容器名；如果存在 HOST_CONTAINERNAME 环境变量则优先使用它。

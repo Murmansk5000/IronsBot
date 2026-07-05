@@ -9,6 +9,7 @@ from ironsbot.plugins.server_status import (
     RestartService,
     WatchtowerUpdateOptions,
     _create_watchtower_container,
+    _format_docker_image_created,
     _format_docker_update_reply,
     _resolve_docker_container_name,
     _split_docker_image,
@@ -57,19 +58,25 @@ def test_format_docker_update_success_reply() -> None:
             ok=True,
             updater_container_id="1234567890abcdef",
             current_image_id="sha256:old-image-id",
-            current_image_created="2026-07-04T17:00:00Z",
+            current_image_created="2026-07-04T17:00:00.123456789Z",
+            current_image_commit="oldcommitabc old change",
             target_image_id="sha256:new-image-id",
-            target_image_created="2026-07-04T18:00:00Z",
+            target_image_created="2026-07-04T18:00:00.987654321Z",
+            target_image_commit="newcommitabc new change",
         ),
     )
 
     assert "Docker 自更新任务已启动" in reply
     assert "murmansk5000/ironsbot:latest" in reply
+    assert "当前镜像版本" in reply
+    assert "最新镜像版本" in reply
     assert "old-image-id" in reply
     assert "new-image-id" in reply
     assert "2026-07-05 01:00:00" in reply
     assert "2026-07-05 02:00:00" in reply
-    assert "1234567890ab" in reply
+    assert "oldcommitabc old change" in reply
+    assert "newcommitabc new change" in reply
+    assert "1234567890ab" not in reply
 
 
 def test_format_docker_update_up_to_date_reply() -> None:
@@ -80,14 +87,23 @@ def test_format_docker_update_up_to_date_reply() -> None:
             ok=True,
             up_to_date=True,
             target_image_id="sha256:same-image-id",
-            target_image_created="2026-07-04T18:00:00Z",
+            target_image_created="2026-07-04T18:00:00.987654321Z",
+            target_image_commit="commitabcdef updated docs",
         ),
     )
 
     assert "Docker 镜像已是最新" in reply
     assert "same-image-i" in reply
     assert "2026-07-05 02:00:00" in reply
+    assert "commitabcdef updated docs" in reply
     assert "Watchtower" not in reply
+
+
+def test_format_docker_image_created_trims_nanoseconds() -> None:
+    assert (
+        _format_docker_image_created("2026-07-05T00:39:31.108791051Z")
+        == "2026-07-05 08:39:31"
+    )
 
 
 def test_create_watchtower_container_sets_docker_api_version() -> None:

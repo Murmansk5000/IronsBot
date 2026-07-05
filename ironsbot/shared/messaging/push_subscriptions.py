@@ -40,7 +40,10 @@ BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
     PushSubscriptionOption("bili_push", "B站动态推送", "bili_push"),
     PushSubscriptionOption("seer_activity_push", "活动结束提醒", "seer_activity_push"),
     PushSubscriptionOption("server_status_push", "开服推送", "server_status_push"),
-    PushSubscriptionOption("admin_notice", "管理通知", "admin_notice"),
+    PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
+    PushSubscriptionOption("startup_docker_update", "启动镜像检查通知", "admin_notice"),
+    PushSubscriptionOption("startup_data_sync", "启动数据同步通知", "admin_notice"),
+    PushSubscriptionOption("admin_notice", "其他管理通知", "admin_notice"),
 )
 
 
