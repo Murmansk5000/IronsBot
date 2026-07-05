@@ -63,7 +63,7 @@ services:
     volumes:
       - ./ironsbot-data:/app/data
       - ./ironsbot-config:/config
-      # Optional: required only for the /更新镜像 self-update command.
+      # Optional: required only when Docker image checks are enabled.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: "prod"
@@ -117,17 +117,32 @@ docker run --name ironsbot `
 In this example, `/config/ironsbot.toml` inside the container is
 `D:\DockerData\ironsbot\config\ironsbot.toml` on Windows.
 
-Optional Docker self-update: superusers can send `/更新镜像` to start a
-one-shot Watchtower updater that pulls the latest image and recreates the
-current container. This requires mounting the Docker Engine socket into the
-IronsBot container, for example on Unraid/Linux:
+Optional Docker image check/update: superusers can send `/重启机器人`;
+`/更新镜像` and `/更新Docker` are compatible aliases for the same restart flow.
+By default the bot only restarts its process and does not access the Docker
+socket. If `check_on_restart` is enabled, the bot checks the target image first;
+when a new image exists it starts a one-shot Watchtower updater that pulls the
+latest image and recreates the current container. This requires mounting the
+Docker Engine socket into the IronsBot container, for example on Unraid/Linux:
 
 ```text
 /var/run/docker.sock:/var/run/docker.sock
 ```
 
-Without that socket mount, `/更新镜像` only reports that self-update is not
-available; the bot continues to run normally.
+Without that socket mount, image checks are skipped and the bot continues to run
+normally.
+
+To check for a new image before other startup tasks such as data sync, or before
+manual restart commands, enable the explicit switches you need:
+
+```toml
+[runtime.docker_update]
+check_on_startup = true
+check_on_restart = true
+```
+
+Both switches are disabled by default. Keep them disabled when running directly
+from source on Windows/macOS/Linux without Docker socket access.
 
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 

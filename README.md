@@ -70,7 +70,7 @@ services:
     volumes:
       - ./ironsbot-data:/app/data
       - ./ironsbot-config:/config
-      # 可选：只有需要 /更新镜像 自更新容器时才挂载。
+      # 可选：只有启用 Docker 镜像检查时才挂载。
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: "prod"
@@ -277,9 +277,10 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新
 
-超级管理员可以发送 `/更新镜像`（兼容 `/更新Docker`、`/更新docker`）
-让机器人启动一次性 Watchtower 更新当前容器。它会拉取
-`murmansk5000/ironsbot:latest` 并重建 `ironsbot` 容器，重建期间机器人会短暂离线。
+超级管理员可以发送 `/重启机器人`（兼容 `/机器人重启`、`/更新镜像`、`/更新Docker`）
+进入同一套重启流程。默认只做普通进程重启，不访问 Docker socket；如果开启
+`check_on_restart`，重启前会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像。
+检测到新镜像时会启动一次性 Watchtower 更新当前容器，不再额外执行普通 SIGTERM。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -287,17 +288,36 @@ startup_trigger_remote_build = true
 /var/run/docker.sock -> /var/run/docker.sock
 ```
 
-TOML 可调整容器名、目标镜像和 Watchtower 镜像：
+TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 
 ```toml
 [runtime.docker_update]
+check_on_startup = false
+check_on_restart = false
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
 watchtower_image = "containrrr/watchtower:latest"
 ```
 
-没有挂载 Docker socket 时，`/更新镜像` 会给出明确错误，不会影响正常运行。
+如果想让机器人自然启动时先检查镜像，可改为：
+
+```toml
+[runtime.docker_update]
+check_on_startup = true
+```
+
+如果想让手动 `/重启机器人` 或 `/更新镜像` 时先检查镜像，可改为：
+
+```toml
+[runtime.docker_update]
+check_on_restart = true
+```
+
+自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
+本轮启动会被新容器替换。
+
+没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行建议保持两个开关默认 `false`。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 

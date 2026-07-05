@@ -19,6 +19,7 @@ _startup_notice_runtime_state = {"registered": False}
 
 async def send_startup_notice(bot: Bot) -> None:
     from ironsbot.plugins.db_sync.runtime import get_startup_sync_notice
+    from ironsbot.plugins.server_status.runtime import get_startup_docker_update_notice
     from ironsbot.shared.messaging import send_broadcast_message
 
     config = get_startup_config()
@@ -39,6 +40,9 @@ async def send_startup_notice(bot: Bot) -> None:
             await asyncio.sleep(config.delay)
 
         message_text = config.message
+        startup_docker_update_notice = get_startup_docker_update_notice()
+        if startup_docker_update_notice:
+            message_text = f"{message_text}\n\n{startup_docker_update_notice}"
         startup_sync_notice = get_startup_sync_notice()
         if startup_sync_notice:
             message_text = f"{message_text}\n\n{startup_sync_notice}"

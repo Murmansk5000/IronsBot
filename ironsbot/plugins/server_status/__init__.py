@@ -7,6 +7,7 @@ import re
 import signal
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
+from urllib.parse import quote
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -85,7 +86,8 @@ __plugin_meta__ = PluginMetadata(
   开服了吗 — 普通用户查询当前是否仍有维护公告
   /开服查询 — 超级管理员查询，并在无头未登录时尝试重连
   /机器人重启 / /重启机器人 — 超级管理员重启机器人进程
-  /更新镜像 / /更新Docker — 超级管理员通过 Watchtower 自更新 Docker 容器
+  /更新镜像 / /更新Docker — 兼容别名，进入同一套重启流程；
+    是否检查镜像由 runtime.docker_update.check_on_restart 控制
 
 说明：
   裸的“开服查询”已停用，避免和管理员命令混淆。
@@ -122,10 +124,63 @@ class DockerUpdateResult:
     ok: bool
     message: str = ""
     updater_container_id: str = ""
+    up_to_date: bool = False
+    current_image_id: str = ""
+    target_image_id: str = ""
     missing_socket: bool = False
 
 
+_docker_update_lock = asyncio.Lock()
 _open_broadcast_state = OpenBroadcastState()
+
+
+class DockerSelfUpdateService:
+    def __init__(self, config: object) -> None:
+        self._config = config
+
+    def resolve_container_name(self) -> str:
+        return _resolve_docker_container_name(str(self._config.container_name))
+
+    async def run(self) -> tuple[str, DockerUpdateResult]:
+        container_name = self.resolve_container_name()
+        async with _docker_update_lock:
+            result = await _start_watchtower_update(
+                container_name=container_name,
+                image=str(self._config.image),
+                socket_path=str(self._config.docker_socket_path),
+                watchtower_image=str(self._config.watchtower_image),
+                timeout_seconds=float(self._config.timeout_seconds),
+            )
+        return container_name, result
+
+
+class RestartService:
+    def __init__(self, config: object) -> None:
+        self._config = config
+
+    async def prepare_manual_restart(self) -> tuple[str, bool]:
+        if not bool(self._config.check_on_restart):
+            return (
+                "正在重启机器人进程。\n"
+                "当前配置未启用重启前镜像检查；如果运行在 Docker/Unraid，"
+                "会按重启策略拉起同一镜像。",
+                True,
+            )
+
+        container_name, result = await DockerSelfUpdateService(self._config).run()
+        reply = _format_docker_update_reply(
+            container_name=container_name,
+            image=str(self._config.image),
+            result=result,
+        )
+        if _is_docker_update_started(result):
+            return reply, False
+
+        if result.up_to_date:
+            return f"{reply}\n\n镜像已是最新，继续普通重启。", True
+        if result.missing_socket:
+            return f"{reply}\n\n将跳过镜像检查并继续普通重启。", True
+        return f"{reply}\n\n镜像检查失败，继续普通重启。", True
 
 normal_server_status_matcher = on_fullmatch(
     NORMAL_SERVER_STATUS_COMMAND,
@@ -191,10 +246,7 @@ class ServerStatusPlugin:
             await self._handle_restart(context.matcher or bot_restart_matcher, event)
             return
         if context.action == "docker_update":
-            await self._handle_docker_update(
-                context.matcher or docker_update_matcher,
-                event,
-            )
+            await self._handle_restart(context.matcher or docker_update_matcher, event)
             return
 
     async def _handle_normal(self, matcher: Matcher, event: MessageEvent) -> None:
@@ -306,47 +358,18 @@ class ServerStatusPlugin:
         )
 
     async def _handle_restart(self, matcher: Matcher, event: MessageEvent) -> None:
-        await send_event_reply(
-            matcher,
-            event,
-            "正在重启机器人进程，Docker/Unraid 会按重启策略把容器拉起来。",
-            mention_sender=True,
-        )
-        await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-        await _restart_bot_process()
-
-    async def _handle_docker_update(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
         config = get_docker_update_config()
-        container_name = _resolve_docker_container_name(config.container_name)
+        restart_service = RestartService(config)
+        message, should_restart = await restart_service.prepare_manual_restart()
         await send_event_reply(
             matcher,
             event,
-            (
-                f"开始更新 Docker 容器：{container_name}\n"
-                f"目标镜像：{config.image}"
-            ),
+            message,
             mention_sender=True,
         )
-        result = await _start_watchtower_update(
-            container_name=container_name,
-            socket_path=config.docker_socket_path,
-            watchtower_image=config.watchtower_image,
-            timeout_seconds=config.timeout_seconds,
-        )
-        await finish_event_reply(
-            matcher,
-            event,
-            _format_docker_update_reply(
-                container_name=container_name,
-                image=config.image,
-                result=result,
-            ),
-            mention_sender=True,
-        )
+        if should_restart:
+            await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
+            await _restart_bot_process()
 
 
 register_plugin(ServerStatusPlugin())
@@ -613,6 +636,7 @@ async def _restart_bot_process() -> None:
 async def _start_watchtower_update(
     *,
     container_name: str,
+    image: str,
     socket_path: str,
     watchtower_image: str,
     timeout_seconds: float,
@@ -637,7 +661,20 @@ async def _start_watchtower_update(
             base_url="http://docker",
             timeout=httpx.Timeout(timeout_seconds),
         ) as client:
-            await _ensure_watchtower_image(client, watchtower_image)
+            current_image_id = await _inspect_container_image_id(
+                client,
+                container_name,
+            )
+            target_image_id = await _pull_docker_image(client, image)
+            if current_image_id == target_image_id:
+                return DockerUpdateResult(
+                    ok=True,
+                    up_to_date=True,
+                    current_image_id=current_image_id,
+                    target_image_id=target_image_id,
+                )
+
+            await _pull_docker_image(client, watchtower_image)
             updater_id = await _create_watchtower_container(
                 client,
                 container_name=container_name,
@@ -650,19 +687,50 @@ async def _start_watchtower_update(
         logger.opt(exception=True).warning("docker self update failed")
         return DockerUpdateResult(ok=False, message=str(e))
 
-    return DockerUpdateResult(ok=True, updater_container_id=updater_id)
+    return DockerUpdateResult(
+        ok=True,
+        updater_container_id=updater_id,
+        current_image_id=current_image_id,
+        target_image_id=target_image_id,
+    )
 
 
-async def _ensure_watchtower_image(
+async def _inspect_container_image_id(
+    client: httpx.AsyncClient,
+    container_name: str,
+) -> str:
+    response = await client.get(f"/containers/{quote(container_name, safe='')}/json")
+    response.raise_for_status()
+    data = response.json()
+    image_id = data.get("Image")
+    if not isinstance(image_id, str) or not image_id:
+        msg = "Docker API did not return current container image id"
+        raise RuntimeError(msg)
+    return image_id
+
+
+async def _pull_docker_image(
     client: httpx.AsyncClient,
     image: str,
-) -> None:
+) -> str:
     repository, tag = _split_docker_image(image)
     response = await client.post(
         "/images/create",
         params={"fromImage": repository, "tag": tag},
     )
     response.raise_for_status()
+    return await _inspect_image_id(client, image)
+
+
+async def _inspect_image_id(client: httpx.AsyncClient, image: str) -> str:
+    response = await client.get(f"/images/{quote(image, safe='')}/json")
+    response.raise_for_status()
+    data = response.json()
+    image_id = data.get("Id")
+    if not isinstance(image_id, str) or not image_id:
+        msg = "Docker API did not return target image id"
+        raise RuntimeError(msg)
+    return image_id
 
 
 async def _create_watchtower_container(
@@ -702,26 +770,39 @@ def _format_docker_update_reply(
 ) -> str:
     if result.missing_socket:
         return (
-            "Docker 自更新失败：容器内没有找到 Docker socket。\n"
+            "Docker 镜像检查已跳过：容器内没有找到 Docker socket。\n"
             "需要给 IronsBot 容器额外挂载：\n"
             "/var/run/docker.sock -> /var/run/docker.sock\n"
-            "挂载后再发送 /更新镜像。"
+            "挂载后再发送 /重启机器人 或 /更新镜像。"
+        )
+
+    if result.up_to_date:
+        return (
+            f"Docker 镜像已是最新：{container_name}\n"
+            f"目标镜像：{image}\n"
+            f"镜像 ID：{_short_image_id(result.target_image_id)}"
         )
 
     if result.ok:
         return (
-            f"Docker 自更新任务已启动：{container_name}\n"
+            f"检测到新镜像，Docker 自更新任务已启动：{container_name}\n"
             f"目标镜像：{image}\n"
+            f"当前镜像：{_short_image_id(result.current_image_id)}\n"
+            f"最新镜像：{_short_image_id(result.target_image_id)}\n"
             "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
             "机器人可能会短暂离线；重启后才算真正使用新镜像。\n"
             f"更新任务容器：{result.updater_container_id[:12]}"
         )
 
     return (
-        f"Docker 自更新失败：{container_name}\n"
+        f"Docker 镜像检查失败：{container_name}\n"
         f"目标镜像：{image}\n"
         f"错误：{result.message or '未知错误'}"
     ).rstrip()
+
+
+def _is_docker_update_started(result: DockerUpdateResult) -> bool:
+    return bool(result.ok and not result.up_to_date and result.updater_container_id)
 
 
 def _resolve_docker_container_name(configured_name: str) -> str:
@@ -734,6 +815,12 @@ def _split_docker_image(image: str) -> tuple[str, str]:
         return image, "latest"
     repository, tag = image.rsplit(":", maxsplit=1)
     return repository, tag
+
+
+def _short_image_id(image_id: str) -> str:
+    if not image_id:
+        return "未知"
+    return image_id.removeprefix("sha256:")[:12]
 
 
 def _short_notice_text(text: str, *, max_chars: int = 120) -> str:

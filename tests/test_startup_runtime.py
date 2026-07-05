@@ -107,6 +107,10 @@ def test_startup_notice_appends_db_sync_notice(
         lambda _feature: [],
     )
     monkeypatch.setattr(
+        "ironsbot.plugins.server_status.runtime.get_startup_docker_update_notice",
+        lambda: None,
+    )
+    monkeypatch.setattr(
         "ironsbot.plugins.db_sync.runtime.get_startup_sync_notice",
         lambda: "启动数据同步已是最新，无需更新：seerapi, aliases",
     )
@@ -119,4 +123,73 @@ def test_startup_notice_appends_db_sync_notice(
 
     assert sent_messages == [
         "机器人已开启。\n\n启动数据同步已是最新，无需更新：seerapi, aliases"
+    ]
+
+
+def test_startup_notice_appends_docker_update_before_db_sync(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    sent_messages: list[str] = []
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service.state,
+        "sent",
+        False,
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service.state,
+        "sending",
+        False,
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime,
+        "get_startup_config",
+        lambda: SimpleNamespace(enabled=True, message="机器人已开启。", delay=0),
+    )
+
+    async def fake_ensure_startup_ready(_bot: object) -> None:
+        return None
+
+    async def fake_send_broadcast_message(
+        message: object,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        sent_messages.append(str(message))
+        return SimpleNamespace(succeeded=[1])
+
+    monkeypatch.setattr(
+        startup_notice_runtime,
+        "ensure_startup_ready",
+        fake_ensure_startup_ready,
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service,
+        "superuser_loader",
+        lambda: {1},
+    )
+    monkeypatch.setattr(
+        startup_notice_runtime.startup_notice_service,
+        "feature_group_loader",
+        lambda _feature: [],
+    )
+    monkeypatch.setattr(
+        "ironsbot.plugins.server_status.runtime.get_startup_docker_update_notice",
+        lambda: "Docker 自更新任务已启动：ironsbot",
+    )
+    monkeypatch.setattr(
+        "ironsbot.plugins.db_sync.runtime.get_startup_sync_notice",
+        lambda: "启动数据同步已是最新，无需更新：seerapi",
+    )
+    monkeypatch.setattr(
+        "ironsbot.shared.messaging.send_broadcast_message",
+        fake_send_broadcast_message,
+    )
+
+    asyncio.run(startup_notice_runtime.send_startup_notice(object()))
+
+    assert sent_messages == [
+        (
+            "机器人已开启。\n\n"
+            "Docker 自更新任务已启动：ironsbot\n\n"
+            "启动数据同步已是最新，无需更新：seerapi"
+        )
     ]
