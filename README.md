@@ -298,6 +298,7 @@ image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
 watchtower_image = "containrrr/watchtower:latest"
+watchtower_docker_api_version = "1.40"
 ```
 
 如果想让机器人自然启动时先检查镜像，可改为：
@@ -318,6 +319,8 @@ check_on_restart = true
 本轮启动会被新容器替换。
 
 没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行建议保持两个开关默认 `false`。
+新版 Unraid / Docker Engine 如果提示 `client version 1.25 is too old`，保持
+`watchtower_docker_api_version = "1.40"` 即可。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 

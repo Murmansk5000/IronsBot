@@ -78,6 +78,7 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.container_name == "ironsbot"
     assert docker_update.docker_socket_path == "/var/run/docker.sock"
     assert docker_update.watchtower_image == "containrrr/watchtower:latest"
+    assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
 
 

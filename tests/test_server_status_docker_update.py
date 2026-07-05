@@ -7,6 +7,8 @@ from ironsbot.app.plugin_manifest import RUNTIME_SETUP_CALLS
 from ironsbot.plugins.server_status import (
     DockerUpdateResult,
     RestartService,
+    WatchtowerUpdateOptions,
+    _create_watchtower_container,
     _format_docker_update_reply,
     _resolve_docker_container_name,
     _split_docker_image,
@@ -55,7 +57,9 @@ def test_format_docker_update_success_reply() -> None:
             ok=True,
             updater_container_id="1234567890abcdef",
             current_image_id="sha256:old-image-id",
+            current_image_created="2026-07-04T17:00:00Z",
             target_image_id="sha256:new-image-id",
+            target_image_created="2026-07-04T18:00:00Z",
         ),
     )
 
@@ -63,6 +67,8 @@ def test_format_docker_update_success_reply() -> None:
     assert "murmansk5000/ironsbot:latest" in reply
     assert "old-image-id" in reply
     assert "new-image-id" in reply
+    assert "2026-07-05 01:00:00" in reply
+    assert "2026-07-05 02:00:00" in reply
     assert "1234567890ab" in reply
 
 
@@ -74,12 +80,48 @@ def test_format_docker_update_up_to_date_reply() -> None:
             ok=True,
             up_to_date=True,
             target_image_id="sha256:same-image-id",
+            target_image_created="2026-07-04T18:00:00Z",
         ),
     )
 
     assert "Docker 镜像已是最新" in reply
     assert "same-image-i" in reply
+    assert "2026-07-05 02:00:00" in reply
     assert "Watchtower" not in reply
+
+
+def test_create_watchtower_container_sets_docker_api_version() -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, str]:
+            return {"Id": "watchtower-container-id"}
+
+    class FakeClient:
+        request_json: dict[str, object] | None = None
+
+        async def post(self, _url: str, **kwargs: object) -> FakeResponse:
+            self.request_json = kwargs["json"]  # type: ignore[assignment]
+            return FakeResponse()
+
+    client = FakeClient()
+
+    container_id = asyncio.run(
+        _create_watchtower_container(
+            client,  # type: ignore[arg-type]
+            container_name="ironsbot",
+            socket_path="/var/run/docker.sock",
+            watchtower=WatchtowerUpdateOptions(
+                image="containrrr/watchtower:latest",
+                docker_api_version="1.40",
+            ),
+        )
+    )
+
+    assert container_id == "watchtower-container-id"
+    assert client.request_json is not None
+    assert client.request_json["Env"] == ["DOCKER_API_VERSION=1.40"]
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
@@ -120,6 +162,7 @@ def test_startup_docker_update_records_notice(
             image="murmansk5000/ironsbot:latest",
             docker_socket_path="/var/run/docker.sock",
             watchtower_image="containrrr/watchtower:latest",
+            watchtower_docker_api_version="1.40",
             timeout_seconds=300.0,
         ),
     )

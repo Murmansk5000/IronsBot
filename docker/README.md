@@ -139,10 +139,13 @@ manual restart commands, enable the explicit switches you need:
 [runtime.docker_update]
 check_on_startup = true
 check_on_restart = true
+watchtower_docker_api_version = "1.40"
 ```
 
 Both switches are disabled by default. Keep them disabled when running directly
 from source on Windows/macOS/Linux without Docker socket access.
+Keep `watchtower_docker_api_version = "1.40"` on recent Unraid/Docker Engine
+versions if Watchtower reports that client API version 1.25 is too old.
 
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 

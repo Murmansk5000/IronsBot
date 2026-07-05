@@ -752,6 +752,8 @@ container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
 # Default: "containrrr/watchtower:latest"; EN: Temporary updater image used by Docker update checks. ZH: Docker 镜像更新检查使用的一次性更新器镜像。
 watchtower_image = "containrrr/watchtower:latest"
+# Default: "1.40"; EN: Docker API version passed to Watchtower. ZH: 传给 Watchtower 的 Docker API 版本；Unraid 新版 Docker 需要不低于 1.40。
+watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
 

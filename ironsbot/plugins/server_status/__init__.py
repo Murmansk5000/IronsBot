@@ -120,13 +120,27 @@ class HeadlessStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class DockerImageInfo:
+    image_id: str
+    created: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class WatchtowerUpdateOptions:
+    image: str
+    docker_api_version: str
+
+
+@dataclass(frozen=True, slots=True)
 class DockerUpdateResult:
     ok: bool
     message: str = ""
     updater_container_id: str = ""
     up_to_date: bool = False
     current_image_id: str = ""
+    current_image_created: str = ""
     target_image_id: str = ""
+    target_image_created: str = ""
     missing_socket: bool = False
 
 
@@ -148,7 +162,12 @@ class DockerSelfUpdateService:
                 container_name=container_name,
                 image=str(self._config.image),
                 socket_path=str(self._config.docker_socket_path),
-                watchtower_image=str(self._config.watchtower_image),
+                watchtower=WatchtowerUpdateOptions(
+                    image=str(self._config.watchtower_image),
+                    docker_api_version=str(
+                        self._config.watchtower_docker_api_version
+                    ),
+                ),
                 timeout_seconds=float(self._config.timeout_seconds),
             )
         return container_name, result
@@ -638,13 +657,13 @@ async def _start_watchtower_update(
     container_name: str,
     image: str,
     socket_path: str,
-    watchtower_image: str,
+    watchtower: WatchtowerUpdateOptions,
     timeout_seconds: float,
 ) -> DockerUpdateResult:
     logger.warning(
         "admin requested docker self update: container={}, watchtower={}",
         container_name,
-        watchtower_image,
+        watchtower.image,
     )
     if not await AsyncPath(socket_path).exists():
         logger.warning("docker self update failed: socket not found: {}", socket_path)
@@ -665,21 +684,24 @@ async def _start_watchtower_update(
                 client,
                 container_name,
             )
-            target_image_id = await _pull_docker_image(client, image)
-            if current_image_id == target_image_id:
+            current_image_info = await _inspect_image_info(client, current_image_id)
+            target_image_info = await _pull_docker_image(client, image)
+            if current_image_info.image_id == target_image_info.image_id:
                 return DockerUpdateResult(
                     ok=True,
                     up_to_date=True,
-                    current_image_id=current_image_id,
-                    target_image_id=target_image_id,
+                    current_image_id=current_image_info.image_id,
+                    current_image_created=current_image_info.created,
+                    target_image_id=target_image_info.image_id,
+                    target_image_created=target_image_info.created,
                 )
 
-            await _pull_docker_image(client, watchtower_image)
+            await _pull_docker_image(client, watchtower.image)
             updater_id = await _create_watchtower_container(
                 client,
                 container_name=container_name,
                 socket_path=socket_path,
-                watchtower_image=watchtower_image,
+                watchtower=watchtower,
             )
             response = await client.post(f"/containers/{updater_id}/start")
             response.raise_for_status()
@@ -690,8 +712,10 @@ async def _start_watchtower_update(
     return DockerUpdateResult(
         ok=True,
         updater_container_id=updater_id,
-        current_image_id=current_image_id,
-        target_image_id=target_image_id,
+        current_image_id=current_image_info.image_id,
+        current_image_created=current_image_info.created,
+        target_image_id=target_image_info.image_id,
+        target_image_created=target_image_info.created,
     )
 
 
@@ -712,17 +736,17 @@ async def _inspect_container_image_id(
 async def _pull_docker_image(
     client: httpx.AsyncClient,
     image: str,
-) -> str:
+) -> DockerImageInfo:
     repository, tag = _split_docker_image(image)
     response = await client.post(
         "/images/create",
         params={"fromImage": repository, "tag": tag},
     )
     response.raise_for_status()
-    return await _inspect_image_id(client, image)
+    return await _inspect_image_info(client, image)
 
 
-async def _inspect_image_id(client: httpx.AsyncClient, image: str) -> str:
+async def _inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerImageInfo:
     response = await client.get(f"/images/{quote(image, safe='')}/json")
     response.raise_for_status()
     data = response.json()
@@ -730,7 +754,11 @@ async def _inspect_image_id(client: httpx.AsyncClient, image: str) -> str:
     if not isinstance(image_id, str) or not image_id:
         msg = "Docker API did not return target image id"
         raise RuntimeError(msg)
-    return image_id
+    created = data.get("Created")
+    return DockerImageInfo(
+        image_id=image_id,
+        created=created if isinstance(created, str) else "",
+    )
 
 
 async def _create_watchtower_container(
@@ -738,15 +766,16 @@ async def _create_watchtower_container(
     *,
     container_name: str,
     socket_path: str,
-    watchtower_image: str,
+    watchtower: WatchtowerUpdateOptions,
 ) -> str:
     updater_name = f"ironsbot-watchtower-once-{uuid4().hex[:12]}"
     response = await client.post(
         "/containers/create",
         params={"name": updater_name},
         json={
-            "Image": watchtower_image,
+            "Image": watchtower.image,
             "Cmd": ["--run-once", "--cleanup", container_name],
+            "Env": [f"DOCKER_API_VERSION={watchtower.docker_api_version}"],
             "HostConfig": {
                 "AutoRemove": True,
                 "Binds": [f"{socket_path}:/var/run/docker.sock"],
@@ -768,6 +797,14 @@ def _format_docker_update_reply(
     image: str,
     result: DockerUpdateResult,
 ) -> str:
+    current_version = _format_image_version(
+        result.current_image_id,
+        result.current_image_created,
+    )
+    target_version = _format_image_version(
+        result.target_image_id,
+        result.target_image_created,
+    )
     if result.missing_socket:
         return (
             "Docker 镜像检查已跳过：容器内没有找到 Docker socket。\n"
@@ -780,15 +817,15 @@ def _format_docker_update_reply(
         return (
             f"Docker 镜像已是最新：{container_name}\n"
             f"目标镜像：{image}\n"
-            f"镜像 ID：{_short_image_id(result.target_image_id)}"
+            f"镜像版本：{target_version}"
         )
 
     if result.ok:
         return (
             f"检测到新镜像，Docker 自更新任务已启动：{container_name}\n"
             f"目标镜像：{image}\n"
-            f"当前镜像：{_short_image_id(result.current_image_id)}\n"
-            f"最新镜像：{_short_image_id(result.target_image_id)}\n"
+            f"当前镜像：{current_version}\n"
+            f"最新镜像：{target_version}\n"
             "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
             "机器人可能会短暂离线；重启后才算真正使用新镜像。\n"
             f"更新任务容器：{result.updater_container_id[:12]}"
@@ -821,6 +858,24 @@ def _short_image_id(image_id: str) -> str:
     if not image_id:
         return "未知"
     return image_id.removeprefix("sha256:")[:12]
+
+
+def _format_image_version(image_id: str, created: str) -> str:
+    short_id = _short_image_id(image_id)
+    created_text = _format_docker_image_created(created)
+    if not created_text:
+        return short_id
+    return f"{short_id}（{created_text}）"
+
+
+def _format_docker_image_created(created: str) -> str:
+    if not created:
+        return ""
+    try:
+        value = datetime.fromisoformat(created.replace("Z", "+00:00"))
+    except ValueError:
+        return created
+    return value.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _short_notice_text(text: str, *, max_chars: int = 120) -> str:

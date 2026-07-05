@@ -131,6 +131,7 @@ class DockerUpdateConfig(BaseModel):
     container_name: str = "ironsbot"
     docker_socket_path: str = "/var/run/docker.sock"
     watchtower_image: str = "containrrr/watchtower:latest"
+    watchtower_docker_api_version: str = "1.40"
     timeout_seconds: float = Field(default=300.0, gt=0)
 
     @field_validator(
@@ -138,6 +139,7 @@ class DockerUpdateConfig(BaseModel):
         "container_name",
         "docker_socket_path",
         "watchtower_image",
+        "watchtower_docker_api_version",
     )
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
