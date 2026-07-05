@@ -154,9 +154,6 @@ class AiConfig(BaseModel):
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-pro"
     prompt: str = DEFAULT_AI_PROMPT
-    reset_commands: list[str] = Field(
-        default_factory=lambda: ["清空聊天", "重置聊天", "清空上下文"]
-    )
     history_turns: int = Field(default=6, ge=0, le=20)
     memory: bool = True
     memory_path: Path = Path("data/ai_chat/memory.sqlite")
@@ -189,11 +186,6 @@ class AiConfig(BaseModel):
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
-
-    @field_validator("reset_commands", mode="before")
-    @classmethod
-    def normalize_commands(cls, value: object) -> object:
-        return string_list(value)
 
     @field_validator("intent_actions", mode="before")
     @classmethod

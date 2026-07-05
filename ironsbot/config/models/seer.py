@@ -333,7 +333,6 @@ class TeamResourceConfig(BaseModel):
 class RenderConfig(BaseModel):
     cache_dir: Path | None = Path("render_cache")
     cache_max_size_mb: int = Field(default=200, gt=0)
-    clear_on_startup: bool = True
 
 
 class SeasonCountdownConfig(BaseModel):

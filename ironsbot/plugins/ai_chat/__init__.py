@@ -13,7 +13,6 @@ from ironsbot.services.ai.chat import (
     get_ai_chat_key,
     is_ai_error_reply,
     record_successful_ai_reply,
-    reset_ai_chat_context,
 )
 from ironsbot.services.ai.client import (
     AI_CHAT_ERROR_ACTION_NAME,
@@ -21,7 +20,6 @@ from ironsbot.services.ai.client import (
     call_ai_chat,
     get_ai_key,
 )
-from ironsbot.services.ai.history import is_reset_prompt
 from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
@@ -54,8 +52,7 @@ __plugin_meta__ = PluginMetadata(
     description="接入 DeepSeek / OpenAI-compatible API 的自定义聊天插件",
     usage=(
         "群聊中 @机器人 并附带问题\n"
-        "私聊中直接发送问题\n"
-        "@机器人 清空聊天"
+        "私聊中直接发送问题"
     ),
     config=Config,
 )
@@ -112,14 +109,6 @@ class AiChatPlugin:
 
         key = get_ai_chat_key(event)
         source_context = build_ai_notice_source_context(event, prompt)
-        if is_reset_prompt(prompt):
-            reset_ai_chat_context(event, key)
-            await finish_event_reply(
-                matcher,
-                event,
-                "已清空这段聊天上下文和你的长期记忆。",
-                mention_sender=True,
-            )
 
         if not get_ai_key():
             await notify_superusers_once(
