@@ -54,6 +54,7 @@ FEATURE_PLUGINS: Final[tuple[str, ...]] = (
 )
 
 RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
+    "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime",
     "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime",
     "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",
     "ironsbot.plugins.headless_seer.runtime:setup_headless_seer_runtime",
