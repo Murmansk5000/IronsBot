@@ -171,14 +171,15 @@ class TeamAuditWelcomeConfig(BaseModel):
         "欢迎加入战队审核群。\n"
         "如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，"
         "方便管理员审核。\n"
-        "审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
+        "审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。\n"
+        "如果已经加入主群，或者不想加入战队，请退出本审核群。"
     )
     followup_enabled: bool = True
     followup_after_hours: float = Field(default=24.0, gt=0)
     followup_message: str = (
         "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n"
         "如果想加入战队，请发送“米米号+你的米米号”供管理员审核；"
-        "如果不想加入战队，请退出本审核群。"
+        "如果已经加入主群，或者不想加入战队，请退出本审核群。"
     )
     followup_cache_path: str = "data/team_audit_welcome/pending.sqlite"
 

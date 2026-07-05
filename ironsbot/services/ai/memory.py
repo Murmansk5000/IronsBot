@@ -58,14 +58,6 @@ def _event_context(event: MessageEvent) -> tuple[str, int]:
     return "private", int(event.user_id)
 
 
-def reset_user_memory(user_id: int) -> None:
-    try:
-        with _connect() as conn:
-            conn.execute("DELETE FROM messages WHERE user_id = ?", (int(user_id),))
-    except sqlite3.Error as e:
-        logger.warning(f"failed to reset AI memory for {user_id}: {e}")
-
-
 def append_user_memory(
     event: MessageEvent,
     *,

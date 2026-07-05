@@ -68,12 +68,6 @@ model = "deepseek-v4-pro"
 # Example: "You are IronsBot."
 prompt = "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
 
-# Default: ["清空聊天", "重置聊天", "清空上下文"]
-# EN: Commands that reset chat history and memory.
-# ZH: 清空 AI 聊天上下文与记忆的口令。
-# Example: ["reset"]
-reset_commands = ["清空聊天", "重置聊天", "清空上下文"]
-
 # Default: 6
 # EN: Recent chat turns kept in context.
 # ZH: 保留在短期上下文中的聊天轮数。
@@ -398,7 +392,7 @@ groups = []
 # Default: built-in team audit guidance.
 # EN: Welcome message sent to newcomers. The bot will mention the newcomer first.
 # ZH: 发送给新人的战队审核说明；机器人会先 @ 新人。
-message = "欢迎加入战队审核群。\n如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，方便管理员审核。\n审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。"
+message = "欢迎加入战队审核群。\n如果想加入战队，请先发送“米米号+你的米米号”查询个人信息，方便管理员审核。\n审核通过后，管理员会指引你加入主群和战队；入队完成后请退出审核群。\n如果已经加入主群，或者不想加入战队，请退出本审核群。"
 
 # Default: true
 # EN: Remind newcomers again if they are still in the audit group after the delay.
@@ -413,7 +407,7 @@ followup_after_hours = 24.0
 # Default: built-in follow-up reminder.
 # EN: Follow-up message. Available placeholders: {hours}, {group_id}, {user_id}.
 # ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
-followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果不想加入战队，请退出本审核群。"
+followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果已经加入主群，或者不想加入战队，请退出本审核群。"
 
 # Default: "data/team_audit_welcome/pending.sqlite"
 # EN: SQLite path used to persist pending 24-hour reminders across restarts.
@@ -639,8 +633,6 @@ resource_message = "出来买资源，别逼我求你😡"
 cache_dir = "render_cache"
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
-# Default: true; EN: Clear render cache on startup. ZH: 启动时清理渲染缓存。
-clear_on_startup = true
 
 [runtime.data_sync]
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
