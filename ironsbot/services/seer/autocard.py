@@ -10,6 +10,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.services.seer.query_help import seer_query_help_message
+from ironsbot.shared.messaging.selection_menu import (
+    SelectionMenuItem,
+    format_selection_menu,
+)
 
 if TYPE_CHECKING:
     from ironsbot.plugins.seer_data.db import SeerAPISession
@@ -182,13 +186,15 @@ def build_autocard_prompt_text(
     dataset: AutocardDataset,
     matches: list[tuple[str, dict[str, Any]]],
 ) -> str:
-    lines = ["请问你想查询的群星牌资料是……"]
-    for index, (kind, item) in enumerate(matches, start=1):
-        desc = _prompt_desc(dataset, kind, item)
-        lines.append(f"{index}. {_entry_name(item)}（{desc}）")
-    lines.append("")
-    lines.append("💬 输入序号选择 · 输入 0 退出")
-    return "\n".join(lines)
+    return format_selection_menu(
+        title="请问你想查询的群星牌资料是……",
+        items=tuple(
+            SelectionMenuItem(
+                label=f"{_entry_name(item)}（{_prompt_desc(dataset, kind, item)}）"
+            )
+            for kind, item in matches
+        ),
+    )
 
 
 def _normalize_name(value: object) -> str:

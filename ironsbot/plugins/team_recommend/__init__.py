@@ -23,11 +23,11 @@ TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
 
 __plugin_meta__ = PluginMetadata(
     name="战队推荐",
-    description="AI 判断用户想加入战队后，发送战队审核群链接或战队推荐信息。",
+    description="发送配置好的战队审核群链接或战队推荐信息。",
     usage=(
         "【战队推荐】\n"
-        "此功能不直接匹配口令，由 AI意图分析 调用。\n"
-        "默认在用户提到想加入战队时，发送 5 级战队审核群链接。"
+        "此功能不直接匹配口令，通常由配置化意图动作调用。\n"
+        "回复内容、触发条件和目标战队以当前配置为准。"
     ),
 )
 

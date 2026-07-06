@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("ironsbot")
-except Exception:  # pragma: no cover
+except PackageNotFoundError:  # pragma: no cover
     __version__ = None

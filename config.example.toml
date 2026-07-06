@@ -278,6 +278,8 @@ message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_lis
 notice_timeout_seconds = 8.0
 
 [message]
+group_commands = []
+group_schedules = []
 # Default: []
 # EN: Private fixed command replies.
 # ZH: 私聊固定文本回复动作。
@@ -289,13 +291,12 @@ private_commands = []
 # ZH: 私聊定时文本动作。
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
 private_schedules = []
-group_commands = []
-group_schedules = []
 
-[message.push_unsubscribe]
+[message.private_unsubscribe]
 # Default: true
 # EN: Enable private scheduled push unsubscribe menu.
 # ZH: 启用私聊定时推送退订菜单。
+enabled = true
 # Default: ["td", "退订"]
 # EN: Private commands that open the unsubscribe menu. Matching is case-insensitive.
 # ZH: 打开退订菜单的私聊口令；大小写不敏感，所以 TD 自动生效。
