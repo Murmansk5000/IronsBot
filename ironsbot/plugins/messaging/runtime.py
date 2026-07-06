@@ -328,7 +328,15 @@ def _push_subscription_options(
     include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     store = _push_subscription_store()
+    from ironsbot.services.bilibili.state import bili_push_subscription_options
+
     return [
+        *bili_push_subscription_options(
+            target_type=target_type,
+            target_id=target_id,
+            store=store,
+            include_unsubscribed=include_unsubscribed,
+        ),
         *_builtin_subscription_options(
             target_type=target_type,
             target_id=target_id,

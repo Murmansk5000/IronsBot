@@ -171,17 +171,18 @@ enabled = true
 enabled = true
 
 [bilibili]
-# Default: [1310714247]
-# EN: Default monitored Bilibili UIDs.
-# ZH: 默认监控的 B 站 UID。
-# Example: [1310714247, 375750254]
-uids = [1310714247]
-
 # Default: 300.0
 # EN: Cooldown for Bilibili login QR notices.
 # ZH: B 站登录二维码提醒冷却秒数。
 # Example: 600.0
 login_notice_cooldown_seconds = 300.0
+
+[bilibili.account_aliases]
+# Default: { seer = 1310714247 }
+# EN: Named Bilibili account library. Other Bilibili config references these names.
+# ZH: B 站账号别名库，其他 B 站配置均引用这些别名。
+# Example: fire = 375750254
+seer = 1310714247
 
 [bilibili.storage]
 # Default: "data/bilibili_monitor"
@@ -216,16 +217,27 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # Example: "link"
 default_mode = "full"
 
+# Default: ["seer"]
+# EN: Accounts pushed to every group/private target that enables bili_push.
+# ZH: 所有开启 bili_push 的群/私聊默认推送的账号。
+# Example: ["seer"]
+default_accounts = ["seer"]
+
+# EN: Group owners/admins can override one account at runtime with:
+#     B站推送模式 <账号别名> <内容|链接|默认>
+# ZH: 群主/管理员可在群内运行时修改某个账号的推送模式：
+#     B站推送模式 <账号别名> <内容|链接|默认>
+
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
 # ZH: 群推送目标，键可以是群别名或群号。
-# Example: { main = { uids = [1310714247], mode = "full" } }
+# Example: { main = { extra_accounts = ["fire"], mode = "full" } }
 groups = {}
 
 # Default: {}
 # EN: Private push targets keyed by user alias or user ID.
 # ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
-# Example: { owner = { uids = [1310714247], mode = "link" } }
+# Example: { owner = { extra_accounts = ["fire"], mode = "link" } }
 users = {}
 
 [bilibili.filters]
@@ -312,10 +324,10 @@ group_schedules = []
 # ZH: 打开退订菜单的口令；大小写不敏感，所以 TD 自动生效。
 # Built-in push categories include startup_notice, startup_docker_update,
 # startup_data_sync, ai_chat_error_notice, bili_login_notice,
-# headless_seer_notice, render_crash_notice, admin_notice, bili_push,
-# seer_activity_push, and server_status_push.
+# headless_seer_notice, render_crash_notice, admin_notice,
+# per-account Bilibili dynamic pushes, seer_activity_push, and server_status_push.
 # 内置推送项包括机器人启动、启动镜像检查、启动数据同步、AI 聊天异常、
-# B站登录、无头赛尔号、精灵渲染崩溃、其它管理通知、B站动态、
+# B站登录、无头赛尔号、精灵渲染崩溃、其它管理通知、按账号拆分的 B站动态、
 # 活动结束提醒和开服推送。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅"]

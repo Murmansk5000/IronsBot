@@ -282,11 +282,21 @@ main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_c
 [feature.user_policy]
 owner = ["all"]
 
+[bilibili.account_aliases]
+seer = 1310714247
+
 [bilibili.push]
+default_accounts = ["seer"]
 
 [bilibili.push.groups.main]
-uids = [1310714247]
+extra_accounts = []
 mode = "full"
+
+# Group owners/admins can inspect and override one subscribed account at runtime:
+# B站账号
+# B站推送模式 seer 链接
+# B站推送模式 seer 内容
+# B站推送模式 seer 默认
 ```
 
 ## Team Resource Subscription

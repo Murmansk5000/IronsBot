@@ -15,7 +15,7 @@ IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2
 - 精灵、技能、魂印、皮肤、刻印、套装、部件、称号、属性、异常状态查询。
 - 全服榜、样本榜、巅峰榜、刻印数值榜与缓存状态查询。
 - 群星牌公开资料查询。
-- B站动态监控与历史动态点播。
+- B站动态监控与历史动态点播，支持按账号退订、按账号设置全文/链接推送。
 - 当前活动、快结束活动和活动结束提醒。
 - 固定图片、固定文本、会议回复、通用指令回复和定时消息。
 - AI 聊天与 AI 意图动作。
@@ -102,7 +102,7 @@ services:
 | `about` | 新版关于页。 |
 | `sendpic` | 固定关键词发图。 |
 | `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
-| `bilibili` | B站动态监控与点播。 |
+| `bilibili` | B站动态监控与点播，支持账号级 TD 退订和账号级推送模式覆盖。 |
 | `meeting` | 腾讯会议回复。 |
 | `team_shortcut` | 战队资源订阅、群内订阅战队查询与低资源提醒；feature key 为 `team_resource_subscription`。 |
 | `activity` | 当前活动、快结束活动和活动结束提醒。 |
@@ -178,11 +178,21 @@ example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_
 [feature.user_policy]
 owner = ["all"]
 
+[bilibili.account_aliases]
+seer = 1310714247
+
 [bilibili.push]
+default_accounts = ["seer"]
 
 [bilibili.push.groups.example]
-uids = [1310714247]
+extra_accounts = []
 mode = "full"
+
+# 群主/管理员可在群里发送：
+# B站账号
+# B站推送模式 seer 链接
+# B站推送模式 seer 内容
+# B站推送模式 seer 默认
 
 [seer.team_resource]
 times = ["23:00"]
@@ -227,7 +237,7 @@ at_users = ["owner"]
 | `web_activity_push` | 游戏外活动链接定时推送。 |
 | `seerinfo` | seerinfo/火火手册等自定义文本入口。 |
 | `bili_query` | B站动态手动查询、刷新、历史点播。 |
-| `bili_push` | B站动态自动推送。 |
+| `bili_push` | B站动态自动推送；TD 菜单会按 B站 UID 拆分退订项。 |
 | `bili` | `bili_query` + `bili_push`。 |
 | `seer_activity_query` | 游戏内活动、快结束活动手动查询。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
@@ -330,7 +340,7 @@ check_on_restart = false
 `watchtower_docker_api_version = "1.40"` 即可。
 
 推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
-AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、B站动态、活动结束提醒和
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、按账号拆分的 B站动态、活动结束提醒和
 开服推送。私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送。
 
