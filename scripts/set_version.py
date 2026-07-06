@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""将项目版本设为指定值：调用 `uv version` 更新 pyproject，并同步根目录 `__version__` 文件。"""
+# ruff: noqa: T201
+"""Set the project version and sync the root ``__version__`` file."""
 
 from __future__ import annotations
 
@@ -57,7 +58,8 @@ def main() -> None:
             "  uv run python scripts/set_version.py 1.2.3\n"
             "  uv run python scripts/set_version.py 1.2.3 --git-tag\n"
             "\n"
-            "--git-tag 应在已提交 pyproject.toml 与 __version__ 之后使用，使标签指向包含该版本的提交。"
+            "--git-tag 应在已提交 pyproject.toml 与 __version__ 之后使用，"
+            "使标签指向包含该版本的提交。"
         ),
     )
     parser.add_argument(

@@ -28,6 +28,8 @@ def _default_sendpic_local_root() -> Path:
 
 
 class BaseMessageAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = ""
     name: str = ""
     enabled: bool = True
@@ -103,6 +105,8 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
 
 
 class OutboundRateLimitConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     window_seconds: float = Field(default=60.0, gt=0)
     max_messages: int = Field(default=10, ge=1)
@@ -120,6 +124,8 @@ class OutboundRateLimitConfig(BaseModel):
 
 
 class PushUnsubscribeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     commands: list[str] = Field(default_factory=lambda: ["td", "退订"])
     restore_commands: list[str] = Field(
         default_factory=lambda: ["订阅", "恢复订阅"]
@@ -149,6 +155,8 @@ class PushUnsubscribeConfig(BaseModel):
 
 
 class MeetingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     number: str = ""
     template: str = (
         "腾讯会议\n"
@@ -164,6 +172,8 @@ class MeetingConfig(BaseModel):
 
 
 class TeamAuditWelcomeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = False
     feature: str = "team_audit"
     groups: list[int | str] = Field(default_factory=list)
@@ -209,6 +219,8 @@ class TeamAuditWelcomeConfig(BaseModel):
 
 
 class PicConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     backend: SendpicBackendType
     command: str

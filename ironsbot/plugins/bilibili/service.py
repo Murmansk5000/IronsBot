@@ -20,6 +20,7 @@ from ironsbot.services.bilibili.delivery import build_dynamic_push_deliveries
 from ironsbot.services.bilibili.parser import (
     target_dynamics_from_response,
 )
+from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,
@@ -75,6 +76,7 @@ async def _send_dynamic_push(
     bot: Bot,
     item: dict[str, Any],
     pub_ts: int,
+    author_mid: int,
     targets: BiliPushTargets,
 ) -> None:
     from ironsbot.shared.messaging import send_broadcast_message
@@ -87,7 +89,7 @@ async def _send_dynamic_push(
             bot=bot,
             action_name=delivery.action_name,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-            subscription_key="bili_push",
+            subscription_key=bili_push_subscription_key(author_mid),
         )
 
 
@@ -156,7 +158,7 @@ async def _push_new_dynamics(
             logger.warning("no bot online for Bilibili dynamic push")
             return checkpoint_changed
 
-        await _send_dynamic_push(bot, item, pub_ts, targets)
+        await _send_dynamic_push(bot, item, pub_ts, author_mid, targets)
         save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
         checkpoint_changed = (
             mark_checkpoint(checkpoints, author_mid, pub_ts)

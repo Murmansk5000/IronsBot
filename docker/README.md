@@ -44,7 +44,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `activity`: query in-game activities and send ending-soon reminders.
 - `server_status`: query open-server status, restart the bot, and optionally check/update the Docker image.
 - `startup_notice`: send separate startup, Docker update, and startup data sync notices.
-- `team_shortcut`: team resource subscriptions; feature key `team_resource_subscription`.
+- `team_resource_subscription`: team resource subscriptions and low-resource reminders.
 - `team_audit_welcome`: dedicated team audit group join prompt and 24-hour follow-up.
 - `fire_manual_ad`: Fire manual AI intent and Fire manual link appended to proactive pushes.
 - `ai_chat`: chat with DeepSeek/OpenAI-compatible APIs through mentions or authorized private messages.
@@ -124,7 +124,7 @@ In this example, `/config/ironsbot.toml` inside the container is
 `D:\DockerData\ironsbot\config\ironsbot.toml` on Windows.
 
 Optional Docker image check/update: superusers can send `/重启机器人`;
-`/更新镜像` and `/更新Docker` are compatible aliases for the same restart flow.
+`/更新镜像` and `/更新Docker` are equivalent commands for the same restart flow.
 By default the generated TOML checks the target image on startup and before
 manual restart/update commands. When a new image exists, IronsBot starts a
 one-shot Watchtower updater that pulls the latest image and recreates the
@@ -258,7 +258,7 @@ Feature names are used in `[feature.group_policy]` and
 | `team_audit` | Team audit group join prompt and 24-hour follow-up. |
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
 | `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
-| `fire_manual` | "手册" AI intent and Fire manual links appended to proactive pushes. |
+| `fire_manual_ad` | "手册" AI intent and Fire manual links appended to proactive pushes. |
 | `admin_notice` | Target permission for admin notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
@@ -277,16 +277,28 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"]
+main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual_ad"]
 
 [feature.user_policy]
 owner = ["all"]
 
+[bilibili.accounts]
+seer = 1310714247
+
 [bilibili.push]
+accounts = ["seer"]
+mode = "link"
+modes = { seer = "full" }
 
 [bilibili.push.groups.main]
-uids = [1310714247]
-mode = "full"
+accounts = []
+mode = "link"
+
+# Group owners/admins can inspect and override one subscribed account at runtime:
+# B站账号
+# B站推送模式 seer 链接
+# B站推送模式 seer 内容
+# B站推送模式 seer 默认
 ```
 
 ## Team Resource Subscription

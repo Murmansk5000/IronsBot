@@ -14,7 +14,7 @@ TEAM_RESOURCE_THRESHOLD = 2000
 def _load_team_resource_config_module():
     spec = spec_from_file_location(
         "team_resource_config_for_test",
-        ROOT / "ironsbot" / "plugins" / "team_shortcut" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
     )
     assert spec is not None and spec.loader is not None
     module = module_from_spec(spec)
@@ -26,7 +26,7 @@ def _load_team_resource_config_module():
 def _app_config(team_resource: TeamResourceConfig) -> SimpleNamespace:
     return SimpleNamespace(
         feature=SimpleNamespace(
-            group_aliases={"anjie": 786252348},
+            group_aliases={"example": 987654321},
             user_aliases={"owner": 1234567890},
         ),
         seer=SimpleNamespace(team_resource=team_resource),
@@ -39,7 +39,7 @@ def test_team_resource_subscription_resolves_aliases(
     config = TeamResourceConfig(
         subscriptions=[
             {
-                "group": "anjie",
+                "group": "example",
                 "team_ids": [1234567, 2345678],
                 "threshold": TEAM_RESOURCE_THRESHOLD,
                 "at_users": ["owner", "2345678901"],
@@ -53,7 +53,7 @@ def test_team_resource_subscription_resolves_aliases(
         lambda: _app_config(config),
     )
 
-    subscriptions = team_resource_config.subscriptions_for_group(786252348)
+    subscriptions = team_resource_config.subscriptions_for_group(987654321)
 
     assert len(subscriptions) == 1
     assert subscriptions[0].team_ids == [1234567, 2345678]
@@ -71,7 +71,7 @@ def test_team_resource_disabled_has_no_subscriptions(
         enabled=False,
         subscriptions=[
             {
-                "group": "anjie",
+                "group": "example",
                 "team_ids": [1234567],
             }
         ],

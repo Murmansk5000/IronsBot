@@ -598,13 +598,17 @@ dependencies = [
 dev = [
     { name = "basedpyright" },
     { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "basedpyright" },
+    { name = "pre-commit" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -619,6 +623,8 @@ requires-dist = [
     { name = "nonebot-plugin-send-anything-anywhere", specifier = ">=0.7.1" },
     { name = "nonebot2", extras = ["fastapi", "httpx"], specifier = ">=2.4.4" },
     { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pyyaml", marker = "extra == 'dev'" },
     { name = "qrcode-terminal", specifier = ">=0.8" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "seerapi", specifier = ">=106.4.0" },
@@ -631,7 +637,9 @@ provides-extras = ["dev"]
 [package.metadata.requires-dev]
 dev = [
     { name = "basedpyright", specifier = ">=1.38.1" },
+    { name = "pre-commit", specifier = ">=4.4.0" },
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.15.2" },
 ]
 

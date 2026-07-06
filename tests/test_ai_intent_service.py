@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import nonebot
@@ -7,6 +9,9 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiIntentAction
 from ironsbot.services.ai import intent
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
@@ -56,7 +61,7 @@ def test_fire_manual_announcement_or_share_is_not_request() -> None:
     text = "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict"
     action = AiIntentAction(
         id="manual",
-        feature="fire_manual",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -70,7 +75,7 @@ def test_fire_manual_announcement_or_share_is_not_request() -> None:
 def test_fire_manual_request_is_not_context_excluded() -> None:
     action = AiIntentAction(
         id="manual",
-        feature="fire_manual",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -111,7 +116,7 @@ def test_fire_manual_strong_request_prefilter_rejects_weak_mentions() -> None:
 def test_fire_manual_action_prefilter_is_feature_specific() -> None:
     manual_action = AiIntentAction(
         id="manual",
-        feature="fire_manual",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -149,7 +154,7 @@ def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> 
     )
     action = AiIntentAction(
         id="manual",
-        feature="fire_manual",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -193,8 +198,8 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
 ) -> None:
     called = False
     action = AiIntentAction(
-        id="fire_manual",
-        feature="fire_manual",
+        id="fire_manual_ad",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -240,8 +245,8 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
     prompts: list[str] = []
     state: dict[str, object] = {}
     action = AiIntentAction(
-        id="fire_manual",
-        feature="fire_manual",
+        id="fire_manual_ad",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -286,8 +291,8 @@ async def test_fire_manual_strong_intent_respects_ai_no(
 ) -> None:
     state: dict[str, object] = {}
     action = AiIntentAction(
-        id="fire_manual",
-        feature="fire_manual",
+        id="fire_manual_ad",
+        feature="fire_manual_ad",
         keywords=["手册"],
         action="message",
         message="ok",

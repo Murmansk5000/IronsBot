@@ -4,8 +4,9 @@ version = "0.5.1"
 description = "赛尔号信息查询机器人"
 readme = "README.md"
 requires-python = ">=3.10, <4.0"
-# 整机作为组合作品分发时受 GPL-3.0 约束（因含 Seer 查询/渲染组件与 headless_seer GPL 组件）。
-# 其余非插件模块单独以 MIT 授权，详见 LICENSING.md 与各源文件的 SPDX 标识。
+# The combined bot/image is distributed under GPL-3.0-or-later because it
+# includes GPL components. Independently reusable MIT components keep their
+# per-file SPDX declarations. See LICENSING.md for details.
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"]
 dependencies = [
@@ -24,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["basedpyright", "pre-commit", "ruff"]
+dev = ["basedpyright", "pre-commit", "pytest", "pyyaml", "ruff"]
 
 [tool.nonebot]
 plugin_dirs = []
@@ -93,35 +94,46 @@ ignore = [
     "E402",  # module-import-not-at-top-of-file  # nonebot2 require() violates this
     "B008",  # function-call-in-default-argument  # nonebot2 Depends() without Annotated violates this
     "UP037", # quoted-annotation
-    # "RUF001",  # ambiguous-unicode-character-string
-    # "RUF002",  # ambiguous-unicode-character-docstring
-    # "RUF003",  # ambiguous-unicode-character-comment
-    # "ANN201",  # missing-return-type-undocumented-public-function
+    "RUF001", # ambiguous-unicode-character-string  # Chinese text is intentional
+    "RUF002", # ambiguous-unicode-character-docstring
+    "RUF003", # ambiguous-unicode-character-comment
     "ANN202",  # missing-return-type-private-function
     "ANN401",  # any-type
     "COM812",  # missing-trailing-comma
     "PLC0415", # import-outside-top-level
     "TID252",
 ]
-allowed-confusables = [
-    "，",
-    "。",
-    "“",
-    "”",
-    "：",
-    "；",
-    "？",
-    "！",
-    "【",
-    "】",
-    "《",
-    "》",
-    "…",
-    "—",
-    "（",
-    "）",
-    "、",
+
+[tool.ruff.lint.per-file-ignores]
+# Protocol/vendor-style code kept close to upstream behavior. These files are
+# still syntax-checked, import-checked, and compiled, but style-heavy rules that
+# would require a risky rewrite are scoped out here instead of hidden globally.
+"ironsbot/plugins/headless_seer/**/*.py" = [
+    "ANN002",
+    "ANN201",
+    "B904",
+    "BLE001",
+    "C901",
+    "E501",
+    "FBT001",
+    "FBT002",
+    "PERF401",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR2004",
+    "TRY003",
+    "TRY301",
 ]
+"ironsbot/plugins/bilibili/auth.py" = [
+    "BLE001",
+    "FBT001",
+    "FBT002",
+    "FBT003",
+    "PLW0603",
+]
+"ironsbot/plugins/db_sync/manager.py" = ["BLE001", "PERF203"]
+"tests/test_analyze_parser.py" = ["ANN201", "B905", "E501", "PLR2004"]
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
@@ -133,4 +145,10 @@ pythonPlatform = "All"
 typeCheckingMode = "standard"
 
 [dependency-groups]
-dev = ["basedpyright>=1.38.1", "pytest>=9.0.2", "ruff>=0.15.2"]
+dev = [
+    "basedpyright>=1.38.1",
+    "pre-commit>=4.4.0",
+    "pytest>=9.0.2",
+    "pyyaml>=6.0.3",
+    "ruff>=0.15.2",
+]

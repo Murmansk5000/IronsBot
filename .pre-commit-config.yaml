@@ -1,13 +1,25 @@
-# 安装: uv sync --extra dev && pre-commit install
-# 手动运行全部钩子: pre-commit run --all-files
+# Install: uv sync --group dev && uv run pre-commit install
+# Run all hooks: uv run pre-commit run --all-files
 
 repos:
   - repo: local
     hooks:
       - id: check-version-sync
-        name: __version__ 与 pyproject 版本一致
-        entry: python scripts/check_version_sync.py
+        name: __version__ matches pyproject
+        entry: uv run python scripts/check_version_sync.py
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|__version__)$
+        stages: [pre-commit]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check ironsbot tests scripts
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: static-repo-check
+        name: YAML/XML/UTF-8 repository checks
+        entry: uv run python scripts/check_repo.py --static
+        language: system
+        pass_filenames: false
         stages: [pre-commit]

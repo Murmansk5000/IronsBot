@@ -15,7 +15,7 @@ IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2
 - 精灵、技能、魂印、皮肤、刻印、套装、部件、称号、属性、异常状态查询。
 - 全服榜、样本榜、巅峰榜、刻印数值榜与缓存状态查询。
 - 群星牌公开资料查询。
-- B站动态监控与历史动态点播。
+- B站动态监控与历史动态点播，支持按账号退订、按账号设置全文/链接推送。
 - 当前活动、快结束活动和活动结束提醒。
 - 固定图片、固定文本、会议回复、通用指令回复和定时消息。
 - AI 聊天与 AI 意图动作。
@@ -102,9 +102,9 @@ services:
 | `about` | 新版关于页。 |
 | `sendpic` | 固定关键词发图。 |
 | `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
-| `bilibili` | B站动态监控与点播。 |
+| `bilibili` | B站动态监控与点播，支持账号级 TD 退订和账号级推送模式覆盖。 |
 | `meeting` | 腾讯会议回复。 |
-| `team_shortcut` | 战队资源订阅、群内订阅战队查询与低资源提醒；feature key 为 `team_resource_subscription`。 |
+| `team_resource_subscription` | 战队资源订阅、群内订阅战队查询与低资源提醒。 |
 | `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
@@ -173,16 +173,28 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"]
+example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
 
 [feature.user_policy]
 owner = ["all"]
 
+[bilibili.accounts]
+seer = 1310714247
+
 [bilibili.push]
+accounts = ["seer"]
+mode = "link"
+modes = { seer = "full" }
 
 [bilibili.push.groups.example]
-uids = [1310714247]
-mode = "full"
+accounts = []
+mode = "link"
+
+# 群主/管理员可在群里发送：
+# B站账号
+# B站推送模式 seer 链接
+# B站推送模式 seer 内容
+# B站推送模式 seer 默认
 
 [seer.team_resource]
 times = ["23:00"]
@@ -199,7 +211,7 @@ at_users = ["owner"]
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
 `all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
 游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
-使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual`
+使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual_ad`
 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 
 ### Feature 对照表
@@ -227,7 +239,7 @@ at_users = ["owner"]
 | `web_activity_push` | 游戏外活动链接定时推送。 |
 | `seerinfo` | seerinfo/火火手册等自定义文本入口。 |
 | `bili_query` | B站动态手动查询、刷新、历史点播。 |
-| `bili_push` | B站动态自动推送。 |
+| `bili_push` | B站动态自动推送；TD 菜单会按 B站 UID 拆分退订项。 |
 | `bili` | `bili_query` + `bili_push`。 |
 | `seer_activity_query` | 游戏内活动、快结束活动手动查询。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
@@ -239,7 +251,7 @@ at_users = ["owner"]
 | `team_audit` | 战队审核群入群提示和 24 小时 follow-up。 |
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
 | `ai_intent` | AI 意图分析，用于战队推荐、手册等意图动作。 |
-| `fire_manual` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
+| `fire_manual_ad` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃等具体推送可在 TD 菜单中单独退订。 |
 
 ## 数据与缓存
@@ -282,7 +294,7 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员可以发送 `/重启机器人`（兼容 `/机器人重启`、`/更新镜像`、`/更新Docker`）
+超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`、`/更新镜像`、`/更新Docker`）
 进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
 检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
 Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
@@ -330,7 +342,7 @@ check_on_restart = false
 `watchtower_docker_api_version = "1.40"` 即可。
 
 推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
-AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、B站动态、活动结束提醒和
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、按账号拆分的 B站动态、活动结束提醒和
 开服推送。私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送。
 
@@ -364,10 +376,23 @@ GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不�
 ## 本地开发
 
 ```powershell
-uv sync
-uv run ruff check
-uv run python -m compileall -q ironsbot
+uv sync --group dev
+uv run python scripts/check_repo.py
 uv run python bot.py
+```
+
+如果 Windows 终端中文显示异常，可以在当前 PowerShell 会话里先执行：
+
+```powershell
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+```
+
+快速只检查配置文件语法和 UTF-8/乱码扫描：
+
+```powershell
+uv run python scripts/check_repo.py --static
 ```
 
 ## README 说明

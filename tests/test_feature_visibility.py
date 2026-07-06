@@ -187,6 +187,6 @@ def test_team_resource_visibility_reads_app_config(
 
     assert visibility.plugin_visible_for_event(
         "战队资源订阅",
-        "ironsbot.plugins.team_shortcut",
+        "ironsbot.plugins.team_resource_subscription",
         _group_event(),
     )

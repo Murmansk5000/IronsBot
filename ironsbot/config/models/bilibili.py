@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ironsbot.shared.config.parsing import int_list, json_object, string_list
+from ironsbot.shared.config.parsing import json_object, string_list
 from ironsbot.shared.config.time import normalize_daily_time
 
 INVALID_INTERVAL_TIME_ERROR = (
@@ -15,6 +14,12 @@ INVALID_INTERVAL_TIME_ERROR = (
 )
 
 BiliPushMode = Literal["full", "link"]
+DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
+DEFAULT_BILI_ACCOUNT_UID = 1310714247
+DEFAULT_BILI_ACCOUNTS = {DEFAULT_BILI_ACCOUNT_ALIAS: DEFAULT_BILI_ACCOUNT_UID}
+DEFAULT_BILI_PUSH_MODES: dict[str, BiliPushMode] = {
+    DEFAULT_BILI_ACCOUNT_ALIAS: "full",
+}
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "恭喜",
     "恭喜.*获得",
@@ -35,7 +40,21 @@ def _normalize_mode(value: object) -> object:
     return mode
 
 
+def _normalize_account_name(value: object) -> str:
+    return str(value).strip().lower()
+
+
+def _account_list(value: object) -> list[str]:
+    return [
+        account
+        for raw_account in string_list(value)
+        if (account := _normalize_account_name(raw_account))
+    ]
+
+
 class BiliIntervalWindow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     start: str
     end: str
     minutes: int = Field(gt=0)
@@ -50,11 +69,15 @@ class BiliIntervalWindow(BaseModel):
 
 
 class BiliStorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     data_dir: Path = Path("data/bilibili_monitor")
     history_max_items: int = Field(default=1000, ge=1)
 
 
 class BiliPollingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     default_minutes: int = Field(default=30, gt=0)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
@@ -64,42 +87,69 @@ class BiliPollingConfig(BaseModel):
 
 
 class BiliPushTargetConfig(BaseModel):
-    uids: list[int] = Field(default_factory=list)
-    mode: BiliPushMode | None = None
-    uid_modes: dict[int, BiliPushMode] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("uids", mode="before")
+    accounts: list[str] = Field(default_factory=list)
+    mode: BiliPushMode | None = None
+    modes: dict[str, BiliPushMode] = Field(default_factory=dict)
+
+    @field_validator("accounts", mode="before")
     @classmethod
-    def normalize_uids(cls, value: object) -> object:
-        return int_list(value)
+    def normalize_accounts(cls, value: object) -> object:
+        return _account_list(value)
 
     @field_validator("mode", mode="before")
     @classmethod
     def normalize_mode(cls, value: object) -> object:
         return _normalize_mode(value)
 
-    @field_validator("uid_modes", mode="before")
+    @field_validator("modes", mode="before")
     @classmethod
-    def normalize_uid_modes(cls, value: object) -> object:
-        parsed = json_object(value, name="APP_CONFIG.bilibili.push uid_modes")
-        result: dict[int, BiliPushMode] = {}
-        for raw_uid, raw_mode in parsed.items():
-            uid = int(raw_uid)
+    def normalize_modes(cls, value: object) -> object:
+        parsed = json_object(value, name="APP_CONFIG.bilibili.push modes")
+        result: dict[str, BiliPushMode] = {}
+        for raw_account, raw_mode in parsed.items():
+            account = _normalize_account_name(raw_account)
             mode = _normalize_mode(raw_mode)
-            if mode in {"full", "link"}:
-                result[uid] = mode
+            if account and mode in {"full", "link"}:
+                result[account] = mode
         return result
 
 
 class BiliPushConfig(BaseModel):
-    default_mode: BiliPushMode = "full"
+    model_config = ConfigDict(extra="forbid")
+
+    mode: BiliPushMode = "link"
+    accounts: list[str] = Field(
+        default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
+    )
+    modes: dict[str, BiliPushMode] = Field(
+        default_factory=lambda: dict(DEFAULT_BILI_PUSH_MODES)
+    )
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
 
-    @field_validator("default_mode", mode="before")
+    @field_validator("mode", mode="before")
     @classmethod
-    def normalize_default_mode(cls, value: object) -> object:
+    def normalize_mode(cls, value: object) -> object:
         return _normalize_mode(value)
+
+    @field_validator("accounts", mode="before")
+    @classmethod
+    def normalize_accounts(cls, value: object) -> object:
+        return _account_list(value)
+
+    @field_validator("modes", mode="before")
+    @classmethod
+    def normalize_modes(cls, value: object) -> object:
+        parsed = json_object(value, name="APP_CONFIG.bilibili.push.modes")
+        result: dict[str, BiliPushMode] = {}
+        for raw_account, raw_mode in parsed.items():
+            account = _normalize_account_name(raw_account)
+            mode = _normalize_mode(raw_mode)
+            if account and mode in {"full", "link"}:
+                result[account] = mode
+        return result
 
     @field_validator("groups", "users", mode="before")
     @classmethod
@@ -113,17 +163,14 @@ class BiliPushConfig(BaseModel):
 
             if raw_config is None or raw_config == "":
                 result[ref] = {}
-            elif (
-                isinstance(raw_config, Iterable)
-                and not isinstance(raw_config, str | bytes | Mapping)
-            ):
-                result[ref] = {"uids": list(raw_config)}
             else:
                 result[ref] = raw_config
         return result
 
 
 class BiliFilterConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     suppress_push_patterns: list[str] = Field(
         default_factory=lambda: list(DEFAULT_BILI_SUPPRESS_PATTERNS)
     )
@@ -135,7 +182,11 @@ class BiliFilterConfig(BaseModel):
 
 
 class BiliConfig(BaseModel):
-    uids: list[int] = Field(default_factory=lambda: [1310714247])
+    model_config = ConfigDict(extra="forbid")
+
+    accounts: dict[str, int] = Field(
+        default_factory=lambda: dict(DEFAULT_BILI_ACCOUNTS)
+    )
     storage: BiliStorageConfig = Field(default_factory=BiliStorageConfig)
     polling: BiliPollingConfig = Field(default_factory=BiliPollingConfig)
     push: BiliPushConfig = Field(default_factory=BiliPushConfig)
@@ -145,18 +196,69 @@ class BiliConfig(BaseModel):
         ge=0,
     )
 
-    @field_validator("uids", mode="before")
+    @field_validator("accounts", mode="before")
     @classmethod
-    def normalize_uids(cls, value: object) -> object:
-        return int_list(value)
+    def normalize_accounts(cls, value: object) -> object:
+        parsed = json_object(value, name="APP_CONFIG.bilibili.accounts")
+        result: dict[str, int] = dict(DEFAULT_BILI_ACCOUNTS)
+        for raw_alias, raw_uid in parsed.items():
+            alias = _normalize_account_name(raw_alias)
+            if not alias:
+                continue
+            uid = int(raw_uid)
+            if uid > 0:
+                result[alias] = uid
+        return result
+
+    @model_validator(mode="after")
+    def validate_account_references(self) -> BiliConfig:
+        accounts = set(self.accounts)
+        for account in self.push.accounts:
+            _validate_account_ref("bilibili.push.accounts", account, accounts)
+        for account in self.push.modes:
+            _validate_account_ref("bilibili.push.modes", account, accounts)
+        _validate_target_account_refs(
+            "bilibili.push.groups",
+            self.push.groups,
+            accounts,
+        )
+        _validate_target_account_refs(
+            "bilibili.push.users",
+            self.push.users,
+            accounts,
+        )
+        return self
 
 
 class BilibiliConfig(BiliConfig):
     pass
 
 
+def _validate_account_ref(location: str, account: str, aliases: set[str]) -> None:
+    if account in aliases:
+        return
+    msg = f"Unknown Bilibili account alias in {location}: {account}"
+    raise ValueError(msg)
+
+
+def _validate_target_account_refs(
+    location: str,
+    targets: dict[str, BiliPushTargetConfig],
+    accounts: set[str],
+) -> None:
+    for ref, target in targets.items():
+        for account in target.accounts:
+            _validate_account_ref(f"{location}.{ref}.accounts", account, accounts)
+        for account in target.modes:
+            _validate_account_ref(f"{location}.{ref}.modes", account, accounts)
+
+
 __all__ = [
+    "DEFAULT_BILI_ACCOUNTS",
+    "DEFAULT_BILI_ACCOUNT_ALIAS",
+    "DEFAULT_BILI_ACCOUNT_UID",
     "DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS",
+    "DEFAULT_BILI_PUSH_MODES",
     "DEFAULT_BILI_SUPPRESS_PATTERNS",
     "INVALID_INTERVAL_TIME_ERROR",
     "BiliConfig",

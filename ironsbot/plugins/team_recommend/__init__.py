@@ -9,7 +9,9 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.plugins.team_shortcut.adapter import fetch_team_resource_result
+from ironsbot.plugins.team_resource_subscription.adapter import (
+    fetch_team_resource_result,
+)
 from ironsbot.services.ai.intent import (
     get_team_resource_config,
 )
