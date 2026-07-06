@@ -34,6 +34,7 @@ class PushSubscriptionOption:
     key: str
     label: str
     feature: str
+    unsubscribed: bool = False
 
 
 BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
@@ -274,14 +275,13 @@ class PushUnsubscribeStore:
         return con
 
 
-def build_schedule_subscription_options(  # noqa: PLR0913
+def build_schedule_subscription_options(
     *,
     target_type: PushTargetType,
     target_id: int,
     tasks: Sequence[ScheduledPushTask],
     eligible_target_ids_for_feature: dict[str, set[int]],
     store: PushUnsubscribeStore,
-    include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
     options: list[PushSubscriptionOption] = []
@@ -298,8 +298,6 @@ def build_schedule_subscription_options(  # noqa: PLR0913
             else group_schedule_key(index, task)
         )
         is_unsubscribed = key in unsubscribed
-        if include_unsubscribed != is_unsubscribed:
-            continue
 
         label = (
             private_schedule_label(index, task)
@@ -311,6 +309,7 @@ def build_schedule_subscription_options(  # noqa: PLR0913
                 key=key,
                 label=label,
                 feature=task.feature,
+                unsubscribed=is_unsubscribed,
             )
         )
 
@@ -324,11 +323,11 @@ def build_push_subscription_menu(
 ) -> str:
     lines = [title]
     lines.extend(
-        f"{index}. {option.label}"
+        f"{index}. {'❌' if option.unsubscribed else '✅'} {option.label}"
         for index, option in enumerate(options, start=1)
     )
     lines.append("")
-    lines.append("💬 输入序号选择 · 输入 0 退出")
+    lines.append("✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出")
     return "\n".join(lines)
 
 __all__ = [

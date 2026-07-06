@@ -65,15 +65,12 @@ from .runtime_service import (
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
-PUSH_SUBSCRIPTION_MODE_KEY = "_message_push_subscription_mode"
 PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
 PUSH_SUBSCRIPTION_SESSION_KEY = "_message_push_subscription_session"
 PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
 PUSH_SUBSCRIPTION_TARGET_TYPE_KEY = "_message_push_subscription_target_type"
 PUSH_SUBSCRIPTION_VERSION_KEY = "_message_push_subscription_version"
 PUSH_SUBSCRIPTION_NAMESPACE = "message_push_subscription"
-PUSH_SUBSCRIPTION_UNSUBSCRIBE_MODE = "unsubscribe"
-PUSH_SUBSCRIPTION_RESTORE_MODE = "restore"
 MESSAGE_PLUGIN_NAME = "message"
 _messaging_runtime_state = {"registered": False}
 
@@ -135,7 +132,7 @@ def _is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
 
 async def _match_push_subscription_command(
     event: MessageEvent,
-    state: T_State,
+    _state: T_State,
 ) -> bool:
     if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
@@ -148,12 +145,8 @@ async def _match_push_subscription_command(
 
     text = event.get_plaintext()
     if command_text_matches(text, config.commands):
-        state[PUSH_SUBSCRIPTION_MODE_KEY] = PUSH_SUBSCRIPTION_UNSUBSCRIBE_MODE
         return True
-    if command_text_matches(text, config.restore_commands):
-        state[PUSH_SUBSCRIPTION_MODE_KEY] = PUSH_SUBSCRIPTION_RESTORE_MODE
-        return True
-    return False
+    return command_text_matches(text, config.restore_commands)
 
 
 def _message_subscription_priority() -> int:
@@ -276,7 +269,6 @@ def _builtin_subscription_options(
     target_type: PushTargetType,
     target_id: int,
     store: PushUnsubscribeStore,
-    include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
     eligible = _eligible_target_ids_by_feature(
@@ -288,9 +280,14 @@ def _builtin_subscription_options(
         if target_id not in eligible.get(option.feature, set()):
             continue
         is_unsubscribed = option.key in unsubscribed
-        if include_unsubscribed != is_unsubscribed:
-            continue
-        options.append(option)
+        options.append(
+            PushSubscriptionOption(
+                key=option.key,
+                label=option.label,
+                feature=option.feature,
+                unsubscribed=is_unsubscribed,
+            )
+        )
     return options
 
 
@@ -299,7 +296,6 @@ def _schedule_subscription_options(
     target_type: PushTargetType,
     target_id: int,
     store: PushUnsubscribeStore,
-    include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     config = get_message_config()
     tasks = (
@@ -317,15 +313,12 @@ def _schedule_subscription_options(
             features,
         ),
         store=store,
-        include_unsubscribed=include_unsubscribed,
     )
 
 
 def _push_subscription_options(
     target_type: PushTargetType,
     target_id: int,
-    *,
-    include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     store = _push_subscription_store()
     from ironsbot.services.bilibili.state import bili_push_subscription_options
@@ -335,19 +328,16 @@ def _push_subscription_options(
             target_type=target_type,
             target_id=target_id,
             store=store,
-            include_unsubscribed=include_unsubscribed,
         ),
         *_builtin_subscription_options(
             target_type=target_type,
             target_id=target_id,
             store=store,
-            include_unsubscribed=include_unsubscribed,
         ),
         *_schedule_subscription_options(
             target_type=target_type,
             target_id=target_id,
             store=store,
-            include_unsubscribed=include_unsubscribed,
         ),
     ]
 
@@ -413,17 +403,12 @@ async def handle_push_subscription_menu(
     state: T_State,
 ) -> None:
     target_type, target_id = _target_type_and_id(event)
-    mode = state.get(PUSH_SUBSCRIPTION_MODE_KEY)
-    include_unsubscribed = mode == PUSH_SUBSCRIPTION_RESTORE_MODE
     options = _push_subscription_options(
         target_type,
         target_id,
-        include_unsubscribed=include_unsubscribed,
     )
     if not options:
-        if include_unsubscribed:
-            await matcher.finish("当前没有可恢复的推送订阅。")
-        await matcher.finish("当前没有可退订的推送订阅。")
+        await matcher.finish("当前没有可管理的推送订阅。")
 
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = options
     session_id = event_conversation_session_id(
@@ -437,11 +422,7 @@ async def handle_push_subscription_menu(
     state[PUSH_SUBSCRIPTION_VERSION_KEY] = version
 
     scope = "本群" if target_type == "group" else "私聊"
-    title = (
-        f"请选择要恢复订阅的{scope}推送："
-        if include_unsubscribed
-        else f"请选择要退订的{scope}推送："
-    )
+    title = f"请选择要切换的{scope}推送订阅："
     await enter_prompt_loop(
         matcher,
         handlers=[handle_push_subscription_select],
@@ -472,7 +453,6 @@ async def handle_push_subscription_select(
         )
 
     option = options[index - 1]
-    mode = state.get(PUSH_SUBSCRIPTION_MODE_KEY)
     target_type = state.get(PUSH_SUBSCRIPTION_TARGET_TYPE_KEY)
     target_id = state.get(PUSH_SUBSCRIPTION_TARGET_ID_KEY)
     if target_type not in {"private", "group"} or not isinstance(target_id, int):
@@ -480,7 +460,7 @@ async def handle_push_subscription_select(
     target_type = cast("PushTargetType", target_type)
 
     store = _push_subscription_store()
-    if mode == PUSH_SUBSCRIPTION_RESTORE_MODE:
+    if store.is_target_unsubscribed(target_type, target_id, option.key):
         store.restore_target(target_type, target_id, option.key)
         await matcher.finish(f"已恢复订阅：{option.label}。")
 

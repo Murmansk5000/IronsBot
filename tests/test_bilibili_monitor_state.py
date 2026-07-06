@@ -257,7 +257,6 @@ def test_bili_push_subscription_options_are_per_uid(
         target_type="group",
         target_id=987654321,
         store=store,
-        include_unsubscribed=False,
     )
 
     assert [option.key for option in options] == [
@@ -276,22 +275,14 @@ def test_bili_push_subscription_options_are_per_uid(
         "bili_push",
     )
 
-    active_options = state.bili_push_subscription_options(
+    options = state.bili_push_subscription_options(
         target_type="group",
         target_id=987654321,
         store=store,
-        include_unsubscribed=False,
-    )
-    restore_options = state.bili_push_subscription_options(
-        target_type="group",
-        target_id=987654321,
-        store=store,
-        include_unsubscribed=True,
     )
 
-    assert [option.key for option in active_options] == [
-        bili_push_subscription_key(1310714247)
+    assert [option.key for option in options] == [
+        bili_push_subscription_key(375750254),
+        bili_push_subscription_key(1310714247),
     ]
-    assert [option.key for option in restore_options] == [
-        bili_push_subscription_key(375750254)
-    ]
+    assert [option.unsubscribed for option in options] == [True, False]
