@@ -36,10 +36,11 @@ def test_build_dynamic_menu_text_renders_records() -> None:
     text = build_dynamic_menu_text([_record("dynamic-1", suppressed=True)])
 
     assert "【最新动态列表】" in text
+    assert "1. ⏰" in text
     assert "赛尔号（UID：1310714247）" in text
     assert "测试动态" in text
     assert "（未推送）" in text
-    assert "两分钟内有效" in text
+    assert "两分钟内有效" not in text
 
 
 def test_dynamic_record_ids_returns_cached_ids() -> None:

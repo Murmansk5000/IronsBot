@@ -7,4 +7,4 @@ def get_first_bot() -> Bot | None:
     if not bots:
         return None
 
-    return list(bots.values())[0]
+    return next(iter(bots.values()))

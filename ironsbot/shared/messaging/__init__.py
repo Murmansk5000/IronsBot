@@ -32,6 +32,15 @@ from .replies import (
     send_event_reply,
     send_matcher_message,
 )
+from .selection_menu import (
+    DEFAULT_SELECTION_FOOTER,
+    HELP_SELECTION_FOOTER,
+    TOGGLE_SELECTION_FOOTER,
+    SelectionMenu,
+    SelectionMenuItem,
+    SelectionMenuSection,
+    format_selection_menu,
+)
 from .senders import (
     MessageLimiter,
     OneBotMessageSender,
@@ -58,10 +67,13 @@ from .text import (
 
 __all__ = [
     "DEFAULT_COMMAND_PREFIXES",
+    "DEFAULT_SELECTION_FOOTER",
     "DIRECT_COMMAND_HELP_HINT_TEXT",
     "HELP_COMMAND_TEXT",
     "HELP_HINT_TEXT",
+    "HELP_SELECTION_FOOTER",
     "POKE_HELP_HINT_TEXT",
+    "TOGGLE_SELECTION_FOOTER",
     "BeforeReplySendHook",
     "EventReplyCheck",
     "InMemoryRateLimiter",
@@ -70,6 +82,9 @@ __all__ = [
     "OneBotMessageSender",
     "QueryGuard",
     "ReplyMessage",
+    "SelectionMenu",
+    "SelectionMenuItem",
+    "SelectionMenuSection",
     "TargetSendSummary",
     "append_help_hint",
     "apply_reply_before_send",
@@ -85,6 +100,7 @@ __all__ = [
     "finish_event_reply",
     "finish_matcher_message",
     "finish_message_sequence",
+    "format_selection_menu",
     "get_bot_or_none",
     "group_targets",
     "normalize_command_text",

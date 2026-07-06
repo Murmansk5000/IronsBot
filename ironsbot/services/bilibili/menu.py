@@ -10,6 +10,10 @@ from ironsbot.services.bilibili.cache import (
     get_dynamic_history_item,
 )
 from ironsbot.services.bilibili.parser import parse_single_item
+from ironsbot.shared.messaging.selection_menu import (
+    SelectionMenuItem,
+    format_selection_menu,
+)
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
 
@@ -47,34 +51,31 @@ class DynamicDetailSelection:
 
 
 def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:
-    lines = [
-        "📋 【最新动态列表】",
-        "👉 发送数字查看详情",
-        "-------------------------",
-    ]
+    items: list[SelectionMenuItem] = []
 
-    for index, record in enumerate(records, start=1):
+    for record in records:
         time_str = (
             datetime.fromtimestamp(record.pub_ts, tz=timezone.utc)
             .astimezone()
             .strftime("%Y-%m-%d %H:%M:%S")
         )
         suppressed_tag = "（未推送）" if record.suppressed else ""
-        lines.extend(
-            [
-                f"【{index}】 ⏰ {time_str}{suppressed_tag}",
-                f"👤 {record.author_name}（UID：{record.uid}）",
-                f"📝 {record.brief}",
-            ]
+        items.append(
+            SelectionMenuItem(
+                label=f"⏰ {time_str}{suppressed_tag}",
+                detail_lines=(
+                    f"👤 {record.author_name}（UID：{record.uid}）",
+                    f"📝 {record.brief}",
+                ),
+            )
         )
 
-    lines.extend(
-        [
-            "-------------------------",
-            "💡 两分钟内有效",
-        ]
+    return format_selection_menu(
+        title="📋 【最新动态列表】",
+        intro_lines=("👉 发送数字查看详情", "-------------------------"),
+        items=tuple(items),
+        footer=None,
     )
-    return "\n".join(lines)
 
 
 def dynamic_record_ids(records: Sequence[DynamicHistoryRecord]) -> list[str]:
