@@ -6,8 +6,10 @@ from nonebot.adapters.onebot.v11 import Message
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging.push_subscriptions import (
     BUILTIN_PUSH_OPTIONS,
+    PushSubscriptionOption,
     PushUnsubscribeStore,
     append_push_unsubscribe_hint,
+    build_push_subscription_menu,
     build_schedule_subscription_options,
     group_schedule_label,
     private_schedule_key,
@@ -134,7 +136,7 @@ def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:
     ]
 
 
-def test_build_schedule_subscription_options_splits_available_and_restorable(
+def test_build_schedule_subscription_options_marks_subscription_state(
     tmp_path: Path,
 ) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
@@ -149,22 +151,34 @@ def test_build_schedule_subscription_options_splits_available_and_restorable(
     }
     store.unsubscribe_target("private", 1001, "daily", "text_push")
 
-    available = build_schedule_subscription_options(
+    options = build_schedule_subscription_options(
         target_type="private",
         target_id=1001,
         tasks=tasks,
         eligible_target_ids_for_feature=eligible,
         store=store,
-        include_unsubscribed=False,
-    )
-    restorable = build_schedule_subscription_options(
-        target_type="private",
-        target_id=1001,
-        tasks=tasks,
-        eligible_target_ids_for_feature=eligible,
-        store=store,
-        include_unsubscribed=True,
     )
 
-    assert [option.key for option in available] == ["weekly"]
-    assert [option.key for option in restorable] == ["daily"]
+    assert [option.key for option in options] == ["daily", "weekly"]
+    assert [option.unsubscribed for option in options] == [True, False]
+
+
+def test_build_push_subscription_menu_shows_subscription_state() -> None:
+    options = [
+        BUILTIN_PUSH_OPTIONS[0],
+        PushSubscriptionOption(
+            key=BUILTIN_PUSH_OPTIONS[1].key,
+            label=BUILTIN_PUSH_OPTIONS[1].label,
+            feature=BUILTIN_PUSH_OPTIONS[1].feature,
+            unsubscribed=True,
+        ),
+    ]
+
+    text = build_push_subscription_menu(
+        title="请选择要切换的推送订阅：",
+        options=options,
+    )
+
+    assert "✅ 活动结束提醒" in text
+    assert "❌ 开服推送" in text
+    assert "✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出" in text

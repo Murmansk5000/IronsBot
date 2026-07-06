@@ -10,6 +10,12 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.shared.messaging.selection_menu import (
+    TOGGLE_SELECTION_FOOTER,
+    SelectionMenuItem,
+    format_selection_menu,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -34,6 +40,7 @@ class PushSubscriptionOption:
     key: str
     label: str
     feature: str
+    unsubscribed: bool = False
 
 
 BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
@@ -274,14 +281,13 @@ class PushUnsubscribeStore:
         return con
 
 
-def build_schedule_subscription_options(  # noqa: PLR0913
+def build_schedule_subscription_options(
     *,
     target_type: PushTargetType,
     target_id: int,
     tasks: Sequence[ScheduledPushTask],
     eligible_target_ids_for_feature: dict[str, set[int]],
     store: PushUnsubscribeStore,
-    include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
     options: list[PushSubscriptionOption] = []
@@ -298,8 +304,6 @@ def build_schedule_subscription_options(  # noqa: PLR0913
             else group_schedule_key(index, task)
         )
         is_unsubscribed = key in unsubscribed
-        if include_unsubscribed != is_unsubscribed:
-            continue
 
         label = (
             private_schedule_label(index, task)
@@ -311,6 +315,7 @@ def build_schedule_subscription_options(  # noqa: PLR0913
                 key=key,
                 label=label,
                 feature=task.feature,
+                unsubscribed=is_unsubscribed,
             )
         )
 
@@ -322,14 +327,17 @@ def build_push_subscription_menu(
     title: str,
     options: Sequence[PushSubscriptionOption],
 ) -> str:
-    lines = [title]
-    lines.extend(
-        f"{index}. {option.label}"
-        for index, option in enumerate(options, start=1)
+    return format_selection_menu(
+        title=title,
+        items=tuple(
+            SelectionMenuItem(
+                label=option.label,
+                prefix="❌" if option.unsubscribed else "✅",
+            )
+            for option in options
+        ),
+        footer=TOGGLE_SELECTION_FOOTER,
     )
-    lines.append("")
-    lines.append("💬 输入序号选择 · 输入 0 退出")
-    return "\n".join(lines)
 
 __all__ = [
     "BUILTIN_PUSH_OPTIONS",

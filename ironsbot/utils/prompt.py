@@ -13,7 +13,10 @@ from nonebot.typing import T_State
 from sqlmodel import Session
 from typing_extensions import NamedTuple
 
-from ironsbot.utils import build_sub_line
+from ironsbot.shared.messaging.selection_menu import (
+    SelectionMenuItem,
+    format_selection_menu,
+)
 from ironsbot.utils.matcher import (
     enter_prompt_loop as _enter_prompt_loop,
 )
@@ -59,16 +62,16 @@ class Prompt(Generic[T]):
             return None
 
     def build_message(self) -> str:
-        msg = self.title
-        for index, item in enumerate(self.items, start=1):
-            text = f"{index}. {item.name}（{item.desc}）"
-            if item.is_sub_prompt:
-                msg += build_sub_line(texts=[text])
-            else:
-                msg += f"{text}\n"
-        msg += "\n💬 输入序号选择 · 输入 0 退出"
-
-        return msg
+        return format_selection_menu(
+            title=self.title.rstrip(),
+            items=tuple(
+                SelectionMenuItem(
+                    label=f"{item.name}（{item.desc}）",
+                    is_sub_item=item.is_sub_prompt,
+                )
+                for item in self.items
+            ),
+        )
 
     def build_event_message(self, event: Event) -> str | Message:
         text = self.build_message()

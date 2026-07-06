@@ -352,7 +352,6 @@ def bili_push_subscription_options(
     target_type: PushTargetType,
     target_id: int,
     store: PushUnsubscribeStore,
-    include_unsubscribed: bool,
 ) -> list[PushSubscriptionOption]:
     rules = push_group_rules() if target_type == "group" else push_user_rules()
     rule = rules.get(target_id)
@@ -364,13 +363,12 @@ def bili_push_subscription_options(
     for uid in sorted(rule.uids):
         key = bili_push_subscription_key(uid)
         is_unsubscribed = key in unsubscribed
-        if include_unsubscribed != is_unsubscribed:
-            continue
         options.append(
             PushSubscriptionOption(
                 key=key,
                 label=bili_push_subscription_label(uid, rule.account_for_uid(uid)),
                 feature="bili_push",
+                unsubscribed=is_unsubscribed,
             )
         )
     return options
