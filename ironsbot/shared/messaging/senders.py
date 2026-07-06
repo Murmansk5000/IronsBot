@@ -23,6 +23,10 @@ MessageLimiter = Callable[[str | Message, int | None], str | Message]
 _message_limiter: MessageLimiter | None = None
 
 
+def _copy_outbound_message(message: str | Message) -> str | Message:
+    return message.copy() if isinstance(message, Message) else message
+
+
 class OneBotMessageSender(Protocol):
     async def send_private_msg(self, *, user_id: int, message: Message) -> object:
         ...
@@ -80,10 +84,11 @@ async def send_target_messages(  # noqa: PLR0913
             continue
 
         active_limiter = message_limiter or _message_limiter
+        target_message = _copy_outbound_message(message)
         limited_message = (
-            active_limiter(message, group_id)
+            active_limiter(target_message, group_id)
             if active_limiter is not None
-            else message
+            else target_message
         )
         if subscription_key:
             limited_message = append_push_unsubscribe_hint(

@@ -5,8 +5,11 @@ from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging.push_subscriptions import (
+    BUILTIN_PUSH_OPTIONS,
+    PushSubscriptionOption,
     PushUnsubscribeStore,
     append_push_unsubscribe_hint,
+    build_push_subscription_menu,
     build_schedule_subscription_options,
     group_schedule_label,
     private_schedule_key,
@@ -39,7 +42,7 @@ def test_private_schedule_key_prefers_id_and_falls_back_to_job_id() -> None:
 
 def test_schedule_label_uses_configured_name_before_internal_id() -> None:
     task = FakePrivateSchedule(
-        id="activity_link_daily_private",
+        id="web_activity_daily_private",
         name="周年庆签到提醒",
         feature="web_activity_push",
     )
@@ -49,7 +52,7 @@ def test_schedule_label_uses_configured_name_before_internal_id() -> None:
 
 def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
     task = FakePrivateSchedule(
-        id="activity_link_daily_private",
+        id="web_activity_daily_private",
         feature="web_activity_push",
         message="周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign",
     )
@@ -59,12 +62,25 @@ def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
 
 def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> None:
     task = FakePrivateSchedule(
-        id="activity_link_daily_private",
+        id="web_activity_daily_private",
         feature="web_activity_push",
         message="https://seerm.61.com/events/17years/#sign",
     )
 
     assert group_schedule_label(1, task) == "游戏外活动推送（23:00）"
+
+
+def test_builtin_push_options_split_startup_admin_notices() -> None:
+    labels = {option.key: option.label for option in BUILTIN_PUSH_OPTIONS}
+
+    assert labels["startup_notice"] == "机器人启动通知"
+    assert labels["startup_docker_update"] == "启动镜像检查通知"
+    assert labels["startup_data_sync"] == "启动数据同步通知"
+    assert labels["ai_chat_error_notice"] == "AI聊天异常通知"
+    assert labels["bili_login_notice"] == "B站登录通知"
+    assert labels["headless_seer_notice"] == "无头赛尔号通知"
+    assert labels["render_crash_notice"] == "精灵渲染崩溃通知"
+    assert labels["admin_notice"] == "其他管理通知"
 
 
 def test_append_push_unsubscribe_hint_is_last_line() -> None:
@@ -120,7 +136,7 @@ def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:
     ]
 
 
-def test_build_schedule_subscription_options_splits_available_and_restorable(
+def test_build_schedule_subscription_options_marks_subscription_state(
     tmp_path: Path,
 ) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
@@ -135,22 +151,34 @@ def test_build_schedule_subscription_options_splits_available_and_restorable(
     }
     store.unsubscribe_target("private", 1001, "daily", "text_push")
 
-    available = build_schedule_subscription_options(
+    options = build_schedule_subscription_options(
         target_type="private",
         target_id=1001,
         tasks=tasks,
         eligible_target_ids_for_feature=eligible,
         store=store,
-        include_unsubscribed=False,
-    )
-    restorable = build_schedule_subscription_options(
-        target_type="private",
-        target_id=1001,
-        tasks=tasks,
-        eligible_target_ids_for_feature=eligible,
-        store=store,
-        include_unsubscribed=True,
     )
 
-    assert [option.key for option in available] == ["weekly"]
-    assert [option.key for option in restorable] == ["daily"]
+    assert [option.key for option in options] == ["daily", "weekly"]
+    assert [option.unsubscribed for option in options] == [True, False]
+
+
+def test_build_push_subscription_menu_shows_subscription_state() -> None:
+    options = [
+        BUILTIN_PUSH_OPTIONS[0],
+        PushSubscriptionOption(
+            key=BUILTIN_PUSH_OPTIONS[1].key,
+            label=BUILTIN_PUSH_OPTIONS[1].label,
+            feature=BUILTIN_PUSH_OPTIONS[1].feature,
+            unsubscribed=True,
+        ),
+    ]
+
+    text = build_push_subscription_menu(
+        title="请选择要切换的推送订阅：",
+        options=options,
+    )
+
+    assert "✅ 活动结束提醒" in text
+    assert "❌ 开服推送" in text
+    assert "✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出" in text
