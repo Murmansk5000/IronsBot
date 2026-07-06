@@ -127,8 +127,8 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             ),
             reply_prompt=DEFAULT_KEYWORD_INFO_PROMPT,
         ),
-        "fire_manual": AiIntentAction(
-            id="fire_manual",
+        "fire_manual_ad": AiIntentAction(
+            id="fire_manual_ad",
             feature=FIRE_MANUAL_FEATURE,
             keywords=["手册"],
             action="message",
@@ -142,7 +142,7 @@ def default_ai_actions() -> dict[str, AiIntentAction]:
     actions = builtin_ai_actions()
     return {
         "join_team": actions["join_team"],
-        "fire_manual": actions["fire_manual"],
+        "fire_manual_ad": actions["fire_manual_ad"],
     }
 
 

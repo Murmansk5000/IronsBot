@@ -142,7 +142,7 @@ def _resolve_rule(
         uids=frozenset(uid for uid in account_to_uid.values() if uid > 0),
         uid_accounts=uid_accounts,
         mode=target_config.mode or config.push.mode,
-        modes=dict(target_config.modes),
+        modes={**config.push.modes, **target_config.modes},
     )
 
 

@@ -258,7 +258,7 @@ Feature names are used in `[feature.group_policy]` and
 | `team_audit` | Team audit group join prompt and 24-hour follow-up. |
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
 | `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
-| `fire_manual` | "手册" AI intent and Fire manual links appended to proactive pushes. |
+| `fire_manual_ad` | "手册" AI intent and Fire manual links appended to proactive pushes. |
 | `admin_notice` | Target permission for admin notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
@@ -277,7 +277,7 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"]
+main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual_ad"]
 
 [feature.user_policy]
 owner = ["all"]
@@ -287,10 +287,12 @@ seer = 1310714247
 
 [bilibili.push]
 accounts = ["seer"]
+mode = "link"
+modes = { seer = "full" }
 
 [bilibili.push.groups.main]
 accounts = []
-mode = "full"
+mode = "link"
 
 # Group owners/admins can inspect and override one subscribed account at runtime:
 # B站账号

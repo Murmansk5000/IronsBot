@@ -35,7 +35,7 @@ superuser_bypass = true
 # 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能。
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
-# fire_manual 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
+# fire_manual_ad 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 # team_resource_subscription 控制战队订阅查询和低资源定时提醒。
 # admin_notice 不包含在 all 里；管理群要收启动、异常等管理通知时需要显式写 admin_notice。
 # 具体推送项可在 TD 菜单里分别退订。
@@ -166,7 +166,7 @@ intent_actions_enabled = true
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
 
-[ai.intent_actions.fire_manual]
+[ai.intent_actions.fire_manual_ad]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
 enabled = true
 
@@ -211,17 +211,23 @@ default_minutes = 30
 windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 
 [bilibili.push]
-# Default: "full"
-# EN: Default push mode, either full or link.
-# ZH: 默认推送模式，可选 full 或 link。
-# Example: "link"
-mode = "full"
+# Default: "link"
+# EN: Default push mode for accounts without an explicit mode.
+# ZH: 未单独指定模式的账号默认推送方式，可选 full 或 link。
+# Example: "full"
+mode = "link"
 
 # Default: ["seer"]
 # EN: Accounts pushed to every group/private target that enables bili_push.
 # ZH: 所有开启 bili_push 的群/私聊默认推送的账号。
 # Example: ["seer"]
 accounts = ["seer"]
+
+# Default: { seer = "full" }
+# EN: Global per-account push modes. Runtime admin overrides take priority.
+# ZH: 全局按账号指定推送模式；管理员在群内设置的运行时覆盖优先级更高。
+# Example: { seer = "full", fire = "link" }
+modes = { seer = "full" }
 
 # EN: Group owners/admins can override one account at runtime with:
 #     B站推送模式 <账号别名> <内容|链接|默认>
@@ -231,7 +237,7 @@ accounts = ["seer"]
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
 # ZH: 群推送目标，键可以是群别名或群号。
-# Example: { main = { accounts = ["fire"], mode = "full" } }
+# Example: { main = { accounts = ["fire"], modes = { fire = "full" } } }
 groups = {}
 
 # Default: {}

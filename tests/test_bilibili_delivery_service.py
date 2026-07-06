@@ -5,6 +5,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.services.bilibili import delivery as delivery_service
 from ironsbot.services.bilibili.delivery import (
+    BILI_PUSH_ADMIN_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     build_dynamic_push_deliveries,
@@ -83,9 +84,11 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
     assert "正文内容" in full_rendered
     assert "[CQ:image" in full_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in full_rendered
+    assert BILI_PUSH_ADMIN_HINT in full_rendered
     assert "正文内容" not in link_rendered
     assert "[CQ:image" not in link_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in link_rendered
+    assert BILI_PUSH_ADMIN_HINT in link_rendered
 
 
 def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
@@ -111,8 +114,10 @@ def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
     assert len(deliveries) == SPLIT_DELIVERY_COUNT
     assert deliveries[0].group_ids == [1001]
     assert FIRE_MANUAL_LINK_MESSAGE in str(deliveries[0].message)
+    assert BILI_PUSH_ADMIN_HINT in str(deliveries[0].message)
     assert deliveries[1].group_ids == [1002]
     assert FIRE_MANUAL_LINK_MESSAGE not in str(deliveries[1].message)
+    assert BILI_PUSH_ADMIN_HINT in str(deliveries[1].message)
 
 
 def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:

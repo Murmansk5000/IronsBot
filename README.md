@@ -173,7 +173,7 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"]
+example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
 
 [feature.user_policy]
 owner = ["all"]
@@ -183,10 +183,12 @@ seer = 1310714247
 
 [bilibili.push]
 accounts = ["seer"]
+mode = "link"
+modes = { seer = "full" }
 
 [bilibili.push.groups.example]
 accounts = []
-mode = "full"
+mode = "link"
 
 # 群主/管理员可在群里发送：
 # B站账号
@@ -209,7 +211,7 @@ at_users = ["owner"]
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
 `all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
 游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
-使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual`
+使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual_ad`
 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 
 ### Feature 对照表
@@ -249,7 +251,7 @@ at_users = ["owner"]
 | `team_audit` | 战队审核群入群提示和 24 小时 follow-up。 |
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
 | `ai_intent` | AI 意图分析，用于战队推荐、手册等意图动作。 |
-| `fire_manual` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
+| `fire_manual_ad` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃等具体推送可在 TD 菜单中单独退订。 |
 
 ## 数据与缓存

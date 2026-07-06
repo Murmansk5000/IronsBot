@@ -17,6 +17,9 @@ BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
 DEFAULT_BILI_ACCOUNT_UID = 1310714247
 DEFAULT_BILI_ACCOUNTS = {DEFAULT_BILI_ACCOUNT_ALIAS: DEFAULT_BILI_ACCOUNT_UID}
+DEFAULT_BILI_PUSH_MODES: dict[str, BiliPushMode] = {
+    DEFAULT_BILI_ACCOUNT_ALIAS: "full",
+}
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "恭喜",
     "恭喜.*获得",
@@ -116,9 +119,12 @@ class BiliPushTargetConfig(BaseModel):
 class BiliPushConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mode: BiliPushMode = "full"
+    mode: BiliPushMode = "link"
     accounts: list[str] = Field(
         default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
+    )
+    modes: dict[str, BiliPushMode] = Field(
+        default_factory=lambda: dict(DEFAULT_BILI_PUSH_MODES)
     )
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
@@ -132,6 +138,18 @@ class BiliPushConfig(BaseModel):
     @classmethod
     def normalize_accounts(cls, value: object) -> object:
         return _account_list(value)
+
+    @field_validator("modes", mode="before")
+    @classmethod
+    def normalize_modes(cls, value: object) -> object:
+        parsed = json_object(value, name="APP_CONFIG.bilibili.push.modes")
+        result: dict[str, BiliPushMode] = {}
+        for raw_account, raw_mode in parsed.items():
+            account = _normalize_account_name(raw_account)
+            mode = _normalize_mode(raw_mode)
+            if account and mode in {"full", "link"}:
+                result[account] = mode
+        return result
 
     @field_validator("groups", "users", mode="before")
     @classmethod
@@ -197,6 +215,8 @@ class BiliConfig(BaseModel):
         accounts = set(self.accounts)
         for account in self.push.accounts:
             _validate_account_ref("bilibili.push.accounts", account, accounts)
+        for account in self.push.modes:
+            _validate_account_ref("bilibili.push.modes", account, accounts)
         _validate_target_account_refs(
             "bilibili.push.groups",
             self.push.groups,
@@ -238,6 +258,7 @@ __all__ = [
     "DEFAULT_BILI_ACCOUNT_ALIAS",
     "DEFAULT_BILI_ACCOUNT_UID",
     "DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS",
+    "DEFAULT_BILI_PUSH_MODES",
     "DEFAULT_BILI_SUPPRESS_PATTERNS",
     "INVALID_INTERVAL_TIME_ERROR",
     "BiliConfig",

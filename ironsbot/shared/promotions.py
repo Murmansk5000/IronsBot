@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-FIRE_MANUAL_FEATURE = "fire_manual"
+FIRE_MANUAL_FEATURE = "fire_manual_ad"
 FIRE_MANUAL_URL = "https://seerinfo.yuyuqaq.cn/firedict"
 FIRE_MANUAL_LINK_MESSAGE = f"火火手册链接：{FIRE_MANUAL_URL}"
 
