@@ -1,5 +1,3 @@
-version: "3"
-
 networks:
   ironsbot_net:
     driver: bridge
@@ -16,8 +14,8 @@ services:
       - /mnt/user/appdata/ironsbot/config:/config
       - /mnt/user/appdata/ironsbot/data:/app/data
       - /mnt/user/appdata/ironsbot/logs:/app/logs
-      # 可选但推荐：用于 /重启机器人、/更新镜像 和启动镜像检查。
-      # 该挂载等同授予容器控制宿主机 Docker 的权限。
+      # Optional: enables /重启机器人, /更新镜像, and startup image checks.
+      # Mounting this socket gives the container Docker control on the host.
       # - /var/run/docker.sock:/var/run/docker.sock
     dns:
       - 223.5.5.5
@@ -25,7 +23,7 @@ services:
     env_file:
       - .env.prod
     environment:
-      # 基础运行配置
+      # Runtime settings
       ENVIRONMENT: "prod"
       DRIVER: "~fastapi+~httpx"
       HOST: "0.0.0.0"

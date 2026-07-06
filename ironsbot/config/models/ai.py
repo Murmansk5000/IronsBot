@@ -23,10 +23,6 @@ AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt
 UNKNOWN_AI_ACTION_ERROR = (
     "unknown AI intent action must configure a complete action definition"
 )
-LEGACY_INTENT_ACTIONS_ERROR = (
-    "ai.intent_actions must use [ai.intent_actions.<id>] tables; "
-    "legacy [[ai.intent_actions]] arrays are not supported"
-)
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
@@ -74,6 +70,8 @@ DEFAULT_KEYWORD_INFO_PROMPT = (
 
 
 class AiActionBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = ""
     enabled: bool = True
     feature: str = "ai_intent"
@@ -199,9 +197,6 @@ class AiConfig(BaseModel):
                 return default_ai_actions()
             return json_object(text, name="APP_CONFIG.ai.intent_actions")
 
-        if isinstance(value, list):
-            raise TypeError(LEGACY_INTENT_ACTIONS_ERROR)
-
         return value
 
     @model_validator(mode="after")
@@ -285,7 +280,6 @@ __all__ = [
     "DEFAULT_JOIN_TEAM_MESSAGE",
     "DEFAULT_KEYWORD_INFO_PROMPT",
     "KEYWORDS_REQUIRED_ERROR",
-    "LEGACY_INTENT_ACTIONS_ERROR",
     "MESSAGE_REQUIRED_ERROR",
     "UNKNOWN_AI_ACTION_ERROR",
     "AiActionBase",

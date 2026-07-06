@@ -40,7 +40,7 @@ def test_private_schedule_key_prefers_id_and_falls_back_to_job_id() -> None:
 
 def test_schedule_label_uses_configured_name_before_internal_id() -> None:
     task = FakePrivateSchedule(
-        id="activity_link_daily_private",
+        id="web_activity_daily_private",
         name="周年庆签到提醒",
         feature="web_activity_push",
     )
@@ -50,7 +50,7 @@ def test_schedule_label_uses_configured_name_before_internal_id() -> None:
 
 def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
     task = FakePrivateSchedule(
-        id="activity_link_daily_private",
+        id="web_activity_daily_private",
         feature="web_activity_push",
         message="周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign",
     )
@@ -60,7 +60,7 @@ def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
 
 def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> None:
     task = FakePrivateSchedule(
-        id="activity_link_daily_private",
+        id="web_activity_daily_private",
         feature="web_activity_push",
         message="https://seerm.61.com/events/17years/#sign",
     )

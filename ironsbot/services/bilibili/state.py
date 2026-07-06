@@ -45,13 +45,15 @@ class BiliTargetRule:
     uids: frozenset[int]
     uid_accounts: dict[int, str]
     mode: BiliPushMode
-    account_modes: dict[str, BiliPushMode]
-    uid_modes: dict[int, BiliPushMode]
+    modes: dict[str, BiliPushMode]
 
     def mode_for_uid(self, uid: int) -> BiliPushMode | None:
         if uid not in self.uids:
             return None
-        return self.uid_modes.get(uid, self.mode)
+        account = self.account_for_uid(uid)
+        if account is None:
+            return self.mode
+        return self.modes.get(account, self.mode)
 
     def account_for_uid(self, uid: int) -> str | None:
         return self.uid_accounts.get(uid)
@@ -89,16 +91,16 @@ def get_bili_config() -> BiliConfig:
     return get_app_config().bilibili
 
 
-def account_aliases(config: BiliConfig | None = None) -> dict[str, int]:
-    return dict((config or get_bili_config()).account_aliases)
+def bili_accounts(config: BiliConfig | None = None) -> dict[str, int]:
+    return dict((config or get_bili_config()).accounts)
 
 
 def account_uid(account: str, config: BiliConfig | None = None) -> int | None:
-    return account_aliases(config).get(account.strip().lower())
+    return bili_accounts(config).get(account.strip().lower())
 
 
 def account_for_uid(uid: int, config: BiliConfig | None = None) -> str | None:
-    for account, account_uid_value in account_aliases(config).items():
+    for account, account_uid_value in bili_accounts(config).items():
         if account_uid_value == int(uid):
             return account
     return None
@@ -115,8 +117,8 @@ def _target_accounts(
 ) -> frozenset[str]:
     return frozenset(
         [
-            *config.push.default_accounts,
-            *target_config.extra_accounts,
+            *config.push.accounts,
+            *target_config.accounts,
         ]
     )
 
@@ -127,7 +129,7 @@ def _resolve_rule(
 ) -> BiliTargetRule:
     accounts = _target_accounts(target_config, config)
     account_to_uid = {
-        account: config.account_aliases[account]
+        account: config.accounts[account]
         for account in accounts
     }
     uid_accounts = {
@@ -135,17 +137,12 @@ def _resolve_rule(
         for account, uid in account_to_uid.items()
         if uid > 0
     }
-    uid_modes = {
-        config.account_aliases[account]: mode
-        for account, mode in target_config.account_modes.items()
-    }
     return BiliTargetRule(
         accounts=accounts,
         uids=frozenset(uid for uid in account_to_uid.values() if uid > 0),
         uid_accounts=uid_accounts,
-        mode=target_config.mode or config.push.default_mode,
-        account_modes=dict(target_config.account_modes),
-        uid_modes=uid_modes,
+        mode=target_config.mode or config.push.mode,
+        modes=dict(target_config.modes),
     )
 
 
@@ -159,8 +156,7 @@ def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTarg
         uids=old_rule.uids | new_rule.uids,
         uid_accounts={**old_rule.uid_accounts, **new_rule.uid_accounts},
         mode=new_rule.mode,
-        account_modes={**old_rule.account_modes, **new_rule.account_modes},
-        uid_modes={**old_rule.uid_modes, **new_rule.uid_modes},
+        modes={**old_rule.modes, **new_rule.modes},
     )
 
 
@@ -327,7 +323,7 @@ def mode_for_target_uid(
         return None
     return (
         _runtime_mode_for_target(target_type, target_id, uid)
-        or rule.uid_modes.get(uid)
+        or rule.mode_for_uid(uid)
         or rule.mode
     )
 

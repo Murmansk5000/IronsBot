@@ -104,7 +104,7 @@ services:
 | `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
 | `bilibili` | B站动态监控与点播，支持账号级 TD 退订和账号级推送模式覆盖。 |
 | `meeting` | 腾讯会议回复。 |
-| `team_shortcut` | 战队资源订阅、群内订阅战队查询与低资源提醒；feature key 为 `team_resource_subscription`。 |
+| `team_resource_subscription` | 战队资源订阅、群内订阅战队查询与低资源提醒。 |
 | `activity` | 当前活动、快结束活动和活动结束提醒。 |
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
@@ -178,14 +178,14 @@ example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_
 [feature.user_policy]
 owner = ["all"]
 
-[bilibili.account_aliases]
+[bilibili.accounts]
 seer = 1310714247
 
 [bilibili.push]
-default_accounts = ["seer"]
+accounts = ["seer"]
 
 [bilibili.push.groups.example]
-extra_accounts = []
+accounts = []
 mode = "full"
 
 # 群主/管理员可在群里发送：
@@ -292,7 +292,7 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员可以发送 `/重启机器人`（兼容 `/机器人重启`、`/更新镜像`、`/更新Docker`）
+超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`、`/更新镜像`、`/更新Docker`）
 进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
 检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
 Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
@@ -374,10 +374,23 @@ GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不�
 ## 本地开发
 
 ```powershell
-uv sync
-uv run ruff check
-uv run python -m compileall -q ironsbot
+uv sync --group dev
+uv run python scripts/check_repo.py
 uv run python bot.py
+```
+
+如果 Windows 终端中文显示异常，可以在当前 PowerShell 会话里先执行：
+
+```powershell
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+```
+
+快速只检查配置文件语法和 UTF-8/乱码扫描：
+
+```powershell
+uv run python scripts/check_repo.py --static
 ```
 
 ## README 说明

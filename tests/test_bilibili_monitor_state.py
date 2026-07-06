@@ -3,7 +3,6 @@ from pathlib import Path
 
 import nonebot
 import pytest
-from pydantic import ValidationError
 
 from ironsbot.config.models.bilibili import (
     DEFAULT_BILI_ACCOUNT_UID,
@@ -27,19 +26,15 @@ def _rule(
     accounts: dict[str, int],
     *,
     mode: str = "full",
-    account_modes: dict[str, str] | None = None,
+    modes: dict[str, str] | None = None,
 ) -> state.BiliTargetRule:
-    account_modes = account_modes or {}
+    modes = modes or {}
     return state.BiliTargetRule(
         accounts=frozenset(accounts),
         uids=frozenset(accounts.values()),
         uid_accounts={uid: account for account, uid in accounts.items()},
         mode=mode,
-        account_modes=account_modes,
-        uid_modes={
-            accounts[account]: account_mode
-            for account, account_mode in account_modes.items()
-        },
+        modes=modes,
     )
 
 
@@ -53,38 +48,27 @@ def test_bili_login_notice_cooldown_lives_in_bili_config() -> None:
 def test_bili_config_defaults_to_official_account() -> None:
     config = BiliConfig()
 
-    assert config.account_aliases["seer"] == DEFAULT_BILI_ACCOUNT_UID
-    assert config.push.default_accounts == ["seer"]
+    assert config.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.push.accounts == ["seer"]
 
 
-def test_bili_config_accepts_alias_based_extra_accounts() -> None:
+def test_bili_config_accepts_named_group_accounts() -> None:
     config = BiliConfig(
-        account_aliases={"fire": FIRE_BILI_UID},
+        accounts={"fire": FIRE_BILI_UID},
         push={
             "groups": {
                 "main": {
-                    "extra_accounts": ["fire"],
-                    "account_modes": {"fire": "link"},
+                    "accounts": ["fire"],
+                    "modes": {"fire": "link"},
                 }
             }
         },
     )
 
-    assert config.account_aliases["seer"] == DEFAULT_BILI_ACCOUNT_UID
-    assert config.account_aliases["fire"] == FIRE_BILI_UID
-    assert config.push.groups["main"].extra_accounts == ["fire"]
-    assert config.push.groups["main"].account_modes == {"fire": "link"}
-
-
-def test_bili_config_rejects_removed_uid_fields() -> None:
-    with pytest.raises(ValidationError):
-        BiliConfig(uids=[1310714247])
-
-    with pytest.raises(ValidationError):
-        BiliConfig(push={"default_uids": [1310714247]})
-
-    with pytest.raises(ValidationError):
-        BiliConfig(push={"groups": {"main": {"uids": [1310714247]}}})
+    assert config.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.accounts["fire"] == FIRE_BILI_UID
+    assert config.push.groups["main"].accounts == ["fire"]
+    assert config.push.groups["main"].modes == {"fire": "link"}
 
 
 def test_group_query_falls_back_to_global_uids_when_feature_enabled(
@@ -126,7 +110,7 @@ def test_group_query_uses_group_subscription_rule(
         {
             987654321: _rule(
                 {"seer": 1310714247, "fire": 375750254},
-                account_modes={"fire": "link"},
+                modes={"fire": "link"},
             )
         },
     )
@@ -151,13 +135,13 @@ def test_private_superuser_can_query_global_monitored_uids(
     ]
 
 
-def test_push_group_rules_use_default_accounts_for_feature_groups(
+def test_push_group_rules_use_global_accounts_for_feature_groups(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         state,
         "get_bili_config",
-        lambda: BiliConfig(account_aliases={"fire": 375750254}),
+        lambda: BiliConfig(accounts={"fire": 375750254}),
     )
     monkeypatch.setattr(state, "groups_for_feature", lambda _feature: [111, 222])
     monkeypatch.setattr(

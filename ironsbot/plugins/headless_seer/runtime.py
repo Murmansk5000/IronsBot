@@ -31,7 +31,7 @@ async def _login_headless_seer_on_startup() -> None:
             reconnect_delay=headless_config.reconnect_delay,
             reconnect_delay_max=headless_config.reconnect_delay_max,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.opt(exception=True).error("无头客户端登录失败")
 
 

@@ -39,8 +39,8 @@ from ironsbot.services.bilibili.preferences import (
     push_mode_label,
 )
 from ironsbot.services.bilibili.state import (
-    account_aliases,
     account_uid,
+    bili_accounts,
     mode_for_target_account,
     push_preference_store,
     query_uids_for_event,
@@ -379,10 +379,10 @@ async def _handle_bili_accounts(
     matcher = context.matcher or bili_account_matcher
     target_type, target_id = _push_mode_target(event)
     rule = target_rule(target_type, target_id)
-    aliases = account_aliases()
+    accounts = bili_accounts()
 
     lines = ["📺【B站账号】"]
-    account_lines = "、".join(f"{name}={uid}" for name, uid in aliases.items())
+    account_lines = "、".join(f"{name}={uid}" for name, uid in accounts.items())
     lines.append("账号库：" + account_lines)
     if rule is None:
         lines.append("当前会话未开启 B站推送。")
@@ -394,7 +394,7 @@ async def _handle_bili_accounts(
     )
     lines.append("当前订阅：")
     for account in sorted(rule.accounts):
-        uid = aliases[account]
+        uid = accounts[account]
         lines.append(
             _format_account_mode_line(
                 target_type=target_type,

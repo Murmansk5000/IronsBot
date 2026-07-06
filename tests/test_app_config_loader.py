@@ -101,8 +101,8 @@ def test_example_config_parses() -> None:
 
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
-    assert config.bilibili.account_aliases["seer"] == DEFAULT_BILI_ACCOUNT_UID
-    assert config.bilibili.push.default_accounts == ["seer"]
+    assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.bilibili.push.accounts == ["seer"]
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
@@ -227,11 +227,18 @@ unknown_feature = "old value"
 [ai]
 unknown_ai = "old value"
 
+[bilibili]
+unknown_bili_field = true
+
+[bilibili.push]
+unknown_push_field = true
+
 [[message.group_commands]]
 id = "hello"
 commands = ["hello"]
 message = "world"
 feature = "text_push"
+unknown_command_field = true
 """.strip(),
         encoding="utf-8",
     )
@@ -243,7 +250,10 @@ feature = "text_push"
     assert config.message.group_commands[0].id == "hello"
     assert "unknown_root" in caplog.text
     assert "ai.unknown_ai" in caplog.text
+    assert "bilibili.unknown_bili_field" in caplog.text
+    assert "bilibili.push.unknown_push_field" in caplog.text
     assert "feature.unknown_feature" in caplog.text
+    assert "message.group_commands[0].unknown_command_field" in caplog.text
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
@@ -391,7 +401,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     team_resource_config = _load_module_from_path(
         "team_resource_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "team_shortcut" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
     )
 
     try:

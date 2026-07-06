@@ -103,6 +103,8 @@ def _validate_sqlite_path(value: Path) -> Path:
 
 
 class PlayerQueryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     rate_limit_seconds: int = Field(default=60, ge=0)
     failure_rate_limit_seconds: int = Field(default=10, ge=0)
     timeout_seconds: float = Field(default=30, gt=0)
@@ -121,6 +123,8 @@ class PlayerQueryConfig(BaseModel):
 
 
 class TeamQueryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     rate_limit_seconds: int = Field(default=60, ge=0)
     failure_rate_limit_seconds: int = Field(default=10, ge=0)
     timeout_seconds: float = Field(default=20, gt=0)
@@ -138,10 +142,14 @@ class TeamQueryConfig(BaseModel):
 
 
 class MintmarkQueryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     merge_connected: bool = True
 
 
 class RankPageRefreshConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     target_limit: int = Field(default=50000, ge=1)
     target_limits: dict[str, int] = Field(default_factory=dict)
@@ -203,6 +211,8 @@ class RankPageRefreshConfig(BaseModel):
 
 
 class RankQueryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
     page_size: int = Field(default=100, ge=1)
@@ -267,6 +277,8 @@ class RankQueryConfig(BaseModel):
 
 
 class LocalRankConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     max_players: int = Field(default=5000, ge=1)
     batch_limit: int = Field(default=100, ge=1)
@@ -285,6 +297,8 @@ class LocalRankConfig(BaseModel):
 
 
 class TeamResourceSubscriptionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     group: str | int = ""
     team_ids: list[int] = Field(default_factory=list)
     threshold: int = Field(default=1000, ge=0)
@@ -309,6 +323,8 @@ class TeamResourceSubscriptionConfig(BaseModel):
 
 
 class TeamResourceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     times: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=lambda: ["战队"])
@@ -331,11 +347,15 @@ class TeamResourceConfig(BaseModel):
 
 
 class RenderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     cache_dir: Path | None = Path("render_cache")
     cache_max_size_mb: int = Field(default=200, gt=0)
 
 
 class SeasonCountdownConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     autocard_name: str = "群星牌赛季"
     autocard_start_time: object | None = None
     autocard_end_time: object | None = None

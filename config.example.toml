@@ -177,7 +177,7 @@ enabled = true
 # Example: 600.0
 login_notice_cooldown_seconds = 300.0
 
-[bilibili.account_aliases]
+[bilibili.accounts]
 # Default: { seer = 1310714247 }
 # EN: Named Bilibili account library. Other Bilibili config references these names.
 # ZH: B 站账号别名库，其他 B 站配置均引用这些别名。
@@ -215,13 +215,13 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # EN: Default push mode, either full or link.
 # ZH: 默认推送模式，可选 full 或 link。
 # Example: "link"
-default_mode = "full"
+mode = "full"
 
 # Default: ["seer"]
 # EN: Accounts pushed to every group/private target that enables bili_push.
 # ZH: 所有开启 bili_push 的群/私聊默认推送的账号。
 # Example: ["seer"]
-default_accounts = ["seer"]
+accounts = ["seer"]
 
 # EN: Group owners/admins can override one account at runtime with:
 #     B站推送模式 <账号别名> <内容|链接|默认>
@@ -231,13 +231,13 @@ default_accounts = ["seer"]
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
 # ZH: 群推送目标，键可以是群别名或群号。
-# Example: { main = { extra_accounts = ["fire"], mode = "full" } }
+# Example: { main = { accounts = ["fire"], mode = "full" } }
 groups = {}
 
 # Default: {}
 # EN: Private push targets keyed by user alias or user ID.
 # ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
-# Example: { owner = { extra_accounts = ["fire"], mode = "link" } }
+# Example: { owner = { accounts = ["fire"], mode = "link" } }
 users = {}
 
 [bilibili.filters]

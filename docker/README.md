@@ -44,7 +44,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `activity`: query in-game activities and send ending-soon reminders.
 - `server_status`: query open-server status, restart the bot, and optionally check/update the Docker image.
 - `startup_notice`: send separate startup, Docker update, and startup data sync notices.
-- `team_shortcut`: team resource subscriptions; feature key `team_resource_subscription`.
+- `team_resource_subscription`: team resource subscriptions and low-resource reminders.
 - `team_audit_welcome`: dedicated team audit group join prompt and 24-hour follow-up.
 - `fire_manual_ad`: Fire manual AI intent and Fire manual link appended to proactive pushes.
 - `ai_chat`: chat with DeepSeek/OpenAI-compatible APIs through mentions or authorized private messages.
@@ -124,7 +124,7 @@ In this example, `/config/ironsbot.toml` inside the container is
 `D:\DockerData\ironsbot\config\ironsbot.toml` on Windows.
 
 Optional Docker image check/update: superusers can send `/重启机器人`;
-`/更新镜像` and `/更新Docker` are compatible aliases for the same restart flow.
+`/更新镜像` and `/更新Docker` are equivalent commands for the same restart flow.
 By default the generated TOML checks the target image on startup and before
 manual restart/update commands. When a new image exists, IronsBot starts a
 one-shot Watchtower updater that pulls the latest image and recreates the
@@ -282,14 +282,14 @@ main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_c
 [feature.user_policy]
 owner = ["all"]
 
-[bilibili.account_aliases]
+[bilibili.accounts]
 seer = 1310714247
 
 [bilibili.push]
-default_accounts = ["seer"]
+accounts = ["seer"]
 
 [bilibili.push.groups.main]
-extra_accounts = []
+accounts = []
 mode = "full"
 
 # Group owners/admins can inspect and override one subscribed account at runtime:
