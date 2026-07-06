@@ -17,6 +17,7 @@ except ValueError:
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.plugins.messaging import runtime
+from ironsbot.shared.messaging.push_subscriptions import PushSubscriptionOption
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 
@@ -65,6 +66,26 @@ def test_messaging_runtime_setup_registers_startup_once(
     runtime._setup_messaging_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
+
+
+def test_push_subscription_menu_prompt_marks_current_state() -> None:
+    prompt = runtime._push_subscription_menu_prompt(
+        "private",
+        [
+            PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
+            PushSubscriptionOption(
+                "startup_data_sync",
+                "启动数据同步通知",
+                "admin_notice",
+                unsubscribed=True,
+            ),
+        ],
+    )
+
+    assert "请选择要切换的私聊推送订阅：" in prompt
+    assert "1. ✅ 机器人启动通知" in prompt
+    assert "2. ❌ 启动数据同步通知" in prompt
+    assert "输入序号切换" in prompt
 
 
 def test_scheduled_messages_append_fire_manual_ad(

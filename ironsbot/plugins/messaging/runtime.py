@@ -342,6 +342,21 @@ def _push_subscription_options(
     ]
 
 
+def _push_subscription_menu_title(target_type: PushTargetType) -> str:
+    scope = "本群" if target_type == "group" else "私聊"
+    return f"请选择要切换的{scope}推送订阅："
+
+
+def _push_subscription_menu_prompt(
+    target_type: PushTargetType,
+    options: list[PushSubscriptionOption],
+) -> str:
+    return build_push_subscription_menu(
+        title=_push_subscription_menu_title(target_type),
+        options=options,
+    )
+
+
 def _push_subscription_selection_rule(
     session_id: str,
     version: int,
@@ -421,13 +436,11 @@ async def handle_push_subscription_menu(
     state[PUSH_SUBSCRIPTION_TARGET_TYPE_KEY] = target_type
     state[PUSH_SUBSCRIPTION_VERSION_KEY] = version
 
-    scope = "本群" if target_type == "group" else "私聊"
-    title = f"请选择要切换的{scope}推送订阅："
     await enter_prompt_loop(
         matcher,
         handlers=[handle_push_subscription_select],
         rule=_push_subscription_selection_rule(session_id, version, target_type),
-        prompt=build_push_subscription_menu(title=title, options=options),
+        prompt=_push_subscription_menu_prompt(target_type, options),
     )
 
 
@@ -462,10 +475,18 @@ async def handle_push_subscription_select(
     store = _push_subscription_store()
     if store.is_target_unsubscribed(target_type, target_id, option.key):
         store.restore_target(target_type, target_id, option.key)
-        await matcher.finish(f"已恢复订阅：{option.label}。")
+        result_message = f"已恢复订阅：{option.label}。"
+    else:
+        store.unsubscribe_target(target_type, target_id, option.key, option.feature)
+        result_message = f"已退订：{option.label}。"
 
-    store.unsubscribe_target(target_type, target_id, option.key, option.feature)
-    await matcher.finish(f"已退订：{option.label}。\n发送“订阅”可恢复。")
+    refreshed_options = _push_subscription_options(target_type, target_id)
+    state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options
+    prompt = (
+        f"{result_message}\n\n"
+        f"{_push_subscription_menu_prompt(target_type, refreshed_options)}"
+    )
+    await _reject_push_subscription_selection(matcher, state, prompt)
 
 
 @group_command_matcher.handle()
