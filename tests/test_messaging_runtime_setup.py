@@ -1,10 +1,14 @@
 import asyncio
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import nonebot
 from pytest import MonkeyPatch
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
