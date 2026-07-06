@@ -22,6 +22,11 @@ from ironsbot.shared.messaging import (
     send_event_reply,
 )
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
+from ironsbot.shared.messaging.selection_menu import (
+    HELP_SELECTION_FOOTER,
+    SelectionMenuSection,
+    format_selection_menu,
+)
 from ironsbot.shared.messaging.text import build_message
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -56,7 +61,7 @@ HELP_GROUP_ORDER = (
     "core",
     "seer",
     "message",
-    "ai_team",
+    "ai",
     "admin",
     "other",
 )
@@ -64,7 +69,7 @@ HELP_GROUP_TITLES = {
     "core": "基础",
     "seer": "赛尔查询",
     "message": "消息与推送",
-    "ai_team": "AI 与战队",
+    "ai": "AI",
     "admin": "管理工具",
     "other": "其他",
 }
@@ -78,12 +83,12 @@ HELP_ENTRY_ORDER = {
     "B站动态": ("message", 20),
     "文本发送": ("message", 30),
     "会议回复": ("message", 40),
-    "AI聊天": ("ai_team", 10),
-    "AI意图分析": ("ai_team", 20),
-    "战队推荐": ("ai_team", 30),
-    "战队资源订阅": ("ai_team", 40),
-    "战队审核入群提示": ("ai_team", 50),
-    "开服查询": ("admin", 10),
+    "AI聊天": ("ai", 10),
+    "AI意图分析": ("ai", 20),
+    "战队推荐": ("seer", 40),
+    "战队资源订阅": ("seer", 50),
+    "战队审核入群提示": ("seer", 60),
+    "开服查询": ("seer", 70),
     "数据库同步": ("admin", 20),
     "自定义无头登录": ("admin", 30),
 }
@@ -202,21 +207,41 @@ def _format_plugin_list(entries: list[HelpEntry]) -> str:
     if not entries:
         return "当前会话没有可用的功能。"
 
-    lines = ["📖 可用功能："]
+    sections: list[SelectionMenuSection] = []
     current_group = ""
-    for index, entry in enumerate(entries, start=1):
+    current_items: list[str] = []
+
+    for entry in entries:
         group = HELP_ENTRY_ORDER.get(entry.name, ("other", 1000))[0]
         if group != current_group:
+            if current_items:
+                sections.append(
+                    SelectionMenuSection(
+                        title=HELP_GROUP_TITLES.get(current_group, "其他"),
+                        items=tuple(current_items),
+                    )
+                )
             current_group = group
-            title = HELP_GROUP_TITLES.get(group, "其他")
-            lines.extend(("", f"【{title}】"))
-        lines.append(f"{index}. {entry.name} — {entry.description}")
-    lines.append(
-        "\n💬 直接发送序号查看详细帮助 · 输入 0 退出\n"
-        "⚠️ 请直接发送指令；回复机器人消息不会触发功能。\n"
-        "🧩 此机器人无法查询精灵配置；没有收录配置图片，也没有人维护配置收集。"
+            current_items = []
+        current_items.append(f"{entry.name} — {entry.description}")
+
+    if current_items:
+        sections.append(
+            SelectionMenuSection(
+                title=HELP_GROUP_TITLES.get(current_group, "其他"),
+                items=tuple(current_items),
+            )
+        )
+
+    return format_selection_menu(
+        title="📖 可用功能：",
+        items=tuple(sections),
+        footer=(
+            f"{HELP_SELECTION_FOOTER}\n"
+            "⚠️ 请直接发送指令；回复机器人消息不会触发功能。\n"
+            "🧩 此机器人无法查询精灵配置；没有收录配置图片，也没有人维护配置收集。"
+        ),
     )
-    return "\n".join(lines)
 
 
 def _format_plugin_detail(entry: HelpEntry, event: Event) -> str:

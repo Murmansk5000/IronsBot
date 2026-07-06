@@ -44,13 +44,12 @@ TEAM_ACTIONS = {"team_recommend", "team_resource"}
 
 __plugin_meta__ = PluginMetadata(
     name="AI意图分析",
-    description="用关键词粗筛消息，再让 AI 判断意图并分发给对应功能。",
+    description="按配置识别简短意图，并触发对应回复或功能。",
     usage=(
         "【AI意图分析】\n"
-        "先用关键词粗筛，再让 AI 判断消息是否符合配置意图。\n"
-        "默认规则：消息包含“战队”时，判断发送者是否想加入战队；"
-        "若判断为是，交给“战队推荐”功能发送审核群链接。\n"
-        "可通过 ai.intent_actions 配置更多关键词、判定意图和动作。"
+        "按 ai.intent_actions 配置进行关键词粗筛和意图判断。\n"
+        "命中后可发送固定消息、生成 AI 回复，或分发给其它功能处理。\n"
+        "具体触发词、判定提示和动作都以当前配置为准。"
     ),
     config=Config,
 )
