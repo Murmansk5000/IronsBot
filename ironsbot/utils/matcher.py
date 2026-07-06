@@ -85,7 +85,8 @@ async def reject_with_rule(
     2. 将当前 handler 重新插回执行队列（等效 ``resolve_reject``）
     3. 调用 ``Matcher.new()`` 创建临时 Matcher，传入自定义 Rule
     4. 抛出 ``FinishedException`` 结束当前执行
-       （``run()`` 对 ``FinishedException`` 仅做 ``pass``，不会再创建第二个临时 Matcher）
+       （``run()`` 对 ``FinishedException`` 仅做 ``pass``，
+       不会再创建第二个临时 Matcher）
 
     Args:
         matcher: 当前 Matcher 实例。

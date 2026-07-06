@@ -10,6 +10,12 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.shared.messaging.selection_menu import (
+    TOGGLE_SELECTION_FOOTER,
+    SelectionMenuItem,
+    format_selection_menu,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -321,14 +327,17 @@ def build_push_subscription_menu(
     title: str,
     options: Sequence[PushSubscriptionOption],
 ) -> str:
-    lines = [title]
-    lines.extend(
-        f"{index}. {'❌' if option.unsubscribed else '✅'} {option.label}"
-        for index, option in enumerate(options, start=1)
+    return format_selection_menu(
+        title=title,
+        items=tuple(
+            SelectionMenuItem(
+                label=option.label,
+                prefix="❌" if option.unsubscribed else "✅",
+            )
+            for option in options
+        ),
+        footer=TOGGLE_SELECTION_FOOTER,
     )
-    lines.append("")
-    lines.append("✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出")
-    return "\n".join(lines)
 
 __all__ = [
     "BUILTIN_PUSH_OPTIONS",
