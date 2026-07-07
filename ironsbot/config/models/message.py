@@ -132,7 +132,7 @@ class PushUnsubscribeConfig(BaseModel):
     )
     data_path: str = "data/messaging/push_unsubscriptions.sqlite"
     hint: str = "回复 TD 可管理推送订阅。"
-    group_hint: str = "群主/管理员发送 TD 可管理本群推送订阅。"
+    group_hint: str = "群主/管理员发送 TD 或 订阅可管理本群推送订阅。"
 
     @field_validator("commands", "restore_commands", mode="before")
     @classmethod
