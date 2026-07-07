@@ -798,35 +798,37 @@ wait_timeout_seconds = 300.0
 [runtime.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
-about = 18
-help = 17
 help_hint = 0
 ai_group_at = -10
 ai_mention_guard = -20
-ai_chat = 99
-ai_intent = 40
-seer_query = 90
-seer_player = 5
-seer_team = 6
-seer_rank = 7
-seer_rank_help = 8
-seer_autocard = 9
-seer_mintmark = 10
-seer_pet = 11
-seer_type = 12
-seer_equipment = 13
-seer_peak = 14
-seer_data = 15
-team_resource_subscription = 16
-bilibili = 3
-sendpic = 4
 server_status = 1
 server_status_admin = 2
-message_commands = 30
-meeting = 50
-activity = 60
-db_sync = 70
-team_audit = 80
+bilibili = 3
+sendpic = 4
+seer_player = 10
+seer_team = 11
+seer_rank = 12
+seer_rank_help = 13
+seer_autocard = 14
+seer_type = 20
+seer_equipment = 21
+seer_peak = 22
+seer_data = 23
+team_resource_subscription = 24
+help = 30
+about = 31
+message_commands = 40
+ai_intent = 50
+meeting = 60
+activity = 70
+db_sync = 80
+team_audit = 90
+# EN: Broad fuzzy Seer matchers are intentionally late.
+# ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢“技能石”等固定图片/文本指令。
+seer_mintmark = 100
+seer_pet = 110
+seer_query = 120
+ai_chat = 200
 
 [runtime.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。

@@ -41,3 +41,7 @@ def test_build_fixed_image_segment_encodes_file_as_base64_image(
 def test_anniversary_random_table_commands_use_same_fixed_image() -> None:
     assert FIXED_IMAGE_COMMANDS["周年庆伪随机表"] == "周年庆伪随机表.png"
     assert FIXED_IMAGE_COMMANDS["伪随机表"] == "周年庆伪随机表.png"
+
+
+def test_skill_stone_is_fixed_image_command() -> None:
+    assert FIXED_IMAGE_COMMANDS["技能石"] == "技能石.png"
