@@ -82,6 +82,11 @@ def _patch_rank_config(  # noqa: PLR0913
         "get_local_rank_config",
         lambda: local_rank_config,
     )
+    monkeypatch.setattr(
+        _rank,
+        "get_rank_page_cache_summary",
+        lambda **_: [],
+    )
 
 
 def test_score_rank_lookup_uses_rank_limit_not_online_limit(
@@ -501,6 +506,80 @@ def test_fetch_rank_score_segment_rejects_score_below_boundary(
     assert result.boundary_score == SEGMENT_BOUNDARY_SCORE
     assert result.items == []
     assert requested_indexes == [99]
+
+
+def test_fetch_rank_score_segment_handles_short_rank_board(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(
+        monkeypatch,
+        rank_limit=100,
+        page_size=TIED_PAGE_SIZE,
+        score_search_probe_limit=20,
+        score_search_tie_page_limit=5,
+    )
+    actual_count = 60
+
+    async def fake_fetch_rank_item(
+        *_args: object,
+        index: int,
+        **_kwargs: object,
+    ) -> SimpleNamespace | None:
+        if index >= actual_count:
+            return None
+        if index < SEGMENT_START_INDEX:
+            score = 200
+        elif index < SEGMENT_END_INDEX:
+            score = SEGMENT_SCORE
+        else:
+            score = SEGMENT_BOUNDARY_SCORE
+        return SimpleNamespace(id=index, nick=f"Player{index}", score=score)
+
+    async def fake_fetch_rank_page_result(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> _rank.RankPageResult:
+        items = []
+        for rank_index in range(start, min(end + 1, actual_count)):
+            if rank_index < SEGMENT_START_INDEX:
+                score = 200
+            elif rank_index < SEGMENT_END_INDEX:
+                score = SEGMENT_SCORE
+            else:
+                score = SEGMENT_BOUNDARY_SCORE
+            items.append(
+                SimpleNamespace(
+                    id=rank_index,
+                    nick=f"Player{rank_index}",
+                    score=score,
+                )
+            )
+        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+
+    monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
+
+    result = asyncio.run(
+        _rank.fetch_rank_score_segment(
+            object(),
+            title="book",
+            score_name="score",
+            key=156,
+            sub_key=1,
+            target_score=SEGMENT_SCORE,
+        )
+    )
+
+    assert result.boundary_score == SEGMENT_BOUNDARY_SCORE
+    assert result.searched_limit == actual_count
+    assert result.start_rank == SEGMENT_START_RANK
+    assert result.end_rank == SEGMENT_END_INDEX
+    assert result.total_count == SEGMENT_COUNT
+    assert [item.id for item in result.items] == list(
+        range(SEGMENT_START_INDEX, SEGMENT_END_INDEX)
+    )
 
 
 def test_fresh_cached_rank_is_verified_online_when_score_matches(

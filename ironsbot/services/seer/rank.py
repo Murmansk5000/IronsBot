@@ -1,6 +1,7 @@
 ﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -536,6 +537,36 @@ class RankSearchBudgetExhaustedError(RuntimeError):
     pass
 
 
+async def _find_last_existing_score_index(
+    start_index: int,
+    end_index: int,
+    score_at: Callable[[int], Awaitable[int | None]],
+) -> tuple[int | None, int | None]:
+    if end_index <= start_index:
+        return None, None
+
+    boundary_index = end_index - 1
+    boundary_score = await score_at(boundary_index)
+    if boundary_score is not None:
+        return boundary_index, boundary_score
+
+    first_score = await score_at(start_index)
+    if first_score is None:
+        return None, None
+
+    low = start_index
+    high = boundary_index
+    while low + 1 < high:
+        mid = (low + high) // 2
+        score = await score_at(mid)
+        if score is None:
+            high = mid
+        else:
+            low = mid
+
+    return low, await score_at(low)
+
+
 def _score_search_probe_limit(limit: int) -> int:
     configured = int(
         getattr(
@@ -592,15 +623,24 @@ async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
         return None if item is None else item.score
 
     try:
-        boundary_score = await score_at(limit - 1)
+        last_index, boundary_score = await _find_last_existing_score_index(
+            0,
+            limit,
+            score_at,
+        )
     except RankSearchBudgetExhaustedError:
         return result
 
+    if last_index is None:
+        return result
+
+    search_end = last_index + 1
+    result.searched_limit = min(result.searched_limit, search_end)
     if boundary_score is None or target_score < boundary_score:
         return result
 
     low = 0
-    high = limit
+    high = search_end
     try:
         while low < high:
             mid = (low + high) // 2
@@ -613,7 +653,7 @@ async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
         return result
 
     first_same_or_lower = low
-    if first_same_or_lower >= limit:
+    if first_same_or_lower >= search_end:
         return result
 
     try:
@@ -624,8 +664,8 @@ async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
         return result
 
     low = first_same_or_lower
-    high = limit
-    tie_end = limit
+    high = search_end
+    tie_end = search_end
     try:
         while low < high:
             mid = (low + high) // 2
@@ -637,11 +677,11 @@ async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
         tie_end = low
     except RankSearchBudgetExhaustedError:
         tie_end = min(
-            limit,
+            search_end,
             first_same_or_lower + page_size * _score_search_tie_page_limit(),
         )
 
-    tie_end = min(tie_end, limit)
+    tie_end = min(tie_end, search_end)
     start = first_same_or_lower
     remaining_tie_pages = _score_search_tie_page_limit()
     while start < tie_end and remaining_tie_pages > 0:
@@ -886,11 +926,20 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
         return None if item is None else int(item.score)
 
     try:
-        boundary_score = await score_at(end_index - 1)
+        last_index, boundary_score = await _find_last_existing_score_index(
+            start_index,
+            end_index,
+            score_at,
+        )
     except RankSearchBudgetExhaustedError:
         return result
 
     result.boundary_score = boundary_score
+    if last_index is None:
+        return result
+
+    end_index = last_index + 1
+    result.searched_limit = min(result.searched_limit, end_index - start_index)
     if boundary_score is None or target_score < boundary_score:
         return result
 
