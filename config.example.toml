@@ -3,6 +3,28 @@
 # Copy to config.dev.toml or /config/ironsbot.toml and edit behavior values here.
 # Keep secrets and credentials in environment variables, not in this file.
 # See README.md "Feature 对照表" for every feature key and its meaning.
+#
+# 快速阅读顺序：
+# 1. [feature.group_aliases] / [feature.user_aliases]
+#    先给群号、QQ 号起短名字，后面策略里都用这些短名字。
+# 2. [feature.group_policy] / [feature.user_policy]
+#    决定每个群、每个私聊用户能使用哪些功能。
+# 3. [bilibili]、[message]、[seer.*]、[runtime.*]
+#    分别配置 B 站推送、固定文本/退订/红包提醒、赛尔查询、运行时同步/日志/重启等行为。
+#
+# 常用 feature key：
+# - seer：开启全部赛尔查询子功能。
+# - seer_pet / seer_mintmark / seer_player / seer_rank / seer_autocard：
+#   只开放精灵、刻印、米米号、榜单、群星牌等单项赛尔功能。
+# - image：图片发送；rank：旧榜单帮助入口；meeting：会议回复。
+# - bili_query / bili_push：B 站动态查询 / 推送。
+# - web_activity_link / web_activity_push：游戏外签到链接查询 / 定时提醒。
+# - seer_activity_query / seer_activity_push：游戏内活动结束提醒查询 / 推送。
+# - server_status_query / server_status_push：开服状态查询 / 开服推送。
+# - ai_chat / ai_intent：AI聊天 / AI意图分析。
+# - fire_manual_ad：火火手册广告追加和手册链接意图。
+# - team_audit：战队审核群入群提示；team_resource_subscription：战队资源订阅。
+# - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
 [feature]
 # Default: true
@@ -33,12 +55,15 @@ superuser_bypass = true
 # seer_peak, seer_autocard, seer_rank, seer_data.
 # ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询总别名；
 # 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能。
+# 如果某个群不想开放精灵/刻印这类宽泛匹配功能，就不要写 seer，
+# 改写 seer_player、seer_rank、seer_autocard 等精细子功能。
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
 # fire_manual_ad 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
 # team_resource_subscription 控制战队订阅查询和低资源定时提醒。
 # admin_notice 不包含在 all 里；管理群要收启动、异常等管理通知时需要显式写 admin_notice。
 # 具体推送项可在 TD 菜单里分别退订。
+# 超级管理员是否绕过这些限制，由 [feature].superuser_bypass 控制。
 # Example:
 # example = ["seer_pet", "seer_mintmark", "seer_autocard", "team_resource_subscription"]
 
@@ -171,6 +196,12 @@ enabled = true
 enabled = true
 
 [bilibili]
+# B 站配置分三层：
+# 1. [bilibili.accounts] 是账号别名库，只负责把名字映射到 UID，不代表一定推送。
+# 2. [bilibili.push].accounts 是默认推送账号，所有开启 bili_push 的群/用户都会收到。
+# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号。
+# 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
+# 群主/管理员可以用“B站推送模式”临时覆盖当前群已订阅账号的推送形式。
 # Default: 300.0
 # EN: Cooldown for Bilibili login QR notices.
 # ZH: B 站登录二维码提醒冷却秒数。
@@ -330,11 +361,11 @@ group_schedules = []
 # ZH: 打开退订菜单的口令；大小写不敏感，所以 TD 自动生效。
 # Built-in push categories include startup_notice, startup_docker_update,
 # startup_data_sync, ai_chat_error_notice, bili_login_notice,
-# headless_seer_notice, render_crash_notice, admin_notice,
+# headless_seer_notice, render_crash_notice, red_packet_notice, admin_notice,
 # per-account Bilibili dynamic pushes, seer_activity_push, and server_status_push.
 # 内置推送项包括机器人启动、启动镜像检查、启动数据同步、AI 聊天异常、
-# B站登录、无头赛尔号、精灵渲染崩溃、其它管理通知、按账号拆分的 B站动态、
-# 活动结束提醒和开服推送。
+# B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、其它管理通知、
+# 按账号拆分的 B站动态、活动结束提醒和开服推送。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅"]
 # EN: Commands that restore unsubscribed pushes.
@@ -352,6 +383,16 @@ hint = "回复 TD 可管理推送订阅。"
 # EN: Hint appended to group pushes.
 # ZH: 追加到群推送末尾的退订提示。
 group_hint = "群主/管理员发送 TD 可管理本群推送订阅。"
+
+[message.red_packet_notice]
+# Default: true
+# EN: Notify superusers privately when a QQ group red packet is detected.
+# ZH: 检测到 QQ 群红包时，私聊通知超级管理员；不会领取红包。
+enabled = true
+# Default: 60.0
+# EN: Per-group cooldown seconds to avoid repeated red packet notices.
+# ZH: 同一个群红包提醒的冷却秒数，避免连续刷屏。
+cooldown_seconds = 60.0
 
 [message.outbound_rate_limit]
 # Default: true
@@ -489,6 +530,10 @@ sections = ["basic", "resource"]
 merge_connected = true
 
 [seer.rank]
+# 这里有三种“范围”不要混：
+# - limit：已知分数时，二分查找最多认为前多少名是可搜索范围。
+# - online_limit：不知道分数时，在线从前往后扫的最大范围。
+# - page_refresh.target_limit：后台定时预热缓存到前多少名，见 [seer.rank.page_refresh]。
 # Default: 10000
 # EN: Score-known binary rank lookup limit.
 # ZH: 已知分数时允许二分查找的最大榜单范围。
@@ -535,6 +580,9 @@ display_limit_path = "data/seer/rank_display_limits.sqlite"
 # peak_subkey = 123
 
 [seer.rank.page_refresh]
+# 后台刷榜只用于预热缓存，加快后续查询；不会把玩家计入“样本”。
+# 默认使用“带随机抖动的间隔任务”，避免固定整点高频访问。
+# 如果 times 非空，则额外按固定时间触发；如果 interval_minutes 为 0，则关闭间隔触发。
 # Default: true
 # EN: Enable scheduled full-server rank page cache refresh.
 # ZH: 启用全服榜单页缓存定时刷新。
@@ -571,11 +619,41 @@ page_size = 100
 # Default: 10
 # EN: Maximum rank pages refreshed per scheduled/manual run.
 # ZH: 每轮最多刷新多少页，也就是最多多少次榜单请求。
-pages_per_run = 10
+pages_per_run = 3
+# Default: 0
+# EN: If > 0, each run refreshes a random number of pages between this value and pages_per_run.
+# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数。
+pages_per_run_min = 1
+# Default: 0
+# EN: Interval-based refresh in minutes. 0 disables interval scheduling.
+# ZH: 按间隔刷榜，0 表示关闭；例如 10 表示每 10 分钟一轮。
+interval_minutes = 15
+# Default: 0
+# EN: Minute offset for interval scheduling. With interval_minutes=15 and offset=4,
+# the bot schedules at :04, :19, :34, :49 before jitter is applied.
+# ZH: 间隔刷榜的分钟偏移；例如 interval_minutes=15、offset=4 时，每小时 04/19/34/49 分调度，之后再叠加随机抖动。
+interval_offset_minutes = 4
+# Default: 0
+# EN: Random scheduler delay in seconds. Keeps refresh jobs away from exact clock ticks.
+# ZH: 每轮调度额外随机延后秒数，避免总在整点/固定秒触发。
+schedule_jitter_seconds = 240
+# Default: 0.0
+# EN: Seconds to wait between page requests in one refresh run.
+# ZH: 同一轮刷榜中，每个榜单页请求之间的固定等待秒数。
+request_interval_seconds = 3.0
+# Default: 0.0
+# EN: Random extra seconds added to each inter-page wait.
+# ZH: 每个榜单页请求之间额外增加的随机等待秒数，降低固定频率特征。
+request_jitter_seconds = 3.0
+# Default: ""; EN: Optional active refresh window start. ZH: 可选的刷榜活跃时间起点。
+active_start = "07:30"
+# Default: ""; EN: Optional active refresh window end; may cross midnight.
+# ZH: 可选的刷榜活跃时间终点；允许跨过午夜，比如 07:30 到 01:30。
+active_end = "01:30"
 # Default: 01:15 through 04:45 every half hour.
-# EN: Daily refresh times.
-# ZH: 每日刷榜时间点。
-times = ["01:15", "01:45", "02:15", "02:45", "03:15", "03:45", "04:15", "04:45"]
+# EN: Additional fixed daily refresh times. Keep empty when interval_minutes is used.
+# ZH: 额外的每日固定刷榜时间；使用 interval_minutes 时通常保持为空。
+times = []
 # Default: collection-related global ranks.
 # EN: Global ranks included in scheduled page refresh.
 # ZH: 定时刷新的全服榜。
@@ -583,7 +661,7 @@ rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "�
 # Default: 24
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
-refresh_stale_after_hours = 24
+refresh_stale_after_hours = 336
 
 [seer.season]
 # Default: "群星牌赛季"
@@ -653,6 +731,10 @@ cache_dir = "render_cache"
 cache_max_size_mb = 200
 
 [runtime.data_sync]
+# 数据同步分两层：
+# - 普通启动/定时同步默认只下载 GitHub Release 里已经构建好的 SQLite。
+# - /更新数据 或 startup_trigger_remote_build=true 才会先触发上游 Actions 流水线，再下载新库。
+# 如果只是想避免开机慢，改 on_startup=false；如果想开机也强制跑流水线，改 startup_trigger_remote_build=true。
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
 on_startup = true
 # Default: false; EN: Trigger remote build pipeline during startup sync. ZH: 启动同步时先触发远程构建流水线；开启后才近似等同 /更新数据。
@@ -758,6 +840,10 @@ broadcast_message = "赛尔号已经开服了。"
 broadcast_cooldown_minutes = 1440
 
 [runtime.docker_update]
+# Docker 更新也分两层：
+# - check_on_startup：容器自然启动时是否先检查镜像。
+# - check_on_restart：发送 /重启机器人 或 /更新镜像 时是否先检查镜像。
+# 两个开关都依赖 Docker socket；Windows 源码运行建议设为 false。
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
 # Default: true; EN: Check Docker image before manual restart/update commands. ZH: 手动 /重启机器人、/更新镜像 前先检查 Docker 镜像；不需要可改为 false。

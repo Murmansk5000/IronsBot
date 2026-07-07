@@ -39,6 +39,19 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
 RANK_PAGE_REFRESH_TIME_ERROR = (
     "APP_CONFIG.seer.rank.page_refresh.times must contain daily HH:MM times"
 )
+RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR = (
+    "seer.rank.page_refresh.interval_offset_minutes must be smaller than "
+    "interval_minutes"
+)
+RANK_PAGE_REFRESH_PAGES_PER_RUN_MIN_ERROR = (
+    "seer.rank.page_refresh.pages_per_run_min must not be greater than pages_per_run"
+)
+RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR = (
+    "APP_CONFIG.seer.rank.page_refresh active_start/active_end must be HH:MM times"
+)
+RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
+    "seer.rank.page_refresh.active_start and active_end must be configured together"
+)
 TEAM_RESOURCE_TIME_ERROR = (
     "APP_CONFIG.seer.team_resource.times must contain daily HH:MM times"
 )
@@ -160,6 +173,14 @@ class RankPageRefreshConfig(BaseModel):
     stale_age_max_multiplier: float = Field(default=5.0, ge=1)
     page_size: int = Field(default=100, ge=1)
     pages_per_run: int = Field(default=10, ge=1)
+    pages_per_run_min: int = Field(default=0, ge=0)
+    interval_minutes: int = Field(default=0, ge=0, le=59)
+    interval_offset_minutes: int = Field(default=0, ge=0, le=59)
+    schedule_jitter_seconds: int = Field(default=0, ge=0)
+    request_interval_seconds: float = Field(default=0.0, ge=0)
+    request_jitter_seconds: float = Field(default=0.0, ge=0)
+    active_start: str = ""
+    active_end: str = ""
     times: list[str] = Field(
         default_factory=lambda: list(DEFAULT_RANK_PAGE_REFRESH_TIMES)
     )
@@ -175,6 +196,19 @@ class RankPageRefreshConfig(BaseModel):
             value,
             error_message=RANK_PAGE_REFRESH_TIME_ERROR,
         )
+
+    @field_validator("active_start", "active_end", mode="before")
+    @classmethod
+    def normalize_active_time(cls, value: object) -> str:
+        if value is None:
+            return ""
+        text = str(value).strip()
+        if not text:
+            return ""
+        return normalized_daily_times(
+            [text],
+            error_message=RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR,
+        )[0]
 
     @field_validator("rank_keys", mode="before")
     @classmethod
@@ -208,6 +242,19 @@ class RankPageRefreshConfig(BaseModel):
     @classmethod
     def validate_score_cutoffs(cls, value: dict[str, int]) -> dict[str, int]:
         return {key: score for key, score in value.items() if key and score >= 1}
+
+    @model_validator(mode="after")
+    def validate_interval_offset(self) -> RankPageRefreshConfig:
+        if (
+            self.interval_minutes > 0
+            and self.interval_offset_minutes >= self.interval_minutes
+        ):
+            raise ValueError(RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR)
+        if self.pages_per_run_min > self.pages_per_run:
+            raise ValueError(RANK_PAGE_REFRESH_PAGES_PER_RUN_MIN_ERROR)
+        if bool(self.active_start) != bool(self.active_end):
+            raise ValueError(RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR)
+        return self
 
 
 class RankQueryConfig(BaseModel):

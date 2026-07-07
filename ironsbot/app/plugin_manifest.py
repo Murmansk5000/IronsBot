@@ -33,6 +33,7 @@ INFRASTRUCTURE_PLUGINS: Final[tuple[str, ...]] = (
 FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.fire_manual_ad",
     "ironsbot.plugins.headless_seer_notice",
+    "ironsbot.plugins.red_packet_notice",
     "ironsbot.plugins.ai_chat",
     "ironsbot.plugins.team_resource_subscription",
     "ironsbot.plugins.activity",

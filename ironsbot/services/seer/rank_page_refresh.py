@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import asyncio
+import random
 import time
 from dataclasses import dataclass, field
 from math import log1p, sqrt
@@ -362,16 +364,35 @@ def preview_rank_page_refresh_targets(
     return select_rank_page_refresh_targets(rank_specs, summaries)
 
 
+async def _sleep_between_rank_page_requests(config: RankPageRefreshConfig) -> None:
+    delay = config.request_interval_seconds
+    if config.request_jitter_seconds > 0:
+        delay += random.uniform(0, config.request_jitter_seconds)
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+
 async def refresh_rank_page_cache(
     rank_keys: Sequence[str] | None = None,
 ) -> RankPageRefreshResult:
+    refresh_config = get_rank_page_refresh_config()
     targets = preview_rank_page_refresh_targets(rank_keys)
+    if refresh_config.pages_per_run_min > 0 and targets:
+        lower = min(refresh_config.pages_per_run_min, len(targets))
+        upper = min(refresh_config.pages_per_run, len(targets))
+        target_count = random.randint(
+            lower,
+            upper,
+        )
+        targets = targets[:target_count]
     result = RankPageRefreshResult(targets=targets)
     if not targets:
         return result
 
     game = get_game_client()
-    for target in targets:
+    for index, target in enumerate(targets):
+        if index > 0:
+            await _sleep_between_rank_page_requests(refresh_config)
         try:
             await fetch_daily_rank_page(
                 game,

@@ -71,6 +71,7 @@ GITHUB_REPO_PATH_PARTS = 2
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 RestartAction = Literal["none", "process", "docker"]
 
+GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
 DOCKER_TIMESTAMP_PATTERN = re.compile(
     r"^(?P<head>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
@@ -866,7 +867,6 @@ async def _resolve_image_commit_summary(
         return ""
 
     short_revision = revision[:12]
-    summary = short_revision
     repo = _github_repo_from_image_labels(image_info.labels) or fallback_repo
     if repo is not None:
         owner, name = repo
@@ -904,8 +904,15 @@ async def _resolve_image_commit_summary(
                         else ""
                     )
                     if first_line:
-                        summary = f"{short_revision} {first_line}"
-    return summary
+                        return f"{short_revision} {first_line}"
+    return ""
+
+
+def _visible_image_commit_summary(summary: str) -> str:
+    stripped = summary.strip()
+    if GIT_REVISION_PATTERN.fullmatch(stripped):
+        return ""
+    return stripped
 
 
 def _github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
@@ -980,23 +987,25 @@ def _format_docker_update_reply(
         lines = [
             f"Docker 镜像已是最新：{container_name}",
             f"目标镜像：{image}",
-            f"镜像版本：{target_version}",
+            f"镜像ID：{target_version}",
         ]
-        if result.target_image_commit:
-            lines.append(f"镜像提交：{result.target_image_commit}")
+        if target_commit := _visible_image_commit_summary(result.target_image_commit):
+            lines.append(f"当前代码：{target_commit}")
         return "\n".join(lines)
 
     if result.ok:
+        current_commit = _visible_image_commit_summary(result.current_image_commit)
+        target_commit = _visible_image_commit_summary(result.target_image_commit)
         lines = [
             f"检测到新镜像，Docker 自更新任务已启动：{container_name}",
             f"目标镜像：{image}",
-            f"当前镜像版本：{current_version}",
-            f"最新镜像版本：{target_version}",
+            f"当前镜像ID：{current_version}",
+            f"最新镜像ID：{target_version}",
         ]
-        if result.current_image_commit:
-            lines.append(f"当前提交：{result.current_image_commit}")
-        if result.target_image_commit:
-            lines.append(f"最新提交：{result.target_image_commit}")
+        if current_commit:
+            lines.append(f"当前代码：{current_commit}")
+        if target_commit:
+            lines.append(f"最新代码：{target_commit}")
         lines.extend(
             [
                 "接下来 Watchtower 会拉取最新镜像并重建当前容器，"

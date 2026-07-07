@@ -22,7 +22,7 @@ from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
-from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.config.models.seer import RankPageRefreshConfig, TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
@@ -39,12 +39,19 @@ DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
+DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 1
+DEFAULT_RANK_REFRESH_INTERVAL_MINUTES = 15
+DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES = 4
+DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
+DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 3.0
+DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 3.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
+DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
 PUBLIC_CONFIG_DOC_PATHS = (
     ROOT / "config.example.toml",
@@ -124,6 +131,35 @@ def _assert_default_matcher_priorities(
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
 
 
+def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
+    assert "群星牌" in config.rank_keys
+    assert config.target_limits == {}
+    assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
+    assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
+    assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
+    assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
+    assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
+    assert (
+        config.interval_offset_minutes
+        == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
+    )
+    assert (
+        config.schedule_jitter_seconds
+        == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
+    )
+    assert (
+        config.request_interval_seconds
+        == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
+    )
+    assert (
+        config.request_jitter_seconds
+        == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
+    )
+    assert config.active_start == "07:30"
+    assert config.active_end == "01:30"
+    assert config.times == []
+
+
 def test_example_config_parses() -> None:
     config = load_app_config(ROOT / "config.example.toml")
 
@@ -139,6 +175,11 @@ def test_example_config_parses() -> None:
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
     _assert_default_push_unsubscribe(config.message.push_unsubscribe)
+    assert config.message.red_packet_notice.enabled
+    assert (
+        config.message.red_packet_notice.cooldown_seconds
+        == DEFAULT_RED_PACKET_NOTICE_COOLDOWN
+    )
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
     assert "米米号" in config.message.team_audit_welcome.message
@@ -158,20 +199,7 @@ def test_example_config_parses() -> None:
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}
-    assert "群星牌" in config.seer.rank.page_refresh.rank_keys
-    assert config.seer.rank.page_refresh.target_limits == {}
-    assert (
-        config.seer.rank.page_refresh.score_cutoffs["群星牌"]
-        == DEFAULT_AUTOCARD_SCORE_CUTOFF
-    )
-    assert (
-        config.seer.rank.page_refresh.stale_age_weight
-        == DEFAULT_RANK_STALE_AGE_WEIGHT
-    )
-    assert (
-        config.seer.rank.page_refresh.stale_age_max_multiplier
-        == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
-    )
+    _assert_example_rank_page_refresh(config.seer.rank.page_refresh)
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
@@ -218,6 +246,21 @@ def test_public_config_docs_do_not_reference_stale_fields() -> None:
         )
 
     assert stale_matches == []
+
+
+def test_rank_page_refresh_interval_offset_must_be_smaller_than_interval() -> None:
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(interval_minutes=10, interval_offset_minutes=10)
+
+
+def test_rank_page_refresh_min_pages_must_not_exceed_max_pages() -> None:
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(pages_per_run=2, pages_per_run_min=3)
+
+
+def test_rank_page_refresh_active_window_requires_start_and_end() -> None:
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(active_start="07:30")
 
 
 def test_missing_app_config_is_created_from_example(tmp_path: Path) -> None:
