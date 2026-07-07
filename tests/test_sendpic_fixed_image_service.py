@@ -4,9 +4,8 @@ from pathlib import Path
 _SERVICE_PATH = (
     Path(__file__).resolve().parents[1]
     / "ironsbot"
-    / "plugins"
-    / "sendpic"
-    / "fixed_image_service.py"
+    / "services"
+    / "sendpic_fixed_image.py"
 )
 _SPEC = spec_from_file_location(
     "sendpic_fixed_image_service_for_test",

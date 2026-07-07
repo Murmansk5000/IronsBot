@@ -154,6 +154,13 @@ class PushUnsubscribeConfig(BaseModel):
         return self
 
 
+class RedPacketNoticeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    cooldown_seconds: float = Field(default=60.0, ge=0)
+
+
 class MeetingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -289,6 +296,9 @@ class MessageConfig(BaseModel):
     push_unsubscribe: PushUnsubscribeConfig = Field(
         default_factory=PushUnsubscribeConfig
     )
+    red_packet_notice: RedPacketNoticeConfig = Field(
+        default_factory=RedPacketNoticeConfig
+    )
     private_commands: list[PrivateCommandMessageAction] = Field(default_factory=list)
     private_schedules: list[PrivateScheduledMessageAction] = Field(
         default_factory=list
@@ -305,5 +315,6 @@ class MessageConfig(BaseModel):
 __all__ = [
     "MessageConfig",
     "PushUnsubscribeConfig",
+    "RedPacketNoticeConfig",
     "SendpicBehaviorConfig",
 ]

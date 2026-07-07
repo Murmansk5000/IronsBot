@@ -24,7 +24,6 @@ from sqlmodel import select
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
-from ironsbot.plugins.sendpic.fixed_image_service import FIXED_IMAGE_COMMANDS
 from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.services.seer.render_crash_report import render_crash_marker
@@ -32,6 +31,7 @@ from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_i
 from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
+from ironsbot.services.sendpic_fixed_image import FIXED_IMAGE_COMMANDS
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
     PluginContext,
