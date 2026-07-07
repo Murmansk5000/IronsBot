@@ -24,6 +24,7 @@ from sqlmodel import select
 from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
+from ironsbot.plugins.sendpic.fixed_image_service import FIXED_IMAGE_COMMANDS
 from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.services.seer.render_crash_report import render_crash_marker
@@ -89,6 +90,13 @@ async def _is_not_rank_query(event: Event) -> bool:
 not_rank_query = Rule(_is_not_rank_query)
 
 
+async def _is_not_fixed_image_command(event: Event) -> bool:
+    return event.get_plaintext().strip() not in FIXED_IMAGE_COMMANDS
+
+
+not_fixed_image_command = Rule(_is_not_fixed_image_command)
+
+
 async def _finish_query_help(
     matcher: Matcher,
     event: Event,
@@ -106,6 +114,7 @@ pet_image_matcher = matcher_group.on_message(
         prefixes=("立绘", "皮肤", "查询立绘"),
     )
     & not_rank_query
+    & not_fixed_image_command
     & no_reply(),
     priority=seer_feature_priority("seer_pet"),
 )
@@ -495,6 +504,7 @@ pet_info_matcher = matcher_group.on_message(
         suffixes=("查询精灵信息", "魂印", "技能"),
     )
     & not_rank_query
+    & not_fixed_image_command
     & no_reply(),
     priority=seer_feature_priority("seer_pet"),
 )

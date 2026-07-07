@@ -379,6 +379,39 @@ def get_rank_page_cache_summary(
     ]
 
 
+def get_cached_rank_score_indexes(
+    *,
+    key: int,
+    sub_key: int,
+    score: int,
+    start_index: int,
+    end_index: int,
+) -> list[int]:
+    if not _is_cache_enabled():
+        return []
+
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT rank_index
+                FROM player_rank_facts
+                WHERE key = ?
+                  AND sub_key = ?
+                  AND score = ?
+                  AND rank_index >= ?
+                  AND rank_index < ?
+                ORDER BY rank_index
+                """,
+                (key, sub_key, score, start_index, end_index),
+            ).fetchall()
+    except sqlite3.Error as e:
+        logger.warning(f"failed to read cached Seer rank score indexes: {e}")
+        return []
+
+    return [int(row[0]) for row in rows]
+
+
 def save_rank_page(  # noqa: PLR0913
     *,
     key: int,

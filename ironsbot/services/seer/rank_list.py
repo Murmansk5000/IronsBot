@@ -223,14 +223,14 @@ def format_global_rank_score_message(
     score_text = f"{result.target_score}{spec.unit}"
     if not result.queried:
         return f"❌{spec.title}分数查询未启用。"
-    if result.boundary_score is None:
-        return f"❌找不到{spec.title}数据。"
-    if result.target_score < result.boundary_score:
-        return (
-            f"❌{score_text}不在{spec.title}前 {result.searched_limit} 名范围内。\n"
-            f"当前范围末位约为 {result.boundary_score}{spec.unit}。"
-        )
     if not result.items:
+        if result.boundary_score is None:
+            return f"❌找不到{spec.title}数据。"
+        if result.target_score < result.boundary_score:
+            return (
+                f"❌{score_text}不在{spec.title}前 {result.searched_limit} 名范围内。\n"
+                f"当前范围末位约为 {result.boundary_score}{spec.unit}。"
+            )
         return (
             f"❌{spec.title}前 {result.searched_limit} 名没有"
             f"{score_text}的用户。"
