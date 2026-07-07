@@ -265,6 +265,66 @@ def test_format_global_rank_score_message() -> None:
     )
 
 
+def test_format_global_rank_score_message_shows_cached_hit_without_boundary() -> None:
+    spec = GlobalRankSpec("图鉴积分榜", key=156, sub_key=1, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=55933,
+        searched_limit=10000,
+        boundary_score=None,
+        start_rank=200,
+        end_rank=200,
+        total_count=1,
+        truncated=False,
+        items=[
+            SimpleNamespace(
+                id=291439942,
+                nick="桐生 战兔",
+                score=55933,
+                rank_index=199,
+            ),
+        ],
+    )
+
+    assert format_global_rank_score_message(
+        spec,
+        result,
+        timestamp="2026-07-07 16:33:27",
+    ) == (
+        "图鉴积分榜（55933分，第 200-200 名，共 1 人，截至2026-07-07 16:33:27）\n"
+        "200. 桐生 战兔（291439942） 55933分"
+    )
+
+
+def test_format_rank_score_message_needs_data_without_items_or_boundary() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=3149,
+        searched_limit=10000,
+        boundary_score=None,
+        items=[],
+    )
+
+    assert format_global_rank_score_message(spec, result) == "❌找不到测试榜数据。"
+
+
+def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=999,
+        searched_limit=10000,
+        boundary_score=1000,
+        items=[],
+    )
+
+    assert format_global_rank_score_message(spec, result) == (
+        "❌999分不在测试榜前 10000 名范围内。\n"
+        "当前范围末位约为 1000分。"
+    )
+
+
 def test_batch_raw_start_respects_spec_start_and_rank_offset() -> None:
     first_rank_raw_start = 8
     rank_30_raw_start = 37
