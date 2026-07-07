@@ -11,7 +11,10 @@ from ironsbot.shared.promotions import (
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
-BILI_PUSH_ADMIN_HINT = "\n\n管理：B站账号 / B站推送模式"
+BILI_PUSH_ADMIN_HINT = (
+    "\n\n群主/管理员可发送："
+    "B站账号 / B站推送模式 <账号别名> <内容|链接|默认>"
+)
 
 
 class HasDynamicPushTargets(Protocol):

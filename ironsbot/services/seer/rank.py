@@ -739,6 +739,47 @@ def _cached_score_candidate_page_starts(
     return sorted(set(starts))
 
 
+def _cached_score_miss_boundary(
+    *,
+    key: int,
+    sub_key: int,
+    target_score: int,
+    start_index: int,
+    end_index: int,
+) -> tuple[int, float] | None:
+    for page in get_rank_page_cache_summary(key=key, sub_key=sub_key):
+        if getattr(page, "is_stale", False) or getattr(page, "is_partial", False):
+            continue
+        item_count = getattr(page, "item_count", None)
+        expected_count = getattr(page, "expected_count", None)
+        if (
+            item_count is None
+            or expected_count is None
+            or int(item_count) <= 0
+            or int(item_count) != int(expected_count)
+        ):
+            continue
+        if page.min_score is None or page.max_score is None:
+            continue
+        if page.end_index < start_index or page.start_index >= end_index:
+            continue
+        if not int(page.min_score) <= target_score <= int(page.max_score):
+            continue
+
+        exact_indexes = get_cached_rank_score_indexes(
+            key=key,
+            sub_key=sub_key,
+            score=target_score,
+            start_index=max(start_index, page.start_index),
+            end_index=min(end_index, page.end_index + 1),
+        )
+        if exact_indexes:
+            continue
+
+        return int(page.min_score), float(page.fetched_at)
+    return None
+
+
 async def _fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR0912, PLR0913, PLR0915
     game: Any,
     *,
@@ -889,6 +930,17 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
     start_index = max(0, start_index)
     end_index = start_index + limit
     page_size = _rank_page_size()
+    cached_miss = _cached_score_miss_boundary(
+        key=key,
+        sub_key=sub_key,
+        target_score=target_score,
+        start_index=start_index,
+        end_index=end_index,
+    )
+    if cached_miss is not None:
+        result.boundary_score, result.fetched_at = cached_miss
+        return result
+
     cached_result = await _fetch_rank_score_segment_from_cached_candidates(
         game,
         key=key,

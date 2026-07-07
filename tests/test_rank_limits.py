@@ -31,6 +31,9 @@ CACHED_HINT_SEGMENT_START_RANK = CACHED_HINT_SEGMENT_START_INDEX + 1
 CACHED_HINT_SEGMENT_COUNT = (
     CACHED_HINT_SEGMENT_END_INDEX - CACHED_HINT_SEGMENT_START_INDEX
 )
+CACHED_GAP_TARGET_SCORE = 10000
+CACHED_GAP_UPPER_SCORE = 10001
+CACHED_GAP_LOWER_SCORE = 9970
 FETCHED_AT = 1_781_234_567.0
 LOOKUP_INDEX = 14
 
@@ -537,6 +540,69 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
     assert result.end_rank == SEGMENT_START_RANK
     assert result.total_count == 1
     assert [item.id for item in result.items] == [SEGMENT_START_INDEX]
+
+
+def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_score(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(
+        monkeypatch,
+        online_limit=100,
+        rank_limit=100,
+        page_size=TIED_PAGE_SIZE,
+        score_search_probe_limit=20,
+        score_search_tie_page_limit=5,
+    )
+
+    monkeypatch.setattr(
+        _rank,
+        "get_rank_page_cache_summary",
+        lambda **_: [
+            SimpleNamespace(
+                start_index=50,
+                end_index=59,
+                item_count=10,
+                expected_count=10,
+                min_score=CACHED_GAP_LOWER_SCORE,
+                max_score=CACHED_GAP_UPPER_SCORE,
+                fetched_at=FETCHED_AT,
+                is_stale=False,
+                is_partial=False,
+            )
+        ],
+    )
+    monkeypatch.setattr(_rank, "get_cached_rank_score_indexes", lambda **_: [])
+
+    async def unexpected_fetch_rank_item(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError
+
+    async def unexpected_fetch_rank_page_result(
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        raise AssertionError
+
+    monkeypatch.setattr(_rank, "_fetch_rank_item", unexpected_fetch_rank_item)
+    monkeypatch.setattr(
+        _rank,
+        "_fetch_rank_page_result",
+        unexpected_fetch_rank_page_result,
+    )
+
+    result = asyncio.run(
+        _rank.fetch_rank_score_segment(
+            object(),
+            title="autocard",
+            score_name="score",
+            key=240,
+            sub_key=1,
+            target_score=CACHED_GAP_TARGET_SCORE,
+        )
+    )
+
+    assert result.items == []
+    assert result.boundary_score == CACHED_GAP_LOWER_SCORE
+    assert result.fetched_at == FETCHED_AT
 
 
 def test_fetch_rank_score_segment_rejects_score_below_boundary(
