@@ -87,6 +87,11 @@ def _patch_rank_config(  # noqa: PLR0913
         "get_rank_page_cache_summary",
         lambda **_: [],
     )
+    monkeypatch.setattr(
+        _rank,
+        "get_cached_rank_score_indexes",
+        lambda **_: [],
+    )
 
 
 def test_score_rank_lookup_uses_rank_limit_not_online_limit(
@@ -470,6 +475,68 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
     assert [item.id for item in result.items] == list(
         range(CACHED_HINT_SEGMENT_START_INDEX, CACHED_HINT_SEGMENT_END_INDEX)
     )
+
+
+def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(
+        monkeypatch,
+        online_limit=100,
+        rank_limit=100,
+        page_size=TIED_PAGE_SIZE,
+        score_search_probe_limit=20,
+        score_search_tie_page_limit=5,
+    )
+    requested_pages: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        _rank,
+        "get_cached_rank_score_indexes",
+        lambda **_: [SEGMENT_START_INDEX],
+    )
+
+    async def unexpected_fetch_rank_item(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError
+
+    async def fake_fetch_rank_page_result(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> _rank.RankPageResult:
+        requested_pages.append((start, end))
+        items = []
+        for rank_index in range(start, end + 1):
+            score = SEGMENT_SCORE if rank_index == SEGMENT_START_INDEX else 200
+            items.append(
+                SimpleNamespace(
+                    id=rank_index,
+                    nick=f"Player{rank_index}",
+                    score=score,
+                )
+            )
+        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+
+    monkeypatch.setattr(_rank, "_fetch_rank_item", unexpected_fetch_rank_item)
+    monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
+
+    result = asyncio.run(
+        _rank.fetch_rank_score_segment(
+            object(),
+            title="book",
+            score_name="score",
+            key=156,
+            sub_key=1,
+            target_score=SEGMENT_SCORE,
+        )
+    )
+
+    assert requested_pages == [(20, 29), (10, 19)]
+    assert result.start_rank == SEGMENT_START_RANK
+    assert result.end_rank == SEGMENT_START_RANK
+    assert result.total_count == 1
+    assert [item.id for item in result.items] == [SEGMENT_START_INDEX]
 
 
 def test_fetch_rank_score_segment_rejects_score_below_boundary(

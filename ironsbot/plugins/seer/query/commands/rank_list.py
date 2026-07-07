@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from nonebot import logger
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher
@@ -259,6 +260,18 @@ async def _build_global_rank_score_message(
         target_score=command.score,
         start_index=spec.start,
         rank_offset=spec.rank_offset,
+    )
+    logger.info(
+        "rank score lookup completed: title={} key={} sub_key={} score={} "
+        "items={} boundary={} searched_limit={} truncated={}",
+        spec.title,
+        spec.key,
+        spec.sub_key,
+        command.score,
+        len(result.items),
+        result.boundary_score,
+        result.searched_limit,
+        result.truncated,
     )
     return format_global_rank_score_message(
         spec,

@@ -39,6 +39,7 @@ from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
     get_cached_rank_item_by_index,
     get_cached_rank_page_result,
+    get_cached_rank_score_indexes,
     get_rank_page_cache_summary,
     save_rank_page,
 )
@@ -718,6 +719,16 @@ def _cached_score_candidate_page_starts(
     end_index: int,
 ) -> list[int]:
     starts: list[int] = []
+    starts.extend(
+        _rank_page_start(index)
+        for index in get_cached_rank_score_indexes(
+            key=key,
+            sub_key=sub_key,
+            score=target_score,
+            start_index=start_index,
+            end_index=end_index,
+        )
+    )
     for page in get_rank_page_cache_summary(key=key, sub_key=sub_key):
         if page.min_score is None or page.max_score is None:
             continue
