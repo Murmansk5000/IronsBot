@@ -4,6 +4,7 @@ from ironsbot.services.red_packet_notice import (
     RedPacketNoticeLimiter,
     build_red_packet_notice_message,
     is_red_packet_message,
+    is_red_packet_payload,
     summarize_red_packet_message,
 )
 
@@ -25,6 +26,28 @@ def test_plain_red_packet_chat_is_not_detected() -> None:
     message = Message("谁发个红包")
 
     assert not is_red_packet_message(message)
+
+
+def test_notice_payload_with_red_packet_marker_is_detected() -> None:
+    payload = {
+        "post_type": "notice",
+        "notice_type": "notify",
+        "sub_type": "red_packet",
+        "raw_info": [{"txt": "QQ红包"}],
+    }
+
+    assert is_red_packet_payload(payload)
+
+
+def test_notice_payload_without_red_packet_marker_is_not_detected() -> None:
+    payload = {
+        "post_type": "notice",
+        "notice_type": "notify",
+        "sub_type": "poke",
+        "raw_info": [{"txt": "戳了戳"}],
+    }
+
+    assert not is_red_packet_payload(payload)
 
 
 def test_build_red_packet_notice_message_includes_group_and_sender() -> None:

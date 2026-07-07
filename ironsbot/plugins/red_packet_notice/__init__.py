@@ -3,8 +3,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot import on_message
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
+from nonebot import on_message, on_notice
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupMessageEvent,
+    MessageEvent,
+    NoticeEvent,
+)
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -14,6 +19,7 @@ from ironsbot.services.red_packet_notice import (
     RedPacketNoticeLimiter,
     build_red_packet_notice_message,
     is_red_packet_message,
+    is_red_packet_payload,
     summarize_red_packet_message,
 )
 from ironsbot.shared.features import get_superuser_ids
@@ -47,8 +53,21 @@ async def _is_red_packet_notice_event(event: MessageEvent) -> bool:
     return config.enabled and is_red_packet_message(event.message)
 
 
+async def _is_red_packet_notice_payload(event: NoticeEvent) -> bool:
+    group_id = getattr(event, "group_id", None)
+    if group_id is None:
+        return False
+    config = get_app_config().message.red_packet_notice
+    return config.enabled and is_red_packet_payload(event.model_dump())
+
+
 red_packet_notice_matcher = on_message(
     rule=Rule(_is_red_packet_notice_event),
+    priority=get_matcher_priority("red_packet_notice", 1),
+    block=False,
+)
+red_packet_notice_payload_matcher = on_notice(
+    rule=Rule(_is_red_packet_notice_payload),
     priority=get_matcher_priority("red_packet_notice", 1),
     block=False,
 )
@@ -72,10 +91,36 @@ async def handle_red_packet_notice(
     bot: Bot,
     event: GroupMessageEvent,
 ) -> None:
-    if not _get_limiter().can_send(event.group_id):
-        logger.info(
-            f"red packet notice suppressed by cooldown for group {event.group_id}"
-        )
+    await _send_red_packet_notice(
+        bot=bot,
+        group_id=event.group_id,
+        sender_id=event.user_id,
+        summary=summarize_red_packet_message(event.message),
+    )
+
+
+@red_packet_notice_payload_matcher.handle()
+async def handle_red_packet_notice_payload(
+    bot: Bot,
+    event: NoticeEvent,
+) -> None:
+    await _send_red_packet_notice(
+        bot=bot,
+        group_id=int(getattr(event, "group_id", 0)),
+        sender_id=int(getattr(event, "user_id", 0) or 0),
+        summary="红包通知",
+    )
+
+
+async def _send_red_packet_notice(
+    *,
+    bot: Bot,
+    group_id: int,
+    sender_id: int,
+    summary: str,
+) -> None:
+    if not _get_limiter().can_send(group_id):
+        logger.info(f"red packet notice suppressed by cooldown for group {group_id}")
         return
 
     superuser_ids = sorted(get_superuser_ids())
@@ -83,12 +128,13 @@ async def handle_red_packet_notice(
         logger.warning("red packet notice skipped: no superusers configured")
         return
 
-    group_name = await _get_group_name(bot, event.group_id)
+    logger.info(f"red packet notice detected: group={group_id} sender={sender_id}")
+    group_name = await _get_group_name(bot, group_id)
     notice = build_red_packet_notice_message(
-        group_id=event.group_id,
+        group_id=group_id,
         group_name=group_name,
-        sender_id=event.user_id,
-        summary=summarize_red_packet_message(event.message),
+        sender_id=sender_id,
+        summary=summary,
     )
     await send_broadcast_message(
         notice,

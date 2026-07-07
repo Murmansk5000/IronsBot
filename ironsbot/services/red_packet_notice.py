@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from nonebot.adapters.onebot.v11 import Message
 
 RED_PACKET_SEGMENT_TYPES = frozenset(
@@ -31,6 +30,7 @@ RED_PACKET_RAW_MARKERS = (
     "[QQ红包]",
     "QQ红包",
 )
+RED_PACKET_NOTICE_MARKERS = (*RED_PACKET_RAW_MARKERS, "红包")
 
 
 @dataclass(slots=True)
@@ -60,6 +60,10 @@ def is_red_packet_message(message: Message) -> bool:
 
     raw_message = str(message)
     return any(marker in raw_message for marker in RED_PACKET_RAW_MARKERS)
+
+
+def is_red_packet_payload(payload: Mapping[str, Any]) -> bool:
+    return _payload_contains_marker(payload, markers=RED_PACKET_NOTICE_MARKERS)
 
 
 def build_red_packet_notice_message(
@@ -105,9 +109,23 @@ def _segment_payload_contains_red_packet_marker(values: Iterable[Any]) -> bool:
     return False
 
 
+def _payload_contains_marker(value: Any, *, markers: tuple[str, ...]) -> bool:
+    if isinstance(value, str):
+        return any(marker in value for marker in markers)
+    if isinstance(value, Mapping):
+        return any(
+            _payload_contains_marker(item, markers=markers)
+            for item in value.values()
+        )
+    if isinstance(value, Iterable):
+        return any(_payload_contains_marker(item, markers=markers) for item in value)
+    return False
+
+
 __all__ = [
     "RedPacketNoticeLimiter",
     "build_red_packet_notice_message",
     "is_red_packet_message",
+    "is_red_packet_payload",
     "summarize_red_packet_message",
 ]
