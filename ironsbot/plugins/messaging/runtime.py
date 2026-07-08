@@ -10,14 +10,8 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.features import (
-    is_group_feature_allowed,
-    is_private_feature_allowed,
-    is_superuser,
-)
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
-    command_text_matches,
     event_conversation_session_id,
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -39,19 +33,22 @@ from ironsbot.utils.matcher import (
 from ironsbot.utils.rule import no_reply
 
 from . import schedules as message_schedules
-from .config import (
-    PrivateCommandMessageAction,
-    get_message_config,
+from .matcher_rules import (
+    GROUP_ACTION_KEY,
+    PRIVATE_ACTION_KEY,
+    is_group_push_subscription_manager,
+    match_group_command,
+    match_private_command,
+    match_push_subscription_command,
+    match_push_time_command,
 )
 from .push_management_runtime import (
-    PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS,
     PUSH_SUBSCRIPTION_NAMESPACE,
     PUSH_SUBSCRIPTION_OPTIONS_KEY,
     PUSH_SUBSCRIPTION_SESSION_KEY,
     PUSH_SUBSCRIPTION_TARGET_ID_KEY,
     PUSH_SUBSCRIPTION_TARGET_TYPE_KEY,
     PUSH_SUBSCRIPTION_VERSION_KEY,
-    PUSH_TIME_COMMANDS,
     PUSH_TIME_NAMESPACE,
     PUSH_TIME_OPTIONS_KEY,
     PUSH_TIME_SELECTED_KEY,
@@ -76,100 +73,9 @@ from .push_management_runtime import (
 from .push_time import (
     PushTimeOption,
 )
-from .runtime_service import find_command_action
-
-PRIVATE_ACTION_KEY = "_message_action_private"
-GROUP_ACTION_KEY = "_message_action_group"
 
 MESSAGE_PLUGIN_NAME = "message"
 _messaging_runtime_state = {"registered": False, "scheduler": None}
-
-
-def _private_action_allowed(
-    event: PrivateMessageEvent,
-    action: PrivateCommandMessageAction,
-) -> bool:
-    return is_private_feature_allowed(
-        event.user_id,
-        action.feature,
-    )
-
-
-async def _match_private_command(event: MessageEvent, state: T_State) -> bool:
-    if not isinstance(event, PrivateMessageEvent):
-        return False
-
-    text = event.get_plaintext()
-    config = get_message_config()
-    action = find_command_action(
-        text,
-        config.private_commands,
-        is_allowed=lambda candidate: _private_action_allowed(event, candidate),
-    )
-    if action is not None:
-        state[PRIVATE_ACTION_KEY] = action
-        return True
-
-    return False
-
-
-async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
-    if not isinstance(event, GroupMessageEvent):
-        return False
-
-    text = event.get_plaintext()
-    config = get_message_config()
-    action = find_command_action(
-        text,
-        config.group_commands,
-        is_allowed=lambda candidate: is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            candidate.feature,
-        ),
-    )
-    if action is not None:
-        state[GROUP_ACTION_KEY] = action
-        return True
-
-    return False
-
-
-def _is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
-    if is_superuser(int(event.user_id)):
-        return True
-    role = getattr(event.sender, "role", None)
-    return role in {"owner", "admin"}
-
-
-async def _match_push_subscription_command(
-    event: MessageEvent,
-    _state: T_State,
-) -> bool:
-    if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
-        return False
-
-    config = get_message_config().push_unsubscribe
-
-    text = event.get_plaintext()
-    if command_text_matches(text, PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS):
-        return True
-    if command_text_matches(text, config.commands):
-        return True
-    return command_text_matches(text, config.restore_commands)
-
-
-async def _match_push_time_command(
-    event: MessageEvent,
-    _state: T_State,
-) -> bool:
-    if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
-        return False
-    if isinstance(event, GroupMessageEvent) and not _is_group_push_subscription_manager(
-        event
-    ):
-        return False
-    return command_text_matches(event.get_plaintext(), PUSH_TIME_COMMANDS)
 
 
 def _message_subscription_priority() -> int:
@@ -177,25 +83,25 @@ def _message_subscription_priority() -> int:
 
 
 private_command_matcher = on_message(
-    rule=Rule(_match_private_command) & no_reply(),
+    rule=Rule(match_private_command) & no_reply(),
     priority=get_matcher_priority("message_commands", 4),
     block=True,
 )
 
 push_subscription_matcher = on_message(
-    rule=Rule(_match_push_subscription_command) & no_reply(),
+    rule=Rule(match_push_subscription_command) & no_reply(),
     priority=_message_subscription_priority(),
     block=True,
 )
 
 push_time_matcher = on_message(
-    rule=Rule(_match_push_time_command) & no_reply(),
+    rule=Rule(match_push_time_command) & no_reply(),
     priority=_message_subscription_priority(),
     block=True,
 )
 
 group_command_matcher = on_message(
-    rule=Rule(_match_group_command) & no_reply(),
+    rule=Rule(match_group_command) & no_reply(),
     priority=get_matcher_priority("message_commands", 4),
     block=True,
 )
@@ -285,7 +191,7 @@ async def handle_push_subscription_menu(
 ) -> None:
     target_type, target_id = _target_type_and_id(event)
     read_only = isinstance(event, GroupMessageEvent) and not (
-        _is_group_push_subscription_manager(event)
+        is_group_push_subscription_manager(event)
     )
     options = _push_subscription_options(
         target_type,
@@ -347,7 +253,7 @@ async def handle_push_subscription_select(
 
     if target_type == "group" and (
         not isinstance(event, GroupMessageEvent)
-        or not _is_group_push_subscription_manager(event)
+        or not is_group_push_subscription_manager(event)
     ):
         prompt = (
             "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
