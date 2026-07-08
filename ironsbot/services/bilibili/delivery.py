@@ -11,6 +11,7 @@ from ironsbot.shared.promotions import (
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
+BILI_PUSH_ADMIN_HINT = "\n\n管理：B站账号 / B站推送模式"
 
 
 class HasDynamicPushTargets(Protocol):
@@ -72,11 +73,23 @@ def _build_delivery_variants(
     ad_group_ids, plain_group_ids = split_fire_manual_ad_group_ids(group_ids)
     deliveries: list[DynamicPushDelivery] = []
 
-    if ad_group_ids or private_user_ids:
+    if ad_group_ids:
+        deliveries.append(
+            DynamicPushDelivery(
+                message=_append_admin_hint(
+                    append_fire_manual_ad_message(message.copy())
+                ),
+                group_ids=ad_group_ids,
+                private_user_ids=[],
+                action_name=action_name,
+            )
+        )
+
+    if private_user_ids:
         deliveries.append(
             DynamicPushDelivery(
                 message=append_fire_manual_ad_message(message.copy()),
-                group_ids=ad_group_ids,
+                group_ids=[],
                 private_user_ids=private_user_ids,
                 action_name=action_name,
             )
@@ -85,7 +98,7 @@ def _build_delivery_variants(
     if plain_group_ids:
         deliveries.append(
             DynamicPushDelivery(
-                message=message,
+                message=_append_admin_hint(message.copy()),
                 group_ids=plain_group_ids,
                 private_user_ids=[],
                 action_name=action_name,
@@ -93,3 +106,8 @@ def _build_delivery_variants(
         )
 
     return deliveries
+
+
+def _append_admin_hint(message: Message) -> Message:
+    message += BILI_PUSH_ADMIN_HINT
+    return message

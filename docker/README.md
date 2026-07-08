@@ -147,7 +147,7 @@ user_policy = { owner = ["all"] }
 superuser_bypass = true
 
 [bilibili.push]
-groups = { main = { extra_accounts = [], mode = "full" } }
+groups = { main = { accounts = [], mode = "full" } }
 ```
 
 ## Team Resource Subscription
