@@ -1,6 +1,7 @@
 import time
 
 from nonebot import get_driver
+from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
@@ -13,12 +14,13 @@ from ironsbot.shared.messaging import send_broadcast_message
 _LAST_SUPERUSER_NOTICE_AT: dict[str, float] = {}
 
 
-def _get_first_bot():
+def _get_first_bot() -> Bot | None:
     bots = get_driver().bots
     if not bots:
         return None
 
-    return next(iter(bots.values()))
+    bot = next(iter(bots.values()))
+    return bot if isinstance(bot, Bot) else None
 
 
 async def _send_admin_notice(

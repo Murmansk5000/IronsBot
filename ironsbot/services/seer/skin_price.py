@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from nonebot.log import logger
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
     from ironsbot.plugins.seer_data.db import SeerAPISession
 
@@ -65,7 +65,7 @@ def _load_shop_price(
     session: SeerAPISession,
     skin_id: int,
 ) -> SkinShopPrice | None:
-    row = session.exec(
+    row = session.execute(
         text(
             """
             SELECT skin_id, resource_id, card_price, diamond_price, original_price
@@ -79,7 +79,10 @@ def _load_shop_price(
     if row is None:
         return None
 
-    mapping = row._mapping if hasattr(row, "_mapping") else row
+    mapping = cast(
+        "Mapping[str, Any]",
+        row._mapping if hasattr(row, "_mapping") else row,
+    )
     return SkinShopPrice(
         skin_id=int(mapping["skin_id"]),
         resource_id=int(mapping["resource_id"] or 0),
@@ -94,7 +97,7 @@ def _load_store_prices(
     skin_id: int,
 ) -> list[SkinStorePrice]:
     now = int(time.time())
-    rows = session.exec(
+    rows = session.execute(
         text(
             """
             SELECT
@@ -121,7 +124,10 @@ def _load_store_prices(
 
     prices: list[SkinStorePrice] = []
     for row in rows:
-        mapping = row._mapping if hasattr(row, "_mapping") else row
+        mapping = cast(
+            "Mapping[str, Any]",
+            row._mapping if hasattr(row, "_mapping") else row,
+        )
         prices.append(
             SkinStorePrice(
                 skin_id=int(mapping["skin_id"]),

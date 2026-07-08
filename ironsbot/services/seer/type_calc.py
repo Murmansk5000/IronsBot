@@ -80,7 +80,8 @@ def _calc_multiplier(
             table, attacker.primary_id, atk_sec, defender.primary_id
         )
 
-    assert atk_sec is not None and def_sec is not None
+    if atk_sec is None or def_sec is None:
+        raise ValueError
     c1 = _double_attacks_single(
         table, attacker.primary_id, atk_sec, defender.primary_id
     )

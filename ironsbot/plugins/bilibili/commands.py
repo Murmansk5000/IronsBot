@@ -1,3 +1,5 @@
+from typing import Any
+
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -53,7 +55,10 @@ from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
+from ironsbot.shared.messaging.push_subscriptions import (
+    PushTargetType,
+    PushUnsubscribeStore,
+)
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -202,7 +207,7 @@ register_plugin(BiliMonitorPlugin())
 
 
 async def _wait_dynamic_select(
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
 ) -> None:
     await enter_event_reply_conversation(
@@ -339,7 +344,7 @@ def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
     return False
 
 
-def _push_mode_target(event: MessageEvent) -> tuple[str, int]:
+def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:
     if isinstance(event, GroupMessageEvent):
         return "group", int(event.group_id)
     return "private", int(event.user_id)
@@ -360,7 +365,7 @@ def _push_unsubscribe_store() -> PushUnsubscribeStore:
 
 def _format_account_mode_line(
     *,
-    target_type: str,
+    target_type: PushTargetType,
     target_id: int,
     account: str,
     uid: int,
@@ -387,6 +392,7 @@ async def _handle_bili_accounts(
     if rule is None:
         lines.append("当前会话未开启 B站推送。")
         await finish_event_reply(matcher, event, "\n".join(lines))
+        return
 
     unsubscribed_keys = _push_unsubscribe_store().target_unsubscribed_keys(
         target_type,
@@ -417,11 +423,13 @@ async def _handle_bili_push_mode(
 
     if not _is_bili_push_mode_manager(event):
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
+        return
 
     account = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip().lower()
     raw_mode = str(state.get(BILI_PUSH_MODE_RAW_KEY, "") or "")
     if not account or not raw_mode.strip():
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
+        return
 
     uid = account_uid(account)
     if uid is None:
@@ -430,6 +438,7 @@ async def _handle_bili_push_mode(
             event,
             f"❌ 未知 B站账号别名：{account}\n可发送“B站账号”查看账号库。",
         )
+        return
 
     target_type, target_id = _push_mode_target(event)
     rule = target_rule(target_type, target_id)
@@ -440,13 +449,16 @@ async def _handle_bili_push_mode(
             event,
             f"❌ 当前会话没有订阅 B站账号：{account}。",
         )
+        return
     if rule is None or account not in rule.accounts:
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
+        return
 
     try:
         mode = normalize_push_mode_text(raw_mode)
     except ValueError:
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
+        return
 
     store = push_preference_store()
     if mode is None:

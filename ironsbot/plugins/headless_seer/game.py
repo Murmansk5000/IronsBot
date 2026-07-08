@@ -204,7 +204,7 @@ class SeerGame:
                 if not servers:
                     raise RuntimeError("登录失败，服务器列表为空")
 
-                server = random.choice(servers)
+                server = random.choice(servers)  # nosec B311
                 await login_client.send_and_wait(
                     COMMAND_ID.RANGE_ONLINE,
                     self.user_id,
@@ -271,7 +271,8 @@ class SeerGame:
 
         reconnect_retries < 0 时无限重试，> 0 时重试指定次数。
         """
-        assert self._password is not None and self._login_server_url is not None
+        if self._password is None or self._login_server_url is None:
+            raise RuntimeError
         delay = self._reconnect_delay
         infinite = self._reconnect_retries < 0
         attempt = 0
@@ -458,7 +459,7 @@ class SeerGame:
             resp.raise_for_status()
             text = resp.text.strip()
         all_server_addr = text.split("|")
-        addr = random.choice(all_server_addr).split(":")
+        addr = random.choice(all_server_addr).split(":")  # nosec B311
         return Address(addr[0], int(addr[1]))
 
     @staticmethod

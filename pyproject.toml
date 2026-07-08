@@ -22,10 +22,16 @@ dependencies = [
     "qrcode-terminal>=0.8",
     "tomli>=2; python_version < '3.11'",
     "unitypy>=1.25.0",
+    "idna>=3.15",
+    "msgpack>=1.2.1",
+    "pygments>=2.20.0",
+    "pymdown-extensions>=10.21.3",
+    "python-dotenv>=1.2.2",
+    "starlette>=1.3.1",
 ]
 
 [project.optional-dependencies]
-dev = ["basedpyright", "pre-commit", "pytest", "pyyaml", "ruff"]
+dev = ["bandit", "basedpyright", "pip-audit", "pre-commit", "pytest", "pyyaml", "ruff"]
 
 [tool.nonebot]
 plugin_dirs = []
@@ -146,9 +152,11 @@ typeCheckingMode = "standard"
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
     "basedpyright>=1.38.1",
+    "pip-audit>=2.10.1",
     "pre-commit>=4.4.0",
-    "pytest>=9.0.2",
+    "pytest>=9.0.3",
     "pyyaml>=6.0.3",
     "ruff>=0.15.2",
 ]

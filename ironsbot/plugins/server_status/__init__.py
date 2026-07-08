@@ -7,7 +7,7 @@ import re
 import signal
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import quote, urlparse
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -50,7 +50,12 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 from ironsbot.utils.rule import no_reply
 
-from .config import Config, get_docker_update_config, get_server_status_config
+from .config import (
+    Config,
+    DockerUpdateConfig,
+    get_docker_update_config,
+    get_server_status_config,
+)
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
@@ -162,7 +167,7 @@ _open_broadcast_state = OpenBroadcastState()
 
 
 class DockerSelfUpdateService:
-    def __init__(self, config: object) -> None:
+    def __init__(self, config: DockerUpdateConfig) -> None:
         self._config = config
 
     def resolve_container_name(self) -> str:
@@ -187,7 +192,7 @@ class DockerSelfUpdateService:
 
 
 class RestartService:
-    def __init__(self, config: object) -> None:
+    def __init__(self, config: DockerUpdateConfig) -> None:
         self._config = config
 
     async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
@@ -302,7 +307,7 @@ class ServerStatusPlugin:
             await self._handle_restart(context.matcher or docker_update_matcher, event)
             return
 
-    async def _handle_normal(self, matcher: Matcher, event: MessageEvent) -> None:
+    async def _handle_normal(self, matcher: Any, event: MessageEvent) -> None:
         if not is_event_feature_allowed(event, "server_status_query"):
             logger.info(
                 "normal server status command ignored: "
@@ -357,7 +362,7 @@ class ServerStatusPlugin:
             mention_sender=True,
         )
 
-    async def _handle_admin(self, matcher: Matcher, event: MessageEvent) -> None:
+    async def _handle_admin(self, matcher: Any, event: MessageEvent) -> None:
         now = _now()
         lines = ["🛠【管理员开服查询】"]
         headless_status = _get_headless_status()
@@ -410,7 +415,7 @@ class ServerStatusPlugin:
             mention_sender=True,
         )
 
-    async def _handle_restart(self, matcher: Matcher, event: MessageEvent) -> None:
+    async def _handle_restart(self, matcher: Any, event: MessageEvent) -> None:
         config = get_docker_update_config()
         restart_service = RestartService(config)
         message, restart_action = await restart_service.prepare_manual_restart()

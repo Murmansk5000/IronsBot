@@ -1,7 +1,9 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
 from nonebot import get_driver, on_message, require
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -44,11 +46,6 @@ from ironsbot.shared.messaging.push_subscriptions import (
     private_schedule_key,
     private_schedule_label,
 )
-from ironsbot.shared.messaging.selection_menu import (
-    DEFAULT_SELECTION_FOOTER,
-    SelectionMenuItem,
-    format_selection_menu,
-)
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
@@ -57,6 +54,11 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.shared.promotions import (
     append_fire_manual_ad_for_group,
     append_fire_manual_ad_text,
+)
+from ironsbot.shared.selection_menu import (
+    DEFAULT_SELECTION_FOOTER,
+    SelectionMenuItem,
+    format_selection_menu,
 )
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
@@ -589,7 +591,7 @@ def _push_subscription_selection_rule(
 ) -> Rule:
     event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
 
-    def _check(next_event: MessageEvent) -> bool:
+    def _check(next_event: Event) -> bool:
         if not isinstance(next_event, event_type):
             return False
         if (
@@ -616,7 +618,7 @@ def _push_time_selection_rule(
 ) -> Rule:
     event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
 
-    def _check(next_event: MessageEvent) -> bool:
+    def _check(next_event: Event) -> bool:
         if not isinstance(next_event, event_type):
             return False
         if (
@@ -640,7 +642,7 @@ def _push_time_input_rule(
 ) -> Rule:
     event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
 
-    def _check(next_event: MessageEvent) -> bool:
+    def _check(next_event: Event) -> bool:
         if not isinstance(next_event, event_type):
             return False
         if (
@@ -835,7 +837,10 @@ async def handle_push_subscription_select(
         await matcher.finish()
     target_type = cast("PushTargetType", target_type)
 
-    if target_type == "group" and not _is_group_push_subscription_manager(event):
+    if target_type == "group" and (
+        not isinstance(event, GroupMessageEvent)
+        or not _is_group_push_subscription_manager(event)
+    ):
         prompt = (
             "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
             f"{_push_subscription_menu_prompt(target_type, options, read_only=True)}"
@@ -921,6 +926,7 @@ async def handle_push_time_select(
             state,
             _push_time_value_prompt(option),
         )
+        return
 
     selected_index = int(selected)
     if selected_index < 0 or selected_index >= len(options):
@@ -936,10 +942,12 @@ async def handle_push_time_select(
 
     option = options[selected_index]
     store = _push_subscription_store()
+    normalized: str | None
     try:
         normalized = _normalize_push_time_input(option, text)
     except ValueError as e:
         await _reject_push_time_input(matcher, state, str(e))
+        return
 
     if normalized is None:
         store.clear_time_preference(
@@ -1210,7 +1218,11 @@ def _clear_message_schedule_jobs(scheduler: Any) -> None:
     if not callable(get_jobs) or not callable(remove_job):
         return
 
-    for job in list(get_jobs()):
+    jobs = get_jobs()
+    if not isinstance(jobs, Iterable):
+        return
+
+    for job in list(jobs):
         job_id = str(getattr(job, "id", ""))
         if job_id.startswith(MESSAGE_SCHEDULE_JOB_PREFIX):
             remove_job(job_id)

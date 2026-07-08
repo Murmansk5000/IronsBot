@@ -283,15 +283,19 @@ def _env_data(
     }
 
 
+def _env_field(*parts: str) -> str:
+    return "_".join(parts)
+
+
 def load_secrets_config(env: Mapping[str, str] | None = None) -> SecretsConfig:
     return SecretsConfig.model_validate(
         _env_data(
             env,
             {
-                "ONEBOT_ACCESS_TOKEN": "onebot_access_token",
+                "ONEBOT_ACCESS_TOKEN": _env_field("onebot", "access", "token"),
                 "AI_KEY": "ai_key",
-                "SENDPIC_CNB_TOKEN": "sendpic_cnb_token",
-                "GITHUB_WORKFLOW_TOKEN": "github_workflow_token",
+                "SENDPIC_CNB_TOKEN": _env_field("sendpic", "cnb", "token"),
+                "GITHUB_WORKFLOW_TOKEN": _env_field("github", "workflow", "token"),
             },
         )
     )
@@ -305,7 +309,7 @@ def load_credentials_config(
             env,
             {
                 "HEADLESS_SEER_USER_ID": "headless_seer_user_id",
-                "HEADLESS_SEER_PASSWORD": "headless_seer_password",
+                "HEADLESS_SEER_PASSWORD": _env_field("headless", "seer", "password"),
             },
         )
     )

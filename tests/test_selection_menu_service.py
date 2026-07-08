@@ -1,4 +1,4 @@
-from ironsbot.shared.messaging.selection_menu import (
+from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     SelectionMenuSection,
     format_selection_menu,

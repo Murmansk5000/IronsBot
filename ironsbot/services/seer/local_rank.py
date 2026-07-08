@@ -423,32 +423,34 @@ def _format_local_rank(  # noqa: PLR0913
     if current_value is None:
         return None
 
-    where = "m.metric_key = ? AND m.value IS NOT NULL AND p.sample_enabled = 1"
-    params: list[object] = [metric_key]
-    if season_sub_key is None:
-        where += " AND m.season_sub_key IS NULL"
-    else:
-        where += " AND m.season_sub_key = ?"
-        params.append(season_sub_key)
+    params: tuple[object, ...] = (metric_key, season_sub_key, season_sub_key)
 
     sample_count = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND p.sample_enabled = 1
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
             """,
             params,
         ).fetchone()[0]
     )
     greater_count = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND p.sample_enabled = 1
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND m.value > ?
             """,
             (*params, current_value),
@@ -456,11 +458,15 @@ def _format_local_rank(  # noqa: PLR0913
     )
     tie_count = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND p.sample_enabled = 1
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND m.value = ?
             """,
             (*params, current_value),
@@ -528,21 +534,11 @@ def _format_summary(
     )
 
 
-def _get_metric_where(
+def _get_metric_params(
     metric_key: str,
     season_sub_key: int | None,
-    *,
-    table_alias: str = "m",
-) -> tuple[str, list[object]]:
-    prefix = f"{table_alias}." if table_alias else ""
-    where = f"{prefix}metric_key = ? AND {prefix}value IS NOT NULL"
-    params: list[object] = [metric_key]
-    if season_sub_key is None:
-        where += f" AND {prefix}season_sub_key IS NULL"
-    else:
-        where += f" AND {prefix}season_sub_key = ?"
-        params.append(season_sub_key)
-    return where, params
+) -> tuple[object, object, object]:
+    return metric_key, season_sub_key, season_sub_key
 
 
 def _count_metric_rows(
@@ -550,14 +546,17 @@ def _count_metric_rows(
     metric_key: str,
     season_sub_key: int | None,
 ) -> int:
-    where, params = _get_metric_where(metric_key, season_sub_key)
+    params = _get_metric_params(metric_key, season_sub_key)
     return int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND p.sample_enabled = 1
             """,
             params,
@@ -575,15 +574,18 @@ def _get_local_rank_entries_sql(
     requested_limit = max(0, limit)
     safe_start_rank = max(1, start_rank)
     fetch_limit = safe_start_rank + requested_limit - 1
-    where, params = _get_metric_where(metric_key, season_sub_key)
+    params = _get_metric_params(metric_key, season_sub_key)
     with _connect_cache() as conn:
         sample_count = _count_metric_rows(conn, metric_key, season_sub_key)
         rows = conn.execute(
-            f"""
+            """
             SELECT m.value, p.user_id, p.nick, m.display
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND p.sample_enabled = 1
             ORDER BY m.value DESC, p.user_id ASC
             LIMIT ?
@@ -636,23 +638,23 @@ def _get_refresh_candidate_player_ids_sql(
     limit: int,
     max_age_hours: int,
 ) -> list[int]:
-    params: list[object] = []
-    where = "sample_enabled = 1"
+    cutoff: str | None = None
     if max_age_hours > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-        where += " AND updated_at <= ?"
-        params.append(cutoff.isoformat())
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        ).isoformat()
 
     with _connect_cache() as conn:
         rows = conn.execute(
-            f"""
+            """
             SELECT user_id
             FROM players
-            WHERE {where}
+            WHERE sample_enabled = 1
+              AND (? IS NULL OR updated_at <= ?)
             ORDER BY updated_at ASC, user_id ASC
             LIMIT ?
             """,
-            (*params, max(0, limit)),
+            (cutoff, cutoff, max(0, limit)),
         ).fetchall()
     return [int(row["user_id"]) for row in rows]
 

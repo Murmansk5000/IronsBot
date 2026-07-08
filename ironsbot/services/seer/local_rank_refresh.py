@@ -2,6 +2,7 @@
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
@@ -20,6 +21,12 @@ from ironsbot.services.seer.sequ_extra import (
     fetch_unity_part_one,
     fetch_unity_peak,
 )
+
+
+class LocalRankGameClient(Protocol):
+    async def get_user_info(self, user_id: int) -> Any: ...
+
+    async def get_more_user_info(self, user_id: int) -> Any: ...
 
 
 @dataclass(slots=True)
@@ -106,7 +113,7 @@ async def refresh_local_rank_cache(
 
 async def _refresh_one_player(
     *,
-    game: object,
+    game: LocalRankGameClient,
     peak_sub_key: int | None,
     player_id: int,
 ) -> None:

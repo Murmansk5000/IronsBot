@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -30,14 +30,14 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
 
 
-def _normalize_mode(value: object) -> object:
+def _normalize_mode(value: object) -> BiliPushMode | None:
     if value is None or value == "":
-        return value
+        return None
     mode = str(value).strip().lower()
     if mode not in {"full", "link"}:
         msg = "APP_CONFIG.bilibili push mode must be full or link"
         raise ValueError(msg)
-    return mode
+    return cast("BiliPushMode", mode)
 
 
 def _normalize_account_name(value: object) -> str:
@@ -111,7 +111,7 @@ class BiliPushTargetConfig(BaseModel):
         for raw_account, raw_mode in parsed.items():
             account = _normalize_account_name(raw_account)
             mode = _normalize_mode(raw_mode)
-            if account and mode in {"full", "link"}:
+            if account and mode is not None:
                 result[account] = mode
         return result
 
@@ -147,7 +147,7 @@ class BiliPushConfig(BaseModel):
         for raw_account, raw_mode in parsed.items():
             account = _normalize_account_name(raw_account)
             mode = _normalize_mode(raw_mode)
-            if account and mode in {"full", "link"}:
+            if account and mode is not None:
                 result[account] = mode
         return result
 

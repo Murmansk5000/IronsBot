@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from .planning import group_by_send_time
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable
 
     from .models import ActivityReminder
 
@@ -87,7 +88,11 @@ def clear_reminder_jobs(scheduler: Any) -> None:
     if not callable(get_jobs) or not callable(remove_job):
         return
 
-    for job in list(get_jobs()):
+    jobs = get_jobs()
+    if not isinstance(jobs, Iterable):
+        return
+
+    for job in list(jobs):
         job_id = str(getattr(job, "id", ""))
         if not job_id.startswith(REMINDER_JOB_ID_PREFIX):
             continue
