@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,8 +30,8 @@ from ironsbot.services.seer.rank import (
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
 from ironsbot.shared.sqlite import (
-    connect_sqlite,
     ensure_sqlite_column,
+    open_sqlite,
 )
 
 _CACHE_LOCK = asyncio.Lock()
@@ -85,10 +87,11 @@ def _sqlite_cache_path() -> Path:
     return get_local_rank_config().path
 
 
-def _connect_cache() -> sqlite3.Connection:
-    conn = connect_sqlite(_sqlite_cache_path(), row_factory=sqlite3.Row)
-    _ensure_cache_schema(conn)
-    return conn
+@contextmanager
+def _connect_cache() -> Iterator[sqlite3.Connection]:
+    with open_sqlite(_sqlite_cache_path(), row_factory=sqlite3.Row) as conn:
+        _ensure_cache_schema(conn)
+        yield conn
 
 
 def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
@@ -146,7 +149,6 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
         ON metrics(metric_key, season_sub_key, value DESC, user_id)
         """
     )
-    conn.commit()
 
 
 def _write_player_metrics(  # noqa: PLR0913
@@ -530,7 +532,6 @@ async def _upsert_local_rank_metrics_sql(
             if is_pet_kind_rank_anomaly_user(player_id):
                 conn.execute("DELETE FROM metrics WHERE user_id = ?", (player_id,))
                 conn.execute("DELETE FROM players WHERE user_id = ?", (player_id,))
-                conn.commit()
                 return LocalRankSummary()
 
             row = conn.execute(
@@ -558,7 +559,6 @@ async def _upsert_local_rank_metrics_sql(
                 metrics=current_metrics,
                 sample_enabled=True,
             )
-            conn.commit()
             return _format_summary(
                 conn=conn,
                 current_metrics=current_metrics,
