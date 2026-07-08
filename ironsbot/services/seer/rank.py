@@ -11,7 +11,7 @@ from nonebot import logger
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
-from ironsbot.plugins.headless_seer.packets.peak import DailyRankParam
+from ironsbot.integrations.headless_seer.packets.peak import DailyRankParam
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,

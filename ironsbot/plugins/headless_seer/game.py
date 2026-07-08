@@ -3,13 +3,21 @@ import asyncio
 import json
 import random
 import time
-from dataclasses import dataclass
-from enum import Enum
 from typing import NamedTuple, overload
 
 import httpx
 from nonebot import logger
 
+from ironsbot.integrations.headless_seer.peak import (
+    PEAK_PET_KEY_MAP,
+    PEAK_SUIT_KEY_MAP,
+    PEAK_TITLE_KEY_MAP,
+    PEAK_TYPE_NAME_MAP,
+    PEAK_USER_KEY_MAP,
+    PeakData,
+    PeakItemData,
+    PeakType,
+)
 from ironsbot.plugins.headless_seer.packets.head import HeadInfo
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankList
 
@@ -26,69 +34,22 @@ from .packets.login import SessionPackct
 from .packets.peak import DailyRankInfo, DailyRankParam
 from .type_hint import CommandID, SocketRecvPacketBody, T_Deserializable
 
+__all__ = [
+    "PEAK_PET_KEY_MAP",
+    "PEAK_SUIT_KEY_MAP",
+    "PEAK_TITLE_KEY_MAP",
+    "PEAK_TYPE_NAME_MAP",
+    "PEAK_USER_KEY_MAP",
+    "PeakData",
+    "PeakItemData",
+    "PeakType",
+    "SeerGame",
+]
+
 
 class Address(NamedTuple):
     host: str
     port: int
-
-
-@dataclass(slots=True)
-class PeakData:
-    current_score: int
-    current_highest_score: int
-    history_highest_score: int
-
-
-@dataclass(slots=True)
-class PeakItemData:
-    id: int
-    count: int
-    win: int
-    ban_count: int | None = None
-
-    @property
-    def win_rate(self) -> float:
-        if self.count == 0:
-            return 0
-        return round(self.win / self.count * 100, 2)
-
-
-class PeakType(Enum):
-    STANDARD = 1
-    WILD = 2
-    EXPERT = 3
-
-
-PEAK_TYPE_NAME_MAP = {
-    PeakType.STANDARD: "竞技",
-    PeakType.WILD: "狂野",
-    PeakType.EXPERT: "专家",
-}
-
-PEAK_PET_KEY_MAP = {
-    PeakType.STANDARD: (177, 93, 94),
-    PeakType.WILD: (185, 184, 183),
-    PeakType.EXPERT: (202, 201, 200),
-}
-
-PEAK_SUIT_KEY_MAP = {
-    PeakType.STANDARD: (173, 174),
-    PeakType.WILD: (186, 187),
-    PeakType.EXPERT: (203, 204),
-}
-
-PEAK_TITLE_KEY_MAP = {
-    PeakType.STANDARD: (175, 176),
-    PeakType.WILD: (188, 189),
-    PeakType.EXPERT: (205, 206),
-}
-
-
-PEAK_USER_KEY_MAP = {
-    PeakType.STANDARD: 120,
-    PeakType.WILD: 182,
-    PeakType.EXPERT: 199,
-}
 
 
 def _merge_win_and_count_rank(

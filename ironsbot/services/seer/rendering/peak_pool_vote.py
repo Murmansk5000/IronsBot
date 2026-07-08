@@ -18,7 +18,7 @@ from ironsbot.utils.image import to_data_uri
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
-    from ironsbot.plugins.headless_seer.packets.peak import DailyRankList
+    from ironsbot.integrations.headless_seer.packets.peak import DailyRankList
 
 TEMPLATE_PATH = UPSTREAM_PEAK_POOL_VOTE_TEMPLATE_PATH
 SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
