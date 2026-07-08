@@ -25,7 +25,7 @@ from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityCo
 from ironsbot.config.models.seer import TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_AI_CHAT_PRIORITY = 99
+DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
@@ -41,7 +41,7 @@ DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
-DEFAULT_SEER_PLAYER_PRIORITY = 5
+DEFAULT_SEER_PLAYER_PRIORITY = 10
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
@@ -115,6 +115,10 @@ def _assert_default_matcher_priorities(
     assert matcher_priority.ai_mention_guard < 0
     assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
     assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
+    assert matcher_priority.sendpic < matcher_priority.seer_pet
+    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
+    assert matcher_priority.seer_pet > matcher_priority.seer_rank
+    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
     priorities = matcher_priority.model_dump()
     non_negative_priorities = [value for value in priorities.values() if value >= 0]
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
