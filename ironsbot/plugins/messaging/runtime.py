@@ -13,18 +13,11 @@ from nonebot.typing import T_State
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     event_conversation_session_id,
-    event_sender_at_user_ids,
-    finish_matcher_message,
 )
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
     PushTargetType,
-)
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
 )
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
@@ -33,9 +26,12 @@ from ironsbot.utils.matcher import (
 from ironsbot.utils.rule import no_reply
 
 from . import schedules as message_schedules
+from .command_handlers import (
+    dispatch_group_command,
+    dispatch_private_command,
+    register_messaging_plugin,
+)
 from .matcher_rules import (
-    GROUP_ACTION_KEY,
-    PRIVATE_ACTION_KEY,
     is_group_push_subscription_manager,
     match_group_command,
     match_private_command,
@@ -74,7 +70,6 @@ from .push_time import (
     PushTimeOption,
 )
 
-MESSAGE_PLUGIN_NAME = "message"
 _messaging_runtime_state = {"registered": False, "scheduler": None}
 
 
@@ -107,56 +102,10 @@ group_command_matcher = on_message(
 )
 
 
-class MessagingPlugin:
-    name = MESSAGE_PLUGIN_NAME
-    feature = "text"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        if context.action == "private_command" and isinstance(
-            event,
-            PrivateMessageEvent,
-        ):
-            await self._handle_private_command(event, context)
-            return
-
-        if context.action == "group_command" and isinstance(event, GroupMessageEvent):
-            await self._handle_group_command(event, context)
-            return
-
-    async def _handle_private_command(
-        self,
-        event: PrivateMessageEvent,
-        context: PluginContext,
-    ) -> None:
-        state = context.state if context.state is not None else {}
-        action = state[PRIVATE_ACTION_KEY]
-        await finish_matcher_message(
-            context.matcher or private_command_matcher,
-            action.message,
-            event=event,
-        )
-
-    async def _handle_group_command(
-        self,
-        event: GroupMessageEvent,
-        context: PluginContext,
-    ) -> None:
-        state = context.state if context.state is not None else {}
-        action = state[GROUP_ACTION_KEY]
-        at_user_ids = [
-            *event_sender_at_user_ids(event),
-            *action.at_user_ids,
-        ]
-        await finish_matcher_message(
-            context.matcher or group_command_matcher,
-            action.message,
-            at_user_ids=at_user_ids,
-            event=event,
-        )
-
-
-register_plugin(MessagingPlugin())
+register_messaging_plugin(
+    private_matcher=private_command_matcher,
+    group_matcher=group_command_matcher,
+)
 
 
 @private_command_matcher.handle()
@@ -164,12 +113,10 @@ async def handle_private_command(
     event: PrivateMessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=MESSAGE_PLUGIN_NAME,
+    await dispatch_private_command(
+        private_matcher=private_command_matcher,
         event=event,
-        matcher=private_command_matcher,
         state=state,
-        action="private_command",
     )
 
 
@@ -394,12 +341,10 @@ async def handle_push_time_select(
 
 @group_command_matcher.handle()
 async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None:
-    await dispatch_plugin(
-        plugin_name=MESSAGE_PLUGIN_NAME,
+    await dispatch_group_command(
+        group_matcher=group_command_matcher,
         event=event,
-        matcher=group_command_matcher,
         state=state,
-        action="group_command",
     )
 
 
