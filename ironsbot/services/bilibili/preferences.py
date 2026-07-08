@@ -19,9 +19,9 @@ def bili_push_subscription_key(uid: int) -> str:
     return f"{BILI_PUSH_SUBSCRIPTION_PREFIX}{int(uid)}"
 
 
-def bili_push_subscription_label(uid: int, account: str | None = None) -> str:
-    if account:
-        return f"B站动态：{account}（{int(uid)}）"
+def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
+    if label:
+        return f"B站动态：{label}"
     return f"B站动态：{int(uid)}"
 
 

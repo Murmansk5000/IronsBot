@@ -197,7 +197,7 @@ enabled = true
 
 [bilibili]
 # B 站配置分三层：
-# 1. [bilibili.accounts] 是账号别名库，只负责把名字映射到 UID，不代表一定推送。
+# 1. [bilibili.accounts] 是账号别名库，只负责定义 UID 和中文昵称，不代表一定推送。
 # 2. [bilibili.push].accounts 是默认推送账号，所有开启 bili_push 的群/用户都会收到。
 # 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号。
 # 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
@@ -209,11 +209,11 @@ enabled = true
 login_notice_cooldown_seconds = 300.0
 
 [bilibili.accounts]
-# Default: { seer = 1310714247 }
+# Default: { seer = { uid = 1310714247, nickname = "赛尔号官方" } }
 # EN: Named Bilibili account library. Other Bilibili config references these names.
-# ZH: B 站账号别名库，其他 B 站配置均引用这些别名。
-# Example: fire = 375750254
-seer = 1310714247
+# ZH: B 站账号别名库，其他 B 站配置均引用这些英文别名；nickname 只用于菜单展示。
+# Example: fire = { uid = 527589079, nickname = "火火" }
+seer = { uid = 1310714247, nickname = "赛尔号官方" }
 
 [bilibili.storage]
 # Default: "data/bilibili_monitor"
