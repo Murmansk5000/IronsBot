@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
-import time
 from typing import Any
-
-from nonebot import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
@@ -60,9 +56,6 @@ from ironsbot.services.seer.rank_peak import (
 from ironsbot.services.seer.rank_position_cache import (
     find_rank_by_cached_position as _find_rank_by_cached_position_impl,
 )
-from ironsbot.services.seer.rank_position_cache import (
-    refresh_cached_rank_window as _refresh_cached_rank_window_impl,
-)
 from ironsbot.services.seer.rank_range import (
     fetch_rank_range as _fetch_rank_range_impl,
 )
@@ -118,8 +111,6 @@ format_rank_lookup = _format_rank_lookup
 
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
-_RANK_WINDOW_REFRESH_KEYS: set[tuple[int, int, int, int]] = set()
-_RANK_WINDOW_REFRESH_TASKS: set[asyncio.Task[None]] = set()
 
 
 def get_rank_query_config() -> RankQueryConfig:
@@ -189,73 +180,6 @@ def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:
         page_size=page_size,
         window_pages=CACHED_RANK_LOOKUP_WINDOW_PAGES,
     )
-
-
-async def _refresh_cached_rank_window(
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    center_index: int,
-    page_size: int,
-) -> None:
-    await _refresh_cached_rank_window_impl(
-        game,
-        key=key,
-        sub_key=sub_key,
-        center_index=center_index,
-        page_size=page_size,
-        rank_window_page_starts=_rank_window_page_starts,
-        fetch_rank_page=_fetch_rank_page,
-        refresh_interval_seconds=get_local_rank_config().refresh_interval_seconds,
-    )
-
-
-def _schedule_cached_rank_window_refresh(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    center_index: int,
-    page_size: int,
-    fetched_at: float,
-) -> None:
-    if not get_rank_query_config().refresh_stale_cache:
-        return
-
-    ttl = get_rank_query_config().page_cache_ttl_seconds
-    if ttl <= 0 or time.time() - fetched_at < ttl:
-        return
-
-    page_start = center_index // page_size * page_size
-    refresh_key = (key, sub_key, page_start, page_size)
-    if refresh_key in _RANK_WINDOW_REFRESH_KEYS:
-        return
-
-    async def run() -> None:
-        try:
-            await _refresh_cached_rank_window(
-                game,
-                key=key,
-                sub_key=sub_key,
-                center_index=center_index,
-                page_size=page_size,
-            )
-        finally:
-            _RANK_WINDOW_REFRESH_KEYS.discard(refresh_key)
-
-    task = asyncio.create_task(run())
-    _RANK_WINDOW_REFRESH_KEYS.add(refresh_key)
-    _RANK_WINDOW_REFRESH_TASKS.add(task)
-
-    def done_callback(done_task: asyncio.Task[None]) -> None:
-        _RANK_WINDOW_REFRESH_TASKS.discard(done_task)
-        try:
-            done_task.result()
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"rank window background refresh failed: {e}")
-
-    task.add_done_callback(done_callback)
 
 
 async def _find_rank_by_cached_position(  # noqa: PLR0913
