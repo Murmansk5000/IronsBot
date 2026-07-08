@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -45,6 +46,29 @@ DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
 TEAM_RESOURCE_THRESHOLD = 2000
+PUBLIC_CONFIG_DOC_PATHS = (
+    ROOT / "config.example.toml",
+    ROOT / "README.md",
+    ROOT / "docker" / "README.md",
+    ROOT / "templates" / "ironsbot.xml",
+    ROOT / "docker-compose.yml",
+)
+STALE_PUBLIC_CONFIG_PATTERNS = (
+    r"\buid_modes\b",
+    r"\bdefault_mode\b",
+    r"\bdefault_accounts\b",
+    r"\bextra_accounts\b",
+    r"\baccount_aliases\b",
+    r"\baccount_modes\b",
+    r"\bprivate_unsubscribe\b",
+    r"\bteam_shortcut\b",
+    r"\bactivity_link_push\b",
+    r"\bactivity_link_daily",
+    r"\baction_templates\b",
+    r"\bdefault_uids\b",
+    r"\bextra_uids\b",
+    "\\[\\s*(?:\"fire_manual\"|'fire_manual'|fire_manual)\\s*(?:\\.|\\])",
+)
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -101,8 +125,12 @@ def test_example_config_parses() -> None:
 
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
-    assert config.bilibili.account_aliases["seer"] == DEFAULT_BILI_ACCOUNT_UID
-    assert config.bilibili.push.default_accounts == ["seer"]
+    assert "fire_manual" in config.ai.intent_actions
+    assert "fire_manual_ad" not in config.ai.intent_actions
+    assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.bilibili.push.mode == "link"
+    assert config.bilibili.push.accounts == ["seer"]
+    assert config.bilibili.push.modes == {"seer": "full"}
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
@@ -174,6 +202,20 @@ def test_example_config_parses() -> None:
     assert config.runtime.help.ignored_plugins == []
 
 
+def test_public_config_docs_do_not_reference_stale_fields() -> None:
+    stale_matches: list[str] = []
+
+    for path in PUBLIC_CONFIG_DOC_PATHS:
+        text = path.read_text(encoding="utf-8")
+        stale_matches.extend(
+            f"{path.relative_to(ROOT)}: {pattern}"
+            for pattern in STALE_PUBLIC_CONFIG_PATTERNS
+            if re.search(pattern, text)
+        )
+
+    assert stale_matches == []
+
+
 def test_missing_app_config_is_created_from_example(tmp_path: Path) -> None:
     config_path = tmp_path / "config" / "ironsbot.toml"
     config = load_app_config(
@@ -228,11 +270,9 @@ unknown_feature = "old value"
 unknown_ai = "old value"
 
 [bilibili]
-account_aliases = { synthetic = 101 }
 unknown_bili_field = true
 
 [bilibili.push]
-default_accounts = ["synthetic"]
 unknown_push_field = true
 
 [[message.group_commands]]
@@ -248,9 +288,6 @@ unknown_command_field = true
     with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
         config = load_app_config(config_path)
 
-    synthetic_account_id = 101
-    assert config.bilibili.account_aliases["synthetic"] == synthetic_account_id
-    assert config.bilibili.push.default_accounts == ["synthetic"]
     assert not config.feature.superuser_bypass
     assert config.message.group_commands[0].id == "hello"
     assert "unknown_root" in caplog.text
@@ -487,10 +524,3 @@ def test_seer_plugin_config_accessors_read_app_config(
         )
     finally:
         clear_app_config_cache()
-
-
-def test_bilibili_config_rejects_invalid_push_mode() -> None:
-    from ironsbot.config.models.bilibili import BiliConfig
-
-    with pytest.raises(ValidationError):
-        BiliConfig.model_validate({"push": {"default_mode": "invalid-mode"}})

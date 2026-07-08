@@ -138,7 +138,7 @@ user_policy = { owner = ["all"] }
 superuser_bypass = true
 
 [bilibili.push]
-groups = { xinghen = { extra_accounts = [], mode = "full" } }
+groups = { xinghen = { accounts = [], mode = "full" } }
 
 [seer.team_resource]
 times = ["23:00"]
