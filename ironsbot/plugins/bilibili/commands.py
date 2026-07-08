@@ -48,6 +48,7 @@ from ironsbot.services.bilibili.state import (
     mode_for_target_account,
     push_preference_store,
     query_uids_for_event,
+    resolve_account_reference,
     target_rule,
 )
 from ironsbot.shared.features import is_event_feature_allowed
@@ -132,7 +133,7 @@ def _parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
             return ("", "")
 
         parts = rest.split(maxsplit=1)
-        account = parts[0].strip().lower()
+        account = parts[0].strip()
         mode_text = parts[1].strip() if len(parts) > 1 else ""
         return (account, mode_text)
 
@@ -354,10 +355,10 @@ def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:
 
 def _bili_push_mode_usage() -> str:
     return (
-        "用法：B站推送模式 <账号别名> <内容|链接|默认>\n"
-        "例：B站推送模式 seer 链接\n"
-        "例：B站推送模式 seer 内容\n"
-        "例：B站推送模式 seer 默认"
+        "用法：B站推送模式 <账号昵称> <内容|链接|默认>\n"
+        "例：B站推送模式 赛尔号官方 链接\n"
+        "例：B站推送模式 火火 内容\n"
+        "例：B站推送模式 火火 默认"
     )
 
 
@@ -391,7 +392,7 @@ async def _handle_bili_accounts(
     lines = ["📺【B站账号】"]
     account_lines = "、".join(
         (
-            f"{name}={uid}（{nickname}）"
+            f"{nickname}（{uid}）"
             if (nickname := account_nickname(name))
             else f"{name}={uid}"
         )
@@ -419,7 +420,7 @@ async def _handle_bili_accounts(
                 unsubscribed_keys=unsubscribed_keys,
             )
         )
-    lines.append("群主/管理员可发送：B站推送模式 <账号别名> <内容|链接|默认>")
+    lines.append("群主/管理员可发送：B站推送模式 <账号昵称> <内容|链接|默认>")
     await finish_event_reply(matcher, event, "\n".join(lines))
 
 
@@ -434,18 +435,19 @@ async def _handle_bili_push_mode(
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
         return
 
-    account = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip().lower()
+    account_ref = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip()
     raw_mode = str(state.get(BILI_PUSH_MODE_RAW_KEY, "") or "")
-    if not account or not raw_mode.strip():
+    if not account_ref or not raw_mode.strip():
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
         return
 
-    uid = account_uid(account)
-    if uid is None:
+    account = resolve_account_reference(account_ref)
+    uid = account_uid(account) if account is not None else None
+    if account is None or uid is None:
         await finish_event_reply(
             matcher,
             event,
-            f"❌ 未知 B站账号别名：{account}\n可发送“B站账号”查看账号库。",
+            f"❌ 未知 B站账号：{account_ref}\n可发送“B站账号”查看账号库。",
         )
         return
 
@@ -456,7 +458,7 @@ async def _handle_bili_push_mode(
         await finish_event_reply(
             matcher,
             event,
-            f"❌ 当前会话没有订阅 B站账号：{account}。",
+            f"❌ 当前会话没有订阅 B站账号：{account_ref}。",
         )
         return
     if rule is None or account not in rule.accounts:
