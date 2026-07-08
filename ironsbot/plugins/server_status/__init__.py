@@ -2,10 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import signal
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Any
 
 from nonebot import logger
@@ -25,16 +22,11 @@ from ironsbot.plugins.headless_seer_notice.state import (
 )
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.shared.features import (
-    groups_for_feature,
     is_event_feature_allowed,
-    is_superuser,
-    users_for_feature,
-    users_with_superusers,
 )
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
-    send_broadcast_message,
     send_event_reply,
 )
 from ironsbot.shared.plugin_system import (
@@ -42,13 +34,12 @@ from ironsbot.shared.plugin_system import (
     dispatch_plugin,
     register_plugin,
 )
-from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 from ironsbot.utils.rule import no_reply
 
+from .broadcast import broadcast_opened
 from .config import (
     Config,
     get_docker_update_config,
-    get_server_status_config,
 )
 from .docker_update import (
     DockerUpdateResult,
@@ -70,8 +61,6 @@ from .docker_update import (
     restart_docker_container as _restart_docker_container,
 )
 from .notice import (
-    DEFAULT_START_TIME,
-    DEFAULT_UPDATE_WEEKDAY,
     _build_fetch_failed_reply,
     _build_no_notice_reply,
     _build_notice_reply,
@@ -79,6 +68,7 @@ from .notice import (
     _now,
     fetch_server_notice_text,
 )
+from .process_restart import restart_bot_process
 from .restart import DockerSelfUpdateService, RestartService
 
 __all__ = [
@@ -101,7 +91,6 @@ BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 DOCKER_UPDATE_COMMANDS = ("/更新镜像", "/更新Docker", "/更新docker")
 SERVER_STATUS_PLUGIN_NAME = "server_status"
 BOT_RESTART_DELAY_SECONDS = 1.0
-PARENT_EXIT_WAIT_SECONDS = 5.0
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 
 __plugin_meta__ = PluginMetadata(
@@ -127,18 +116,10 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-@dataclass(slots=True)
-class OpenBroadcastState:
-    last_at: datetime | None = None
-
-
 @dataclass(frozen=True, slots=True)
 class HeadlessStatus:
     connected: bool
     reason: str = ""
-
-
-_open_broadcast_state = OpenBroadcastState()
 
 
 normal_server_status_matcher = on_fullmatch(
@@ -228,7 +209,7 @@ class ServerStatusPlugin:
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("开服公告读取失败")
             if headless_status.connected:
-                await _broadcast_opened(event, now=now)
+                await broadcast_opened(event, now=now)
             await finish_event_reply(
                 matcher,
                 event,
@@ -238,7 +219,7 @@ class ServerStatusPlugin:
             return
 
         if headless_status.connected:
-            await _broadcast_opened(event, now=now)
+            await broadcast_opened(event, now=now)
             await finish_event_reply(
                 matcher,
                 event,
@@ -290,7 +271,7 @@ class ServerStatusPlugin:
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("管理员开服查询读取公告失败")
             if headless_status.connected:
-                await _broadcast_opened(event, now=now)
+                await broadcast_opened(event, now=now)
             lines.extend(
                 (
                     "",
@@ -300,7 +281,7 @@ class ServerStatusPlugin:
         else:
             lines.append("")
             if headless_status.connected:
-                await _broadcast_opened(event, now=now)
+                await broadcast_opened(event, now=now)
                 lines.append(_build_open_reply(now, notice_text=notice_text))
             elif notice_text:
                 lines.append(_build_notice_reply(notice_text))
@@ -340,10 +321,10 @@ class ServerStatusPlugin:
                 logger.opt(exception=True).warning(
                     "docker container restart failed; falling back to process restart"
                 )
-                await _restart_bot_process()
+                await restart_bot_process()
         elif restart_action == "process":
             await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-            await _restart_bot_process()
+            await restart_bot_process()
 
 
 register_plugin(ServerStatusPlugin())
@@ -399,76 +380,6 @@ async def handle_docker_update(matcher: Matcher, event: MessageEvent) -> None:
     )
 
 
-async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
-    config = get_server_status_config()
-    if not config.broadcast:
-        logger.info("server status open broadcast skipped: disabled")
-        return
-
-    if not _should_broadcast_opened(now):
-        return
-
-    group_ids = groups_for_feature("server_status_push")
-    user_ids = users_with_superusers(users_for_feature("server_status_push"))
-    if not group_ids and not user_ids:
-        logger.info("server status open broadcast skipped: no targets")
-        return
-
-    if not _can_trigger_open_broadcast(event, group_ids=group_ids, user_ids=user_ids):
-        logger.info("server status open broadcast skipped: trigger not allowed")
-        return
-
-    if _is_open_broadcast_in_cooldown(now):
-        logger.info("server status open broadcast skipped: cooldown")
-        return
-
-    summary = await send_broadcast_message(
-        config.broadcast_message,
-        group_ids=group_ids,
-        private_user_ids=user_ids,
-        action_name="server status open broadcast",
-        interval_seconds=1.2,
-        message_limiter=append_fire_manual_ad_for_group,
-        subscription_key="server_status_push",
-    )
-    if summary.succeeded:
-        _open_broadcast_state.last_at = now
-
-
-def _should_broadcast_opened(now: datetime) -> bool:
-    return (
-        now.weekday() == DEFAULT_UPDATE_WEEKDAY
-        and now.time() >= DEFAULT_START_TIME
-    )
-
-
-def _can_trigger_open_broadcast(
-    event: MessageEvent,
-    *,
-    group_ids: list[int],
-    user_ids: list[int],
-) -> bool:
-    if is_superuser(event.user_id):
-        return True
-
-    group_id = getattr(event, "group_id", None)
-    if group_id is not None:
-        return int(group_id) in group_ids
-
-    return event.user_id in user_ids
-
-
-def _is_open_broadcast_in_cooldown(now: datetime) -> bool:
-    if _open_broadcast_state.last_at is None:
-        return False
-
-    cooldown_minutes = get_server_status_config().broadcast_cooldown_minutes
-    if cooldown_minutes <= 0:
-        return False
-
-    return now - _open_broadcast_state.last_at < timedelta(minutes=cooldown_minutes)
-
-
 def _get_headless_status() -> HeadlessStatus:
     try:
         game = get_game_client()
@@ -493,26 +404,6 @@ def _get_headless_status() -> HeadlessStatus:
 def _format_headless_unavailable_text(reason: str) -> str:
     reason = reason.strip() or "状态未知"
     return f"机器人登录状态：{reason}。"
-
-
-async def _restart_bot_process() -> None:
-    current_pid = os.getpid()
-    parent_pid = os.getppid()
-    target_pid = parent_pid if parent_pid > 0 else current_pid
-    logger.warning(
-        "admin requested bot restart: current_pid={}, target_pid={}",
-        current_pid,
-        target_pid,
-    )
-    os.kill(target_pid, signal.SIGTERM)
-    if target_pid != current_pid:
-        await asyncio.sleep(PARENT_EXIT_WAIT_SECONDS)
-        logger.warning(
-            "bot restart parent did not stop current worker yet; "
-            "sending SIGTERM to current_pid={}",
-            current_pid,
-        )
-        os.kill(current_pid, signal.SIGTERM)
 
 
 _format_docker_image_created = format_docker_image_created
