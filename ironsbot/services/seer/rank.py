@@ -1,7 +1,6 @@
 ﻿# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
@@ -71,6 +70,14 @@ from ironsbot.services.seer.rank_pagination import (
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page as _score_miss_proof_from_page,
 )
+from ironsbot.services.seer.rank_score_search import (
+    RankSearchBudgetExhaustedError,
+    score_search_probe_limit,
+    score_search_tie_page_limit,
+)
+from ironsbot.services.seer.rank_score_search import (
+    find_last_existing_score_index as _find_last_existing_score_index,
+)
 
 format_book_breakdown = _format_book_breakdown
 format_peak_rank_lookup = _format_peak_rank_lookup
@@ -79,8 +86,6 @@ format_rank_lookup = _format_rank_lookup
 
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
-DEFAULT_SCORE_SEARCH_PROBE_LIMIT = 32
-DEFAULT_SCORE_SEARCH_TIE_PAGE_LIMIT = 5
 _RANK_WINDOW_REFRESH_KEYS: set[tuple[int, int, int, int]] = set()
 _RANK_WINDOW_REFRESH_TASKS: set[asyncio.Task[None]] = set()
 
@@ -480,60 +485,12 @@ async def _find_rank_by_linear_scan(  # noqa: PLR0913
     return result
 
 
-class RankSearchBudgetExhaustedError(RuntimeError):
-    pass
-
-
-async def _find_last_existing_score_index(
-    start_index: int,
-    end_index: int,
-    score_at: Callable[[int], Awaitable[int | None]],
-) -> tuple[int | None, int | None]:
-    if end_index <= start_index:
-        return None, None
-
-    boundary_index = end_index - 1
-    boundary_score = await score_at(boundary_index)
-    if boundary_score is not None:
-        return boundary_index, boundary_score
-
-    first_score = await score_at(start_index)
-    if first_score is None:
-        return None, None
-
-    low = start_index
-    high = boundary_index
-    while low + 1 < high:
-        mid = (low + high) // 2
-        score = await score_at(mid)
-        if score is None:
-            high = mid
-        else:
-            low = mid
-
-    return low, await score_at(low)
-
-
 def _score_search_probe_limit(limit: int) -> int:
-    configured = int(
-        getattr(
-            get_rank_query_config(),
-            "score_search_probe_limit",
-            DEFAULT_SCORE_SEARCH_PROBE_LIMIT,
-        )
-    )
-    return max(1, min(configured, max(limit, 1)))
+    return score_search_probe_limit(get_rank_query_config(), limit)
 
 
 def _score_search_tie_page_limit() -> int:
-    configured = int(
-        getattr(
-            get_rank_query_config(),
-            "score_search_tie_page_limit",
-            DEFAULT_SCORE_SEARCH_TIE_PAGE_LIMIT,
-        )
-    )
-    return max(1, configured)
+    return score_search_tie_page_limit(get_rank_query_config())
 
 
 async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
