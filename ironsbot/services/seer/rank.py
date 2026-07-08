@@ -93,6 +93,16 @@ class RankScoreSearchItem:
 
 
 @dataclass(slots=True)
+class RankScoreGap:
+    score: int
+    start_rank: int
+    end_rank: int
+    total_count: int
+    truncated: bool = False
+    items: list[RankScoreSearchItem] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class RankScoreSearchResult:
     title: str
     score_name: str
@@ -107,6 +117,16 @@ class RankScoreSearchResult:
     truncated: bool = False
     fetched_at: float = 0.0
     items: list[RankScoreSearchItem] = field(default_factory=list)
+    higher_gap: RankScoreGap | None = None
+    lower_gap: RankScoreGap | None = None
+
+
+@dataclass(slots=True)
+class RankScoreMissProof:
+    boundary_score: int
+    fetched_at: float
+    higher_gap: RankScoreGap | None = None
+    lower_gap: RankScoreGap | None = None
 
 
 @dataclass(slots=True)
@@ -247,6 +267,139 @@ async def _fetch_rank_page(  # noqa: PLR0913
         use_cache=use_cache,
     )
     return result.items
+
+
+def _rank_score_search_item(item: Any, rank_index: int) -> RankScoreSearchItem:
+    return RankScoreSearchItem(
+        id=int(item.id),
+        nick=str(item.nick),
+        score=int(item.score),
+        rank_index=rank_index,
+    )
+
+
+def _score_gap_from_page(
+    *,
+    items: list[Any],
+    page_start: int,
+    score: int,
+    rank_offset: int,
+) -> RankScoreGap | None:
+    matching_items = [
+        _rank_score_search_item(item, page_start + offset)
+        for offset, item in enumerate(items)
+        if int(item.score) == score
+    ]
+    if not matching_items:
+        return None
+
+    first_index = matching_items[0].rank_index
+    last_index = matching_items[-1].rank_index
+    page_end = page_start + len(items) - 1
+    return RankScoreGap(
+        score=score,
+        start_rank=first_index + 1 + rank_offset,
+        end_rank=last_index + 1 + rank_offset,
+        total_count=len(matching_items),
+        truncated=first_index == page_start or last_index == page_end,
+        items=matching_items,
+    )
+
+
+def _score_miss_proof_from_page(
+    *,
+    items: list[Any],
+    page_start: int,
+    target_score: int,
+    rank_offset: int,
+    fetched_at: float,
+) -> RankScoreMissProof | None:
+    if not items:
+        return None
+
+    lower_offset = next(
+        (
+            offset
+            for offset, item in enumerate(items)
+            if int(item.score) < target_score
+        ),
+        None,
+    )
+    if lower_offset is None or lower_offset <= 0:
+        return None
+
+    higher_score = int(items[lower_offset - 1].score)
+    lower_score = int(items[lower_offset].score)
+    if not higher_score > target_score > lower_score:
+        return None
+
+    return RankScoreMissProof(
+        boundary_score=lower_score,
+        fetched_at=fetched_at,
+        higher_gap=_score_gap_from_page(
+            items=items,
+            page_start=page_start,
+            score=higher_score,
+            rank_offset=rank_offset,
+        ),
+        lower_gap=_score_gap_from_page(
+            items=items,
+            page_start=page_start,
+            score=lower_score,
+            rank_offset=rank_offset,
+        ),
+    )
+
+
+async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
+    game: Any,
+    *,
+    key: int,
+    sub_key: int,
+    target_score: int,
+    gap_index: int,
+    rank_offset: int,
+    result: RankScoreSearchResult,
+) -> None:
+    page_size = _rank_page_size()
+    page_start = _rank_page_start(gap_index)
+    proof_page_start = page_start
+    page_result = await _fetch_rank_page_result(
+        game,
+        key=key,
+        sub_key=sub_key,
+        start=page_start,
+        end=page_start + page_size - 1,
+        use_cache=False,
+    )
+    proof_items = page_result.items
+    fetched_at = page_result.fetched_at
+    if page_start > 0 and gap_index == page_start:
+        previous_page_start = page_start - page_size
+        previous_page_result = await _fetch_rank_page_result(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=previous_page_start,
+            end=previous_page_start + page_size - 1,
+            use_cache=False,
+        )
+        proof_page_start = previous_page_start
+        proof_items = [*previous_page_result.items, *page_result.items]
+        fetched_at = max(previous_page_result.fetched_at, page_result.fetched_at)
+    proof = _score_miss_proof_from_page(
+        items=proof_items,
+        page_start=proof_page_start,
+        target_score=target_score,
+        rank_offset=rank_offset,
+        fetched_at=fetched_at,
+    )
+    if proof is None:
+        return
+    result.boundary_score = proof.boundary_score
+    result.fetched_at = proof.fetched_at
+    result.higher_gap = proof.higher_gap
+    result.lower_gap = proof.lower_gap
 
 
 def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:
@@ -739,14 +892,15 @@ def _cached_score_candidate_page_starts(
     return sorted(set(starts))
 
 
-def _cached_score_miss_boundary(
+def _cached_score_miss_boundary(  # noqa: PLR0913
     *,
     key: int,
     sub_key: int,
     target_score: int,
     start_index: int,
     end_index: int,
-) -> tuple[int, float] | None:
+    rank_offset: int,
+) -> RankScoreMissProof | None:
     for page in get_rank_page_cache_summary(key=key, sub_key=sub_key):
         if getattr(page, "is_stale", False) or getattr(page, "is_partial", False):
             continue
@@ -776,7 +930,28 @@ def _cached_score_miss_boundary(
         if exact_indexes:
             continue
 
-        return int(page.min_score), float(page.fetched_at)
+        cached_page = get_cached_rank_page_result(
+            key=key,
+            sub_key=sub_key,
+            start=int(page.start_index),
+            end=int(page.end_index),
+            allow_stale=False,
+        )
+        if cached_page is None:
+            return RankScoreMissProof(
+                boundary_score=int(page.min_score),
+                fetched_at=float(page.fetched_at),
+            )
+        return _score_miss_proof_from_page(
+            items=list(cached_page.items),
+            page_start=int(page.start_index),
+            target_score=target_score,
+            rank_offset=rank_offset,
+            fetched_at=cached_page.fetched_at,
+        ) or RankScoreMissProof(
+            boundary_score=int(page.min_score),
+            fetched_at=float(page.fetched_at),
+        )
     return None
 
 
@@ -936,9 +1111,13 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
         target_score=target_score,
         start_index=start_index,
         end_index=end_index,
+        rank_offset=rank_offset,
     )
     if cached_miss is not None:
-        result.boundary_score, result.fetched_at = cached_miss
+        result.boundary_score = cached_miss.boundary_score
+        result.fetched_at = cached_miss.fetched_at
+        result.higher_gap = cached_miss.higher_gap
+        result.lower_gap = cached_miss.lower_gap
         return result
 
     cached_result = await _fetch_rank_score_segment_from_cached_candidates(
@@ -1028,6 +1207,15 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
     except RankSearchBudgetExhaustedError:
         return result
     if first_score != target_score:
+        await _populate_score_miss_proof_from_online_page(
+            game,
+            key=key,
+            sub_key=sub_key,
+            target_score=target_score,
+            gap_index=first_same_or_lower,
+            rank_offset=rank_offset,
+            result=result,
+        )
         return result
 
     low = first_same_or_lower

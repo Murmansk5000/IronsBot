@@ -25,6 +25,7 @@ PushTargetType = Literal["private", "group"]
 PushPreferenceType = Literal["cron_time", "activity_lead_hours"]
 CRON_TIME_PREFERENCE: PushPreferenceType = "cron_time"
 ACTIVITY_LEAD_HOURS_PREFERENCE: PushPreferenceType = "activity_lead_hours"
+READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可查看 · 输入 0 退出"
 
 
 class ScheduledPushTask(Protocol):
@@ -482,6 +483,7 @@ def build_push_subscription_menu(
     *,
     title: str,
     options: Sequence[PushSubscriptionOption],
+    read_only: bool = False,
 ) -> str:
     return format_selection_menu(
         title=title,
@@ -492,7 +494,7 @@ def build_push_subscription_menu(
             )
             for option in options
         ),
-        footer=TOGGLE_SELECTION_FOOTER,
+        footer=READONLY_SELECTION_FOOTER if read_only else TOGGLE_SELECTION_FOOTER,
     )
 
 __all__ = [

@@ -34,6 +34,13 @@ CACHED_HINT_SEGMENT_COUNT = (
 CACHED_GAP_TARGET_SCORE = 10000
 CACHED_GAP_UPPER_SCORE = 10001
 CACHED_GAP_LOWER_SCORE = 9970
+CACHED_GAP_UPPER_RANK = 58
+CACHED_GAP_LOWER_RANK = 59
+ONLINE_GAP_UPPER_SCORE = 200
+ONLINE_GAP_UPPER_START_RANK = 11
+ONLINE_GAP_UPPER_END_RANK = 20
+ONLINE_GAP_LOWER_START_RANK = 21
+ONLINE_GAP_LOWER_END_RANK = 30
 FETCHED_AT = 1_781_234_567.0
 LOOKUP_INDEX = 14
 
@@ -572,6 +579,30 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
         ],
     )
     monkeypatch.setattr(_rank, "get_cached_rank_score_indexes", lambda **_: [])
+    monkeypatch.setattr(
+        _rank,
+        "get_cached_rank_page_result",
+        lambda **_: SimpleNamespace(
+            fetched_at=FETCHED_AT,
+            items=[
+                SimpleNamespace(id=1000 + index, nick=f"Player{index}", score=score)
+                for index, score in enumerate(
+                    [
+                        10080,
+                        10070,
+                        10060,
+                        10050,
+                        10040,
+                        10030,
+                        10020,
+                        CACHED_GAP_UPPER_SCORE,
+                        CACHED_GAP_LOWER_SCORE,
+                        9960,
+                    ]
+                )
+            ],
+        ),
+    )
 
     async def unexpected_fetch_rank_item(*_args: object, **_kwargs: object) -> None:
         raise AssertionError
@@ -603,6 +634,84 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
     assert result.items == []
     assert result.boundary_score == CACHED_GAP_LOWER_SCORE
     assert result.fetched_at == FETCHED_AT
+    assert result.higher_gap is not None
+    assert result.higher_gap.score == CACHED_GAP_UPPER_SCORE
+    assert result.higher_gap.start_rank == CACHED_GAP_UPPER_RANK
+    assert [item.id for item in result.higher_gap.items] == [1007]
+    assert result.lower_gap is not None
+    assert result.lower_gap.score == CACHED_GAP_LOWER_SCORE
+    assert result.lower_gap.start_rank == CACHED_GAP_LOWER_RANK
+    assert [item.id for item in result.lower_gap.items] == [1008]
+
+
+def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    missing_score = 175
+    _patch_rank_config(
+        monkeypatch,
+        rank_limit=100,
+        page_size=TIED_PAGE_SIZE,
+        score_search_probe_limit=20,
+        score_search_tie_page_limit=5,
+    )
+    requested_pages: list[tuple[int, int]] = []
+
+    async def fake_fetch_rank_item(
+        *_args: object,
+        index: int,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        score = ONLINE_GAP_UPPER_SCORE if index < SEGMENT_START_INDEX else SEGMENT_SCORE
+        return SimpleNamespace(id=index, nick=f"Player{index}", score=score)
+
+    async def fake_fetch_rank_page_result(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> _rank.RankPageResult:
+        requested_pages.append((start, end))
+        items = []
+        for rank_index in range(start, end + 1):
+            score = (
+                ONLINE_GAP_UPPER_SCORE
+                if rank_index < SEGMENT_START_INDEX
+                else SEGMENT_SCORE
+            )
+            items.append(
+                SimpleNamespace(
+                    id=rank_index,
+                    nick=f"Player{rank_index}",
+                    score=score,
+                )
+            )
+        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+
+    monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
+
+    result = asyncio.run(
+        _rank.fetch_rank_score_segment(
+            object(),
+            title="book",
+            score_name="score",
+            key=156,
+            sub_key=1,
+            target_score=missing_score,
+        )
+    )
+
+    assert result.items == []
+    assert requested_pages == [(20, 29), (10, 19)]
+    assert result.higher_gap is not None
+    assert result.higher_gap.score == ONLINE_GAP_UPPER_SCORE
+    assert result.higher_gap.start_rank == ONLINE_GAP_UPPER_START_RANK
+    assert result.higher_gap.end_rank == ONLINE_GAP_UPPER_END_RANK
+    assert result.lower_gap is not None
+    assert result.lower_gap.score == SEGMENT_SCORE
+    assert result.lower_gap.start_rank == ONLINE_GAP_LOWER_START_RANK
+    assert result.lower_gap.end_rank == ONLINE_GAP_LOWER_END_RANK
 
 
 def test_fetch_rank_score_segment_rejects_score_below_boundary(

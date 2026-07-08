@@ -151,6 +151,21 @@ def test_push_subscription_menu_prompt_marks_current_state() -> None:
     assert "输入序号切换" in prompt
 
 
+def test_push_subscription_menu_prompt_can_be_read_only() -> None:
+    prompt = runtime._push_subscription_menu_prompt(
+        "group",
+        [
+            PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
+        ],
+        read_only=True,
+    )
+
+    assert "本群推送订阅状态" in prompt
+    assert "1. ✅ 机器人启动通知" in prompt
+    assert "普通群员仅可查看" in prompt
+    assert "输入序号切换" not in prompt
+
+
 def test_group_push_subscription_command_allows_superuser_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -168,7 +183,7 @@ def test_group_push_subscription_command_allows_superuser_member(
     assert asyncio.run(runtime._match_push_subscription_command(_group_event(), {}))
 
 
-def test_group_push_subscription_command_rejects_regular_member(
+def test_group_push_subscription_command_allows_regular_member_to_view(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(runtime, "is_superuser", lambda _user_id: False)
@@ -178,8 +193,26 @@ def test_group_push_subscription_command_rejects_regular_member(
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
 
-    assert not asyncio.run(
+    assert asyncio.run(
         runtime._match_push_subscription_command(_group_event(), {})
+    )
+
+
+def test_group_push_subscription_management_command_matches_regular_member(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime, "is_superuser", lambda _user_id: False)
+    monkeypatch.setattr(
+        runtime,
+        "get_message_config",
+        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
+    )
+
+    assert asyncio.run(
+        runtime._match_push_subscription_command(
+            _group_event("推送管理", user_id=3003),
+            {},
+        )
     )
 
 

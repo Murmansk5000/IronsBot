@@ -85,6 +85,7 @@ PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
 PUSH_SUBSCRIPTION_TARGET_TYPE_KEY = "_message_push_subscription_target_type"
 PUSH_SUBSCRIPTION_VERSION_KEY = "_message_push_subscription_version"
 PUSH_SUBSCRIPTION_NAMESPACE = "message_push_subscription"
+PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
 PUSH_TIME_OPTIONS_KEY = "_message_push_time_options"
 PUSH_TIME_SELECTED_KEY = "_message_push_time_selected"
 PUSH_TIME_SESSION_KEY = "_message_push_time_session"
@@ -177,12 +178,10 @@ async def _match_push_subscription_command(
         return False
 
     config = get_message_config().push_unsubscribe
-    if isinstance(event, GroupMessageEvent) and not _is_group_push_subscription_manager(
-        event
-    ):
-        return False
 
     text = event.get_plaintext()
+    if command_text_matches(text, PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS):
+        return True
     if command_text_matches(text, config.commands):
         return True
     return command_text_matches(text, config.restore_commands)
@@ -400,7 +399,13 @@ def _push_subscription_options(
     ]
 
 
-def _push_subscription_menu_title(target_type: PushTargetType) -> str:
+def _push_subscription_menu_title(
+    target_type: PushTargetType,
+    *,
+    read_only: bool = False,
+) -> str:
+    if target_type == "group" and read_only:
+        return "本群推送订阅状态："
     scope = "本群" if target_type == "group" else "私聊"
     return f"请选择要切换的{scope}推送订阅："
 
@@ -408,10 +413,13 @@ def _push_subscription_menu_title(target_type: PushTargetType) -> str:
 def _push_subscription_menu_prompt(
     target_type: PushTargetType,
     options: list[PushSubscriptionOption],
+    *,
+    read_only: bool = False,
 ) -> str:
     return build_push_subscription_menu(
-        title=_push_subscription_menu_title(target_type),
+        title=_push_subscription_menu_title(target_type, read_only=read_only),
         options=options,
+        read_only=read_only,
     )
 
 
@@ -766,6 +774,9 @@ async def handle_push_subscription_menu(
     state: T_State,
 ) -> None:
     target_type, target_id = _target_type_and_id(event)
+    read_only = isinstance(event, GroupMessageEvent) and not (
+        _is_group_push_subscription_manager(event)
+    )
     options = _push_subscription_options(
         target_type,
         target_id,
@@ -788,7 +799,11 @@ async def handle_push_subscription_menu(
         matcher,
         handlers=[handle_push_subscription_select],
         rule=_push_subscription_selection_rule(session_id, version, target_type),
-        prompt=_push_subscription_menu_prompt(target_type, options),
+        prompt=_push_subscription_menu_prompt(
+            target_type,
+            options,
+            read_only=read_only,
+        ),
     )
 
 
@@ -819,6 +834,13 @@ async def handle_push_subscription_select(
     if target_type not in {"private", "group"} or not isinstance(target_id, int):
         await matcher.finish()
     target_type = cast("PushTargetType", target_type)
+
+    if target_type == "group" and not _is_group_push_subscription_manager(event):
+        prompt = (
+            "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
+            f"{_push_subscription_menu_prompt(target_type, options, read_only=True)}"
+        )
+        await _reject_push_subscription_selection(matcher, state, prompt)
 
     store = _push_subscription_store()
     if store.is_target_unsubscribed(target_type, target_id, option.key):

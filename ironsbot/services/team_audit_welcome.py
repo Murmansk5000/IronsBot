@@ -13,15 +13,17 @@ class TeamAuditPendingReminder:
     user_id: int
     joined_at: datetime
     remind_at: datetime
+    step: int = 1
 
 
-def record_team_audit_pending_reminder(
+def record_team_audit_pending_reminder(  # noqa: PLR0913
     cache_path: str | Path,
     *,
     group_id: int,
     user_id: int,
     joined_at: datetime,
     delay_hours: float,
+    step: int = 1,
 ) -> TeamAuditPendingReminder:
     joined_at = _as_utc(joined_at)
     reminder = TeamAuditPendingReminder(
@@ -29,26 +31,48 @@ def record_team_audit_pending_reminder(
         user_id=user_id,
         joined_at=joined_at,
         remind_at=joined_at + timedelta(hours=delay_hours),
+        step=max(1, int(step)),
     )
     with _connect(cache_path) as conn:
         conn.execute(
             """
             INSERT INTO pending_team_audit_reminders (
-                group_id, user_id, joined_at, remind_at
+                group_id, user_id, joined_at, remind_at, step
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(group_id, user_id) DO UPDATE SET
                 joined_at = excluded.joined_at,
-                remind_at = excluded.remind_at
+                remind_at = excluded.remind_at,
+                step = excluded.step
             """,
             (
                 reminder.group_id,
                 reminder.user_id,
                 _datetime_text(reminder.joined_at),
                 _datetime_text(reminder.remind_at),
+                reminder.step,
             ),
         )
     return reminder
+
+
+def get_team_audit_pending_reminder(
+    cache_path: str | Path,
+    *,
+    group_id: int,
+    user_id: int,
+) -> TeamAuditPendingReminder | None:
+    with _connect(cache_path) as conn:
+        row = conn.execute(
+            """
+            SELECT group_id, user_id, joined_at, remind_at, step
+            FROM pending_team_audit_reminders
+            WHERE group_id = ? AND user_id = ?
+            """,
+            (group_id, user_id),
+        ).fetchone()
+
+    return None if row is None else _row_to_reminder(row)
 
 
 def list_team_audit_pending_reminders(
@@ -57,21 +81,13 @@ def list_team_audit_pending_reminders(
     with _connect(cache_path) as conn:
         rows = conn.execute(
             """
-            SELECT group_id, user_id, joined_at, remind_at
+            SELECT group_id, user_id, joined_at, remind_at, step
             FROM pending_team_audit_reminders
             ORDER BY remind_at, group_id, user_id
             """
         ).fetchall()
 
-    return [
-        TeamAuditPendingReminder(
-            group_id=int(row["group_id"]),
-            user_id=int(row["user_id"]),
-            joined_at=_parse_datetime(row["joined_at"]),
-            remind_at=_parse_datetime(row["remind_at"]),
-        )
-        for row in rows
-    ]
+    return [_row_to_reminder(row) for row in rows]
 
 
 def clear_team_audit_pending_reminder(
@@ -102,11 +118,36 @@ def _connect(cache_path: str | Path) -> sqlite3.Connection:
             user_id INTEGER NOT NULL,
             joined_at TEXT NOT NULL,
             remind_at TEXT NOT NULL,
+            step INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (group_id, user_id)
         )
         """
     )
+    _ensure_step_column(conn)
     return conn
+
+
+def _ensure_step_column(conn: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in conn.execute("PRAGMA table_info(pending_team_audit_reminders)")
+    }
+    if "step" in columns:
+        return
+    conn.execute(
+        "ALTER TABLE pending_team_audit_reminders "
+        "ADD COLUMN step INTEGER NOT NULL DEFAULT 1"
+    )
+
+
+def _row_to_reminder(row: sqlite3.Row) -> TeamAuditPendingReminder:
+    return TeamAuditPendingReminder(
+        group_id=int(row["group_id"]),
+        user_id=int(row["user_id"]),
+        joined_at=_parse_datetime(row["joined_at"]),
+        remind_at=_parse_datetime(row["remind_at"]),
+        step=max(1, int(row["step"])),
+    )
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -126,6 +167,7 @@ def _parse_datetime(value: str) -> datetime:
 __all__ = [
     "TeamAuditPendingReminder",
     "clear_team_audit_pending_reminder",
+    "get_team_audit_pending_reminder",
     "list_team_audit_pending_reminders",
     "record_team_audit_pending_reminder",
 ]
