@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot import logger
 
-from ironsbot.plugins.headless_seer.exception import (
+from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
