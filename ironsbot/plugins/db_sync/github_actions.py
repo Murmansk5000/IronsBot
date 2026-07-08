@@ -28,7 +28,7 @@ class AsyncGitHubClient(Protocol):
         self,
         url: str,
         *,
-        headers: dict[str, str],
+        headers: Any,
         json: dict[str, object],
     ) -> httpx.Response: ...
 
@@ -36,8 +36,8 @@ class AsyncGitHubClient(Protocol):
         self,
         url: str,
         *,
-        headers: dict[str, str],
-        params: dict[str, object] | None = None,
+        headers: Any,
+        params: Any | None = None,
     ) -> httpx.Response: ...
 
 
@@ -199,7 +199,7 @@ async def _get_with_retries(
     url: str,
     *,
     headers: dict[str, str],
-    params: dict[str, object] | None = None,
+    params: Any | None = None,
 ) -> httpx.Response:
     last_error: httpx.TransportError | None = None
     for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
@@ -220,15 +220,18 @@ async def trigger_and_wait_workflow(
     client: AsyncGitHubClient | None = None,
 ) -> WorkflowRunResult:
     started_at = datetime.now(timezone.utc)
-    owns_client = client is None
+    owned_client: httpx.AsyncClient | None = None
     if client is None:
-        client = httpx.AsyncClient(
+        owned_client = httpx.AsyncClient(
             follow_redirects=True,
             timeout=httpx.Timeout(30.0, read=60.0),
         )
+        github_client: AsyncGitHubClient = owned_client
+    else:
+        github_client = client
 
     try:
-        await _dispatch_workflow(client, config=config, token=token)
+        await _dispatch_workflow(github_client, config=config, token=token)
         deadline = started_at + timedelta(seconds=config.timeout_seconds)
         matched_run_id: int | None = None
         last_run_url = (
@@ -239,7 +242,7 @@ async def trigger_and_wait_workflow(
         while datetime.now(timezone.utc) < deadline:
             if matched_run_id is None:
                 matched_run = await _find_dispatched_run(
-                    client,
+                    github_client,
                     config=config,
                     token=token,
                     started_at=started_at,
@@ -251,7 +254,7 @@ async def trigger_and_wait_workflow(
                 last_run_url = str(matched_run.get("html_url") or last_run_url)
 
             run = await _get_run(
-                client,
+                github_client,
                 repository=config.repository,
                 run_id=matched_run_id,
                 token=token,
@@ -269,8 +272,8 @@ async def trigger_and_wait_workflow(
             message="GitHub workflow timed out",
         )
     finally:
-        if owns_client:
-            await client.aclose()  # type: ignore[attr-defined]
+        if owned_client is not None:
+            await owned_client.aclose()
 
 
 __all__ = [
