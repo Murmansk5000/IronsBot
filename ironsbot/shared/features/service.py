@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
@@ -26,7 +26,7 @@ FeatureContext = object
 
 def _coerce_int(value: object) -> int | None:
     try:
-        return int(value)
+        return int(cast("Any", value))
     except (TypeError, ValueError):
         return None
 

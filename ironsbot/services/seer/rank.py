@@ -1312,10 +1312,12 @@ async def _find_rank(  # noqa: PLR0913
     target_score: int | None = None,
     search_limit: int | None = None,
 ) -> RankLookupResult:
-    has_target_score = target_score is not None and target_score > 0
+    score_target = (
+        target_score if target_score is not None and target_score > 0 else None
+    )
     limit = (
         _score_search_limit(search_limit)
-        if has_target_score
+        if score_target is not None
         else _online_search_limit(search_limit)
     )
     page_size = max(1, min(get_rank_query_config().page_size, 100))
@@ -1341,13 +1343,13 @@ async def _find_rank(  # noqa: PLR0913
     if limit <= 0:
         return result
 
-    if has_target_score:
+    if score_target is not None:
         return await _find_rank_by_score(
             game,
             user_id=user_id,
             key=key,
             sub_key=sub_key,
-            target_score=target_score,
+            target_score=score_target,
             limit=limit,
             page_size=page_size,
             result=result,

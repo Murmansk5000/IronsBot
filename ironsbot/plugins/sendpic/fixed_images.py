@@ -44,6 +44,7 @@ class FixedImagePlugin:
                 event,
                 FIXED_IMAGE_MISSING_MESSAGE,
             )
+            return
 
         await finish_event_reply(
             matcher,

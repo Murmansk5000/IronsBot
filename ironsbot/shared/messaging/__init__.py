@@ -1,4 +1,14 @@
 # SPDX-License-Identifier: MIT
+from ironsbot.shared.selection_menu import (
+    DEFAULT_SELECTION_FOOTER,
+    HELP_SELECTION_FOOTER,
+    TOGGLE_SELECTION_FOOTER,
+    SelectionMenu,
+    SelectionMenuItem,
+    SelectionMenuSection,
+    format_selection_menu,
+)
+
 from .conversations import (
     EventReplyCheck,
     command_reply_check,
@@ -31,15 +41,6 @@ from .replies import (
     finish_message_sequence,
     send_event_reply,
     send_matcher_message,
-)
-from .selection_menu import (
-    DEFAULT_SELECTION_FOOTER,
-    HELP_SELECTION_FOOTER,
-    TOGGLE_SELECTION_FOOTER,
-    SelectionMenu,
-    SelectionMenuItem,
-    SelectionMenuSection,
-    format_selection_menu,
 )
 from .senders import (
     MessageLimiter,

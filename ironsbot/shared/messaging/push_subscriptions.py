@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from ironsbot.shared.messaging.selection_menu import (
+from ironsbot.shared.selection_menu import (
     TOGGLE_SELECTION_FOOTER,
     SelectionMenuItem,
     format_selection_menu,
@@ -29,14 +29,29 @@ READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可
 
 
 class ScheduledPushTask(Protocol):
-    id: str
-    name: str
-    enabled: bool
-    feature: str
-    message: str
-    hour: int
-    minute: int
-    day_of_week: str | None
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def enabled(self) -> bool: ...
+
+    @property
+    def feature(self) -> str: ...
+
+    @property
+    def message(self) -> str: ...
+
+    @property
+    def hour(self) -> int: ...
+
+    @property
+    def minute(self) -> int: ...
+
+    @property
+    def day_of_week(self) -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,14 +264,13 @@ class PushUnsubscribeStore:
         if not deduped_target_ids:
             return []
         with self._connect() as con:
-            placeholders = ",".join("?" for _ in deduped_target_ids)
             rows = con.execute(
                 "SELECT target_id FROM push_unsubscriptions "
-                "WHERE target_type = ? AND subscription_key = ? "
-                f"AND target_id IN ({placeholders})",
-                (target_type, subscription_key, *deduped_target_ids),
+                "WHERE target_type = ? AND subscription_key = ?",
+                (target_type, subscription_key),
             ).fetchall()
-        blocked = {int(row[0]) for row in rows}
+        requested = set(deduped_target_ids)
+        blocked = {int(row[0]) for row in rows if int(row[0]) in requested}
         return [
             target_id for target_id in deduped_target_ids if target_id not in blocked
         ]
@@ -361,24 +375,21 @@ class PushUnsubscribeStore:
         subscription_key: str | None = None,
         preference_type: PushPreferenceType | None = None,
     ) -> list[PushTimePreference]:
-        conditions: list[str] = []
-        params: list[object] = []
-        if target_type is not None:
-            conditions.append("target_type = ?")
-            params.append(target_type)
-        if subscription_key is not None:
-            conditions.append("subscription_key = ?")
-            params.append(subscription_key)
-        if preference_type is not None:
-            conditions.append("preference_type = ?")
-            params.append(preference_type)
-
-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with self._connect() as con:
             rows = con.execute(
                 "SELECT target_type, target_id, subscription_key, preference_type, "
-                f"value, updated_at FROM push_time_preferences {where}",
-                params,
+                "value, updated_at FROM push_time_preferences "
+                "WHERE (? IS NULL OR target_type = ?) "
+                "AND (? IS NULL OR subscription_key = ?) "
+                "AND (? IS NULL OR preference_type = ?)",
+                (
+                    target_type,
+                    target_type,
+                    subscription_key,
+                    subscription_key,
+                    preference_type,
+                    preference_type,
+                ),
             ).fetchall()
         return [
             PushTimePreference(

@@ -38,7 +38,7 @@ def select_image(
         selection = ImageSelection(index=int(arg_text), is_random=False)
     elif not arg_text:
         if random_index_factory is None:
-            index = random.randint(1, max_index)
+            index = random.randint(1, max_index)  # nosec B311
         else:
             index = random_index_factory()
         selection = ImageSelection(index=index, is_random=True)

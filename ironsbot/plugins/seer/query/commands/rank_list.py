@@ -301,6 +301,7 @@ async def _cache_global_rank_batch(
 
 def _build_local_rank_message(spec: LocalRankSpec, command: RankListCommand) -> str:
     season_sub_key = get_current_peak_sub_key() if spec.season_limited else None
+    season_sub_key_text = str(season_sub_key) if season_sub_key is not None else None
     entries, sample_count = get_local_rank_entries(
         spec.metric_key,
         limit=command.limit,
@@ -311,7 +312,7 @@ def _build_local_rank_message(spec: LocalRankSpec, command: RankListCommand) -> 
         spec,
         entries,
         sample_count=sample_count,
-        season_sub_key=season_sub_key,
+        season_sub_key=season_sub_key_text,
         start_rank=command.start_rank,
         requested_count=command.limit,
     )

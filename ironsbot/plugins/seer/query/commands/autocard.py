@@ -244,6 +244,7 @@ class AutocardPlugin:
                 event,
                 "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。",
             )
+            return
 
         await _send_autocard_reply(matcher, event, dataset, value.kind, data)
         await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
@@ -270,6 +271,7 @@ class AutocardPlugin:
                 event,
                 f"❌ 群星牌公开配置获取失败：{e}",
             )
+            return
 
         matches = search_autocard_items(dataset, query)
         if not matches:

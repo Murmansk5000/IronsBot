@@ -234,8 +234,8 @@ class AbstractSocketConnect(
     # ---- 心跳 ----
 
     async def _heartbeat_loop(self) -> None:
-        assert self._heartbeat_interval is not None
-        assert self._on_heartbeat is not None
+        if self._heartbeat_interval is None or self._on_heartbeat is None:
+            raise RuntimeError
         connection_lost = False
         try:
             while self.is_connected:

@@ -7,4 +7,7 @@ def get_first_bot() -> Bot | None:
     if not bots:
         return None
 
-    return next(iter(bots.values()))
+    for bot in bots.values():
+        if isinstance(bot, Bot):
+            return bot
+    return None

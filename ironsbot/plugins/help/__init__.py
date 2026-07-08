@@ -22,16 +22,16 @@ from ironsbot.shared.messaging import (
     send_event_reply,
 )
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
-from ironsbot.shared.messaging.selection_menu import (
-    HELP_SELECTION_FOOTER,
-    SelectionMenuSection,
-    format_selection_menu,
-)
 from ironsbot.shared.messaging.text import build_message
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
     register_plugin,
+)
+from ironsbot.shared.selection_menu import (
+    HELP_SELECTION_FOOTER,
+    SelectionMenuSection,
+    format_selection_menu,
 )
 from ironsbot.utils.matcher import (
     enter_prompt_loop,

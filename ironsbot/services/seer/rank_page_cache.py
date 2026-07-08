@@ -484,15 +484,14 @@ def save_rank_page(  # noqa: PLR0913
                 (key, sub_key, start, end),
             )
             if user_ids:
-                placeholders = ",".join("?" for _ in user_ids)
-                conn.execute(
-                    f"""
+                conn.executemany(
+                    """
                     DELETE FROM player_rank_facts
                     WHERE key = ?
                       AND sub_key = ?
-                      AND user_id IN ({placeholders})
+                      AND user_id = ?
                     """,
-                    (key, sub_key, *user_ids),
+                    ((key, sub_key, user_id) for user_id in user_ids),
                 )
             conn.execute(
                 """

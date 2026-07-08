@@ -72,7 +72,9 @@ class BiliPushPreferenceStore:
         if row is None:
             return None
         mode = str(row[0])
-        if mode in {"full", "link"}:
+        if mode == "full":
+            return mode
+        if mode == "link":
             return mode
         return None
 

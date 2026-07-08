@@ -1,3 +1,5 @@
+from typing import Any
+
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
@@ -109,7 +111,7 @@ ai_intent_action_matcher = on_message(
 
 async def _handle_ai_reply_action(
     action: AiIntentAction,
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
 ) -> None:
     prompt = format_action_template(

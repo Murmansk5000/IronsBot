@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from seerapi_models import MintmarkORM
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
@@ -13,6 +13,8 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from seerapi_models.common import SixAttributes
 
     from ironsbot.plugins.seer_data.db import SeerAPISession
@@ -40,7 +42,7 @@ ANGLE_MARKERS = {
     "6角": 6,
     "６角": 6,
 }
-MINTMARK_QUALITY_TABLE = "mintmark_quality"
+MINTMARK_QUALITY_QUERY = text("SELECT mintmark_id, quality FROM mintmark_quality")
 MISSING_MINTMARK_QUALITY_MESSAGE = (
     "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。"
 )
@@ -221,11 +223,7 @@ def parse_stat_spec(text: str) -> StatSpec | None:
 
 def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
     try:
-        rows = session.exec(
-            text(
-                f"SELECT mintmark_id, quality FROM {MINTMARK_QUALITY_TABLE}"
-            )
-        ).all()
+        rows = session.execute(MINTMARK_QUALITY_QUERY).all()
     except SQLAlchemyError:
         return {}
 
@@ -245,21 +243,21 @@ def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
 
 def load_mintmarks(session: SeerAPISession) -> list[MintmarkORM]:
     statement = select(MintmarkORM).options(
-        selectinload(MintmarkORM.ability_part).selectinload(
-            AbilityPartORM.max_attr_value
+        selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
+            cast("Any", AbilityPartORM.max_attr_value)
         ),
-        selectinload(MintmarkORM.skill_part),
-        selectinload(MintmarkORM.universal_part).selectinload(
-            UniversalPartORM.base_attr_value
+        selectinload(cast("Any", MintmarkORM.skill_part)),
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.base_attr_value)
         ),
-        selectinload(MintmarkORM.universal_part).selectinload(
-            UniversalPartORM.max_attr_value
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.max_attr_value)
         ),
-        selectinload(MintmarkORM.universal_part).selectinload(
-            UniversalPartORM.extra_attr_value
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.extra_attr_value)
         ),
-        selectinload(MintmarkORM.universal_part).selectinload(
-            UniversalPartORM.mintmark_class
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.mintmark_class)
         ),
     )
     return list(session.exec(statement).all())
@@ -395,7 +393,7 @@ def _mintmark_class_name(mintmark: MintmarkORM) -> str:
 
 def _coerce_quality(value: object) -> int | None:
     try:
-        quality = int(value)
+        quality = int(cast("Any", value))
     except (TypeError, ValueError):
         return None
 
@@ -411,8 +409,9 @@ def _object_quality(obj: object | None) -> int | None:
         if quality is not None:
             return quality
 
-    if hasattr(obj, "model_dump"):
-        dumped = obj.model_dump()
+    model_dump = getattr(obj, "model_dump", None)
+    if callable(model_dump):
+        dumped = cast("Mapping[str, object]", model_dump())
         for key in _MINTMARK_QUALITY_KEYS:
             quality = _coerce_quality(dumped.get(key))
             if quality is not None:

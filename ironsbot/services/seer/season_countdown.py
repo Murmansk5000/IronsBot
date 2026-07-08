@@ -26,9 +26,10 @@ def _as_china_time(value: datetime | None) -> datetime | None:
 
 
 def _format_time(value: datetime | None) -> str:
-    if value is None:
+    china_time = _as_china_time(value)
+    if china_time is None:
         return "未知"
-    return _as_china_time(value).strftime("%Y-%m-%d %H:%M")
+    return china_time.strftime("%Y-%m-%d %H:%M")
 
 
 def _format_duration(delta: timedelta) -> str:

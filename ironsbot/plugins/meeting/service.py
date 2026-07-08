@@ -15,9 +15,14 @@ TENCENT_MEETING_NUMBER_DIGITS = 10
 
 
 class MeetingReplyConfig(Protocol):
-    number: str
-    template: str
-    commands: Iterable[str]
+    @property
+    def number(self) -> str: ...
+
+    @property
+    def template(self) -> str: ...
+
+    @property
+    def commands(self) -> Iterable[str]: ...
 
 
 def is_meeting_command_event(

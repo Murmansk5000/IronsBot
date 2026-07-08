@@ -22,7 +22,7 @@ from ironsbot.services.seer.rank_page_cache import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
 
@@ -266,7 +266,7 @@ def _build_rank_page_candidates(  # noqa: PLR0913
 
 def select_rank_page_refresh_targets(
     rank_specs: Sequence[tuple[str, GlobalRankSpec]],
-    summaries: dict[str, Sequence[CachedRankPageSummary]],
+    summaries: Mapping[str, Sequence[CachedRankPageSummary]],
     *,
     config: RankPageRefreshConfig | None = None,
 ) -> list[RankPageRefreshTarget]:
@@ -367,7 +367,7 @@ def preview_rank_page_refresh_targets(
 async def _sleep_between_rank_page_requests(config: RankPageRefreshConfig) -> None:
     delay = config.request_interval_seconds
     if config.request_jitter_seconds > 0:
-        delay += random.uniform(0, config.request_jitter_seconds)
+        delay += random.uniform(0, config.request_jitter_seconds)  # nosec B311
     if delay > 0:
         await asyncio.sleep(delay)
 
@@ -380,7 +380,7 @@ async def refresh_rank_page_cache(
     if refresh_config.pages_per_run_min > 0 and targets:
         lower = min(refresh_config.pages_per_run_min, len(targets))
         upper = min(refresh_config.pages_per_run, len(targets))
-        target_count = random.randint(
+        target_count = random.randint(  # nosec B311
             lower,
             upper,
         )
