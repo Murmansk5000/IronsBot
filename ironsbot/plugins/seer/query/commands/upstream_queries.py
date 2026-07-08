@@ -8,7 +8,6 @@ at the feature plugin priority so they win before lower-priority matchers.
 
 from typing import Annotated
 
-from nonebot import logger
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
@@ -16,16 +15,10 @@ from nonebot.matcher import Matcher
 from nonebot.params import Depends, Fullmatch
 from nonebot.rule import Rule
 from nonebot.typing import T_State
-from nonebot_plugin_saa import Image, MessageFactory
-from seerapi_models import PetORM, PetSkinORM
-from sqlmodel import select
+from seerapi_models import PetORM
 
-from ironsbot.plugins.seer_data.db import SQLModelSession
 from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.query_help import seer_query_help_message
-from ironsbot.services.seer.render_crash_report import render_crash_marker
-from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
-from ironsbot.services.seer.skin_price import format_skin_price_lines
 from ironsbot.services.sendpic_fixed_image import FIXED_IMAGE_COMMANDS
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
@@ -54,7 +47,7 @@ from ..upstream_commands import mintmark as upstream_mintmark
 from ..upstream_commands import peak as upstream_peak
 from ..upstream_commands import pet as upstream_pet
 from ..upstream_commands import type as upstream_type
-from . import data_tools
+from . import data_tools, pet_actions
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
@@ -151,14 +144,14 @@ class UpstreamQueryPlugin:
             raise FinishedException
 
         if len(items) == 1:
-            msg = await _build_pet_image_message(items[0], session)
+            msg = await pet_actions.build_pet_image_message(items[0], session)
             await msg.finish()
 
         if len(items) > upstream_pet.PROMPT_MAX_ITEMS:
             if len(arg) == 1:
                 for item in items:
                     if item.name == arg:
-                        msg = await _build_pet_image_message(item, session)
+                        msg = await pet_actions.build_pet_image_message(item, session)
                         await msg.finish()
 
             await matcher.finish(
@@ -166,7 +159,13 @@ class UpstreamQueryPlugin:
             )
 
         prompt = Prompt(title="请问你想查询的立绘是……", items=items)
-        await enter_prompt(matcher, event, state, prompt, _pet_image_resolver)
+        await enter_prompt(
+            matcher,
+            event,
+            state,
+            prompt,
+            pet_actions.pet_image_resolver,
+        )
 
     async def _handle_pet_info(
         self,
@@ -187,14 +186,14 @@ class UpstreamQueryPlugin:
             raise FinishedException
 
         if len(pets) == 1:
-            msg = await _build_pet_info_message(pets[0])
+            msg = await pet_actions.build_pet_info_message(pets[0])
             await msg.finish()
 
         if len(pets) > upstream_pet.PROMPT_MAX_ITEMS:
             if len(arg) == 1:
                 for pet in pets:
                     if pet.name == arg:
-                        msg = await _build_pet_info_message(pet)
+                        msg = await pet_actions.build_pet_info_message(pet)
                         await msg.finish()
 
             await matcher.finish(
@@ -213,7 +212,11 @@ class UpstreamQueryPlugin:
             event,
             state,
             prompt,
-            simple_prompt_resolver(PetDataGetter, _build_pet_info_message, "精灵"),
+            simple_prompt_resolver(
+                PetDataGetter,
+                pet_actions.build_pet_info_message,
+                "精灵",
+            ),
         )
 
     async def _handle_preview(
@@ -460,34 +463,6 @@ async def _handle_pet_image(  # noqa: PLR0913
         items=items,
     )
 
-async def _build_pet_image_message(
-    item: PromptItem[int],
-    session: SQLModelSession,
-):
-    msg = await upstream_pet.build_pet_image_message(item, session)
-    model = session.exec(
-        select(PetSkinORM).where(PetSkinORM.resource_id == item.value)
-    ).first()
-    if model is None:
-        return msg
-
-    msg += format_skin_price_lines(
-        session,
-        model.id,
-        existing_card_price=model.card_price,
-    )
-    return msg
-
-
-async def _pet_image_resolver(
-    item: PromptItem[int],
-    _: Matcher,
-    session: SQLModelSession,
-) -> None:
-    msg = await _build_pet_image_message(item, session)
-    await msg.send()
-
-
 pet_info_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_pet")
     & startswith_or_endswith(
@@ -519,30 +494,6 @@ async def _handle_pet_info(
         pets=pets,
     )
 
-
-async def _build_pet_info_message(pet: PetORM) -> MessageFactory:
-    logger.info(
-        "rendering pet info image: pet_id={} pet_name={} resource_id={}",
-        pet.id,
-        pet.name,
-        pet.resource_id,
-    )
-    with render_crash_marker(
-        operation="pet_info_render",
-        pet_id=pet.id,
-        pet_name=pet.name,
-        resource_id=pet.resource_id,
-    ):
-        pic_bytes = await render_custom_pet_info(pet)
-    logger.info(
-        "rendered pet info image: pet_id={} pet_name={} bytes={}",
-        pet.id,
-        pet.name,
-        len(pic_bytes),
-    )
-    msg = MessageFactory()
-    msg += Image(pic_bytes)
-    return msg
 
 mintmark_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_mintmark")
