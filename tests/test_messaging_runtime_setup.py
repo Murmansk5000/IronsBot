@@ -260,9 +260,13 @@ def test_scheduled_messages_append_fire_manual_ad(
         lambda message, _group_id: f"{message}\n\n{FIRE_MANUAL_LINK_MESSAGE}",
     )
 
-    asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
     asyncio.run(
-        runtime._send_group_schedule(
+        message_schedules.send_private_schedule(
+            FakePrivateSchedule(message="私聊定时")
+        )
+    )
+    asyncio.run(
+        message_schedules.send_group_schedule(
             FakeGroupSchedule(message="群定时", at_user_ids=[3001])
         )
     )
@@ -310,7 +314,11 @@ def test_private_schedule_passes_subscription_key(
     )
     monkeypatch.setattr(message_schedules, "users_with_superusers", list)
 
-    asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
+    asyncio.run(
+        message_schedules.send_private_schedule(
+            FakePrivateSchedule(message="私聊定时")
+        )
+    )
 
     assert sent[0][1]["private_user_ids"] == [2001, 2002]
     assert sent[0][1]["subscription_key"] == "private"
@@ -356,7 +364,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
     )
 
     asyncio.run(
-        runtime._send_group_schedule(
+        message_schedules.send_group_schedule(
             FakeGroupSchedule(message="group push", at_user_ids=[], id="daily")
         )
     )
@@ -401,7 +409,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         lambda _feature: [1001, 1002],
     )
 
-    asyncio.run(runtime.register_message_schedules(scheduler))
+    asyncio.run(message_schedules.register_message_schedules(scheduler))
 
     assert [job["id"] for job in scheduler.jobs] == [
         "message_action_group_schedule_daily",

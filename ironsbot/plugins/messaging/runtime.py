@@ -40,9 +40,7 @@ from ironsbot.utils.rule import no_reply
 
 from . import schedules as message_schedules
 from .config import (
-    GroupScheduledMessageAction,
     PrivateCommandMessageAction,
-    PrivateScheduledMessageAction,
     get_message_config,
 )
 from .push_management_runtime import (
@@ -497,63 +495,6 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
         state=state,
         action="group_command",
     )
-
-
-
-async def _send_private_schedule(
-    task: PrivateScheduledMessageAction,
-    index: int = 1,
-    target_user_ids: tuple[int, ...] | None = None,
-) -> None:
-    await message_schedules.send_private_schedule(
-        task,
-        index=index,
-        target_user_ids=target_user_ids,
-    )
-
-
-async def _send_group_schedule(
-    task: GroupScheduledMessageAction,
-    index: int = 1,
-    target_group_ids: tuple[int, ...] | None = None,
-) -> None:
-    await message_schedules.send_group_schedule(
-        task,
-        index=index,
-        target_group_ids=target_group_ids,
-    )
-
-
-def _cron_override_target_ids(
-    target_type: PushTargetType,
-    subscription_key: str,
-) -> set[int]:
-    return message_schedules.cron_override_target_ids(target_type, subscription_key)
-
-
-def _schedule_override_job_id(
-    prefix: str,
-    index: int,
-    task_id: str,
-    target_id: int,
-) -> str:
-    return message_schedules.schedule_override_job_id(
-        prefix,
-        index,
-        task_id,
-        target_id,
-    )
-
-
-def _schedule_override_trigger_kwargs(
-    task: PrivateScheduledMessageAction | GroupScheduledMessageAction,
-    value: str,
-) -> dict[str, int | str]:
-    return message_schedules.schedule_override_trigger_kwargs(task, value)
-
-
-def _clear_message_schedule_jobs(scheduler: Any) -> None:
-    message_schedules.clear_message_schedule_jobs(scheduler)
 
 
 async def register_message_schedules(scheduler: Any) -> None:
