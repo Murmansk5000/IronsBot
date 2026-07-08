@@ -174,7 +174,7 @@ enabled = true
 # EN: Default monitored Bilibili UIDs.
 # ZH: 默认监控的 B 站 UID。
 # Example: [1310714247, 375750254]
-uids = [1310714247]
+account_aliases = { account_1 = 1310714247 }
 
 # Default: 300.0
 # EN: Cooldown for Bilibili login QR notices.
@@ -214,6 +214,9 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # ZH: 默认推送模式，可选 full 或 link。
 # Example: "link"
 default_mode = "full"
+default_accounts = [
+    "account_1",
+]
 
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
@@ -292,11 +295,10 @@ private_commands = []
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
 private_schedules = []
 
-[message.private_unsubscribe]
+[message.push_unsubscribe]
 # Default: true
 # EN: Enable private scheduled push unsubscribe menu.
 # ZH: 启用私聊定时推送退订菜单。
-enabled = true
 # Default: ["td", "退订"]
 # EN: Private commands that open the unsubscribe menu. Matching is case-insensitive.
 # ZH: 打开退订菜单的私聊口令；大小写不敏感，所以 TD 自动生效。
