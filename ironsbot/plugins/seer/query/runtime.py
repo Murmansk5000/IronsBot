@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from nonebot import get_driver, logger, require
@@ -9,6 +10,24 @@ from .config import get_local_rank_config, get_rank_query_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
 _render_crash_report_runtime_state = {"registered": False}
+
+
+def _minute_of_day(value: str) -> int:
+    hour_text, minute_text = value.split(":", maxsplit=1)
+    return int(hour_text) * 60 + int(minute_text)
+
+
+def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) -> bool:
+    if not rank_config.active_start or not rank_config.active_end:
+        return True
+
+    current_time = now or datetime.now(timezone.utc).astimezone()
+    current = current_time.hour * 60 + current_time.minute
+    start = _minute_of_day(rank_config.active_start)
+    end = _minute_of_day(rank_config.active_end)
+    if start <= end:
+        return start <= current <= end
+    return current >= start or current <= end
 
 
 async def _scheduled_local_rank_refresh() -> None:
@@ -45,6 +64,9 @@ async def _scheduled_rank_page_refresh() -> None:
     rank_config = get_rank_query_config().page_refresh
     if not rank_config.enabled:
         return
+    if not _is_rank_page_refresh_active(rank_config):
+        logger.info("rank page cache auto refresh skipped: outside active window")
+        return
 
     result = await refresh_rank_page_cache()
     logger.info(
@@ -58,6 +80,19 @@ def register_rank_page_refresh_jobs(scheduler: Any) -> None:
     if not rank_config.enabled:
         return
 
+    if rank_config.interval_minutes > 0:
+        minute_pattern = (
+            f"{rank_config.interval_offset_minutes}/{rank_config.interval_minutes}"
+        )
+        scheduler.add_job(
+            _scheduled_rank_page_refresh,
+            "cron",
+            minute=minute_pattern,
+            jitter=rank_config.schedule_jitter_seconds,
+            id="seer_rank_page_refresh_interval",
+            replace_existing=True,
+        )
+
     for refresh_time in rank_config.times:
         hour_text, minute_text = refresh_time.split(":", maxsplit=1)
         scheduler.add_job(
@@ -65,6 +100,7 @@ def register_rank_page_refresh_jobs(scheduler: Any) -> None:
             "cron",
             hour=int(hour_text),
             minute=int(minute_text),
+            jitter=rank_config.schedule_jitter_seconds,
             id=f"seer_rank_page_refresh_{hour_text}{minute_text}",
             replace_existing=True,
         )
