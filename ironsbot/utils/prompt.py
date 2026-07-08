@@ -13,7 +13,7 @@ from nonebot.typing import T_State
 from sqlmodel import Session
 from typing_extensions import NamedTuple
 
-from ironsbot.shared.messaging.selection_menu import (
+from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     format_selection_menu,
 )
@@ -90,6 +90,10 @@ class Prompt(Generic[T]):
 PROMPT_STATE_KEY = "prompt"
 RESOLVER_WITH_EVENT_PARAM_COUNT = 4
 PromptResolver: TypeAlias = Callable[[Any, Matcher, Any], Awaitable[None]]
+PromptResolverWithEvent: TypeAlias = Callable[
+    [Any, Matcher, Any, Event],
+    Awaitable[None],
+]
 
 
 def _is_digit_input(event: Event) -> bool:
@@ -167,7 +171,8 @@ def _create_selection_handler(
             await matcher.finish("⚠️序号超出范围，已退出选择")
 
         if len(signature(resolver).parameters) >= RESOLVER_WITH_EVENT_PARAM_COUNT:
-            await resolver(item, matcher, session, event)
+            event_resolver = cast("PromptResolverWithEvent", resolver)
+            await event_resolver(item, matcher, session, event)
         else:
             await resolver(item, matcher, session)
 

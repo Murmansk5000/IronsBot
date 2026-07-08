@@ -4,7 +4,10 @@ from typing import TYPE_CHECKING, TypedDict
 
 from nonebot_plugin_htmlkit import template_to_pic
 
-from ironsbot.plugins.seer_data.image import ElementTypeImageGetter, PetHeadImageGetter
+from ironsbot.integrations.seer_data.image import (
+    ElementTypeImageGetter,
+    PetHeadImageGetter,
+)
 from ironsbot.services.seer.render_paths import (
     UPSTREAM_PEAK_PET_RANK_TEMPLATE_PATH,
     UPSTREAM_SHARED_TEMPLATE_PATH,

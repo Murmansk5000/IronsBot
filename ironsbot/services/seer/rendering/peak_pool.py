@@ -7,7 +7,10 @@ from typing import TypedDict
 from nonebot_plugin_htmlkit import template_to_pic
 from seerapi_models import PeakExpertPoolORM, PeakPoolORM
 
-from ironsbot.plugins.seer_data.image import ElementTypeImageGetter, PetHeadImageGetter
+from ironsbot.integrations.seer_data.image import (
+    ElementTypeImageGetter,
+    PetHeadImageGetter,
+)
 from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
     UPSTREAM_PEAK_POOL_TEMPLATE_PATH,

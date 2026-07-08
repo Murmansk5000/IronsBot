@@ -4,8 +4,10 @@ from zoneinfo import ZoneInfo
 from ironsbot.services.activity.models import ActivityReminder
 from ironsbot.services.activity.scheduler import (
     DAILY_SCAN_JOB_ID,
+    REMINDER_JOB_ID_PREFIX,
     STARTUP_SCAN_DELAY,
     STARTUP_SCAN_JOB_ID,
+    clear_reminder_jobs,
     register_scan_jobs,
     reminder_job_id,
     schedule_reminder_jobs,
@@ -22,6 +24,15 @@ class FakeScheduler:
 
     def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+    def get_jobs(self) -> list[object]:
+        return [
+            type("FakeJob", (), {"id": str(job["id"])})()
+            for job in self.jobs
+        ]
+
+    def remove_job(self, job_id: str) -> None:
+        self.jobs = [job for job in self.jobs if job.get("id") != job_id]
 
 
 def dt(
@@ -89,3 +100,21 @@ def test_schedule_reminder_jobs_groups_by_send_time() -> None:
     assert len(scheduler.jobs) == 1
     assert scheduler.jobs[0]["id"] == reminder_job_id(1, send_time)
     assert scheduler.jobs[0]["misfire_grace_time"] == EXPECTED_MISFIRE_GRACE_SECONDS
+
+
+def test_clear_reminder_jobs_keeps_scan_jobs() -> None:
+    scheduler = FakeScheduler()
+    scheduler.jobs = [
+        {"id": STARTUP_SCAN_JOB_ID},
+        {"id": DAILY_SCAN_JOB_ID},
+        {"id": f"{REMINDER_JOB_ID_PREFIX}1h_123"},
+        {"id": "other_job"},
+    ]
+
+    clear_reminder_jobs(scheduler)
+
+    assert [job["id"] for job in scheduler.jobs] == [
+        STARTUP_SCAN_JOB_ID,
+        DAILY_SCAN_JOB_ID,
+        "other_job",
+    ]

@@ -9,7 +9,7 @@ from seerapi_models.mintmark import PetMintmarkLink, SkillMintmarkLink
 from sqlalchemy.orm import object_session
 from sqlmodel import col, select
 
-from ironsbot.plugins.seer_data.image import (
+from ironsbot.integrations.seer_data.image import (
     ElementTypeImageGetter,
     MintmarkBodyImageGetter,
     PetBodyImageGetter,

@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable, Iterable, Sequence
+from typing import Any
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -14,9 +14,6 @@ from nonebot.adapters.onebot.v11 import (
 
 from .outbound_rate_limit import check_group_outbound_rate_limit
 from .text import build_message
-
-if TYPE_CHECKING:
-    from nonebot.matcher import Matcher
 
 ReplyMessage = str | Message | MessageSegment
 BeforeReplySendHook = Callable[[MessageEvent | None], Awaitable[None]]
@@ -57,7 +54,7 @@ async def apply_reply_before_send(event: MessageEvent | None) -> None:
 
 
 async def send_matcher_message(
-    matcher: Matcher,
+    matcher: Any,
     message: ReplyMessage,
     *,
     at_user_ids: Iterable[int] = (),
@@ -74,7 +71,7 @@ async def send_matcher_message(
 
 
 async def finish_matcher_message(
-    matcher: Matcher,
+    matcher: Any,
     message: ReplyMessage,
     *,
     at_user_ids: Iterable[int] = (),
@@ -93,7 +90,7 @@ async def finish_matcher_message(
 
 
 async def send_event_reply(
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
     message: ReplyMessage,
     *,
@@ -111,7 +108,7 @@ async def send_event_reply(
 
 
 async def finish_event_reply(
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
     message: ReplyMessage,
     *,
@@ -129,8 +126,8 @@ async def finish_event_reply(
 
 
 async def finish_message_sequence(
-    matcher: Matcher,
-    messages: list[ReplyMessage],
+    matcher: Any,
+    messages: Sequence[ReplyMessage],
     *,
     event: MessageEvent | None = None,
     mention_sender: bool = False,

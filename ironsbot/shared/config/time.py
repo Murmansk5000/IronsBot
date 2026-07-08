@@ -93,7 +93,8 @@ def split_daily_time_values(
             .replace(IDEOGRAPHIC_COMMA, ",")
             .replace(FULLWIDTH_SEMICOLON, ",")
         )
-        return csv_items(normalized)
+        items: list[object] = list(csv_items(normalized))
+        return items
 
     if isinstance(value, Sequence):
         return list(value)
