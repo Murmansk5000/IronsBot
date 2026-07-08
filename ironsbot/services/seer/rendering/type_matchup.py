@@ -82,7 +82,8 @@ async def render_type_matchup(
     resolved_session = session
     if resolved_session is None:
         resolved_session = cast("Session | None", object_session(target))
-    assert resolved_session is not None
+    if resolved_session is None:
+        raise RuntimeError
 
     attack_table = calc_attack_table(resolved_session, target)
     defense_table = calc_defense_table(resolved_session, target)

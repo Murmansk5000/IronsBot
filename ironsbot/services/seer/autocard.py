@@ -37,6 +37,11 @@ _AUTOCARD_ASSET_BASE_URL = (
     "newseer/assets/art/autocard/texture"
 )
 _AUTOCARD_NON_PET_CARD_ID_START = 20000
+_AUTOCARD_TABLE_QUERIES = {
+    "autocard_card": text("SELECT raw_json FROM autocard_card ORDER BY id"),
+    "autocard_role": text("SELECT raw_json FROM autocard_role ORDER BY id"),
+    "autocard_nature": text("SELECT raw_json FROM autocard_nature ORDER BY id"),
+}
 
 
 @dataclass(slots=True, frozen=True)
@@ -224,9 +229,8 @@ def _load_json_rows(
     session: SeerAPISession,
     table_name: str,
 ) -> tuple[dict[str, Any], ...]:
-    rows = session.exec(
-        text(f"SELECT raw_json FROM {table_name} ORDER BY id")
-    ).all()
+    query = _AUTOCARD_TABLE_QUERIES[table_name]
+    rows = session.execute(query).all()
     result: list[dict[str, Any]] = []
     for row in rows:
         mapping = row._mapping if hasattr(row, "_mapping") else None
