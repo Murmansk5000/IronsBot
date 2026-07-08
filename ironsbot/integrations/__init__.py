@@ -1,2 +1,2 @@
 # SPDX-License-Identifier: MIT
-"""Shared integration adapters used by services and plugins."""
+"""Shared integration adapters used across IronsBot layers."""

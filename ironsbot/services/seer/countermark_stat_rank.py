@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from seerapi_models.common import SixAttributes
 
-    from ironsbot.plugins.seer_data.db import SeerAPISession
+    from ironsbot.integrations.seer_data.db import SeerAPISession
 
 RANK_LIST_SIZE = 10
 MIN_COMBINATION_PARTS = 2
