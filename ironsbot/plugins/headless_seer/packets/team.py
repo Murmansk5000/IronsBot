@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from typing import Annotated
 
-import ironsbot.plugins.headless_seer.packet.fields as f
-
-from ..packet.packet import Deserializable
+import ironsbot.integrations.headless_seer.packet.fields as f
+from ironsbot.integrations.headless_seer.packet.packet import Deserializable
 
 
 class SimpleTeamInfo(Deserializable):
