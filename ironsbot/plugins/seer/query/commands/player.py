@@ -9,7 +9,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.plugins.headless_seer.exception import (
+from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,

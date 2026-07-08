@@ -1,10 +1,10 @@
+from ironsbot.integrations.headless_seer.exception import (
+    DisconnectedError,
+    NotLoggedInError,
+)
 from ironsbot.plugins.headless_seer.config import (
     get_headless_config,
     get_headless_credentials,
-)
-from ironsbot.plugins.headless_seer.exception import (
-    DisconnectedError,
-    NotLoggedInError,
 )
 from ironsbot.plugins.headless_seer.manager import client_manager
 

@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
-from ironsbot.plugins.headless_seer.exception import NotLoggedInError, SocketRecvError
+from ironsbot.integrations.headless_seer.exception import (
+    NotLoggedInError,
+    SocketRecvError,
+)
 from ironsbot.services.seer.errors import format_player_query_error
 
 

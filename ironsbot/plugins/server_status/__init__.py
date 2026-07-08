@@ -14,7 +14,7 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.plugins.headless_seer.exception import (
+from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )

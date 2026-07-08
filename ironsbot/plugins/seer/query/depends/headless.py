@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 async def _get_game_client(matcher: Matcher) -> SeerGame:
-    from ironsbot.plugins.headless_seer.exception import (
+    from ironsbot.integrations.headless_seer.exception import (
         ClientNotInitializedError,
         DisconnectedError,
         NotLoggedInError,
