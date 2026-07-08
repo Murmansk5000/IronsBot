@@ -187,8 +187,11 @@ def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None
 def test_startup_docker_update_records_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_update(**_kwargs: object) -> DockerUpdateResult:
-        return DockerUpdateResult(ok=True, updater_container_id="abcdef123456")
+    async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
+        return (
+            "ironsbot-prod",
+            DockerUpdateResult(ok=True, updater_container_id="abcdef123456"),
+        )
 
     from ironsbot.plugins import server_status
 
@@ -205,12 +208,7 @@ def test_startup_docker_update_records_notice(
             timeout_seconds=300.0,
         ),
     )
-    monkeypatch.setattr(server_status, "_start_watchtower_update", fake_update)
-    monkeypatch.setattr(
-        server_status,
-        "_resolve_docker_container_name",
-        lambda _name: "ironsbot-prod",
-    )
+    monkeypatch.setattr(server_status.DockerSelfUpdateService, "run", fake_run)
 
     asyncio.run(docker_update_runtime._start_docker_update_runtime())
 
