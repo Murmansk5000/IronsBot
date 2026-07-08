@@ -7,6 +7,8 @@ from nonebot import get_bots, get_driver, require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
+from ironsbot.shared.scheduler import add_or_replace_job
+
 from . import scan_team_resource_subscriptions
 from .config import get_team_resource_config
 
@@ -34,13 +36,13 @@ def _register_team_resource_jobs(scheduler: Any) -> None:
 
     for time_text in config.times:
         hour_text, minute_text = time_text.split(":", maxsplit=1)
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             _scan_team_resources_with_bot,
             "cron",
             hour=int(hour_text),
             minute=int(minute_text),
-            id=f"team_resource_scan_{time_text.replace(':', '')}",
-            replace_existing=True,
+            job_id=f"team_resource_scan_{time_text.replace(':', '')}",
         )
 
 
