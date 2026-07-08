@@ -20,11 +20,17 @@ REG_TIME = 946684800
 
 
 class _LocalSummary:
-    def __init__(self, rank_text: str = "") -> None:
+    def __init__(
+        self,
+        rank_text: str = "",
+        *,
+        ranks: dict[str, str] | None = None,
+    ) -> None:
         self._rank_text = rank_text
+        self._ranks = ranks or {}
 
-    def sample_rank(self, _key: str) -> str:
-        return self._rank_text
+    def sample_rank(self, key: str) -> str:
+        return self._ranks.get(key, self._rank_text)
 
 
 def _rank_result(score: int, rank: int = 1) -> SimpleNamespace:
@@ -235,6 +241,7 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     assert "🃏【群星牌排名】" in messages.autocard_message
     assert "群星之巅：3456分" in messages.autocard_message
     assert "全服第12" in messages.autocard_message
+    assert "样本第1" in messages.autocard_message
     assert "全服排行失败" in messages.collection_message
     assert "全服排行失败" in messages.peak_message
     assert "全服排行失败" in messages.autocard_message

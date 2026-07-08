@@ -403,21 +403,34 @@ def format_autocard_rank_info(
     result: RankLookupResult,
     *,
     player_identity: str,
+    local_summary: LocalRankSummary,
 ) -> str:
     lines = ["🃏【群星牌排名】", player_identity]
+    sample_text = (
+        sample_rank_text(local_summary, "autocard_score")
+        if result.score is not None
+        else ""
+    )
     if not result.queried:
         lines.append("群星之巅：未查询")
     elif result.rank is None:
         if result.score is None:
             lines.append(f"群星之巅：前 {result.searched_limit} 名未上榜")
         else:
-            lines.append(
-                f"群星之巅：{result.score}分"
-                f"{METRIC_SEPARATOR}前 {result.searched_limit} 名未上榜"
+            metric_text = join_metric_parts(
+                f"{result.score}分",
+                f"前 {result.searched_limit} 名未上榜",
+                sample_text,
             )
+            lines.append(f"群星之巅：{metric_text}")
     else:
         score_text = "未知分" if result.score is None else f"{result.score}分"
-        lines.append(f"群星之巅：{score_text}{METRIC_SEPARATOR}全服第{result.rank}")
+        metric_text = join_metric_parts(
+            score_text,
+            f"全服第{result.rank}",
+            sample_text,
+        )
+        lines.append(f"群星之巅：{metric_text}")
     return "\n".join(lines)
 
 
@@ -523,6 +536,7 @@ def format_player_detail_messages(  # noqa: PLR0913
         format_autocard_rank_info(
             autocard_rank_summary,
             player_identity=format_player_identity(player_id, user_info.nick),
+            local_summary=local_rank_summary,
         )
         if has_autocard_rank
         else ""

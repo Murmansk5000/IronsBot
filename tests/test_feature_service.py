@@ -137,7 +137,7 @@ def test_team_audit_feature_is_registered() -> None:
 def test_team_resource_feature_is_registered() -> None:
     assert "team_resource_subscription" in FEATURE_ALIASES["message"]
     assert "team_resource_subscription" in FEATURE_ALIASES["all"]
-    assert features_for_module("ironsbot.plugins.team_shortcut") == (
+    assert features_for_module("ironsbot.plugins.team_resource_subscription") == (
         "team_resource_subscription",
     )
 

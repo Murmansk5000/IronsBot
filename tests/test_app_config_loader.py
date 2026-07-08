@@ -227,11 +227,20 @@ unknown_feature = "old value"
 [ai]
 unknown_ai = "old value"
 
+[bilibili]
+account_aliases = { synthetic = 101 }
+unknown_bili_field = true
+
+[bilibili.push]
+default_accounts = ["synthetic"]
+unknown_push_field = true
+
 [[message.group_commands]]
 id = "hello"
 commands = ["hello"]
 message = "world"
 feature = "text_push"
+unknown_command_field = true
 """.strip(),
         encoding="utf-8",
     )
@@ -239,11 +248,17 @@ feature = "text_push"
     with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
         config = load_app_config(config_path)
 
+    synthetic_account_id = 101
+    assert config.bilibili.account_aliases["synthetic"] == synthetic_account_id
+    assert config.bilibili.push.default_accounts == ["synthetic"]
     assert not config.feature.superuser_bypass
     assert config.message.group_commands[0].id == "hello"
     assert "unknown_root" in caplog.text
     assert "ai.unknown_ai" in caplog.text
+    assert "bilibili.unknown_bili_field" in caplog.text
+    assert "bilibili.push.unknown_push_field" in caplog.text
     assert "feature.unknown_feature" in caplog.text
+    assert "message.group_commands[0].unknown_command_field" in caplog.text
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
@@ -472,3 +487,10 @@ def test_seer_plugin_config_accessors_read_app_config(
         )
     finally:
         clear_app_config_cache()
+
+
+def test_bilibili_config_rejects_invalid_push_mode() -> None:
+    from ironsbot.config.models.bilibili import BiliConfig
+
+    with pytest.raises(ValidationError):
+        BiliConfig.model_validate({"push": {"default_mode": "invalid-mode"}})
