@@ -1,7 +1,7 @@
 import base64
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import parse_qsl, urlparse
 
 import httpx
@@ -236,7 +236,7 @@ def build_bili_login_qrcode_message_parts(qr_url: str) -> LoginQrMessageParts:
     try:
         import qrcode
 
-        image = qrcode.make(qr_url)
+        image: Any = qrcode.make(qr_url)
         image_bytes = BytesIO()
         image.save(image_bytes, format="PNG")
         image_base64 = base64.b64encode(image_bytes.getvalue()).decode("ascii")
