@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import sqlite3
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import RankQueryConfig
-from ironsbot.shared.sqlite import connect_sqlite
+from ironsbot.shared.sqlite import open_sqlite
 
 
 def get_rank_query_config() -> RankQueryConfig:
@@ -56,62 +57,63 @@ def _cache_path() -> Path:
     return get_rank_query_config().page_cache_path
 
 
-def _connect() -> sqlite3.Connection:
-    conn = connect_sqlite(_cache_path())
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS rank_players (
-            user_id INTEGER PRIMARY KEY,
-            nick TEXT NOT NULL DEFAULT '',
-            updated_at REAL NOT NULL
+@contextmanager
+def _connect() -> Iterator[sqlite3.Connection]:
+    with open_sqlite(_cache_path()) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS rank_players (
+                user_id INTEGER PRIMARY KEY,
+                nick TEXT NOT NULL DEFAULT '',
+                updated_at REAL NOT NULL
+            )
+            """
         )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS rank_pages (
-            key INTEGER NOT NULL,
-            sub_key INTEGER NOT NULL,
-            start_index INTEGER NOT NULL,
-            end_index INTEGER NOT NULL,
-            page_size INTEGER NOT NULL,
-            fetched_at REAL NOT NULL,
-            expected_count INTEGER NOT NULL,
-            actual_count INTEGER NOT NULL,
-            PRIMARY KEY (key, sub_key, start_index, end_index)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS rank_pages (
+                key INTEGER NOT NULL,
+                sub_key INTEGER NOT NULL,
+                start_index INTEGER NOT NULL,
+                end_index INTEGER NOT NULL,
+                page_size INTEGER NOT NULL,
+                fetched_at REAL NOT NULL,
+                expected_count INTEGER NOT NULL,
+                actual_count INTEGER NOT NULL,
+                PRIMARY KEY (key, sub_key, start_index, end_index)
+            )
+            """
         )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS player_rank_facts (
-            key INTEGER NOT NULL,
-            sub_key INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            rank_index INTEGER NOT NULL,
-            score INTEGER NOT NULL,
-            display TEXT NOT NULL DEFAULT '',
-            fetched_at REAL NOT NULL,
-            source_start_index INTEGER NOT NULL,
-            source_end_index INTEGER NOT NULL,
-            PRIMARY KEY (key, sub_key, user_id),
-            UNIQUE (key, sub_key, rank_index)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_rank_facts (
+                key INTEGER NOT NULL,
+                sub_key INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                rank_index INTEGER NOT NULL,
+                score INTEGER NOT NULL,
+                display TEXT NOT NULL DEFAULT '',
+                fetched_at REAL NOT NULL,
+                source_start_index INTEGER NOT NULL,
+                source_end_index INTEGER NOT NULL,
+                PRIMARY KEY (key, sub_key, user_id),
+                UNIQUE (key, sub_key, rank_index)
+            )
+            """
         )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_player_rank_facts_rank
-        ON player_rank_facts (key, sub_key, rank_index)
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_player_rank_facts_score
-        ON player_rank_facts (key, sub_key, score DESC, rank_index)
-        """
-    )
-    return conn
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_player_rank_facts_rank
+            ON player_rank_facts (key, sub_key, rank_index)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_player_rank_facts_score
+            ON player_rank_facts (key, sub_key, score DESC, rank_index)
+            """
+        )
+        yield conn
 
 
 def _is_cache_enabled() -> bool:
