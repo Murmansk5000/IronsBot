@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from typing import Any
 
 from nonebot import logger
@@ -11,16 +10,11 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.integrations.headless_seer.exception import (
-    DisconnectedError,
-    NotLoggedInError,
-)
 from ironsbot.plugins.headless_seer_notice.service import login_headless_client
 from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.services.seer.client import get_game_client
 from ironsbot.shared.features import (
     is_event_feature_allowed,
 )
@@ -70,6 +64,8 @@ from .notice import (
 )
 from .process_restart import restart_bot_process
 from .restart import DockerSelfUpdateService, RestartService
+from .status import HeadlessStatus
+from .status import get_headless_status as _get_headless_status
 
 __all__ = [
     "DockerSelfUpdateService",
@@ -114,12 +110,6 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
     supported_adapters={"~onebot.v11"},
 )
-
-
-@dataclass(frozen=True, slots=True)
-class HeadlessStatus:
-    connected: bool
-    reason: str = ""
 
 
 normal_server_status_matcher = on_fullmatch(
@@ -378,32 +368,6 @@ async def handle_docker_update(matcher: Matcher, event: MessageEvent) -> None:
         matcher=matcher,
         action="docker_update",
     )
-
-
-def _get_headless_status() -> HeadlessStatus:
-    try:
-        game = get_game_client()
-    except (DisconnectedError, NotLoggedInError) as e:
-        return HeadlessStatus(connected=False, reason=str(e))
-    except Exception:  # noqa: BLE001
-        logger.opt(exception=True).warning("开服查询检查无头客户端状态失败")
-        return HeadlessStatus(
-            connected=False,
-            reason="检查机器人登录状态失败",
-        )
-
-    if bool(getattr(game, "is_logged_in", False)):
-        return HeadlessStatus(connected=True)
-
-    return HeadlessStatus(
-        connected=False,
-        reason="无头客户端未处于已登录状态",
-    )
-
-
-def _format_headless_unavailable_text(reason: str) -> str:
-    reason = reason.strip() or "状态未知"
-    return f"机器人登录状态：{reason}。"
 
 
 _format_docker_image_created = format_docker_image_created
