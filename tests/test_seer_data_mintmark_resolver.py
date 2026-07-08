@@ -5,7 +5,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.seer_data import db
+from ironsbot.integrations.seer_data import mintmark_series_resolvers as db
 
 
 def test_series_ordinal_prefix_rejects_plain_digits() -> None:

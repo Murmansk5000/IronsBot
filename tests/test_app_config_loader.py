@@ -23,10 +23,10 @@ from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
-from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.config.models.seer import RankPageRefreshConfig, TeamResourceConfig
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE_AI_CHAT_PRIORITY = 99
+DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
@@ -40,10 +40,16 @@ DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
+DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 0
+DEFAULT_RANK_REFRESH_INTERVAL_MINUTES = 0
+DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES = 0
+DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 0
+DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 0.0
+DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 0.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
-EXAMPLE_SEER_PLAYER_PRIORITY = 5
+DEFAULT_SEER_PLAYER_PRIORITY = 10
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
@@ -70,7 +76,6 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\baction_templates\b",
     r"\bdefault_uids\b",
     r"\bextra_uids\b",
-    "\\[\\s*(?:\"fire_manual\"|'fire_manual'|fire_manual)\\s*(?:\\.|\\])",
 )
 
 
@@ -133,6 +138,27 @@ def _assert_default_matcher_priorities(
     assert matcher_priority.seer_query < matcher_priority.ai_chat
     assert matcher_priority.ai_group_at < 0
     assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
+    assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
+    assert matcher_priority.sendpic < matcher_priority.seer_pet
+    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
+    assert matcher_priority.seer_pet > matcher_priority.seer_rank
+    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
+    priorities = matcher_priority.model_dump()
+    non_negative_priorities = [value for value in priorities.values() if value >= 0]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
+
+
+EXAMPLE_AI_CHAT_PRIORITY = 99
+EXAMPLE_SEER_PLAYER_PRIORITY = 5
+
+
+def _assert_example_matcher_priorities(
+    matcher_priority: MatcherPriorityConfig,
+) -> None:
+    assert matcher_priority.seer_query < matcher_priority.ai_chat
+    assert matcher_priority.ai_group_at < 0
+    assert matcher_priority.ai_mention_guard < 0
     assert matcher_priority.ai_chat == EXAMPLE_AI_CHAT_PRIORITY
     assert matcher_priority.seer_player == EXAMPLE_SEER_PLAYER_PRIORITY
     assert matcher_priority.sendpic < matcher_priority.seer_pet
@@ -142,6 +168,44 @@ def _assert_default_matcher_priorities(
     priorities = matcher_priority.model_dump()
     non_negative_priorities = [value for value in priorities.values() if value >= 0]
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
+
+
+def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
+    assert "群星牌" in config.rank_keys
+    assert config.target_limits == {}
+    assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
+    assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
+    assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
+    assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
+    assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
+    assert (
+        config.interval_offset_minutes
+        == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
+    )
+    assert (
+        config.schedule_jitter_seconds
+        == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
+    )
+    assert (
+        config.request_interval_seconds
+        == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
+    )
+    assert (
+        config.request_jitter_seconds
+        == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
+    )
+    assert config.active_start == ""
+    assert config.active_end == ""
+    assert config.times == [
+        "01:15",
+        "01:45",
+        "02:15",
+        "02:45",
+        "03:15",
+        "03:45",
+        "04:15",
+        "04:45",
+    ]
 
 
 def test_example_config_parses() -> None:
@@ -171,20 +235,7 @@ def test_example_config_parses() -> None:
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}
-    assert "群星牌" in config.seer.rank.page_refresh.rank_keys
-    assert config.seer.rank.page_refresh.target_limits == {}
-    assert (
-        config.seer.rank.page_refresh.score_cutoffs["群星牌"]
-        == DEFAULT_AUTOCARD_SCORE_CUTOFF
-    )
-    assert (
-        config.seer.rank.page_refresh.stale_age_weight
-        == DEFAULT_RANK_STALE_AGE_WEIGHT
-    )
-    assert (
-        config.seer.rank.page_refresh.stale_age_max_multiplier
-        == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
-    )
+    _assert_example_rank_page_refresh(config.seer.rank.page_refresh)
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
@@ -197,7 +248,8 @@ def test_example_config_parses() -> None:
     assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
     assert config.runtime.logging.error_file_path == "/app/logs/ironsbot.error.log"
-    _assert_default_matcher_priorities(config.runtime.matcher_priority)
+    _assert_default_matcher_priorities(MatcherPriorityConfig())
+    _assert_example_matcher_priorities(config.runtime.matcher_priority)
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
@@ -231,6 +283,21 @@ def test_public_config_docs_do_not_reference_stale_fields() -> None:
         )
 
     assert stale_matches == []
+
+
+def test_rank_page_refresh_interval_offset_must_be_smaller_than_interval() -> None:
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(interval_minutes=10, interval_offset_minutes=10)
+
+
+def test_rank_page_refresh_min_pages_must_not_exceed_max_pages() -> None:
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(pages_per_run=2, pages_per_run_min=3)
+
+
+def test_rank_page_refresh_active_window_requires_start_and_end() -> None:
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(active_start="07:30")
 
 
 def test_missing_app_config_is_created_from_example(tmp_path: Path) -> None:

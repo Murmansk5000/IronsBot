@@ -1,64 +1,40 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig
+from ironsbot.services.seer import local_rank_formatting
+from ironsbot.services.seer.local_rank_metrics import (
+    LOCAL_METRICS as _LOCAL_METRICS,
+)
+from ironsbot.services.seer.local_rank_metrics import (
+    MetricValue,
+)
+from ironsbot.services.seer.local_rank_metrics import (
+    collect_metrics as _collect_metrics,
+)
+from ironsbot.services.seer.local_rank_metrics import (
+    positive_int as _positive_int,
+)
 from ironsbot.services.seer.rank import (
     PlayerRankSummary,
     RankLookupResult,
     is_pet_kind_rank_anomaly_user,
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
-
-MetricValue = dict[str, int | str | None]
-
-
-@dataclass(frozen=True, slots=True)
-class _MetricSpec:
-    key: str
-    title: str
-    season_limited: bool = False
-
-
-_LOCAL_METRICS: tuple[_MetricSpec, ...] = (
-    _MetricSpec("book_score", "图鉴积分"),
-    _MetricSpec("achievement_score", "成就点数"),
-    _MetricSpec("achievement_count", "成就数量"),
-    _MetricSpec("pet_total_count", "精灵数量"),
-    _MetricSpec("pet_kind_count", "精灵图鉴"),
-    _MetricSpec("countermark_count", "刻印图鉴"),
-    _MetricSpec("outfit_suit_count", "套装图鉴"),
-    _MetricSpec("outfit_part_count", "部件图鉴"),
-    _MetricSpec("mount_count", "座驾图鉴"),
-    _MetricSpec("skin_count", "皮肤图鉴"),
-    _MetricSpec("unlocked_book_entries", "已解锁图鉴条目"),
-    _MetricSpec("peak_standard", "竞技赛季", season_limited=True),
-    _MetricSpec("peak_standard_win_rate", "竞技胜率", season_limited=True),
-    _MetricSpec("peak_standard_matches", "竞技场次", season_limited=True),
-    _MetricSpec("peak_wild", "狂野赛季", season_limited=True),
-    _MetricSpec("peak_wild_win_rate", "狂野胜率", season_limited=True),
-    _MetricSpec("peak_wild_matches", "狂野场次", season_limited=True),
-    _MetricSpec("peak_expert", "专家赛季", season_limited=True),
-    _MetricSpec("peak_expert_win_rate", "专家胜率", season_limited=True),
-    _MetricSpec("peak_expert_matches", "专家场次", season_limited=True),
-    _MetricSpec("peak_total_matches", "巅峰总场次", season_limited=True),
+from ironsbot.shared.sqlite import (
+    ensure_sqlite_column,
+    open_sqlite,
 )
 
 _CACHE_LOCK = asyncio.Lock()
-PERCENT_FINE_THRESHOLD = 10
-_PEAK_RANK_NAMES = {
-    0: "学徒",
-    1: "猛将",
-    2: "天骄",
-    3: "王者",
-    4: "圣皇",
-    5: "宇宙圣皇",
-}
 
 
 def get_local_rank_config() -> LocalRankConfig:
@@ -91,54 +67,8 @@ class LocalRankCacheStats:
     metric_counts: dict[str, int]
 
 
-def _metric_from_rank(result: RankLookupResult | None) -> int | None:
-    if result is None:
-        return None
-    return result.score
-
-
-def _positive_int(value: object) -> int | None:
-    try:
-        number = int(cast("Any", value))
-    except (TypeError, ValueError):
-        return None
-    return number if number > 0 else None
-
-
-def _metric(
-    value: int | None,
-    *,
-    season_sub_key: int | None = None,
-    display: str | None = None,
-) -> MetricValue:
-    return {
-        "value": value,
-        "season_sub_key": season_sub_key,
-        "display": display,
-    }
-
-
-def _rate_metric(
-    wins: int,
-    total: int,
-    *,
-    season_sub_key: int | None,
-) -> MetricValue:
-    if total <= 0:
-        return _metric(None, season_sub_key=season_sub_key)
-
-    value = round(wins / total * 1_000_000)
-    return _metric(
-        value,
-        season_sub_key=season_sub_key,
-        display=f"{wins}/{total}={wins / total * 100:.3f}%",
-    )
-
-
 def _format_peak_rating_score(value: int) -> str:
-    rank, star = divmod(value, 100000)
-    name = _PEAK_RANK_NAMES.get(rank, f"段位{rank}")
-    return f"{name}{star}星"
+    return local_rank_formatting.format_peak_rating_score(value)
 
 
 def _format_metric_display(
@@ -146,127 +76,7 @@ def _format_metric_display(
     value: int,
     display: object | None = None,
 ) -> str:
-    if display not in (None, ""):
-        return str(display)
-    if metric_key in {"peak_standard", "peak_wild"}:
-        return _format_peak_rating_score(value)
-    if metric_key == "peak_expert":
-        return f"{value}分"
-    return str(value)
-
-
-def _collect_metrics(  # noqa: PLR0913
-    *,
-    more_info: Any,
-    unity_part_one: UnityPartOneInfo,
-    unity_peak: UnityPeakInfo,
-    rank_summary: PlayerRankSummary,
-    peak_sub_key: int | None,
-    peak_standard_score: int | None,
-    peak_wild_score: int | None,
-    peak_expert_score: int | None,
-) -> dict[str, MetricValue]:
-    breakdown = rank_summary.breakdown
-
-    values: dict[str, MetricValue] = {
-        "book_score": _metric(_metric_from_rank(rank_summary.book)),
-        "achievement_score": _metric(
-            _positive_int(getattr(more_info, "total_achieve", 0))
-        ),
-        "achievement_count": _metric(_positive_int(unity_part_one.achievement_num)),
-        "pet_total_count": _metric(
-            _positive_int(getattr(more_info, "pet_all_num", 0))
-        ),
-        "pet_kind_count": _metric(_positive_int(unity_part_one.pet_kind_num)),
-        "countermark_count": _metric(_metric_from_rank(breakdown.countermark)),
-        "outfit_suit_count": _metric(_metric_from_rank(breakdown.outfit_suit)),
-        "outfit_part_count": _metric(_metric_from_rank(breakdown.outfit_part)),
-        "mount_count": _metric(_metric_from_rank(breakdown.mount)),
-        "skin_count": _metric(_positive_int(unity_part_one.skin_num)),
-        "unlocked_book_entries": _metric(_positive_int(breakdown.unlocked_count)),
-    }
-
-    if peak_sub_key is not None:
-        total_matches = (
-            unity_peak.current_j_all
-            + unity_peak.current_k_all
-            + unity_peak.current_z_all
-        )
-        if unity_peak.current_j_all > 0:
-            standard_score = _positive_int(peak_standard_score)
-            values["peak_standard"] = _metric(
-                standard_score,
-                season_sub_key=peak_sub_key,
-                display=(
-                    _format_metric_display("peak_standard", standard_score)
-                    if standard_score is not None
-                    else None
-                ),
-            )
-            values["peak_standard_win_rate"] = _rate_metric(
-                unity_peak.current_j_win,
-                unity_peak.current_j_all,
-                season_sub_key=peak_sub_key,
-            )
-            values["peak_standard_matches"] = _metric(
-                _positive_int(unity_peak.current_j_all),
-                season_sub_key=peak_sub_key,
-                display=f"{unity_peak.current_j_all}场",
-            )
-        if unity_peak.current_k_all > 0:
-            wild_score = _positive_int(peak_wild_score)
-            values["peak_wild"] = _metric(
-                wild_score,
-                season_sub_key=peak_sub_key,
-                display=(
-                    _format_metric_display("peak_wild", wild_score)
-                    if wild_score is not None
-                    else None
-                ),
-            )
-            values["peak_wild_win_rate"] = _rate_metric(
-                unity_peak.current_k_win,
-                unity_peak.current_k_all,
-                season_sub_key=peak_sub_key,
-            )
-            values["peak_wild_matches"] = _metric(
-                _positive_int(unity_peak.current_k_all),
-                season_sub_key=peak_sub_key,
-                display=f"{unity_peak.current_k_all}场",
-            )
-        if unity_peak.current_z_all > 0:
-            expert_score = _positive_int(peak_expert_score)
-            values["peak_expert"] = _metric(
-                expert_score,
-                season_sub_key=peak_sub_key,
-                display=(
-                    _format_metric_display("peak_expert", expert_score)
-                    if expert_score is not None
-                    else None
-                ),
-            )
-            values["peak_expert_win_rate"] = _rate_metric(
-                unity_peak.current_z_win,
-                unity_peak.current_z_all,
-                season_sub_key=peak_sub_key,
-            )
-            values["peak_expert_matches"] = _metric(
-                _positive_int(unity_peak.current_z_all),
-                season_sub_key=peak_sub_key,
-                display=f"{unity_peak.current_z_all}场",
-            )
-        if total_matches > 0:
-            values["peak_total_matches"] = _metric(
-                _positive_int(total_matches),
-                season_sub_key=peak_sub_key,
-                display=f"{total_matches}场",
-            )
-
-    return {
-        key: value
-        for key, value in values.items()
-        if value.get("value") is not None
-    }
+    return local_rank_formatting.format_metric_display(metric_key, value, display)
 
 
 def _max_cached_players() -> int:
@@ -277,17 +87,14 @@ def _sqlite_cache_path() -> Path:
     return get_local_rank_config().path
 
 
-def _connect_cache() -> sqlite3.Connection:
-    path = _sqlite_cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    _ensure_cache_schema(conn)
-    return conn
+@contextmanager
+def _connect_cache() -> Iterator[sqlite3.Connection]:
+    with open_sqlite(_sqlite_cache_path(), row_factory=sqlite3.Row) as conn:
+        _ensure_cache_schema(conn)
+        yield conn
 
 
 def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS players (
@@ -297,16 +104,18 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    player_columns = {
-        str(row[1])
-        for row in conn.execute("PRAGMA table_info(players)").fetchall()
-    }
-    if "sample_enabled" not in player_columns:
-        conn.execute(
-            "ALTER TABLE players ADD COLUMN sample_enabled INTEGER NOT NULL DEFAULT 1"
-        )
-    if "sampled_at" not in player_columns:
-        conn.execute("ALTER TABLE players ADD COLUMN sampled_at TEXT")
+    ensure_sqlite_column(
+        conn,
+        table_name="players",
+        column_name="sample_enabled",
+        column_definition="sample_enabled INTEGER NOT NULL DEFAULT 1",
+    )
+    if ensure_sqlite_column(
+        conn,
+        table_name="players",
+        column_name="sampled_at",
+        column_definition="sampled_at TEXT",
+    ):
         conn.execute(
             """
             UPDATE players
@@ -340,7 +149,6 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
         ON metrics(metric_key, season_sub_key, value DESC, user_id)
         """
     )
-    conn.commit()
 
 
 def _write_player_metrics(  # noqa: PLR0913
@@ -403,8 +211,7 @@ def _write_player_metrics(  # noqa: PLR0913
 
 
 def _format_percent(value: float) -> str:
-    precision = 2 if value < PERCENT_FINE_THRESHOLD else 1
-    return f"{value:.{precision}f}".rstrip("0").rstrip(".")
+    return local_rank_formatting.format_percent(value)
 
 
 def _format_local_rank(  # noqa: PLR0913
@@ -420,32 +227,34 @@ def _format_local_rank(  # noqa: PLR0913
     if current_value is None:
         return None
 
-    where = "m.metric_key = ? AND m.value IS NOT NULL AND p.sample_enabled = 1"
-    params: list[object] = [metric_key]
-    if season_sub_key is None:
-        where += " AND m.season_sub_key IS NULL"
-    else:
-        where += " AND m.season_sub_key = ?"
-        params.append(season_sub_key)
+    params: tuple[object, ...] = (metric_key, season_sub_key, season_sub_key)
 
     sample_count = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND p.sample_enabled = 1
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
             """,
             params,
         ).fetchone()[0]
     )
     greater_count = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND p.sample_enabled = 1
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND m.value > ?
             """,
             (*params, current_value),
@@ -453,11 +262,15 @@ def _format_local_rank(  # noqa: PLR0913
     )
     tie_count = int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND p.sample_enabled = 1
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND m.value = ?
             """,
             (*params, current_value),
@@ -525,21 +338,11 @@ def _format_summary(
     )
 
 
-def _get_metric_where(
+def _get_metric_params(
     metric_key: str,
     season_sub_key: int | None,
-    *,
-    table_alias: str = "m",
-) -> tuple[str, list[object]]:
-    prefix = f"{table_alias}." if table_alias else ""
-    where = f"{prefix}metric_key = ? AND {prefix}value IS NOT NULL"
-    params: list[object] = [metric_key]
-    if season_sub_key is None:
-        where += f" AND {prefix}season_sub_key IS NULL"
-    else:
-        where += f" AND {prefix}season_sub_key = ?"
-        params.append(season_sub_key)
-    return where, params
+) -> tuple[object, object, object]:
+    return metric_key, season_sub_key, season_sub_key
 
 
 def _count_metric_rows(
@@ -547,14 +350,17 @@ def _count_metric_rows(
     metric_key: str,
     season_sub_key: int | None,
 ) -> int:
-    where, params = _get_metric_where(metric_key, season_sub_key)
+    params = _get_metric_params(metric_key, season_sub_key)
     return int(
         conn.execute(
-            f"""
+            """
             SELECT COUNT(*)
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND p.sample_enabled = 1
             """,
             params,
@@ -572,15 +378,18 @@ def _get_local_rank_entries_sql(
     requested_limit = max(0, limit)
     safe_start_rank = max(1, start_rank)
     fetch_limit = safe_start_rank + requested_limit - 1
-    where, params = _get_metric_where(metric_key, season_sub_key)
+    params = _get_metric_params(metric_key, season_sub_key)
     with _connect_cache() as conn:
         sample_count = _count_metric_rows(conn, metric_key, season_sub_key)
         rows = conn.execute(
-            f"""
+            """
             SELECT m.value, p.user_id, p.nick, m.display
             FROM metrics m
             JOIN players p ON p.user_id = m.user_id
-            WHERE {where}
+            WHERE m.metric_key = ?
+              AND m.value IS NOT NULL
+              AND ((? IS NULL AND m.season_sub_key IS NULL)
+                   OR m.season_sub_key = ?)
               AND p.sample_enabled = 1
             ORDER BY m.value DESC, p.user_id ASC
             LIMIT ?
@@ -633,23 +442,23 @@ def _get_refresh_candidate_player_ids_sql(
     limit: int,
     max_age_hours: int,
 ) -> list[int]:
-    params: list[object] = []
-    where = "sample_enabled = 1"
+    cutoff: str | None = None
     if max_age_hours > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-        where += " AND updated_at <= ?"
-        params.append(cutoff.isoformat())
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        ).isoformat()
 
     with _connect_cache() as conn:
         rows = conn.execute(
-            f"""
+            """
             SELECT user_id
             FROM players
-            WHERE {where}
+            WHERE sample_enabled = 1
+              AND (? IS NULL OR updated_at <= ?)
             ORDER BY updated_at ASC, user_id ASC
             LIMIT ?
             """,
-            (*params, max(0, limit)),
+            (cutoff, cutoff, max(0, limit)),
         ).fetchall()
     return [int(row["user_id"]) for row in rows]
 
@@ -723,7 +532,6 @@ async def _upsert_local_rank_metrics_sql(
             if is_pet_kind_rank_anomaly_user(player_id):
                 conn.execute("DELETE FROM metrics WHERE user_id = ?", (player_id,))
                 conn.execute("DELETE FROM players WHERE user_id = ?", (player_id,))
-                conn.commit()
                 return LocalRankSummary()
 
             row = conn.execute(
@@ -751,7 +559,6 @@ async def _upsert_local_rank_metrics_sql(
                 metrics=current_metrics,
                 sample_enabled=True,
             )
-            conn.commit()
             return _format_summary(
                 conn=conn,
                 current_metrics=current_metrics,
@@ -820,6 +627,7 @@ async def update_local_rank_cache(  # noqa: PLR0913
     unity_part_one: UnityPartOneInfo,
     unity_peak: UnityPeakInfo,
     rank_summary: PlayerRankSummary,
+    autocard_rank_summary: RankLookupResult | None = None,
     peak_sub_key: int | None,
     peak_standard_score: int | None,
     peak_wild_score: int | None,
@@ -830,6 +638,7 @@ async def update_local_rank_cache(  # noqa: PLR0913
         unity_part_one=unity_part_one,
         unity_peak=unity_peak,
         rank_summary=rank_summary,
+        autocard_rank_summary=autocard_rank_summary,
         peak_sub_key=peak_sub_key,
         peak_standard_score=peak_standard_score,
         peak_wild_score=peak_wild_score,

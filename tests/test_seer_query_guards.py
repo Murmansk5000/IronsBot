@@ -10,7 +10,7 @@ def test_rank_query_text_matches_rank_commands() -> None:
     assert is_rank_query_text("二角刻印攻击榜")
     assert is_rank_query_text("六角双攻榜")
     assert is_rank_query_text("刻印攻击榜")
-    assert is_rank_query_text("群星牌榜")
+    assert is_rank_query_text("群星之巅榜")
     assert is_rank_query_text("群星牌排行")
 
 
