@@ -9,7 +9,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.config.models.seer import TeamResourceSubscriptionConfig
-from ironsbot.plugins.headless_seer.exception import (
+from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )

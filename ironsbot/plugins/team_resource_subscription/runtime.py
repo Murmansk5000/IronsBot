@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from nonebot import get_bots, get_driver, require
+from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from . import scan_team_resource_subscriptions
@@ -18,7 +19,12 @@ async def _scan_team_resources_with_bot() -> None:
         logger.warning("team resource scan skipped: no connected bot")
         return
 
-    await scan_team_resource_subscriptions(bots[0])
+    bot = bots[0]
+    if not isinstance(bot, Bot):
+        logger.warning("team resource scan skipped: first bot is not OneBot V11")
+        return
+
+    await scan_team_resource_subscriptions(bot)
 
 
 def _register_team_resource_jobs(scheduler: Any) -> None:
