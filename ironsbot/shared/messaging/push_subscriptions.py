@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
@@ -22,6 +22,9 @@ if TYPE_CHECKING:
     from ironsbot.config.models.message import PushUnsubscribeConfig
 
 PushTargetType = Literal["private", "group"]
+PushPreferenceType = Literal["cron_time", "activity_lead_hours"]
+CRON_TIME_PREFERENCE: PushPreferenceType = "cron_time"
+ACTIVITY_LEAD_HOURS_PREFERENCE: PushPreferenceType = "activity_lead_hours"
 
 
 class ScheduledPushTask(Protocol):
@@ -41,6 +44,16 @@ class PushSubscriptionOption:
     label: str
     feature: str
     unsubscribed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class PushTimePreference:
+    target_type: PushTargetType
+    target_id: int
+    subscription_key: str
+    preference_type: PushPreferenceType
+    value: str
+    updated_at: str
 
 
 BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
@@ -261,6 +274,132 @@ class PushUnsubscribeStore:
     ) -> list[int]:
         return self.filter_subscribed_target_ids("group", group_ids, subscription_key)
 
+    def get_time_preference(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        subscription_key: str,
+        preference_type: PushPreferenceType,
+    ) -> str | None:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT value FROM push_time_preferences "
+                "WHERE target_type = ? AND target_id = ? "
+                "AND subscription_key = ? AND preference_type = ?",
+                (target_type, int(target_id), subscription_key, preference_type),
+            ).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_time_preference(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        subscription_key: str,
+        preference_type: PushPreferenceType,
+        value: str,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as con:
+            con.execute(
+                "INSERT OR REPLACE INTO push_time_preferences "
+                "(target_type, target_id, subscription_key, preference_type, "
+                "value, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    target_type,
+                    int(target_id),
+                    subscription_key,
+                    preference_type,
+                    value,
+                    now,
+                ),
+            )
+            con.commit()
+
+    def clear_time_preference(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        subscription_key: str,
+        preference_type: PushPreferenceType,
+    ) -> None:
+        with self._connect() as con:
+            con.execute(
+                "DELETE FROM push_time_preferences "
+                "WHERE target_type = ? AND target_id = ? "
+                "AND subscription_key = ? AND preference_type = ?",
+                (target_type, int(target_id), subscription_key, preference_type),
+            )
+            con.commit()
+
+    def target_time_preferences(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> dict[tuple[str, PushPreferenceType], str]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT subscription_key, preference_type, value "
+                "FROM push_time_preferences "
+                "WHERE target_type = ? AND target_id = ?",
+                (target_type, int(target_id)),
+            ).fetchall()
+        preferences: dict[tuple[str, PushPreferenceType], str] = {}
+        for key, preference_type, value in rows:
+            preference_type_text = str(preference_type)
+            if preference_type_text not in {"cron_time", "activity_lead_hours"}:
+                continue
+            preferences[
+                (str(key), cast("PushPreferenceType", preference_type_text))
+            ] = str(value)
+        return preferences
+
+    def all_time_preferences(
+        self,
+        *,
+        target_type: PushTargetType | None = None,
+        subscription_key: str | None = None,
+        preference_type: PushPreferenceType | None = None,
+    ) -> list[PushTimePreference]:
+        conditions: list[str] = []
+        params: list[object] = []
+        if target_type is not None:
+            conditions.append("target_type = ?")
+            params.append(target_type)
+        if subscription_key is not None:
+            conditions.append("subscription_key = ?")
+            params.append(subscription_key)
+        if preference_type is not None:
+            conditions.append("preference_type = ?")
+            params.append(preference_type)
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT target_type, target_id, subscription_key, preference_type, "
+                f"value, updated_at FROM push_time_preferences {where}",
+                params,
+            ).fetchall()
+        return [
+            PushTimePreference(
+                target_type=target_type_row,
+                target_id=int(target_id),
+                subscription_key=str(key),
+                preference_type=preference_type_row,
+                value=str(value),
+                updated_at=str(updated_at),
+            )
+            for (
+                target_type_row,
+                target_id,
+                key,
+                preference_type_row,
+                value,
+                updated_at,
+            ) in rows
+            if target_type_row in {"private", "group"}
+            and preference_type_row in {"cron_time", "activity_lead_hours"}
+        ]
+
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         con = sqlite3.connect(self.path)
@@ -277,6 +416,22 @@ class PushUnsubscribeStore:
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_push_unsubscriptions_lookup "
             "ON push_unsubscriptions (target_type, subscription_key, target_id)"
+        )
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS push_time_preferences ("
+            "target_type TEXT NOT NULL, "
+            "target_id INTEGER NOT NULL, "
+            "subscription_key TEXT NOT NULL, "
+            "preference_type TEXT NOT NULL, "
+            "value TEXT NOT NULL, "
+            "updated_at TEXT NOT NULL, "
+            "PRIMARY KEY (target_type, target_id, subscription_key, preference_type)"
+            ")"
+        )
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_push_time_preferences_lookup "
+            "ON push_time_preferences "
+            "(target_type, subscription_key, preference_type, target_id)"
         )
         con.commit()
         return con
@@ -341,9 +496,13 @@ def build_push_subscription_menu(
     )
 
 __all__ = [
+    "ACTIVITY_LEAD_HOURS_PREFERENCE",
     "BUILTIN_PUSH_OPTIONS",
+    "CRON_TIME_PREFERENCE",
+    "PushPreferenceType",
     "PushSubscriptionOption",
     "PushTargetType",
+    "PushTimePreference",
     "PushUnsubscribeStore",
     "append_push_unsubscribe_hint",
     "build_push_subscription_menu",

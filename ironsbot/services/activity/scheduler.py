@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 STARTUP_SCAN_JOB_ID = "activity_reminder_startup_scan"
 DAILY_SCAN_JOB_ID = "activity_reminder_daily_scan"
+REMINDER_JOB_ID_PREFIX = "activity_reminder_"
 STARTUP_SCAN_DELAY = timedelta(seconds=30)
 STARTUP_SCAN_MISFIRE_GRACE_SECONDS = 300
 DAILY_SCAN_MISFIRE_GRACE_SECONDS = 300
@@ -78,3 +79,18 @@ def schedule_reminder_jobs(
         )
         scheduled_count += len(lead_reminders)
     return scheduled_count
+
+
+def clear_reminder_jobs(scheduler: Any) -> None:
+    get_jobs = getattr(scheduler, "get_jobs", None)
+    remove_job = getattr(scheduler, "remove_job", None)
+    if not callable(get_jobs) or not callable(remove_job):
+        return
+
+    for job in list(get_jobs()):
+        job_id = str(getattr(job, "id", ""))
+        if not job_id.startswith(REMINDER_JOB_ID_PREFIX):
+            continue
+        if job_id in {STARTUP_SCAN_JOB_ID, DAILY_SCAN_JOB_ID}:
+            continue
+        remove_job(job_id)
