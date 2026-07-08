@@ -12,12 +12,9 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.shared.features import (
-    groups_for_feature,
     is_group_feature_allowed,
     is_private_feature_allowed,
     is_superuser,
-    users_for_feature,
-    users_with_superusers,
 )
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
@@ -25,26 +22,18 @@ from ironsbot.shared.messaging import (
     event_conversation_session_id,
     event_sender_at_user_ids,
     finish_matcher_message,
-    send_broadcast_message,
 )
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
     PushTargetType,
     PushUnsubscribeStore,
-    group_schedule_key,
-    private_schedule_key,
 )
 from ironsbot.shared.plugin_system import (
     PluginContext,
     dispatch_plugin,
     register_plugin,
 )
-from ironsbot.shared.promotions import (
-    append_fire_manual_ad_for_group,
-    append_fire_manual_ad_text,
-)
-from ironsbot.shared.scheduler import remove_jobs_by_prefix
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
     prompt_session_manager,
@@ -52,6 +41,7 @@ from ironsbot.utils.matcher import (
 )
 from ironsbot.utils.rule import no_reply
 
+from . import schedules as message_schedules
 from .config import (
     GroupScheduledMessageAction,
     PrivateCommandMessageAction,
@@ -66,15 +56,10 @@ from .push_time import (
     PushTimeOption,
     build_push_time_menu_prompt,
     build_push_time_options,
-    daily_time_parts_for_push,
     normalize_push_time_input,
     push_time_value_prompt,
 )
-from .runtime_service import (
-    build_schedule_job_id,
-    build_schedule_trigger_kwargs,
-    find_command_action,
-)
+from .runtime_service import find_command_action
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
@@ -94,7 +79,6 @@ PUSH_TIME_VERSION_KEY = "_message_push_time_version"
 PUSH_TIME_NAMESPACE = "message_push_time"
 PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 MESSAGE_PLUGIN_NAME = "message"
-MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
 _messaging_runtime_state = {"registered": False, "scheduler": None}
 
 
@@ -717,31 +701,16 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
     )
 
 
+
 async def _send_private_schedule(
     task: PrivateScheduledMessageAction,
     index: int = 1,
     target_user_ids: tuple[int, ...] | None = None,
 ) -> None:
-    private_user_ids = users_with_superusers(users_for_feature(task.feature))
-    if target_user_ids is None:
-        override_user_ids = _cron_override_target_ids(
-            "private",
-            private_schedule_key(index, task),
-        )
-        private_user_ids = [
-            user_id for user_id in private_user_ids if user_id not in override_user_ids
-        ]
-    else:
-        allowed_user_ids = set(private_user_ids)
-        private_user_ids = [
-            user_id for user_id in target_user_ids if user_id in allowed_user_ids
-        ]
-
-    await send_broadcast_message(
-        append_fire_manual_ad_text(task.message),
-        private_user_ids=private_user_ids,
-        action_name=f"private scheduled message {task.id or '<unnamed>'}",
-        subscription_key=private_schedule_key(index, task),
+    await message_schedules.send_private_schedule(
+        task,
+        index=index,
+        target_user_ids=target_user_ids,
     )
 
 
@@ -750,28 +719,10 @@ async def _send_group_schedule(
     index: int = 1,
     target_group_ids: tuple[int, ...] | None = None,
 ) -> None:
-    group_ids = groups_for_feature(task.feature)
-    if target_group_ids is None:
-        override_group_ids = _cron_override_target_ids(
-            "group",
-            group_schedule_key(index, task),
-        )
-        group_ids = [
-            group_id for group_id in group_ids if group_id not in override_group_ids
-        ]
-    else:
-        allowed_group_ids = set(group_ids)
-        group_ids = [
-            group_id for group_id in target_group_ids if group_id in allowed_group_ids
-        ]
-
-    await send_broadcast_message(
-        task.message,
-        group_ids=group_ids,
-        group_at_user_ids=task.at_user_ids,
-        action_name=f"group scheduled message {task.id or '<unnamed>'}",
-        message_limiter=append_fire_manual_ad_for_group,
-        subscription_key=group_schedule_key(index, task),
+    await message_schedules.send_group_schedule(
+        task,
+        index=index,
+        target_group_ids=target_group_ids,
     )
 
 
@@ -779,15 +730,7 @@ def _cron_override_target_ids(
     target_type: PushTargetType,
     subscription_key: str,
 ) -> set[int]:
-    store = _push_subscription_store()
-    return {
-        preference.target_id
-        for preference in store.all_time_preferences(
-            target_type=target_type,
-            subscription_key=subscription_key,
-            preference_type=CRON_TIME_PREFERENCE,
-        )
-    }
+    return message_schedules.cron_override_target_ids(target_type, subscription_key)
 
 
 def _schedule_override_job_id(
@@ -796,146 +739,27 @@ def _schedule_override_job_id(
     task_id: str,
     target_id: int,
 ) -> str:
-    return build_schedule_job_id(prefix, index, f"{task_id}_override_{target_id}")
+    return message_schedules.schedule_override_job_id(
+        prefix,
+        index,
+        task_id,
+        target_id,
+    )
 
 
 def _schedule_override_trigger_kwargs(
     task: PrivateScheduledMessageAction | GroupScheduledMessageAction,
     value: str,
 ) -> dict[str, int | str]:
-    hour, minute = daily_time_parts_for_push(value)
-    trigger_kwargs = build_schedule_trigger_kwargs(task)
-    trigger_kwargs["hour"] = hour
-    trigger_kwargs["minute"] = minute
-    return trigger_kwargs
-
-
-def _register_private_schedule_overrides(
-    scheduler: Any,
-    index: int,
-    task: PrivateScheduledMessageAction,
-) -> None:
-    key = private_schedule_key(index, task)
-    eligible_user_ids = set(users_with_superusers(users_for_feature(task.feature)))
-    store = _push_subscription_store()
-    for preference in store.all_time_preferences(
-        target_type="private",
-        subscription_key=key,
-        preference_type=CRON_TIME_PREFERENCE,
-    ):
-        if preference.target_id not in eligible_user_ids:
-            continue
-        try:
-            trigger_kwargs = _schedule_override_trigger_kwargs(task, preference.value)
-        except ValueError:
-            continue
-        scheduler.add_job(
-            _send_private_schedule,
-            "cron",
-            kwargs={
-                "task": task,
-                "index": index,
-                "target_user_ids": (preference.target_id,),
-            },
-            id=_schedule_override_job_id(
-                "private_schedule",
-                index,
-                key,
-                preference.target_id,
-            ),
-            replace_existing=True,
-            **trigger_kwargs,
-        )
-
-
-def _register_group_schedule_overrides(
-    scheduler: Any,
-    index: int,
-    task: GroupScheduledMessageAction,
-) -> None:
-    key = group_schedule_key(index, task)
-    eligible_group_ids = set(groups_for_feature(task.feature))
-    store = _push_subscription_store()
-    for preference in store.all_time_preferences(
-        target_type="group",
-        subscription_key=key,
-        preference_type=CRON_TIME_PREFERENCE,
-    ):
-        if preference.target_id not in eligible_group_ids:
-            continue
-        try:
-            trigger_kwargs = _schedule_override_trigger_kwargs(task, preference.value)
-        except ValueError:
-            continue
-        scheduler.add_job(
-            _send_group_schedule,
-            "cron",
-            kwargs={
-                "task": task,
-                "index": index,
-                "target_group_ids": (preference.target_id,),
-            },
-            id=_schedule_override_job_id(
-                "group_schedule",
-                index,
-                key,
-                preference.target_id,
-            ),
-            replace_existing=True,
-            **trigger_kwargs,
-        )
-
-
-def _register_private_schedule(
-    scheduler: Any,
-    index: int,
-    task: PrivateScheduledMessageAction,
-) -> None:
-    if not task.enabled:
-        return
-
-    scheduler.add_job(
-        _send_private_schedule,
-        "cron",
-        kwargs={"task": task, "index": index},
-        id=build_schedule_job_id("private_schedule", index, task.id),
-        replace_existing=True,
-        **build_schedule_trigger_kwargs(task),
-    )
-    _register_private_schedule_overrides(scheduler, index, task)
-
-
-def _register_group_schedule(
-    scheduler: Any,
-    index: int,
-    task: GroupScheduledMessageAction,
-) -> None:
-    if not task.enabled:
-        return
-
-    scheduler.add_job(
-        _send_group_schedule,
-        "cron",
-        kwargs={"task": task, "index": index},
-        id=build_schedule_job_id("group_schedule", index, task.id),
-        replace_existing=True,
-        **build_schedule_trigger_kwargs(task),
-    )
-    _register_group_schedule_overrides(scheduler, index, task)
-
-
-async def register_message_schedules(scheduler: Any) -> None:
-    _clear_message_schedule_jobs(scheduler)
-    config = get_message_config()
-    for index, task in enumerate(config.private_schedules, start=1):
-        _register_private_schedule(scheduler, index, task)
-
-    for index, task in enumerate(config.group_schedules, start=1):
-        _register_group_schedule(scheduler, index, task)
+    return message_schedules.schedule_override_trigger_kwargs(task, value)
 
 
 def _clear_message_schedule_jobs(scheduler: Any) -> None:
-    remove_jobs_by_prefix(scheduler, MESSAGE_SCHEDULE_JOB_PREFIX)
+    message_schedules.clear_message_schedule_jobs(scheduler)
+
+
+async def register_message_schedules(scheduler: Any) -> None:
+    await message_schedules.register_message_schedules(scheduler)
 
 
 async def refresh_message_schedules() -> None:
