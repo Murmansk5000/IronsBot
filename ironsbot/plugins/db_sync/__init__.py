@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: MIT
 import asyncio
-import hashlib
 import os
 import tempfile
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from datetime import datetime
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -28,8 +25,17 @@ from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
+from . import formatting as sync_formatting
 from .github_actions import WorkflowRunResult, trigger_and_wait_workflow
 from .manager import db_manager
+from .storage import (
+    _fetch_remote_timestamp,
+    _file_timestamp,
+    _fingerprint_content,
+    _fingerprint_file,
+    _normalize_fingerprint,
+    _write_bytes_atomic,
+)
 
 GetFingerprintFn = Callable[[httpx.AsyncClient], Awaitable[str]]
 
@@ -94,98 +100,6 @@ def _get_lock(name: str) -> asyncio.Lock:
     if name not in _sync_locks:
         _sync_locks[name] = asyncio.Lock()
     return _sync_locks[name]
-
-
-def _write_bytes_atomic(file_path: str, content: bytes) -> None:
-    target_path = Path(file_path)
-    parent = target_path.parent
-    if parent != Path():
-        parent.mkdir(parents=True, exist_ok=True)
-
-    tmp_dir = parent if parent != Path() else Path.cwd()
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{target_path.name}.",
-        suffix=".tmp",
-        dir=str(tmp_dir),
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as tmp_file:
-            tmp_file.write(content)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-        tmp_path.replace(target_path)
-    finally:
-        with suppress(FileNotFoundError):
-            tmp_path.unlink()
-
-
-def _normalize_fingerprint(raw: str | None) -> str | None:
-    if raw is None:
-        return None
-
-    text = raw.strip()
-    if not text:
-        return None
-
-    return text.split()[0].strip().lower() or None
-
-
-def _fingerprint_content(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
-
-
-def _fingerprint_file(file_path: str | Path) -> str | None:
-    path = Path(file_path)
-    if not path.exists():
-        return None
-
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as file:
-            for chunk in iter(lambda: file.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError:
-        logger.exception(f"读取本地数据库指纹失败: {path}")
-        return None
-
-    return digest.hexdigest()
-
-
-def _file_timestamp(file_path: str | Path) -> datetime | None:
-    path = Path(file_path)
-    if not path.exists():
-        return None
-
-    try:
-        return datetime.fromtimestamp(path.stat().st_mtime).astimezone()
-    except OSError:
-        logger.exception(f"读取本地数据库时间失败: {path}")
-        return None
-
-
-def _parse_http_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-
-    try:
-        return parsedate_to_datetime(value).astimezone()
-    except (TypeError, ValueError, IndexError, OverflowError):
-        return None
-
-
-async def _fetch_remote_timestamp(
-    client: httpx.AsyncClient,
-    sync_url: str,
-) -> datetime | None:
-    try:
-        response = await client.head(sync_url)
-        response.raise_for_status()
-    except (AttributeError, httpx.HTTPError):
-        logger.debug(f"获取远端数据库时间失败: {sync_url}", exc_info=True)
-        return None
-
-    return _parse_http_datetime(response.headers.get("last-modified"))
 
 
 def is_sync_running() -> bool:
@@ -711,61 +625,25 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
 
 
 def _format_remote_build_failures(failed_names: list[str]) -> str:
-    lines: list[str] = []
-    for name in failed_names:
-        result = _remote_build_results.get(name)
-        if result is None:
-            continue
-        lines.append(f"远程构建失败：{name}（{result.message}）")
-        if result.html_url:
-            lines.append(f"Actions: {result.html_url}")
-    return "\n".join(lines)
+    return sync_formatting.format_remote_build_failures(
+        failed_names,
+        _remote_build_results,
+    )
 
 
 def _format_timestamp(value: datetime | None) -> str:
-    if value is None:
-        return "未知"
-
-    return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    return sync_formatting.format_timestamp(value)
 
 
 def _format_fingerprint(value: str | None) -> str:
-    if not value:
-        return "未知"
-
-    return value[:12]
+    return sync_formatting.format_fingerprint(value)
 
 
 def _format_sync_statuses(results: dict[str, bool]) -> str:
-    lines: list[str] = []
-    for name in results:
-        status = _last_sync_statuses.get(name)
-        if status is None:
-            continue
-
-        state = (
-            "无需更新"
-            if status.ok and status.skipped
-            else "已更新"
-            if status.ok
-            else "失败"
-        )
-        lines.append(f"{name}：{state}")
-        lines.append(
-            "  本地："
-            f"{_format_timestamp(status.local_before.timestamp)} "
-            f"sha256={_format_fingerprint(status.local_before.fingerprint)}"
-        )
-        lines.append(
-            "  远端："
-            f"{_format_timestamp(status.remote.timestamp)} "
-            f"sha256={_format_fingerprint(status.remote.fingerprint)}"
-        )
-        hidden_messages = {"已更新", "本地与远端一致，无需更新"}
-        if status.message and status.message not in hidden_messages:
-            lines.append(f"  说明：{status.message}")
-
-    return "\n".join(lines)
+    return sync_formatting.format_sync_statuses(
+        results,
+        _last_sync_statuses,
+    )
 
 
 def format_sync_result_notice(
@@ -773,35 +651,9 @@ def format_sync_result_notice(
     *,
     title_prefix: str = "数据更新",
 ) -> str:
-    if not results:
-        return f"{title_prefix}未执行。"
-
-    failed = [name for name, ok in results.items() if not ok]
-    succeeded = [name for name, ok in results.items() if ok]
-    skipped = [
-        name
-        for name, ok in results.items()
-        if ok and _last_sync_statuses.get(name, _SyncStatus(ok=True)).skipped
-    ]
-    if failed:
-        title = (
-            f"{title_prefix}完成，但有失败项。\n"
-            f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
-            f"失败：{', '.join(failed)}"
-        )
-    elif skipped and len(skipped) == len(results):
-        title = f"{title_prefix}已是最新，无需更新：{', '.join(skipped)}"
-    else:
-        title = f"{title_prefix}完成：{', '.join(succeeded)}"
-
-    sections = [title]
-    status_text = _format_sync_statuses(results)
-    if status_text:
-        sections.append(status_text)
-
-    if failed:
-        remote_failure_text = _format_remote_build_failures(failed)
-        if remote_failure_text:
-            sections.append(remote_failure_text)
-
-    return "\n".join(sections)
+    return sync_formatting.format_sync_result_notice(
+        results,
+        sync_statuses=_last_sync_statuses,
+        remote_build_results=_remote_build_results,
+        title_prefix=title_prefix,
+    )

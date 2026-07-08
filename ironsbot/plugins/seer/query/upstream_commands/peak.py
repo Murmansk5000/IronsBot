@@ -15,18 +15,18 @@ from seerapi_models import (
 )
 from sqlmodel import select
 
-from ironsbot.plugins.headless_seer.game import (
-    PEAK_TYPE_NAME_MAP,
-    PeakItemData,
-    PeakType,
-    SeerGame,
-)
-from ironsbot.plugins.seer_data.db import (
+from ironsbot.integrations.seer_data.db import (
     AllSessions,
     Getter,
     SuitDataGetter,
     TitleDataGetter,
     from_id_get_name,
+)
+from ironsbot.plugins.headless_seer.game import (
+    PEAK_TYPE_NAME_MAP,
+    PeakItemData,
+    PeakType,
+    SeerGame,
 )
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
@@ -40,7 +40,7 @@ from ..upstream_noop_group import matcher_group
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
-    from ironsbot.plugins.headless_seer.packets import DailyRankList
+    from ironsbot.integrations.headless_seer.packets import DailyRankList
 
 LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3

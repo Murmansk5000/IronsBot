@@ -30,6 +30,7 @@ from ironsbot.shared.messaging.outbound_rate_limit import (
     check_group_outbound_rate_limit,
 )
 from ironsbot.shared.messaging.text import build_message, render_text
+from ironsbot.shared.scheduler import add_or_replace_job
 
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -144,13 +145,13 @@ def schedule_team_audit_followup(
     if run_at <= now:
         run_at = now + timedelta(seconds=1)
 
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         send_team_audit_followup,
         "date",
         run_date=run_at,
         args=[bot, reminder.group_id, reminder.user_id],
-        id=_followup_job_id(reminder.group_id, reminder.user_id),
-        replace_existing=True,
+        job_id=_followup_job_id(reminder.group_id, reminder.user_id),
         misfire_grace_time=3600,
     )
 
@@ -171,13 +172,13 @@ def register_team_audit_followup_scan(
     scheduler: "AsyncIOScheduler",
     bot: Bot,
 ) -> None:
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         schedule_pending_team_audit_followups,
         "interval",
         minutes=FOLLOWUP_SCAN_INTERVAL_MINUTES,
         args=[bot, scheduler],
-        id=_followup_scan_job_id(bot),
-        replace_existing=True,
+        job_id=_followup_scan_job_id(bot),
     )
 
 

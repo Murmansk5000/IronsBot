@@ -65,7 +65,7 @@ class BiliTargetRule:
             return str(int(uid))
         nickname = self.account_nicknames.get(account)
         if nickname:
-            return f"{nickname}（{account}，{int(uid)}）"
+            return f"{nickname}（{int(uid)}）"
         return f"{account}（{int(uid)}）"
 
 
@@ -109,6 +109,28 @@ def account_uid(account: str, config: BiliConfig | None = None) -> int | None:
     return bili_accounts(config).get(account.strip().lower())
 
 
+def resolve_account_reference(
+    reference: str,
+    config: BiliConfig | None = None,
+) -> str | None:
+    bili_config = config or get_bili_config()
+    normalized = reference.strip().lower()
+    if not normalized:
+        return None
+    if normalized in bili_config.accounts:
+        return normalized
+
+    folded = reference.strip().casefold()
+    matches = [
+        account
+        for account, nickname in bili_config.account_nicknames.items()
+        if nickname.strip().casefold() == folded
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def account_for_uid(uid: int, config: BiliConfig | None = None) -> str | None:
     for account, account_uid_value in bili_accounts(config).items():
         if account_uid_value == int(uid):
@@ -134,7 +156,7 @@ def account_display_label(
     if resolved_uid is None:
         return nickname or normalized
     if nickname:
-        return f"{nickname}（{normalized}，{int(resolved_uid)}）"
+        return f"{nickname}（{int(resolved_uid)}）"
     return f"{normalized}（{int(resolved_uid)}）"
 
 

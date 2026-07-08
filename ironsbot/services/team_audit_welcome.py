@@ -2,9 +2,16 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,37 +113,31 @@ def clear_team_audit_pending_reminder(
         )
 
 
-def _connect(cache_path: str | Path) -> sqlite3.Connection:
-    path = Path(cache_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (
-            group_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            joined_at TEXT NOT NULL,
-            remind_at TEXT NOT NULL,
-            step INTEGER NOT NULL DEFAULT 1,
-            PRIMARY KEY (group_id, user_id)
+@contextmanager
+def _connect(cache_path: str | Path) -> Iterator[sqlite3.Connection]:
+    with open_sqlite(cache_path, row_factory=sqlite3.Row) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                joined_at TEXT NOT NULL,
+                remind_at TEXT NOT NULL,
+                step INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (group_id, user_id)
+            )
+            """
         )
-        """
-    )
-    _ensure_step_column(conn)
-    return conn
+        _ensure_step_column(conn)
+        yield conn
 
 
 def _ensure_step_column(conn: sqlite3.Connection) -> None:
-    columns = {
-        str(row["name"])
-        for row in conn.execute("PRAGMA table_info(pending_team_audit_reminders)")
-    }
-    if "step" in columns:
-        return
-    conn.execute(
-        "ALTER TABLE pending_team_audit_reminders "
-        "ADD COLUMN step INTEGER NOT NULL DEFAULT 1"
+    ensure_sqlite_column(
+        conn,
+        table_name="pending_team_audit_reminders",
+        column_name="step",
+        column_definition="step INTEGER NOT NULL DEFAULT 1",
     )
 
 

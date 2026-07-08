@@ -201,7 +201,7 @@ enabled = true
 # 2. [bilibili.push].accounts 是默认推送账号，所有开启 bili_push 的群/用户都会收到。
 # 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号。
 # 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
-# 群主/管理员可以用“B站推送模式”临时覆盖当前群已订阅账号的推送形式。
+# 群主/管理员可以用“B站推送模式 <账号昵称>”临时覆盖当前群已订阅账号的推送形式。
 # Default: 300.0
 # EN: Cooldown for Bilibili login QR notices.
 # ZH: B 站登录二维码提醒冷却秒数。
@@ -261,9 +261,9 @@ accounts = ["seer"]
 modes = { seer = "full" }
 
 # EN: Group owners/admins can override one account at runtime with:
-#     B站推送模式 <账号别名> <内容|链接|默认>
+#     B站推送模式 <账号昵称> <内容|链接|默认>
 # ZH: 群主/管理员可在群内运行时修改某个账号的推送模式：
-#     B站推送模式 <账号别名> <内容|链接|默认>
+#     B站推送模式 <账号昵称> <内容|链接|默认>
 
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.

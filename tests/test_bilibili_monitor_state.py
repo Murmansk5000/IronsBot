@@ -81,12 +81,19 @@ def test_bili_account_display_label_uses_nickname() -> None:
 
     assert (
         state.account_display_label("fire", config)
-        == f"火火（fire，{FIRE_BILI_UID}）"
+        == f"火火（{FIRE_BILI_UID}）"
     )
     assert (
         state.account_label(FIRE_BILI_UID, config)
-        == f"火火（fire，{FIRE_BILI_UID}）"
+        == f"火火（{FIRE_BILI_UID}）"
     )
+
+
+def test_bili_account_reference_accepts_alias_or_nickname() -> None:
+    config = BiliConfig(accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}})
+
+    assert state.resolve_account_reference("fire", config) == "fire"
+    assert state.resolve_account_reference("火火", config) == "fire"
 
 
 def test_group_query_falls_back_to_global_uids_when_feature_enabled(
@@ -325,6 +332,6 @@ def test_bili_push_subscription_options_use_rule_nicknames(
     )
 
     assert [option.label for option in options] == [
-        "B站动态：火火（fire，375750254）",
-        "B站动态：赛尔号官方（seer，1310714247）",
+        "B站动态：火火（375750254）",
+        "B站动态：赛尔号官方（1310714247）",
     ]

@@ -1,7 +1,8 @@
 import json
 import sqlite3
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,7 @@ from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot_for_item,
 )
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
+from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,64 +30,59 @@ class DynamicHistoryRecord:
     suppression_reason: str
 
 
-def _connect() -> sqlite3.Connection:
+@contextmanager
+def _connect() -> Iterator[sqlite3.Connection]:
     db_file = dynamic_history_db_file()
-    db_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_file)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS checkpoints (
-            uid INTEGER PRIMARY KEY,
-            pub_ts INTEGER NOT NULL,
-            updated_at REAL NOT NULL
+    with open_sqlite(db_file, row_factory=sqlite3.Row) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS checkpoints (
+                uid INTEGER PRIMARY KEY,
+                pub_ts INTEGER NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """
         )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS dynamics (
-            dynamic_id TEXT PRIMARY KEY,
-            uid INTEGER NOT NULL,
-            author_name TEXT NOT NULL,
-            pub_ts INTEGER NOT NULL,
-            brief TEXT NOT NULL,
-            raw_json TEXT NOT NULL,
-            pushed INTEGER NOT NULL DEFAULT 0,
-            suppressed INTEGER NOT NULL DEFAULT 0,
-            suppression_reason TEXT NOT NULL DEFAULT '',
-            created_at REAL NOT NULL,
-            updated_at REAL NOT NULL
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dynamics (
+                dynamic_id TEXT PRIMARY KEY,
+                uid INTEGER NOT NULL,
+                author_name TEXT NOT NULL,
+                pub_ts INTEGER NOT NULL,
+                brief TEXT NOT NULL,
+                raw_json TEXT NOT NULL,
+                pushed INTEGER NOT NULL DEFAULT 0,
+                suppressed INTEGER NOT NULL DEFAULT 0,
+                suppression_reason TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """
         )
-        """
-    )
-    _ensure_dynamic_columns(conn)
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_bili_dynamics_uid_time
-        ON dynamics (uid, pub_ts DESC)
-        """
-    )
-    return conn
+        _ensure_dynamic_columns(conn)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_bili_dynamics_uid_time
+            ON dynamics (uid, pub_ts DESC)
+            """
+        )
+        yield conn
 
 
 def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
-    columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(dynamics)").fetchall()
-    }
-    if "suppressed" not in columns:
-        conn.execute(
-            "ALTER TABLE dynamics "
-            "ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0"
-        )
-    if "suppression_reason" not in columns:
-        conn.execute(
-            "ALTER TABLE dynamics "
-            "ADD COLUMN suppression_reason TEXT NOT NULL DEFAULT ''"
-        )
+    ensure_sqlite_column(
+        conn,
+        table_name="dynamics",
+        column_name="suppressed",
+        column_definition="suppressed INTEGER NOT NULL DEFAULT 0",
+    )
+    ensure_sqlite_column(
+        conn,
+        table_name="dynamics",
+        column_name="suppression_reason",
+        column_definition="suppression_reason TEXT NOT NULL DEFAULT ''",
+    )
 
 
 def get_last_saved_times() -> dict[int, int]:

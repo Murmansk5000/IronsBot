@@ -17,7 +17,8 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.plugins.messaging import runtime
+from ironsbot.plugins.messaging import matcher_rules, runtime
+from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
@@ -170,46 +171,48 @@ def test_group_push_subscription_command_allows_superuser_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        runtime,
+        matcher_rules,
         "is_superuser",
         lambda user_id: user_id == SUPERUSER_ID,
     )
     monkeypatch.setattr(
-        runtime,
-        "get_message_config",
-        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
-    )
-
-    assert asyncio.run(runtime._match_push_subscription_command(_group_event(), {}))
-
-
-def test_group_push_subscription_command_allows_regular_member_to_view(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(runtime, "is_superuser", lambda _user_id: False)
-    monkeypatch.setattr(
-        runtime,
+        matcher_rules,
         "get_message_config",
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
 
     assert asyncio.run(
-        runtime._match_push_subscription_command(_group_event(), {})
+        matcher_rules.match_push_subscription_command(_group_event(), {})
+    )
+
+
+def test_group_push_subscription_command_allows_regular_member_to_view(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
+    monkeypatch.setattr(
+        matcher_rules,
+        "get_message_config",
+        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
+    )
+
+    assert asyncio.run(
+        matcher_rules.match_push_subscription_command(_group_event(), {})
     )
 
 
 def test_group_push_subscription_management_command_matches_regular_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(runtime, "is_superuser", lambda _user_id: False)
+    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
     monkeypatch.setattr(
-        runtime,
+        matcher_rules,
         "get_message_config",
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
 
     assert asyncio.run(
-        runtime._match_push_subscription_command(
+        matcher_rules.match_push_subscription_command(
             _group_event("推送管理", user_id=3003),
             {},
         )
@@ -232,9 +235,13 @@ def test_scheduled_messages_append_fire_manual_ad(
             message = limiter(message, group_ids[0])  # type: ignore[operator]
         sent.append((message, kwargs))
 
-    monkeypatch.setattr(runtime, "send_broadcast_message", fake_send_broadcast_message)
     monkeypatch.setattr(
-        runtime,
+        message_schedules,
+        "send_broadcast_message",
+        fake_send_broadcast_message,
+    )
+    monkeypatch.setattr(
+        message_schedules,
         "get_message_config",
         lambda: FakeMessageConfig(
             push_unsubscribe=PushUnsubscribeConfig(
@@ -242,18 +249,26 @@ def test_scheduled_messages_append_fire_manual_ad(
             )
         ),
     )
-    monkeypatch.setattr(runtime, "users_for_feature", lambda _feature: [2001])
-    monkeypatch.setattr(runtime, "users_with_superusers", list)
-    monkeypatch.setattr(runtime, "groups_for_feature", lambda _feature: [1001])
+    monkeypatch.setattr(message_schedules, "users_for_feature", lambda _feature: [2001])
+    monkeypatch.setattr(message_schedules, "users_with_superusers", list)
     monkeypatch.setattr(
-        runtime,
+        message_schedules,
+        "groups_for_feature",
+        lambda _feature: [1001],
+    )
+    monkeypatch.setattr(
+        message_schedules,
         "append_fire_manual_ad_for_group",
         lambda message, _group_id: f"{message}\n\n{FIRE_MANUAL_LINK_MESSAGE}",
     )
 
-    asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
     asyncio.run(
-        runtime._send_group_schedule(
+        message_schedules.send_private_schedule(
+            FakePrivateSchedule(message="私聊定时")
+        )
+    )
+    asyncio.run(
+        message_schedules.send_group_schedule(
             FakeGroupSchedule(message="群定时", at_user_ids=[3001])
         )
     )
@@ -282,18 +297,30 @@ def test_private_schedule_passes_subscription_key(
     ) -> None:
         sent.append((message, kwargs))
 
-    monkeypatch.setattr(runtime, "send_broadcast_message", fake_send_broadcast_message)
     monkeypatch.setattr(
-        runtime,
+        message_schedules,
+        "send_broadcast_message",
+        fake_send_broadcast_message,
+    )
+    monkeypatch.setattr(
+        message_schedules,
         "get_message_config",
         lambda: FakeMessageConfig(
             push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
         ),
     )
-    monkeypatch.setattr(runtime, "users_for_feature", lambda _feature: [2001, 2002])
-    monkeypatch.setattr(runtime, "users_with_superusers", list)
+    monkeypatch.setattr(
+        message_schedules,
+        "users_for_feature",
+        lambda _feature: [2001, 2002],
+    )
+    monkeypatch.setattr(message_schedules, "users_with_superusers", list)
 
-    asyncio.run(runtime._send_private_schedule(FakePrivateSchedule(message="私聊定时")))
+    asyncio.run(
+        message_schedules.send_private_schedule(
+            FakePrivateSchedule(message="私聊定时")
+        )
+    )
 
     assert sent[0][1]["private_user_ids"] == [2001, 2002]
     assert sent[0][1]["subscription_key"] == "private"
@@ -320,18 +347,26 @@ def test_group_schedule_skips_default_time_for_overridden_group(
     ) -> None:
         sent.append((message, kwargs))
 
-    monkeypatch.setattr(runtime, "send_broadcast_message", fake_send_broadcast_message)
     monkeypatch.setattr(
-        runtime,
+        message_schedules,
+        "send_broadcast_message",
+        fake_send_broadcast_message,
+    )
+    monkeypatch.setattr(
+        message_schedules,
         "get_message_config",
         lambda: FakeMessageConfig(
             push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
         ),
     )
-    monkeypatch.setattr(runtime, "groups_for_feature", lambda _feature: [1001, 1002])
+    monkeypatch.setattr(
+        message_schedules,
+        "groups_for_feature",
+        lambda _feature: [1001, 1002],
+    )
 
     asyncio.run(
-        runtime._send_group_schedule(
+        message_schedules.send_group_schedule(
             FakeGroupSchedule(message="group push", at_user_ids=[], id="daily")
         )
     )
@@ -363,16 +398,20 @@ def test_group_schedule_override_job_targets_only_overridden_group(
     scheduler = FakeScheduler()
 
     monkeypatch.setattr(
-        runtime,
+        message_schedules,
         "get_message_config",
         lambda: FakeMessageConfig(
             push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
             group_schedules=[task],
         ),
     )
-    monkeypatch.setattr(runtime, "groups_for_feature", lambda _feature: [1001, 1002])
+    monkeypatch.setattr(
+        message_schedules,
+        "groups_for_feature",
+        lambda _feature: [1001, 1002],
+    )
 
-    asyncio.run(runtime.register_message_schedules(scheduler))
+    asyncio.run(message_schedules.register_message_schedules(scheduler))
 
     assert [job["id"] for job in scheduler.jobs] == [
         "message_action_group_schedule_daily",

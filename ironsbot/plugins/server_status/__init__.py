@@ -2,44 +2,25 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import re
-import signal
-from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
-from typing import Any, Literal
-from urllib.parse import quote, urlparse
-from uuid import uuid4
-from zoneinfo import ZoneInfo
+from typing import Any
 
-import httpx
-from anyio import Path as AsyncPath
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.plugins.headless_seer.exception import (
-    DisconnectedError,
-    NotLoggedInError,
-)
 from ironsbot.plugins.headless_seer_notice.service import login_headless_client
 from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
 from ironsbot.shared.features import (
-    groups_for_feature,
     is_event_feature_allowed,
-    is_superuser,
-    users_for_feature,
-    users_with_superusers,
 )
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
-    send_broadcast_message,
     send_event_reply,
 )
 from ironsbot.shared.plugin_system import (
@@ -47,52 +28,66 @@ from ironsbot.shared.plugin_system import (
     dispatch_plugin,
     register_plugin,
 )
-from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 from ironsbot.utils.rule import no_reply
 
+from .broadcast import broadcast_opened
 from .config import (
     Config,
-    DockerUpdateConfig,
     get_docker_update_config,
-    get_server_status_config,
 )
+from .docker_update import (
+    DockerUpdateResult,
+    WatchtowerUpdateOptions,
+    create_watchtower_container,
+    format_docker_image_created,
+    split_docker_image,
+)
+from .docker_update import (
+    format_docker_update_reply as _format_docker_update_reply,
+)
+from .docker_update import (
+    is_docker_update_started as _is_docker_update_started,
+)
+from .docker_update import (
+    resolve_docker_container_name as _resolve_docker_container_name,
+)
+from .docker_update import (
+    restart_docker_container as _restart_docker_container,
+)
+from .notice import (
+    _build_fetch_failed_reply,
+    _build_no_notice_reply,
+    _build_notice_reply,
+    _build_open_reply,
+    _now,
+    fetch_server_notice_text,
+)
+from .process_restart import restart_bot_process
+from .restart import DockerSelfUpdateService, RestartService
+from .status import HeadlessStatus
+from .status import get_headless_status as _get_headless_status
 
-LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
+__all__ = [
+    "DockerSelfUpdateService",
+    "DockerUpdateResult",
+    "RestartService",
+    "WatchtowerUpdateOptions",
+    "_create_watchtower_container",
+    "_format_docker_image_created",
+    "_format_docker_update_reply",
+    "_is_docker_update_started",
+    "_resolve_docker_container_name",
+    "_split_docker_image",
+]
+
 NORMAL_SERVER_STATUS_COMMAND = "开服了吗"
 DISABLED_BARE_ADMIN_COMMAND = "开服查询"
 ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
 BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 DOCKER_UPDATE_COMMANDS = ("/更新镜像", "/更新Docker", "/更新docker")
 SERVER_STATUS_PLUGIN_NAME = "server_status"
-DEFAULT_UPDATE_WEEKDAY = 4
-DEFAULT_START_TIME = time(hour=10)
-DEFAULT_END_TIME = time(hour=15)
-HTTP_TIMEOUT_SECONDS = 12.0
-NOTICE_MAINTENANCE_TYPE = 3
 BOT_RESTART_DELAY_SECONDS = 1.0
-PARENT_EXIT_WAIT_SECONDS = 5.0
-GITHUB_REPO_PATH_PARTS = 2
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
-RestartAction = Literal["none", "process", "docker"]
-
-GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
-HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
-DOCKER_TIMESTAMP_PATTERN = re.compile(
-    r"^(?P<head>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
-    r"(?:\.\d+)?"
-    r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
-)
-MAINTENANCE_RANGE_PATTERN = re.compile(
-    r"(?:(?P<year>\d{4})\s*年\s*)?"
-    r"(?P<month>\d{1,2})\s*月\s*(?P<day>\d{1,2})\s*日?"
-    r".{0,40}?"
-    r"(?P<start_hour>\d{1,2})\s*(?:[:：]\s*(?P<start_minute>\d{1,2})|点(?P<start_minute_cn>\d{1,2})?分?)"
-    r"\s*(?:-|~|\u2014|\u2013|至|到|\uff0d)\s*"
-    r"(?:(?P<end_month>\d{1,2})\s*月\s*(?P<end_day>\d{1,2})\s*日?.{0,20}?)?"
-    r"(?P<end_hour>\d{1,2})\s*(?:[:：]\s*(?P<end_minute>\d{1,2})|点(?P<end_minute_cn>\d{1,2})?分?)"
-)
-
 
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
@@ -116,129 +111,6 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
 )
 
-
-@dataclass(frozen=True, slots=True)
-class MaintenanceWindow:
-    start: datetime
-    end: datetime
-
-
-@dataclass(slots=True)
-class OpenBroadcastState:
-    last_at: datetime | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class HeadlessStatus:
-    connected: bool
-    reason: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class DockerImageInfo:
-    image_id: str
-    created: str = ""
-    labels: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True, slots=True)
-class WatchtowerUpdateOptions:
-    image: str
-    docker_api_version: str
-
-
-@dataclass(frozen=True, slots=True)
-class DockerUpdateResult:
-    ok: bool
-    message: str = ""
-    updater_container_id: str = ""
-    up_to_date: bool = False
-    current_image_id: str = ""
-    current_image_created: str = ""
-    current_image_commit: str = ""
-    target_image_id: str = ""
-    target_image_created: str = ""
-    target_image_commit: str = ""
-    missing_socket: bool = False
-
-
-_docker_update_lock = asyncio.Lock()
-_open_broadcast_state = OpenBroadcastState()
-
-
-class DockerSelfUpdateService:
-    def __init__(self, config: DockerUpdateConfig) -> None:
-        self._config = config
-
-    def resolve_container_name(self) -> str:
-        return _resolve_docker_container_name(str(self._config.container_name))
-
-    async def run(self) -> tuple[str, DockerUpdateResult]:
-        container_name = self.resolve_container_name()
-        async with _docker_update_lock:
-            result = await _start_watchtower_update(
-                container_name=container_name,
-                image=str(self._config.image),
-                socket_path=str(self._config.docker_socket_path),
-                watchtower=WatchtowerUpdateOptions(
-                    image=str(self._config.watchtower_image),
-                    docker_api_version=str(
-                        self._config.watchtower_docker_api_version
-                    ),
-                ),
-                timeout_seconds=float(self._config.timeout_seconds),
-            )
-        return container_name, result
-
-
-class RestartService:
-    def __init__(self, config: DockerUpdateConfig) -> None:
-        self._config = config
-
-    async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
-        if not bool(self._config.check_on_restart):
-            return await self._prepare_restart_without_image_check()
-
-        container_name, result = await DockerSelfUpdateService(self._config).run()
-        reply = _format_docker_update_reply(
-            container_name=container_name,
-            image=str(self._config.image),
-            result=result,
-        )
-        if _is_docker_update_started(result):
-            message = reply
-            action: RestartAction = "none"
-        elif result.up_to_date:
-            message = f"{reply}\n\n镜像已是最新，正在重启当前容器。"
-            action = "docker"
-        elif result.missing_socket:
-            message = f"{reply}\n\n将跳过镜像检查并继续普通进程重启。"
-            action = "process"
-        else:
-            action = await self._ordinary_restart_action()
-            if action == "docker":
-                message = f"{reply}\n\n镜像检查失败，仍将重启当前容器。"
-            else:
-                message = f"{reply}\n\n镜像检查失败，继续普通进程重启。"
-
-        return message, action
-
-    async def _prepare_restart_without_image_check(self) -> tuple[str, RestartAction]:
-        action = await self._ordinary_restart_action()
-        if action == "docker":
-            message = (
-                "正在重启机器人容器。\n"
-                "当前配置未启用重启前镜像检查；将直接重启当前 Docker 容器。"
-            )
-        else:
-            message = "正在重启机器人进程。"
-        return message, action
-
-    async def _ordinary_restart_action(self) -> RestartAction:
-        socket_path = str(getattr(self._config, "docker_socket_path", "")).strip()
-        if socket_path and await AsyncPath(socket_path).exists():
-            return "docker"
-        return "process"
 
 normal_server_status_matcher = on_fullmatch(
     NORMAL_SERVER_STATUS_COMMAND,
@@ -327,7 +199,7 @@ class ServerStatusPlugin:
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("开服公告读取失败")
             if headless_status.connected:
-                await _broadcast_opened(event, now=now)
+                await broadcast_opened(event, now=now)
             await finish_event_reply(
                 matcher,
                 event,
@@ -337,7 +209,7 @@ class ServerStatusPlugin:
             return
 
         if headless_status.connected:
-            await _broadcast_opened(event, now=now)
+            await broadcast_opened(event, now=now)
             await finish_event_reply(
                 matcher,
                 event,
@@ -389,7 +261,7 @@ class ServerStatusPlugin:
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("管理员开服查询读取公告失败")
             if headless_status.connected:
-                await _broadcast_opened(event, now=now)
+                await broadcast_opened(event, now=now)
             lines.extend(
                 (
                     "",
@@ -399,7 +271,7 @@ class ServerStatusPlugin:
         else:
             lines.append("")
             if headless_status.connected:
-                await _broadcast_opened(event, now=now)
+                await broadcast_opened(event, now=now)
                 lines.append(_build_open_reply(now, notice_text=notice_text))
             elif notice_text:
                 lines.append(_build_notice_reply(notice_text))
@@ -439,10 +311,10 @@ class ServerStatusPlugin:
                 logger.opt(exception=True).warning(
                     "docker container restart failed; falling back to process restart"
                 )
-                await _restart_bot_process()
+                await restart_bot_process()
         elif restart_action == "process":
             await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-            await _restart_bot_process()
+            await restart_bot_process()
 
 
 register_plugin(ServerStatusPlugin())
@@ -498,666 +370,6 @@ async def handle_docker_update(matcher: Matcher, event: MessageEvent) -> None:
     )
 
 
-async def fetch_server_notice_text() -> str | None:
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(HTTP_TIMEOUT_SECONDS),
-    ) as client:
-        response = await client.get(NOTICE_URL)
-        response.raise_for_status()
-        data = response.json()
-
-    if not isinstance(data, list):
-        return None
-
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        if item.get("type") == NOTICE_MAINTENANCE_TYPE:
-            text = item.get("text")
-            if isinstance(text, str):
-                return _clean_notice_text(text)
-
-    return None
-
-
-def _build_open_reply(
-    now: datetime,
-    *,
-    notice_text: str | None = None,
-    notice_error: Exception | None = None,
-) -> str:
-    lines = ["开服了哦~（机器人已登录游戏服务器）"]
-    if notice_text:
-        lines.extend(("", _build_notice_summary(notice_text, now)))
-    if notice_error is not None:
-        lines.extend(
-            (
-                "",
-                f"公告读取失败：{notice_error.__class__.__name__}，但无头客户端已登录。",
-            )
-        )
-    return "\n".join(lines)
-
-
-def _build_notice_reply(notice_text: str) -> str:
-    return notice_text
-
-
-def _build_notice_summary(notice_text: str, now: datetime) -> str:
-    window = _parse_maintenance_window(notice_text, now)
-    if window is None:
-        return f"检测到维护公告：{_short_notice_text(notice_text)}"
-
-    if now < window.start:
-        status = "还没到公告维护时间"
-    elif now <= window.end:
-        status = f"维护中，预计 {_format_datetime(window.end)} 开服"
-    else:
-        status = "公告仍在，但已超过公告结束时间，可能延迟开服"
-
-    return (
-        f"公告摘要：{status}\n"
-        "公告时间："
-        f"{_format_datetime(window.start)} ~ {_format_datetime(window.end)}\n"
-        f"公告内容：{_short_notice_text(notice_text)}"
-    )
-
-
-def _build_no_notice_reply(now: datetime, *, headless_status: HeadlessStatus) -> str:
-    if headless_status.connected:
-        return _build_open_reply(now)
-
-    return "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
-
-
-async def _broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
-    config = get_server_status_config()
-    if not config.broadcast:
-        logger.info("server status open broadcast skipped: disabled")
-        return
-
-    if not _should_broadcast_opened(now):
-        return
-
-    group_ids = groups_for_feature("server_status_push")
-    user_ids = users_with_superusers(users_for_feature("server_status_push"))
-    if not group_ids and not user_ids:
-        logger.info("server status open broadcast skipped: no targets")
-        return
-
-    if not _can_trigger_open_broadcast(event, group_ids=group_ids, user_ids=user_ids):
-        logger.info("server status open broadcast skipped: trigger not allowed")
-        return
-
-    if _is_open_broadcast_in_cooldown(now):
-        logger.info("server status open broadcast skipped: cooldown")
-        return
-
-    summary = await send_broadcast_message(
-        config.broadcast_message,
-        group_ids=group_ids,
-        private_user_ids=user_ids,
-        action_name="server status open broadcast",
-        interval_seconds=1.2,
-        message_limiter=append_fire_manual_ad_for_group,
-        subscription_key="server_status_push",
-    )
-    if summary.succeeded:
-        _open_broadcast_state.last_at = now
-
-
-def _should_broadcast_opened(now: datetime) -> bool:
-    return (
-        now.weekday() == DEFAULT_UPDATE_WEEKDAY
-        and now.time() >= DEFAULT_START_TIME
-    )
-
-
-def _can_trigger_open_broadcast(
-    event: MessageEvent,
-    *,
-    group_ids: list[int],
-    user_ids: list[int],
-) -> bool:
-    if is_superuser(event.user_id):
-        return True
-
-    group_id = getattr(event, "group_id", None)
-    if group_id is not None:
-        return int(group_id) in group_ids
-
-    return event.user_id in user_ids
-
-
-def _is_open_broadcast_in_cooldown(now: datetime) -> bool:
-    if _open_broadcast_state.last_at is None:
-        return False
-
-    cooldown_minutes = get_server_status_config().broadcast_cooldown_minutes
-    if cooldown_minutes <= 0:
-        return False
-
-    return now - _open_broadcast_state.last_at < timedelta(minutes=cooldown_minutes)
-
-
-def _build_fetch_failed_reply(
-    now: datetime,
-    error: Exception,
-    *,
-    headless_status: HeadlessStatus,
-) -> str:
-    error_name = error.__class__.__name__
-    if headless_status.connected:
-        return _build_open_reply(now, notice_error=error)
-
-    reason_text = _format_headless_unavailable_text(headless_status.reason)
-    return (
-        f"公告读取失败（{error_name}），机器人也没有登录游戏服务器，暂时不能确认已开服。\n"
-        f"{reason_text}\n"
-        "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
-    )
-
-
-def _get_headless_status() -> HeadlessStatus:
-    try:
-        from ironsbot.plugins.headless_seer.manager import client_manager
-
-        game = client_manager.get_client()
-    except (DisconnectedError, NotLoggedInError) as e:
-        return HeadlessStatus(connected=False, reason=str(e))
-    except Exception:  # noqa: BLE001
-        logger.opt(exception=True).warning("开服查询检查无头客户端状态失败")
-        return HeadlessStatus(
-            connected=False,
-            reason="检查机器人登录状态失败",
-        )
-
-    if bool(getattr(game, "is_logged_in", False)):
-        return HeadlessStatus(connected=True)
-
-    return HeadlessStatus(
-        connected=False,
-        reason="无头客户端未处于已登录状态",
-    )
-
-
-def _format_headless_unavailable_text(reason: str) -> str:
-    reason = reason.strip() or "状态未知"
-    return f"机器人登录状态：{reason}。"
-
-
-async def _restart_bot_process() -> None:
-    current_pid = os.getpid()
-    parent_pid = os.getppid()
-    target_pid = parent_pid if parent_pid > 0 else current_pid
-    logger.warning(
-        "admin requested bot restart: current_pid={}, target_pid={}",
-        current_pid,
-        target_pid,
-    )
-    os.kill(target_pid, signal.SIGTERM)
-    if target_pid != current_pid:
-        await asyncio.sleep(PARENT_EXIT_WAIT_SECONDS)
-        logger.warning(
-            "bot restart parent did not stop current worker yet; "
-            "sending SIGTERM to current_pid={}",
-            current_pid,
-        )
-        os.kill(current_pid, signal.SIGTERM)
-
-
-async def _restart_docker_container(
-    *,
-    container_name: str,
-    socket_path: str,
-    timeout_seconds: float,
-) -> None:
-    if not await AsyncPath(socket_path).exists():
-        msg = f"Docker socket not found: {socket_path}"
-        raise RuntimeError(msg)
-
-    logger.warning("admin requested docker container restart: {}", container_name)
-    transport = httpx.AsyncHTTPTransport(uds=socket_path)
-    async with httpx.AsyncClient(
-        transport=transport,
-        base_url="http://docker",
-        timeout=httpx.Timeout(timeout_seconds),
-    ) as client:
-        response = await client.post(
-            f"/containers/{quote(container_name, safe='')}/restart",
-            params={"t": RESTART_CONTAINER_STOP_TIMEOUT_SECONDS},
-        )
-        response.raise_for_status()
-
-
-async def _start_watchtower_update(
-    *,
-    container_name: str,
-    image: str,
-    socket_path: str,
-    watchtower: WatchtowerUpdateOptions,
-    timeout_seconds: float,
-) -> DockerUpdateResult:
-    logger.warning(
-        "admin requested docker self update: container={}, watchtower={}",
-        container_name,
-        watchtower.image,
-    )
-    if not await AsyncPath(socket_path).exists():
-        logger.warning("docker self update failed: socket not found: {}", socket_path)
-        return DockerUpdateResult(
-            ok=False,
-            missing_socket=True,
-            message=f"Docker socket not found: {socket_path}",
-        )
-
-    transport = httpx.AsyncHTTPTransport(uds=socket_path)
-    try:
-        async with httpx.AsyncClient(
-            transport=transport,
-            base_url="http://docker",
-            timeout=httpx.Timeout(timeout_seconds),
-        ) as client:
-            current_image_id = await _inspect_container_image_id(
-                client,
-                container_name,
-            )
-            current_image_info = await _inspect_image_info(client, current_image_id)
-            target_image_info = await _pull_docker_image(client, image)
-            current_commit = await _resolve_image_commit_summary(
-                current_image_info,
-                fallback_repo=("Murmansk5000", "IronsBot"),
-            )
-            target_commit = await _resolve_image_commit_summary(
-                target_image_info,
-                fallback_repo=("Murmansk5000", "IronsBot"),
-            )
-            if current_image_info.image_id == target_image_info.image_id:
-                return DockerUpdateResult(
-                    ok=True,
-                    up_to_date=True,
-                    current_image_id=current_image_info.image_id,
-                    current_image_created=current_image_info.created,
-                    current_image_commit=current_commit,
-                    target_image_id=target_image_info.image_id,
-                    target_image_created=target_image_info.created,
-                    target_image_commit=target_commit,
-                )
-
-            await _pull_docker_image(client, watchtower.image)
-            updater_id = await _create_watchtower_container(
-                client,
-                container_name=container_name,
-                socket_path=socket_path,
-                watchtower=watchtower,
-            )
-            response = await client.post(f"/containers/{updater_id}/start")
-            response.raise_for_status()
-    except Exception as e:  # noqa: BLE001
-        logger.opt(exception=True).warning("docker self update failed")
-        return DockerUpdateResult(ok=False, message=str(e))
-
-    return DockerUpdateResult(
-        ok=True,
-        updater_container_id=updater_id,
-        current_image_id=current_image_info.image_id,
-        current_image_created=current_image_info.created,
-        current_image_commit=current_commit,
-        target_image_id=target_image_info.image_id,
-        target_image_created=target_image_info.created,
-        target_image_commit=target_commit,
-    )
-
-
-async def _inspect_container_image_id(
-    client: httpx.AsyncClient,
-    container_name: str,
-) -> str:
-    response = await client.get(f"/containers/{quote(container_name, safe='')}/json")
-    response.raise_for_status()
-    data = response.json()
-    image_id = data.get("Image")
-    if not isinstance(image_id, str) or not image_id:
-        msg = "Docker API did not return current container image id"
-        raise RuntimeError(msg)
-    return image_id
-
-
-async def _pull_docker_image(
-    client: httpx.AsyncClient,
-    image: str,
-) -> DockerImageInfo:
-    repository, tag = _split_docker_image(image)
-    response = await client.post(
-        "/images/create",
-        params={"fromImage": repository, "tag": tag},
-    )
-    response.raise_for_status()
-    return await _inspect_image_info(client, image)
-
-
-async def _inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerImageInfo:
-    response = await client.get(f"/images/{quote(image, safe='')}/json")
-    response.raise_for_status()
-    data = response.json()
-    image_id = data.get("Id")
-    if not isinstance(image_id, str) or not image_id:
-        msg = "Docker API did not return target image id"
-        raise RuntimeError(msg)
-    created = data.get("Created")
-    raw_labels = {}
-    config = data.get("Config")
-    if isinstance(config, dict):
-        labels = config.get("Labels")
-        if isinstance(labels, dict):
-            raw_labels = {
-                str(key): str(value)
-                for key, value in labels.items()
-                if value is not None
-            }
-    return DockerImageInfo(
-        image_id=image_id,
-        created=created if isinstance(created, str) else "",
-        labels=raw_labels,
-    )
-
-
-async def _resolve_image_commit_summary(
-    image_info: DockerImageInfo,
-    *,
-    fallback_repo: tuple[str, str] | None = None,
-) -> str:
-    revision = image_info.labels.get("org.opencontainers.image.revision", "").strip()
-    if not revision:
-        return ""
-
-    short_revision = revision[:12]
-    repo = _github_repo_from_image_labels(image_info.labels) or fallback_repo
-    if repo is not None:
-        owner, name = repo
-        try:
-            async with httpx.AsyncClient(
-                timeout=8.0,
-                follow_redirects=True,
-            ) as client:
-                response = await client.get(
-                    f"https://api.github.com/repos/{owner}/{name}/commits/{revision}",
-                    headers={
-                        "Accept": "application/vnd.github+json",
-                        "User-Agent": "IronsBot-DockerUpdate",
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-        except Exception as e:  # noqa: BLE001
-            logger.warning(
-                "failed to fetch docker image commit message: "
-                "repo={}/{} revision={} error={}",
-                owner,
-                name,
-                short_revision,
-                e,
-            )
-        else:
-            commit = data.get("commit")
-            if isinstance(commit, dict):
-                message = commit.get("message")
-                if isinstance(message, str):
-                    first_line = (
-                        message.strip().splitlines()[0].strip()
-                        if message.strip()
-                        else ""
-                    )
-                    if first_line:
-                        return f"{short_revision} {first_line}"
-    return ""
-
-
-def _visible_image_commit_summary(summary: str) -> str:
-    stripped = summary.strip()
-    if GIT_REVISION_PATTERN.fullmatch(stripped):
-        return ""
-    return stripped
-
-
-def _github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
-    source = labels.get("org.opencontainers.image.source", "").strip()
-    if not source:
-        return None
-    parsed = urlparse(source)
-    if parsed.netloc.lower() != "github.com":
-        return None
-    parts = [part for part in parsed.path.strip("/").split("/") if part]
-    if len(parts) < GITHUB_REPO_PATH_PARTS:
-        return None
-    repo = parts[1].removesuffix(".git")
-    if not parts[0] or not repo:
-        return None
-    return parts[0], repo
-
-
-async def _create_watchtower_container(
-    client: httpx.AsyncClient,
-    *,
-    container_name: str,
-    socket_path: str,
-    watchtower: WatchtowerUpdateOptions,
-) -> str:
-    updater_name = f"ironsbot-watchtower-once-{uuid4().hex[:12]}"
-    response = await client.post(
-        "/containers/create",
-        params={"name": updater_name},
-        json={
-            "Image": watchtower.image,
-            "Cmd": ["--run-once", "--cleanup", container_name],
-            "Env": [f"DOCKER_API_VERSION={watchtower.docker_api_version}"],
-            "HostConfig": {
-                "AutoRemove": True,
-                "Binds": [f"{socket_path}:/var/run/docker.sock"],
-            },
-        },
-    )
-    response.raise_for_status()
-    data = response.json()
-    container_id = data.get("Id")
-    if not isinstance(container_id, str) or not container_id:
-        msg = "Docker API did not return updater container id"
-        raise RuntimeError(msg)
-    return container_id
-
-
-def _format_docker_update_reply(
-    *,
-    container_name: str,
-    image: str,
-    result: DockerUpdateResult,
-) -> str:
-    current_version = _format_image_version(
-        result.current_image_id,
-        result.current_image_created,
-    )
-    target_version = _format_image_version(
-        result.target_image_id,
-        result.target_image_created,
-    )
-    if result.missing_socket:
-        return (
-            "Docker 镜像检查已跳过：容器内没有找到 Docker socket。\n"
-            "需要给 IronsBot 容器额外挂载：\n"
-            "/var/run/docker.sock -> /var/run/docker.sock\n"
-            "挂载后再发送 /重启机器人 或 /更新镜像。"
-        )
-
-    if result.up_to_date:
-        lines = [
-            f"Docker 镜像已是最新：{container_name}",
-            f"目标镜像：{image}",
-            f"镜像ID：{target_version}",
-        ]
-        if target_commit := _visible_image_commit_summary(result.target_image_commit):
-            lines.append(f"当前代码：{target_commit}")
-        return "\n".join(lines)
-
-    if result.ok:
-        current_commit = _visible_image_commit_summary(result.current_image_commit)
-        target_commit = _visible_image_commit_summary(result.target_image_commit)
-        lines = [
-            f"检测到新镜像，Docker 自更新任务已启动：{container_name}",
-            f"目标镜像：{image}",
-            f"当前镜像ID：{current_version}",
-            f"最新镜像ID：{target_version}",
-        ]
-        if current_commit:
-            lines.append(f"当前代码：{current_commit}")
-        if target_commit:
-            lines.append(f"最新代码：{target_commit}")
-        lines.extend(
-            [
-                "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
-                "机器人可能会短暂离线；重启后才算真正使用新镜像。",
-            ]
-        )
-        return "\n".join(lines)
-
-    return (
-        f"Docker 镜像检查失败：{container_name}\n"
-        f"目标镜像：{image}\n"
-        f"错误：{result.message or '未知错误'}"
-    ).rstrip()
-
-
-def _is_docker_update_started(result: DockerUpdateResult) -> bool:
-    return bool(result.ok and not result.up_to_date and result.updater_container_id)
-
-
-def _resolve_docker_container_name(configured_name: str) -> str:
-    return os.getenv("HOST_CONTAINERNAME", "").strip() or configured_name
-
-
-def _split_docker_image(image: str) -> tuple[str, str]:
-    last_segment = image.rsplit("/", maxsplit=1)[-1]
-    if ":" not in last_segment:
-        return image, "latest"
-    repository, tag = image.rsplit(":", maxsplit=1)
-    return repository, tag
-
-
-def _short_image_id(image_id: str) -> str:
-    if not image_id:
-        return "未知"
-    return image_id.removeprefix("sha256:")[:12]
-
-
-def _format_image_version(image_id: str, created: str) -> str:
-    short_id = _short_image_id(image_id)
-    created_text = _format_docker_image_created(created)
-    if not created_text:
-        return short_id
-    return f"{short_id}（{created_text}）"
-
-
-def _format_docker_image_created(created: str) -> str:
-    if not created:
-        return ""
-    created = created.strip()
-    match = DOCKER_TIMESTAMP_PATTERN.match(created)
-    if match is not None:
-        tz_text = match.group("tz") or ""
-        if tz_text == "Z":
-            tz_text = "+00:00"
-        created = f"{match.group('head')}{tz_text}"
-    try:
-        value = datetime.fromisoformat(created.replace("Z", "+00:00"))
-    except ValueError:
-        return created
-    if value.tzinfo is None:
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-    return value.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _short_notice_text(text: str, *, max_chars: int = 120) -> str:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    summary = " ".join(lines) if lines else text.strip()
-    if len(summary) <= max_chars:
-        return summary
-    return f"{summary[:max_chars]}..."
-
-
-def _parse_maintenance_window(text: str, now: datetime) -> MaintenanceWindow | None:
-    match = MAINTENANCE_RANGE_PATTERN.search(text)
-    if match is None:
-        return None
-
-    year = _int_group(match, "year", now.year)
-    month = _int_group(match, "month", now.month)
-    day = _int_group(match, "day", now.day)
-    end_month = _int_group(match, "end_month", month)
-    end_day = _int_group(match, "end_day", day)
-
-    start = _safe_datetime(
-        year=year,
-        month=month,
-        day=day,
-        hour=_int_group(match, "start_hour", DEFAULT_START_TIME.hour),
-        minute=_minute_group(match, "start_minute", "start_minute_cn"),
-    )
-    end = _safe_datetime(
-        year=year,
-        month=end_month,
-        day=end_day,
-        hour=_int_group(match, "end_hour", DEFAULT_END_TIME.hour),
-        minute=_minute_group(match, "end_minute", "end_minute_cn"),
-    )
-    if start is None or end is None:
-        return None
-
-    return MaintenanceWindow(start=start, end=end)
-
-
-def _safe_datetime(
-    *,
-    year: int,
-    month: int,
-    day: int,
-    hour: int,
-    minute: int,
-) -> datetime | None:
-    try:
-        return datetime(year, month, day, hour, minute, tzinfo=LOCAL_TZ)
-    except ValueError:
-        return None
-
-
-def _int_group(match: re.Match[str], name: str, default: int) -> int:
-    value = match.group(name)
-    if value is None or value == "":
-        return default
-    return int(value)
-
-
-def _minute_group(
-    match: re.Match[str],
-    colon_name: str,
-    chinese_name: str,
-) -> int:
-    return _int_group(match, colon_name, _int_group(match, chinese_name, 0))
-
-
-def _is_default_update_window(now: datetime) -> bool:
-    return (
-        now.weekday() == DEFAULT_UPDATE_WEEKDAY
-        and DEFAULT_START_TIME <= now.time() < DEFAULT_END_TIME
-    )
-
-
-def _clean_notice_text(text: str) -> str:
-    cleaned = HTML_TAG_PATTERN.sub("", text)
-    return cleaned.replace("\\n", "\n").strip()
-
-
-def _format_datetime(value: datetime) -> str:
-    return value.strftime("%m-%d %H:%M")
-
-
-def _now() -> datetime:
-    return datetime.now(LOCAL_TZ)
+_format_docker_image_created = format_docker_image_created
+_split_docker_image = split_docker_image
+_create_watchtower_container = create_watchtower_container

@@ -3,6 +3,8 @@ from typing import Final
 
 from nonebot import logger
 
+from ironsbot.integrations.headless_seer.client import register_game_client_getter
+
 from .exception import DisconnectedError, NotLoggedInError
 from .game import SeerGame
 
@@ -73,3 +75,4 @@ class ClientManager:
 
 
 client_manager: Final[ClientManager] = ClientManager()
+register_game_client_getter(client_manager.get_client)

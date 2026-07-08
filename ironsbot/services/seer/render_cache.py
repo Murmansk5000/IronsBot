@@ -10,7 +10,7 @@ from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
 
 from ironsbot.config import get_app_config
-from ironsbot.plugins.db_sync.manager import db_manager
+from ironsbot.integrations.db_registry import db_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable

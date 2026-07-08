@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
+
+from ironsbot.shared.scheduler import add_or_replace_job, remove_jobs_by_prefix
 
 from .planning import group_by_send_time
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from .models import ActivityReminder
 
@@ -35,19 +36,19 @@ def register_scan_jobs(
     if not enabled:
         return
 
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         scan_func,
         "date",
-        id=STARTUP_SCAN_JOB_ID,
-        replace_existing=True,
+        job_id=STARTUP_SCAN_JOB_ID,
         next_run_time=now + STARTUP_SCAN_DELAY,
         misfire_grace_time=STARTUP_SCAN_MISFIRE_GRACE_SECONDS,
     )
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         scan_func,
         "cron",
-        id=DAILY_SCAN_JOB_ID,
-        replace_existing=True,
+        job_id=DAILY_SCAN_JOB_ID,
         hour=0,
         minute=0,
         second=0,
@@ -66,15 +67,15 @@ def schedule_reminder_jobs(
     for (lead_hours, send_time), lead_reminders in group_by_send_time(
         reminders
     ).items():
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             send_func,
             "date",
             kwargs={
                 "lead_hours": lead_hours,
                 "reminders": lead_reminders,
             },
-            id=reminder_job_id(lead_hours, send_time),
-            replace_existing=True,
+            job_id=reminder_job_id(lead_hours, send_time),
             run_date=send_time,
             misfire_grace_time=grace_minutes * SECONDS_PER_MINUTE,
         )
@@ -83,19 +84,8 @@ def schedule_reminder_jobs(
 
 
 def clear_reminder_jobs(scheduler: Any) -> None:
-    get_jobs = getattr(scheduler, "get_jobs", None)
-    remove_job = getattr(scheduler, "remove_job", None)
-    if not callable(get_jobs) or not callable(remove_job):
-        return
-
-    jobs = get_jobs()
-    if not isinstance(jobs, Iterable):
-        return
-
-    for job in list(jobs):
-        job_id = str(getattr(job, "id", ""))
-        if not job_id.startswith(REMINDER_JOB_ID_PREFIX):
-            continue
-        if job_id in {STARTUP_SCAN_JOB_ID, DAILY_SCAN_JOB_ID}:
-            continue
-        remove_job(job_id)
+    remove_jobs_by_prefix(
+        scheduler,
+        REMINDER_JOB_ID_PREFIX,
+        exclude={STARTUP_SCAN_JOB_ID, DAILY_SCAN_JOB_ID},
+    )

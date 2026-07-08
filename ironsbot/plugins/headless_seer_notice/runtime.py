@@ -10,6 +10,7 @@ from nonebot.log import logger
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
+from ironsbot.shared.scheduler import add_or_replace_job
 
 from .config import INVALID_RECONNECT_TIME_ERROR, get_headless_notice_config
 from .state import mark_headless_available, mark_headless_unavailable
@@ -121,12 +122,12 @@ def _register_reconnect_checks(scheduler: Any) -> None:
             scheduled_time,
             error_message=INVALID_RECONNECT_TIME_ERROR,
         )
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             _daily_reconnect_check,
             "cron",
-            id=f"{RECONNECT_JOB_PREFIX}:{scheduled_time}",
+            job_id=f"{RECONNECT_JOB_PREFIX}:{scheduled_time}",
             args=[scheduled_time],
-            replace_existing=True,
             hour=hour,
             minute=minute,
             second=0,

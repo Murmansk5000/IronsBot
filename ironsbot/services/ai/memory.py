@@ -1,5 +1,7 @@
 import sqlite3
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
@@ -7,6 +9,7 @@ from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.services.ai.history import HistoryMessage
+from ironsbot.shared.sqlite import open_sqlite
 
 
 def _get_ai_config():
@@ -17,33 +20,30 @@ def _memory_path() -> Path:
     return _get_ai_config().memory_path
 
 
-def _connect() -> sqlite3.Connection:
-    path = _memory_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            session_key TEXT NOT NULL,
-            chat_scope TEXT NOT NULL,
-            chat_id INTEGER NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at REAL NOT NULL
+@contextmanager
+def _connect() -> Iterator[sqlite3.Connection]:
+    with open_sqlite(_memory_path()) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_key TEXT NOT NULL,
+                chat_scope TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """
         )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_ai_memory_user_time
-        ON messages (user_id, created_at DESC)
-        """
-    )
-    return conn
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_ai_memory_user_time
+            ON messages (user_id, created_at DESC)
+            """
+        )
+        yield conn
 
 
 def _is_memory_enabled() -> bool:

@@ -12,7 +12,7 @@ from typing import Any, Generic, TypeGuard, TypeVar, overload
 from nonebot import logger
 from typing_extensions import Self, TypeVarTuple, Unpack
 
-from ironsbot.plugins.headless_seer.exception import SocketRecvError
+from ironsbot.integrations.headless_seer.exception import SocketRecvError
 
 from .. import decrypt
 from ..as3bytearray import AS3ByteArray
