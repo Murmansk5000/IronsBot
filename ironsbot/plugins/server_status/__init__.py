@@ -5,10 +5,10 @@ import asyncio
 import os
 import re
 import signal
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import Any, Literal
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -56,6 +56,27 @@ from .config import (
     get_docker_update_config,
     get_server_status_config,
 )
+from .docker_update import (
+    DockerImageInfo,
+    DockerUpdateResult,
+    WatchtowerUpdateOptions,
+    format_docker_image_created,
+)
+from .docker_update import (
+    format_docker_update_reply as _format_docker_update_reply,
+)
+from .docker_update import (
+    github_repo_from_image_labels as _github_repo_from_image_labels,
+)
+from .docker_update import (
+    is_docker_update_started as _is_docker_update_started,
+)
+from .docker_update import (
+    resolve_docker_container_name as _resolve_docker_container_name,
+)
+from .docker_update import (
+    split_docker_image as _split_docker_image,
+)
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
@@ -72,17 +93,10 @@ HTTP_TIMEOUT_SECONDS = 12.0
 NOTICE_MAINTENANCE_TYPE = 3
 BOT_RESTART_DELAY_SECONDS = 1.0
 PARENT_EXIT_WAIT_SECONDS = 5.0
-GITHUB_REPO_PATH_PARTS = 2
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 RestartAction = Literal["none", "process", "docker"]
 
-GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
-DOCKER_TIMESTAMP_PATTERN = re.compile(
-    r"^(?P<head>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
-    r"(?:\.\d+)?"
-    r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
-)
 MAINTENANCE_RANGE_PATTERN = re.compile(
     r"(?:(?P<year>\d{4})\s*年\s*)?"
     r"(?P<month>\d{1,2})\s*月\s*(?P<day>\d{1,2})\s*日?"
@@ -132,34 +146,6 @@ class OpenBroadcastState:
 class HeadlessStatus:
     connected: bool
     reason: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class DockerImageInfo:
-    image_id: str
-    created: str = ""
-    labels: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True, slots=True)
-class WatchtowerUpdateOptions:
-    image: str
-    docker_api_version: str
-
-
-@dataclass(frozen=True, slots=True)
-class DockerUpdateResult:
-    ok: bool
-    message: str = ""
-    updater_container_id: str = ""
-    up_to_date: bool = False
-    current_image_id: str = ""
-    current_image_created: str = ""
-    current_image_commit: str = ""
-    target_image_id: str = ""
-    target_image_created: str = ""
-    target_image_commit: str = ""
-    missing_socket: bool = False
 
 
 _docker_update_lock = asyncio.Lock()
@@ -913,29 +899,6 @@ async def _resolve_image_commit_summary(
     return ""
 
 
-def _visible_image_commit_summary(summary: str) -> str:
-    stripped = summary.strip()
-    if GIT_REVISION_PATTERN.fullmatch(stripped):
-        return ""
-    return stripped
-
-
-def _github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
-    source = labels.get("org.opencontainers.image.source", "").strip()
-    if not source:
-        return None
-    parsed = urlparse(source)
-    if parsed.netloc.lower() != "github.com":
-        return None
-    parts = [part for part in parsed.path.strip("/").split("/") if part]
-    if len(parts) < GITHUB_REPO_PATH_PARTS:
-        return None
-    repo = parts[1].removesuffix(".git")
-    if not parts[0] or not repo:
-        return None
-    return parts[0], repo
-
-
 async def _create_watchtower_container(
     client: httpx.AsyncClient,
     *,
@@ -966,113 +929,8 @@ async def _create_watchtower_container(
     return container_id
 
 
-def _format_docker_update_reply(
-    *,
-    container_name: str,
-    image: str,
-    result: DockerUpdateResult,
-) -> str:
-    current_version = _format_image_version(
-        result.current_image_id,
-        result.current_image_created,
-    )
-    target_version = _format_image_version(
-        result.target_image_id,
-        result.target_image_created,
-    )
-    if result.missing_socket:
-        return (
-            "Docker 镜像检查已跳过：容器内没有找到 Docker socket。\n"
-            "需要给 IronsBot 容器额外挂载：\n"
-            "/var/run/docker.sock -> /var/run/docker.sock\n"
-            "挂载后再发送 /重启机器人 或 /更新镜像。"
-        )
-
-    if result.up_to_date:
-        lines = [
-            f"Docker 镜像已是最新：{container_name}",
-            f"目标镜像：{image}",
-            f"镜像ID：{target_version}",
-        ]
-        if target_commit := _visible_image_commit_summary(result.target_image_commit):
-            lines.append(f"当前代码：{target_commit}")
-        return "\n".join(lines)
-
-    if result.ok:
-        current_commit = _visible_image_commit_summary(result.current_image_commit)
-        target_commit = _visible_image_commit_summary(result.target_image_commit)
-        lines = [
-            f"检测到新镜像，Docker 自更新任务已启动：{container_name}",
-            f"目标镜像：{image}",
-            f"当前镜像ID：{current_version}",
-            f"最新镜像ID：{target_version}",
-        ]
-        if current_commit:
-            lines.append(f"当前代码：{current_commit}")
-        if target_commit:
-            lines.append(f"最新代码：{target_commit}")
-        lines.extend(
-            [
-                "接下来 Watchtower 会拉取最新镜像并重建当前容器，"
-                "机器人可能会短暂离线；重启后才算真正使用新镜像。",
-            ]
-        )
-        return "\n".join(lines)
-
-    return (
-        f"Docker 镜像检查失败：{container_name}\n"
-        f"目标镜像：{image}\n"
-        f"错误：{result.message or '未知错误'}"
-    ).rstrip()
-
-
-def _is_docker_update_started(result: DockerUpdateResult) -> bool:
-    return bool(result.ok and not result.up_to_date and result.updater_container_id)
-
-
-def _resolve_docker_container_name(configured_name: str) -> str:
-    return os.getenv("HOST_CONTAINERNAME", "").strip() or configured_name
-
-
-def _split_docker_image(image: str) -> tuple[str, str]:
-    last_segment = image.rsplit("/", maxsplit=1)[-1]
-    if ":" not in last_segment:
-        return image, "latest"
-    repository, tag = image.rsplit(":", maxsplit=1)
-    return repository, tag
-
-
-def _short_image_id(image_id: str) -> str:
-    if not image_id:
-        return "未知"
-    return image_id.removeprefix("sha256:")[:12]
-
-
-def _format_image_version(image_id: str, created: str) -> str:
-    short_id = _short_image_id(image_id)
-    created_text = _format_docker_image_created(created)
-    if not created_text:
-        return short_id
-    return f"{short_id}（{created_text}）"
-
-
 def _format_docker_image_created(created: str) -> str:
-    if not created:
-        return ""
-    created = created.strip()
-    match = DOCKER_TIMESTAMP_PATTERN.match(created)
-    if match is not None:
-        tz_text = match.group("tz") or ""
-        if tz_text == "Z":
-            tz_text = "+00:00"
-        created = f"{match.group('head')}{tz_text}"
-    try:
-        value = datetime.fromisoformat(created.replace("Z", "+00:00"))
-    except ValueError:
-        return created
-    if value.tzinfo is None:
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-    return value.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    return format_docker_image_created(created)
 
 
 def _short_notice_text(text: str, *, max_chars: int = 120) -> str:
