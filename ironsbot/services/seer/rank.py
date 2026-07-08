@@ -9,8 +9,6 @@ from nonebot import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
-from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
-from ironsbot.integrations.headless_seer.packets.peak import DailyRankParam
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     ACHIEVE_RANK_SUB_KEY,
@@ -34,6 +32,7 @@ from ironsbot.services.seer.rank_constants import (
     STANDARD_PEAK_USER_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
 )
+from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
 from ironsbot.services.seer.rank_formatting import (
     format_book_breakdown as _format_book_breakdown,
 )
@@ -64,6 +63,11 @@ from ironsbot.services.seer.rank_page_cache import (
     get_rank_page_cache_summary,
     save_rank_page,
 )
+from ironsbot.services.seer.rank_pagination import (
+    rank_page_size,
+    rank_page_start,
+    rank_window_page_starts,
+)
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page as _score_miss_proof_from_page,
 )
@@ -90,13 +94,11 @@ def get_local_rank_config() -> LocalRankConfig:
 
 
 def _rank_page_size() -> int:
-    configured = int(get_rank_query_config().page_size)
-    return max(1, min(configured, 100))
+    return rank_page_size(get_rank_query_config())
 
 
 def _rank_page_start(index: int) -> int:
-    page_size = _rank_page_size()
-    return max(0, index) // page_size * page_size
+    return rank_page_start(index, page_size=_rank_page_size())
 
 
 def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
@@ -112,35 +114,16 @@ async def _fetch_rank_page_result(  # noqa: PLR0913
     end: int,
     use_cache: bool = False,
 ) -> RankPageResult:
-    if use_cache:
-        cached_page = get_cached_rank_page_result(
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-        )
-        if cached_page is not None:
-            return RankPageResult(
-                items=list(cached_page.items),
-                fetched_at=cached_page.fetched_at,
-            )
-
-    _head, rank_list = await game.send_and_wait(
-        COMMAND_ID.GET_DAILY_RANK_INFO,
-        DailyRankParam(key=key, sub_key=sub_key, start=start, end=end),
-        timeout=15.0,
-    )
-    fetched_at = time.time()
-    items = list(rank_list.rank_list)
-    save_rank_page(
+    return await fetch_rank_page_result_from_game(
+        game,
         key=key,
         sub_key=sub_key,
         start=start,
         end=end,
-        items=items,
-        fetched_at=fetched_at,
+        use_cache=use_cache,
+        get_cached_page=get_cached_rank_page_result,
+        save_page=save_rank_page,
     )
-    return RankPageResult(items=items, fetched_at=fetched_at)
 
 
 async def _fetch_rank_page(  # noqa: PLR0913
@@ -215,13 +198,11 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
 
 
 def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:
-    page_start = center_index // page_size * page_size
-    first_page_start = max(
-        0,
-        page_start - CACHED_RANK_LOOKUP_WINDOW_PAGES * page_size,
+    return rank_window_page_starts(
+        center_index=center_index,
+        page_size=page_size,
+        window_pages=CACHED_RANK_LOOKUP_WINDOW_PAGES,
     )
-    last_page_start = page_start + CACHED_RANK_LOOKUP_WINDOW_PAGES * page_size
-    return list(range(first_page_start, last_page_start + 1, page_size))
 
 
 async def _refresh_cached_rank_window(
