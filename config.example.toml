@@ -367,10 +367,10 @@ group_schedules = []
 # B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、其它管理通知、
 # 按账号拆分的 B站动态、活动结束提醒和开服推送。
 commands = ["td", "退订"]
-# Default: ["订阅", "恢复订阅"]
-# EN: Commands that restore unsubscribed pushes.
-# ZH: 恢复已退订推送的口令。
-restore_commands = ["订阅", "恢复订阅"]
+# Default: ["订阅", "恢复订阅", "推送管理"]
+# EN: Commands that open the push subscription management menu.
+# ZH: 打开推送订阅管理菜单的口令。
+restore_commands = ["订阅", "恢复订阅", "推送管理"]
 # Default: "data/messaging/push_unsubscriptions.sqlite"
 # EN: SQLite path for push unsubscribe records.
 # ZH: 推送退订记录 SQLite 路径。
@@ -382,7 +382,7 @@ hint = "回复 TD 可管理推送订阅。"
 # Default: built-in group hint.
 # EN: Hint appended to group pushes.
 # ZH: 追加到群推送末尾的退订提示。
-group_hint = "群主/管理员发送 TD 或 订阅管理本群推送开关；发送 推送时间 管理提醒时间。"
+group_hint = "发送 TD、订阅 或 推送管理 可查看本群推送订阅；群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
 
 [message.red_packet_notice]
 # Default: true
@@ -468,9 +468,24 @@ followup_after_hours = 24.0
 # ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
 followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果已经加入主群，或者不想加入战队，请退出本审核群。"
 
+# Default: true
+# EN: Send a final leave reminder if the newcomer is still in the audit group.
+# ZH: 新人 48 小时后仍在审核群时，发送最终退群提醒。
+final_followup_enabled = true
+
+# Default: 48.0
+# EN: Hours after joining before sending the final reminder.
+# ZH: 入群后多少小时发送最终退群提醒；必须大于 followup_after_hours。
+final_followup_after_hours = 48.0
+
+# Default: built-in final follow-up reminder.
+# EN: Final reminder message. Available placeholders: {hours}, {group_id}, {user_id}.
+# ZH: 最终退群提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
+final_followup_message = "你加入战队审核群已经 {hours:g} 小时了，仍然还在审核群。\n如果已经加入主群，或者不想加入战队，请退出本审核群。"
+
 # Default: "data/team_audit_welcome/pending.sqlite"
-# EN: SQLite path used to persist pending 24-hour reminders across restarts.
-# ZH: 保存待发送二次提醒的 SQLite 路径，防止机器人重启后丢失提醒。
+# EN: SQLite path used to persist pending reminders across restarts.
+# ZH: 保存待发送 24/48 小时提醒的 SQLite 路径，防止机器人重启后丢失提醒。
 followup_cache_path = "data/team_audit_welcome/pending.sqlite"
 
 [message.sendpic]

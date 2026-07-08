@@ -325,6 +325,56 @@ def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
     )
 
 
+def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
+    spec = GlobalRankSpec("群星之巅榜", key=240, sub_key=1, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=10000,
+        searched_limit=50000,
+        boundary_score=9970,
+        items=[],
+        higher_gap=SimpleNamespace(
+            score=10001,
+            start_rank=57,
+            end_rank=57,
+            total_count=1,
+            truncated=False,
+            items=[
+                SimpleNamespace(
+                    id=910731260,
+                    nick="流苏",
+                    score=10001,
+                    rank_index=56,
+                )
+            ],
+        ),
+        lower_gap=SimpleNamespace(
+            score=9970,
+            start_rank=58,
+            end_rank=58,
+            total_count=1,
+            truncated=False,
+            items=[
+                SimpleNamespace(
+                    id=264391071,
+                    nick="慎重格劳瑞",
+                    score=9970,
+                    rank_index=57,
+                )
+            ],
+        ),
+    )
+
+    assert format_global_rank_score_message(spec, result) == (
+        "❌群星之巅榜没有10000分的用户。\n"
+        "相邻分数段：\n"
+        "10001分：第 57 名，共 1 人\n"
+        "57. 流苏（910731260） 10001分\n"
+        "9970分：第 58 名，共 1 人\n"
+        "58. 慎重格劳瑞（264391071） 9970分"
+    )
+
+
 def test_batch_raw_start_respects_spec_start_and_rank_offset() -> None:
     first_rank_raw_start = 8
     rank_30_raw_start = 37

@@ -14,6 +14,10 @@ DEFAULT_SENDPIC_MESSAGE_TEMPLATE = "{image}"
 TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR = (
     "team_audit_welcome.message must not be empty"
 )
+TEAM_AUDIT_FINAL_FOLLOWUP_AFTER_HOURS_ERROR = (
+    "team_audit_welcome.final_followup_after_hours "
+    "must be greater than followup_after_hours"
+)
 OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR = (
     "outbound_rate_limit.cooldown_message must not be empty"
 )
@@ -128,12 +132,13 @@ class PushUnsubscribeConfig(BaseModel):
 
     commands: list[str] = Field(default_factory=lambda: ["td", "退订"])
     restore_commands: list[str] = Field(
-        default_factory=lambda: ["订阅", "恢复订阅"]
+        default_factory=lambda: ["订阅", "恢复订阅", "推送管理"]
     )
     data_path: str = "data/messaging/push_unsubscriptions.sqlite"
     hint: str = "回复 TD 可管理推送订阅。"
     group_hint: str = (
-        "群主/管理员发送 TD 或 订阅管理本群推送开关；发送 推送时间 管理提醒时间。"
+        "发送 TD、订阅 或 推送管理 可查看本群推送订阅；"
+        "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
     )
 
     @field_validator("commands", "restore_commands", mode="before")
@@ -200,6 +205,12 @@ class TeamAuditWelcomeConfig(BaseModel):
         "如果想加入战队，请发送“米米号+你的米米号”供管理员审核；"
         "如果已经加入主群，或者不想加入战队，请退出本审核群。"
     )
+    final_followup_enabled: bool = True
+    final_followup_after_hours: float = Field(default=48.0, gt=0)
+    final_followup_message: str = (
+        "你加入战队审核群已经 {hours:g} 小时了，仍然还在审核群。\n"
+        "如果已经加入主群，或者不想加入战队，请退出本审核群。"
+    )
     followup_cache_path: str = "data/team_audit_welcome/pending.sqlite"
 
     @field_validator("feature")
@@ -218,13 +229,28 @@ class TeamAuditWelcomeConfig(BaseModel):
             return string_list(stripped) if stripped else []
         return value
 
-    @field_validator("message", "followup_message", "followup_cache_path")
+    @field_validator(
+        "message",
+        "followup_message",
+        "final_followup_message",
+        "followup_cache_path",
+    )
     @classmethod
     def validate_message(cls, value: str) -> str:
         message = value.strip()
         if not message:
             raise ValueError(TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR)
         return message
+
+    @model_validator(mode="after")
+    def validate_final_followup_time(self) -> Self:
+        if (
+            self.followup_enabled
+            and self.final_followup_enabled
+            and self.final_followup_after_hours <= self.followup_after_hours
+        ):
+            raise ValueError(TEAM_AUDIT_FINAL_FOLLOWUP_AFTER_HOURS_ERROR)
+        return self
 
 
 class PicConfig(BaseModel):

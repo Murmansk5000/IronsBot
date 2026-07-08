@@ -20,6 +20,7 @@ from ironsbot.config import get_app_config
 from ironsbot.services.team_audit_welcome import (
     TeamAuditPendingReminder,
     clear_team_audit_pending_reminder,
+    get_team_audit_pending_reminder,
     list_team_audit_pending_reminders,
     record_team_audit_pending_reminder,
 )
@@ -35,6 +36,8 @@ if TYPE_CHECKING:
 
 TEAM_AUDIT_WELCOME_PLUGIN_NAME = "team_audit_welcome"
 FOLLOWUP_SCAN_INTERVAL_MINUTES = 10
+FIRST_FOLLOWUP_STEP = 1
+FINAL_FOLLOWUP_STEP = 2
 
 __plugin_meta__ = PluginMetadata(
     name="战队审核入群提示",
@@ -67,12 +70,23 @@ def _welcome_message(user_id: int) -> Message:
     return build_message(render_text(config.message), at_user_ids=[user_id])
 
 
-def _followup_message(user_id: int, *, group_id: int) -> Message:
+def _followup_message(
+    user_id: int,
+    *,
+    group_id: int,
+    reminder: TeamAuditPendingReminder,
+) -> Message:
     config = get_app_config().message.team_audit_welcome
-    template = render_text(config.followup_message)
+    is_final = reminder.step >= FINAL_FOLLOWUP_STEP
+    template = render_text(
+        config.final_followup_message if is_final else config.followup_message
+    )
+    hours = (
+        config.final_followup_after_hours if is_final else config.followup_after_hours
+    )
     try:
         text = template.format(
-            hours=config.followup_after_hours,
+            hours=hours,
             group_id=group_id,
             user_id=user_id,
         )
@@ -167,7 +181,60 @@ def register_team_audit_followup_scan(
     )
 
 
-async def send_team_audit_followup(
+def _clear_pending_reminder(*, group_id: int, user_id: int) -> None:
+    clear_team_audit_pending_reminder(
+        _followup_cache_path(),
+        group_id=group_id,
+        user_id=user_id,
+    )
+
+
+def _load_pending_reminder(
+    *,
+    group_id: int,
+    user_id: int,
+) -> TeamAuditPendingReminder | None:
+    return get_team_audit_pending_reminder(
+        _followup_cache_path(),
+        group_id=group_id,
+        user_id=user_id,
+    )
+
+
+def _schedule_final_followup(
+    bot: Bot,
+    reminder: TeamAuditPendingReminder,
+) -> None:
+    config = get_app_config().message.team_audit_welcome
+    final_reminder = record_team_audit_pending_reminder(
+        _followup_cache_path(),
+        group_id=reminder.group_id,
+        user_id=reminder.user_id,
+        joined_at=reminder.joined_at,
+        delay_hours=config.final_followup_after_hours,
+        step=FINAL_FOLLOWUP_STEP,
+    )
+    try:
+        from nonebot_plugin_apscheduler import scheduler
+    except ImportError:
+        logger.warning("team audit final followup scheduler is unavailable")
+        return
+
+    schedule_team_audit_followup(scheduler, bot, final_reminder)
+
+
+def _finish_sent_followup(
+    bot: Bot,
+    reminder: TeamAuditPendingReminder,
+) -> None:
+    config = get_app_config().message.team_audit_welcome
+    if reminder.step < FINAL_FOLLOWUP_STEP and config.final_followup_enabled:
+        _schedule_final_followup(bot, reminder)
+        return
+    _clear_pending_reminder(group_id=reminder.group_id, user_id=reminder.user_id)
+
+
+async def send_team_audit_followup(  # noqa: PLR0911
     bot: Bot,
     group_id: int,
     user_id: int,
@@ -176,23 +243,22 @@ async def send_team_audit_followup(
     if not config.enabled or not config.followup_enabled:
         return
 
+    reminder = _load_pending_reminder(group_id=group_id, user_id=user_id)
+    if reminder is None:
+        return
+    if reminder.step >= FINAL_FOLLOWUP_STEP and not config.final_followup_enabled:
+        _clear_pending_reminder(group_id=group_id, user_id=user_id)
+        return
+
     if group_id not in _target_groups():
-        clear_team_audit_pending_reminder(
-            _followup_cache_path(),
-            group_id=group_id,
-            user_id=user_id,
-        )
+        _clear_pending_reminder(group_id=group_id, user_id=user_id)
         return
 
     if not is_group_feature_allowed(user_id, group_id, config.feature):
         return
 
     if not await _is_member_still_in_group(bot, group_id=group_id, user_id=user_id):
-        clear_team_audit_pending_reminder(
-            _followup_cache_path(),
-            group_id=group_id,
-            user_id=user_id,
-        )
+        _clear_pending_reminder(group_id=group_id, user_id=user_id)
         return
 
     rate_limit = check_group_outbound_rate_limit(group_id)
@@ -205,7 +271,7 @@ async def send_team_audit_followup(
 
     await bot.send_group_msg(
         group_id=group_id,
-        message=_followup_message(user_id, group_id=group_id),
+        message=_followup_message(user_id, group_id=group_id, reminder=reminder),
     )
     if rate_limit.cooldown_message is not None:
         await bot.send_group_msg(
@@ -213,11 +279,7 @@ async def send_team_audit_followup(
             message=Message(rate_limit.cooldown_message),
         )
 
-    clear_team_audit_pending_reminder(
-        _followup_cache_path(),
-        group_id=group_id,
-        user_id=user_id,
-    )
+    _finish_sent_followup(bot, reminder)
 
 
 @team_audit_welcome_matcher.handle()
@@ -258,6 +320,7 @@ async def handle_team_audit_welcome(
         user_id=event.user_id,
         joined_at=_now_utc(),
         delay_hours=config.followup_after_hours,
+        step=FIRST_FOLLOWUP_STEP,
     )
 
     try:
