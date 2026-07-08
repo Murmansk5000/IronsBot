@@ -69,6 +69,8 @@ class RemoteBuildConfig(RemoteBuildStepConfig):
 
 
 class DataSourceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     url: str
     fingerprint_url: str = ""
     interval_minutes: int = Field(default=60, gt=0)
@@ -77,6 +79,8 @@ class DataSourceConfig(BaseModel):
 
 
 class DataSyncConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     on_startup: bool = True
     startup_trigger_remote_build: bool = False
     interval_enabled: bool = True
@@ -105,12 +109,16 @@ class DataSyncConfig(BaseModel):
 
 
 class StartupConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     message: str = "机器人已开启。"
     delay: float = Field(default=0.0, ge=0)
 
 
 class ServerStatusConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     broadcast: bool = False
     broadcast_message: str = DEFAULT_BROADCAST_MESSAGE
     broadcast_cooldown_minutes: int = Field(default=1440, ge=0)
@@ -151,6 +159,8 @@ class DockerUpdateConfig(BaseModel):
 
 
 class RestartConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = False
     times: str = "04:30"
     grace_seconds: float = Field(default=10.0, ge=0)
@@ -179,6 +189,8 @@ class RestartConfig(BaseModel):
 
 
 class HeadlessNoticeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     login_notice: bool = True
     login_notice_message: str = (
         "无头米米号登录未成功。\n"
@@ -217,6 +229,8 @@ class HeadlessNoticeConfig(BaseModel):
 
 
 class HelpConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ignored_plugins: list[str] = Field(default_factory=list)
 
     @field_validator("ignored_plugins", mode="before")
@@ -226,6 +240,8 @@ class HelpConfig(BaseModel):
 
 
 class SuperuserPriorityConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     wait_timeout_seconds: float = Field(default=300.0, ge=0)
 
