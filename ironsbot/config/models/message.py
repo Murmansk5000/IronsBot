@@ -128,11 +128,14 @@ class PushUnsubscribeConfig(BaseModel):
 
     commands: list[str] = Field(default_factory=lambda: ["td", "退订"])
     restore_commands: list[str] = Field(
-        default_factory=lambda: ["订阅", "恢复订阅"]
+        default_factory=lambda: ["订阅", "恢复订阅", "推送管理"]
     )
     data_path: str = "data/messaging/push_unsubscriptions.sqlite"
     hint: str = "回复 TD 可管理推送订阅。"
-    group_hint: str = "群主/管理员发送 TD 或 订阅可管理本群推送订阅。"
+    group_hint: str = (
+        "发送 TD、订阅 或 推送管理 可查看本群推送订阅；"
+        "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
+    )
 
     @field_validator("commands", "restore_commands", mode="before")
     @classmethod

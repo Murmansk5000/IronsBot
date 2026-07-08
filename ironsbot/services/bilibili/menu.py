@@ -1,19 +1,20 @@
-from collections.abc import Sequence
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from nonebot.adapters.onebot.v11 import Message
-
-from ironsbot.services.bilibili.cache import (
-    DynamicHistoryRecord,
-    get_dynamic_history_item,
-)
-from ironsbot.services.bilibili.parser import parse_single_item
-from ironsbot.shared.messaging.selection_menu import (
+from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     format_selection_menu,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from nonebot.adapters.onebot.v11 import Message
+
+    from ironsbot.services.bilibili.cache import DynamicHistoryRecord
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
 
@@ -48,6 +49,24 @@ class DynamicDetailSelection:
     @property
     def is_ok(self) -> bool:
         return self.status == "ok"
+
+
+def parse_single_item(
+    item: dict[str, Any],
+    pub_ts: int,
+    *,
+    menu_mode: bool = False,
+    mode: Literal["full", "link"] = "full",
+) -> Message | None:
+    from ironsbot.services.bilibili.parser import parse_single_item as parse
+
+    return parse(item, pub_ts, menu_mode=menu_mode, mode=mode)
+
+
+def get_dynamic_history_item(dynamic_id: str) -> DynamicHistoryRecord | None:
+    from ironsbot.services.bilibili.cache import get_dynamic_history_item as get_item
+
+    return get_item(dynamic_id)
 
 
 def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:

@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable
 from typing import Protocol
 
 from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import Message
+from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
@@ -37,10 +37,11 @@ class OneBotMessageSender(Protocol):
 
 def get_bot_or_none() -> OneBotMessageSender | None:
     try:
-        return get_bot()
+        bot = get_bot()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"message action failed to get bot: {e}")
         return None
+    return bot if isinstance(bot, Bot) else None
 
 
 def configure_sender_message_limiter(

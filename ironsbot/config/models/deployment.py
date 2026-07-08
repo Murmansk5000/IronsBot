@@ -39,7 +39,7 @@ class DeploymentConfig(BaseModel):
 
     environment: str = "prod"
     driver: str = "~fastapi+~httpx"
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
