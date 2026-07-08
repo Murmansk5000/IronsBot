@@ -1,11 +1,17 @@
 from nonebot import on_message
-from nonebot.adapters.onebot.v11 import Message, MessageEvent
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    PrivateMessageEvent,
+)
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.config import get_app_config
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_saved_cookie,
@@ -27,13 +33,27 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
-from ironsbot.services.bilibili.state import query_uids_for_event
+from ironsbot.services.bilibili.preferences import (
+    bili_push_subscription_key,
+    normalize_push_mode_text,
+    push_mode_label,
+)
+from ironsbot.services.bilibili.state import (
+    account_aliases,
+    account_uid,
+    mode_for_target_account,
+    push_preference_store,
+    query_uids_for_event,
+    target_rule,
+)
+from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -50,7 +70,11 @@ DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
 DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
+BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
+BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 BILI_PLUGIN_NAME = "bili"
+BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"
+BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 
 async def _is_dynamic_menu_command(event: MessageEvent) -> bool:
@@ -77,6 +101,51 @@ async def _is_update_dynamic_command(event: MessageEvent) -> bool:
     return is_dynamic_update_allowed(event)
 
 
+async def _is_bili_account_command(event: MessageEvent) -> bool:
+    if not (
+        is_dynamic_query_allowed(event)
+        or is_event_feature_allowed(event, "bili_push")
+    ):
+        return False
+
+    return command_text_matches(event.get_plaintext(), BILI_ACCOUNT_COMMANDS)
+
+
+def _parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
+    command = strip_command_prefix(text)
+    if command is None:
+        command = text.strip()
+
+    lowered = command.lower()
+    for prefix in BILI_PUSH_MODE_COMMANDS:
+        if not lowered.startswith(prefix.lower()):
+            continue
+        rest = command[len(prefix) :].strip()
+        if not rest:
+            return ("", "")
+
+        parts = rest.split(maxsplit=1)
+        account = parts[0].strip().lower()
+        mode_text = parts[1].strip() if len(parts) > 1 else ""
+        return (account, mode_text)
+
+    return None
+
+
+async def _is_bili_push_mode_command(
+    event: MessageEvent,
+    state: T_State,
+) -> bool:
+    parsed = _parse_bili_push_mode_command(event.get_plaintext())
+    if parsed is None:
+        return False
+
+    account, raw_mode = parsed
+    state[BILI_PUSH_MODE_ACCOUNT_KEY] = account
+    state[BILI_PUSH_MODE_RAW_KEY] = raw_mode
+    return True
+
+
 def _is_dynamic_select_reply(event: MessageEvent) -> bool:
     return command_text_matches(event.get_plaintext(), DYNAMIC_SELECT_COMMANDS)
 
@@ -89,6 +158,18 @@ dynamic_menu_matcher = on_message(
 
 update_dynamic_matcher = on_message(
     rule=Rule(_is_update_dynamic_command) & no_reply(),
+    priority=get_matcher_priority("bilibili", 1),
+    block=True,
+)
+
+bili_account_matcher = on_message(
+    rule=Rule(_is_bili_account_command) & no_reply(),
+    priority=get_matcher_priority("bilibili", 1),
+    block=True,
+)
+
+bili_push_mode_matcher = on_message(
+    rule=Rule(_is_bili_push_mode_command) & no_reply(),
     priority=get_matcher_priority("bilibili", 1),
     block=True,
 )
@@ -108,6 +189,12 @@ class BiliMonitorPlugin:
             return
         if context.action == "select":
             await _handle_dynamic_select(event, context)
+            return
+        if context.action == "accounts":
+            await _handle_bili_accounts(event, context)
+            return
+        if context.action == "push_mode":
+            await _handle_bili_push_mode(event, context)
             return
 
 
@@ -241,6 +328,142 @@ async def _handle_update_dynamic(event: MessageEvent) -> None:
         )
 
 
+def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
+    if isinstance(event, GroupMessageEvent):
+        role = getattr(event.sender, "role", None)
+        return role in {"owner", "admin"} or is_bili_superuser(event.user_id)
+
+    if isinstance(event, PrivateMessageEvent):
+        return is_bili_superuser(event.user_id)
+
+    return False
+
+
+def _push_mode_target(event: MessageEvent) -> tuple[str, int]:
+    if isinstance(event, GroupMessageEvent):
+        return "group", int(event.group_id)
+    return "private", int(event.user_id)
+
+
+def _bili_push_mode_usage() -> str:
+    return (
+        "用法：B站推送模式 <账号别名> <内容|链接|默认>\n"
+        "例：B站推送模式 seer 链接\n"
+        "例：B站推送模式 seer 内容\n"
+        "例：B站推送模式 seer 默认"
+    )
+
+
+def _push_unsubscribe_store() -> PushUnsubscribeStore:
+    return PushUnsubscribeStore(get_app_config().message.push_unsubscribe.data_path)
+
+
+def _format_account_mode_line(
+    *,
+    target_type: str,
+    target_id: int,
+    account: str,
+    uid: int,
+    unsubscribed_keys: set[str],
+) -> str:
+    mode = mode_for_target_account(target_type, target_id, account)
+    mode_text = push_mode_label(mode)
+    td_text = "，已 TD" if bili_push_subscription_key(uid) in unsubscribed_keys else ""
+    return f"- {account}（{uid}）：{mode_text}{td_text}"
+
+
+async def _handle_bili_accounts(
+    event: MessageEvent,
+    context: PluginContext,
+) -> None:
+    matcher = context.matcher or bili_account_matcher
+    target_type, target_id = _push_mode_target(event)
+    rule = target_rule(target_type, target_id)
+    aliases = account_aliases()
+
+    lines = ["📺【B站账号】"]
+    account_lines = "、".join(f"{name}={uid}" for name, uid in aliases.items())
+    lines.append("账号库：" + account_lines)
+    if rule is None:
+        lines.append("当前会话未开启 B站推送。")
+        await finish_event_reply(matcher, event, "\n".join(lines))
+
+    unsubscribed_keys = _push_unsubscribe_store().target_unsubscribed_keys(
+        target_type,
+        target_id,
+    )
+    lines.append("当前订阅：")
+    for account in sorted(rule.accounts):
+        uid = aliases[account]
+        lines.append(
+            _format_account_mode_line(
+                target_type=target_type,
+                target_id=target_id,
+                account=account,
+                uid=uid,
+                unsubscribed_keys=unsubscribed_keys,
+            )
+        )
+    lines.append("群主/管理员可发送：B站推送模式 <账号别名> <内容|链接|默认>")
+    await finish_event_reply(matcher, event, "\n".join(lines))
+
+
+async def _handle_bili_push_mode(
+    event: MessageEvent,
+    context: PluginContext,
+) -> None:
+    matcher = context.matcher or bili_push_mode_matcher
+    state = context.state if context.state is not None else {}
+
+    if not _is_bili_push_mode_manager(event):
+        await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
+
+    account = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip().lower()
+    raw_mode = str(state.get(BILI_PUSH_MODE_RAW_KEY, "") or "")
+    if not account or not raw_mode.strip():
+        await finish_event_reply(matcher, event, _bili_push_mode_usage())
+
+    uid = account_uid(account)
+    if uid is None:
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 未知 B站账号别名：{account}\n可发送“B站账号”查看账号库。",
+        )
+
+    target_type, target_id = _push_mode_target(event)
+    rule = target_rule(target_type, target_id)
+    current_mode = mode_for_target_account(target_type, target_id, account)
+    if current_mode is None:
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 当前会话没有订阅 B站账号：{account}。",
+        )
+    if rule is None or account not in rule.accounts:
+        await finish_event_reply(matcher, event, _bili_push_mode_usage())
+
+    try:
+        mode = normalize_push_mode_text(raw_mode)
+    except ValueError:
+        await finish_event_reply(matcher, event, _bili_push_mode_usage())
+
+    store = push_preference_store()
+    if mode is None:
+        store.clear_mode(target_type, target_id, uid)
+    else:
+        store.set_mode(target_type, target_id, uid, mode)
+
+    effective_mode = mode_for_target_account(target_type, target_id, account)
+    scope = "当前群" if target_type == "group" else "当前私聊"
+    await finish_event_reply(
+        matcher,
+        event,
+        f"已设置{scope} B站账号 {account}（{uid}）推送模式：{push_mode_label(mode)}。\n"
+        f"当前生效模式：{push_mode_label(effective_mode)}。",
+    )
+
+
 @dynamic_menu_matcher.handle()
 async def handle_dynamic_menu(
     matcher: Matcher,
@@ -263,6 +486,36 @@ async def handle_update_dynamic(event: MessageEvent) -> None:
         event=event,
         matcher=update_dynamic_matcher,
         action="update",
+    )
+
+
+@bili_account_matcher.handle()
+async def handle_bili_account(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=BILI_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="accounts",
+    )
+
+
+@bili_push_mode_matcher.handle()
+async def handle_bili_push_mode(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await dispatch_plugin(
+        plugin_name=BILI_PLUGIN_NAME,
+        event=event,
+        matcher=matcher,
+        state=state,
+        action="push_mode",
     )
 
 

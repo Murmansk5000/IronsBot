@@ -14,13 +14,24 @@ from ironsbot.config.models.bilibili import (
     BiliPushMode,
     BiliPushTargetConfig,
 )
+from ironsbot.services.bilibili.preferences import (
+    BiliPushPreferenceStore,
+    bili_push_subscription_key,
+    bili_push_subscription_label,
+)
 from ironsbot.shared.features import (
-    group_has_feature,
+    groups_for_feature,
     is_group_feature_allowed,
     is_private_feature_allowed,
     is_superuser,
     resolve_group_refs,
     resolve_user_refs,
+    users_for_feature,
+)
+from ironsbot.shared.messaging.push_subscriptions import (
+    PushSubscriptionOption,
+    PushTargetType,
+    PushUnsubscribeStore,
 )
 
 
@@ -30,14 +41,20 @@ def _unique_ints(values: list[int]) -> list[int]:
 
 @dataclass(frozen=True, slots=True)
 class BiliTargetRule:
+    accounts: frozenset[str]
     uids: frozenset[int]
+    uid_accounts: dict[int, str]
     mode: BiliPushMode
+    account_modes: dict[str, BiliPushMode]
     uid_modes: dict[int, BiliPushMode]
 
     def mode_for_uid(self, uid: int) -> BiliPushMode | None:
         if uid not in self.uids:
             return None
         return self.uid_modes.get(uid, self.mode)
+
+    def account_for_uid(self, uid: int) -> str | None:
+        return self.uid_accounts.get(uid)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,32 +89,77 @@ def get_bili_config() -> BiliConfig:
     return get_app_config().bilibili
 
 
-def _target_uids(
+def account_aliases(config: BiliConfig | None = None) -> dict[str, int]:
+    return dict((config or get_bili_config()).account_aliases)
+
+
+def account_uid(account: str, config: BiliConfig | None = None) -> int | None:
+    return account_aliases(config).get(account.strip().lower())
+
+
+def account_for_uid(uid: int, config: BiliConfig | None = None) -> str | None:
+    for account, account_uid_value in account_aliases(config).items():
+        if account_uid_value == int(uid):
+            return account
+    return None
+
+
+def account_label(uid: int, config: BiliConfig | None = None) -> str:
+    account = account_for_uid(uid, config)
+    return f"{account}（{int(uid)}）" if account else str(int(uid))
+
+
+def _target_accounts(
     target_config: BiliPushTargetConfig,
     config: BiliConfig,
-) -> frozenset[int]:
-    uids = set(target_config.uids)
-    uids.update(target_config.uid_modes)
-    if not uids:
-        uids.update(config.uids)
-    return frozenset(uid for uid in uids if uid > 0)
+) -> frozenset[str]:
+    return frozenset(
+        [
+            *config.push.default_accounts,
+            *target_config.extra_accounts,
+        ]
+    )
 
 
 def _resolve_rule(
     target_config: BiliPushTargetConfig,
     config: BiliConfig,
 ) -> BiliTargetRule:
+    accounts = _target_accounts(target_config, config)
+    account_to_uid = {
+        account: config.account_aliases[account]
+        for account in accounts
+    }
+    uid_accounts = {
+        uid: account
+        for account, uid in account_to_uid.items()
+        if uid > 0
+    }
+    uid_modes = {
+        config.account_aliases[account]: mode
+        for account, mode in target_config.account_modes.items()
+    }
     return BiliTargetRule(
-        uids=_target_uids(target_config, config),
+        accounts=accounts,
+        uids=frozenset(uid for uid in account_to_uid.values() if uid > 0),
+        uid_accounts=uid_accounts,
         mode=target_config.mode or config.push.default_mode,
-        uid_modes=dict(target_config.uid_modes),
+        account_modes=dict(target_config.account_modes),
+        uid_modes=uid_modes,
     )
+
+
+def _default_rule(config: BiliConfig) -> BiliTargetRule:
+    return _resolve_rule(BiliPushTargetConfig(), config)
 
 
 def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTargetRule:
     return BiliTargetRule(
+        accounts=old_rule.accounts | new_rule.accounts,
         uids=old_rule.uids | new_rule.uids,
+        uid_accounts={**old_rule.uid_accounts, **new_rule.uid_accounts},
         mode=new_rule.mode,
+        account_modes={**old_rule.account_modes, **new_rule.account_modes},
         uid_modes={**old_rule.uid_modes, **new_rule.uid_modes},
     )
 
@@ -143,20 +205,24 @@ def configured_user_rules() -> dict[int, BiliTargetRule]:
 def push_group_rules() -> dict[int, BiliTargetRule]:
     if PUSH_GROUP_RULES is not None:
         return PUSH_GROUP_RULES
+    config = get_bili_config()
+    default_rule = _default_rule(config)
+    configured_rules = configured_group_rules()
     return {
-        group_id: rule
-        for group_id, rule in configured_group_rules().items()
-        if group_has_feature(group_id, "bili_push")
+        group_id: configured_rules.get(group_id, default_rule)
+        for group_id in groups_for_feature("bili_push")
     }
 
 
 def push_user_rules() -> dict[int, BiliTargetRule]:
     if PUSH_USER_RULES is not None:
         return PUSH_USER_RULES
+    config = get_bili_config()
+    default_rule = _default_rule(config)
+    configured_rules = configured_user_rules()
     return {
-        user_id: rule
-        for user_id, rule in configured_user_rules().items()
-        if is_private_feature_allowed(user_id, "bili_push")
+        user_id: configured_rules.get(user_id, default_rule)
+        for user_id in users_for_feature("bili_push")
     }
 
 
@@ -176,7 +242,8 @@ def monitored_uids() -> list[int]:
     if MONITORED_UIDS is not None:
         return MONITORED_UIDS
 
-    uids = set(get_bili_config().uids)
+    config = get_bili_config()
+    uids = set(_default_rule(config).uids)
     for rule in [
         *configured_group_rules().values(),
         *configured_user_rules().values(),
@@ -196,6 +263,15 @@ def dynamic_history_db_file() -> Path:
 def cookie_cache_file() -> Path:
     return bili_storage_dir() / "bili_cookie_cache.txt"
 
+
+def push_preferences_db_file() -> Path:
+    return bili_storage_dir() / "push_preferences.sqlite"
+
+
+def push_preference_store() -> BiliPushPreferenceStore:
+    return BiliPushPreferenceStore(push_preferences_db_file())
+
+
 check_lock = asyncio.Lock()
 
 
@@ -205,8 +281,7 @@ def query_uids_for_group(user_id: int, group_id: int) -> list[int]:
 
     rule = configured_group_rules().get(group_id)
     if rule is None:
-        return sorted(get_bili_config().uids)
-
+        rule = _default_rule(get_bili_config())
     return sorted(rule.uids)
 
 
@@ -233,11 +308,83 @@ def query_uids_for_event(event: MessageEvent) -> list[int]:
     return []
 
 
+def _runtime_mode_for_target(
+    target_type: PushTargetType,
+    target_id: int,
+    uid: int,
+) -> BiliPushMode | None:
+    return push_preference_store().get_mode(target_type, target_id, uid)
+
+
+def mode_for_target_uid(
+    target_type: PushTargetType,
+    target_id: int,
+    uid: int,
+) -> BiliPushMode | None:
+    rules = push_group_rules() if target_type == "group" else push_user_rules()
+    rule = rules.get(target_id)
+    if rule is None or uid not in rule.uids:
+        return None
+    return (
+        _runtime_mode_for_target(target_type, target_id, uid)
+        or rule.uid_modes.get(uid)
+        or rule.mode
+    )
+
+
+def mode_for_target_account(
+    target_type: PushTargetType,
+    target_id: int,
+    account: str,
+) -> BiliPushMode | None:
+    uid = account_uid(account)
+    if uid is None:
+        return None
+    return mode_for_target_uid(target_type, target_id, uid)
+
+
+def target_rule(
+    target_type: PushTargetType,
+    target_id: int,
+) -> BiliTargetRule | None:
+    rules = push_group_rules() if target_type == "group" else push_user_rules()
+    return rules.get(target_id)
+
+
+def bili_push_subscription_options(
+    *,
+    target_type: PushTargetType,
+    target_id: int,
+    store: PushUnsubscribeStore,
+    include_unsubscribed: bool,
+) -> list[PushSubscriptionOption]:
+    rules = push_group_rules() if target_type == "group" else push_user_rules()
+    rule = rules.get(target_id)
+    if rule is None:
+        return []
+
+    unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
+    options: list[PushSubscriptionOption] = []
+    for uid in sorted(rule.uids):
+        key = bili_push_subscription_key(uid)
+        is_unsubscribed = key in unsubscribed
+        if include_unsubscribed != is_unsubscribed:
+            continue
+        options.append(
+            PushSubscriptionOption(
+                key=key,
+                label=bili_push_subscription_label(uid, rule.account_for_uid(uid)),
+                feature="bili_push",
+            )
+        )
+    return options
+
+
 def push_targets_for_uid(uid: int) -> BiliPushTargets:
     full_group_ids: list[int] = []
     link_group_ids: list[int] = []
-    for group_id, rule in push_group_rules().items():
-        mode = rule.mode_for_uid(uid)
+    for group_id in push_group_rules():
+        mode = mode_for_target_uid("group", group_id, uid)
         if mode == "full":
             full_group_ids.append(group_id)
         elif mode == "link":
@@ -245,8 +392,8 @@ def push_targets_for_uid(uid: int) -> BiliPushTargets:
 
     full_user_ids: list[int] = []
     link_user_ids: list[int] = []
-    for user_id, rule in push_user_rules().items():
-        mode = rule.mode_for_uid(uid)
+    for user_id in push_user_rules():
+        mode = mode_for_target_uid("private", user_id, uid)
         if mode == "full":
             full_user_ids.append(user_id)
         elif mode == "link":
