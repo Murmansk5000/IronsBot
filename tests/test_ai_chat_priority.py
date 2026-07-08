@@ -5,6 +5,8 @@ try:
 except ValueError:
     nonebot.init()
 
+nonebot.require("ironsbot.plugins.http_client")
+
 from ironsbot.plugins.ai_chat import AI_CHAT_PRIORITY, AI_GROUP_AT_CHAT_PRIORITY
 from ironsbot.plugins.ai_mention_guard import AI_MENTION_GUARD_PRIORITY
 from ironsbot.plugins.seer.query.group import matcher_group

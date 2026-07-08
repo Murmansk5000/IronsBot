@@ -10,7 +10,7 @@ from seerapi_models import ElementTypeORM
 from seerapi_models.element_type import TypeCombinationORM
 from sqlmodel import select
 
-from ironsbot.plugins.seer_data.db import (
+from ironsbot.integrations.seer_data.db import (
     GetTypeCombinationData,
     SQLModelSession,
     TypeCombinationDataGetter,

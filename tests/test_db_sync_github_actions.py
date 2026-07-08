@@ -5,8 +5,16 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import nonebot
 
 from ironsbot.config.models.runtime import RemoteBuildConfig
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
+nonebot.require("ironsbot.plugins.db_sync")
+
 from ironsbot.plugins.db_sync.github_actions import (
     WorkflowRunResult,
     trigger_and_wait_workflow,
