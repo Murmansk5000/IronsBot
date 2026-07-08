@@ -4,52 +4,29 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig
 from ironsbot.services.seer import local_rank_formatting
+from ironsbot.services.seer.local_rank_metrics import (
+    LOCAL_METRICS as _LOCAL_METRICS,
+)
+from ironsbot.services.seer.local_rank_metrics import (
+    MetricValue,
+)
+from ironsbot.services.seer.local_rank_metrics import (
+    collect_metrics as _collect_metrics,
+)
+from ironsbot.services.seer.local_rank_metrics import (
+    positive_int as _positive_int,
+)
 from ironsbot.services.seer.rank import (
     PlayerRankSummary,
     RankLookupResult,
     is_pet_kind_rank_anomaly_user,
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
-
-MetricValue = dict[str, int | str | None]
-
-
-@dataclass(frozen=True, slots=True)
-class _MetricSpec:
-    key: str
-    title: str
-    season_limited: bool = False
-
-
-_LOCAL_METRICS: tuple[_MetricSpec, ...] = (
-    _MetricSpec("book_score", "图鉴积分"),
-    _MetricSpec("achievement_score", "成就点数"),
-    _MetricSpec("achievement_count", "成就数量"),
-    _MetricSpec("pet_total_count", "精灵数量"),
-    _MetricSpec("pet_kind_count", "精灵图鉴"),
-    _MetricSpec("countermark_count", "刻印图鉴"),
-    _MetricSpec("outfit_suit_count", "套装图鉴"),
-    _MetricSpec("outfit_part_count", "部件图鉴"),
-    _MetricSpec("mount_count", "座驾图鉴"),
-    _MetricSpec("skin_count", "皮肤图鉴"),
-    _MetricSpec("autocard_score", "群星牌积分"),
-    _MetricSpec("unlocked_book_entries", "已解锁图鉴条目"),
-    _MetricSpec("peak_standard", "竞技赛季", season_limited=True),
-    _MetricSpec("peak_standard_win_rate", "竞技胜率", season_limited=True),
-    _MetricSpec("peak_standard_matches", "竞技场次", season_limited=True),
-    _MetricSpec("peak_wild", "狂野赛季", season_limited=True),
-    _MetricSpec("peak_wild_win_rate", "狂野胜率", season_limited=True),
-    _MetricSpec("peak_wild_matches", "狂野场次", season_limited=True),
-    _MetricSpec("peak_expert", "专家赛季", season_limited=True),
-    _MetricSpec("peak_expert_win_rate", "专家胜率", season_limited=True),
-    _MetricSpec("peak_expert_matches", "专家场次", season_limited=True),
-    _MetricSpec("peak_total_matches", "巅峰总场次", season_limited=True),
-)
 
 _CACHE_LOCK = asyncio.Lock()
 
@@ -84,50 +61,6 @@ class LocalRankCacheStats:
     metric_counts: dict[str, int]
 
 
-def _metric_from_rank(result: RankLookupResult | None) -> int | None:
-    if result is None:
-        return None
-    return result.score
-
-
-def _positive_int(value: object) -> int | None:
-    try:
-        number = int(cast("Any", value))
-    except (TypeError, ValueError):
-        return None
-    return number if number > 0 else None
-
-
-def _metric(
-    value: int | None,
-    *,
-    season_sub_key: int | None = None,
-    display: str | None = None,
-) -> MetricValue:
-    return {
-        "value": value,
-        "season_sub_key": season_sub_key,
-        "display": display,
-    }
-
-
-def _rate_metric(
-    wins: int,
-    total: int,
-    *,
-    season_sub_key: int | None,
-) -> MetricValue:
-    if total <= 0:
-        return _metric(None, season_sub_key=season_sub_key)
-
-    value = round(wins / total * 1_000_000)
-    return _metric(
-        value,
-        season_sub_key=season_sub_key,
-        display=f"{wins}/{total}={wins / total * 100:.3f}%",
-    )
-
-
 def _format_peak_rating_score(value: int) -> str:
     return local_rank_formatting.format_peak_rating_score(value)
 
@@ -138,122 +71,6 @@ def _format_metric_display(
     display: object | None = None,
 ) -> str:
     return local_rank_formatting.format_metric_display(metric_key, value, display)
-
-
-def _collect_metrics(  # noqa: PLR0913
-    *,
-    more_info: Any,
-    unity_part_one: UnityPartOneInfo,
-    unity_peak: UnityPeakInfo,
-    rank_summary: PlayerRankSummary,
-    autocard_rank_summary: RankLookupResult | None,
-    peak_sub_key: int | None,
-    peak_standard_score: int | None,
-    peak_wild_score: int | None,
-    peak_expert_score: int | None,
-) -> dict[str, MetricValue]:
-    breakdown = rank_summary.breakdown
-
-    values: dict[str, MetricValue] = {
-        "book_score": _metric(_metric_from_rank(rank_summary.book)),
-        "achievement_score": _metric(
-            _positive_int(getattr(more_info, "total_achieve", 0))
-        ),
-        "achievement_count": _metric(_positive_int(unity_part_one.achievement_num)),
-        "pet_total_count": _metric(
-            _positive_int(getattr(more_info, "pet_all_num", 0))
-        ),
-        "pet_kind_count": _metric(_positive_int(unity_part_one.pet_kind_num)),
-        "countermark_count": _metric(_metric_from_rank(breakdown.countermark)),
-        "outfit_suit_count": _metric(_metric_from_rank(breakdown.outfit_suit)),
-        "outfit_part_count": _metric(_metric_from_rank(breakdown.outfit_part)),
-        "mount_count": _metric(_metric_from_rank(breakdown.mount)),
-        "skin_count": _metric(_positive_int(unity_part_one.skin_num)),
-        "autocard_score": _metric(_metric_from_rank(autocard_rank_summary)),
-        "unlocked_book_entries": _metric(_positive_int(breakdown.unlocked_count)),
-    }
-
-    if peak_sub_key is not None:
-        total_matches = (
-            unity_peak.current_j_all
-            + unity_peak.current_k_all
-            + unity_peak.current_z_all
-        )
-        if unity_peak.current_j_all > 0:
-            standard_score = _positive_int(peak_standard_score)
-            values["peak_standard"] = _metric(
-                standard_score,
-                season_sub_key=peak_sub_key,
-                display=(
-                    _format_metric_display("peak_standard", standard_score)
-                    if standard_score is not None
-                    else None
-                ),
-            )
-            values["peak_standard_win_rate"] = _rate_metric(
-                unity_peak.current_j_win,
-                unity_peak.current_j_all,
-                season_sub_key=peak_sub_key,
-            )
-            values["peak_standard_matches"] = _metric(
-                _positive_int(unity_peak.current_j_all),
-                season_sub_key=peak_sub_key,
-                display=f"{unity_peak.current_j_all}场",
-            )
-        if unity_peak.current_k_all > 0:
-            wild_score = _positive_int(peak_wild_score)
-            values["peak_wild"] = _metric(
-                wild_score,
-                season_sub_key=peak_sub_key,
-                display=(
-                    _format_metric_display("peak_wild", wild_score)
-                    if wild_score is not None
-                    else None
-                ),
-            )
-            values["peak_wild_win_rate"] = _rate_metric(
-                unity_peak.current_k_win,
-                unity_peak.current_k_all,
-                season_sub_key=peak_sub_key,
-            )
-            values["peak_wild_matches"] = _metric(
-                _positive_int(unity_peak.current_k_all),
-                season_sub_key=peak_sub_key,
-                display=f"{unity_peak.current_k_all}场",
-            )
-        if unity_peak.current_z_all > 0:
-            expert_score = _positive_int(peak_expert_score)
-            values["peak_expert"] = _metric(
-                expert_score,
-                season_sub_key=peak_sub_key,
-                display=(
-                    _format_metric_display("peak_expert", expert_score)
-                    if expert_score is not None
-                    else None
-                ),
-            )
-            values["peak_expert_win_rate"] = _rate_metric(
-                unity_peak.current_z_win,
-                unity_peak.current_z_all,
-                season_sub_key=peak_sub_key,
-            )
-            values["peak_expert_matches"] = _metric(
-                _positive_int(unity_peak.current_z_all),
-                season_sub_key=peak_sub_key,
-                display=f"{unity_peak.current_z_all}场",
-            )
-        if total_matches > 0:
-            values["peak_total_matches"] = _metric(
-                _positive_int(total_matches),
-                season_sub_key=peak_sub_key,
-                display=f"{total_matches}场",
-            )
-
-    return {
-        key: value
-        for key, value in values.items()
-        if value.get("value") is not None
-    }
 
 
 def _max_cached_players() -> int:
