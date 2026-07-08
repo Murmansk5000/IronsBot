@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import connect_sqlite
+from ironsbot.shared.sqlite import connect_sqlite, ensure_sqlite_column
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -130,15 +130,11 @@ def _connect(cache_path: str | Path) -> sqlite3.Connection:
 
 
 def _ensure_step_column(conn: sqlite3.Connection) -> None:
-    columns = {
-        str(row["name"])
-        for row in conn.execute("PRAGMA table_info(pending_team_audit_reminders)")
-    }
-    if "step" in columns:
-        return
-    conn.execute(
-        "ALTER TABLE pending_team_audit_reminders "
-        "ADD COLUMN step INTEGER NOT NULL DEFAULT 1"
+    ensure_sqlite_column(
+        conn,
+        table_name="pending_team_audit_reminders",
+        column_name="step",
+        column_definition="step INTEGER NOT NULL DEFAULT 1",
     )
 
 

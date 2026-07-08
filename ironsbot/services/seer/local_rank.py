@@ -27,7 +27,10 @@ from ironsbot.services.seer.rank import (
     is_pet_kind_rank_anomaly_user,
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
-from ironsbot.shared.sqlite import connect_sqlite
+from ironsbot.shared.sqlite import (
+    connect_sqlite,
+    ensure_sqlite_column,
+)
 
 _CACHE_LOCK = asyncio.Lock()
 
@@ -98,16 +101,18 @@ def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    player_columns = {
-        str(row[1])
-        for row in conn.execute("PRAGMA table_info(players)").fetchall()
-    }
-    if "sample_enabled" not in player_columns:
-        conn.execute(
-            "ALTER TABLE players ADD COLUMN sample_enabled INTEGER NOT NULL DEFAULT 1"
-        )
-    if "sampled_at" not in player_columns:
-        conn.execute("ALTER TABLE players ADD COLUMN sampled_at TEXT")
+    ensure_sqlite_column(
+        conn,
+        table_name="players",
+        column_name="sample_enabled",
+        column_definition="sample_enabled INTEGER NOT NULL DEFAULT 1",
+    )
+    if ensure_sqlite_column(
+        conn,
+        table_name="players",
+        column_name="sampled_at",
+        column_definition="sampled_at TEXT",
+    ):
         conn.execute(
             """
             UPDATE players

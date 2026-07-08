@@ -1,12 +1,20 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 RowFactory = Callable[[sqlite3.Cursor, Sequence[Any]], object]
+_SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def quote_sqlite_identifier(identifier: str) -> str:
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(identifier):
+        raise ValueError(identifier)
+    return f'"{identifier}"'
 
 
 def resolve_sqlite_path(path: str | Path) -> Path:
@@ -33,4 +41,33 @@ def connect_sqlite(
     return conn
 
 
-__all__ = ["connect_sqlite", "resolve_sqlite_path"]
+def sqlite_table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    table_sql = quote_sqlite_identifier(table_name)
+    return {
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({table_sql})").fetchall()
+    }
+
+
+def ensure_sqlite_column(
+    conn: sqlite3.Connection,
+    *,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> bool:
+    if column_name in sqlite_table_columns(conn, table_name):
+        return False
+
+    table_sql = quote_sqlite_identifier(table_name)
+    conn.execute(f"ALTER TABLE {table_sql} ADD COLUMN {column_definition}")
+    return True
+
+
+__all__ = [
+    "connect_sqlite",
+    "ensure_sqlite_column",
+    "quote_sqlite_identifier",
+    "resolve_sqlite_path",
+    "sqlite_table_columns",
+]

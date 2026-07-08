@@ -13,7 +13,7 @@ from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot_for_item,
 )
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
-from ironsbot.shared.sqlite import connect_sqlite
+from ironsbot.shared.sqlite import connect_sqlite, ensure_sqlite_column
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,20 +69,18 @@ def _connect() -> sqlite3.Connection:
 
 
 def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
-    columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(dynamics)").fetchall()
-    }
-    if "suppressed" not in columns:
-        conn.execute(
-            "ALTER TABLE dynamics "
-            "ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0"
-        )
-    if "suppression_reason" not in columns:
-        conn.execute(
-            "ALTER TABLE dynamics "
-            "ADD COLUMN suppression_reason TEXT NOT NULL DEFAULT ''"
-        )
+    ensure_sqlite_column(
+        conn,
+        table_name="dynamics",
+        column_name="suppressed",
+        column_definition="suppressed INTEGER NOT NULL DEFAULT 0",
+    )
+    ensure_sqlite_column(
+        conn,
+        table_name="dynamics",
+        column_name="suppression_reason",
+        column_definition="suppression_reason TEXT NOT NULL DEFAULT ''",
+    )
 
 
 def get_last_saved_times() -> dict[int, int]:
