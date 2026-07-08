@@ -7,6 +7,7 @@ from ironsbot.services.seer.rank_list import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
+    RankScoreCommand,
     batch_raw_start,
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
@@ -21,6 +22,7 @@ from ironsbot.services.seer.rank_list import (
     build_rank_page_refresh_start_message,
     format_global_rank_line,
     format_global_rank_message,
+    format_global_rank_score_message,
     format_local_rank_message,
     format_rank_intervals,
     merge_rank_intervals,
@@ -29,6 +31,7 @@ from ironsbot.services.seer.rank_list import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    parse_rank_score_command,
     timestamp_text,
     with_admin_prefix,
 )
@@ -65,6 +68,23 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         start_rank=11,
         limit=10,
     )
+
+
+def test_parse_rank_score_command_reads_global_score_query() -> None:
+    assert parse_rank_score_command("群星牌榜3149分") == RankScoreCommand(
+        rank_key="群星牌",
+        score=3149,
+    )
+    assert parse_rank_score_command("成就榜13605点") == RankScoreCommand(
+        rank_key="成就点数",
+        score=13605,
+    )
+    assert parse_rank_score_command("成就榜13605分") == RankScoreCommand(
+        rank_key="成就点数",
+        score=13605,
+    )
+    assert parse_rank_score_command("样本群星牌榜3149分") is None
+    assert parse_rank_score_command("群星牌榜第3149名") is None
 
 
 def test_parse_rank_list_command_uses_configured_default_limit() -> None:
@@ -105,7 +125,14 @@ def test_parse_rank_list_command_reads_local_aliases() -> None:
         start_rank=21,
         limit=20,
     )
-    assert parse_rank_list_command("样本群星牌榜") is None
+    assert parse_rank_list_command("样本群星牌榜") == RankListCommand(
+        kind="local",
+        rank_key="群星牌",
+    )
+    assert parse_rank_list_command("样本群星牌积分榜") == RankListCommand(
+        kind="local",
+        rank_key="群星牌",
+    )
 
 
 def test_parse_rank_list_command_ignores_unknown_text() -> None:
@@ -205,6 +232,147 @@ def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
         requested_count=20,
     ) == "测试榜（第 21 名，截至2026-06-12 10:00:00）\n21. Alice（100） 123分"
     assert format_global_rank_message(spec, []) == "❌找不到测试榜数据。"
+
+
+def test_format_global_rank_score_message() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=3149,
+        searched_limit=10000,
+        boundary_score=1000,
+        start_rank=21,
+        end_rank=23,
+        total_count=3,
+        truncated=False,
+        items=[
+            SimpleNamespace(id=101, nick="Alice", score=3149, rank_index=20),
+            SimpleNamespace(id=102, nick="Bob", score=3149, rank_index=21),
+            SimpleNamespace(id=103, nick="Carol", score=3149, rank_index=22),
+        ],
+    )
+
+    assert format_global_rank_score_message(
+        spec,
+        result,
+        display_limit=2,
+        timestamp="2026-06-12 10:00:00",
+    ) == (
+        "测试榜（3149分，第 21-23 名，共 3 人，截至2026-06-12 10:00:00）\n"
+        "21. Alice（101） 3149分\n"
+        "22. Bob（102） 3149分\n"
+        "...另 1 人未展示"
+    )
+
+
+def test_format_global_rank_score_message_shows_cached_hit_without_boundary() -> None:
+    spec = GlobalRankSpec("图鉴积分榜", key=156, sub_key=1, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=55933,
+        searched_limit=10000,
+        boundary_score=None,
+        start_rank=200,
+        end_rank=200,
+        total_count=1,
+        truncated=False,
+        items=[
+            SimpleNamespace(
+                id=291439942,
+                nick="桐生 战兔",
+                score=55933,
+                rank_index=199,
+            ),
+        ],
+    )
+
+    assert format_global_rank_score_message(
+        spec,
+        result,
+        timestamp="2026-07-07 16:33:27",
+    ) == (
+        "图鉴积分榜（55933分，第 200-200 名，共 1 人，截至2026-07-07 16:33:27）\n"
+        "200. 桐生 战兔（291439942） 55933分"
+    )
+
+
+def test_format_rank_score_message_needs_data_without_items_or_boundary() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=3149,
+        searched_limit=10000,
+        boundary_score=None,
+        items=[],
+    )
+
+    assert format_global_rank_score_message(spec, result) == "❌找不到测试榜数据。"
+
+
+def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=999,
+        searched_limit=10000,
+        boundary_score=1000,
+        items=[],
+    )
+
+    assert format_global_rank_score_message(spec, result) == (
+        "❌999分不在测试榜前 10000 名范围内。\n"
+        "当前范围末位约为 1000分。"
+    )
+
+
+def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
+    spec = GlobalRankSpec("群星之巅榜", key=240, sub_key=1, unit="分")
+    result = SimpleNamespace(
+        queried=True,
+        target_score=10000,
+        searched_limit=50000,
+        boundary_score=9970,
+        items=[],
+        higher_gap=SimpleNamespace(
+            score=10001,
+            start_rank=57,
+            end_rank=57,
+            total_count=1,
+            truncated=False,
+            items=[
+                SimpleNamespace(
+                    id=910731260,
+                    nick="流苏",
+                    score=10001,
+                    rank_index=56,
+                )
+            ],
+        ),
+        lower_gap=SimpleNamespace(
+            score=9970,
+            start_rank=58,
+            end_rank=58,
+            total_count=1,
+            truncated=False,
+            items=[
+                SimpleNamespace(
+                    id=264391071,
+                    nick="慎重格劳瑞",
+                    score=9970,
+                    rank_index=57,
+                )
+            ],
+        ),
+    )
+
+    assert format_global_rank_score_message(spec, result) == (
+        "❌群星之巅榜没有10000分的用户。\n"
+        "相邻分数段：\n"
+        "10001分：第 57 名，共 1 人\n"
+        "57. 流苏（910731260） 10001分\n"
+        "9970分：第 58 名，共 1 人\n"
+        "58. 慎重格劳瑞（264391071） 9970分"
+    )
 
 
 def test_batch_raw_start_respects_spec_start_and_rank_offset() -> None:

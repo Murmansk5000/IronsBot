@@ -640,6 +640,9 @@ cache_max_size_mb = 200
 # message.red_packet_notice.enabled model default: true
 # EN: red-packet observation only notifies superusers privately; it does not claim packets.
 # ZH: 红包观察只向超级管理员私聊通知，不领取红包。
+# seer.rank.page_refresh additional supported fields in this version: active_end, active_start, interval_minutes, interval_offset_minutes, pages_per_run_min, request_interval_seconds, request_jitter_seconds, schedule_jitter_seconds
+# EN: original model validation and request/probe/page limits still apply.
+# ZH: 仍由本版原模型校验，页面、请求和探测预算不因文案而放宽。
 
 [runtime.data_sync]
 # Model default: true; explicit example: false. EN: Startup download override. ZH: 模型默认启动下载；本示例显式关闭，保留此设置。
