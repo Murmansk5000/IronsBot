@@ -87,6 +87,9 @@ from ironsbot.services.seer.rank_score_search import (
 from ironsbot.services.seer.rank_score_search import (
     find_last_existing_score_index as _find_last_existing_score_index,
 )
+from ironsbot.services.seer.rank_score_search import (
+    find_rank_by_score as _find_rank_by_score_impl,
+)
 
 format_book_breakdown = _format_book_breakdown
 format_peak_rank_lookup = _format_peak_rank_lookup
@@ -502,7 +505,7 @@ def _score_search_tie_page_limit() -> int:
     return score_search_tie_page_limit(get_rank_query_config())
 
 
-async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
+async def _find_rank_by_score(  # noqa: PLR0913
     game: Any,
     *,
     user_id: int,
@@ -513,113 +516,21 @@ async def _find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
     page_size: int,
     result: RankLookupResult,
 ) -> RankLookupResult:
-    result.score = target_score
-    remaining_probes = _score_search_probe_limit(limit)
-    item_cache: dict[int, Any | None] = {}
-
-    async def item_at(index: int) -> Any | None:
-        nonlocal remaining_probes
-
-        if index in item_cache:
-            return item_cache[index]
-
-        if remaining_probes <= 0:
-            raise RankSearchBudgetExhaustedError
-
-        remaining_probes -= 1
-        item = await _fetch_rank_item(game, key=key, sub_key=sub_key, index=index)
-        item_cache[index] = item
-        return item
-
-    async def score_at(index: int) -> int | None:
-        item = await item_at(index)
-        return None if item is None else item.score
-
-    try:
-        last_index, boundary_score = await _find_last_existing_score_index(
-            0,
-            limit,
-            score_at,
-        )
-    except RankSearchBudgetExhaustedError:
-        return result
-
-    if last_index is None:
-        return result
-
-    search_end = last_index + 1
-    result.searched_limit = min(result.searched_limit, search_end)
-    if boundary_score is None or target_score < boundary_score:
-        return result
-
-    low = 0
-    high = search_end
-    try:
-        while low < high:
-            mid = (low + high) // 2
-            score = await score_at(mid)
-            if score is None or score <= target_score:
-                high = mid
-            else:
-                low = mid + 1
-    except RankSearchBudgetExhaustedError:
-        return result
-
-    first_same_or_lower = low
-    if first_same_or_lower >= search_end:
-        return result
-
-    try:
-        first_score = await score_at(first_same_or_lower)
-    except RankSearchBudgetExhaustedError:
-        return result
-    if first_score != target_score:
-        return result
-
-    low = first_same_or_lower
-    high = search_end
-    tie_end = search_end
-    try:
-        while low < high:
-            mid = (low + high) // 2
-            score = await score_at(mid)
-            if score is None or score < target_score:
-                high = mid
-            else:
-                low = mid + 1
-        tie_end = low
-    except RankSearchBudgetExhaustedError:
-        tie_end = min(
-            search_end,
-            first_same_or_lower + page_size * _score_search_tie_page_limit(),
-        )
-
-    tie_end = min(tie_end, search_end)
-    start = first_same_or_lower
-    remaining_tie_pages = _score_search_tie_page_limit()
-    while start < tie_end and remaining_tie_pages > 0:
-        end = min(start + page_size - 1, tie_end - 1)
-        items = await _fetch_rank_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-        )
-
-        for offset, item in enumerate(items):
-            if item.id == user_id:
-                result.rank = start + offset + 1
-                result.score = item.score
-                return result
-
-        if len(items) < end - start + 1:
-            return result
-
-        remaining_tie_pages -= 1
-        start = end + 1
-
-    return result
+    return await _find_rank_by_score_impl(
+        game,
+        user_id=user_id,
+        key=key,
+        sub_key=sub_key,
+        target_score=target_score,
+        limit=limit,
+        page_size=page_size,
+        result=result,
+        score_search_probe_limit=_score_search_probe_limit,
+        score_search_tie_page_limit=_score_search_tie_page_limit,
+        find_last_existing_score_index=_find_last_existing_score_index,
+        fetch_rank_item=_fetch_rank_item,
+        fetch_rank_page=_fetch_rank_page,
+    )
 
 
 def _cached_score_candidate_page_starts(
