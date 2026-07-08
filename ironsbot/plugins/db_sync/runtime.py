@@ -7,6 +7,7 @@ from nonebot import get_driver, require
 from nonebot.log import logger
 
 from ironsbot.plugins import db_sync
+from ironsbot.shared.scheduler import add_or_replace_job
 
 from .config import get_data_sync_config
 
@@ -25,13 +26,13 @@ def _register_interval_jobs(scheduler: Any) -> None:
         return
 
     for name, entry in db_sync._registered_syncs.items():
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             db_sync.run_sync_database,
             "interval",
             args=[name],
             minutes=entry.sync_interval_minutes,
-            id=f"db_sync_{name}",
-            replace_existing=True,
+            job_id=f"db_sync_{name}",
         )
         logger.debug(
             f"已注册数据库 '{name}'，同步间隔: {entry.sync_interval_minutes} 分钟"

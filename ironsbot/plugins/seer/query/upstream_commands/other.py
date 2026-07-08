@@ -9,7 +9,7 @@ from nonebot.matcher import Matcher
 from seerapi_models import ApiMetadataORM
 from sqlmodel import select
 
-from ironsbot.plugins.seer_data.image import PreviewImageGetter
+from ironsbot.integrations.seer_data.image import PreviewImageGetter
 from ironsbot.utils.rule import no_reply
 
 from ..depends import SeerAPISession

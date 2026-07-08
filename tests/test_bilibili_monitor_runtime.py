@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 
 from pytest import MonkeyPatch
@@ -12,6 +13,14 @@ class FakeDriver:
     def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
         self.startup_handlers.append(handler)
         return handler
+
+
+class FakeScheduler:
+    def __init__(self) -> None:
+        self.jobs: list[dict[str, object]] = []
+
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
+        self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
 def test_bilibili_monitor_runtime_setup_registers_startup_once(
@@ -37,3 +46,19 @@ def test_bilibili_monitor_runtime_setup_registers_startup_once(
 
     assert len(driver.startup_handlers) == 1
     assert registered_checks == [("bilibili_monitor", bili_runtime._startup_check)]
+
+
+def test_register_bili_auto_check_job_uses_standard_scheduler_fields() -> None:
+    scheduler = FakeScheduler()
+
+    asyncio.run(bili_runtime.register_bili_auto_check_job(scheduler))
+
+    assert scheduler.jobs == [
+        {
+            "func": bili_runtime.auto_check_job,
+            "trigger": "interval",
+            "id": "bilibili_monitor_auto_check",
+            "replace_existing": True,
+            "minutes": 1,
+        }
+    ]
