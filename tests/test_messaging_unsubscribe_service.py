@@ -5,7 +5,9 @@ from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging.push_subscriptions import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
     BUILTIN_PUSH_OPTIONS,
+    CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
     PushUnsubscribeStore,
     append_push_unsubscribe_hint,
@@ -135,6 +137,48 @@ def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:
         2001,
         2002,
     ]
+
+
+def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+
+    store.set_time_preference(
+        "group",
+        2001,
+        "daily",
+        CRON_TIME_PREFERENCE,
+        "22:30",
+    )
+    store.set_time_preference(
+        "private",
+        1001,
+        "seer_activity_push",
+        ACTIVITY_LEAD_HOURS_PREFERENCE,
+        "24,3,1",
+    )
+
+    assert (
+        store.get_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
+        == "22:30"
+    )
+    assert store.target_time_preferences("private", 1001) == {
+        ("seer_activity_push", ACTIVITY_LEAD_HOURS_PREFERENCE): "24,3,1"
+    }
+    assert [
+        preference.target_id
+        for preference in store.all_time_preferences(
+            target_type="group",
+            subscription_key="daily",
+            preference_type=CRON_TIME_PREFERENCE,
+        )
+    ] == [2001]
+
+    store.clear_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
+
+    assert (
+        store.get_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
+        is None
+    )
 
 
 def test_build_schedule_subscription_options_marks_subscription_state(

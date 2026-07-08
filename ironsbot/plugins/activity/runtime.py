@@ -12,6 +12,7 @@ from ironsbot.services.activity.delivery import (
     build_reminder_delivery,
 )
 from ironsbot.services.activity.scheduler import (
+    clear_reminder_jobs,
     register_scan_jobs,
     schedule_reminder_jobs,
 )
@@ -20,6 +21,11 @@ from ironsbot.services.activity.seer_activity import (
     valid_reminders_before_send,
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
+from ironsbot.shared.config.parsing import positive_int_list
+from ironsbot.shared.messaging.push_subscriptions import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
+    PushUnsubscribeStore,
+)
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 
 from . import _now, _seer_activity_source
@@ -29,6 +35,7 @@ if TYPE_CHECKING:
     from ironsbot.services.activity.models import ActivityReminder
 
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
+ACTIVITY_PUSH_SUBSCRIPTION_KEY = "seer_activity_push"
 
 _activity_reminder_runtime_state: dict[str, Any] = {
     "registered": False,
@@ -59,7 +66,7 @@ async def send_activity_reminder(
     delivery = build_reminder_delivery(
         lead_hours,
         reminders,
-        activity_reminder_targets(),
+        _activity_reminder_targets_for_lead(lead_hours),
         template=get_activity_config().message,
     )
     if delivery.status == "skip_no_targets":
@@ -73,7 +80,7 @@ async def send_activity_reminder(
         action_name=delivery.action_name,
         interval_seconds=1.2,
         message_limiter=append_fire_manual_ad_for_group,
-        subscription_key="seer_activity_push",
+        subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
     )
     if summary.succeeded:
         mark_sent(reminders)
@@ -89,12 +96,14 @@ async def schedule_activity_reminders() -> None:
     if not config.enabled:
         return
 
+    clear_reminder_jobs(scheduler)
+
     try:
         reminders = filter_unsent(
             scheduled_reminders(
                 _seer_activity_source,
                 _now(),
-                lead_hours=config.lead_hours,
+                lead_hours=_configured_activity_lead_hours(config.lead_hours),
                 grace=timedelta(minutes=config.grace_minutes),
             )
         )
@@ -114,6 +123,58 @@ async def schedule_activity_reminders() -> None:
     )
 
     logger.info(f"activity reminder scheduled {scheduled_count} pending reminders")
+
+
+def _activity_push_store() -> PushUnsubscribeStore:
+    from ironsbot.config import get_app_config
+
+    return PushUnsubscribeStore(get_app_config().message.push_unsubscribe.data_path)
+
+
+def _configured_activity_lead_hours(default_lead_hours: list[int]) -> list[int]:
+    lead_hours = set(default_lead_hours)
+    store = _activity_push_store()
+    for preference in store.all_time_preferences(
+        subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
+        preference_type=ACTIVITY_LEAD_HOURS_PREFERENCE,
+    ):
+        lead_hours.update(positive_int_list(preference.value))
+    return sorted(lead_hours, reverse=True)
+
+
+def _effective_activity_lead_hours(
+    target_type: str,
+    target_id: int,
+    default_lead_hours: list[int],
+) -> list[int]:
+    preference = _activity_push_store().get_time_preference(
+        target_type,  # type: ignore[arg-type]
+        target_id,
+        ACTIVITY_PUSH_SUBSCRIPTION_KEY,
+        ACTIVITY_LEAD_HOURS_PREFERENCE,
+    )
+    if preference is None:
+        return default_lead_hours
+    lead_hours = positive_int_list(preference)
+    return lead_hours or default_lead_hours
+
+
+def _activity_reminder_targets_for_lead(lead_hours: int):
+    default_lead_hours = get_activity_config().lead_hours
+    targets = activity_reminder_targets()
+    group_ids = tuple(
+        group_id
+        for group_id in targets.group_ids
+        if lead_hours
+        in _effective_activity_lead_hours("group", group_id, default_lead_hours)
+    )
+    private_user_ids = tuple(
+        user_id
+        for user_id in targets.private_user_ids
+        if lead_hours
+        in _effective_activity_lead_hours("private", user_id, default_lead_hours)
+    )
+    return type(targets)(group_ids=group_ids, private_user_ids=private_user_ids)
 
 
 def register_activity_reminder_jobs(scheduler: Any) -> None:
