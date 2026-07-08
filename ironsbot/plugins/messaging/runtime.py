@@ -1,6 +1,7 @@
 from typing import Any, cast
 
 from nonebot import get_driver, on_message, require
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -14,6 +15,7 @@ from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
     is_private_feature_allowed,
+    is_superuser,
     users_for_feature,
     users_with_superusers,
 )
@@ -26,12 +28,10 @@ from ironsbot.shared.messaging import (
     send_broadcast_message,
 )
 from ironsbot.shared.messaging.push_subscriptions import (
-    BUILTIN_PUSH_OPTIONS,
+    CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
     PushTargetType,
     PushUnsubscribeStore,
-    build_push_subscription_menu,
-    build_schedule_subscription_options,
     group_schedule_key,
     private_schedule_key,
 )
@@ -44,6 +44,7 @@ from ironsbot.shared.promotions import (
     append_fire_manual_ad_for_group,
     append_fire_manual_ad_text,
 )
+from ironsbot.shared.scheduler import remove_jobs_by_prefix
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
     prompt_session_manager,
@@ -56,6 +57,18 @@ from .config import (
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     get_message_config,
+)
+from .push_subscription import (
+    build_messaging_push_subscription_menu_prompt,
+    build_messaging_push_subscription_options,
+)
+from .push_time import (
+    PushTimeOption,
+    build_push_time_menu_prompt,
+    build_push_time_options,
+    daily_time_parts_for_push,
+    normalize_push_time_input,
+    push_time_value_prompt,
 )
 from .runtime_service import (
     build_schedule_job_id,
@@ -71,8 +84,18 @@ PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
 PUSH_SUBSCRIPTION_TARGET_TYPE_KEY = "_message_push_subscription_target_type"
 PUSH_SUBSCRIPTION_VERSION_KEY = "_message_push_subscription_version"
 PUSH_SUBSCRIPTION_NAMESPACE = "message_push_subscription"
+PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
+PUSH_TIME_OPTIONS_KEY = "_message_push_time_options"
+PUSH_TIME_SELECTED_KEY = "_message_push_time_selected"
+PUSH_TIME_SESSION_KEY = "_message_push_time_session"
+PUSH_TIME_TARGET_ID_KEY = "_message_push_time_target_id"
+PUSH_TIME_TARGET_TYPE_KEY = "_message_push_time_target_type"
+PUSH_TIME_VERSION_KEY = "_message_push_time_version"
+PUSH_TIME_NAMESPACE = "message_push_time"
+PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 MESSAGE_PLUGIN_NAME = "message"
-_messaging_runtime_state = {"registered": False}
+MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
+_messaging_runtime_state = {"registered": False, "scheduler": None}
 
 
 def _private_action_allowed(
@@ -126,6 +149,8 @@ async def _match_group_command(event: MessageEvent, state: T_State) -> bool:
 
 
 def _is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
+    if is_superuser(int(event.user_id)):
+        return True
     role = getattr(event.sender, "role", None)
     return role in {"owner", "admin"}
 
@@ -138,15 +163,26 @@ async def _match_push_subscription_command(
         return False
 
     config = get_message_config().push_unsubscribe
+
+    text = event.get_plaintext()
+    if command_text_matches(text, PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS):
+        return True
+    if command_text_matches(text, config.commands):
+        return True
+    return command_text_matches(text, config.restore_commands)
+
+
+async def _match_push_time_command(
+    event: MessageEvent,
+    _state: T_State,
+) -> bool:
+    if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
+        return False
     if isinstance(event, GroupMessageEvent) and not _is_group_push_subscription_manager(
         event
     ):
         return False
-
-    text = event.get_plaintext()
-    if command_text_matches(text, config.commands):
-        return True
-    return command_text_matches(text, config.restore_commands)
+    return command_text_matches(event.get_plaintext(), PUSH_TIME_COMMANDS)
 
 
 def _message_subscription_priority() -> int:
@@ -161,6 +197,12 @@ private_command_matcher = on_message(
 
 push_subscription_matcher = on_message(
     rule=Rule(_match_push_subscription_command) & no_reply(),
+    priority=_message_subscription_priority(),
+    block=True,
+)
+
+push_time_matcher = on_message(
+    rule=Rule(_match_push_time_command) & no_reply(),
     priority=_message_subscription_priority(),
     block=True,
 )
@@ -248,113 +290,46 @@ def _target_type_and_id(event: MessageEvent) -> tuple[PushTargetType, int]:
     return "private", int(event.user_id)
 
 
-def _eligible_target_ids_by_feature(
-    target_type: PushTargetType,
-    features: set[str],
-) -> dict[str, set[int]]:
-    if target_type == "group":
-        return {
-            feature: set(groups_for_feature(feature))
-            for feature in features
-        }
-
-    return {
-        feature: set(users_with_superusers(users_for_feature(feature)))
-        for feature in features
-    }
-
-
-def _builtin_subscription_options(
-    *,
-    target_type: PushTargetType,
-    target_id: int,
-    store: PushUnsubscribeStore,
-) -> list[PushSubscriptionOption]:
-    unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
-    eligible = _eligible_target_ids_by_feature(
-        target_type,
-        {option.feature for option in BUILTIN_PUSH_OPTIONS},
-    )
-    options: list[PushSubscriptionOption] = []
-    for option in BUILTIN_PUSH_OPTIONS:
-        if target_id not in eligible.get(option.feature, set()):
-            continue
-        is_unsubscribed = option.key in unsubscribed
-        options.append(
-            PushSubscriptionOption(
-                key=option.key,
-                label=option.label,
-                feature=option.feature,
-                unsubscribed=is_unsubscribed,
-            )
-        )
-    return options
-
-
-def _schedule_subscription_options(
-    *,
-    target_type: PushTargetType,
-    target_id: int,
-    store: PushUnsubscribeStore,
-) -> list[PushSubscriptionOption]:
-    config = get_message_config()
-    tasks = (
-        config.group_schedules
-        if target_type == "group"
-        else config.private_schedules
-    )
-    features = {task.feature for task in tasks if task.enabled}
-    return build_schedule_subscription_options(
-        target_type=target_type,
-        target_id=target_id,
-        tasks=tasks,
-        eligible_target_ids_for_feature=_eligible_target_ids_by_feature(
-            target_type,
-            features,
-        ),
-        store=store,
-    )
-
 
 def _push_subscription_options(
     target_type: PushTargetType,
     target_id: int,
 ) -> list[PushSubscriptionOption]:
-    store = _push_subscription_store()
-    from ironsbot.services.bilibili.state import bili_push_subscription_options
-
-    return [
-        *bili_push_subscription_options(
-            target_type=target_type,
-            target_id=target_id,
-            store=store,
-        ),
-        *_builtin_subscription_options(
-            target_type=target_type,
-            target_id=target_id,
-            store=store,
-        ),
-        *_schedule_subscription_options(
-            target_type=target_type,
-            target_id=target_id,
-            store=store,
-        ),
-    ]
-
-
-def _push_subscription_menu_title(target_type: PushTargetType) -> str:
-    scope = "本群" if target_type == "group" else "私聊"
-    return f"请选择要切换的{scope}推送订阅："
+    return build_messaging_push_subscription_options(
+        target_type,
+        target_id,
+        store=_push_subscription_store(),
+    )
 
 
 def _push_subscription_menu_prompt(
     target_type: PushTargetType,
     options: list[PushSubscriptionOption],
+    *,
+    read_only: bool = False,
 ) -> str:
-    return build_push_subscription_menu(
-        title=_push_subscription_menu_title(target_type),
-        options=options,
+    return build_messaging_push_subscription_menu_prompt(
+        target_type,
+        options,
+        read_only=read_only,
     )
+
+def _push_time_options(
+    target_type: PushTargetType,
+    target_id: int,
+) -> list[PushTimeOption]:
+    return build_push_time_options(
+        target_type,
+        target_id,
+        store=_push_subscription_store(),
+    )
+
+
+def _push_time_menu_prompt(
+    target_type: PushTargetType,
+    options: list[PushTimeOption],
+) -> str:
+    return build_push_time_menu_prompt(target_type, options)
 
 
 def _push_subscription_selection_rule(
@@ -364,7 +339,7 @@ def _push_subscription_selection_rule(
 ) -> Rule:
     event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
 
-    def _check(next_event: MessageEvent) -> bool:
+    def _check(next_event: Event) -> bool:
         if not isinstance(next_event, event_type):
             return False
         if (
@@ -380,6 +355,54 @@ def _push_subscription_selection_rule(
         if getattr(next_event, "reply", None) is not None:
             return False
         return next_event.get_plaintext().strip().isdigit()
+
+    return prompt_session_manager.make_rule(session_id, version, _check)
+
+
+def _push_time_selection_rule(
+    session_id: str,
+    version: int,
+    target_type: PushTargetType,
+) -> Rule:
+    event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
+
+    def _check(next_event: Event) -> bool:
+        if not isinstance(next_event, event_type):
+            return False
+        if (
+            event_conversation_session_id(PUSH_TIME_NAMESPACE, next_event)
+            != session_id
+        ):
+            return False
+        if next_event.user_id == next_event.self_id:
+            return False
+        if getattr(next_event, "reply", None) is not None:
+            return False
+        return next_event.get_plaintext().strip().isdigit()
+
+    return prompt_session_manager.make_rule(session_id, version, _check)
+
+
+def _push_time_input_rule(
+    session_id: str,
+    version: int,
+    target_type: PushTargetType,
+) -> Rule:
+    event_type = GroupMessageEvent if target_type == "group" else PrivateMessageEvent
+
+    def _check(next_event: Event) -> bool:
+        if not isinstance(next_event, event_type):
+            return False
+        if (
+            event_conversation_session_id(PUSH_TIME_NAMESPACE, next_event)
+            != session_id
+        ):
+            return False
+        if next_event.user_id == next_event.self_id:
+            return False
+        if getattr(next_event, "reply", None) is not None:
+            return False
+        return bool(next_event.get_plaintext().strip())
 
     return prompt_session_manager.make_rule(session_id, version, _check)
 
@@ -411,6 +434,69 @@ async def _reject_push_subscription_selection(
     )
 
 
+async def _reject_push_time_selection(
+    matcher: Matcher,
+    state: T_State,
+    prompt: str,
+) -> None:
+    session_id = state.get(PUSH_TIME_SESSION_KEY)
+    version = state.get(PUSH_TIME_VERSION_KEY)
+    target_type = state.get(PUSH_TIME_TARGET_TYPE_KEY)
+    if (
+        not isinstance(session_id, str)
+        or not isinstance(version, int)
+        or target_type not in {"private", "group"}
+    ):
+        await matcher.finish(prompt)
+    target_type = cast("PushTargetType", target_type)
+
+    await reject_with_rule(
+        matcher,
+        _push_time_selection_rule(session_id, version, target_type),
+        prompt=prompt,
+    )
+
+
+async def _reject_push_time_input(
+    matcher: Matcher,
+    state: T_State,
+    prompt: str,
+) -> None:
+    session_id = state.get(PUSH_TIME_SESSION_KEY)
+    version = state.get(PUSH_TIME_VERSION_KEY)
+    target_type = state.get(PUSH_TIME_TARGET_TYPE_KEY)
+    if (
+        not isinstance(session_id, str)
+        or not isinstance(version, int)
+        or target_type not in {"private", "group"}
+    ):
+        await matcher.finish(prompt)
+    target_type = cast("PushTargetType", target_type)
+
+    await reject_with_rule(
+        matcher,
+        _push_time_input_rule(session_id, version, target_type),
+        prompt=prompt,
+    )
+
+
+def _push_time_value_prompt(option: PushTimeOption) -> str:
+    return push_time_value_prompt(option)
+
+
+def _normalize_push_time_input(option: PushTimeOption, text: str) -> str | None:
+    return normalize_push_time_input(option, text)
+
+async def _refresh_push_time_jobs(option: PushTimeOption) -> None:
+    if option.preference_type == CRON_TIME_PREFERENCE:
+        await refresh_message_schedules()
+        return
+
+    from ironsbot.plugins.activity.runtime import schedule_activity_reminders
+
+    await schedule_activity_reminders()
+
+
 @push_subscription_matcher.handle()
 async def handle_push_subscription_menu(
     matcher: Matcher,
@@ -418,6 +504,9 @@ async def handle_push_subscription_menu(
     state: T_State,
 ) -> None:
     target_type, target_id = _target_type_and_id(event)
+    read_only = isinstance(event, GroupMessageEvent) and not (
+        _is_group_push_subscription_manager(event)
+    )
     options = _push_subscription_options(
         target_type,
         target_id,
@@ -440,7 +529,11 @@ async def handle_push_subscription_menu(
         matcher,
         handlers=[handle_push_subscription_select],
         rule=_push_subscription_selection_rule(session_id, version, target_type),
-        prompt=_push_subscription_menu_prompt(target_type, options),
+        prompt=_push_subscription_menu_prompt(
+            target_type,
+            options,
+            read_only=read_only,
+        ),
     )
 
 
@@ -472,6 +565,16 @@ async def handle_push_subscription_select(
         await matcher.finish()
     target_type = cast("PushTargetType", target_type)
 
+    if target_type == "group" and (
+        not isinstance(event, GroupMessageEvent)
+        or not _is_group_push_subscription_manager(event)
+    ):
+        prompt = (
+            "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
+            f"{_push_subscription_menu_prompt(target_type, options, read_only=True)}"
+        )
+        await _reject_push_subscription_selection(matcher, state, prompt)
+
     store = _push_subscription_store()
     if store.is_target_unsubscribed(target_type, target_id, option.key):
         store.restore_target(target_type, target_id, option.key)
@@ -489,6 +592,120 @@ async def handle_push_subscription_select(
     await _reject_push_subscription_selection(matcher, state, prompt)
 
 
+@push_time_matcher.handle()
+async def handle_push_time_menu(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    target_type, target_id = _target_type_and_id(event)
+    options = _push_time_options(target_type, target_id)
+    if not options:
+        await matcher.finish("当前没有可修改时间的推送。")
+
+    state[PUSH_TIME_OPTIONS_KEY] = options
+    session_id = event_conversation_session_id(PUSH_TIME_NAMESPACE, event)
+    version = prompt_session_manager.acquire(session_id)
+    state[PUSH_TIME_SESSION_KEY] = session_id
+    state[PUSH_TIME_TARGET_ID_KEY] = target_id
+    state[PUSH_TIME_TARGET_TYPE_KEY] = target_type
+    state[PUSH_TIME_VERSION_KEY] = version
+
+    await enter_prompt_loop(
+        matcher,
+        handlers=[handle_push_time_select],
+        rule=_push_time_selection_rule(session_id, version, target_type),
+        prompt=_push_time_menu_prompt(target_type, options),
+    )
+
+
+async def handle_push_time_select(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    raw_options = state.get(PUSH_TIME_OPTIONS_KEY)
+    if not isinstance(raw_options, list):
+        await matcher.finish()
+    options: list[PushTimeOption] = raw_options
+
+    target_type = state.get(PUSH_TIME_TARGET_TYPE_KEY)
+    target_id = state.get(PUSH_TIME_TARGET_ID_KEY)
+    if target_type not in {"private", "group"} or not isinstance(target_id, int):
+        await matcher.finish()
+    target_type = cast("PushTargetType", target_type)
+
+    selected = state.get(PUSH_TIME_SELECTED_KEY)
+    text = event.get_plaintext().strip()
+    if selected is None:
+        if text == "0":
+            await matcher.finish("已退出。")
+        index = int(text)
+        if index < 1 or index > len(options):
+            await _reject_push_time_selection(
+                matcher,
+                state,
+                "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
+            )
+        option = options[index - 1]
+        state[PUSH_TIME_SELECTED_KEY] = index - 1
+        await _reject_push_time_input(
+            matcher,
+            state,
+            _push_time_value_prompt(option),
+        )
+        return
+
+    selected_index = int(selected)
+    if selected_index < 0 or selected_index >= len(options):
+        state.pop(PUSH_TIME_SELECTED_KEY, None)
+        await _reject_push_time_selection(
+            matcher,
+            state,
+            _push_time_menu_prompt(target_type, options),
+        )
+
+    if text == "0":
+        await matcher.finish("已退出。")
+
+    option = options[selected_index]
+    store = _push_subscription_store()
+    normalized: str | None
+    try:
+        normalized = _normalize_push_time_input(option, text)
+    except ValueError as e:
+        await _reject_push_time_input(matcher, state, str(e))
+        return
+
+    if normalized is None:
+        store.clear_time_preference(
+            target_type,
+            target_id,
+            option.key,
+            option.preference_type,
+        )
+        result_message = f"已恢复默认：{option.label}。"
+    else:
+        store.set_time_preference(
+            target_type,
+            target_id,
+            option.key,
+            option.preference_type,
+            normalized,
+        )
+        result_message = f"已设置：{option.label} -> {normalized}。"
+
+    await _refresh_push_time_jobs(option)
+    state.pop(PUSH_TIME_SELECTED_KEY, None)
+    refreshed_options = _push_time_options(target_type, target_id)
+    state[PUSH_TIME_OPTIONS_KEY] = refreshed_options
+    prompt = (
+        f"{result_message}\n\n"
+        f"{_push_time_menu_prompt(target_type, refreshed_options)}"
+    )
+    await _reject_push_time_selection(matcher, state, prompt)
+
+
 @group_command_matcher.handle()
 async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None:
     await dispatch_plugin(
@@ -503,8 +720,22 @@ async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None
 async def _send_private_schedule(
     task: PrivateScheduledMessageAction,
     index: int = 1,
+    target_user_ids: tuple[int, ...] | None = None,
 ) -> None:
     private_user_ids = users_with_superusers(users_for_feature(task.feature))
+    if target_user_ids is None:
+        override_user_ids = _cron_override_target_ids(
+            "private",
+            private_schedule_key(index, task),
+        )
+        private_user_ids = [
+            user_id for user_id in private_user_ids if user_id not in override_user_ids
+        ]
+    else:
+        allowed_user_ids = set(private_user_ids)
+        private_user_ids = [
+            user_id for user_id in target_user_ids if user_id in allowed_user_ids
+        ]
 
     await send_broadcast_message(
         append_fire_manual_ad_text(task.message),
@@ -517,15 +748,142 @@ async def _send_private_schedule(
 async def _send_group_schedule(
     task: GroupScheduledMessageAction,
     index: int = 1,
+    target_group_ids: tuple[int, ...] | None = None,
 ) -> None:
+    group_ids = groups_for_feature(task.feature)
+    if target_group_ids is None:
+        override_group_ids = _cron_override_target_ids(
+            "group",
+            group_schedule_key(index, task),
+        )
+        group_ids = [
+            group_id for group_id in group_ids if group_id not in override_group_ids
+        ]
+    else:
+        allowed_group_ids = set(group_ids)
+        group_ids = [
+            group_id for group_id in target_group_ids if group_id in allowed_group_ids
+        ]
+
     await send_broadcast_message(
         task.message,
-        group_ids=groups_for_feature(task.feature),
+        group_ids=group_ids,
         group_at_user_ids=task.at_user_ids,
         action_name=f"group scheduled message {task.id or '<unnamed>'}",
         message_limiter=append_fire_manual_ad_for_group,
         subscription_key=group_schedule_key(index, task),
     )
+
+
+def _cron_override_target_ids(
+    target_type: PushTargetType,
+    subscription_key: str,
+) -> set[int]:
+    store = _push_subscription_store()
+    return {
+        preference.target_id
+        for preference in store.all_time_preferences(
+            target_type=target_type,
+            subscription_key=subscription_key,
+            preference_type=CRON_TIME_PREFERENCE,
+        )
+    }
+
+
+def _schedule_override_job_id(
+    prefix: str,
+    index: int,
+    task_id: str,
+    target_id: int,
+) -> str:
+    return build_schedule_job_id(prefix, index, f"{task_id}_override_{target_id}")
+
+
+def _schedule_override_trigger_kwargs(
+    task: PrivateScheduledMessageAction | GroupScheduledMessageAction,
+    value: str,
+) -> dict[str, int | str]:
+    hour, minute = daily_time_parts_for_push(value)
+    trigger_kwargs = build_schedule_trigger_kwargs(task)
+    trigger_kwargs["hour"] = hour
+    trigger_kwargs["minute"] = minute
+    return trigger_kwargs
+
+
+def _register_private_schedule_overrides(
+    scheduler: Any,
+    index: int,
+    task: PrivateScheduledMessageAction,
+) -> None:
+    key = private_schedule_key(index, task)
+    eligible_user_ids = set(users_with_superusers(users_for_feature(task.feature)))
+    store = _push_subscription_store()
+    for preference in store.all_time_preferences(
+        target_type="private",
+        subscription_key=key,
+        preference_type=CRON_TIME_PREFERENCE,
+    ):
+        if preference.target_id not in eligible_user_ids:
+            continue
+        try:
+            trigger_kwargs = _schedule_override_trigger_kwargs(task, preference.value)
+        except ValueError:
+            continue
+        scheduler.add_job(
+            _send_private_schedule,
+            "cron",
+            kwargs={
+                "task": task,
+                "index": index,
+                "target_user_ids": (preference.target_id,),
+            },
+            id=_schedule_override_job_id(
+                "private_schedule",
+                index,
+                key,
+                preference.target_id,
+            ),
+            replace_existing=True,
+            **trigger_kwargs,
+        )
+
+
+def _register_group_schedule_overrides(
+    scheduler: Any,
+    index: int,
+    task: GroupScheduledMessageAction,
+) -> None:
+    key = group_schedule_key(index, task)
+    eligible_group_ids = set(groups_for_feature(task.feature))
+    store = _push_subscription_store()
+    for preference in store.all_time_preferences(
+        target_type="group",
+        subscription_key=key,
+        preference_type=CRON_TIME_PREFERENCE,
+    ):
+        if preference.target_id not in eligible_group_ids:
+            continue
+        try:
+            trigger_kwargs = _schedule_override_trigger_kwargs(task, preference.value)
+        except ValueError:
+            continue
+        scheduler.add_job(
+            _send_group_schedule,
+            "cron",
+            kwargs={
+                "task": task,
+                "index": index,
+                "target_group_ids": (preference.target_id,),
+            },
+            id=_schedule_override_job_id(
+                "group_schedule",
+                index,
+                key,
+                preference.target_id,
+            ),
+            replace_existing=True,
+            **trigger_kwargs,
+        )
 
 
 def _register_private_schedule(
@@ -544,6 +902,7 @@ def _register_private_schedule(
         replace_existing=True,
         **build_schedule_trigger_kwargs(task),
     )
+    _register_private_schedule_overrides(scheduler, index, task)
 
 
 def _register_group_schedule(
@@ -562,9 +921,11 @@ def _register_group_schedule(
         replace_existing=True,
         **build_schedule_trigger_kwargs(task),
     )
+    _register_group_schedule_overrides(scheduler, index, task)
 
 
 async def register_message_schedules(scheduler: Any) -> None:
+    _clear_message_schedule_jobs(scheduler)
     config = get_message_config()
     for index, task in enumerate(config.private_schedules, start=1):
         _register_private_schedule(scheduler, index, task)
@@ -573,9 +934,23 @@ async def register_message_schedules(scheduler: Any) -> None:
         _register_group_schedule(scheduler, index, task)
 
 
+def _clear_message_schedule_jobs(scheduler: Any) -> None:
+    remove_jobs_by_prefix(scheduler, MESSAGE_SCHEDULE_JOB_PREFIX)
+
+
+async def refresh_message_schedules() -> None:
+    scheduler = _messaging_runtime_state.get("scheduler")
+    if scheduler is None:
+        return
+    await register_message_schedules(scheduler)
+
+
 def _setup_messaging_runtime(driver: Any, scheduler: Any) -> None:
     if _messaging_runtime_state["registered"]:
+        _messaging_runtime_state["scheduler"] = scheduler
         return
+
+    _messaging_runtime_state["scheduler"] = scheduler
 
     @driver.on_startup
     async def _register_message_schedules_on_startup() -> None:

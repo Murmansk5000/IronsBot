@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 
 import nonebot
@@ -11,6 +12,11 @@ except ValueError:
 
 from ironsbot.plugins import activity
 from ironsbot.plugins.activity import runtime as activity_runtime
+from ironsbot.services.activity.delivery import ActivityReminderTargets
+from ironsbot.shared.messaging.push_subscriptions import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
+    PushUnsubscribeStore,
+)
 
 
 class FakeDriver:
@@ -105,3 +111,52 @@ def test_load_activity_rows_resolves_session_factory_at_runtime(
 
     assert activity._load_activity_rows() == [{"id": 1}]
     assert calls == [(session_factory, activity.SEERAPI_DB_NAME, False)]
+
+
+def test_activity_lead_hour_overrides_filter_targets(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+    store.set_time_preference(
+        "group",
+        1001,
+        activity_runtime.ACTIVITY_PUSH_SUBSCRIPTION_KEY,
+        ACTIVITY_LEAD_HOURS_PREFERENCE,
+        "24,3,1",
+    )
+    store.set_time_preference(
+        "private",
+        2001,
+        activity_runtime.ACTIVITY_PUSH_SUBSCRIPTION_KEY,
+        ACTIVITY_LEAD_HOURS_PREFERENCE,
+        "3",
+    )
+
+    monkeypatch.setattr(activity_runtime, "_activity_push_store", lambda: store)
+    monkeypatch.setattr(
+        activity_runtime,
+        "get_activity_config",
+        lambda: SimpleNamespace(lead_hours=[11, 1]),
+    )
+    monkeypatch.setattr(
+        activity_runtime,
+        "activity_reminder_targets",
+        lambda: ActivityReminderTargets(
+            group_ids=(1001, 1002),
+            private_user_ids=(2001,),
+        ),
+    )
+
+    assert activity_runtime._configured_activity_lead_hours([11, 1]) == [
+        24,
+        11,
+        3,
+        1,
+    ]
+    assert activity_runtime._activity_reminder_targets_for_lead(11) == (
+        ActivityReminderTargets(group_ids=(1002,), private_user_ids=())
+    )
+    assert activity_runtime._activity_reminder_targets_for_lead(3) == (
+        ActivityReminderTargets(group_ids=(1001,), private_user_ids=(2001,))
+    )

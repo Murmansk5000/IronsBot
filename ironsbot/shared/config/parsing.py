@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -115,7 +115,7 @@ def int_list(value: object) -> list[int]:
     else:
         return []
 
-    return unique_items(int(item) for item in raw_items)
+    return unique_items(int(cast("Any", item)) for item in raw_items)
 
 
 def positive_int_list(value: object) -> list[int]:
