@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig
+from ironsbot.services.seer import local_rank_formatting
 from ironsbot.services.seer.rank import (
     PlayerRankSummary,
     RankLookupResult,
@@ -51,15 +52,6 @@ _LOCAL_METRICS: tuple[_MetricSpec, ...] = (
 )
 
 _CACHE_LOCK = asyncio.Lock()
-PERCENT_FINE_THRESHOLD = 10
-_PEAK_RANK_NAMES = {
-    0: "学徒",
-    1: "猛将",
-    2: "天骄",
-    3: "王者",
-    4: "圣皇",
-    5: "宇宙圣皇",
-}
 
 
 def get_local_rank_config() -> LocalRankConfig:
@@ -137,9 +129,7 @@ def _rate_metric(
 
 
 def _format_peak_rating_score(value: int) -> str:
-    rank, star = divmod(value, 100000)
-    name = _PEAK_RANK_NAMES.get(rank, f"段位{rank}")
-    return f"{name}{star}星"
+    return local_rank_formatting.format_peak_rating_score(value)
 
 
 def _format_metric_display(
@@ -147,13 +137,7 @@ def _format_metric_display(
     value: int,
     display: object | None = None,
 ) -> str:
-    if display not in (None, ""):
-        return str(display)
-    if metric_key in {"peak_standard", "peak_wild"}:
-        return _format_peak_rating_score(value)
-    if metric_key == "peak_expert":
-        return f"{value}分"
-    return str(value)
+    return local_rank_formatting.format_metric_display(metric_key, value, display)
 
 
 def _collect_metrics(  # noqa: PLR0913
@@ -406,8 +390,7 @@ def _write_player_metrics(  # noqa: PLR0913
 
 
 def _format_percent(value: float) -> str:
-    precision = 2 if value < PERCENT_FINE_THRESHOLD else 1
-    return f"{value:.{precision}f}".rstrip("0").rstrip(".")
+    return local_rank_formatting.format_percent(value)
 
 
 def _format_local_rank(  # noqa: PLR0913
