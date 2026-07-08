@@ -2,18 +2,27 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Any
 
+from ironsbot.services.seer.rank_list_formatting import (
+    batch_raw_start,
+    format_rank_intervals,
+    format_rank_window,
+    merge_rank_intervals,
+    now_text,
+    page_cache_rank_interval,
+)
+from ironsbot.services.seer.rank_list_formatting import (
+    timestamp_text as _timestamp_text,
+)
 from ironsbot.services.seer.rank_list_models import (
     BATCH_CACHE_PREFIXES,
     GLOBAL_RANKS,
     LOCAL_RANKS,
-    MAX_CACHE_INTERVALS_SHOWN,
     RANK_LIST_MAX_SIZE,
     RANK_LIST_SIZE,
     RANK_PAGE_CACHE_REFRESH_PREFIXES,
@@ -32,14 +41,8 @@ def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(f"/{command}" for command in commands)
 
 
-def now_text() -> str:
-    now = datetime.now(timezone(timedelta(hours=8)))
-    return now.strftime("%Y-%m-%d %H:%M:%S")
-
-
 def timestamp_text(timestamp: float) -> str:
-    value = datetime.fromtimestamp(timestamp, timezone(timedelta(hours=8)))
-    return value.strftime("%Y-%m-%d %H:%M:%S")
+    return _timestamp_text(timestamp)
 
 
 def format_global_rank_line(
@@ -150,63 +153,6 @@ def _format_score_gap_proof(spec: GlobalRankSpec, result: Any) -> list[str]:
         if getattr(gap, "truncated", False):
             lines.append("该分数段可能跨页，已显示当前页内可确认部分。")
     return lines
-
-
-def format_rank_window(
-    start_rank: int,
-    actual_count: int,
-    requested_count: int,
-) -> str:
-    if start_rank == 1 and requested_count == RANK_LIST_SIZE:
-        return ""
-    if actual_count <= 1 or requested_count <= 1:
-        return f"第 {start_rank} 名"
-    return f"第 {start_rank}-{start_rank + actual_count - 1} 名"
-
-
-def batch_raw_start(spec: GlobalRankSpec, start_rank: int) -> int:
-    return max(spec.start, start_rank - 1 - spec.rank_offset)
-
-
-def page_cache_rank_interval(
-    page: Any,
-    spec: GlobalRankSpec,
-) -> tuple[int, int] | None:
-    expected_count = int(getattr(page, "expected_count", page.item_count))
-    if expected_count <= 0:
-        return None
-
-    start_rank = page.start_index + 1 + spec.rank_offset
-    end_rank = page.start_index + expected_count + spec.rank_offset
-    return max(1, start_rank), max(1, end_rank)
-
-
-def merge_rank_intervals(
-    intervals: Sequence[tuple[int, int]],
-) -> list[tuple[int, int]]:
-    merged: list[tuple[int, int]] = []
-    for start, end in sorted(intervals):
-        if not merged or start > merged[-1][1] + 1:
-            merged.append((start, end))
-            continue
-
-        previous_start, previous_end = merged[-1]
-        merged[-1] = (previous_start, max(previous_end, end))
-    return merged
-
-
-def format_rank_intervals(intervals: Sequence[tuple[int, int]]) -> str:
-    if not intervals:
-        return "无"
-
-    shown = intervals[:MAX_CACHE_INTERVALS_SHOWN]
-    text = "、".join(
-        str(start) if start == end else f"{start}-{end}"
-        for start, end in shown
-    )
-    if len(intervals) > len(shown):
-        text += f"、...另 {len(intervals) - len(shown)} 段"
-    return text
 
 
 def build_rank_page_cache_status_message(
