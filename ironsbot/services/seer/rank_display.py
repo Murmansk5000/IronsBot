@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.config import get_app_config
+from ironsbot.shared.sqlite import connect_sqlite
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -138,8 +139,7 @@ def _stored_group_limit(group_id: int | None) -> int | None:
 
 
 def _connect(path: Path) -> sqlite3.Connection:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = connect_sqlite(path)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS group_rank_display_limits (

@@ -4,7 +4,12 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ironsbot.shared.sqlite import connect_sqlite
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,10 +112,7 @@ def clear_team_audit_pending_reminder(
 
 
 def _connect(cache_path: str | Path) -> sqlite3.Connection:
-    path = Path(cache_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
+    conn = connect_sqlite(cache_path, row_factory=sqlite3.Row)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (

@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from ironsbot.config import get_app_config
+from ironsbot.shared.sqlite import connect_sqlite, resolve_sqlite_path
 
 from .planning import reminder_key
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Iterable
+    from pathlib import Path
 
     from .models import ActivityReminder
 
@@ -21,14 +22,11 @@ LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 def _cache_path(cache_path: Path | None = None) -> Path:
     path = cache_path or get_app_config().activity.cache_path
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+    return resolve_sqlite_path(path)
 
 
 def _connect_cache(cache_path: Path | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(_cache_path(cache_path))
+    conn = connect_sqlite(_cache_path(cache_path))
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS sent_activity_reminders (
