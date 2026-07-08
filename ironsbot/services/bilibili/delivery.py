@@ -18,10 +18,17 @@ BILI_PUSH_ADMIN_HINT = (
 
 
 class HasDynamicPushTargets(Protocol):
-    full_group_ids: list[int]
-    link_group_ids: list[int]
-    full_user_ids: list[int]
-    link_user_ids: list[int]
+    @property
+    def full_group_ids(self) -> list[int]: ...
+
+    @property
+    def link_group_ids(self) -> list[int]: ...
+
+    @property
+    def full_user_ids(self) -> list[int]: ...
+
+    @property
+    def link_user_ids(self) -> list[int]: ...
 
 
 @dataclass(frozen=True, slots=True)

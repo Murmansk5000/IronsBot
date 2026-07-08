@@ -1,3 +1,5 @@
+from typing import Any
+
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -39,11 +41,14 @@ from ironsbot.services.bilibili.preferences import (
     push_mode_label,
 )
 from ironsbot.services.bilibili.state import (
+    account_display_label,
+    account_nickname,
     account_uid,
     bili_accounts,
     mode_for_target_account,
     push_preference_store,
     query_uids_for_event,
+    resolve_account_reference,
     target_rule,
 )
 from ironsbot.shared.features import is_event_feature_allowed
@@ -53,7 +58,10 @@ from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
+from ironsbot.shared.messaging.push_subscriptions import (
+    PushTargetType,
+    PushUnsubscribeStore,
+)
 from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -125,7 +133,7 @@ def _parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
             return ("", "")
 
         parts = rest.split(maxsplit=1)
-        account = parts[0].strip().lower()
+        account = parts[0].strip()
         mode_text = parts[1].strip() if len(parts) > 1 else ""
         return (account, mode_text)
 
@@ -202,7 +210,7 @@ register_plugin(BiliMonitorPlugin())
 
 
 async def _wait_dynamic_select(
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
 ) -> None:
     await enter_event_reply_conversation(
@@ -339,7 +347,7 @@ def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
     return False
 
 
-def _push_mode_target(event: MessageEvent) -> tuple[str, int]:
+def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:
     if isinstance(event, GroupMessageEvent):
         return "group", int(event.group_id)
     return "private", int(event.user_id)
@@ -347,10 +355,10 @@ def _push_mode_target(event: MessageEvent) -> tuple[str, int]:
 
 def _bili_push_mode_usage() -> str:
     return (
-        "用法：B站推送模式 <账号别名> <内容|链接|默认>\n"
-        "例：B站推送模式 seer 链接\n"
-        "例：B站推送模式 seer 内容\n"
-        "例：B站推送模式 seer 默认"
+        "用法：B站推送模式 <账号昵称> <内容|链接|默认>\n"
+        "例：B站推送模式 赛尔号官方 链接\n"
+        "例：B站推送模式 火火 内容\n"
+        "例：B站推送模式 火火 默认"
     )
 
 
@@ -360,7 +368,7 @@ def _push_unsubscribe_store() -> PushUnsubscribeStore:
 
 def _format_account_mode_line(
     *,
-    target_type: str,
+    target_type: PushTargetType,
     target_id: int,
     account: str,
     uid: int,
@@ -369,7 +377,7 @@ def _format_account_mode_line(
     mode = mode_for_target_account(target_type, target_id, account)
     mode_text = push_mode_label(mode)
     td_text = "，已 TD" if bili_push_subscription_key(uid) in unsubscribed_keys else ""
-    return f"- {account}（{uid}）：{mode_text}{td_text}"
+    return f"- {account_display_label(account, uid=uid)}：{mode_text}{td_text}"
 
 
 async def _handle_bili_accounts(
@@ -382,11 +390,19 @@ async def _handle_bili_accounts(
     accounts = bili_accounts()
 
     lines = ["📺【B站账号】"]
-    account_lines = "、".join(f"{name}={uid}" for name, uid in accounts.items())
+    account_lines = "、".join(
+        (
+            f"{nickname}（{uid}）"
+            if (nickname := account_nickname(name))
+            else f"{name}={uid}"
+        )
+        for name, uid in accounts.items()
+    )
     lines.append("账号库：" + account_lines)
     if rule is None:
         lines.append("当前会话未开启 B站推送。")
         await finish_event_reply(matcher, event, "\n".join(lines))
+        return
 
     unsubscribed_keys = _push_unsubscribe_store().target_unsubscribed_keys(
         target_type,
@@ -404,7 +420,7 @@ async def _handle_bili_accounts(
                 unsubscribed_keys=unsubscribed_keys,
             )
         )
-    lines.append("群主/管理员可发送：B站推送模式 <账号别名> <内容|链接|默认>")
+    lines.append("群主/管理员可发送：B站推送模式 <账号昵称> <内容|链接|默认>")
     await finish_event_reply(matcher, event, "\n".join(lines))
 
 
@@ -417,19 +433,23 @@ async def _handle_bili_push_mode(
 
     if not _is_bili_push_mode_manager(event):
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
+        return
 
-    account = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip().lower()
+    account_ref = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip()
     raw_mode = str(state.get(BILI_PUSH_MODE_RAW_KEY, "") or "")
-    if not account or not raw_mode.strip():
+    if not account_ref or not raw_mode.strip():
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
+        return
 
-    uid = account_uid(account)
-    if uid is None:
+    account = resolve_account_reference(account_ref)
+    uid = account_uid(account) if account is not None else None
+    if account is None or uid is None:
         await finish_event_reply(
             matcher,
             event,
-            f"❌ 未知 B站账号别名：{account}\n可发送“B站账号”查看账号库。",
+            f"❌ 未知 B站账号：{account_ref}\n可发送“B站账号”查看账号库。",
         )
+        return
 
     target_type, target_id = _push_mode_target(event)
     rule = target_rule(target_type, target_id)
@@ -438,15 +458,18 @@ async def _handle_bili_push_mode(
         await finish_event_reply(
             matcher,
             event,
-            f"❌ 当前会话没有订阅 B站账号：{account}。",
+            f"❌ 当前会话没有订阅 B站账号：{account_ref}。",
         )
+        return
     if rule is None or account not in rule.accounts:
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
+        return
 
     try:
         mode = normalize_push_mode_text(raw_mode)
     except ValueError:
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
+        return
 
     store = push_preference_store()
     if mode is None:
@@ -456,10 +479,12 @@ async def _handle_bili_push_mode(
 
     effective_mode = mode_for_target_account(target_type, target_id, account)
     scope = "当前群" if target_type == "group" else "当前私聊"
+    account_text = account_display_label(account, uid=uid)
     await finish_event_reply(
         matcher,
         event,
-        f"已设置{scope} B站账号 {account}（{uid}）推送模式：{push_mode_label(mode)}。\n"
+        f"已设置{scope} B站账号 {account_text}推送模式："
+        f"{push_mode_label(mode)}。\n"
         f"当前生效模式：{push_mode_label(effective_mode)}。",
     )
 
