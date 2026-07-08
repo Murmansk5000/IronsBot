@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,21 @@ def connect_sqlite(
     return conn
 
 
+@contextmanager
+def open_sqlite(
+    path: str | Path,
+    *,
+    row_factory: RowFactory | None = None,
+    pragmas: bool = True,
+) -> Iterator[sqlite3.Connection]:
+    conn = connect_sqlite(path, row_factory=row_factory, pragmas=pragmas)
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def sqlite_table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     table_sql = quote_sqlite_identifier(table_name)
     return {
@@ -67,6 +83,7 @@ def ensure_sqlite_column(
 __all__ = [
     "connect_sqlite",
     "ensure_sqlite_column",
+    "open_sqlite",
     "quote_sqlite_identifier",
     "resolve_sqlite_path",
     "sqlite_table_columns",

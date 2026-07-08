@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.shared.sqlite import connect_sqlite
+from ironsbot.shared.sqlite import open_sqlite
 
 if TYPE_CHECKING:
     import sqlite3
+    from collections.abc import Iterator
 
     from ironsbot.config.models.bilibili import BiliPushMode
     from ironsbot.shared.messaging.push_subscriptions import PushTargetType
@@ -96,7 +98,6 @@ class BiliPushPreferenceStore:
                 "VALUES (?, ?, ?, ?, ?)",
                 (target_type, int(target_id), int(uid), mode, now),
             )
-            con.commit()
 
     def clear_mode(
         self,
@@ -110,26 +111,25 @@ class BiliPushPreferenceStore:
                 "WHERE target_type = ? AND target_id = ? AND uid = ?",
                 (target_type, int(target_id), int(uid)),
             )
-            con.commit()
 
-    def _connect(self) -> sqlite3.Connection:
-        con = connect_sqlite(self.path)
-        con.execute(
-            "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
-            "target_type TEXT NOT NULL, "
-            "target_id INTEGER NOT NULL, "
-            "uid INTEGER NOT NULL, "
-            "mode TEXT NOT NULL, "
-            "updated_at TEXT NOT NULL, "
-            "PRIMARY KEY (target_type, target_id, uid)"
-            ")"
-        )
-        con.execute(
-            "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
-            "ON bili_push_preferences (uid, target_type, target_id)"
-        )
-        con.commit()
-        return con
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        with open_sqlite(self.path) as con:
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
+                "target_type TEXT NOT NULL, "
+                "target_id INTEGER NOT NULL, "
+                "uid INTEGER NOT NULL, "
+                "mode TEXT NOT NULL, "
+                "updated_at TEXT NOT NULL, "
+                "PRIMARY KEY (target_type, target_id, uid)"
+                ")"
+            )
+            con.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
+                "ON bili_push_preferences (uid, target_type, target_id)"
+            )
+            yield con
 
 
 __all__ = [

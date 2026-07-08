@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ from pytest import MonkeyPatch
 from ironsbot.shared.sqlite import (
     connect_sqlite,
     ensure_sqlite_column,
+    open_sqlite,
     quote_sqlite_identifier,
     resolve_sqlite_path,
     sqlite_table_columns,
@@ -41,6 +43,16 @@ def test_connect_sqlite_applies_default_pragmas(tmp_path: Path) -> None:
     assert str(journal_mode[0]).lower() == "wal"
     assert synchronous is not None
     assert int(synchronous[0]) == 1
+
+
+def test_open_sqlite_closes_connection(tmp_path: Path) -> None:
+    path = tmp_path / "cache.sqlite"
+
+    with open_sqlite(path) as conn:
+        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        conn.execute("SELECT 1")
 
 
 def test_ensure_sqlite_column_adds_missing_column_once(tmp_path: Path) -> None:
