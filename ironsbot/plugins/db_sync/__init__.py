@@ -28,6 +28,7 @@ from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
+from . import formatting as sync_formatting
 from .github_actions import WorkflowRunResult, trigger_and_wait_workflow
 from .manager import db_manager
 
@@ -711,61 +712,25 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
 
 
 def _format_remote_build_failures(failed_names: list[str]) -> str:
-    lines: list[str] = []
-    for name in failed_names:
-        result = _remote_build_results.get(name)
-        if result is None:
-            continue
-        lines.append(f"远程构建失败：{name}（{result.message}）")
-        if result.html_url:
-            lines.append(f"Actions: {result.html_url}")
-    return "\n".join(lines)
+    return sync_formatting.format_remote_build_failures(
+        failed_names,
+        _remote_build_results,
+    )
 
 
 def _format_timestamp(value: datetime | None) -> str:
-    if value is None:
-        return "未知"
-
-    return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    return sync_formatting.format_timestamp(value)
 
 
 def _format_fingerprint(value: str | None) -> str:
-    if not value:
-        return "未知"
-
-    return value[:12]
+    return sync_formatting.format_fingerprint(value)
 
 
 def _format_sync_statuses(results: dict[str, bool]) -> str:
-    lines: list[str] = []
-    for name in results:
-        status = _last_sync_statuses.get(name)
-        if status is None:
-            continue
-
-        state = (
-            "无需更新"
-            if status.ok and status.skipped
-            else "已更新"
-            if status.ok
-            else "失败"
-        )
-        lines.append(f"{name}：{state}")
-        lines.append(
-            "  本地："
-            f"{_format_timestamp(status.local_before.timestamp)} "
-            f"sha256={_format_fingerprint(status.local_before.fingerprint)}"
-        )
-        lines.append(
-            "  远端："
-            f"{_format_timestamp(status.remote.timestamp)} "
-            f"sha256={_format_fingerprint(status.remote.fingerprint)}"
-        )
-        hidden_messages = {"已更新", "本地与远端一致，无需更新"}
-        if status.message and status.message not in hidden_messages:
-            lines.append(f"  说明：{status.message}")
-
-    return "\n".join(lines)
+    return sync_formatting.format_sync_statuses(
+        results,
+        _last_sync_statuses,
+    )
 
 
 def format_sync_result_notice(
@@ -773,35 +738,9 @@ def format_sync_result_notice(
     *,
     title_prefix: str = "数据更新",
 ) -> str:
-    if not results:
-        return f"{title_prefix}未执行。"
-
-    failed = [name for name, ok in results.items() if not ok]
-    succeeded = [name for name, ok in results.items() if ok]
-    skipped = [
-        name
-        for name, ok in results.items()
-        if ok and _last_sync_statuses.get(name, _SyncStatus(ok=True)).skipped
-    ]
-    if failed:
-        title = (
-            f"{title_prefix}完成，但有失败项。\n"
-            f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
-            f"失败：{', '.join(failed)}"
-        )
-    elif skipped and len(skipped) == len(results):
-        title = f"{title_prefix}已是最新，无需更新：{', '.join(skipped)}"
-    else:
-        title = f"{title_prefix}完成：{', '.join(succeeded)}"
-
-    sections = [title]
-    status_text = _format_sync_statuses(results)
-    if status_text:
-        sections.append(status_text)
-
-    if failed:
-        remote_failure_text = _format_remote_build_failures(failed)
-        if remote_failure_text:
-            sections.append(remote_failure_text)
-
-    return "\n".join(sections)
+    return sync_formatting.format_sync_result_notice(
+        results,
+        sync_statuses=_last_sync_statuses,
+        remote_build_results=_remote_build_results,
+        title_prefix=title_prefix,
+    )
