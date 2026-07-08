@@ -49,9 +49,8 @@
 # }
 from typing import Annotated
 
-import ironsbot.plugins.headless_seer.packet.fields as f
-
-from ..packet.packet import Deserializable
+import ironsbot.integrations.headless_seer.packet.fields as f
+from ironsbot.integrations.headless_seer.packet.packet import Deserializable
 
 
 class UserInfo(Deserializable):

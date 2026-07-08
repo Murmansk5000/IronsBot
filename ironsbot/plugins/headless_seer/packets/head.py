@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from typing import Annotated
 
-from ..packet.fields import Int, UInt, Unicode
-from ..packet.packet import Deserializable
-from ..type_hint import CommandID
+from ironsbot.integrations.headless_seer.packet.fields import Int, UInt, Unicode
+from ironsbot.integrations.headless_seer.packet.packet import Deserializable
+from ironsbot.integrations.headless_seer.type_hint import CommandID
 
 
 class HeadInfo(Deserializable):

@@ -40,7 +40,7 @@ from ..upstream_noop_group import matcher_group
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
-    from ironsbot.plugins.headless_seer.packets import DailyRankList
+    from ironsbot.integrations.headless_seer.packets import DailyRankList
 
 LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
