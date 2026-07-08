@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -45,6 +46,29 @@ DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
 TEAM_RESOURCE_THRESHOLD = 2000
+PUBLIC_CONFIG_DOC_PATHS = (
+    ROOT / "config.example.toml",
+    ROOT / "README.md",
+    ROOT / "docker" / "README.md",
+    ROOT / "templates" / "ironsbot.xml",
+    ROOT / "docker-compose.yml",
+)
+STALE_PUBLIC_CONFIG_PATTERNS = (
+    r"\buid_modes\b",
+    r"\bdefault_mode\b",
+    r"\bdefault_accounts\b",
+    r"\bextra_accounts\b",
+    r"\baccount_aliases\b",
+    r"\baccount_modes\b",
+    r"\bprivate_unsubscribe\b",
+    r"\bteam_shortcut\b",
+    r"\bactivity_link_push\b",
+    r"\bactivity_link_daily",
+    r"\baction_templates\b",
+    r"\bdefault_uids\b",
+    r"\bextra_uids\b",
+    r"\bfire_manual\b",
+)
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -101,8 +125,12 @@ def test_example_config_parses() -> None:
 
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
+    assert "fire_manual_ad" in config.ai.intent_actions
+    assert "fire_manual" not in config.ai.intent_actions
     assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.bilibili.push.mode == "link"
     assert config.bilibili.push.accounts == ["seer"]
+    assert config.bilibili.push.modes == {"seer": "full"}
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
@@ -172,6 +200,20 @@ def test_example_config_parses() -> None:
     )
     assert remote_build_steps[2].inputs == {"debug_enabled": False}
     assert config.runtime.help.ignored_plugins == []
+
+
+def test_public_config_docs_do_not_reference_stale_fields() -> None:
+    stale_matches: list[str] = []
+
+    for path in PUBLIC_CONFIG_DOC_PATHS:
+        text = path.read_text(encoding="utf-8")
+        stale_matches.extend(
+            f"{path.relative_to(ROOT)}: {pattern}"
+            for pattern in STALE_PUBLIC_CONFIG_PATTERNS
+            if re.search(pattern, text)
+        )
+
+    assert stale_matches == []
 
 
 def test_missing_app_config_is_created_from_example(tmp_path: Path) -> None:

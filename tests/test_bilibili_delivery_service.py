@@ -5,6 +5,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.services.bilibili import delivery as delivery_service
 from ironsbot.services.bilibili.delivery import (
+    BILI_PUSH_ADMIN_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     build_dynamic_push_deliveries,
@@ -71,21 +72,33 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
 
     assert [delivery.action_name for delivery in deliveries] == [
         FULL_DYNAMIC_PUSH_ACTION,
+        FULL_DYNAMIC_PUSH_ACTION,
+        LINK_DYNAMIC_PUSH_ACTION,
         LINK_DYNAMIC_PUSH_ACTION,
     ]
     assert deliveries[0].group_ids == [1001]
-    assert deliveries[0].private_user_ids == [2001]
-    assert deliveries[1].group_ids == [1002]
-    assert deliveries[1].private_user_ids == [2002]
+    assert deliveries[0].private_user_ids == []
+    assert deliveries[1].group_ids == []
+    assert deliveries[1].private_user_ids == [2001]
+    assert deliveries[2].group_ids == [1002]
+    assert deliveries[2].private_user_ids == []
+    assert deliveries[3].group_ids == []
+    assert deliveries[3].private_user_ids == [2002]
 
     full_rendered = str(deliveries[0].message)
-    link_rendered = str(deliveries[1].message)
+    full_private_rendered = str(deliveries[1].message)
+    link_rendered = str(deliveries[2].message)
+    link_private_rendered = str(deliveries[3].message)
     assert "正文内容" in full_rendered
     assert "[CQ:image" in full_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in full_rendered
+    assert BILI_PUSH_ADMIN_HINT in full_rendered
+    assert BILI_PUSH_ADMIN_HINT not in full_private_rendered
     assert "正文内容" not in link_rendered
     assert "[CQ:image" not in link_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in link_rendered
+    assert BILI_PUSH_ADMIN_HINT in link_rendered
+    assert BILI_PUSH_ADMIN_HINT not in link_private_rendered
 
 
 def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
@@ -111,8 +124,10 @@ def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
     assert len(deliveries) == SPLIT_DELIVERY_COUNT
     assert deliveries[0].group_ids == [1001]
     assert FIRE_MANUAL_LINK_MESSAGE in str(deliveries[0].message)
+    assert BILI_PUSH_ADMIN_HINT in str(deliveries[0].message)
     assert deliveries[1].group_ids == [1002]
     assert FIRE_MANUAL_LINK_MESSAGE not in str(deliveries[1].message)
+    assert BILI_PUSH_ADMIN_HINT in str(deliveries[1].message)
 
 
 def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
