@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
+
+from ironsbot.shared.scheduler import remove_jobs_by_prefix
 
 from .planning import group_by_send_time
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from .models import ActivityReminder
 
@@ -83,19 +84,8 @@ def schedule_reminder_jobs(
 
 
 def clear_reminder_jobs(scheduler: Any) -> None:
-    get_jobs = getattr(scheduler, "get_jobs", None)
-    remove_job = getattr(scheduler, "remove_job", None)
-    if not callable(get_jobs) or not callable(remove_job):
-        return
-
-    jobs = get_jobs()
-    if not isinstance(jobs, Iterable):
-        return
-
-    for job in list(jobs):
-        job_id = str(getattr(job, "id", ""))
-        if not job_id.startswith(REMINDER_JOB_ID_PREFIX):
-            continue
-        if job_id in {STARTUP_SCAN_JOB_ID, DAILY_SCAN_JOB_ID}:
-            continue
-        remove_job(job_id)
+    remove_jobs_by_prefix(
+        scheduler,
+        REMINDER_JOB_ID_PREFIX,
+        exclude={STARTUP_SCAN_JOB_ID, DAILY_SCAN_JOB_ID},
+    )

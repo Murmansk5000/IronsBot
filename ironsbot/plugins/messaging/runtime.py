@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -55,6 +54,7 @@ from ironsbot.shared.promotions import (
     append_fire_manual_ad_for_group,
     append_fire_manual_ad_text,
 )
+from ironsbot.shared.scheduler import remove_jobs_by_prefix
 from ironsbot.shared.selection_menu import (
     DEFAULT_SELECTION_FOOTER,
     SelectionMenuItem,
@@ -1213,19 +1213,7 @@ async def register_message_schedules(scheduler: Any) -> None:
 
 
 def _clear_message_schedule_jobs(scheduler: Any) -> None:
-    get_jobs = getattr(scheduler, "get_jobs", None)
-    remove_job = getattr(scheduler, "remove_job", None)
-    if not callable(get_jobs) or not callable(remove_job):
-        return
-
-    jobs = get_jobs()
-    if not isinstance(jobs, Iterable):
-        return
-
-    for job in list(jobs):
-        job_id = str(getattr(job, "id", ""))
-        if job_id.startswith(MESSAGE_SCHEDULE_JOB_PREFIX):
-            remove_job(job_id)
+    remove_jobs_by_prefix(scheduler, MESSAGE_SCHEDULE_JOB_PREFIX)
 
 
 async def refresh_message_schedules() -> None:
