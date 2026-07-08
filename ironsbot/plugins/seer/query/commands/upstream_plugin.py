@@ -108,7 +108,7 @@ class UpstreamQueryPlugin:
                         await msg.finish()
 
             await matcher.finish(
-                f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词！"
+                f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词："
             )
 
         prompt = Prompt(title="请问你想查询的立绘是……", items=items)
@@ -150,7 +150,7 @@ class UpstreamQueryPlugin:
                         await msg.finish()
 
             await matcher.finish(
-                f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词！"
+                f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词："
             )
 
         prompt = Prompt(

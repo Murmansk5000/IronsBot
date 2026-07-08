@@ -1,12 +1,19 @@
 from types import SimpleNamespace
 
-from ironsbot.shared.scheduler import remove_jobs_by_prefix
+from ironsbot.shared.scheduler import add_or_replace_job, remove_jobs_by_prefix
 
 
 class FakeScheduler:
-    def __init__(self, job_ids: list[str]) -> None:
+    def __init__(self, job_ids: list[str] | None = None) -> None:
+        job_ids = job_ids or []
         self.jobs = [SimpleNamespace(id=job_id) for job_id in job_ids]
+        self.added_jobs: list[dict[str, object]] = []
         self.removed: list[str] = []
+
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> object:
+        job = {"func": func, "trigger": trigger, **kwargs}
+        self.added_jobs.append(job)
+        return job
 
     def get_jobs(self) -> list[SimpleNamespace]:
         return self.jobs
@@ -37,3 +44,25 @@ def test_remove_jobs_by_prefix_skips_excluded_jobs() -> None:
 def test_remove_jobs_by_prefix_tolerates_incomplete_scheduler() -> None:
     assert remove_jobs_by_prefix(object(), "message_schedule_") == 0
 
+
+def test_add_or_replace_job_sets_standard_job_fields() -> None:
+    scheduler = FakeScheduler()
+
+    job = add_or_replace_job(
+        scheduler,
+        "task",
+        "interval",
+        job_id="unit_job",
+        minutes=15,
+        args=["unit"],
+    )
+
+    assert job == {
+        "func": "task",
+        "trigger": "interval",
+        "id": "unit_job",
+        "replace_existing": True,
+        "minutes": 15,
+        "args": ["unit"],
+    }
+    assert scheduler.added_jobs == [job]
