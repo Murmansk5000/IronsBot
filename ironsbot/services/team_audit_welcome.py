@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import connect_sqlite, ensure_sqlite_column
+from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -111,22 +113,23 @@ def clear_team_audit_pending_reminder(
         )
 
 
-def _connect(cache_path: str | Path) -> sqlite3.Connection:
-    conn = connect_sqlite(cache_path, row_factory=sqlite3.Row)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (
-            group_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            joined_at TEXT NOT NULL,
-            remind_at TEXT NOT NULL,
-            step INTEGER NOT NULL DEFAULT 1,
-            PRIMARY KEY (group_id, user_id)
+@contextmanager
+def _connect(cache_path: str | Path) -> Iterator[sqlite3.Connection]:
+    with open_sqlite(cache_path, row_factory=sqlite3.Row) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                joined_at TEXT NOT NULL,
+                remind_at TEXT NOT NULL,
+                step INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (group_id, user_id)
+            )
+            """
         )
-        """
-    )
-    _ensure_step_column(conn)
-    return conn
+        _ensure_step_column(conn)
+        yield conn
 
 
 def _ensure_step_column(conn: sqlite3.Connection) -> None:
