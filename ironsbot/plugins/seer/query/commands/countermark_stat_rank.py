@@ -5,7 +5,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.plugins.seer_data.db import SeerAPISession
+from ironsbot.integrations.seer_data.db import SeerAPISession
 from ironsbot.services.seer.countermark_stat_rank import (
     MISSING_MINTMARK_QUALITY_MESSAGE,
     CountermarkStatRankCommand,

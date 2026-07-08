@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from nonebot import get_driver, logger, require
 
 from ironsbot.shared.config.time import daily_time_parts
+from ironsbot.shared.scheduler import add_or_replace_job
 
 from .config import INVALID_RESTART_TIME_ERROR, get_restart_config
 
@@ -73,12 +74,12 @@ def _register_restart_job(scheduler: Any) -> None:
             scheduled_time,
             error_message=INVALID_RESTART_TIME_ERROR,
         )
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             _scheduled_restart,
             "cron",
-            id=f"{JOB_ID}:{scheduled_time}",
+            job_id=f"{JOB_ID}:{scheduled_time}",
             args=[scheduled_time],
-            replace_existing=True,
             hour=hour,
             minute=minute,
             second=0,
