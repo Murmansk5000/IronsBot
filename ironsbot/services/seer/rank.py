@@ -73,6 +73,9 @@ from ironsbot.services.seer.rank_score_cache import (
 from ironsbot.services.seer.rank_score_cache import (
     cached_score_miss_boundary as _cached_score_miss_boundary_impl,
 )
+from ironsbot.services.seer.rank_score_cache import (
+    fetch_rank_score_segment_from_cached_candidates as _fetch_cached_score_segment_impl,
+)
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page as _score_miss_proof_from_page,
 )
@@ -662,7 +665,7 @@ def _cached_score_miss_boundary(  # noqa: PLR0913
     )
 
 
-async def _fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR0912, PLR0913, PLR0915
+async def _fetch_rank_score_segment_from_cached_candidates(  # noqa: PLR0913
     game: Any,
     *,
     key: int,
@@ -674,116 +677,21 @@ async def _fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR09
     result: RankScoreSearchResult,
     candidate_starts: list[int],
 ) -> RankScoreSearchResult | None:
-    if not candidate_starts:
-        return None
-
-    page_size = _rank_page_size()
-    max_pages = _score_search_tie_page_limit()
-    fetched_pages: dict[int, RankPageResult] = {}
-    fetched_times: list[float] = []
-    truncated = len(candidate_starts) > max_pages
-
-    async def fetch_page(page_start: int) -> RankPageResult | None:
-        page_start = _rank_page_start(page_start)
-        if page_start < start_index or page_start >= end_index:
-            return None
-        if page_start in fetched_pages:
-            return fetched_pages[page_start]
-        if len(fetched_pages) >= max_pages:
-            return None
-
-        page_result = await _fetch_rank_page_result(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=page_start,
-            end=page_start + page_size - 1,
-            use_cache=False,
-        )
-        fetched_pages[page_start] = page_result
-        fetched_times.append(page_result.fetched_at)
-        return page_result
-
-    for page_start in candidate_starts[:max_pages]:
-        await fetch_page(page_start)
-
-    def collect_matches() -> list[int]:
-        indexes: list[int] = []
-        for page_start, page_result in fetched_pages.items():
-            for offset, item in enumerate(page_result.items):
-                rank_index = page_start + offset
-                if rank_index < start_index or rank_index >= end_index:
-                    continue
-                if int(item.score) == target_score:
-                    indexes.append(rank_index)
-        return sorted(set(indexes))
-
-    matching_indexes = collect_matches()
-    if not matching_indexes:
-        return None
-
-    while len(fetched_pages) < max_pages:
-        first_index = matching_indexes[0]
-        first_page_start = _rank_page_start(first_index)
-        first_page = fetched_pages.get(first_page_start)
-        if first_page_start <= start_index or first_page is None:
-            break
-        if first_index != first_page_start:
-            break
-        previous_page = await fetch_page(first_page_start - page_size)
-        if previous_page is None:
-            truncated = True
-            break
-        matching_indexes = collect_matches()
-        if matching_indexes[0] >= first_index:
-            break
-
-    while len(fetched_pages) < max_pages:
-        last_index = matching_indexes[-1]
-        last_page_start = _rank_page_start(last_index)
-        last_page = fetched_pages.get(last_page_start)
-        if last_page is None or not last_page.items:
-            break
-        page_last_index = last_page_start + len(last_page.items) - 1
-        if last_index != page_last_index or len(last_page.items) < page_size:
-            break
-        next_page = await fetch_page(last_page_start + page_size)
-        if next_page is None:
-            truncated = True
-            break
-        matching_indexes = collect_matches()
-        if matching_indexes[-1] <= last_index:
-            break
-
-    if not matching_indexes:
-        return None
-
-    matching_set = set(matching_indexes)
-    first_index = matching_indexes[0]
-    last_index = matching_indexes[-1]
-    result.start_rank = first_index + 1 + rank_offset
-    result.end_rank = last_index + 1 + rank_offset
-    result.total_count = len(matching_indexes)
-    result.truncated = truncated
-
-    for page_start in sorted(fetched_pages):
-        page_result = fetched_pages[page_start]
-        for offset, item in enumerate(page_result.items):
-            rank_index = page_start + offset
-            if rank_index not in matching_set:
-                continue
-            result.items.append(
-                RankScoreSearchItem(
-                    id=int(item.id),
-                    nick=str(item.nick),
-                    score=int(item.score),
-                    rank_index=rank_index,
-                )
-            )
-
-    result.scanned_count = len(result.items)
-    result.fetched_at = max(fetched_times, default=time.time())
-    return result
+    return await _fetch_cached_score_segment_impl(
+        game,
+        key=key,
+        sub_key=sub_key,
+        target_score=target_score,
+        start_index=start_index,
+        end_index=end_index,
+        rank_offset=rank_offset,
+        result=result,
+        candidate_starts=candidate_starts,
+        rank_page_size=_rank_page_size,
+        rank_page_start=_rank_page_start,
+        score_search_tie_page_limit=_score_search_tie_page_limit,
+        fetch_rank_page_result=_fetch_rank_page_result,
+    )
 
 
 async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
