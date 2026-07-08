@@ -18,6 +18,7 @@ from ironsbot.config import (
     load_secrets_config,
 )
 from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
+from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
 from ironsbot.config.models.seer import TeamResourceConfig
@@ -100,6 +101,8 @@ def test_example_config_parses() -> None:
 
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
+    assert config.bilibili.account_aliases["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.bilibili.push.default_accounts == ["seer"]
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
