@@ -278,8 +278,8 @@ class ExtendedMoreInfo:
 
 
 def ensure_extended_packets() -> None:
-    from ironsbot.plugins.headless_seer.command_id import COMMAND_ID
-    from ironsbot.plugins.headless_seer.core.register import packet_register
+    from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
+    from ironsbot.integrations.headless_seer.core.register import packet_register
 
     packet_register[COMMAND_ID.GET_USER_INFO] = ExtendedUserInfo  # type: ignore[assignment]
     packet_register[COMMAND_ID.GET_MORE_USER_INFO] = ExtendedMoreInfo  # type: ignore[assignment]

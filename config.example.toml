@@ -637,6 +637,9 @@ cache_max_size_mb = 200
 # ZH: 更新器启动不等于部署完成；进程回退以本版实际重启服务决策为准。
 # EN: render caches persist across startup; capacity eviction remains, with no startup-clear switch.
 # ZH: 渲染缓存跨启动保留，容量淘汰仍有效，已无启动清空开关。
+# message.red_packet_notice.enabled model default: true
+# EN: red-packet observation only notifies superusers privately; it does not claim packets.
+# ZH: 红包观察只向超级管理员私聊通知，不领取红包。
 
 [runtime.data_sync]
 # Model default: true; explicit example: false. EN: Startup download override. ZH: 模型默认启动下载；本示例显式关闭，保留此设置。
