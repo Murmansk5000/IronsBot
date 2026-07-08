@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from ironsbot.shared.sqlite import connect_sqlite
+
 if TYPE_CHECKING:
+    import sqlite3
+
     from ironsbot.config.models.bilibili import BiliPushMode
     from ironsbot.shared.messaging.push_subscriptions import PushTargetType
 
@@ -19,9 +22,9 @@ def bili_push_subscription_key(uid: int) -> str:
     return f"{BILI_PUSH_SUBSCRIPTION_PREFIX}{int(uid)}"
 
 
-def bili_push_subscription_label(uid: int, account: str | None = None) -> str:
-    if account:
-        return f"B站动态：{account}（{int(uid)}）"
+def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
+    if label:
+        return f"B站动态：{label}"
     return f"B站动态：{int(uid)}"
 
 
@@ -72,7 +75,9 @@ class BiliPushPreferenceStore:
         if row is None:
             return None
         mode = str(row[0])
-        if mode in {"full", "link"}:
+        if mode == "full":
+            return mode
+        if mode == "link":
             return mode
         return None
 
@@ -108,8 +113,7 @@ class BiliPushPreferenceStore:
             con.commit()
 
     def _connect(self) -> sqlite3.Connection:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        con = sqlite3.connect(self.path)
+        con = connect_sqlite(self.path)
         con.execute(
             "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
             "target_type TEXT NOT NULL, "
