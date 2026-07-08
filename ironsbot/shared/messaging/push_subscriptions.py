@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,8 +14,10 @@ from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     format_selection_menu,
 )
+from ironsbot.shared.sqlite import connect_sqlite
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Iterable, Sequence
 
     from ironsbot.config.models.message import PushUnsubscribeConfig
@@ -413,8 +414,7 @@ class PushUnsubscribeStore:
         ]
 
     def _connect(self) -> sqlite3.Connection:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        con = sqlite3.connect(self.path)
+        con = connect_sqlite(self.path)
         con.execute(
             "CREATE TABLE IF NOT EXISTS push_unsubscriptions ("
             "target_type TEXT NOT NULL, "
