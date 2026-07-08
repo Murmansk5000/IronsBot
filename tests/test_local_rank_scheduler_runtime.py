@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from types import SimpleNamespace
 
 import nonebot
 from pytest import MonkeyPatch
@@ -26,6 +27,14 @@ class FakeDriver:
         return handler
 
 
+class FakeScheduler:
+    def __init__(self) -> None:
+        self.jobs: list[dict[str, object]] = []
+
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
+        self.jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+
 def test_local_rank_scheduler_runtime_setup_registers_startup_once(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -42,3 +51,68 @@ def test_local_rank_scheduler_runtime_setup_registers_startup_once(
     seer_runtime._setup_local_rank_scheduler_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
+
+
+def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(
+        seer_runtime,
+        "get_local_rank_config",
+        lambda: SimpleNamespace(refresh_hour=3, refresh_minute=30),
+    )
+
+    seer_runtime.register_local_rank_refresh_job(scheduler)
+
+    assert scheduler.jobs == [
+        {
+            "func": seer_runtime._scheduled_local_rank_refresh,
+            "trigger": "cron",
+            "id": "seer_local_rank_refresh",
+            "replace_existing": True,
+            "hour": 3,
+            "minute": 30,
+        }
+    ]
+
+
+def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    scheduler = FakeScheduler()
+    monkeypatch.setattr(
+        seer_runtime,
+        "get_rank_query_config",
+        lambda: SimpleNamespace(
+            page_refresh=SimpleNamespace(
+                enabled=True,
+                interval_minutes=15,
+                interval_offset_minutes=4,
+                schedule_jitter_seconds=240,
+                times=["01:15"],
+            )
+        ),
+    )
+
+    seer_runtime.register_rank_page_refresh_jobs(scheduler)
+
+    assert scheduler.jobs == [
+        {
+            "func": seer_runtime._scheduled_rank_page_refresh,
+            "trigger": "cron",
+            "id": "seer_rank_page_refresh_interval",
+            "replace_existing": True,
+            "minute": "4/15",
+            "jitter": 240,
+        },
+        {
+            "func": seer_runtime._scheduled_rank_page_refresh,
+            "trigger": "cron",
+            "id": "seer_rank_page_refresh_0115",
+            "replace_existing": True,
+            "hour": 1,
+            "minute": 15,
+            "jitter": 240,
+        },
+    ]

@@ -6,6 +6,8 @@ from typing import Any
 
 from nonebot import get_driver, logger, require
 
+from ironsbot.shared.scheduler import add_or_replace_job
+
 from .config import get_local_rank_config, get_rank_query_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
@@ -48,13 +50,13 @@ async def _scheduled_local_rank_refresh() -> None:
 
 def register_local_rank_refresh_job(scheduler: Any) -> None:
     local_rank_config = get_local_rank_config()
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         _scheduled_local_rank_refresh,
         "cron",
         hour=local_rank_config.refresh_hour,
         minute=local_rank_config.refresh_minute,
-        id="seer_local_rank_refresh",
-        replace_existing=True,
+        job_id="seer_local_rank_refresh",
     )
 
 
@@ -84,25 +86,25 @@ def register_rank_page_refresh_jobs(scheduler: Any) -> None:
         minute_pattern = (
             f"{rank_config.interval_offset_minutes}/{rank_config.interval_minutes}"
         )
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             _scheduled_rank_page_refresh,
             "cron",
             minute=minute_pattern,
             jitter=rank_config.schedule_jitter_seconds,
-            id="seer_rank_page_refresh_interval",
-            replace_existing=True,
+            job_id="seer_rank_page_refresh_interval",
         )
 
     for refresh_time in rank_config.times:
         hour_text, minute_text = refresh_time.split(":", maxsplit=1)
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             _scheduled_rank_page_refresh,
             "cron",
             hour=int(hour_text),
             minute=int(minute_text),
             jitter=rank_config.schedule_jitter_seconds,
-            id=f"seer_rank_page_refresh_{hour_text}{minute_text}",
-            replace_existing=True,
+            job_id=f"seer_rank_page_refresh_{hour_text}{minute_text}",
         )
 
 
