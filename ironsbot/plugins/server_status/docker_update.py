@@ -5,11 +5,17 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
+from uuid import uuid4
 from zoneinfo import ZoneInfo
+
+import httpx
+from anyio import Path as AsyncPath
+from nonebot import logger
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GITHUB_REPO_PATH_PARTS = 2
+RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
 DOCKER_TIMESTAMP_PATTERN = re.compile(
     r"^(?P<head>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
@@ -176,3 +182,240 @@ def github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | N
     if not parts[0] or not repo:
         return None
     return parts[0], repo
+
+
+async def restart_docker_container(
+    *,
+    container_name: str,
+    socket_path: str,
+    timeout_seconds: float,
+) -> None:
+    if not await AsyncPath(socket_path).exists():
+        msg = f"Docker socket not found: {socket_path}"
+        raise RuntimeError(msg)
+
+    logger.warning("admin requested docker container restart: {}", container_name)
+    transport = httpx.AsyncHTTPTransport(uds=socket_path)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://docker",
+        timeout=httpx.Timeout(timeout_seconds),
+    ) as client:
+        response = await client.post(
+            f"/containers/{quote(container_name, safe='')}/restart",
+            params={"t": RESTART_CONTAINER_STOP_TIMEOUT_SECONDS},
+        )
+        response.raise_for_status()
+
+
+async def start_watchtower_update(
+    *,
+    container_name: str,
+    image: str,
+    socket_path: str,
+    watchtower: WatchtowerUpdateOptions,
+    timeout_seconds: float,
+) -> DockerUpdateResult:
+    logger.warning(
+        "admin requested docker self update: container={}, watchtower={}",
+        container_name,
+        watchtower.image,
+    )
+    if not await AsyncPath(socket_path).exists():
+        logger.warning("docker self update failed: socket not found: {}", socket_path)
+        return DockerUpdateResult(
+            ok=False,
+            missing_socket=True,
+            message=f"Docker socket not found: {socket_path}",
+        )
+
+    transport = httpx.AsyncHTTPTransport(uds=socket_path)
+    try:
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            current_image_id = await inspect_container_image_id(
+                client,
+                container_name,
+            )
+            current_image_info = await inspect_image_info(client, current_image_id)
+            target_image_info = await pull_docker_image(client, image)
+            current_commit = await resolve_image_commit_summary(
+                current_image_info,
+                fallback_repo=("Murmansk5000", "IronsBot"),
+            )
+            target_commit = await resolve_image_commit_summary(
+                target_image_info,
+                fallback_repo=("Murmansk5000", "IronsBot"),
+            )
+            if current_image_info.image_id == target_image_info.image_id:
+                return DockerUpdateResult(
+                    ok=True,
+                    up_to_date=True,
+                    current_image_id=current_image_info.image_id,
+                    current_image_created=current_image_info.created,
+                    current_image_commit=current_commit,
+                    target_image_id=target_image_info.image_id,
+                    target_image_created=target_image_info.created,
+                    target_image_commit=target_commit,
+                )
+
+            await pull_docker_image(client, watchtower.image)
+            updater_id = await create_watchtower_container(
+                client,
+                container_name=container_name,
+                socket_path=socket_path,
+                watchtower=watchtower,
+            )
+            response = await client.post(f"/containers/{updater_id}/start")
+            response.raise_for_status()
+    except Exception as e:  # noqa: BLE001
+        logger.opt(exception=True).warning("docker self update failed")
+        return DockerUpdateResult(ok=False, message=str(e))
+
+    return DockerUpdateResult(
+        ok=True,
+        updater_container_id=updater_id,
+        current_image_id=current_image_info.image_id,
+        current_image_created=current_image_info.created,
+        current_image_commit=current_commit,
+        target_image_id=target_image_info.image_id,
+        target_image_created=target_image_info.created,
+        target_image_commit=target_commit,
+    )
+
+
+async def inspect_container_image_id(
+    client: httpx.AsyncClient,
+    container_name: str,
+) -> str:
+    response = await client.get(f"/containers/{quote(container_name, safe='')}/json")
+    response.raise_for_status()
+    data = response.json()
+    image_id = data.get("Image")
+    if not isinstance(image_id, str) or not image_id:
+        msg = "Docker API did not return current container image id"
+        raise RuntimeError(msg)
+    return image_id
+
+
+async def pull_docker_image(
+    client: httpx.AsyncClient,
+    image: str,
+) -> DockerImageInfo:
+    repository, tag = split_docker_image(image)
+    response = await client.post(
+        "/images/create",
+        params={"fromImage": repository, "tag": tag},
+    )
+    response.raise_for_status()
+    return await inspect_image_info(client, image)
+
+
+async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerImageInfo:
+    response = await client.get(f"/images/{quote(image, safe='')}/json")
+    response.raise_for_status()
+    data = response.json()
+    image_id = data.get("Id")
+    if not isinstance(image_id, str) or not image_id:
+        msg = "Docker API did not return target image id"
+        raise RuntimeError(msg)
+    created = data.get("Created")
+    raw_labels = {}
+    config = data.get("Config")
+    if isinstance(config, dict):
+        labels = config.get("Labels")
+        if isinstance(labels, dict):
+            raw_labels = {
+                str(key): str(value)
+                for key, value in labels.items()
+                if value is not None
+            }
+    return DockerImageInfo(
+        image_id=image_id,
+        created=created if isinstance(created, str) else "",
+        labels=raw_labels,
+    )
+
+
+async def resolve_image_commit_summary(
+    image_info: DockerImageInfo,
+    *,
+    fallback_repo: tuple[str, str] | None = None,
+) -> str:
+    revision = image_info.labels.get("org.opencontainers.image.revision", "").strip()
+    if not revision:
+        return ""
+
+    short_revision = revision[:12]
+    repo = github_repo_from_image_labels(image_info.labels) or fallback_repo
+    if repo is not None:
+        owner, name = repo
+        try:
+            async with httpx.AsyncClient(
+                timeout=8.0,
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(
+                    f"https://api.github.com/repos/{owner}/{name}/commits/{revision}",
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": "IronsBot-DockerUpdate",
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "failed to fetch docker image commit message: "
+                "repo={}/{} revision={} error={}",
+                owner,
+                name,
+                short_revision,
+                e,
+            )
+        else:
+            commit = data.get("commit")
+            if isinstance(commit, dict):
+                message = commit.get("message")
+                if isinstance(message, str):
+                    first_line = (
+                        message.strip().splitlines()[0].strip()
+                        if message.strip()
+                        else ""
+                    )
+                    if first_line:
+                        return f"{short_revision} {first_line}"
+    return ""
+
+
+async def create_watchtower_container(
+    client: httpx.AsyncClient,
+    *,
+    container_name: str,
+    socket_path: str,
+    watchtower: WatchtowerUpdateOptions,
+) -> str:
+    updater_name = f"ironsbot-watchtower-once-{uuid4().hex[:12]}"
+    response = await client.post(
+        "/containers/create",
+        params={"name": updater_name},
+        json={
+            "Image": watchtower.image,
+            "Cmd": ["--run-once", "--cleanup", container_name],
+            "Env": [f"DOCKER_API_VERSION={watchtower.docker_api_version}"],
+            "HostConfig": {
+                "AutoRemove": True,
+                "Binds": [f"{socket_path}:/var/run/docker.sock"],
+            },
+        },
+    )
+    response.raise_for_status()
+    data = response.json()
+    container_id = data.get("Id")
+    if not isinstance(container_id, str) or not container_id:
+        msg = "Docker API did not return updater container id"
+        raise RuntimeError(msg)
+    return container_id
