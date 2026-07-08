@@ -74,7 +74,7 @@ def _now() -> datetime:
 
 def _activity_db_session_factory() -> Any:
     require("ironsbot.plugins.seer_data")
-    from ironsbot.plugins.db_sync.manager import db_manager
+    from ironsbot.integrations.db_registry import db_manager
 
     return db_manager.get_session
 
