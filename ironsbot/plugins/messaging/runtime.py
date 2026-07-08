@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Any, cast
 
 from nonebot import get_driver, on_message, require
@@ -12,8 +11,6 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.shared.config.parsing import positive_int_list
-from ironsbot.shared.config.time import normalize_daily_time
 from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
@@ -31,19 +28,15 @@ from ironsbot.shared.messaging import (
     send_broadcast_message,
 )
 from ironsbot.shared.messaging.push_subscriptions import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
     BUILTIN_PUSH_OPTIONS,
     CRON_TIME_PREFERENCE,
-    PushPreferenceType,
     PushSubscriptionOption,
     PushTargetType,
     PushUnsubscribeStore,
     build_push_subscription_menu,
     build_schedule_subscription_options,
     group_schedule_key,
-    group_schedule_label,
     private_schedule_key,
-    private_schedule_label,
 )
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -55,11 +48,6 @@ from ironsbot.shared.promotions import (
     append_fire_manual_ad_text,
 )
 from ironsbot.shared.scheduler import remove_jobs_by_prefix
-from ironsbot.shared.selection_menu import (
-    DEFAULT_SELECTION_FOOTER,
-    SelectionMenuItem,
-    format_selection_menu,
-)
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
     prompt_session_manager,
@@ -72,6 +60,14 @@ from .config import (
     PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     get_message_config,
+)
+from .push_time import (
+    PushTimeOption,
+    build_push_time_menu_prompt,
+    build_push_time_options,
+    daily_time_parts_for_push,
+    normalize_push_time_input,
+    push_time_value_prompt,
 )
 from .runtime_service import (
     build_schedule_job_id,
@@ -98,21 +94,7 @@ PUSH_TIME_NAMESPACE = "message_push_time"
 PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 MESSAGE_PLUGIN_NAME = "message"
 MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
-DEFAULT_TEXT = "默认"
-TIME_INPUT_ERROR = "请输入 HH:MM 格式的时间，例如 22:30；输入“默认”恢复 TOML。"
-LEAD_INPUT_ERROR = "请输入正整数小时列表，例如 24,3,1；输入“默认”恢复 TOML。"
 _messaging_runtime_state = {"registered": False, "scheduler": None}
-
-
-@dataclass(frozen=True, slots=True)
-class PushTimeOption:
-    key: str
-    label: str
-    feature: str
-    preference_type: PushPreferenceType
-    default_value: str
-    current_value: str
-    overridden: bool = False
 
 
 def _private_action_allowed(
@@ -425,163 +407,23 @@ def _push_subscription_menu_prompt(
     )
 
 
-def _schedule_time_option_label(
-    *,
-    base_label: str,
-    default_value: str,
-    current_value: str,
-    overridden: bool,
-) -> str:
-    source = "覆盖" if overridden else "默认"
-    return f"{base_label}：{current_value}（{source}，默认 {default_value}）"
-
-
-def _lead_hours_text(values: list[int]) -> str:
-    return ",".join(str(value) for value in values)
-
-
-def _activity_default_lead_hours_text() -> str:
-    from ironsbot.plugins.activity.config import get_activity_config
-
-    return _lead_hours_text(get_activity_config().lead_hours)
-
-
-def _activity_time_option(
-    *,
-    target_type: PushTargetType,
-    target_id: int,
-    store: PushUnsubscribeStore,
-) -> PushTimeOption | None:
-    eligible = _eligible_target_ids_by_feature(target_type, {"seer_activity_push"})
-    if target_id not in eligible.get("seer_activity_push", set()):
-        return None
-
-    key = "seer_activity_push"
-    default_value = _activity_default_lead_hours_text()
-    override = store.get_time_preference(
-        target_type,
-        target_id,
-        key,
-        ACTIVITY_LEAD_HOURS_PREFERENCE,
-    )
-    current_value = override or default_value
-    return PushTimeOption(
-        key=key,
-        label=(
-            "活动结束提醒："
-            f"提前 {current_value} 小时"
-            f"（{'覆盖' if override else '默认'}，默认 {default_value}）"
-        ),
-        feature="seer_activity_push",
-        preference_type=ACTIVITY_LEAD_HOURS_PREFERENCE,
-        default_value=default_value,
-        current_value=current_value,
-        overridden=override is not None,
-    )
-
-
-def _schedule_time_options(
-    *,
-    target_type: PushTargetType,
-    target_id: int,
-    store: PushUnsubscribeStore,
-) -> list[PushTimeOption]:
-    config = get_message_config()
-    tasks = (
-        config.group_schedules
-        if target_type == "group"
-        else config.private_schedules
-    )
-    features = {task.feature for task in tasks if task.enabled}
-    eligible = _eligible_target_ids_by_feature(target_type, features)
-
-    options: list[PushTimeOption] = []
-    for index, task in enumerate(tasks, start=1):
-        if not task.enabled:
-            continue
-        if target_id not in eligible.get(task.feature, set()):
-            continue
-
-        key = (
-            group_schedule_key(index, task)
-            if target_type == "group"
-            else private_schedule_key(index, task)
-        )
-        default_value = f"{task.hour:02d}:{task.minute:02d}"
-        override = store.get_time_preference(
-            target_type,
-            target_id,
-            key,
-            CRON_TIME_PREFERENCE,
-        )
-        current_value = override or default_value
-        base_label = (
-            group_schedule_label(index, task)
-            if target_type == "group"
-            else private_schedule_label(index, task)
-        )
-        options.append(
-            PushTimeOption(
-                key=key,
-                label=_schedule_time_option_label(
-                    base_label=base_label,
-                    default_value=default_value,
-                    current_value=current_value,
-                    overridden=override is not None,
-                ),
-                feature=task.feature,
-                preference_type=CRON_TIME_PREFERENCE,
-                default_value=default_value,
-                current_value=current_value,
-                overridden=override is not None,
-            )
-        )
-    return options
-
 
 def _push_time_options(
     target_type: PushTargetType,
     target_id: int,
 ) -> list[PushTimeOption]:
-    store = _push_subscription_store()
-    options: list[PushTimeOption] = []
-    activity_option = _activity_time_option(
-        target_type=target_type,
-        target_id=target_id,
-        store=store,
+    return build_push_time_options(
+        target_type,
+        target_id,
+        store=_push_subscription_store(),
     )
-    if activity_option is not None:
-        options.append(activity_option)
-    options.extend(
-        _schedule_time_options(
-            target_type=target_type,
-            target_id=target_id,
-            store=store,
-        )
-    )
-    return options
-
-
-def _push_time_menu_title(target_type: PushTargetType) -> str:
-    scope = "本群" if target_type == "group" else "私聊"
-    return f"请选择要修改时间的{scope}推送："
 
 
 def _push_time_menu_prompt(
     target_type: PushTargetType,
     options: list[PushTimeOption],
 ) -> str:
-    return format_selection_menu(
-        title=_push_time_menu_title(target_type),
-        items=tuple(
-            SelectionMenuItem(
-                label=option.label,
-                prefix="🕒",
-            )
-            for option in options
-        ),
-        footer=DEFAULT_SELECTION_FOOTER,
-    )
+    return build_push_time_menu_prompt(target_type, options)
 
 
 def _push_subscription_selection_rule(
@@ -733,31 +575,11 @@ async def _reject_push_time_input(
 
 
 def _push_time_value_prompt(option: PushTimeOption) -> str:
-    if option.preference_type == CRON_TIME_PREFERENCE:
-        return (
-            f"请输入“{option.label}”的新时间，格式 HH:MM。\n"
-            f"当前：{option.current_value}；默认：{option.default_value}。\n"
-            "发送“默认”恢复 TOML，输入 0 退出。"
-        )
-    return (
-        f"请输入“{option.label}”的提前小时列表，例如 24,3,1。\n"
-        f"当前：{option.current_value}；默认：{option.default_value}。\n"
-        "发送“默认”恢复 TOML，输入 0 退出。"
-    )
+    return push_time_value_prompt(option)
 
 
 def _normalize_push_time_input(option: PushTimeOption, text: str) -> str | None:
-    value = text.strip()
-    if value == DEFAULT_TEXT:
-        return None
-    if option.preference_type == CRON_TIME_PREFERENCE:
-        return normalize_daily_time(value, error_message=TIME_INPUT_ERROR)
-
-    lead_hours = positive_int_list(value)
-    if not lead_hours:
-        raise ValueError(LEAD_INPUT_ERROR)
-    return _lead_hours_text(lead_hours)
-
+    return normalize_push_time_input(option, text)
 
 async def _refresh_push_time_jobs(option: PushTimeOption) -> None:
     if option.preference_type == CRON_TIME_PREFERENCE:
@@ -1080,12 +902,6 @@ def _schedule_override_trigger_kwargs(
     trigger_kwargs["hour"] = hour
     trigger_kwargs["minute"] = minute
     return trigger_kwargs
-
-
-def daily_time_parts_for_push(value: str) -> tuple[int, int]:
-    normalized = normalize_daily_time(value, error_message=TIME_INPUT_ERROR)
-    hour_text, minute_text = normalized.split(":", maxsplit=1)
-    return int(hour_text), int(minute_text)
 
 
 def _register_private_schedule_overrides(
