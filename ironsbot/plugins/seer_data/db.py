@@ -3,7 +3,7 @@
 
 import re
 from collections.abc import AsyncGenerator, Callable, Iterable
-from typing import Annotated, Any, Generic, Protocol, TypeVar
+from typing import Annotated, Any, Generic, Protocol, TypeVar, cast
 
 import httpx
 from nonebot import logger
@@ -571,14 +571,16 @@ class MintmarkSeriesOrdinalResolver:
 
         merge_connected = get_app_config().seer.mintmark.merge_connected
         for class_id in class_ids:
+            on_clause = cast("Any", UniversalPartORM.mintmark_id == MintmarkORM.id)
+            order_column = cast("Any", MintmarkORM.id)
             statement = (
                 select(MintmarkORM)
                 .join(
                     UniversalPartORM,
-                    UniversalPartORM.mintmark_id == MintmarkORM.id,
+                    on_clause,
                 )
                 .where(UniversalPartORM.mintmark_class_id == class_id)
-                .order_by(MintmarkORM.id)
+                .order_by(order_column)
             )
             mintmarks = list(data_session.exec(statement).all())
             if merge_connected:
@@ -676,14 +678,16 @@ class MintmarkSeriesTypeResolver:
         merge_connected = get_app_config().seer.mintmark.merge_connected
         result: list[MintmarkORM] = []
         for class_id in class_ids:
+            on_clause = cast("Any", UniversalPartORM.mintmark_id == MintmarkORM.id)
+            order_column = cast("Any", MintmarkORM.id)
             statement = (
                 select(MintmarkORM)
                 .join(
                     UniversalPartORM,
-                    UniversalPartORM.mintmark_id == MintmarkORM.id,
+                    on_clause,
                 )
                 .where(UniversalPartORM.mintmark_class_id == class_id)
-                .order_by(MintmarkORM.id)
+                .order_by(order_column)
             )
             mintmarks = list(data_session.exec(statement).all())
             if merge_connected:

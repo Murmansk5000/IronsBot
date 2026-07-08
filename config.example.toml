@@ -631,8 +631,8 @@ clear_on_startup = true
 # ZH: 启动下载模型默认 true；本示例仍显式保留 false，不因此触发启动下载。
 # EN: startup_trigger_remote_build defaults to false; ordinary startup/interval downloads do not force a remote build.
 # ZH: 启动触发远程构建默认关闭；普通启动和定时下载不强制远程构建。
-# runtime.docker_update.check_on_startup model default: false
-# runtime.docker_update.check_on_restart model default: false
+# runtime.docker_update.check_on_startup model default: true
+# runtime.docker_update.check_on_restart model default: true
 # EN: Docker image update/restart commands require the superuser route and a usable socket.
 # ZH: 镜像更新/重启使用超级管理员入口；Docker 操作需要可用 socket。
 # EN: updater launch is not completed deployment; process fallback follows this version restart service.
