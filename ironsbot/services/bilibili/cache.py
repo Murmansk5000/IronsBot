@@ -13,6 +13,7 @@ from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot_for_item,
 )
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
+from ironsbot.shared.sqlite import connect_sqlite
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,11 +31,7 @@ class DynamicHistoryRecord:
 
 def _connect() -> sqlite3.Connection:
     db_file = dynamic_history_db_file()
-    db_file.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_file)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn = connect_sqlite(db_file, row_factory=sqlite3.Row)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS checkpoints (

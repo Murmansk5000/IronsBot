@@ -7,6 +7,7 @@ from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.services.ai.history import HistoryMessage
+from ironsbot.shared.sqlite import connect_sqlite
 
 
 def _get_ai_config():
@@ -18,11 +19,7 @@ def _memory_path() -> Path:
 
 
 def _connect() -> sqlite3.Connection:
-    path = _memory_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn = connect_sqlite(_memory_path())
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS messages (
