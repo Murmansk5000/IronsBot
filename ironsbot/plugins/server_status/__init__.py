@@ -23,6 +23,7 @@ from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
+from ironsbot.services.seer.client import get_game_client
 from ironsbot.shared.features import (
     groups_for_feature,
     is_event_feature_allowed,
@@ -470,9 +471,7 @@ def _is_open_broadcast_in_cooldown(now: datetime) -> bool:
 
 def _get_headless_status() -> HeadlessStatus:
     try:
-        from ironsbot.plugins.headless_seer.manager import client_manager
-
-        game = client_manager.get_client()
+        game = get_game_client()
     except (DisconnectedError, NotLoggedInError) as e:
         return HeadlessStatus(connected=False, reason=str(e))
     except Exception:  # noqa: BLE001
