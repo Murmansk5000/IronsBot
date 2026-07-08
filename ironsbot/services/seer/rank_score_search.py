@@ -216,6 +216,42 @@ async def find_rank_by_score(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
     return result
 
 
+async def find_rank_by_linear_scan(  # noqa: PLR0913
+    game: Any,
+    *,
+    user_id: int,
+    key: int,
+    sub_key: int,
+    limit: int,
+    page_size: int,
+    result: RankLookupResult,
+    fetch_rank_page: Callable[..., Awaitable[list[Any]]],
+) -> RankLookupResult:
+    start = 0
+    while start < limit:
+        end = min(start + page_size - 1, limit - 1)
+        items = await fetch_rank_page(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=end,
+        )
+
+        for offset, item in enumerate(items):
+            if item.id == user_id:
+                result.rank = start + offset + 1
+                result.score = item.score
+                return result
+
+        if len(items) < end - start + 1:
+            return result
+
+        start = end + 1
+
+    return result
+
+
 async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
     game: Any,
     *,
@@ -485,6 +521,7 @@ __all__ = [
     "RankSearchBudgetExhaustedError",
     "fetch_rank_score_segment",
     "find_last_existing_score_index",
+    "find_rank_by_linear_scan",
     "find_rank_by_score",
     "score_search_probe_limit",
     "score_search_tie_page_limit",

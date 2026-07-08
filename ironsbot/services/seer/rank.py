@@ -1,7 +1,6 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import time
-from datetime import datetime
 from typing import Any
 
 from nonebot import logger
@@ -66,6 +65,15 @@ from ironsbot.services.seer.rank_pagination import (
     rank_page_start,
     rank_window_page_starts,
 )
+from ironsbot.services.seer.rank_peak import (
+    build_peak_rating_score as _build_peak_rating_score_impl,
+)
+from ironsbot.services.seer.rank_peak import (
+    datetime_to_sub_key as _datetime_to_sub_key_impl,
+)
+from ironsbot.services.seer.rank_peak import (
+    get_current_peak_sub_key as _get_current_peak_sub_key_impl,
+)
 from ironsbot.services.seer.rank_position_cache import (
     find_rank_by_cached_position as _find_rank_by_cached_position_impl,
 )
@@ -100,6 +108,9 @@ from ironsbot.services.seer.rank_score_search import (
 )
 from ironsbot.services.seer.rank_score_search import (
     find_last_existing_score_index as _find_last_existing_score_index,
+)
+from ironsbot.services.seer.rank_score_search import (
+    find_rank_by_linear_scan as _find_rank_by_linear_scan_impl,
 )
 from ironsbot.services.seer.rank_score_search import (
     find_rank_by_score as _find_rank_by_score_impl,
@@ -347,35 +358,12 @@ async def fetch_daily_rank_page_result(  # noqa: PLR0913
     )
 
 
-def _datetime_to_sub_key(value: datetime) -> int:
-    return int(value.strftime("%Y%m%d"))
+def _datetime_to_sub_key(value: Any) -> int:
+    return _datetime_to_sub_key_impl(value)
 
 
 def get_current_peak_sub_key() -> int | None:
-    if get_rank_query_config().peak_subkey is not None:
-        return get_rank_query_config().peak_subkey
-
-    try:
-        from seerapi_models import PeakSeasonORM
-
-        from ironsbot.integrations.db_registry import db_manager
-    except Exception:  # noqa: BLE001
-        return None
-
-    session_gen = db_manager.get_session("seerapi")
-    if session_gen is None:
-        return None
-
-    try:
-        session = next(session_gen)
-        season = session.get(PeakSeasonORM, 1)
-        if season is None:
-            return None
-        return _datetime_to_sub_key(season.start_time)
-    except Exception:  # noqa: BLE001
-        return None
-    finally:
-        session_gen.close()
+    return _get_current_peak_sub_key_impl(get_rank_query_config().peak_subkey)
 
 
 async def _find_rank_by_linear_scan(  # noqa: PLR0913
@@ -388,29 +376,16 @@ async def _find_rank_by_linear_scan(  # noqa: PLR0913
     page_size: int,
     result: RankLookupResult,
 ) -> RankLookupResult:
-    start = 0
-    while start < limit:
-        end = min(start + page_size - 1, limit - 1)
-        items = await _fetch_rank_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-        )
-
-        for offset, item in enumerate(items):
-            if item.id == user_id:
-                result.rank = start + offset + 1
-                result.score = item.score
-                return result
-
-        if len(items) < end - start + 1:
-            return result
-
-        start = end + 1
-
-    return result
+    return await _find_rank_by_linear_scan_impl(
+        game,
+        user_id=user_id,
+        key=key,
+        sub_key=sub_key,
+        limit=limit,
+        page_size=page_size,
+        result=result,
+        fetch_rank_page=_fetch_rank_page,
+    )
 
 
 def _score_search_probe_limit(limit: int) -> int:
@@ -868,6 +843,4 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
 
 
 def build_peak_rating_score(rank: int, star: int) -> int | None:
-    if rank <= 0 and star <= 0:
-        return None
-    return rank * 100000 + star
+    return _build_peak_rating_score_impl(rank, star)
