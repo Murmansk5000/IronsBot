@@ -623,8 +623,6 @@ resource_message = "出来买资源，别逼我求你😡"
 cache_dir = "render_cache"
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
-# Default: true; EN: Clear render cache on startup. ZH: 启动时清理渲染缓存。
-clear_on_startup = true
 
 # Historical runtime/deployment defaults; comments do not override the values below.
 # EN: runtime.data_sync.on_startup defaults to true; this example deliberately keeps false.
@@ -637,6 +635,8 @@ clear_on_startup = true
 # ZH: 镜像更新/重启使用超级管理员入口；Docker 操作需要可用 socket。
 # EN: updater launch is not completed deployment; process fallback follows this version restart service.
 # ZH: 更新器启动不等于部署完成；进程回退以本版实际重启服务决策为准。
+# EN: render caches persist across startup; capacity eviction remains, with no startup-clear switch.
+# ZH: 渲染缓存跨启动保留，容量淘汰仍有效，已无启动清空开关。
 
 [runtime.data_sync]
 # Model default: true; explicit example: false. EN: Startup download override. ZH: 模型默认启动下载；本示例显式关闭，保留此设置。

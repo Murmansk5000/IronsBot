@@ -1,13 +1,8 @@
-import asyncio
 import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
-from pytest import MonkeyPatch
-
-from ironsbot.services.seer import render_cache as render_cache_service
 from ironsbot.services.seer.render_cache import (
     UNKNOWN_RENDER_CACHE_VERSION,
     RenderCache,
@@ -63,46 +58,6 @@ def test_render_cache_cleanup_removes_oldest_files_first(tmp_path: Path) -> None
 
     assert not old_file.exists()
     assert new_file.exists()
-
-
-def test_clear_render_cache_on_startup_obeys_config(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    class FakeRenderCache:
-        def __init__(self) -> None:
-            self.clear_count = 0
-
-        def clear(self) -> None:
-            self.clear_count += 1
-
-    fake_cache = FakeRenderCache()
-    monkeypatch.setattr(render_cache_service, "render_cache", fake_cache)
-    monkeypatch.setattr(
-        render_cache_service,
-        "get_render_config",
-        lambda: SimpleNamespace(clear_on_startup=True),
-    )
-
-    asyncio.run(render_cache_service.clear_render_cache_on_startup())
-
-    assert fake_cache.clear_count == 1
-
-
-def test_clear_render_cache_on_startup_can_be_disabled(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    class FakeRenderCache:
-        def clear(self) -> None:
-            raise AssertionError
-
-    monkeypatch.setattr(render_cache_service, "render_cache", FakeRenderCache())
-    monkeypatch.setattr(
-        render_cache_service,
-        "get_render_config",
-        lambda: SimpleNamespace(clear_on_startup=False),
-    )
-
-    asyncio.run(render_cache_service.clear_render_cache_on_startup())
 
 
 def test_render_cache_service_imports_without_nonebot_bootstrap() -> None:

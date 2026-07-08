@@ -229,7 +229,8 @@ async def render_custom_pet_info(pet: PetORM) -> bytes:
     level_skills.sort(key=lambda s: s["learning_level"] or 0, reverse=True)
     skill_ids = [sl.skill_id for sl in pet.skill_links]
     session = object_session(pet)
-    assert session is not None
+    if session is None:
+        raise RuntimeError
     stmt = (
         select(MintmarkORM)
         .outerjoin(

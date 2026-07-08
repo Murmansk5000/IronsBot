@@ -41,7 +41,7 @@ def test_report_previous_render_crash_notifies_superusers(
     log_path.write_text("before\nrendering pet info image\nrestart\n", encoding="utf-8")
     notices: list[tuple[str, str]] = []
 
-    async def fake_notify(key: str, message: str) -> None:
+    async def fake_notify(key: str, message: str, **_kwargs: object) -> None:
         notices.append((key, message))
 
     monkeypatch.setattr(render_crash_report, "MARKER_PATH", marker_path)

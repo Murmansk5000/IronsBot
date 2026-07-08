@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ironsbot.shared.config.parsing import positive_int_list
 
@@ -12,6 +12,8 @@ DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS = 8.0
 
 
 class ActivityConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = True
     lead_hours: list[int] = Field(default_factory=lambda: [11, 1])
     grace_minutes: int = Field(default=15, ge=1)

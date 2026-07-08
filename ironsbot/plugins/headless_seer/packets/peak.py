@@ -1,26 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Annotated
+from ironsbot.integrations.headless_seer.packets.peak import (
+    DailyRankInfo,
+    DailyRankList,
+    DailyRankParam,
+)
 
-import ironsbot.plugins.headless_seer.packet.fields as f
-
-from ..packet.packet import Deserializable
-
-
-class DailyRankInfo(Deserializable):
-    id: f.UInt
-    score: f.Int
-    nick: Annotated[str, f.Unicode[16]]
-
-
-class DailyRankList(Deserializable):
-    count: f.UInt
-    rank_list: Annotated[
-        list[DailyRankInfo], f.Array[f.size_by("count"), DailyRankInfo]
-    ]
-
-
-class DailyRankParam(Deserializable):
-    key: f.UInt
-    sub_key: f.UInt
-    start: f.UInt
-    end: f.UInt
+__all__ = ["DailyRankInfo", "DailyRankList", "DailyRankParam"]

@@ -43,10 +43,6 @@ def load_activity_rows(
         )
         return []
 
-    where_clause = "WHERE end_time IS NOT NULL"
-    if only_shown:
-        where_clause += " AND COALESCE(is_show, 0) != 0"
-
     try:
         session = next(gen)
         columns = _activity_table_columns(session)
@@ -72,18 +68,46 @@ def load_activity_rows(
             )
             return []
 
-        select_column_names = ["id", "name"]
-        if "start_time" in columns:
-            select_column_names.append("start_time")
-        select_column_names.extend(["end_time", "is_show", "sort_order"])
-
-        rows = session.execute(
-            text(
-                f"SELECT {', '.join(select_column_names)} "
-                f"FROM activity {where_clause} "
-                "ORDER BY end_time, sort_order, id"
+        if "start_time" in columns and only_shown:
+            query = text(
+                """
+                SELECT id, name, start_time, end_time, is_show, sort_order
+                FROM activity
+                WHERE end_time IS NOT NULL
+                  AND COALESCE(is_show, 0) != 0
+                ORDER BY end_time, sort_order, id
+                """
             )
-        ).mappings().all()
+        elif "start_time" in columns:
+            query = text(
+                """
+                SELECT id, name, start_time, end_time, is_show, sort_order
+                FROM activity
+                WHERE end_time IS NOT NULL
+                ORDER BY end_time, sort_order, id
+                """
+            )
+        elif only_shown:
+            query = text(
+                """
+                SELECT id, name, end_time, is_show, sort_order
+                FROM activity
+                WHERE end_time IS NOT NULL
+                  AND COALESCE(is_show, 0) != 0
+                ORDER BY end_time, sort_order, id
+                """
+            )
+        else:
+            query = text(
+                """
+                SELECT id, name, end_time, is_show, sort_order
+                FROM activity
+                WHERE end_time IS NOT NULL
+                ORDER BY end_time, sort_order, id
+                """
+            )
+
+        rows = session.execute(query).mappings().all()
     except OperationalError as e:
         logger.opt(exception=True).debug("activity reminder query failed")
         _warn_activity_data_unavailable(
