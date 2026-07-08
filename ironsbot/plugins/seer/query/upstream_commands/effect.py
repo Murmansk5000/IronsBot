@@ -6,11 +6,11 @@ from nonebot.typing import T_State
 from nonebot_plugin_saa import MessageFactory
 from seerapi_models import BattleEffectORM
 
-from ironsbot.plugins.seer_data.db import (
+from ironsbot.integrations.seer_data.db import (
     BattleEffectDataGetter,
     GetBattleEffectData,
 )
-from ironsbot.plugins.seer_data.image import BattleEffectImageGetter
+from ironsbot.integrations.seer_data.image import BattleEffectImageGetter
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..prompt import (
