@@ -12,7 +12,7 @@ from typing import Any, Generic, TypeGuard, TypeVar, overload
 from nonebot import logger
 from typing_extensions import Self, TypeVarTuple, Unpack
 
-from ironsbot.plugins.headless_seer.exception import SocketRecvError
+from ironsbot.integrations.headless_seer.exception import SocketRecvError
 
 from .. import decrypt
 from ..as3bytearray import AS3ByteArray
@@ -234,8 +234,8 @@ class AbstractSocketConnect(
     # ---- 心跳 ----
 
     async def _heartbeat_loop(self) -> None:
-        assert self._heartbeat_interval is not None
-        assert self._on_heartbeat is not None
+        if self._heartbeat_interval is None or self._on_heartbeat is None:
+            raise RuntimeError
         connection_lost = False
         try:
             while self.is_connected:

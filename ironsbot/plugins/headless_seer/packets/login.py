@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from typing import Annotated
 
-import ironsbot.plugins.headless_seer.packet.fields as f
+import ironsbot.integrations.headless_seer.packet.fields as f
+from ironsbot.integrations.headless_seer.packet.fields import size_by
+from ironsbot.integrations.headless_seer.packet.packet import Deserializable
 
 from ..as3bytearray import AS3ByteArray
-from ..packet.fields import size_by
-from ..packet.packet import Deserializable
 
 
 class MainLoginPacket(Deserializable):

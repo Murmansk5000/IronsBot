@@ -45,6 +45,7 @@ DEFAULT_SEER_PLAYER_PRIORITY = 10
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
+DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
 PUBLIC_CONFIG_DOC_PATHS = (
     ROOT / "config.example.toml",
@@ -139,6 +140,11 @@ def test_example_config_parses() -> None:
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.message.meeting.commands == ["开播", "会议"]
     _assert_default_push_unsubscribe(config.message.push_unsubscribe)
+    assert config.message.red_packet_notice.enabled
+    assert (
+        config.message.red_packet_notice.cooldown_seconds
+        == DEFAULT_RED_PACKET_NOTICE_COOLDOWN
+    )
     assert not config.message.team_audit_welcome.enabled
     assert config.message.team_audit_welcome.feature == "team_audit"
     assert "米米号" in config.message.team_audit_welcome.message
