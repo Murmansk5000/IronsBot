@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,7 @@ from ironsbot.plugins.server_status import (
     RestartService,
     WatchtowerUpdateOptions,
     _create_watchtower_container,
+    _format_docker_image_created,
     _format_docker_update_reply,
     _resolve_docker_container_name,
     _split_docker_image,
@@ -57,19 +59,47 @@ def test_format_docker_update_success_reply() -> None:
             ok=True,
             updater_container_id="1234567890abcdef",
             current_image_id="sha256:old-image-id",
-            current_image_created="2026-07-04T17:00:00Z",
+            current_image_created="2026-07-04T17:00:00.123456789Z",
+            current_image_commit="oldcommitabc old change",
             target_image_id="sha256:new-image-id",
-            target_image_created="2026-07-04T18:00:00Z",
+            target_image_created="2026-07-04T18:00:00.987654321Z",
+            target_image_commit="newcommitabc new change",
         ),
     )
 
     assert "Docker 自更新任务已启动" in reply
     assert "murmansk5000/ironsbot:latest" in reply
+    assert "当前镜像ID" in reply
+    assert "最新镜像ID" in reply
     assert "old-image-id" in reply
     assert "new-image-id" in reply
     assert "2026-07-05 01:00:00" in reply
     assert "2026-07-05 02:00:00" in reply
-    assert "1234567890ab" in reply
+    assert "oldcommitabc old change" in reply
+    assert "newcommitabc new change" in reply
+    assert "1234567890ab" not in reply
+
+
+def test_format_docker_update_hides_bare_commit_hash() -> None:
+    reply = _format_docker_update_reply(
+        container_name="ironsbot",
+        image="murmansk5000/ironsbot:latest",
+        result=DockerUpdateResult(
+            ok=True,
+            updater_container_id="1234567890abcdef",
+            current_image_id="sha256:old-image-id",
+            current_image_created="2026-07-04T17:00:00.123456789Z",
+            current_image_commit="744defcda623",
+            target_image_id="sha256:new-image-id",
+            target_image_created="2026-07-04T18:00:00.987654321Z",
+            target_image_commit="6d71db0151c0",
+        ),
+    )
+
+    assert "当前提交" not in reply
+    assert "最新提交" not in reply
+    assert "744defcda623" not in reply
+    assert "6d71db0151c0" not in reply
 
 
 def test_format_docker_update_up_to_date_reply() -> None:
@@ -80,14 +110,23 @@ def test_format_docker_update_up_to_date_reply() -> None:
             ok=True,
             up_to_date=True,
             target_image_id="sha256:same-image-id",
-            target_image_created="2026-07-04T18:00:00Z",
+            target_image_created="2026-07-04T18:00:00.987654321Z",
+            target_image_commit="commitabcdef updated docs",
         ),
     )
 
     assert "Docker 镜像已是最新" in reply
     assert "same-image-i" in reply
     assert "2026-07-05 02:00:00" in reply
+    assert "commitabcdef updated docs" in reply
     assert "Watchtower" not in reply
+
+
+def test_format_docker_image_created_trims_nanoseconds() -> None:
+    assert (
+        _format_docker_image_created("2026-07-05T00:39:31.108791051Z")
+        == "2026-07-05 08:39:31"
+    )
 
 
 def test_create_watchtower_container_sets_docker_api_version() -> None:
@@ -181,12 +220,31 @@ def test_startup_docker_update_records_notice(
     assert "Docker 自更新任务已启动" in notice
 
 
-def test_restart_service_without_restart_check() -> None:
+def test_restart_service_without_restart_check_uses_process_without_socket() -> None:
     service = RestartService(SimpleNamespace(check_on_restart=False))
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert should_restart
+    assert restart_action == "process"
+    assert "正在重启机器人进程" in message
+
+
+def test_restart_service_without_restart_check_uses_docker_socket(
+    tmp_path: Path,
+) -> None:
+    socket_path = tmp_path / "docker.sock"
+    socket_path.touch()
+    service = RestartService(
+        SimpleNamespace(
+            check_on_restart=False,
+            docker_socket_path=str(socket_path),
+        )
+    )
+
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
+
+    assert restart_action == "docker"
+    assert "正在重启机器人容器" in message
     assert "未启用重启前镜像检查" in message
 
 
@@ -206,10 +264,10 @@ def test_restart_service_missing_socket_continues_restart(
         )
     )
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert should_restart
-    assert "跳过镜像检查并继续普通重启" in message
+    assert restart_action == "process"
+    assert "跳过镜像检查并继续普通进程重启" in message
 
 
 def test_restart_service_up_to_date_continues_restart(
@@ -228,10 +286,10 @@ def test_restart_service_up_to_date_continues_restart(
         )
     )
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert should_restart
-    assert "镜像已是最新，继续普通重启" in message
+    assert restart_action == "docker"
+    assert "镜像已是最新，正在重启当前容器" in message
 
 
 def test_restart_service_started_update_skips_extra_restart(
@@ -253,7 +311,7 @@ def test_restart_service_started_update_skips_extra_restart(
         )
     )
 
-    message, should_restart = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_manual_restart())
 
-    assert not should_restart
+    assert restart_action == "none"
     assert "Docker 自更新任务已启动" in message

@@ -72,8 +72,8 @@ def _assert_default_push_unsubscribe(
 
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
-    assert not docker_update.check_on_startup
-    assert not docker_update.check_on_restart
+    assert docker_update.check_on_startup
+    assert docker_update.check_on_restart
     assert docker_update.image == "murmansk5000/ironsbot:latest"
     assert docker_update.container_name == "ironsbot"
     assert docker_update.docker_socket_path == "/var/run/docker.sock"
