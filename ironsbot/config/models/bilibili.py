@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ironsbot.shared.config.parsing import json_object, string_list
 from ironsbot.shared.config.time import normalize_daily_time
@@ -63,7 +63,11 @@ def _reject_removed_fields(data: object, fields: set[str]) -> None:
     raise ValueError(msg)
 
 
-class BiliIntervalWindow(BaseModel):
+class BiliBaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class BiliIntervalWindow(BiliBaseModel):
     start: str
     end: str
     minutes: int = Field(gt=0)
@@ -77,12 +81,12 @@ class BiliIntervalWindow(BaseModel):
         )
 
 
-class BiliStorageConfig(BaseModel):
+class BiliStorageConfig(BiliBaseModel):
     data_dir: Path = Path("data/bilibili_monitor")
     history_max_items: int = Field(default=1000, ge=1)
 
 
-class BiliPollingConfig(BaseModel):
+class BiliPollingConfig(BiliBaseModel):
     default_minutes: int = Field(default=30, gt=0)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
@@ -91,7 +95,7 @@ class BiliPollingConfig(BaseModel):
     )
 
 
-class BiliPushTargetConfig(BaseModel):
+class BiliPushTargetConfig(BiliBaseModel):
     extra_accounts: list[str] = Field(default_factory=list)
     mode: BiliPushMode | None = None
     account_modes: dict[str, BiliPushMode] = Field(default_factory=dict)
@@ -125,7 +129,7 @@ class BiliPushTargetConfig(BaseModel):
         return result
 
 
-class BiliPushConfig(BaseModel):
+class BiliPushConfig(BiliBaseModel):
     default_mode: BiliPushMode = "full"
     default_accounts: list[str] = Field(
         default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
@@ -166,7 +170,7 @@ class BiliPushConfig(BaseModel):
         return result
 
 
-class BiliFilterConfig(BaseModel):
+class BiliFilterConfig(BiliBaseModel):
     suppress_push_patterns: list[str] = Field(
         default_factory=lambda: list(DEFAULT_BILI_SUPPRESS_PATTERNS)
     )
@@ -177,7 +181,7 @@ class BiliFilterConfig(BaseModel):
         return string_list(value)
 
 
-class BiliConfig(BaseModel):
+class BiliConfig(BiliBaseModel):
     account_aliases: dict[str, int] = Field(
         default_factory=lambda: dict(DEFAULT_BILI_ACCOUNT_ALIASES)
     )
