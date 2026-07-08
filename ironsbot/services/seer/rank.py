@@ -632,7 +632,7 @@ def get_current_peak_sub_key() -> int | None:
     try:
         from seerapi_models import PeakSeasonORM
 
-        from ironsbot.plugins.db_sync.manager import db_manager
+        from ironsbot.integrations.db_registry import db_manager
     except Exception:  # noqa: BLE001
         return None
 
