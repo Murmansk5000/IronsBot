@@ -19,7 +19,7 @@ from ironsbot.shared.promotions import (
     append_fire_manual_ad_for_group,
     append_fire_manual_ad_text,
 )
-from ironsbot.shared.scheduler import remove_jobs_by_prefix
+from ironsbot.shared.scheduler import add_or_replace_job, remove_jobs_by_prefix
 
 from .config import (
     GroupScheduledMessageAction,
@@ -148,7 +148,8 @@ def _register_private_schedule_overrides(
             trigger_kwargs = schedule_override_trigger_kwargs(task, preference.value)
         except ValueError:
             continue
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             send_private_schedule,
             "cron",
             kwargs={
@@ -156,13 +157,12 @@ def _register_private_schedule_overrides(
                 "index": index,
                 "target_user_ids": (preference.target_id,),
             },
-            id=schedule_override_job_id(
+            job_id=schedule_override_job_id(
                 "private_schedule",
                 index,
                 key,
                 preference.target_id,
             ),
-            replace_existing=True,
             **trigger_kwargs,
         )
 
@@ -186,7 +186,8 @@ def _register_group_schedule_overrides(
             trigger_kwargs = schedule_override_trigger_kwargs(task, preference.value)
         except ValueError:
             continue
-        scheduler.add_job(
+        add_or_replace_job(
+            scheduler,
             send_group_schedule,
             "cron",
             kwargs={
@@ -194,13 +195,12 @@ def _register_group_schedule_overrides(
                 "index": index,
                 "target_group_ids": (preference.target_id,),
             },
-            id=schedule_override_job_id(
+            job_id=schedule_override_job_id(
                 "group_schedule",
                 index,
                 key,
                 preference.target_id,
             ),
-            replace_existing=True,
             **trigger_kwargs,
         )
 
@@ -213,12 +213,12 @@ def _register_private_schedule(
     if not task.enabled:
         return
 
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         send_private_schedule,
         "cron",
         kwargs={"task": task, "index": index},
-        id=build_schedule_job_id("private_schedule", index, task.id),
-        replace_existing=True,
+        job_id=build_schedule_job_id("private_schedule", index, task.id),
         **build_schedule_trigger_kwargs(task),
     )
     _register_private_schedule_overrides(scheduler, index, task)
@@ -232,12 +232,12 @@ def _register_group_schedule(
     if not task.enabled:
         return
 
-    scheduler.add_job(
+    add_or_replace_job(
+        scheduler,
         send_group_schedule,
         "cron",
         kwargs={"task": task, "index": index},
-        id=build_schedule_job_id("group_schedule", index, task.id),
-        replace_existing=True,
+        job_id=build_schedule_job_id("group_schedule", index, task.id),
         **build_schedule_trigger_kwargs(task),
     )
     _register_group_schedule_overrides(scheduler, index, task)
