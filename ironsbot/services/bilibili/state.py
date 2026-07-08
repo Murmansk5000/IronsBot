@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nonebot.adapters.onebot.v11 import (
@@ -46,6 +46,7 @@ class BiliTargetRule:
     uid_accounts: dict[int, str]
     mode: BiliPushMode
     modes: dict[str, BiliPushMode]
+    account_nicknames: dict[str, str] = field(default_factory=dict)
 
     def mode_for_uid(self, uid: int) -> BiliPushMode | None:
         if uid not in self.uids:
@@ -57,6 +58,15 @@ class BiliTargetRule:
 
     def account_for_uid(self, uid: int) -> str | None:
         return self.uid_accounts.get(uid)
+
+    def label_for_uid(self, uid: int) -> str:
+        account = self.account_for_uid(uid)
+        if account is None:
+            return str(int(uid))
+        nickname = self.account_nicknames.get(account)
+        if nickname:
+            return f"{nickname}（{account}，{int(uid)}）"
+        return f"{account}（{int(uid)}）"
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,9 +116,31 @@ def account_for_uid(uid: int, config: BiliConfig | None = None) -> str | None:
     return None
 
 
+def account_nickname(account: str, config: BiliConfig | None = None) -> str | None:
+    normalized = account.strip().lower()
+    nickname = (config or get_bili_config()).account_nicknames.get(normalized)
+    return nickname or None
+
+
+def account_display_label(
+    account: str,
+    config: BiliConfig | None = None,
+    *,
+    uid: int | None = None,
+) -> str:
+    normalized = account.strip().lower()
+    resolved_uid = uid if uid is not None else account_uid(normalized, config)
+    nickname = account_nickname(normalized, config)
+    if resolved_uid is None:
+        return nickname or normalized
+    if nickname:
+        return f"{nickname}（{normalized}，{int(resolved_uid)}）"
+    return f"{normalized}（{int(resolved_uid)}）"
+
+
 def account_label(uid: int, config: BiliConfig | None = None) -> str:
     account = account_for_uid(uid, config)
-    return f"{account}（{int(uid)}）" if account else str(int(uid))
+    return account_display_label(account, config) if account else str(int(uid))
 
 
 def _target_accounts(
@@ -137,10 +169,16 @@ def _resolve_rule(
         for account, uid in account_to_uid.items()
         if uid > 0
     }
+    account_nicknames = {
+        account: nickname
+        for account in accounts
+        if (nickname := config.account_nicknames.get(account))
+    }
     return BiliTargetRule(
         accounts=accounts,
         uids=frozenset(uid for uid in account_to_uid.values() if uid > 0),
         uid_accounts=uid_accounts,
+        account_nicknames=account_nicknames,
         mode=target_config.mode or config.push.mode,
         modes={**config.push.modes, **target_config.modes},
     )
@@ -155,6 +193,10 @@ def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTarg
         accounts=old_rule.accounts | new_rule.accounts,
         uids=old_rule.uids | new_rule.uids,
         uid_accounts={**old_rule.uid_accounts, **new_rule.uid_accounts},
+        account_nicknames={
+            **old_rule.account_nicknames,
+            **new_rule.account_nicknames,
+        },
         mode=new_rule.mode,
         modes={**old_rule.modes, **new_rule.modes},
     )
@@ -366,7 +408,7 @@ def bili_push_subscription_options(
         options.append(
             PushSubscriptionOption(
                 key=key,
-                label=bili_push_subscription_label(uid, rule.account_for_uid(uid)),
+                label=bili_push_subscription_label(uid, rule.label_for_uid(uid)),
                 feature="bili_push",
                 unsubscribed=is_unsubscribed,
             )

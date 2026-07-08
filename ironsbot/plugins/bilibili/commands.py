@@ -41,6 +41,8 @@ from ironsbot.services.bilibili.preferences import (
     push_mode_label,
 )
 from ironsbot.services.bilibili.state import (
+    account_display_label,
+    account_nickname,
     account_uid,
     bili_accounts,
     mode_for_target_account,
@@ -374,7 +376,7 @@ def _format_account_mode_line(
     mode = mode_for_target_account(target_type, target_id, account)
     mode_text = push_mode_label(mode)
     td_text = "，已 TD" if bili_push_subscription_key(uid) in unsubscribed_keys else ""
-    return f"- {account}（{uid}）：{mode_text}{td_text}"
+    return f"- {account_display_label(account, uid=uid)}：{mode_text}{td_text}"
 
 
 async def _handle_bili_accounts(
@@ -387,7 +389,14 @@ async def _handle_bili_accounts(
     accounts = bili_accounts()
 
     lines = ["📺【B站账号】"]
-    account_lines = "、".join(f"{name}={uid}" for name, uid in accounts.items())
+    account_lines = "、".join(
+        (
+            f"{name}={uid}（{nickname}）"
+            if (nickname := account_nickname(name))
+            else f"{name}={uid}"
+        )
+        for name, uid in accounts.items()
+    )
     lines.append("账号库：" + account_lines)
     if rule is None:
         lines.append("当前会话未开启 B站推送。")
@@ -468,10 +477,12 @@ async def _handle_bili_push_mode(
 
     effective_mode = mode_for_target_account(target_type, target_id, account)
     scope = "当前群" if target_type == "group" else "当前私聊"
+    account_text = account_display_label(account, uid=uid)
     await finish_event_reply(
         matcher,
         event,
-        f"已设置{scope} B站账号 {account}（{uid}）推送模式：{push_mode_label(mode)}。\n"
+        f"已设置{scope} B站账号 {account_text}推送模式："
+        f"{push_mode_label(mode)}。\n"
         f"当前生效模式：{push_mode_label(effective_mode)}。",
     )
 

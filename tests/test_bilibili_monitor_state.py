@@ -50,6 +50,7 @@ def test_bili_config_defaults_to_official_account() -> None:
     config = BiliConfig()
 
     assert config.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.account_nicknames["seer"] == "赛尔号官方"
     assert config.push.mode == "link"
     assert config.push.accounts == ["seer"]
     assert config.push.modes == DEFAULT_BILI_PUSH_MODES
@@ -57,7 +58,7 @@ def test_bili_config_defaults_to_official_account() -> None:
 
 def test_bili_config_accepts_named_group_accounts() -> None:
     config = BiliConfig(
-        accounts={"fire": FIRE_BILI_UID},
+        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}},
         push={
             "groups": {
                 "main": {
@@ -70,8 +71,22 @@ def test_bili_config_accepts_named_group_accounts() -> None:
 
     assert config.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
     assert config.accounts["fire"] == FIRE_BILI_UID
+    assert config.account_nicknames["fire"] == "火火"
     assert config.push.groups["main"].accounts == ["fire"]
     assert config.push.groups["main"].modes == {"fire": "link"}
+
+
+def test_bili_account_display_label_uses_nickname() -> None:
+    config = BiliConfig(accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}})
+
+    assert (
+        state.account_display_label("fire", config)
+        == f"火火（fire，{FIRE_BILI_UID}）"
+    )
+    assert (
+        state.account_label(FIRE_BILI_UID, config)
+        == f"火火（fire，{FIRE_BILI_UID}）"
+    )
 
 
 def test_group_query_falls_back_to_global_uids_when_feature_enabled(
@@ -286,3 +301,30 @@ def test_bili_push_subscription_options_are_per_uid(
         bili_push_subscription_key(1310714247),
     ]
     assert [option.unsubscribed for option in options] == [True, False]
+
+
+def test_bili_push_subscription_options_use_rule_nicknames(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = BiliConfig(
+        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}},
+        push={"groups": {"main": {"accounts": ["fire"]}}},
+    )
+    monkeypatch.setattr(
+        state,
+        "PUSH_GROUP_RULES",
+        {987654321: state._resolve_rule(config.push.groups["main"], config)},
+    )
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+
+    options = state.bili_push_subscription_options(
+        target_type="group",
+        target_id=987654321,
+        store=store,
+    )
+
+    assert [option.label for option in options] == [
+        "B站动态：火火（fire，375750254）",
+        "B站动态：赛尔号官方（seer，1310714247）",
+    ]

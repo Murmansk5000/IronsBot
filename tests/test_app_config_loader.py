@@ -187,6 +187,7 @@ def test_example_config_parses() -> None:
     assert "fire_manual_ad" in config.ai.intent_actions
     assert "fire_manual" not in config.ai.intent_actions
     assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
+    assert config.bilibili.account_nicknames["seer"] == "赛尔号官方"
     assert config.bilibili.push.mode == "link"
     assert config.bilibili.push.accounts == ["seer"]
     assert config.bilibili.push.modes == {"seer": "full"}
