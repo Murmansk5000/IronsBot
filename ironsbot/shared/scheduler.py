@@ -5,6 +5,24 @@ from collections.abc import Container, Iterable
 from typing import Any
 
 
+def add_or_replace_job(
+    scheduler: Any,
+    func: Any,
+    trigger: str,
+    *,
+    job_id: str,
+    replace_existing: bool = True,
+    **kwargs: Any,
+) -> Any:
+    return scheduler.add_job(
+        func,
+        trigger,
+        id=job_id,
+        replace_existing=replace_existing,
+        **kwargs,
+    )
+
+
 def remove_jobs_by_prefix(
     scheduler: Any,
     prefix: str,
@@ -30,5 +48,4 @@ def remove_jobs_by_prefix(
     return removed
 
 
-__all__ = ["remove_jobs_by_prefix"]
-
+__all__ = ["add_or_replace_job", "remove_jobs_by_prefix"]
