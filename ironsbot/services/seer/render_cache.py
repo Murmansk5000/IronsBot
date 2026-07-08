@@ -135,15 +135,6 @@ class RenderCache:
         if removed:
             logger.info(f"渲染缓存清理: 删除 {removed} 个文件")
 
-    def clear(self) -> None:
-        if not self._cache_dir.exists():
-            return
-        files = [f for f in self._cache_dir.iterdir() if f.is_file()]
-        for f in files:
-            f.unlink(missing_ok=True)
-        if files:
-            logger.info(f"渲染缓存清空: 删除 {len(files)} 个文件")
-
     @property
     def total_size(self) -> int:
         if not self._cache_dir.exists():
@@ -154,15 +145,9 @@ class RenderCache:
 render_cache = RenderCache()
 
 
-async def clear_render_cache_on_startup() -> None:
-    if get_render_config().clear_on_startup:
-        render_cache.clear()
-
-
 __all__ = [
     "UNKNOWN_RENDER_CACHE_VERSION",
     "RenderCache",
-    "clear_render_cache_on_startup",
     "get_render_cache_dir",
     "get_render_cache_max_size_bytes",
     "get_render_config",

@@ -71,7 +71,9 @@ nonebot.init()
 validate_plugin_manifest()
 
 for module in EXTERNAL_PLUGINS:
-    nonebot.load_plugin(module)
+    plugin = nonebot.load_plugin(module)
+    if plugin is None:
+        raise AssertionError(f"failed to load plugin: {module}")
 
 
 def _forbidden_sync(action):
@@ -94,7 +96,9 @@ httpx.Client.request = _forbidden_sync("http request")
 httpx.AsyncClient.request = _forbidden_async_request
 
 for module in (*CORE_PLUGINS, *INFRASTRUCTURE_PLUGINS, *FEATURE_PLUGINS):
-    nonebot.load_plugin(module)
+    plugin = nonebot.load_plugin(module)
+    if plugin is None:
+        raise AssertionError(f"failed to load plugin: {module}")
 
 runtime_paths = [
     pathlib.Path("data"),

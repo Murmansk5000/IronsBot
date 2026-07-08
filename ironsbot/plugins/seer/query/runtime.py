@@ -8,7 +8,6 @@ from nonebot import get_driver, logger, require
 from .config import get_local_rank_config, get_rank_query_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
-_render_cache_runtime_state = {"registered": False}
 _render_crash_report_runtime_state = {"registered": False}
 
 
@@ -90,20 +89,6 @@ def setup_local_rank_scheduler_runtime() -> None:
     _setup_local_rank_scheduler_runtime(get_driver(), scheduler)
 
 
-def _setup_render_cache_runtime(driver: Any) -> None:
-    if _render_cache_runtime_state["registered"]:
-        return
-
-    from ironsbot.services.seer.render_cache import clear_render_cache_on_startup
-
-    driver.on_startup(clear_render_cache_on_startup)
-    _render_cache_runtime_state["registered"] = True
-
-
-def setup_render_cache_runtime() -> None:
-    _setup_render_cache_runtime(get_driver())
-
-
 def _setup_render_crash_report_runtime(driver: Any) -> None:
     if _render_crash_report_runtime_state["registered"]:
         return
@@ -122,6 +107,5 @@ def setup_render_crash_report_runtime() -> None:
 
 __all__ = [
     "setup_local_rank_scheduler_runtime",
-    "setup_render_cache_runtime",
     "setup_render_crash_report_runtime",
 ]
