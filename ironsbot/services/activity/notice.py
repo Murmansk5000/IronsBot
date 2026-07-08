@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import html
 import re
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+import httpx
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
@@ -89,16 +88,14 @@ def _fetch_unity_notice_text(now: datetime) -> str:
         return _notice_cache.text
 
     try:
-        request = urllib.request.Request(
+        response = httpx.get(
             UNITY_NOTICE_URL,
             headers={"User-Agent": "IronsBot activity reminder"},
-        )
-        with urllib.request.urlopen(
-            request,
             timeout=get_app_config().activity.notice_timeout_seconds,
-        ) as response:
-            raw_text = response.read().decode("utf-8", "replace")
-    except (OSError, urllib.error.URLError) as e:
+        )
+        response.raise_for_status()
+        raw_text = response.content.decode("utf-8", "replace")
+    except (OSError, httpx.HTTPError) as e:
         logger.warning(f"activity notice fetch failed: {e}")
         _notice_cache.expires_at = now + timedelta(minutes=5)
         return _notice_cache.text

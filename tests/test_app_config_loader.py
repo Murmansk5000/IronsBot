@@ -89,11 +89,11 @@ def _assert_default_push_unsubscribe(
         push_unsubscribe.data_path,
     ) == (
         ["td", "退订"],
-        ["订阅", "恢复订阅"],
+        ["订阅", "恢复订阅", "推送管理"],
         DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH,
     )
     assert "TD" in push_unsubscribe.hint
-    assert "群主/管理员" in push_unsubscribe.group_hint
+    assert "可查看本群推送订阅" in push_unsubscribe.group_hint
 
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:

@@ -16,8 +16,8 @@ SERVER_UNAVAILABLE_PLAYER_QUERY_MESSAGE = (
 def format_socket_recv_error(error: SocketRecvError) -> str:
     result_code = error.head.result
     try:
-        from ironsbot.plugins.db_sync.manager import db_manager
-        from ironsbot.plugins.seer_data.db import ErrorCodeGetter
+        from ironsbot.integrations.db_registry import db_manager
+        from ironsbot.integrations.seer_data.db import ErrorCodeGetter
 
         sessions = next(db_manager.get_all_sessions())
         error_code = ErrorCodeGetter(sessions, str(result_code))

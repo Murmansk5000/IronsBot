@@ -10,14 +10,13 @@ if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
     from nonebot.adapters import Event
-    from nonebot.matcher import Matcher
 
 
 async def dispatch_plugin(
     *,
     plugin_name: str,
     event: Event,
-    matcher: Matcher | None = None,
+    matcher: Any | None = None,
     state: MutableMapping[str, Any] | None = None,
     action: str | None = None,
     **data: Any,

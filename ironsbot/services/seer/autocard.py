@@ -10,13 +10,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.services.seer.query_help import seer_query_help_message
-from ironsbot.shared.messaging.selection_menu import (
+from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     format_selection_menu,
 )
 
 if TYPE_CHECKING:
-    from ironsbot.plugins.seer_data.db import SeerAPISession
+    from ironsbot.integrations.seer_data.db import SeerAPISession
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import MessageEvent
 
@@ -14,7 +14,6 @@ from .text import build_message, command_text_matches
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Message
-    from nonebot.matcher import Matcher
 
 EventReplyCheck = Callable[[MessageEvent], bool]
 
@@ -37,7 +36,7 @@ def command_reply_check(commands: tuple[str, ...] | list[str]) -> EventReplyChec
 
 
 async def enter_event_reply_conversation(  # noqa: PLR0913
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
     *,
     namespace: str,
