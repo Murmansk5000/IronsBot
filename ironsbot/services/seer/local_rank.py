@@ -27,6 +27,7 @@ from ironsbot.services.seer.rank import (
     is_pet_kind_rank_anomaly_user,
 )
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
+from ironsbot.shared.sqlite import connect_sqlite
 
 _CACHE_LOCK = asyncio.Lock()
 
@@ -82,16 +83,12 @@ def _sqlite_cache_path() -> Path:
 
 
 def _connect_cache() -> sqlite3.Connection:
-    path = _sqlite_cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
+    conn = connect_sqlite(_sqlite_cache_path(), row_factory=sqlite3.Row)
     _ensure_cache_schema(conn)
     return conn
 
 
 def _ensure_cache_schema(conn: sqlite3.Connection) -> None:
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS players (

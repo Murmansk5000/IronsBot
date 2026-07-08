@@ -9,6 +9,7 @@ from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import RankQueryConfig
+from ironsbot.shared.sqlite import connect_sqlite
 
 
 def get_rank_query_config() -> RankQueryConfig:
@@ -56,11 +57,7 @@ def _cache_path() -> Path:
 
 
 def _connect() -> sqlite3.Connection:
-    path = _cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn = connect_sqlite(_cache_path())
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS rank_players (
