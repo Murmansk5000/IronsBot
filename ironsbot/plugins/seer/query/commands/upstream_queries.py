@@ -8,7 +8,6 @@ at the feature plugin priority so they win before lower-priority matchers.
 
 from typing import Annotated
 
-from httpx import HTTPStatusError, RequestError
 from nonebot import logger
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -17,20 +16,16 @@ from nonebot.matcher import Matcher
 from nonebot.params import Depends, Fullmatch
 from nonebot.rule import Rule
 from nonebot.typing import T_State
-from nonebot_plugin_saa import Image, MessageFactory, Text
+from nonebot_plugin_saa import Image, MessageFactory
 from seerapi_models import PetORM, PetSkinORM
 from sqlmodel import select
 
-from ironsbot.plugins.http_client import get_http_origin_client
 from ironsbot.plugins.seer_data.db import SQLModelSession
-from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.rendering.custom_pet_info import render_custom_pet_info
-from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.skin_price import format_skin_price_lines
-from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.services.sendpic_fixed_image import FIXED_IMAGE_COMMANDS
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
@@ -56,10 +51,10 @@ from ..prompt import (
 from ..upstream_commands import cloth as upstream_cloth
 from ..upstream_commands import effect as upstream_effect
 from ..upstream_commands import mintmark as upstream_mintmark
-from ..upstream_commands import other as upstream_other
 from ..upstream_commands import peak as upstream_peak
 from ..upstream_commands import pet as upstream_pet
 from ..upstream_commands import type as upstream_type
+from . import data_tools
 
 UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
@@ -227,12 +222,7 @@ class UpstreamQueryPlugin:
         __: Event,
         context: PluginContext,
     ) -> None:
-        session: SeerAPISession = context.data["session"]
-        image_url, source_url = load_weekly_preview_links(session)
-        msg = MessageFactory()
-        msg += await _fetch_weekly_preview_image(image_url)
-        msg += Text(f"\n预告图来自 {source_url}")
-        await msg.finish()
+        await data_tools.handle_preview(session=context.data["session"])
 
     async def _handle_data_version(
         self,
@@ -240,7 +230,7 @@ class UpstreamQueryPlugin:
         _: Event,
         context: PluginContext,
     ) -> None:
-        await upstream_other.handle_data_version(
+        await data_tools.handle_data_version(
             matcher=matcher,
             session=context.data["session"],
         )
@@ -251,10 +241,11 @@ class UpstreamQueryPlugin:
         event: Event,
         context: PluginContext,
     ) -> None:
-        message = format_season_countdown(context.data["session"])
-        if isinstance(event, MessageEvent):
-            await finish_event_reply(matcher, event, message)
-        await matcher.finish(message)
+        await data_tools.handle_season_countdown(
+            matcher=matcher,
+            event=event,
+            session=context.data["session"],
+        )
 
     async def _handle_mintmark(
         self,
@@ -954,15 +945,6 @@ async def _handle_peak_user(
         type_tuple=type_tuple,
         game=game,
     )
-
-async def _fetch_weekly_preview_image(image_url: str):
-    try:
-        response = await get_http_origin_client().get(image_url)
-        response.raise_for_status()
-        return Image(response.content)
-    except (HTTPStatusError, RequestError):
-        return await PreviewImageGetter.get("")
-
 
 preview_matcher = matcher_group.on_fullmatch(
     "下周预告",
