@@ -19,6 +19,7 @@ from ironsbot.config import (
     load_secrets_config,
 )
 from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
@@ -41,6 +42,7 @@ DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
+DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 EXAMPLE_SEER_PLAYER_PRIORITY = 5
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
@@ -108,6 +110,23 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
 
 
+def _assert_default_team_audit_welcome(config: AppConfig) -> None:
+    team_audit = config.message.team_audit_welcome
+    assert not team_audit.enabled
+    assert team_audit.feature == "team_audit"
+    assert "米米号" in team_audit.message
+    assert team_audit.followup_enabled
+    assert team_audit.followup_after_hours == DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS
+    assert "退出本审核群" in team_audit.followup_message
+    assert team_audit.final_followup_enabled
+    assert (
+        team_audit.final_followup_after_hours
+        == DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS
+    )
+    assert "仍然还在审核群" in team_audit.final_followup_message
+    assert team_audit.followup_cache_path == "data/team_audit_welcome/pending.sqlite"
+
+
 def _assert_default_matcher_priorities(
     matcher_priority: MatcherPriorityConfig,
 ) -> None:
@@ -145,19 +164,7 @@ def test_example_config_parses() -> None:
         config.message.red_packet_notice.cooldown_seconds
         == DEFAULT_RED_PACKET_NOTICE_COOLDOWN
     )
-    assert not config.message.team_audit_welcome.enabled
-    assert config.message.team_audit_welcome.feature == "team_audit"
-    assert "米米号" in config.message.team_audit_welcome.message
-    assert config.message.team_audit_welcome.followup_enabled
-    assert (
-        config.message.team_audit_welcome.followup_after_hours
-        == DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS
-    )
-    assert "退出本审核群" in config.message.team_audit_welcome.followup_message
-    assert (
-        config.message.team_audit_welcome.followup_cache_path
-        == "data/team_audit_welcome/pending.sqlite"
-    )
+    _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.subscriptions == []
     assert config.seer.team_resource.commands == ["战队"]
     assert "autocard" in config.seer.player.sections
@@ -453,7 +460,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     team_resource_config = _load_module_from_path(
         "team_resource_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "team_shortcut" / "config.py",
+        ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
     )
 
     try:
