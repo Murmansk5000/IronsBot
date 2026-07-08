@@ -66,6 +66,12 @@ from ironsbot.services.seer.rank_pagination import (
     rank_page_start,
     rank_window_page_starts,
 )
+from ironsbot.services.seer.rank_position_cache import (
+    find_rank_by_cached_position as _find_rank_by_cached_position_impl,
+)
+from ironsbot.services.seer.rank_position_cache import (
+    refresh_cached_rank_window as _refresh_cached_rank_window_impl,
+)
 from ironsbot.services.seer.rank_score_cache import (
     cached_score_candidate_page_starts as _cached_score_candidate_page_starts_impl,
 )
@@ -181,20 +187,16 @@ async def _refresh_cached_rank_window(
     center_index: int,
     page_size: int,
 ) -> None:
-    for start in _rank_window_page_starts(
+    await _refresh_cached_rank_window_impl(
+        game,
+        key=key,
+        sub_key=sub_key,
         center_index=center_index,
         page_size=page_size,
-    ):
-        await _fetch_rank_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=start + page_size - 1,
-            use_cache=False,
-        )
-        interval = get_local_rank_config().refresh_interval_seconds
-        await asyncio.sleep(min(interval, 0.5))
+        rank_window_page_starts=_rank_window_page_starts,
+        fetch_rank_page=_fetch_rank_page,
+        refresh_interval_seconds=get_local_rank_config().refresh_interval_seconds,
+    )
 
 
 def _schedule_cached_rank_window_refresh(  # noqa: PLR0913
@@ -253,33 +255,17 @@ async def _find_rank_by_cached_position(  # noqa: PLR0913
     page_size: int,
     result: RankLookupResult,
 ) -> RankLookupResult | None:
-    cached_item = get_cached_rank_item(key=key, sub_key=sub_key, user_id=user_id)
-    if cached_item is None:
-        return None
-
-    result.queried = True
-    for start in _rank_window_page_starts(
-        center_index=cached_item.rank_index,
+    return await _find_rank_by_cached_position_impl(
+        game,
+        user_id=user_id,
+        key=key,
+        sub_key=sub_key,
         page_size=page_size,
-    ):
-        items = await _fetch_rank_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=start + page_size - 1,
-            use_cache=False,
-        )
-        for offset, item in enumerate(items):
-            if item.id == user_id:
-                result.rank = start + offset + 1
-                result.score = item.score
-                return result
-
-        if len(items) < page_size and start > cached_item.rank_index:
-            break
-
-    return None
+        result=result,
+        get_cached_rank_item=get_cached_rank_item,
+        rank_window_page_starts=_rank_window_page_starts,
+        fetch_rank_page=_fetch_rank_page,
+    )
 
 
 async def _fetch_rank_item(
