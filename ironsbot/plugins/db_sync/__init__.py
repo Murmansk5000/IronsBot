@@ -6,7 +6,10 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
-from ironsbot.integrations.db_sync import service
+from ironsbot.integrations.db_sync import registry as db_sync_registry
+from ironsbot.integrations.db_sync import runner as db_sync_runner
+from ironsbot.integrations.db_sync import state as db_sync_state
+from ironsbot.integrations.db_sync.models import SyncStatus
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
@@ -43,13 +46,13 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
         matcher,
         event,
         context=ManualSyncContext(
-            registered_syncs=service._registered_syncs,
-            last_sync_statuses=service._last_sync_statuses,
-            default_sync_status=service._SyncStatus(ok=True),
-            is_sync_running=service.is_sync_running,
-            remote_build_names=service._remote_build_names,
-            run_sync_all_databases=service.run_sync_all_databases,
-            format_sync_statuses=service._format_sync_statuses,
-            format_remote_build_failures=service._format_remote_build_failures,
+            registered_syncs=db_sync_state.registered_syncs,
+            last_sync_statuses=db_sync_state.last_sync_statuses,
+            default_sync_status=SyncStatus(ok=True),
+            is_sync_running=db_sync_registry.is_sync_running,
+            remote_build_names=db_sync_runner.remote_build_names,
+            run_sync_all_databases=db_sync_runner.run_sync_all_databases,
+            format_sync_statuses=db_sync_runner.format_sync_statuses,
+            format_remote_build_failures=db_sync_runner.format_remote_build_failures,
         ),
     )
