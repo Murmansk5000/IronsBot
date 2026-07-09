@@ -1,36 +1,25 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.shared.sqlite import open_sqlite_schema
 
 if TYPE_CHECKING:
     import sqlite3
-    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
 
-@contextmanager
-def connect_rank_page_cache(path: Path) -> Iterator[sqlite3.Connection]:
-    with open_sqlite(path) as conn:
-        ensure_rank_page_cache_schema(conn)
-        yield conn
-
-
-def ensure_rank_page_cache_schema(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
+RANK_PAGE_CACHE_SCHEMA = (
+    """
         CREATE TABLE IF NOT EXISTS rank_players (
             user_id INTEGER PRIMARY KEY,
             nick TEXT NOT NULL DEFAULT '',
             updated_at REAL NOT NULL
         )
-        """
-    )
-    conn.execute(
-        """
+    """,
+    """
         CREATE TABLE IF NOT EXISTS rank_pages (
             key INTEGER NOT NULL,
             sub_key INTEGER NOT NULL,
@@ -42,10 +31,8 @@ def ensure_rank_page_cache_schema(conn: sqlite3.Connection) -> None:
             actual_count INTEGER NOT NULL,
             PRIMARY KEY (key, sub_key, start_index, end_index)
         )
-        """
-    )
-    conn.execute(
-        """
+    """,
+    """
         CREATE TABLE IF NOT EXISTS player_rank_facts (
             key INTEGER NOT NULL,
             sub_key INTEGER NOT NULL,
@@ -59,20 +46,25 @@ def ensure_rank_page_cache_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (key, sub_key, user_id),
             UNIQUE (key, sub_key, rank_index)
         )
-        """
-    )
-    conn.execute(
-        """
+    """,
+    """
         CREATE INDEX IF NOT EXISTS idx_player_rank_facts_rank
         ON player_rank_facts (key, sub_key, rank_index)
-        """
-    )
-    conn.execute(
-        """
+    """,
+    """
         CREATE INDEX IF NOT EXISTS idx_player_rank_facts_score
         ON player_rank_facts (key, sub_key, score DESC, rank_index)
-        """
-    )
+    """,
+)
+
+
+def connect_rank_page_cache(path: Path) -> AbstractContextManager[sqlite3.Connection]:
+    return open_sqlite_schema(path, RANK_PAGE_CACHE_SCHEMA)
+
+
+def ensure_rank_page_cache_schema(conn: sqlite3.Connection) -> None:
+    for statement in RANK_PAGE_CACHE_SCHEMA:
+        conn.execute(statement)
 
 
 __all__ = [
