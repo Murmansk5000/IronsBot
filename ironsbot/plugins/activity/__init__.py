@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nonebot import on_message, require
+from nonebot import on_message
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.permission import SUPERUSER
@@ -73,7 +73,6 @@ def _now() -> datetime:
 
 
 def _activity_db_session_factory() -> Any:
-    require("ironsbot.plugins.seer_data")
     from ironsbot.integrations.db_registry import db_manager
 
     return db_manager.get_session

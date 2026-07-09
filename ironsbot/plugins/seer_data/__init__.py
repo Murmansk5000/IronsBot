@@ -1,14 +1,10 @@
 # SPDX-License-Identifier: MIT
 import httpx
-from nonebot import logger, require
+from nonebot import logger
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.app import AppConfig
-
-require("ironsbot.plugins.db_sync")
-require("ironsbot.plugins.http_client")
-
 from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.integrations.db_sync.models import GetFingerprintFn
 from ironsbot.integrations.db_sync.registry import (

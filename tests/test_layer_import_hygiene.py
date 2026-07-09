@@ -162,6 +162,32 @@ def test_plugins_do_not_import_other_plugins() -> None:
     assert _plugin_cross_import_offenders() == []
 
 
+def _internal_plugin_require_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in PLUGIN_ROOT.rglob("*.py"):
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node) != "require" or not node.args:
+                continue
+            first_arg = node.args[0]
+            if not isinstance(first_arg, ast.Constant):
+                continue
+            if not isinstance(first_arg.value, str):
+                continue
+            if first_arg.value.startswith("ironsbot.plugins."):
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{node.lineno} requires "
+                    f"{first_arg.value}"
+                )
+    return offenders
+
+
+def test_plugins_do_not_require_other_internal_plugins() -> None:
+    assert _internal_plugin_require_offenders() == []
+
+
 def _star_import_offenders() -> list[str]:
     offenders: list[str] = []
     for path in _python_files(PACKAGE_ROOT):
