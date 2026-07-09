@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiIntentAction
 from ironsbot.services.ai import intent
+from tests.helpers.onebot_events import group_message_event
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
@@ -137,20 +137,10 @@ def test_fire_manual_action_prefilter_is_feature_specific() -> None:
 
 
 def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> None:
-    event = GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+    event = group_message_event(
+        "手册在哪",
         user_id=2,
-        message_type="group",
-        message_id=3,
-        message=Message("手册在哪"),
-        original_message=Message("手册在哪"),
-        raw_message="手册在哪",
-        font=0,
         group_id=4,
-        sender={},
     )
     action = AiIntentAction(
         id="manual",
@@ -170,21 +160,11 @@ def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> 
     assert not intent.is_action_allowed(event, action)
 
 
-def _group_event(text: str) -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+def _group_event(text: str):
+    return group_message_event(
+        text,
         user_id=2,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=4,
-        sender={},
     )
 
 

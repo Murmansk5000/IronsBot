@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import nonebot
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from pytest import MonkeyPatch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +24,7 @@ from ironsbot.shared.messaging.push_subscriptions import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
+from tests.helpers.onebot_events import group_message_event
 
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
@@ -96,19 +96,10 @@ def _group_event(
     *,
     user_id: int = SUPERUSER_ID,
     role: str = "member",
-) -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+):
+    return group_message_event(
+        text,
         user_id=user_id,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=2002,
         sender={"role": role},
     )

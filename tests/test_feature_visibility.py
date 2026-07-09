@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from pytest import MonkeyPatch
 
 from ironsbot.shared.features import visibility
+from tests.helpers.onebot_events import group_message_event
 
 
 @dataclass(frozen=True)
@@ -13,21 +13,11 @@ class Action:
     feature: str
 
 
-def _group_event(text: str = "帮助") -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+def _group_event(text: str = "帮助"):
+    return group_message_event(
+        text,
         user_id=2,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=4,
-        sender={},
     )
 
 
