@@ -6,6 +6,8 @@ from typing import Any
 from nonebot import get_driver
 from nonebot.log import logger
 
+from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
+
 from .config import get_docker_update_config
 from .docker_update import format_docker_update_reply
 from .restart import DockerSelfUpdateService
@@ -52,6 +54,12 @@ def _setup_docker_update_runtime(driver: Any) -> None:
 
 
 def setup_docker_update_runtime() -> None:
+    register_startup_notice_provider(
+        "docker_update",
+        subscription_key="startup_docker_update",
+        action_name="startup docker update notice",
+        get_message=get_startup_docker_update_notice,
+    )
     _setup_docker_update_runtime(get_driver())
 
 

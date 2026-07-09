@@ -8,6 +8,7 @@ from nonebot.log import logger
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_sync import service as db_sync_service
+from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
 from ironsbot.shared.scheduler import JobRegistry
 
 _db_sync_runtime_state = {"registered": False}
@@ -104,6 +105,12 @@ def setup_db_sync_runtime() -> None:
     require("nonebot_plugin_apscheduler")
     from nonebot_plugin_apscheduler import scheduler
 
+    register_startup_notice_provider(
+        "db_sync",
+        subscription_key="startup_data_sync",
+        action_name="startup data sync notice",
+        get_message=get_startup_sync_notice,
+    )
     _setup_db_sync_runtime(get_driver(), scheduler)
 
 
