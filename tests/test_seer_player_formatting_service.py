@@ -1,14 +1,18 @@
 from dataclasses import dataclass
 from typing import Any, cast
 
-from ironsbot.services.seer.player_formatting import (
-    append_extra_errors,
+from ironsbot.services.seer.player_compact_formatting import (
     format_compact_player_info,
+)
+from ironsbot.services.seer.player_detail_formatting import (
+    append_extra_errors,
+    format_player_detail_messages,
+)
+from ironsbot.services.seer.player_formatting_common import (
     format_id_name,
     format_id_name_list,
     format_login_timeline_lines,
     format_online_text,
-    format_player_detail_messages,
     format_player_identity,
     format_team_text,
     format_vip,

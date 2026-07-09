@@ -20,9 +20,9 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_unavailable,
 )
 from ironsbot.services.seer.errors import format_player_query_error
-from ironsbot.services.seer.local_rank import LocalRankSummary
+from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.packets import ensure_extended_packets
-from ironsbot.services.seer.player_formatting import (
+from ironsbot.services.seer.player_compact_formatting import (
     format_compact_player_info,
 )
 from ironsbot.services.seer.player_query import (
@@ -59,11 +59,11 @@ from ..config import (
 from ..group import matcher_group, seer_feature_rule
 from ._args import parse_numeric_id
 from .player_context import PLAYER_ID_KEY, PLAYER_PLUGIN_NAME
-from .player_details import (
-    create_player_detail_task,
+from .player_detail_conversation import (
     handle_player_detail_reply,
     send_player_info_with_detail_prompt,
 )
+from .player_detail_fetch import create_player_detail_task
 
 PLAYER_QUERY_GUARD = QueryGuard(
     success_namespace="seer.player_query.success",
