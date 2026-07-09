@@ -473,10 +473,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "sendpic_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
     )
-    db_sync_config = _load_module_from_path(
-        "db_sync_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "db_sync" / "config.py",
-    )
     headless_config = _load_module_from_path(
         "headless_seer_config_for_app_config_test",
         ROOT / "ironsbot" / "integrations" / "headless_seer" / "config.py",
@@ -501,10 +497,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "scheduled_restart_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "config.py",
     )
-    seer_data_config = _load_module_from_path(
-        "seer_data_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "seer_data" / "config.py",
-    )
     startup_config = _load_module_from_path(
         "startup_notice_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "startup_notice" / "config.py",
@@ -515,6 +507,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
 
     try:
+        app_config = load_app_config(ROOT / "config.example.toml")
         assert ai_chat_config.get_ai_config().model == "deepseek-v4-pro"
         assert ai_chat_config.get_ai_key() == "sk-test"
         assert ai_intent_config.get_configured_actions()
@@ -527,7 +520,7 @@ def test_small_plugin_config_accessors_read_app_config(
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
         assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
         assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"
-        assert "seerapi" in db_sync_config.get_data_sync_config().sources
+        assert "seerapi" in app_config.runtime.data_sync.sources
         assert (
             headless_config.get_headless_config().heartbeat_interval
             == DEFAULT_HEADLESS_HEARTBEAT_INTERVAL
@@ -553,8 +546,8 @@ def test_small_plugin_config_accessors_read_app_config(
             == "murmansk5000/ironsbot:latest"
         )
         assert not scheduled_restart_config.get_restart_config().enabled
-        assert "aliases" in seer_data_config.get_data_sync_config().sources
-        assert load_app_config(ROOT / "config.example.toml").runtime.priority.enabled
+        assert "aliases" in app_config.runtime.data_sync.sources
+        assert app_config.runtime.priority.enabled
         assert team_resource_config.get_team_resource_config().commands == ["战队"]
     finally:
         clear_app_config_cache()

@@ -4,6 +4,7 @@ import os
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import nonebot
@@ -51,6 +52,10 @@ def _data_sync_config(
         on_startup=on_startup,
         startup_trigger_remote_build=startup_trigger_remote_build,
     )
+
+
+def _app_config(*, data_sync: DataSyncConfig) -> object:
+    return SimpleNamespace(runtime=SimpleNamespace(data_sync=data_sync))
 
 
 def _secrets_config(*, github_workflow_token: str) -> SecretsConfig:
@@ -133,8 +138,10 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
     monkeypatch.setattr(db_sync.db_manager, "register", registered_engines.append)
     monkeypatch.setattr(
         db_sync_runtime,
-        "get_data_sync_config",
-        lambda: _data_sync_config(interval_enabled=True, on_startup=False),
+        "get_app_config",
+        lambda: _app_config(
+            data_sync=_data_sync_config(interval_enabled=True, on_startup=False)
+        ),
     )
 
     asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
@@ -176,11 +183,13 @@ def test_db_sync_startup_can_trigger_remote_build(
     monkeypatch.setattr(db_sync, "load_cached_database", lambda _name: False)
     monkeypatch.setattr(
         db_sync_runtime,
-        "get_data_sync_config",
-        lambda: _data_sync_config(
-            interval_enabled=False,
-            on_startup=True,
-            startup_trigger_remote_build=True,
+        "get_app_config",
+        lambda: _app_config(
+            data_sync=_data_sync_config(
+                interval_enabled=False,
+                on_startup=True,
+                startup_trigger_remote_build=True,
+            )
         ),
     )
 
@@ -234,11 +243,13 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
     monkeypatch.setattr(db_sync, "load_cached_database", loaded.append)
     monkeypatch.setattr(
         db_sync_runtime,
-        "get_data_sync_config",
-        lambda: _data_sync_config(
-            interval_enabled=False,
-            on_startup=True,
-            startup_trigger_remote_build=False,
+        "get_app_config",
+        lambda: _app_config(
+            data_sync=_data_sync_config(
+                interval_enabled=False,
+                on_startup=True,
+                startup_trigger_remote_build=False,
+            )
         ),
     )
 

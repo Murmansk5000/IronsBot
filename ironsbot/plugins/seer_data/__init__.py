@@ -3,6 +3,7 @@ import httpx
 from nonebot import logger, require
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.app import AppConfig
 
 require("ironsbot.plugins.db_sync")
@@ -14,8 +15,6 @@ from ironsbot.integrations.db_sync.service import (
     register_database,
     register_local_database,
 )
-
-from .config import get_data_sync_config
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
@@ -54,7 +53,7 @@ def _fingerprint_getter(url: str) -> GetFingerprintFn | None:
 
 
 def _register_source(name: str) -> None:
-    source = get_data_sync_config().sources.get(name)
+    source = get_app_config().runtime.data_sync.sources.get(name)
     if source is None:
         logger.warning(f"数据源 '{name}' 未在 runtime.data_sync.sources 中配置")
         return
