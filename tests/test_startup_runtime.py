@@ -13,6 +13,7 @@ from ironsbot.plugins.startup_notice.runtime import (
 )
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from ironsbot.shared.plugin_runtime import startup_ready, startup_ready_runtime
+from ironsbot.shared.runtime.startup_notice import StartupNoticePart
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -112,12 +113,15 @@ def test_startup_notice_appends_db_sync_notice(
         lambda _feature: [],
     )
     monkeypatch.setattr(
-        "ironsbot.plugins.server_status.runtime.get_startup_docker_update_notice",
-        lambda: None,
-    )
-    monkeypatch.setattr(
-        "ironsbot.plugins.db_sync.runtime.get_startup_sync_notice",
-        lambda: "启动数据同步已是最新，无需更新：seerapi, aliases",
+        startup_notice_runtime,
+        "startup_notice_parts",
+        lambda: [
+            StartupNoticePart(
+                subscription_key="startup_data_sync",
+                action_name="startup data sync notice",
+                message="启动数据同步已是最新，无需更新：seerapi, aliases",
+            )
+        ],
     )
     monkeypatch.setattr(
         "ironsbot.shared.messaging.send_broadcast_message",
@@ -181,12 +185,20 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         lambda _feature: [],
     )
     monkeypatch.setattr(
-        "ironsbot.plugins.server_status.runtime.get_startup_docker_update_notice",
-        lambda: "Docker 自更新任务已启动：ironsbot",
-    )
-    monkeypatch.setattr(
-        "ironsbot.plugins.db_sync.runtime.get_startup_sync_notice",
-        lambda: "启动数据同步已是最新，无需更新：seerapi",
+        startup_notice_runtime,
+        "startup_notice_parts",
+        lambda: [
+            StartupNoticePart(
+                subscription_key="startup_docker_update",
+                action_name="startup docker update notice",
+                message="Docker 自更新任务已启动：ironsbot",
+            ),
+            StartupNoticePart(
+                subscription_key="startup_data_sync",
+                action_name="startup data sync notice",
+                message="启动数据同步已是最新，无需更新：seerapi",
+            ),
+        ],
     )
     monkeypatch.setattr(
         "ironsbot.shared.messaging.send_broadcast_message",

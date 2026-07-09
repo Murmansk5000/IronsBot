@@ -9,11 +9,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from ironsbot.shared.messaging import event_conversation_session_id
-from ironsbot.shared.messaging.push_subscriptions import (
-    PushSubscriptionOption,
-    PushTargetType,
-    PushUnsubscribeStore,
-)
+from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 from ironsbot.utils.matcher import prompt_session_manager, reject_with_rule
 
 from .config import get_message_config
@@ -34,6 +30,11 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.rule import Rule
     from nonebot.typing import T_State
+
+    from ironsbot.shared.messaging.push_subscription_models import (
+        PushSubscriptionOption,
+        PushTargetType,
+    )
 
 PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
 PUSH_SUBSCRIPTION_SESSION_KEY = "_message_push_subscription_session"

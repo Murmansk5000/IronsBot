@@ -6,7 +6,7 @@ from typing import Any
 from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot  # noqa: TC002
 
-from . import (
+from .followup import (
     register_team_audit_followup_scan,
     schedule_pending_team_audit_followups,
 )

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging import senders
 from ironsbot.shared.messaging.outbound_rate_limit import OutboundRateLimitDecision
-from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
+from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 from ironsbot.shared.messaging.targets import MessageTarget
 from tests.helpers.config import stub_app_config
 
