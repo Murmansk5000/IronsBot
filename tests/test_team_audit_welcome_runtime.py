@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, get_type_hints
 
 from nonebot.adapters.onebot.v11 import Bot
 
 from ironsbot.config.models.message import TeamAuditWelcomeConfig
-from ironsbot.plugins import team_audit_welcome
-from ironsbot.plugins.team_audit_welcome import runtime
 from ironsbot.services.team_audit_welcome import TeamAuditPendingReminder
 from tests.helpers.config import stub_app_config
+
+os.environ["APP_CONFIG_PATH"] = str(
+    Path(__file__).resolve().parents[1] / "config.example.toml"
+)
+
+from ironsbot.plugins.team_audit_welcome import followup, runtime
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -84,17 +90,17 @@ def test_schedule_team_audit_followup_uses_standard_scheduler_fields(
         remind_at=remind_at,
     )
     monkeypatch.setattr(
-        team_audit_welcome,
+        followup,
         "get_app_config",
         _app_config,
     )
     monkeypatch.setattr(
-        team_audit_welcome,
-        "_now_utc",
+        followup,
+        "now_utc",
         lambda: datetime(2026, 7, 8, 11, 0, tzinfo=timezone.utc),
     )
 
-    team_audit_welcome.schedule_team_audit_followup(
+    followup.schedule_team_audit_followup(
         scheduler,  # type: ignore[arg-type]
         bot,  # type: ignore[arg-type]
         reminder,
@@ -102,7 +108,7 @@ def test_schedule_team_audit_followup_uses_standard_scheduler_fields(
 
     assert scheduler.jobs == [
         {
-            "func": team_audit_welcome.send_team_audit_followup,
+            "func": followup.send_team_audit_followup,
             "trigger": "date",
             "id": "team_audit_followup_987654321_1234567890",
             "replace_existing": True,
@@ -117,18 +123,18 @@ def test_register_team_audit_followup_scan_uses_standard_scheduler_fields() -> N
     scheduler = FakeScheduler()
     bot = FakeBot()
 
-    team_audit_welcome.register_team_audit_followup_scan(
+    followup.register_team_audit_followup_scan(
         scheduler,  # type: ignore[arg-type]
         bot,  # type: ignore[arg-type]
     )
 
     assert scheduler.jobs == [
         {
-            "func": team_audit_welcome.schedule_pending_team_audit_followups,
+            "func": followup.schedule_pending_team_audit_followups,
             "trigger": "interval",
             "id": "team_audit_followup_scan_123456",
             "replace_existing": True,
-            "minutes": team_audit_welcome.FOLLOWUP_SCAN_INTERVAL_MINUTES,
+            "minutes": followup.FOLLOWUP_SCAN_INTERVAL_MINUTES,
             "args": [bot, scheduler],
         }
     ]

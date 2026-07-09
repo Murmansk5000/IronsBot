@@ -30,7 +30,7 @@ from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.messaging.push_subscription_models import (
     PushTargetType,
 )
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.plugin_system import PluginContext
