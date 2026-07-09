@@ -1,7 +1,9 @@
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.config.models.app import AppConfig
+
 from . import fixed_images as fixed_images
-from .config import Config, enabled_pic_configs, get_sendpic_config
+from .config import enabled_pic_configs, get_sendpic_config
 from .matchers import matcher_group as matcher_group
 
 
@@ -48,5 +50,5 @@ __plugin_meta__ = PluginMetadata(
     name="图片发送",
     description="发送固定图片或本地自定义图片",
     usage=usage,
-    config=Config,
+    config=AppConfig,
 )

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from ironsbot.plugins.admin_priority import release_superuser_priority
+from ironsbot.services.admin_priority import release_superuser_priority
 from ironsbot.services.seer.local_rank import get_local_rank_cache_stats
 from ironsbot.services.seer.local_rank_refresh import (
     format_refresh_failures,

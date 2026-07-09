@@ -1,13 +1,10 @@
 # SPDX-License-Identifier: MIT
 from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.runtime import (
     DEFAULT_BROADCAST_MESSAGE,
     DockerUpdateConfig,
     ServerStatusConfig,
 )
-
-Config = AppConfig
 
 
 def get_server_status_config() -> ServerStatusConfig:
@@ -20,7 +17,6 @@ def get_docker_update_config() -> DockerUpdateConfig:
 
 __all__ = [
     "DEFAULT_BROADCAST_MESSAGE",
-    "Config",
     "DockerUpdateConfig",
     "ServerStatusConfig",
     "get_docker_update_config",

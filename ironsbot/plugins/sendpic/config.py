@@ -3,7 +3,6 @@ from pathlib import Path
 from nonebot import get_driver
 
 from ironsbot.config.loader import get_app_config, load_secrets_config
-from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.message import (
     DEFAULT_SENDPIC_MESSAGE_TEMPLATE,
     PicConfig,
@@ -12,7 +11,6 @@ from ironsbot.config.models.message import (
 )
 
 BackendType = SendpicBackendType
-Config = AppConfig
 DEFAULT_MESSAGE_TEMPLATE = DEFAULT_SENDPIC_MESSAGE_TEMPLATE
 SendpicConfig = SendpicBehaviorConfig
 
@@ -59,7 +57,6 @@ def get_sendpic_local_root() -> Path:
 __all__ = [
     "DEFAULT_MESSAGE_TEMPLATE",
     "BackendType",
-    "Config",
     "PicConfig",
     "SendpicConfig",
     "enabled_pic_configs",

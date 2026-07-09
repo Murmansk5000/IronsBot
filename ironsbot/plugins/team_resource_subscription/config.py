@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.feature import unique_ints
 from ironsbot.config.models.seer import (
     TeamResourceConfig,
     TeamResourceSubscriptionConfig,
 )
-
-Config = AppConfig
-TeamConfig = TeamResourceConfig
 
 
 def _resolve_int_ref(value: str | int, aliases: dict[str, int]) -> int | None:
@@ -78,8 +74,6 @@ def get_all_subscription_team_ids() -> list[int]:
 
 
 __all__ = [
-    "Config",
-    "TeamConfig",
     "TeamResourceConfig",
     "TeamResourceSubscriptionConfig",
     "at_users_for_subscription",

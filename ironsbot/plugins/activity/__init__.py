@@ -12,10 +12,12 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.config.models.app import AppConfig
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
     is_soon_ending_seer_activity_text,
 )
+from ironsbot.services.activity.config import get_activity_config
 from ironsbot.services.activity.models import (
     ActivityInfoCache,
 )
@@ -32,8 +34,6 @@ from ironsbot.shared.plugin_system import (
     register_plugin,
 )
 from ironsbot.utils.rule import no_reply
-
-from .config import Config, get_activity_config
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
@@ -61,7 +61,7 @@ __plugin_meta__ = PluginMetadata(
         "超级管理员可发 /当前活动、活动列表、活动时间 查看当前活动和剩余时间；"
         "发送 快结束活动 查看不足 7 天结束的活动。"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 

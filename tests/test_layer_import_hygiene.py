@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "ironsbot"
+PLUGIN_ROOT = PACKAGE_ROOT / "plugins"
 LAYER_ROOTS = (
     ROOT / "ironsbot" / "config",
     ROOT / "ironsbot" / "integrations",
@@ -43,6 +44,20 @@ def _plugin_import_offenders() -> list[str]:
 
 def test_lower_layers_do_not_import_plugins() -> None:
     assert _plugin_import_offenders() == []
+
+
+def _plugin_absolute_import_offenders() -> list[str]:
+    return [
+        f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
+        for path in PLUGIN_ROOT.rglob("*.py")
+        for module_name in _imported_modules(path)
+        if module_name == "ironsbot.plugins"
+        or module_name.startswith("ironsbot.plugins.")
+    ]
+
+
+def test_plugins_do_not_absolute_import_other_plugins() -> None:
+    assert _plugin_absolute_import_offenders() == []
 
 
 def _star_import_offenders() -> list[str]:

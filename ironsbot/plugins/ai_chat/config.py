@@ -4,9 +4,6 @@ from ironsbot.config.loader import get_app_config, load_secrets_config
 from ironsbot.config.models.ai import (
     AiConfig as AiChatConfig,
 )
-from ironsbot.config.models.app import AppConfig
-
-Config = AppConfig
 
 
 def get_ai_config() -> AiChatConfig:
@@ -25,7 +22,6 @@ def get_ai_key() -> str:
 
 __all__ = [
     "AiChatConfig",
-    "Config",
     "get_ai_config",
     "get_ai_key",
 ]

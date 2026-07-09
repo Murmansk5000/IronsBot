@@ -463,7 +463,7 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     activity_config = _load_module_from_path(
         "activity_reminder_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "activity" / "config.py",
+        ROOT / "ironsbot" / "services" / "activity" / "config.py",
     )
     bili_config = _load_module_from_path(
         "bilibili_monitor_config_for_app_config_test",

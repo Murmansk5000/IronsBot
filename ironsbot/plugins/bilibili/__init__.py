@@ -1,5 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.config.models.app import AppConfig
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.cache import (
     get_dynamic_history_item,
@@ -33,7 +34,6 @@ from .auth import (
     request_bili_login_qrcode,
     send_bili_login_qrcode_to_superusers,
 )
-from .config import Config
 from .service import run_check_logic
 
 __plugin_meta__ = PluginMetadata(
@@ -49,7 +49,7 @@ __plugin_meta__ = PluginMetadata(
         "自动推送支持按群/用户/UID 配置全文或只发链接；抽奖中奖结果不推送，"
         "但仍可在历史动态里查询。TD 菜单支持按账号退订。"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 

@@ -8,10 +8,12 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.services.activity.runtime_keys import ACTIVITY_REMINDER_REFRESH_KEY
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
 )
+from ironsbot.shared.runtime.refresh import refresh_runtime
 from ironsbot.utils.rule import no_reply
 
 from . import schedules as message_schedules
@@ -86,9 +88,7 @@ async def _refresh_push_time_jobs(option: PushTimeOption) -> None:
         await refresh_message_schedules()
         return
 
-    from ironsbot.plugins.activity.runtime import schedule_activity_reminders
-
-    await schedule_activity_reminders()
+    await refresh_runtime(ACTIVITY_REMINDER_REFRESH_KEY)
 
 
 register_push_management_handlers(

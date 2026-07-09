@@ -1,5 +1,4 @@
 from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.message import (
     ENABLED_COMMANDS_REQUIRED_ERROR,
     BaseMessageAction,
@@ -13,8 +12,6 @@ from ironsbot.config.models.message import (
     ScheduledMessageAction,
 )
 
-Config = AppConfig
-
 
 def get_message_config() -> MessageConfig:
     return get_app_config().message
@@ -24,7 +21,6 @@ __all__ = [
     "ENABLED_COMMANDS_REQUIRED_ERROR",
     "BaseMessageAction",
     "CommandMessageAction",
-    "Config",
     "GroupCommandMessageAction",
     "GroupScheduledMessageAction",
     "PrivateCommandMessageAction",

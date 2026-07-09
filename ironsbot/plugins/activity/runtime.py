@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
+from ironsbot.services.activity.config import get_activity_config
 from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
     build_reminder_delivery,
 )
+from ironsbot.services.activity.runtime_keys import ACTIVITY_REMINDER_REFRESH_KEY
 from ironsbot.services.activity.scheduler import (
     register_scan_jobs,
     replace_reminder_jobs,
@@ -26,9 +28,9 @@ from ironsbot.shared.messaging.push_subscriptions import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
+from ironsbot.shared.runtime.refresh import register_runtime_refresh
 
 from . import _now, _seer_activity_source
-from .config import get_activity_config
 
 if TYPE_CHECKING:
     from ironsbot.services.activity.models import ActivityReminder
@@ -188,6 +190,7 @@ def _setup_activity_reminder_runtime(driver: Any, scheduler: Any) -> None:
         return
 
     _activity_reminder_runtime_state["scheduler"] = scheduler
+    register_runtime_refresh(ACTIVITY_REMINDER_REFRESH_KEY, schedule_activity_reminders)
 
     @driver.on_startup
     async def _register_activity_reminder_jobs_on_startup() -> None:

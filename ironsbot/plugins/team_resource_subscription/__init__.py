@@ -8,6 +8,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.seer import TeamResourceSubscriptionConfig
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -16,6 +17,10 @@ from ironsbot.integrations.headless_seer.exception import (
 from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
+)
+from ironsbot.services.team_resource_adapter import (
+    TeamResourceResult,
+    fetch_team_resource_result,
 )
 from ironsbot.shared.features import group_has_feature, is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
@@ -28,9 +33,7 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from .adapter import TeamResourceResult, fetch_team_resource_result
 from .config import (
-    Config,
     at_users_for_subscription,
     get_team_resource_config,
     resolve_group_id,
@@ -49,7 +52,7 @@ __plugin_meta__ = PluginMetadata(
         "到达 seer.team_resource.times 配置时间后，"
         "资源低于订阅阈值的战队会提醒指定用户。"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 

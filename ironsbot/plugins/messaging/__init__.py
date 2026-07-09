@@ -1,7 +1,8 @@
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.config.models.app import AppConfig
+
 from . import runtime as runtime
-from .config import Config
 from .policies import setup_messaging_delivery_policies
 
 setup_messaging_delivery_policies()
@@ -16,7 +17,7 @@ __plugin_meta__ = PluginMetadata(
         "常用场景：签到链接、活动链接、信息聚合页、群公告等。\n"
         "信息聚合页示例：xm / xrym / 雷小伊 / 重聚 -> https://seerinfo.yuyuqaq.cn/"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 __all__ = [
