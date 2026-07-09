@@ -29,12 +29,10 @@ from ironsbot.services.seer.rank_lookup_service import (
     find_rank as _find_rank_impl,
 )
 from ironsbot.services.seer.rank_models import (
-    BookBreakdownSummary,
     PeakSeasonRankSummary,
     PlayerRankSummary,
     RankLookupResult,
     RankPageResult,
-    RankScoreMissProof,
     RankScoreSearchResult,
 )
 from ironsbot.services.seer.rank_page_cache import (
@@ -52,9 +50,6 @@ from ironsbot.services.seer.rank_pagination import (
 )
 from ironsbot.services.seer.rank_peak import (
     build_peak_rating_score as _build_peak_rating_score_impl,
-)
-from ironsbot.services.seer.rank_peak import (
-    datetime_to_sub_key as _datetime_to_sub_key_impl,
 )
 from ironsbot.services.seer.rank_peak import (
     get_current_peak_sub_key as _get_current_peak_sub_key_impl,
@@ -77,13 +72,14 @@ from ironsbot.services.seer.rank_score_cache import (
 from ironsbot.services.seer.rank_score_cache import (
     fetch_rank_score_segment_from_cached_candidates as _fetch_cached_score_segment_impl,
 )
+from ironsbot.services.seer.rank_score_facade import (
+    RankScoreFacadeDependencies,
+)
+from ironsbot.services.seer.rank_score_facade import (
+    fetch_rank_score_segment as _fetch_rank_score_segment_facade,
+)
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page as _score_miss_proof_from_page,
-)
-from ironsbot.services.seer.rank_score_search import (
-    RankScoreSegmentDependencies,
-    score_search_probe_limit,
-    score_search_tie_page_limit,
 )
 from ironsbot.services.seer.rank_score_search import (
     fetch_rank_score_segment as _fetch_rank_score_segment_impl,
@@ -97,11 +93,12 @@ from ironsbot.services.seer.rank_score_search import (
 from ironsbot.services.seer.rank_score_search import (
     find_rank_by_score as _find_rank_by_score_impl,
 )
-from ironsbot.services.seer.rank_summary import (
-    fetch_autocard_rank_summary as _fetch_autocard_rank_summary_impl,
+from ironsbot.services.seer.rank_score_search import (
+    score_search_probe_limit,
+    score_search_tie_page_limit,
 )
 from ironsbot.services.seer.rank_summary import (
-    fetch_book_breakdown_summary as _fetch_book_breakdown_summary_impl,
+    fetch_autocard_rank_summary as _fetch_autocard_rank_summary_impl,
 )
 from ironsbot.services.seer.rank_summary import (
     fetch_peak_season_rank_summary as _fetch_peak_season_rank_summary_impl,
@@ -283,10 +280,6 @@ async def fetch_daily_rank_page_result(  # noqa: PLR0913
     )
 
 
-def _datetime_to_sub_key(value: Any) -> int:
-    return _datetime_to_sub_key_impl(value)
-
-
 def get_current_peak_sub_key() -> int | None:
     return _get_current_peak_sub_key_impl(get_rank_query_config().peak_subkey)
 
@@ -349,78 +342,6 @@ async def _find_rank_by_score(  # noqa: PLR0913
     )
 
 
-def _cached_score_candidate_page_starts(
-    *,
-    key: int,
-    sub_key: int,
-    target_score: int,
-    start_index: int,
-    end_index: int,
-) -> list[int]:
-    return _cached_score_candidate_page_starts_impl(
-        key=key,
-        sub_key=sub_key,
-        target_score=target_score,
-        start_index=start_index,
-        end_index=end_index,
-        rank_page_start=_rank_page_start,
-        get_cached_score_indexes=get_cached_rank_score_indexes,
-        get_cache_summary=get_rank_page_cache_summary,
-    )
-
-
-def _cached_score_miss_boundary(  # noqa: PLR0913
-    *,
-    key: int,
-    sub_key: int,
-    target_score: int,
-    start_index: int,
-    end_index: int,
-    rank_offset: int,
-) -> RankScoreMissProof | None:
-    return _cached_score_miss_boundary_impl(
-        key=key,
-        sub_key=sub_key,
-        target_score=target_score,
-        start_index=start_index,
-        end_index=end_index,
-        rank_offset=rank_offset,
-        get_cache_summary=get_rank_page_cache_summary,
-        get_cached_score_indexes=get_cached_rank_score_indexes,
-        get_cached_page_result=get_cached_rank_page_result,
-        score_miss_proof_from_page=_score_miss_proof_from_page,
-    )
-
-
-async def _fetch_rank_score_segment_from_cached_candidates(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    target_score: int,
-    start_index: int,
-    end_index: int,
-    rank_offset: int,
-    result: RankScoreSearchResult,
-    candidate_starts: list[int],
-) -> RankScoreSearchResult | None:
-    return await _fetch_cached_score_segment_impl(
-        game,
-        key=key,
-        sub_key=sub_key,
-        target_score=target_score,
-        start_index=start_index,
-        end_index=end_index,
-        rank_offset=rank_offset,
-        result=result,
-        candidate_starts=candidate_starts,
-        rank_page_size=_rank_page_size,
-        rank_page_start=_rank_page_start,
-        score_search_tie_page_limit=_score_search_tie_page_limit,
-        fetch_rank_page_result=_fetch_rank_page_result,
-    )
-
-
 async def fetch_rank_score_segment(  # noqa: PLR0913
     game: Any,
     *,
@@ -433,21 +354,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
     start_index: int = 0,
     rank_offset: int = 0,
 ) -> RankScoreSearchResult:
-    deps = RankScoreSegmentDependencies(
-        score_search_limit=_score_search_limit,
-        rank_page_size=_rank_page_size,
-        rank_page_start=_rank_page_start,
-        cached_score_miss_boundary=_cached_score_miss_boundary,
-        cached_score_candidate_page_starts=_cached_score_candidate_page_starts,
-        fetch_cached_candidates=_fetch_rank_score_segment_from_cached_candidates,
-        score_search_probe_limit=_score_search_probe_limit,
-        score_search_tie_page_limit=_score_search_tie_page_limit,
-        find_last_existing_score_index=_find_last_existing_score_index,
-        fetch_rank_item=_fetch_rank_item,
-        fetch_rank_page_result=_fetch_rank_page_result,
-        score_miss_proof_from_page=_score_miss_proof_from_page,
-    )
-    return await _fetch_rank_score_segment_impl(
+    return await _fetch_rank_score_segment_facade(
         game,
         key=key,
         sub_key=sub_key,
@@ -457,7 +364,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
         search_limit=search_limit,
         start_index=start_index,
         rank_offset=rank_offset,
-        deps=deps,
+        deps=_rank_score_facade_dependencies(),
     )
 
 
@@ -473,6 +380,29 @@ def _score_search_limit(search_limit: int | None = None) -> int:
     configured_limit = max(0, rank_config.limit)
     requested_limit = configured_limit if search_limit is None else max(0, search_limit)
     return min(requested_limit, configured_limit)
+
+
+def _rank_score_facade_dependencies() -> RankScoreFacadeDependencies:
+    return RankScoreFacadeDependencies(
+        rank_page_size=_rank_page_size,
+        rank_page_start=_rank_page_start,
+        score_search_limit=_score_search_limit,
+        score_search_probe_limit=_score_search_probe_limit,
+        score_search_tie_page_limit=_score_search_tie_page_limit,
+        get_cached_score_indexes=get_cached_rank_score_indexes,
+        get_cache_summary=get_rank_page_cache_summary,
+        get_cached_page_result=get_cached_rank_page_result,
+        score_miss_proof_from_page=_score_miss_proof_from_page,
+        fetch_cached_candidates_impl=_fetch_cached_score_segment_impl,
+        fetch_rank_score_segment_impl=_fetch_rank_score_segment_impl,
+        cached_score_candidate_page_starts_impl=(
+            _cached_score_candidate_page_starts_impl
+        ),
+        cached_score_miss_boundary_impl=_cached_score_miss_boundary_impl,
+        find_last_existing_score_index=_find_last_existing_score_index,
+        fetch_rank_item=_fetch_rank_item,
+        fetch_rank_page_result=_fetch_rank_page_result,
+    )
 
 
 def _rank_lookup_dependencies() -> RankLookupDependencies:
@@ -524,28 +454,6 @@ async def _find_pet_kind_rank(
         pet_kind_count=pet_kind_count,
         search_limit=search_limit,
         deps=_rank_lookup_dependencies(),
-    )
-
-
-async def _fetch_book_breakdown_summary(
-    game: Any,
-    user_id: int,
-    *,
-    pet_kind_count: int = 0,
-    skin_score: int | None = None,
-) -> BookBreakdownSummary:
-    limit = min(
-        max(0, get_rank_query_config().limit),
-        BOOK_BREAKDOWN_SCAN_LIMIT,
-    )
-    return await _fetch_book_breakdown_summary_impl(
-        game,
-        user_id,
-        pet_kind_count=pet_kind_count,
-        skin_score=skin_score,
-        limit=limit,
-        find_pet_kind_rank=_find_pet_kind_rank,
-        find_rank=_find_rank,
     )
 
 
