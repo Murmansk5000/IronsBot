@@ -8,7 +8,7 @@ from nonebot import get_driver, require
 from nonebot.log import logger
 
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
-from ironsbot.shared.scheduler import add_or_replace_job
+from ironsbot.shared.scheduler import JobRegistry
 
 from .service import run_check_logic
 
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
 _bilibili_monitor_runtime_state = {"registered": False}
+BILIBILI_MONITOR_JOB_PREFIX = "bilibili_monitor_"
 
 
 async def auto_check_job() -> None:
@@ -23,12 +24,11 @@ async def auto_check_job() -> None:
 
 
 async def register_bili_auto_check_job(scheduler: Any) -> None:
-    add_or_replace_job(
-        scheduler,
+    JobRegistry(scheduler, prefix=BILIBILI_MONITOR_JOB_PREFIX).add(
         auto_check_job,
         "interval",
         minutes=1,
-        job_id="bilibili_monitor_auto_check",
+        job_id="auto_check",
     )
 
 
