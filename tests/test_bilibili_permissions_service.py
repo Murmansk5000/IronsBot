@@ -1,8 +1,7 @@
-from types import SimpleNamespace
-
 from pytest import MonkeyPatch
 
 from ironsbot.services.bilibili import permissions
+from tests.helpers.onebot_events import private_message_event
 
 
 def test_bili_superusers_are_sorted(monkeypatch: MonkeyPatch) -> None:
@@ -17,12 +16,9 @@ def test_dynamic_update_requires_bili_superuser(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(permissions, "get_superuser_ids", lambda: {42})
-    event = SimpleNamespace(user_id=42)
 
-    assert permissions.is_dynamic_update_allowed(event)
-
-    event.user_id = 7
-    assert not permissions.is_dynamic_update_allowed(event)
+    assert permissions.is_dynamic_update_allowed(private_message_event(user_id=42))
+    assert not permissions.is_dynamic_update_allowed(private_message_event(user_id=7))
 
 
 def test_dynamic_query_uses_feature_service(
@@ -39,7 +35,7 @@ def test_dynamic_query_uses_feature_service(
         "is_event_feature_allowed",
         fake_is_event_feature_allowed,
     )
-    event = object()
+    event = private_message_event(user_id=42)
 
     assert permissions.is_dynamic_query_allowed(event)
     assert seen == [(event, "bili_query")]

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ironsbot.config.models.feature import FeatureConfig
+from ironsbot.config.models.message import PushUnsubscribeConfig
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,9 @@ class StubMessageAction:
 
 @dataclass(frozen=True)
 class StubMessageConfig:
+    push_unsubscribe: PushUnsubscribeConfig = field(
+        default_factory=PushUnsubscribeConfig
+    )
     group_commands: list[StubMessageAction] = field(default_factory=list)
     group_schedules: list[StubMessageAction] = field(default_factory=list)
     private_commands: list[StubMessageAction] = field(default_factory=list)
@@ -53,13 +57,17 @@ def stub_app_config(
     *,
     ai_intent_enabled: bool = True,
     feature_config: FeatureConfig | None = None,
+    push_unsubscribe_config: PushUnsubscribeConfig | None = None,
     team_subscriptions: list[object] | None = None,
     group_actions: list[StubMessageAction] | None = None,
 ) -> StubAppConfig:
     return StubAppConfig(
         feature=feature_config or FeatureConfig(),
         ai=StubAiConfig(intent_actions_enabled=ai_intent_enabled),
-        message=StubMessageConfig(group_commands=group_actions or []),
+        message=StubMessageConfig(
+            push_unsubscribe=push_unsubscribe_config or PushUnsubscribeConfig(),
+            group_commands=group_actions or [],
+        ),
         seer=StubSeerConfig(
             team_resource=StubTeamResourceConfig(
                 subscriptions=team_subscriptions or []
