@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple
 from .type_hint import CommandID
 
 if TYPE_CHECKING:
+    from .packets.login import AllSvrListInfo, RangeSvrInfo
     from .packets.peak import DailyRankList
     from .packets.team import SimpleTeamInfo
     from .packets.user import MoreInfo, OnLineInfos, UserForeverValue, UserInfo
@@ -12,8 +13,8 @@ if TYPE_CHECKING:
 class CommandIDNamedTuple(NamedTuple):
     GET_VERIFCODE: CommandID[Any] = CommandID(101)
     MAIN_LOGIN_IN: CommandID[Any] = CommandID(103)
-    COMMEND_ONLINE: CommandID[Any] = CommandID(105)
-    RANGE_ONLINE: CommandID[Any] = CommandID(106)
+    COMMEND_ONLINE: CommandID["AllSvrListInfo"] = CommandID(105)
+    RANGE_ONLINE: CommandID["RangeSvrInfo"] = CommandID(106)
     CREATE_ROLE: CommandID[Any] = CommandID(108)
     SYS_ROLE: CommandID[Any] = CommandID(109)
     FENGHAO_TIME: CommandID[Any] = CommandID(111)

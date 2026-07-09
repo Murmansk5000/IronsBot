@@ -12,22 +12,22 @@ from typing import Any, Generic, TypeGuard, TypeVar, overload
 from nonebot import logger
 from typing_extensions import Self, TypeVarTuple, Unpack
 
+from ironsbot.integrations.headless_seer import decrypt
+from ironsbot.integrations.headless_seer.as3bytearray import AS3ByteArray
+from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
+from ironsbot.integrations.headless_seer.core.register import packet_register
 from ironsbot.integrations.headless_seer.exception import SocketRecvError
-
-from .. import decrypt
-from ..as3bytearray import AS3ByteArray
-from ..command_id import COMMAND_ID
-from ..packet.packet import Deserializable
-from ..packets.head import HeadInfo
-from ..type_hint import (
+from ironsbot.integrations.headless_seer.packet.packet import Deserializable
+from ironsbot.integrations.headless_seer.packets.head import HeadInfo
+from ironsbot.integrations.headless_seer.type_hint import (
     Buffer,
     CommandID,
     Listener,
     SocketRecvPacketBody,
     T_Deserializable,
 )
+
 from .listener import EventListener
-from .register import packet_register
 
 _T_CommandID = TypeVar("_T_CommandID", bound=CommandID)
 _T_UnpackedType = TypeVarTuple("_T_UnpackedType")
