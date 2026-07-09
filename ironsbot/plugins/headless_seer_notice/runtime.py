@@ -18,7 +18,7 @@ from ironsbot.services.headless_seer_notice.state import (
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
-from ironsbot.shared.scheduler import JobRegistry
+from ironsbot.shared.runtime.jobs import JobRegistry
 
 RECONNECT_JOB_PREFIX = "headless_reconnect_check:"
 _headless_notice_runtime_state = {"registered": False}

@@ -6,7 +6,7 @@ from typing import Any
 
 from nonebot import get_driver, logger, require
 
-from ironsbot.shared.scheduler import JobRegistry
+from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .config import get_local_rank_config, get_rank_query_config
 
