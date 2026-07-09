@@ -3,8 +3,8 @@ from asyncio import StreamWriter
 from typing import Any, cast
 
 from ironsbot.integrations.headless_seer.core.connect import AbstractSocketConnect
+from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.integrations.headless_seer.type_hint import CommandID
-from ironsbot.plugins.headless_seer.game import SeerGame
 
 
 class FakeWriter:

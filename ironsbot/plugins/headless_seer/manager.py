@@ -4,9 +4,9 @@ from typing import Final
 from nonebot import logger
 
 from ironsbot.integrations.headless_seer.client import register_game_client_getter
+from ironsbot.integrations.headless_seer.game import SeerGame
 
 from .exception import DisconnectedError, NotLoggedInError
-from .game import SeerGame
 
 
 class ClientManager:
