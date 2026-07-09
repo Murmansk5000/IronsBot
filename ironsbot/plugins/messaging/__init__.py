@@ -18,3 +18,5 @@ __plugin_meta__ = PluginMetadata(
     ),
     config=AppConfig,
 )
+
+from . import matchers as matchers
