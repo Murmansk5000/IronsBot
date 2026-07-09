@@ -3,8 +3,8 @@ import hashlib
 import os
 import sqlite3
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 import httpx
 import nonebot
@@ -57,8 +57,18 @@ def _data_sync_config(
     )
 
 
-def _app_config(*, data_sync: DataSyncConfig) -> object:
-    return SimpleNamespace(runtime=SimpleNamespace(data_sync=data_sync))
+@dataclass(frozen=True, slots=True)
+class FakeRuntimeConfig:
+    data_sync: DataSyncConfig
+
+
+@dataclass(frozen=True, slots=True)
+class FakeAppConfig:
+    runtime: FakeRuntimeConfig
+
+
+def _app_config(*, data_sync: DataSyncConfig) -> FakeAppConfig:
+    return FakeAppConfig(runtime=FakeRuntimeConfig(data_sync=data_sync))
 
 
 def _secrets_config(*, github_workflow_token: str) -> SecretsConfig:

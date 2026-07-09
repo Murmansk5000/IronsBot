@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,11 @@ EXPECTED_SCHEDULED_COUNT = 2
 EXPECTED_MISFIRE_GRACE_SECONDS = 900
 
 
+@dataclass(frozen=True, slots=True)
+class FakeJob:
+    id: str
+
+
 class FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, object]] = []
@@ -26,11 +32,8 @@ class FakeScheduler:
     def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
-    def get_jobs(self) -> list[object]:
-        return [
-            type("FakeJob", (), {"id": str(job["id"])})()
-            for job in self.jobs
-        ]
+    def get_jobs(self) -> list[FakeJob]:
+        return [FakeJob(id=str(job["id"])) for job in self.jobs]
 
     def remove_job(self, job_id: str) -> None:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
