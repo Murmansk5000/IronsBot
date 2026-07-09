@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
 
 from ironsbot.shared.scheduler import (
     JobRegistry,
@@ -7,10 +7,15 @@ from ironsbot.shared.scheduler import (
 )
 
 
+@dataclass(frozen=True)
+class FakeJob:
+    id: str
+
+
 class FakeScheduler:
     def __init__(self, job_ids: list[str] | None = None) -> None:
         job_ids = job_ids or []
-        self.jobs = [SimpleNamespace(id=job_id) for job_id in job_ids]
+        self.jobs = [FakeJob(id=job_id) for job_id in job_ids]
         self.added_jobs: list[dict[str, object]] = []
         self.removed: list[str] = []
 
@@ -19,7 +24,7 @@ class FakeScheduler:
         self.added_jobs.append(job)
         return job
 
-    def get_jobs(self) -> list[SimpleNamespace]:
+    def get_jobs(self) -> list[FakeJob]:
         return self.jobs
 
     def remove_job(self, job_id: str) -> None:
