@@ -1,6 +1,8 @@
 import asyncio
-from typing import Any
+from asyncio import StreamWriter
+from typing import Any, cast
 
+from ironsbot.integrations.headless_seer.type_hint import CommandID
 from ironsbot.plugins.headless_seer.core.connect import AbstractSocketConnect
 from ironsbot.plugins.headless_seer.game import SeerGame
 
@@ -16,8 +18,12 @@ class FakeWriter:
         self.closed = True
 
 
-class FakeConnect(AbstractSocketConnect[int, object]):
-    async def send(self, command_id: int, *_body: Any) -> int:
+class FakeConnect(AbstractSocketConnect[CommandID[Any], object]):
+    async def send(
+        self,
+        command_id: CommandID[Any],
+        *_body: Any,
+    ) -> CommandID[Any]:
         return command_id
 
     async def recv_bytes(self) -> bytes:
@@ -44,7 +50,7 @@ def test_heartbeat_timeout_marks_connection_lost() -> None:
             on_disconnect=on_disconnect,
         )
         writer = FakeWriter()
-        client._writer = writer
+        client._writer = cast("StreamWriter", writer)
 
         await client._heartbeat_loop()
         await asyncio.wait_for(disconnect_called.wait(), timeout=1)

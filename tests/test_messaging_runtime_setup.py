@@ -15,7 +15,11 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.message import (
+    GroupScheduledMessageAction,
+    PrivateScheduledMessageAction,
+    PushUnsubscribeConfig,
+)
 from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscriptions import (
@@ -41,35 +45,42 @@ class FakeDriver:
 
 
 @dataclass(frozen=True, slots=True)
-class FakePrivateSchedule:
-    message: str
-    feature: str = "text_push"
-    id: str = "private"
-    name: str = ""
-    enabled: bool = True
-    hour: int = 23
-    minute: int = 0
-    day_of_week: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class FakeGroupSchedule:
-    message: str
-    at_user_ids: list[int]
-    feature: str = "text_push"
-    id: str = "group"
-    name: str = ""
-    enabled: bool = True
-    hour: int = 23
-    minute: int = 0
-    day_of_week: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class FakeMessageConfig:
     push_unsubscribe: PushUnsubscribeConfig
-    private_schedules: list[FakePrivateSchedule] = field(default_factory=list)
-    group_schedules: list[FakeGroupSchedule] = field(default_factory=list)
+    private_schedules: list[PrivateScheduledMessageAction] = field(default_factory=list)
+    group_schedules: list[GroupScheduledMessageAction] = field(default_factory=list)
+
+
+def _private_schedule(
+    message: str,
+    *,
+    schedule_id: str = "private",
+    hour: int = 23,
+    minute: int = 0,
+) -> PrivateScheduledMessageAction:
+    return PrivateScheduledMessageAction(
+        id=schedule_id,
+        message=message,
+        hour=hour,
+        minute=minute,
+    )
+
+
+def _group_schedule(
+    message: str,
+    *,
+    at_user_ids: list[int] | None = None,
+    schedule_id: str = "group",
+    hour: int = 23,
+    minute: int = 0,
+) -> GroupScheduledMessageAction:
+    return GroupScheduledMessageAction(
+        id=schedule_id,
+        message=message,
+        at_user_ids=at_user_ids or [],
+        hour=hour,
+        minute=minute,
+    )
 
 
 class FakeScheduler:
@@ -255,12 +266,12 @@ def test_scheduled_messages_append_fire_manual_ad(
 
     asyncio.run(
         message_schedules.send_private_schedule(
-            FakePrivateSchedule(message="私聊定时")
+            _private_schedule("私聊定时")
         )
     )
     asyncio.run(
         message_schedules.send_group_schedule(
-            FakeGroupSchedule(message="群定时", at_user_ids=[3001])
+            _group_schedule("群定时", at_user_ids=[3001])
         )
     )
 
@@ -309,7 +320,7 @@ def test_private_schedule_passes_subscription_key(
 
     asyncio.run(
         message_schedules.send_private_schedule(
-            FakePrivateSchedule(message="私聊定时")
+            _private_schedule("私聊定时")
         )
     )
 
@@ -358,7 +369,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
 
     asyncio.run(
         message_schedules.send_group_schedule(
-            FakeGroupSchedule(message="group push", at_user_ids=[], id="daily")
+            _group_schedule("group push", at_user_ids=[], schedule_id="daily")
         )
     )
 
@@ -379,7 +390,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         CRON_TIME_PREFERENCE,
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
-    task = FakeGroupSchedule(
+    task = GroupScheduledMessageAction(
         message="group push",
         at_user_ids=[],
         id="daily",
