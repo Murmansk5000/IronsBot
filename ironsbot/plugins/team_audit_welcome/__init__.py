@@ -16,7 +16,7 @@ from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.team_audit_welcome import (
     TeamAuditPendingReminder,
     clear_team_audit_pending_reminder,

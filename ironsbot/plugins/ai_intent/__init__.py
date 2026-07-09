@@ -8,6 +8,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.config.models.app import AppConfig
 from ironsbot.services.ai.client import call_ai_chat, get_ai_key
 from ironsbot.services.ai.constants import (
     EMPTY_REPLY,
@@ -38,8 +39,6 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from .config import Config
-
 ACTION_KEY = "_ai_intent_action"
 AI_INTENT_PLUGIN_NAME = "ai_intent"
 TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
@@ -55,7 +54,7 @@ __plugin_meta__ = PluginMetadata(
         "命中后可发送固定消息、生成 AI 回复，或分发给其它功能处理。\n"
         "具体触发词、判定提示和动作都以当前配置为准。"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 

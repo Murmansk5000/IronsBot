@@ -3,11 +3,11 @@ from dataclasses import dataclass
 
 from nonebot import logger
 
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.services.seer.client import get_game_client
 
 
 @dataclass(frozen=True, slots=True)

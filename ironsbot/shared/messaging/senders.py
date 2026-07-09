@@ -9,7 +9,7 @@ from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 
 from .outbound_rate_limit import check_group_outbound_rate_limit
 from .push_subscriptions import (

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 
 CHINA_TZ = timezone(timedelta(hours=8))
 
@@ -82,8 +82,8 @@ def load_peak_season_window(session: Any) -> SeasonWindow | None:
         return None
     return SeasonWindow(
         name="巅峰圣战赛季",
-        start_time=season.start_time,
-        end_time=season.end_time,
+        start_time=cast("datetime | None", season.start_time),
+        end_time=cast("datetime | None", season.end_time),
     )
 
 
@@ -91,8 +91,8 @@ def load_autocard_season_window() -> SeasonWindow:
     config = get_app_config().seer.season
     return SeasonWindow(
         name=config.autocard_name,
-        start_time=config.autocard_start_time,
-        end_time=config.autocard_end_time,
+        start_time=cast("datetime | None", config.autocard_start_time),
+        end_time=cast("datetime | None", config.autocard_end_time),
     )
 
 

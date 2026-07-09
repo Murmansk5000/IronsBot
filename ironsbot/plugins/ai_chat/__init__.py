@@ -7,6 +7,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.config.models.app import AppConfig
 from ironsbot.services.ai.chat import (
     build_ai_chat_context,
     can_show_admin_notice,
@@ -41,7 +42,7 @@ from ironsbot.shared.plugin_system import (
     register_plugin,
 )
 
-from .config import Config, get_ai_config
+from .config import get_ai_config
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)
@@ -54,7 +55,7 @@ __plugin_meta__ = PluginMetadata(
         "群聊中 @机器人 并附带问题\n"
         "私聊中直接发送问题"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 

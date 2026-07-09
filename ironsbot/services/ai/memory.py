@@ -6,7 +6,7 @@ from pathlib import Path
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.shared.sqlite import open_sqlite_schema
 

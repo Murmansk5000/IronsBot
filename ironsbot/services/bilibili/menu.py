@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Message
 
-    from ironsbot.services.bilibili.cache import DynamicHistoryRecord
+    from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
 
@@ -64,7 +64,9 @@ def parse_single_item(
 
 
 def get_dynamic_history_item(dynamic_id: str) -> DynamicHistoryRecord | None:
-    from ironsbot.services.bilibili.cache import get_dynamic_history_item as get_item
+    from ironsbot.services.bilibili.dynamic_history import (
+        get_dynamic_history_item as get_item,
+    )
 
     return get_item(dynamic_id)
 
