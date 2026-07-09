@@ -386,8 +386,8 @@ group_hint = "发送 TD、订阅 或 推送管理 可查看本群推送订阅；
 
 [message.red_packet_notice]
 # Default: true
-# EN: Notify superusers privately when a QQ group red packet is detected.
-# ZH: 检测到 QQ 群红包时，私聊通知超级管理员；不会领取红包。
+# EN: Notify admin notice targets when a QQ group red packet is detected.
+# ZH: 检测到 QQ 群红包时，通知超级管理员和 admin_notice 管理群；不会领取红包。
 enabled = true
 # Default: 60.0
 # EN: Per-group cooldown seconds to avoid repeated red packet notices.

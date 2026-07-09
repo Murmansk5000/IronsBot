@@ -259,7 +259,7 @@ Feature names are used in `[feature.group_policy]` and
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
 | `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
 | `fire_manual_ad` | "手册" AI intent and Fire manual links appended to proactive pushes. |
-| `admin_notice` | Target permission for admin notices. Concrete push categories can be unsubscribed separately through `TD`. |
+| `admin_notice` | Target permission for admin notices, including startup, AI errors, Bilibili login, headless Seer, render crash, red packet, and similar notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.

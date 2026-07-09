@@ -22,16 +22,18 @@ from ironsbot.services.red_packet_notice import (
     is_red_packet_payload,
     summarize_red_packet_message,
 )
-from ironsbot.shared.features import get_superuser_ids
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging.senders import send_broadcast_message
+from ironsbot.shared.messaging.admin_notice import send_admin_notice
 
 RED_PACKET_NOTICE_SUBSCRIPTION_KEY = "red_packet_notice"
 
 __plugin_meta__ = PluginMetadata(
     name="红包提醒",
-    description="检测群红包消息并私聊通知超级管理员。",
-    usage="检测到群红包时私聊超级管理员，消息包含群号、群名和发送者；不会领取红包。",
+    description="检测群红包消息并通知管理目标。",
+    usage=(
+        "检测到群红包时通知超级管理员和 admin_notice 管理群，"
+        "消息包含群号、群名和发送者；不会领取红包。"
+    ),
 )
 
 _limiter: RedPacketNoticeLimiter | None = None
@@ -123,11 +125,6 @@ async def _send_red_packet_notice(
         logger.info(f"red packet notice suppressed by cooldown for group {group_id}")
         return
 
-    superuser_ids = sorted(get_superuser_ids())
-    if not superuser_ids:
-        logger.warning("red packet notice skipped: no superusers configured")
-        return
-
     logger.info(f"red packet notice detected: group={group_id} sender={sender_id}")
     group_name = await _get_group_name(bot, group_id)
     notice = build_red_packet_notice_message(
@@ -136,9 +133,8 @@ async def _send_red_packet_notice(
         sender_id=sender_id,
         summary=summary,
     )
-    await send_broadcast_message(
+    await send_admin_notice(
         notice,
-        private_user_ids=superuser_ids,
         bot=bot,
         action_name="red packet notice",
         subscription_key=RED_PACKET_NOTICE_SUBSCRIPTION_KEY,
