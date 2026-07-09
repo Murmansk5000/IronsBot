@@ -178,11 +178,6 @@ def test_group_push_subscription_command_allows_superuser_member(
 ) -> None:
     monkeypatch.setattr(
         matcher_rules,
-        "is_superuser",
-        lambda user_id: user_id == SUPERUSER_ID,
-    )
-    monkeypatch.setattr(
-        matcher_rules,
         "get_message_config",
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
@@ -195,7 +190,6 @@ def test_group_push_subscription_command_allows_superuser_member(
 def test_group_push_subscription_command_allows_regular_member_to_view(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
     monkeypatch.setattr(
         matcher_rules,
         "get_message_config",
@@ -210,7 +204,6 @@ def test_group_push_subscription_command_allows_regular_member_to_view(
 def test_group_push_subscription_management_command_matches_regular_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
     monkeypatch.setattr(
         matcher_rules,
         "get_message_config",

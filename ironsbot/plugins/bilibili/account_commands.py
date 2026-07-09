@@ -15,7 +15,6 @@ from ironsbot.services.bilibili.accounts import (
     bili_accounts,
     resolve_account_reference,
 )
-from ironsbot.services.bilibili.permissions import is_bili_superuser
 from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
     normalize_push_mode_text,
@@ -33,6 +32,10 @@ from ironsbot.shared.messaging.push_subscription_models import (
 from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
+from ironsbot.shared.permissions import (
+    can_manage_group_event,
+    is_superuser_event,
+)
 from ironsbot.shared.plugin_system import PluginContext
 
 BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"
@@ -41,11 +44,10 @@ BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
     if isinstance(event, GroupMessageEvent):
-        role = getattr(event.sender, "role", None)
-        return role in {"owner", "admin"} or is_bili_superuser(event.user_id)
+        return can_manage_group_event(event)
 
     if isinstance(event, PrivateMessageEvent):
-        return is_bili_superuser(event.user_id)
+        return is_superuser_event(event)
 
     return False
 
