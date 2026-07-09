@@ -9,6 +9,13 @@ from ironsbot.shared.selection_menu import (
     format_selection_menu,
 )
 
+from .admin_notice import (
+    ADMIN_NOTICE_FEATURE,
+    AdminNoticeTargets,
+    admin_notice_targets,
+    get_first_onebot_bot,
+    send_admin_notice,
+)
 from .conversations import (
     EventReplyCheck,
     command_reply_check,
@@ -59,10 +66,12 @@ from .text import (
 )
 
 __all__ = [
+    "ADMIN_NOTICE_FEATURE",
     "DEFAULT_COMMAND_PREFIXES",
     "DEFAULT_SELECTION_FOOTER",
     "HELP_SELECTION_FOOTER",
     "TOGGLE_SELECTION_FOOTER",
+    "AdminNoticeTargets",
     "BeforeReplySendHook",
     "EventReplyCheck",
     "InMemoryRateLimiter",
@@ -75,6 +84,7 @@ __all__ = [
     "SelectionMenuItem",
     "SelectionMenuSection",
     "TargetSendSummary",
+    "admin_notice_targets",
     "apply_reply_before_send",
     "broadcast_targets",
     "build_message",
@@ -90,6 +100,7 @@ __all__ = [
     "finish_message_sequence",
     "format_selection_menu",
     "get_bot_or_none",
+    "get_first_onebot_bot",
     "group_targets",
     "normalize_command_text",
     "peek_user_rate_limit",
@@ -97,6 +108,7 @@ __all__ = [
     "private_targets",
     "rate_limiter",
     "render_text",
+    "send_admin_notice",
     "send_broadcast_message",
     "send_event_reply",
     "send_matcher_message",
