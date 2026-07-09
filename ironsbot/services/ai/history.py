@@ -1,6 +1,6 @@
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 
 HistoryMessage = dict[str, str]
 

@@ -5,17 +5,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.shared.sqlite import connect_sqlite
+from ironsbot.shared.sqlite import open_sqlite_schema
 
 if TYPE_CHECKING:
     import sqlite3
+    from contextlib import AbstractContextManager
 
     from ironsbot.config.models.bilibili import BiliPushMode
-    from ironsbot.shared.messaging.push_subscriptions import PushTargetType
+    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
 BiliRuntimePushMode = Literal["full", "link"]
 INVALID_PUSH_MODE_ERROR = "push mode must be content/full, link, or default"
+BILI_PUSH_PREFERENCE_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
+    "target_type TEXT NOT NULL, "
+    "target_id INTEGER NOT NULL, "
+    "uid INTEGER NOT NULL, "
+    "mode TEXT NOT NULL, "
+    "updated_at TEXT NOT NULL, "
+    "PRIMARY KEY (target_type, target_id, uid)"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
+    "ON bili_push_preferences (uid, target_type, target_id)",
+)
 
 
 def bili_push_subscription_key(uid: int) -> str:
@@ -96,7 +109,6 @@ class BiliPushPreferenceStore:
                 "VALUES (?, ?, ?, ?, ?)",
                 (target_type, int(target_id), int(uid), mode, now),
             )
-            con.commit()
 
     def clear_mode(
         self,
@@ -110,26 +122,9 @@ class BiliPushPreferenceStore:
                 "WHERE target_type = ? AND target_id = ? AND uid = ?",
                 (target_type, int(target_id), int(uid)),
             )
-            con.commit()
 
-    def _connect(self) -> sqlite3.Connection:
-        con = connect_sqlite(self.path)
-        con.execute(
-            "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
-            "target_type TEXT NOT NULL, "
-            "target_id INTEGER NOT NULL, "
-            "uid INTEGER NOT NULL, "
-            "mode TEXT NOT NULL, "
-            "updated_at TEXT NOT NULL, "
-            "PRIMARY KEY (target_type, target_id, uid)"
-            ")"
-        )
-        con.execute(
-            "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
-            "ON bili_push_preferences (uid, target_type, target_id)"
-        )
-        con.commit()
-        return con
+    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
+        return open_sqlite_schema(self.path, BILI_PUSH_PREFERENCE_SCHEMA)
 
 
 __all__ = [

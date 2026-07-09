@@ -9,11 +9,11 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.plugins.team_resource_subscription.adapter import (
-    fetch_team_resource_result,
-)
 from ironsbot.services.ai.intent import (
     get_team_resource_config,
+)
+from ironsbot.services.team_resource_adapter import (
+    fetch_team_resource_result,
 )
 from ironsbot.shared.messaging import finish_event_reply, finish_message_sequence
 from ironsbot.shared.plugin_system import PluginContext, register_plugin

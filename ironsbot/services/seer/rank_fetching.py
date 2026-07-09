@@ -6,10 +6,10 @@ from typing import Any
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.packets.peak import DailyRankParam
 from ironsbot.services.seer.rank_models import RankPageResult
-from ironsbot.services.seer.rank_page_cache import (
+from ironsbot.services.seer.rank_page_cache_queries import (
     get_cached_rank_page_result,
-    save_rank_page,
 )
+from ironsbot.services.seer.rank_page_cache_writer import save_rank_page
 
 
 async def fetch_rank_page_result_from_game(  # noqa: PLR0913

@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from . import autocard as autocard
-from . import countermark_stat_rank as countermark_stat_rank
-from . import player as player
-from . import rank_list as rank_list
-from . import team as team
-from . import upstream_queries as upstream_queries
+from importlib import import_module
 
-__all__ = [
+_COMMAND_MODULES = [
     "autocard",
     "countermark_stat_rank",
     "player",
     "rank_list",
     "team",
-    "upstream_queries",
+    "upstream_data_queries",
+    "upstream_equipment_queries",
+    "upstream_mintmark_queries",
+    "upstream_peak_queries",
+    "upstream_pet_queries",
+    "upstream_type_queries",
 ]
+
+for _module in _COMMAND_MODULES:
+    import_module(f"{__name__}.{_module}")

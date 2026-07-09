@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.feature import (
     FEATURE_ALIASES,
     KNOWN_FEATURES,
