@@ -36,6 +36,20 @@ def test_bootstrap_loads_manifest_order() -> None:
     assert tuple(loaded_modules) == iter_plugin_modules()
 
 
+def test_manifest_loads_foundation_plugins_before_dependents() -> None:
+    modules = iter_plugin_modules()
+
+    assert modules.index("ironsbot.plugins.db_sync") < modules.index(
+        "ironsbot.plugins.seer_data"
+    )
+    assert modules.index("ironsbot.plugins.http_client") < modules.index(
+        "ironsbot.plugins.seer_data"
+    )
+    assert modules.index("ironsbot.plugins.seer_data") < modules.index(
+        "ironsbot.plugins.activity"
+    )
+
+
 def test_pyproject_does_not_define_plugin_loading_lists() -> None:
     pyproject = tomli.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     nonebot_config = pyproject["tool"]["nonebot"]
