@@ -8,6 +8,7 @@ from ironsbot.app.plugin_manifest import (
     iter_plugin_modules,
     validate_plugin_manifest,
 )
+from ironsbot.shared.features.plugin_modules import iter_feature_module_prefixes
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,18 @@ class RuntimeModule:
 def test_plugin_manifest_validates() -> None:
     validate_plugin_manifest()
     assert RUNTIME_SETUP_CALLS
+
+
+def test_manifest_covers_feature_visibility_modules() -> None:
+    modules = iter_plugin_modules()
+
+    for module_prefix in iter_feature_module_prefixes():
+        assert any(
+            loaded_module == module_prefix
+            or loaded_module.startswith(f"{module_prefix}.")
+            or module_prefix.startswith(f"{loaded_module}.")
+            for loaded_module in modules
+        ), module_prefix
 
 
 def test_bootstrap_loads_manifest_order() -> None:

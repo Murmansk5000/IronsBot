@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from ironsbot.shared.features.plugin_modules import iter_feature_module_prefixes
+
 
 @dataclass(frozen=True, slots=True)
 class PluginGroup:
@@ -104,6 +106,13 @@ class PluginManifestError(ValueError):
     def invalid_setup_ref(cls, setup_ref: str) -> PluginManifestError:
         return cls(f"runtime setup reference must use module:function: {setup_ref}")
 
+    @classmethod
+    def missing_feature_modules(cls, modules: list[str]) -> PluginManifestError:
+        return cls(
+            "feature visibility registry references unloaded plugin modules: "
+            + ", ".join(modules)
+        )
+
 
 def iter_plugin_modules() -> tuple[str, ...]:
     return tuple(
@@ -133,6 +142,8 @@ def validate_plugin_manifest() -> None:
     if duplicates:
         raise PluginManifestError.duplicate_modules(duplicates)
 
+    _validate_feature_module_registry()
+
     for setup_ref in RUNTIME_SETUP_CALLS:
         module_name, separator, function_name = setup_ref.partition(":")
         if (
@@ -141,7 +152,30 @@ def validate_plugin_manifest() -> None:
             or not function_name.strip()
             or ":" in function_name
         ):
-            raise PluginManifestError.invalid_setup_ref(setup_ref)
+                raise PluginManifestError.invalid_setup_ref(setup_ref)
+
+
+def _validate_feature_module_registry() -> None:
+    loaded_modules = iter_plugin_modules()
+    missing_feature_modules = [
+        module_prefix
+        for module_prefix in iter_feature_module_prefixes()
+        if not _module_prefix_is_loaded(module_prefix, loaded_modules)
+    ]
+    if missing_feature_modules:
+        raise PluginManifestError.missing_feature_modules(missing_feature_modules)
+
+
+def _module_prefix_is_loaded(
+    module_prefix: str,
+    loaded_modules: tuple[str, ...],
+) -> bool:
+    return any(
+        loaded_module == module_prefix
+        or loaded_module.startswith(f"{module_prefix}.")
+        or module_prefix.startswith(f"{loaded_module}.")
+        for loaded_module in loaded_modules
+    )
 
 
 __all__ = [
