@@ -3,6 +3,12 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import on_fullmatch
 from nonebot.rule import Rule
 
+from ironsbot.services.sendpic_fixed_image import (
+    DEFAULT_FIXED_IMAGE_DIR,
+    FIXED_IMAGE_COMMANDS,
+    FIXED_IMAGE_MISSING_MESSAGE,
+    build_fixed_image_segment,
+)
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.plugin_system import (
@@ -12,15 +18,6 @@ from ironsbot.shared.plugin_system import (
 )
 from ironsbot.utils.rule import no_reply
 
-from .fixed_image_service import (
-    DEFAULT_FIXED_IMAGE_DIR,
-    FIXED_IMAGE_COMMANDS,
-    FIXED_IMAGE_MISSING_MESSAGE,
-    build_fixed_image_segment,
-)
-
-IMAGE_DIR = DEFAULT_FIXED_IMAGE_DIR
-IMAGE_COMMANDS = FIXED_IMAGE_COMMANDS
 FIXED_IMAGE_PLUGIN_NAME = "sendpic_fixed_image"
 
 
@@ -33,7 +30,7 @@ class FixedImagePlugin:
         from ironsbot.shared.messaging import finish_event_reply
 
         filename = str(context.data["filename"])
-        image_segment = build_fixed_image_segment(IMAGE_DIR, filename)
+        image_segment = build_fixed_image_segment(DEFAULT_FIXED_IMAGE_DIR, filename)
         matcher = context.matcher
         if matcher is None:
             return
@@ -56,7 +53,7 @@ class FixedImagePlugin:
 register_plugin(FixedImagePlugin())
 
 
-for command, filename in IMAGE_COMMANDS.items():
+for command, filename in FIXED_IMAGE_COMMANDS.items():
     matcher = on_fullmatch(
         command,
         rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),

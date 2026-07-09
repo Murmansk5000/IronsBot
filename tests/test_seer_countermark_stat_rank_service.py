@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 from typing import Any, cast
 
-from ironsbot.services.seer.countermark_stat_rank import (
+from ironsbot.services.seer.countermark_stat_rank_messages import (
+    build_countermark_stat_rank_message,
+)
+from ironsbot.services.seer.countermark_stat_rank_models import (
     CountermarkStatRankCommand,
     CountermarkStatRankItem,
     StatSpec,
-    build_countermark_stat_rank_message,
+)
+from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
 

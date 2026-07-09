@@ -3,26 +3,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.exception import FinishedException
-
-from ironsbot.services.seer.query_help import seer_query_help_message
-from ironsbot.shared.messaging import finish_event_reply
-
-from ..depends import PetDataGetter, SeerAPISession
-from ..prompt import Prompt, PromptItem, enter_prompt, simple_prompt_resolver
 from ..upstream_commands import cloth as upstream_cloth
 from ..upstream_commands import effect as upstream_effect
 from ..upstream_commands import mintmark as upstream_mintmark
 from ..upstream_commands import peak as upstream_peak
-from ..upstream_commands import pet as upstream_pet
 from ..upstream_commands import type as upstream_type
-from . import data_tools, pet_actions
+from . import data_tools, upstream_pet_handlers
+from .upstream_help import finish_query_help
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.matcher import Matcher
-    from seerapi_models import PetORM
 
     from ironsbot.shared.plugin_system import PluginContext
 
@@ -46,19 +37,7 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "peak_suit": "_handle_peak_suit",
     "peak_title": "_handle_peak_title",
     "peak_pet": "_handle_peak_pet",
-    "peak_user": "_handle_peak_user",
 }
-
-
-async def _finish_query_help(
-    matcher: Matcher,
-    event: Event,
-    kind: str,
-) -> None:
-    message = seer_query_help_message(kind)
-    if isinstance(event, MessageEvent):
-        await finish_event_reply(matcher, event, message)
-    await matcher.finish(message)
 
 
 class UpstreamQueryPlugin:
@@ -83,42 +62,7 @@ class UpstreamQueryPlugin:
         event: Event,
         context: PluginContext,
     ) -> None:
-        state = context.state
-        if state is None:
-            return
-        session: SeerAPISession = context.data["session"]
-        arg = str(context.data.get("arg", ""))
-        items: list[PromptItem[int]] = context.data["items"]
-
-        if not arg.strip():
-            await _finish_query_help(matcher, event, "skin")
-
-        if not items:
-            raise FinishedException
-
-        if len(items) == 1:
-            msg = await pet_actions.build_pet_image_message(items[0], session)
-            await msg.finish()
-
-        if len(items) > upstream_pet.PROMPT_MAX_ITEMS:
-            if len(arg) == 1:
-                for item in items:
-                    if item.name == arg:
-                        msg = await pet_actions.build_pet_image_message(item, session)
-                        await msg.finish()
-
-            await matcher.finish(
-                f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词："
-            )
-
-        prompt = Prompt(title="请问你想查询的立绘是……", items=items)
-        await enter_prompt(
-            matcher,
-            event,
-            state,
-            prompt,
-            pet_actions.pet_image_resolver,
-        )
+        await upstream_pet_handlers.handle_pet_image(matcher, event, context)
 
     async def _handle_pet_info(
         self,
@@ -126,51 +70,7 @@ class UpstreamQueryPlugin:
         event: Event,
         context: PluginContext,
     ) -> None:
-        state = context.state
-        if state is None:
-            return
-        arg = str(context.data.get("arg", ""))
-        pets: tuple[PetORM, ...] = context.data["pets"]
-
-        if not arg.strip():
-            await _finish_query_help(matcher, event, "pet")
-
-        if not pets:
-            raise FinishedException
-
-        if len(pets) == 1:
-            msg = await pet_actions.build_pet_info_message(pets[0])
-            await msg.finish()
-
-        if len(pets) > upstream_pet.PROMPT_MAX_ITEMS:
-            if len(arg) == 1:
-                for pet in pets:
-                    if pet.name == arg:
-                        msg = await pet_actions.build_pet_info_message(pet)
-                        await msg.finish()
-
-            await matcher.finish(
-                f"重名超过{upstream_pet.PROMPT_MAX_ITEMS}个，请重新检索关键词："
-            )
-
-        prompt = Prompt(
-            title="请问你想查询的精灵是……",
-            items=[
-                PromptItem(name=pet.name, desc=str(pet.id), value=pet.id)
-                for pet in pets
-            ],
-        )
-        await enter_prompt(
-            matcher,
-            event,
-            state,
-            prompt,
-            simple_prompt_resolver(
-                PetDataGetter,
-                pet_actions.build_pet_info_message,
-                "精灵",
-            ),
-        )
+        await upstream_pet_handlers.handle_pet_info(matcher, event, context)
 
     async def _handle_preview(
         self,
@@ -210,7 +110,7 @@ class UpstreamQueryPlugin:
         context: PluginContext,
     ) -> None:
         if not str(context.data.get("arg", "")).strip():
-            await _finish_query_help(matcher, event, "mintmark")
+            await finish_query_help(matcher, event, "mintmark")
 
         await upstream_mintmark.handle_mintmark(
             matcher=matcher,
@@ -227,7 +127,7 @@ class UpstreamQueryPlugin:
         context: PluginContext,
     ) -> None:
         if not str(context.data.get("arg", "")).strip():
-            await _finish_query_help(matcher, event, "gem")
+            await finish_query_help(matcher, event, "gem")
 
         await upstream_mintmark.handle_gem(
             matcher=matcher,
@@ -376,18 +276,5 @@ class UpstreamQueryPlugin:
             command=context.data["command"],
             type_tuple=context.data["type_tuple"],
             expert_pools=context.data["expert_pools"],
-            game=context.data["game"],
-        )
-
-    async def _handle_peak_user(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_user(
-            matcher=matcher,
-            seerapi_session=context.data["seerapi_session"],
-            type_tuple=context.data["type_tuple"],
             game=context.data["game"],
         )

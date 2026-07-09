@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from ironsbot.services.seer.countermark_stat_rank import (
+from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
 from ironsbot.services.seer.rank_list_parsing import parse_rank_list_command

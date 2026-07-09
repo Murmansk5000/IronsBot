@@ -1,19 +1,29 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.matcher import Matcher
-from nonebot.rule import Rule
-from nonebot.typing import T_State
+from __future__ import annotations
 
-from ironsbot.integrations.seer_data.db import SeerAPISession
-from ironsbot.services.seer.countermark_stat_rank import (
-    MISSING_MINTMARK_QUALITY_MESSAGE,
-    CountermarkStatRankCommand,
+from nonebot.adapters import Event  # noqa: TC002
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.matcher import Matcher  # noqa: TC002
+from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002
+
+from ironsbot.integrations.seer_data.db import SeerAPISession  # noqa: TC001
+from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
+)
+from ironsbot.services.seer.countermark_stat_rank_models import (  # noqa: TC001
+    CountermarkStatRankCommand,
+)
+from ironsbot.services.seer.countermark_stat_rank_parsing import (
+    parse_countermark_stat_rank_command,
+)
+from ironsbot.services.seer.countermark_stat_rank_ranking import (
     collect_countermark_rank_items,
+)
+from ironsbot.services.seer.countermark_stat_rank_repository import (
+    MISSING_MINTMARK_QUALITY_MESSAGE,
     load_mintmark_quality_session,
     load_mintmarks,
-    parse_countermark_stat_rank_command,
 )
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.plugin_system import (
