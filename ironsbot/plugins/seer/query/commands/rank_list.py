@@ -24,7 +24,7 @@ from ironsbot.shared.plugin_system import (
 from ironsbot.utils.rule import no_reply
 
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from .rank_list_plugin import (
+from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
     RANK_LIST_COMMAND_KEY,
@@ -32,14 +32,14 @@ from .rank_list_plugin import (
     RANK_PAGE_CACHE_REFRESH_COMMAND_KEY,
     RANK_PAGE_CACHE_STATUS_COMMAND_KEY,
     RANK_SCORE_COMMAND_KEY,
-    _event_group_id,
+    event_group_id,
 )
 
 
 async def _is_rank_list_command(event: Event, state: T_State) -> bool:
     command = parse_rank_list_command(
         event.get_plaintext(),
-        default_limit=rank_display_limit_for_group(_event_group_id(event)),
+        default_limit=rank_display_limit_for_group(event_group_id(event)),
     )
     if command is None:
         return False
