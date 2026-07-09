@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 from collections.abc import Iterable
 from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
@@ -399,39 +399,3 @@ async def handle_peak_pet(  # noqa: PLR0913
     msg = MessageFactory()
     msg += Image(pic_bytes)
     await msg.finish(at_sender=False)
-
-
-peak_user_matcher = matcher_group.on_fullmatch(
-    ("竞技段位榜", "狂野段位榜", "专家段位榜"), rule=no_reply()
-)
-
-
-@peak_user_matcher.handle()
-async def handle_peak_user(
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    type_tuple: _PeakTypeTuple = Depends(_get_peak_type),
-    game: SeerGame = GameClient,
-) -> None:
-    if not (season := seerapi_session.get(PeakSeasonORM, 1)):
-        await matcher.finish("❌找不到赛季数据（这是一个bug，请反馈给开发者）。")
-
-    name, peak_type = type_tuple
-    rank = await game.get_peak_user_rank(
-        sub_key=_datetime_to_sub_key(season.start_time), peak_type=peak_type
-    )
-    if not rank:
-        await matcher.finish("❌找不到段位榜数据。")
-
-    rating_func = (
-        _format_peak_score if peak_type == PeakType.EXPERT else _format_peak_rating
-    )
-
-    rank_str = "\n".join(
-        f"{index}. {item.nick}（{item.id}） {rating_func(item.score)}"
-        for index, item in enumerate(rank, 1)
-    )
-    timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
-    await matcher.finish(
-        f"{name}段位榜（截至{timestamp}）\n{rank_str}"
-    )

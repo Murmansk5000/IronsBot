@@ -54,21 +54,12 @@ PEAK_TITLE_KEY_MAP = {
     PeakType.EXPERT: (205, 206),
 }
 
-PEAK_USER_KEY_MAP = {
-    PeakType.STANDARD: 120,
-    PeakType.WILD: 182,
-    PeakType.EXPERT: 199,
-}
-
-
 __all__ = [
     "PEAK_PET_KEY_MAP",
     "PEAK_SUIT_KEY_MAP",
     "PEAK_TITLE_KEY_MAP",
     "PEAK_TYPE_NAME_MAP",
-    "PEAK_USER_KEY_MAP",
     "PeakData",
     "PeakItemData",
     "PeakType",
 ]
-

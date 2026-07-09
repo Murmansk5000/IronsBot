@@ -37,7 +37,6 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "peak_suit": "_handle_peak_suit",
     "peak_title": "_handle_peak_title",
     "peak_pet": "_handle_peak_pet",
-    "peak_user": "_handle_peak_user",
 }
 
 
@@ -277,18 +276,5 @@ class UpstreamQueryPlugin:
             command=context.data["command"],
             type_tuple=context.data["type_tuple"],
             expert_pools=context.data["expert_pools"],
-            game=context.data["game"],
-        )
-
-    async def _handle_peak_user(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_user(
-            matcher=matcher,
-            seerapi_session=context.data["seerapi_session"],
-            type_tuple=context.data["type_tuple"],
             game=context.data["game"],
         )
