@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 from ironsbot.services.seer import local_rank_formatting
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.rank import PlayerRankSummary, RankLookupResult
+    from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
     from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
 MetricValue = dict[str, int | str | None]

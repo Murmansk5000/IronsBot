@@ -48,10 +48,9 @@ from ironsbot.services.seer.local_rank_models import (
     LocalRankSummary,
 )
 from ironsbot.services.seer.rank import (
-    PlayerRankSummary,
-    RankLookupResult,
     is_pet_kind_rank_anomaly_user,
 )
+from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo, UnityPeakInfo
 
 _CACHE_LOCK = asyncio.Lock()

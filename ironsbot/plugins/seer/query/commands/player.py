@@ -35,9 +35,7 @@ from ironsbot.services.seer.player_query import (
     player_query_timeout_message,
     player_query_wait_message,
 )
-from ironsbot.services.seer.rank import (
-    PeakSeasonRankSummary,
-)
+from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
 from ironsbot.services.seer.sequ_extra import (
     UnityPeakInfo,
 )

@@ -56,6 +56,7 @@ except RuntimeError as e:
         raise
 
 from ironsbot.services.seer import rank as _rank
+from ironsbot.services.seer.rank_models import RankPageResult
 from ironsbot.services.seer.rank_page_cache import (
     CachedRankLookup,
 )
@@ -418,7 +419,7 @@ def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
         end: int,
         use_cache: bool = True,
         **_kwargs: object,
-    ) -> _rank.RankPageResult:
+    ) -> RankPageResult:
         requested_pages.append((start, end))
         page_use_cache_values.append(use_cache)
         items = []
@@ -436,7 +437,7 @@ def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
                     score=score,
                 )
             )
-        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+        return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
     monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
@@ -498,7 +499,7 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
         end: int,
         use_cache: bool = True,
         **_kwargs: object,
-    ) -> _rank.RankPageResult:
+    ) -> RankPageResult:
         requested_pages.append((start, end))
         page_use_cache_values.append(use_cache)
         items = []
@@ -516,7 +517,7 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
                     score=score,
                 )
             )
-        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+        return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", unexpected_fetch_rank_item)
     monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
@@ -570,7 +571,7 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
         start: int,
         end: int,
         **_kwargs: object,
-    ) -> _rank.RankPageResult:
+    ) -> RankPageResult:
         requested_pages.append((start, end))
         items = []
         for rank_index in range(start, end + 1):
@@ -582,7 +583,7 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
                     score=score,
                 )
             )
-        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+        return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", unexpected_fetch_rank_item)
     monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
@@ -726,7 +727,7 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
         start: int,
         end: int,
         **_kwargs: object,
-    ) -> _rank.RankPageResult:
+    ) -> RankPageResult:
         requested_pages.append((start, end))
         items = []
         for rank_index in range(start, end + 1):
@@ -742,7 +743,7 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
                     score=score,
                 )
             )
-        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+        return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
     monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
@@ -838,7 +839,7 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
         start: int,
         end: int,
         **_kwargs: object,
-    ) -> _rank.RankPageResult:
+    ) -> RankPageResult:
         items = []
         for rank_index in range(start, min(end + 1, actual_count)):
             if rank_index < SEGMENT_START_INDEX:
@@ -854,7 +855,7 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
                     score=score,
                 )
             )
-        return _rank.RankPageResult(items=items, fetched_at=FETCHED_AT)
+        return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
     monkeypatch.setattr(_rank, "_fetch_rank_page_result", fake_fetch_rank_page_result)
@@ -1028,10 +1029,10 @@ def test_daily_rank_page_result_fetches_aligned_page_and_slices(
         start: int,
         end: int,
         use_cache: bool = True,
-    ) -> _rank.RankPageResult:
+    ) -> RankPageResult:
         _ = (key, sub_key, use_cache)
         requested_ranges.append((start, end))
-        return _rank.RankPageResult(
+        return RankPageResult(
             items=[
                 RankItem(id=index, nick=f"Player{index}", score=1000 - index)
                 for index in range(start, end + 1)

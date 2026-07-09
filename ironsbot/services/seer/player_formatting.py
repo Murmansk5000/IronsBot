@@ -29,7 +29,7 @@ from ironsbot.services.seer.player_query import PlayerDetailMessages
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankSummary
-    from ironsbot.services.seer.rank import (
+    from ironsbot.services.seer.rank_models import (
         PeakSeasonRankSummary,
         PlayerRankSummary,
         RankLookupResult,

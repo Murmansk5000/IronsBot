@@ -1,24 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.config import get_app_config
-from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
 from ironsbot.services.seer.rank_constants import (
     PET_KIND_RANK_ANOMALY_USER_IDS,
 )
 from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
-from ironsbot.services.seer.rank_formatting import (
-    format_book_breakdown as _format_book_breakdown,
-)
-from ironsbot.services.seer.rank_formatting import (
-    format_peak_rank_lookup as _format_peak_rank_lookup,
-)
-from ironsbot.services.seer.rank_formatting import (
-    format_player_rank_summary as _format_player_rank_summary,
-)
-from ironsbot.services.seer.rank_formatting import (
-    format_rank_lookup as _format_rank_lookup,
-)
 from ironsbot.services.seer.rank_lookup_service import (
     RankLookupDependencies,
 )
@@ -27,13 +16,6 @@ from ironsbot.services.seer.rank_lookup_service import (
 )
 from ironsbot.services.seer.rank_lookup_service import (
     find_rank as _find_rank_impl,
-)
-from ironsbot.services.seer.rank_models import (
-    PeakSeasonRankSummary,
-    PlayerRankSummary,
-    RankLookupResult,
-    RankPageResult,
-    RankScoreSearchResult,
 )
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
@@ -107,10 +89,15 @@ from ironsbot.services.seer.rank_summary import (
     fetch_player_rank_summary as _fetch_player_rank_summary_impl,
 )
 
-format_book_breakdown = _format_book_breakdown
-format_peak_rank_lookup = _format_peak_rank_lookup
-format_player_rank_summary = _format_player_rank_summary
-format_rank_lookup = _format_rank_lookup
+if TYPE_CHECKING:
+    from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
+    from ironsbot.services.seer.rank_models import (
+        PeakSeasonRankSummary,
+        PlayerRankSummary,
+        RankLookupResult,
+        RankPageResult,
+        RankScoreSearchResult,
+    )
 
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 CACHED_RANK_LOOKUP_WINDOW_PAGES = 2
