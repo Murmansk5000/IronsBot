@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-import sqlite3
 from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Final
@@ -9,6 +8,8 @@ from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import create_engine
+
+from ironsbot.shared.sqlite import open_sqlite
 
 
 class DatabaseManager:
@@ -56,15 +57,12 @@ class DatabaseManager:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
 
-        source = sqlite3.connect(file_path)
-        try:
+        with open_sqlite(file_path, pragmas=False) as source:
             raw_conn = new_engine.raw_connection()
             try:
                 source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
             finally:
                 raw_conn.close()
-        finally:
-            source.close()
 
         for hook in self._post_load_hooks.get(name, []):
             try:
