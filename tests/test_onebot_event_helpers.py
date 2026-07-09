@@ -5,8 +5,11 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from tests.helpers.onebot_events import (
+    group_admin_message_event,
     group_increase_notice_event,
+    group_member_message_event,
     group_message_event,
+    group_owner_message_event,
     private_message_event,
 )
 
@@ -22,6 +25,20 @@ def test_group_message_event_builder_sets_group_context() -> None:
     assert event.raw_message == "hello"
     assert event.user_id == USER_ID
     assert event.group_id == GROUP_ID
+
+
+def test_group_member_role_event_builders_set_sender_role() -> None:
+    member_event = group_member_message_event(
+        user_id=USER_ID,
+        group_id=GROUP_ID,
+        role="member",
+    )
+    admin_event = group_admin_message_event(user_id=USER_ID, group_id=GROUP_ID)
+    owner_event = group_owner_message_event(user_id=USER_ID, group_id=GROUP_ID)
+
+    assert member_event.sender.role == "member"
+    assert admin_event.sender.role == "admin"
+    assert owner_event.sender.role == "owner"
 
 
 def test_private_message_event_builder_sets_private_context() -> None:

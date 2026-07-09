@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
     GroupMessageEvent,
     Message,
     PrivateMessageEvent,
 )
+
+GroupMemberRole = Literal["owner", "admin", "member"]
 
 
 def group_message_event(  # noqa: PLR0913
@@ -31,6 +35,61 @@ def group_message_event(  # noqa: PLR0913
         font=0,
         group_id=group_id,
         sender=sender or {},
+    )
+
+
+def group_member_message_event(  # noqa: PLR0913
+    text: str = "hello",
+    *,
+    role: GroupMemberRole = "member",
+    user_id: int = 123,
+    group_id: int = 456,
+    self_id: int = 1,
+    message_id: int = 3,
+) -> GroupMessageEvent:
+    return group_message_event(
+        text,
+        user_id=user_id,
+        group_id=group_id,
+        self_id=self_id,
+        message_id=message_id,
+        sender={"role": role},
+    )
+
+
+def group_admin_message_event(
+    text: str = "hello",
+    *,
+    user_id: int = 123,
+    group_id: int = 456,
+    self_id: int = 1,
+    message_id: int = 3,
+) -> GroupMessageEvent:
+    return group_member_message_event(
+        text,
+        role="admin",
+        user_id=user_id,
+        group_id=group_id,
+        self_id=self_id,
+        message_id=message_id,
+    )
+
+
+def group_owner_message_event(
+    text: str = "hello",
+    *,
+    user_id: int = 123,
+    group_id: int = 456,
+    self_id: int = 1,
+    message_id: int = 3,
+) -> GroupMessageEvent:
+    return group_member_message_event(
+        text,
+        role="owner",
+        user_id=user_id,
+        group_id=group_id,
+        self_id=self_id,
+        message_id=message_id,
     )
 
 

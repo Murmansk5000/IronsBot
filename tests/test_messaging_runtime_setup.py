@@ -24,7 +24,7 @@ from ironsbot.shared.messaging.push_subscriptions import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
 
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
@@ -95,13 +95,13 @@ def _group_event(
     text: str = "TD",
     *,
     user_id: int = SUPERUSER_ID,
-    role: str = "member",
+    role: GroupMemberRole = "member",
 ):
-    return group_message_event(
+    return group_member_message_event(
         text,
         user_id=user_id,
         group_id=2002,
-        sender={"role": role},
+        role=role,
     )
 
 
