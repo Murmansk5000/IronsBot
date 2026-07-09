@@ -3,16 +3,15 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.config import get_app_config
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.shared.sqlite import open_sqlite_schema
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
     from ironsbot.config.models.seer import RankQueryConfig
@@ -21,6 +20,16 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class RankDisplayLimitCommand:
     limit: int
+
+
+RANK_DISPLAY_LIMIT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS group_rank_display_limits (
+    group_id INTEGER PRIMARY KEY,
+    display_limit INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by INTEGER NOT NULL
+)
+"""
 
 
 def rank_display_limit_for_group(group_id: int | None) -> int:
@@ -140,20 +149,8 @@ def _stored_group_limit(group_id: int | None) -> int | None:
     return int(row[0]) if row is not None else None
 
 
-@contextmanager
-def _connect(path: Path) -> Iterator[sqlite3.Connection]:
-    with open_sqlite(path) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS group_rank_display_limits (
-                group_id INTEGER PRIMARY KEY,
-                display_limit INTEGER NOT NULL,
-                updated_at TEXT NOT NULL,
-                updated_by INTEGER NOT NULL
-            )
-            """
-        )
-        yield conn
+def _connect(path: Path) -> AbstractContextManager[sqlite3.Connection]:
+    return open_sqlite_schema(path, RANK_DISPLAY_LIMIT_SCHEMA)
 
 
 def _clamp_limit(value: int, config: RankQueryConfig) -> int:
