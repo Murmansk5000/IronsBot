@@ -17,7 +17,8 @@ from ironsbot.integrations.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.services.seer.errors import format_player_query_error
-from ironsbot.services.seer.local_rank import LocalRankSummary, update_local_rank_cache
+from ironsbot.services.seer.local_rank_models import LocalRankSummary
+from ironsbot.services.seer.local_rank_update import update_local_rank_cache
 from ironsbot.services.seer.player_formatting import format_player_detail_messages
 from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_COMMANDS_KEY,

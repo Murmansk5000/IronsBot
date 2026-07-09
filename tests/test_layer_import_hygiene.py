@@ -92,6 +92,7 @@ def _forbidden_module_import_offenders(forbidden_modules: set[str]) -> list[str]
 def test_production_code_uses_current_foundation_modules() -> None:
     assert _forbidden_module_import_offenders(
         {
+            "ironsbot.services.seer.local_rank",
             "ironsbot.services.seer.rank_service",
             "ironsbot.services.seer.client",
         }

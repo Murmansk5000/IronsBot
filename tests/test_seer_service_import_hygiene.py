@@ -29,6 +29,7 @@ importlib.import_module(module_name)
 for forbidden in (
     "nonebot",
     "nonebot.log",
+    "ironsbot.services.seer.local_rank",
     "ironsbot.services.seer.rank_service",
     "ironsbot.services.seer.rank_page_cache_queries",
 ):

@@ -20,7 +20,7 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_unavailable,
 )
 from ironsbot.services.seer.errors import format_player_query_error
-from ironsbot.services.seer.local_rank import LocalRankSummary
+from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.player_formatting import (
     format_compact_player_info,
