@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 RowFactory = Callable[[sqlite3.Cursor, Sequence[Any]], object]
+SqliteSchema = str | Sequence[str]
 _SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -57,6 +58,26 @@ def open_sqlite(
         conn.close()
 
 
+def sqlite_schema_statements(schema: SqliteSchema) -> tuple[str, ...]:
+    if isinstance(schema, str):
+        return (schema,)
+    return tuple(schema)
+
+
+@contextmanager
+def open_sqlite_schema(
+    path: str | Path,
+    schema: SqliteSchema,
+    *,
+    row_factory: RowFactory | None = None,
+    pragmas: bool = True,
+) -> Iterator[sqlite3.Connection]:
+    with open_sqlite(path, row_factory=row_factory, pragmas=pragmas) as conn:
+        for statement in sqlite_schema_statements(schema):
+            conn.execute(statement)
+        yield conn
+
+
 def sqlite_table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     table_sql = quote_sqlite_identifier(table_name)
     return {
@@ -84,7 +105,9 @@ __all__ = [
     "connect_sqlite",
     "ensure_sqlite_column",
     "open_sqlite",
+    "open_sqlite_schema",
     "quote_sqlite_identifier",
     "resolve_sqlite_path",
+    "sqlite_schema_statements",
     "sqlite_table_columns",
 ]

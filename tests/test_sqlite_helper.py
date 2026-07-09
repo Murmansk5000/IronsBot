@@ -8,8 +8,10 @@ from ironsbot.shared.sqlite import (
     connect_sqlite,
     ensure_sqlite_column,
     open_sqlite,
+    open_sqlite_schema,
     quote_sqlite_identifier,
     resolve_sqlite_path,
+    sqlite_schema_statements,
     sqlite_table_columns,
 )
 
@@ -53,6 +55,34 @@ def test_open_sqlite_closes_connection(tmp_path: Path) -> None:
 
     with pytest.raises(sqlite3.ProgrammingError):
         conn.execute("SELECT 1")
+
+
+def test_sqlite_schema_statements_normalizes_single_statement() -> None:
+    assert sqlite_schema_statements("CREATE TABLE sample (id INTEGER)") == (
+        "CREATE TABLE sample (id INTEGER)",
+    )
+
+
+def test_open_sqlite_schema_initializes_schema(tmp_path: Path) -> None:
+    path = tmp_path / "cache.sqlite"
+
+    with open_sqlite_schema(
+        path,
+        [
+            "CREATE TABLE sample (id INTEGER PRIMARY KEY)",
+            "CREATE INDEX idx_sample_id ON sample (id)",
+        ],
+    ) as conn:
+        conn.execute("INSERT INTO sample (id) VALUES (1)")
+
+    with sqlite3.connect(path) as conn:
+        rows = conn.execute("SELECT id FROM sample").fetchall()
+        index_rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+        ).fetchall()
+
+    assert rows == [(1,)]
+    assert ("idx_sample_id",) in index_rows
 
 
 def test_ensure_sqlite_column_adds_missing_column_once(tmp_path: Path) -> None:
