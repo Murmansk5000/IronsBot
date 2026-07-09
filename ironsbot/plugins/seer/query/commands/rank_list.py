@@ -10,7 +10,7 @@ from ironsbot.services.seer.rank_display import (
     parse_rank_display_limit_command,
     rank_display_limit_for_group,
 )
-from ironsbot.services.seer.rank_list import (
+from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,

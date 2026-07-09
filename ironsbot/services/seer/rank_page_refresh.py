@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.client import get_game_client
-from ironsbot.services.seer.rank_list import (
+from ironsbot.services.seer.rank_list_formatting import batch_raw_start
+from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
     GlobalRankSpec,
-    batch_raw_start,
 )
 from ironsbot.services.seer.rank_page_cache_queries import (
     get_rank_page_cache_summary,

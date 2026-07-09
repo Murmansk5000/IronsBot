@@ -4,7 +4,7 @@ from __future__ import annotations
 from ironsbot.services.seer.countermark_stat_rank import (
     parse_countermark_stat_rank_command,
 )
-from ironsbot.services.seer.rank_list import parse_rank_list_command
+from ironsbot.services.seer.rank_list_parsing import parse_rank_list_command
 
 _RANK_SUFFIXES = ("榜", "排行", "排行榜")
 _RANK_HINTS = (
