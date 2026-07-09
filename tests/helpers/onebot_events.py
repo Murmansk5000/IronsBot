@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from nonebot.adapters.onebot.v11 import (
+    GroupIncreaseNoticeEvent,
     GroupMessageEvent,
     Message,
     PrivateMessageEvent,
@@ -54,4 +55,24 @@ def private_message_event(
         raw_message=text,
         font=0,
         sender=sender or {},
+    )
+
+
+def group_increase_notice_event(
+    *,
+    user_id: int = 123,
+    group_id: int = 456,
+    operator_id: int = 789,
+    self_id: int = 1,
+    sub_type: str = "approve",
+) -> GroupIncreaseNoticeEvent:
+    return GroupIncreaseNoticeEvent(
+        time=0,
+        self_id=self_id,
+        post_type="notice",
+        notice_type="group_increase",
+        sub_type=sub_type,
+        group_id=group_id,
+        user_id=user_id,
+        operator_id=operator_id,
     )
