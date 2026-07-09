@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from nonebot import logger
@@ -21,7 +20,6 @@ from ironsbot.shared.features import (
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
-    send_event_reply,
 )
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -33,7 +31,6 @@ from ironsbot.utils.rule import no_reply
 from .broadcast import broadcast_opened
 from .config import (
     Config,
-    get_docker_update_config,
 )
 from .docker_update import (
     DockerUpdateResult,
@@ -51,9 +48,6 @@ from .docker_update import (
 from .docker_update import (
     resolve_docker_container_name as _resolve_docker_container_name,
 )
-from .docker_update import (
-    restart_docker_container as _restart_docker_container,
-)
 from .notice import (
     _build_fetch_failed_reply,
     _build_no_notice_reply,
@@ -62,8 +56,8 @@ from .notice import (
     _now,
     fetch_server_notice_text,
 )
-from .process_restart import restart_bot_process
 from .restart import DockerSelfUpdateService, RestartService
+from .restart_command import handle_restart_command
 from .status import HeadlessStatus
 from .status import get_headless_status as _get_headless_status
 
@@ -86,8 +80,6 @@ ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
 BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 DOCKER_UPDATE_COMMANDS = ("/更新镜像", "/更新Docker", "/更新docker")
 SERVER_STATUS_PLUGIN_NAME = "server_status"
-BOT_RESTART_DELAY_SECONDS = 1.0
-RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
@@ -288,33 +280,7 @@ class ServerStatusPlugin:
         )
 
     async def _handle_restart(self, matcher: Any, event: MessageEvent) -> None:
-        config = get_docker_update_config()
-        restart_service = RestartService(config)
-        message, restart_action = await restart_service.prepare_manual_restart()
-        await send_event_reply(
-            matcher,
-            event,
-            message,
-            mention_sender=True,
-        )
-        if restart_action == "docker":
-            await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-            try:
-                await _restart_docker_container(
-                    container_name=_resolve_docker_container_name(
-                        str(config.container_name)
-                    ),
-                    socket_path=str(config.docker_socket_path),
-                    timeout_seconds=float(config.timeout_seconds),
-                )
-            except Exception:  # noqa: BLE001
-                logger.opt(exception=True).warning(
-                    "docker container restart failed; falling back to process restart"
-                )
-                await restart_bot_process()
-        elif restart_action == "process":
-            await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-            await restart_bot_process()
+        await handle_restart_command(matcher, event)
 
 
 register_plugin(ServerStatusPlugin())
