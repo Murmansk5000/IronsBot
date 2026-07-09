@@ -9,6 +9,7 @@ import httpx
 from nonebot import logger
 
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
+from ironsbot.integrations.headless_seer.core import SeerConnect, SeerEncryptConnect
 from ironsbot.integrations.headless_seer.packets import (
     DailyRankInfo,
     DailyRankList,
@@ -36,7 +37,6 @@ from ironsbot.integrations.headless_seer.type_hint import (
     T_Deserializable,
 )
 
-from .core import SeerConnect, SeerEncryptConnect
 from .exception import ClientNotInitializedError
 
 __all__ = [

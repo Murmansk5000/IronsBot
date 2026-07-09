@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: N802, TRY003
+# ruff: noqa: N802
 import struct
 from typing import Any, get_args
 
