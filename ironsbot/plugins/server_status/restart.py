@@ -6,14 +6,15 @@ from typing import TYPE_CHECKING, Literal
 
 from anyio import Path as AsyncPath
 
-from .docker_update import (
-    DockerUpdateResult,
-    WatchtowerUpdateOptions,
-    format_docker_update_reply,
-    is_docker_update_started,
+from .docker_update_client import (
     resolve_docker_container_name,
     start_watchtower_update,
 )
+from .docker_update_formatting import (
+    format_docker_update_reply,
+    is_docker_update_started,
+)
+from .docker_update_models import DockerUpdateResult, WatchtowerUpdateOptions
 
 if TYPE_CHECKING:
     from .config import DockerUpdateConfig
