@@ -4,7 +4,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.message import (
+    PushUnsubscribeConfig,
+    TeamAuditWelcomeConfig,
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,9 @@ class StubMessageAction:
 class StubMessageConfig:
     push_unsubscribe: PushUnsubscribeConfig = field(
         default_factory=PushUnsubscribeConfig
+    )
+    team_audit_welcome: TeamAuditWelcomeConfig = field(
+        default_factory=TeamAuditWelcomeConfig
     )
     group_commands: list[StubMessageAction] = field(default_factory=list)
     group_schedules: list[StubMessageAction] = field(default_factory=list)
@@ -53,11 +59,12 @@ class StubAppConfig:
     seer: StubSeerConfig = field(default_factory=StubSeerConfig)
 
 
-def stub_app_config(
+def stub_app_config(  # noqa: PLR0913
     *,
     ai_intent_enabled: bool = True,
     feature_config: FeatureConfig | None = None,
     push_unsubscribe_config: PushUnsubscribeConfig | None = None,
+    team_audit_welcome_config: TeamAuditWelcomeConfig | None = None,
     team_subscriptions: list[object] | None = None,
     group_actions: list[StubMessageAction] | None = None,
 ) -> StubAppConfig:
@@ -66,6 +73,9 @@ def stub_app_config(
         ai=StubAiConfig(intent_actions_enabled=ai_intent_enabled),
         message=StubMessageConfig(
             push_unsubscribe=push_unsubscribe_config or PushUnsubscribeConfig(),
+            team_audit_welcome=(
+                team_audit_welcome_config or TeamAuditWelcomeConfig()
+            ),
             group_commands=group_actions or [],
         ),
         seer=StubSeerConfig(
