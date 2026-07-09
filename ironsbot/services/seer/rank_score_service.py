@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class RankScoreFacadeDependencies:
+class RankScoreServiceDependencies:
     rank_page_size: Callable[[], int]
     rank_page_start: Callable[[int], int]
     score_search_limit: Callable[[int | None], int]
@@ -45,7 +45,7 @@ def cached_score_candidate_page_starts(  # noqa: PLR0913
     target_score: int,
     start_index: int,
     end_index: int,
-    deps: RankScoreFacadeDependencies,
+    deps: RankScoreServiceDependencies,
 ) -> list[int]:
     return deps.cached_score_candidate_page_starts_impl(
         key=key,
@@ -67,7 +67,7 @@ def cached_score_miss_boundary(  # noqa: PLR0913
     start_index: int,
     end_index: int,
     rank_offset: int,
-    deps: RankScoreFacadeDependencies,
+    deps: RankScoreServiceDependencies,
 ) -> RankScoreMissProof | None:
     return deps.cached_score_miss_boundary_impl(
         key=key,
@@ -94,7 +94,7 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: PLR0913
     rank_offset: int,
     result: RankScoreSearchResult,
     candidate_starts: list[int],
-    deps: RankScoreFacadeDependencies,
+    deps: RankScoreServiceDependencies,
 ) -> RankScoreSearchResult | None:
     return await deps.fetch_cached_candidates_impl(
         game,
@@ -124,7 +124,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
     search_limit: int | None = None,
     start_index: int = 0,
     rank_offset: int = 0,
-    deps: RankScoreFacadeDependencies,
+    deps: RankScoreServiceDependencies,
 ) -> RankScoreSearchResult:
     segment_deps = RankScoreSegmentDependencies(
         score_search_limit=deps.score_search_limit,
@@ -166,7 +166,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
 
 
 __all__ = [
-    "RankScoreFacadeDependencies",
+    "RankScoreServiceDependencies",
     "cached_score_candidate_page_starts",
     "cached_score_miss_boundary",
     "fetch_rank_score_segment",

@@ -44,12 +44,6 @@ from ironsbot.services.seer.rank_score_cache import (
 from ironsbot.services.seer.rank_score_cache import (
     fetch_rank_score_segment_from_cached_candidates as _fetch_cached_score_segment_impl,
 )
-from ironsbot.services.seer.rank_score_facade import (
-    RankScoreFacadeDependencies,
-)
-from ironsbot.services.seer.rank_score_facade import (
-    fetch_rank_score_segment as _fetch_rank_score_segment_facade,
-)
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page as _score_miss_proof_from_page,
 )
@@ -68,6 +62,12 @@ from ironsbot.services.seer.rank_score_search import (
 from ironsbot.services.seer.rank_score_search import (
     score_search_probe_limit,
     score_search_tie_page_limit,
+)
+from ironsbot.services.seer.rank_score_service import (
+    RankScoreServiceDependencies,
+)
+from ironsbot.services.seer.rank_score_service import (
+    fetch_rank_score_segment as _fetch_rank_score_segment_service,
 )
 from ironsbot.services.seer.rank_summary import (
     fetch_autocard_rank_summary as _fetch_autocard_rank_summary_impl,
@@ -208,7 +208,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
     start_index: int = 0,
     rank_offset: int = 0,
 ) -> RankScoreSearchResult:
-    return await _fetch_rank_score_segment_facade(
+    return await _fetch_rank_score_segment_service(
         game,
         key=key,
         sub_key=sub_key,
@@ -218,7 +218,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
         search_limit=search_limit,
         start_index=start_index,
         rank_offset=rank_offset,
-        deps=_rank_score_facade_dependencies(),
+        deps=_rank_score_service_dependencies(),
     )
 
 
@@ -236,8 +236,8 @@ def _score_search_limit(search_limit: int | None = None) -> int:
     return min(requested_limit, configured_limit)
 
 
-def _rank_score_facade_dependencies() -> RankScoreFacadeDependencies:
-    return RankScoreFacadeDependencies(
+def _rank_score_service_dependencies() -> RankScoreServiceDependencies:
+    return RankScoreServiceDependencies(
         rank_page_size=rank_pages.rank_page_size,
         rank_page_start=rank_pages.rank_page_start,
         score_search_limit=_score_search_limit,
