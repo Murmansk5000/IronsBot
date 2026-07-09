@@ -11,7 +11,10 @@ from ironsbot.services.bilibili.checkpoints import (
 )
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.cookie_cache import get_saved_cookie
-from ironsbot.services.bilibili.delivery import build_dynamic_push_deliveries
+from ironsbot.services.bilibili.delivery import (
+    append_bili_admin_hint_for_group,
+    build_dynamic_push_deliveries,
+)
 from ironsbot.services.bilibili.dynamic_history import (
     get_last_saved_times,
     save_dynamic_history_snapshot,
@@ -89,6 +92,7 @@ async def _send_dynamic_push(
             bot=bot,
             action_name=delivery.action_name,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            message_limiter=append_bili_admin_hint_for_group,
             subscription_key=bili_push_subscription_key(author_mid),
         )
 

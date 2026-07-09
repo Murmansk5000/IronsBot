@@ -143,6 +143,35 @@ def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:
     ]
 
 
+def test_store_daily_hint_marker_is_per_target_and_day(tmp_path: Path) -> None:
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+
+    assert store.mark_daily_hint_sent(
+        "group",
+        2001,
+        "push_subscription_hint",
+        today="2026-07-09",
+    )
+    assert not store.mark_daily_hint_sent(
+        "group",
+        2001,
+        "push_subscription_hint",
+        today="2026-07-09",
+    )
+    assert store.mark_daily_hint_sent(
+        "group",
+        2002,
+        "push_subscription_hint",
+        today="2026-07-09",
+    )
+    assert store.mark_daily_hint_sent(
+        "group",
+        2001,
+        "push_subscription_hint",
+        today="2026-07-10",
+    )
+
+
 def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
