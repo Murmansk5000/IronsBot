@@ -4,7 +4,9 @@ from typing import Any
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.seer import SeasonCountdownConfig
 from ironsbot.services.seer import season_countdown
+from tests.helpers.config import stub_app_config
 
 CHINA_TZ = season_countdown.CHINA_TZ
 
@@ -23,13 +25,11 @@ def test_format_season_countdown_uses_peak_season(
     monkeypatch.setattr(
         season_countdown,
         "get_app_config",
-        lambda: SimpleNamespace(
-            seer=SimpleNamespace(
-                season=SimpleNamespace(
-                    autocard_name="群星牌赛季",
-                    autocard_start_time=None,
-                    autocard_end_time=None,
-                )
+        lambda: stub_app_config(
+            season_config=SeasonCountdownConfig(
+                autocard_name="群星牌赛季",
+                autocard_start_time=None,
+                autocard_end_time=None,
             )
         ),
     )
@@ -58,17 +58,15 @@ def test_format_season_countdown_uses_configured_autocard_time(
     monkeypatch.setattr(
         season_countdown,
         "get_app_config",
-        lambda: SimpleNamespace(
-            seer=SimpleNamespace(
-                season=SimpleNamespace(
-                    autocard_name="群星牌S1赛季",
-                    autocard_start_time=datetime(
-                        2026, 6, 20, 10, 0, 0, tzinfo=CHINA_TZ
-                    ),
-                    autocard_end_time=datetime(
-                        2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ
-                    ),
-                )
+        lambda: stub_app_config(
+            season_config=SeasonCountdownConfig(
+                autocard_name="群星牌S1赛季",
+                autocard_start_time=datetime(
+                    2026, 6, 20, 10, 0, 0, tzinfo=CHINA_TZ
+                ),
+                autocard_end_time=datetime(
+                    2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ
+                ),
             )
         ),
     )
