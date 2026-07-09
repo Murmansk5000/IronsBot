@@ -479,11 +479,11 @@ def test_small_plugin_config_accessors_read_app_config(
     )
     headless_config = _load_module_from_path(
         "headless_seer_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "headless_seer" / "config.py",
+        ROOT / "ironsbot" / "integrations" / "headless_seer" / "config.py",
     )
     headless_notice_config = _load_module_from_path(
         "headless_seer_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "headless_seer_notice" / "config.py",
+        ROOT / "ironsbot" / "services" / "headless_seer_notice" / "config.py",
     )
     meeting_config = _load_module_from_path(
         "meeting_config_for_app_config_test",

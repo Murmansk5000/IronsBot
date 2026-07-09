@@ -6,8 +6,10 @@ from typing import Any
 from nonebot import get_driver, logger
 
 from ironsbot.integrations.headless_seer.client import client_manager
-
-from .config import get_headless_config, get_headless_credentials
+from ironsbot.integrations.headless_seer.config import (
+    get_headless_config,
+    get_headless_credentials,
+)
 
 _headless_seer_runtime_state = {"registered": False}
 

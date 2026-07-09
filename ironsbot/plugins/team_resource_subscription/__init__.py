@@ -13,7 +13,7 @@ from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.plugins.headless_seer_notice.state import (
+from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
