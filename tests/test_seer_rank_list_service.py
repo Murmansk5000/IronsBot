@@ -201,10 +201,27 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
         rank_key="竞技段位",
         score=400036,
     )
+    assert parse_rank_score_command("竞技段位榜王者0分") == RankScoreCommand(
+        rank_key="竞技段位",
+        score=300000,
+    )
+    assert parse_rank_score_command("竞技段位榜王者0星") == RankScoreCommand(
+        rank_key="竞技段位",
+        score=300000,
+    )
+    assert parse_rank_score_command("狂野段位榜圣皇36星") == RankScoreCommand(
+        rank_key="狂野段位",
+        score=400036,
+    )
+    assert parse_rank_score_command("狂野段位榜宇宙圣皇1") == RankScoreCommand(
+        rank_key="狂野段位",
+        score=500001,
+    )
     assert parse_rank_score_command("专家段位榜3000分") == RankScoreCommand(
         rank_key="专家段位",
         score=3000,
     )
+    assert parse_rank_score_command("专家段位榜王者0分") is None
     assert parse_rank_score_command("样本群星牌榜3149分") is None
     assert parse_rank_score_command("群星牌榜第3149名") is None
 

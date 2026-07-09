@@ -94,6 +94,7 @@ async def send_target_messages(  # noqa: PLR0913
                 limited_message,
                 get_app_config().message.push_unsubscribe,
                 target_type=target.target_type,
+                target_id=target.target_id,
             )
         rendered_message = build_message(
             limited_message,

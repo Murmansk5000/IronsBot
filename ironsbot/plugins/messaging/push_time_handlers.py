@@ -4,6 +4,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.matcher import Matcher  # noqa: TC002
+from nonebot.typing import T_State  # noqa: TC002
+
 from ironsbot.shared.messaging import event_conversation_session_id
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
@@ -28,10 +32,6 @@ from .push_management_runtime import (
 from .push_time import PushTimeOption
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
-
     from ironsbot.shared.messaging.push_subscription_models import PushTargetType
 
 RefreshPushTimeJobs = Callable[[PushTimeOption], Awaitable[None]]

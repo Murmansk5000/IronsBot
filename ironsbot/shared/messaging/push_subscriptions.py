@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可查看 · 输入 0 退出"
+PUSH_SUBSCRIPTION_HINT_KEY = "push_subscription_hint"
 
 
 def private_schedule_key(index: int, task: ScheduledPushTask) -> str:
@@ -106,6 +107,8 @@ def append_push_unsubscribe_hint(
     config: PushUnsubscribeConfig,
     *,
     target_type: PushTargetType,
+    target_id: int | None = None,
+    store: PushUnsubscribeStore | None = None,
 ) -> str | Message:
     hint = (
         config.group_hint.strip()
@@ -115,6 +118,24 @@ def append_push_unsubscribe_hint(
     if not hint:
         return message.rstrip() if isinstance(message, str) else message
 
+    if target_id is not None:
+        if store is None:
+            from ironsbot.shared.messaging.push_subscription_store import (
+                PushUnsubscribeStore,
+            )
+
+            store = PushUnsubscribeStore(config.data_path)
+        if not store.mark_daily_hint_sent(
+            target_type,
+            int(target_id),
+            PUSH_SUBSCRIPTION_HINT_KEY,
+        ):
+            return message.rstrip() if isinstance(message, str) else message
+
+    return append_text_hint(message, hint)
+
+
+def append_text_hint(message: str | Message, hint: str) -> str | Message:
     if isinstance(message, Message):
         if hint in str(message):
             return message
@@ -190,6 +211,7 @@ def build_push_subscription_menu(
 
 __all__ = [
     "append_push_unsubscribe_hint",
+    "append_text_hint",
     "build_push_subscription_menu",
     "build_schedule_subscription_options",
     "group_schedule_key",

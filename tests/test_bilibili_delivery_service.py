@@ -1,16 +1,20 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.services.bilibili import delivery as delivery_service
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
+    append_bili_admin_hint_for_group,
     build_dynamic_push_deliveries,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
+from tests.helpers.config import stub_app_config
 
 PUB_TS = 1781004683
 SPLIT_DELIVERY_COUNT = 2
@@ -92,12 +96,12 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
     assert "正文内容" in full_rendered
     assert "[CQ:image" in full_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in full_rendered
-    assert BILI_PUSH_ADMIN_HINT in full_rendered
+    assert BILI_PUSH_ADMIN_HINT not in full_rendered
     assert BILI_PUSH_ADMIN_HINT not in full_private_rendered
     assert "正文内容" not in link_rendered
     assert "[CQ:image" not in link_rendered
     assert FIRE_MANUAL_LINK_MESSAGE in link_rendered
-    assert BILI_PUSH_ADMIN_HINT in link_rendered
+    assert BILI_PUSH_ADMIN_HINT not in link_rendered
     assert BILI_PUSH_ADMIN_HINT not in link_private_rendered
 
 
@@ -124,10 +128,10 @@ def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
     assert len(deliveries) == SPLIT_DELIVERY_COUNT
     assert deliveries[0].group_ids == [1001]
     assert FIRE_MANUAL_LINK_MESSAGE in str(deliveries[0].message)
-    assert BILI_PUSH_ADMIN_HINT in str(deliveries[0].message)
+    assert BILI_PUSH_ADMIN_HINT not in str(deliveries[0].message)
     assert deliveries[1].group_ids == [1002]
     assert FIRE_MANUAL_LINK_MESSAGE not in str(deliveries[1].message)
-    assert BILI_PUSH_ADMIN_HINT in str(deliveries[1].message)
+    assert BILI_PUSH_ADMIN_HINT not in str(deliveries[1].message)
 
 
 def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
@@ -143,3 +147,27 @@ def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
     )
 
     assert deliveries == []
+
+
+def test_append_bili_admin_hint_for_group_once_per_day(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = PushUnsubscribeConfig(
+        data_path=str(tmp_path / "push_unsubscriptions.sqlite")
+    )
+    monkeypatch.setattr(
+        delivery_service,
+        "get_app_config",
+        lambda: stub_app_config(push_unsubscribe_config=config),
+    )
+
+    first = append_bili_admin_hint_for_group("正文", 1001)
+    second = append_bili_admin_hint_for_group("正文2", 1001)
+    other_group = append_bili_admin_hint_for_group("正文3", 1002)
+    private = append_bili_admin_hint_for_group("正文4", None)
+
+    assert first == f"正文\n\n{BILI_PUSH_ADMIN_HINT}"
+    assert second == "正文2"
+    assert other_group == f"正文3\n\n{BILI_PUSH_ADMIN_HINT}"
+    assert private == "正文4"
