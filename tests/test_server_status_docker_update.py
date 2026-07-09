@@ -1,32 +1,39 @@
 import asyncio
+import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+
 from ironsbot.app.plugin_manifest import RUNTIME_SETUP_CALLS
-from ironsbot.plugins.server_status import (
-    DockerUpdateResult,
-    RestartService,
-    WatchtowerUpdateOptions,
-    _create_watchtower_container,
-    _format_docker_image_created,
-    _format_docker_update_reply,
-    _resolve_docker_container_name,
-    _split_docker_image,
-)
+from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
+from ironsbot.plugins.server_status.docker_update import (
+    DockerUpdateResult,
+    WatchtowerUpdateOptions,
+    create_watchtower_container,
+    format_docker_image_created,
+    format_docker_update_reply,
+    resolve_docker_container_name,
+    split_docker_image,
+)
+from ironsbot.plugins.server_status.restart import (
+    DockerSelfUpdateService,
+    RestartService,
+)
 
 
 def test_split_docker_image_with_tag() -> None:
-    assert _split_docker_image("containrrr/watchtower:latest") == (
+    assert split_docker_image("containrrr/watchtower:latest") == (
         "containrrr/watchtower",
         "latest",
     )
 
 
 def test_split_docker_image_defaults_latest() -> None:
-    assert _split_docker_image("containrrr/watchtower") == (
+    assert split_docker_image("containrrr/watchtower") == (
         "containrrr/watchtower",
         "latest",
     )
@@ -37,11 +44,11 @@ def test_resolve_container_name_prefers_unraid_env(
 ) -> None:
     monkeypatch.setenv("HOST_CONTAINERNAME", "ironsbot-prod")
 
-    assert _resolve_docker_container_name("ironsbot") == "ironsbot-prod"
+    assert resolve_docker_container_name("ironsbot") == "ironsbot-prod"
 
 
 def test_format_docker_update_missing_socket_reply() -> None:
-    reply = _format_docker_update_reply(
+    reply = format_docker_update_reply(
         container_name="ironsbot",
         image="murmansk5000/ironsbot:latest",
         result=DockerUpdateResult(ok=False, missing_socket=True),
@@ -52,7 +59,7 @@ def test_format_docker_update_missing_socket_reply() -> None:
 
 
 def test_format_docker_update_success_reply() -> None:
-    reply = _format_docker_update_reply(
+    reply = format_docker_update_reply(
         container_name="ironsbot",
         image="murmansk5000/ironsbot:latest",
         result=DockerUpdateResult(
@@ -81,7 +88,7 @@ def test_format_docker_update_success_reply() -> None:
 
 
 def test_format_docker_update_hides_bare_commit_hash() -> None:
-    reply = _format_docker_update_reply(
+    reply = format_docker_update_reply(
         container_name="ironsbot",
         image="murmansk5000/ironsbot:latest",
         result=DockerUpdateResult(
@@ -103,7 +110,7 @@ def test_format_docker_update_hides_bare_commit_hash() -> None:
 
 
 def test_format_docker_update_up_to_date_reply() -> None:
-    reply = _format_docker_update_reply(
+    reply = format_docker_update_reply(
         container_name="ironsbot",
         image="murmansk5000/ironsbot:latest",
         result=DockerUpdateResult(
@@ -124,7 +131,7 @@ def test_format_docker_update_up_to_date_reply() -> None:
 
 def test_format_docker_image_created_trims_nanoseconds() -> None:
     assert (
-        _format_docker_image_created("2026-07-05T00:39:31.108791051Z")
+        format_docker_image_created("2026-07-05T00:39:31.108791051Z")
         == "2026-07-05 08:39:31"
     )
 
@@ -147,7 +154,7 @@ def test_create_watchtower_container_sets_docker_api_version() -> None:
     client = FakeClient()
 
     container_id = asyncio.run(
-        _create_watchtower_container(
+        create_watchtower_container(
             client,  # type: ignore[arg-type]
             container_name="ironsbot",
             socket_path="/var/run/docker.sock",
@@ -176,7 +183,7 @@ def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(
         docker_update_runtime,
         "get_docker_update_config",
-        lambda: SimpleNamespace(check_on_startup=False),
+        lambda: DockerUpdateConfig(check_on_startup=False),
     )
 
     asyncio.run(docker_update_runtime._start_docker_update_runtime())
@@ -193,12 +200,10 @@ def test_startup_docker_update_records_notice(
             DockerUpdateResult(ok=True, updater_container_id="abcdef123456"),
         )
 
-    from ironsbot.plugins import server_status
-
     monkeypatch.setattr(
         docker_update_runtime,
         "get_docker_update_config",
-        lambda: SimpleNamespace(
+        lambda: DockerUpdateConfig(
             check_on_startup=True,
             container_name="ironsbot",
             image="murmansk5000/ironsbot:latest",
@@ -208,7 +213,7 @@ def test_startup_docker_update_records_notice(
             timeout_seconds=300.0,
         ),
     )
-    monkeypatch.setattr(server_status.DockerSelfUpdateService, "run", fake_run)
+    monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
 
     asyncio.run(docker_update_runtime._start_docker_update_runtime())
 
@@ -219,7 +224,7 @@ def test_startup_docker_update_records_notice(
 
 
 def test_restart_service_without_restart_check_uses_process_without_socket() -> None:
-    service = RestartService(SimpleNamespace(check_on_restart=False))
+    service = RestartService(DockerUpdateConfig(check_on_restart=False))
 
     message, restart_action = asyncio.run(service.prepare_manual_restart())
 
@@ -233,7 +238,7 @@ def test_restart_service_without_restart_check_uses_docker_socket(
     socket_path = tmp_path / "docker.sock"
     socket_path.touch()
     service = RestartService(
-        SimpleNamespace(
+        DockerUpdateConfig(
             check_on_restart=False,
             docker_socket_path=str(socket_path),
         )
@@ -252,11 +257,9 @@ def test_restart_service_missing_socket_continues_restart(
     async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
         return "ironsbot", DockerUpdateResult(ok=False, missing_socket=True)
 
-    from ironsbot.plugins.server_status import DockerSelfUpdateService
-
     monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
     service = RestartService(
-        SimpleNamespace(
+        DockerUpdateConfig(
             check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
         )
@@ -274,11 +277,9 @@ def test_restart_service_up_to_date_continues_restart(
     async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
         return "ironsbot", DockerUpdateResult(ok=True, up_to_date=True)
 
-    from ironsbot.plugins.server_status import DockerSelfUpdateService
-
     monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
     service = RestartService(
-        SimpleNamespace(
+        DockerUpdateConfig(
             check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
         )
@@ -299,11 +300,9 @@ def test_restart_service_started_update_skips_extra_restart(
             updater_container_id="abcdef123456",
         )
 
-    from ironsbot.plugins.server_status import DockerSelfUpdateService
-
     monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
     service = RestartService(
-        SimpleNamespace(
+        DockerUpdateConfig(
             check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
         )
