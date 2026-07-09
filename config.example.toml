@@ -165,7 +165,7 @@ intent_actions_enabled = true
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
 
-[ai.intent_actions.fire_manual]
+[ai.intent_actions.fire_manual_ad]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
 enabled = true
 

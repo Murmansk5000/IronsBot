@@ -40,7 +40,7 @@ KNOWN_FEATURES = frozenset(
         "team_resource_subscription",
         "ai_chat",
         "ai_intent",
-        "fire_manual",
+        "fire_manual_ad",
         "team_audit",
         "admin_notice",
     }
