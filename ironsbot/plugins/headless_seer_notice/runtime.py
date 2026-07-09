@@ -16,7 +16,7 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_unavailable,
 )
 from ironsbot.shared.config.time import daily_time_parts
-from ironsbot.shared.features import get_superuser_ids
+from ironsbot.shared.messaging.admin_notice import send_admin_notice
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.runtime.jobs import JobRegistry
 
@@ -41,7 +41,6 @@ async def _startup_check(bot: Bot) -> None:
         headless_is_configured,
         headless_login_failure_reason,
     )
-    from ironsbot.shared.messaging import send_broadcast_message
 
     if not headless_is_configured():
         return
@@ -62,14 +61,8 @@ async def _startup_check(bot: Bot) -> None:
     if not get_headless_notice_config().login_notice:
         return
 
-    target_users = sorted(get_superuser_ids())
-    if not target_users:
-        logger.warning("headless seer failure notice has no superusers")
-        return
-
-    await send_broadcast_message(
+    await send_admin_notice(
         _build_startup_notice_message(reason),
-        private_user_ids=target_users,
         bot=bot,
         action_name="headless seer failure notice",
         interval_seconds=1.2,

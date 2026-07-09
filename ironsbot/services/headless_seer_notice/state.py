@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
 
-from ironsbot.shared.features import get_superuser_ids
+from ironsbot.shared.messaging.admin_notice import send_admin_notice
 
 from .config import get_headless_notice_config
 
@@ -123,14 +123,7 @@ async def _send_headless_state_notice(
     source: str,
     user_id: int | None,
 ) -> None:
-    from ironsbot.shared.messaging import send_broadcast_message
-
     from .service import headless_user_id_text
-
-    target_users = sorted(get_superuser_ids())
-    if not target_users:
-        logger.warning("headless state notice has no superusers")
-        return
 
     notice_config = get_headless_notice_config()
     message_template = (
@@ -143,9 +136,8 @@ async def _send_headless_state_notice(
         reason=reason.strip() or "状态未知",
         source=source.strip() or "状态检测",
     )
-    await send_broadcast_message(
+    await send_admin_notice(
         message,
-        private_user_ids=target_users,
         action_name="headless state notice",
         interval_seconds=1.2,
         subscription_key="headless_seer_notice",

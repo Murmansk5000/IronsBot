@@ -825,6 +825,8 @@ reconnect_delay = 5.0
 reconnect_delay_max = 120.0
 
 [runtime.headless_notice]
+# EN: Notices are sent to superusers and admin_notice groups.
+# ZH: 这些通知会发送给超级管理员和 admin_notice 管理群。
 # Default: true; EN: Send startup login failure notice. ZH: 启动时发送无头登录失败通知。
 login_notice = true
 # Default: built-in; EN: Startup login failure notice template. ZH: 启动登录失败通知模板。
