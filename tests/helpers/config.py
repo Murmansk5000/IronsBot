@@ -6,6 +6,7 @@ from pathlib import Path
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import (
+    OutboundRateLimitConfig,
     PushUnsubscribeConfig,
     TeamAuditWelcomeConfig,
 )
@@ -28,6 +29,9 @@ class StubMessageAction:
 
 @dataclass(frozen=True)
 class StubMessageConfig:
+    outbound_rate_limit: OutboundRateLimitConfig = field(
+        default_factory=OutboundRateLimitConfig
+    )
     push_unsubscribe: PushUnsubscribeConfig = field(
         default_factory=PushUnsubscribeConfig
     )
@@ -66,6 +70,7 @@ def stub_app_config(  # noqa: PLR0913
     activity_config: ActivityConfig | None = None,
     ai_intent_enabled: bool = True,
     feature_config: FeatureConfig | None = None,
+    outbound_rate_limit_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe_config: PushUnsubscribeConfig | None = None,
     team_audit_welcome_config: TeamAuditWelcomeConfig | None = None,
     team_subscriptions: list[object] | None = None,
@@ -76,6 +81,9 @@ def stub_app_config(  # noqa: PLR0913
         feature=feature_config or FeatureConfig(),
         ai=StubAiConfig(intent_actions_enabled=ai_intent_enabled),
         message=StubMessageConfig(
+            outbound_rate_limit=(
+                outbound_rate_limit_config or OutboundRateLimitConfig()
+            ),
             push_unsubscribe=push_unsubscribe_config or PushUnsubscribeConfig(),
             team_audit_welcome=(
                 team_audit_welcome_config or TeamAuditWelcomeConfig()
