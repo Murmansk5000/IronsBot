@@ -4,10 +4,7 @@ from typing import Any
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, RankQueryConfig
 from ironsbot.services.seer.rank_constants import (
-    PET_KIND_RANK_ANOMALY_COUNT,
     PET_KIND_RANK_ANOMALY_USER_IDS,
-    PET_KIND_RANK_KEY,
-    PET_KIND_RANK_SUB_KEY,
 )
 from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
 from ironsbot.services.seer.rank_formatting import (
@@ -21,6 +18,15 @@ from ironsbot.services.seer.rank_formatting import (
 )
 from ironsbot.services.seer.rank_formatting import (
     format_rank_lookup as _format_rank_lookup,
+)
+from ironsbot.services.seer.rank_lookup_service import (
+    RankLookupDependencies,
+)
+from ironsbot.services.seer.rank_lookup_service import (
+    find_pet_kind_rank as _find_pet_kind_rank_impl,
+)
+from ironsbot.services.seer.rank_lookup_service import (
+    find_rank as _find_rank_impl,
 )
 from ironsbot.services.seer.rank_models import (
     BookBreakdownSummary,
@@ -469,6 +475,18 @@ def _score_search_limit(search_limit: int | None = None) -> int:
     return min(requested_limit, configured_limit)
 
 
+def _rank_lookup_dependencies() -> RankLookupDependencies:
+    return RankLookupDependencies(
+        online_search_limit=_online_search_limit,
+        score_search_limit=_score_search_limit,
+        page_size=lambda: max(1, min(get_rank_query_config().page_size, 100)),
+        is_pet_kind_rank_anomaly_user=is_pet_kind_rank_anomaly_user,
+        find_rank_by_cached_position=_find_rank_by_cached_position,
+        find_rank_by_score=_find_rank_by_score,
+        find_rank_by_linear_scan=_find_rank_by_linear_scan,
+    )
+
+
 async def _find_rank(  # noqa: PLR0913
     game: Any,
     *,
@@ -480,57 +498,16 @@ async def _find_rank(  # noqa: PLR0913
     target_score: int | None = None,
     search_limit: int | None = None,
 ) -> RankLookupResult:
-    score_target = (
-        target_score if target_score is not None and target_score > 0 else None
-    )
-    limit = (
-        _score_search_limit(search_limit)
-        if score_target is not None
-        else _online_search_limit(search_limit)
-    )
-    page_size = max(1, min(get_rank_query_config().page_size, 100))
-
-    result = RankLookupResult(
+    return await _find_rank_impl(
+        game,
+        user_id=user_id,
         title=title,
         score_name=score_name,
-        searched_limit=limit,
-        queried=limit > 0,
-    )
-
-    cached_result = await _find_rank_by_cached_position(
-        game,
-        user_id=user_id,
         key=key,
         sub_key=sub_key,
-        page_size=page_size,
-        result=result,
-    )
-    if cached_result is not None:
-        return cached_result
-
-    if limit <= 0:
-        return result
-
-    if score_target is not None:
-        return await _find_rank_by_score(
-            game,
-            user_id=user_id,
-            key=key,
-            sub_key=sub_key,
-            target_score=score_target,
-            limit=limit,
-            page_size=page_size,
-            result=result,
-        )
-
-    return await _find_rank_by_linear_scan(
-        game,
-        user_id=user_id,
-        key=key,
-        sub_key=sub_key,
-        limit=limit,
-        page_size=page_size,
-        result=result,
+        target_score=target_score,
+        search_limit=search_limit,
+        deps=_rank_lookup_dependencies(),
     )
 
 
@@ -541,54 +518,13 @@ async def _find_pet_kind_rank(
     pet_kind_count: int,
     search_limit: int,
 ) -> RankLookupResult:
-    real_search_limit = _online_search_limit(search_limit)
-    raw_search_limit = real_search_limit + PET_KIND_RANK_ANOMALY_COUNT
-    result = RankLookupResult(
-        title="精灵图鉴",
-        score_name="精灵",
-        score=pet_kind_count or None,
-        searched_limit=real_search_limit,
-        queried=real_search_limit > 0,
-    )
-
-    if is_pet_kind_rank_anomaly_user(user_id):
-        result.rank = 0
-        if result.score is None:
-            result.score = 0
-        return result
-
-    cached_result = await _find_rank_by_cached_position(
+    return await _find_pet_kind_rank_impl(
         game,
         user_id=user_id,
-        key=PET_KIND_RANK_KEY,
-        sub_key=PET_KIND_RANK_SUB_KEY,
-        page_size=max(1, min(get_rank_query_config().page_size, 100)),
-        result=result,
+        pet_kind_count=pet_kind_count,
+        search_limit=search_limit,
+        deps=_rank_lookup_dependencies(),
     )
-    if cached_result is not None:
-        cached_result.searched_limit = real_search_limit
-        if cached_result.rank is not None:
-            cached_result.rank = max(
-                0, cached_result.rank - PET_KIND_RANK_ANOMALY_COUNT
-            )
-        return cached_result
-
-    if real_search_limit <= 0:
-        return result
-
-    raw_result = await _find_rank_by_linear_scan(
-        game,
-        user_id=user_id,
-        key=PET_KIND_RANK_KEY,
-        sub_key=PET_KIND_RANK_SUB_KEY,
-        limit=raw_search_limit,
-        page_size=max(1, min(get_rank_query_config().page_size, 100)),
-        result=result,
-    )
-    raw_result.searched_limit = real_search_limit
-    if raw_result.rank is not None:
-        raw_result.rank = max(0, raw_result.rank - PET_KIND_RANK_ANOMALY_COUNT)
-    return raw_result
 
 
 async def _fetch_book_breakdown_summary(
