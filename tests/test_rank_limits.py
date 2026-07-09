@@ -55,8 +55,8 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.services.seer import rank as _rank
 from ironsbot.services.seer import rank_pages
+from ironsbot.services.seer import rank_service as _rank
 from ironsbot.services.seer.rank_models import RankPageResult
 from ironsbot.services.seer.rank_page_cache import (
     CachedRankLookup,

@@ -12,7 +12,7 @@ from ironsbot.services.seer.local_rank import (
     get_refresh_candidate_player_ids,
     update_local_rank_cache,
 )
-from ironsbot.services.seer.rank import (
+from ironsbot.services.seer.rank_service import (
     build_peak_rating_score,
     fetch_player_rank_summary,
     get_current_peak_sub_key,

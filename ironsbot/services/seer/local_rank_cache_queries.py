@@ -14,7 +14,7 @@ from ironsbot.services.seer.local_rank_models import (
     LocalRankCacheStats,
     LocalRankEntry,
 )
-from ironsbot.services.seer.rank import is_pet_kind_rank_anomaly_user
+from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
 
 if TYPE_CHECKING:
     import sqlite3

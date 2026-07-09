@@ -5,9 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer import rank_pages
-from ironsbot.services.seer.rank_constants import (
-    PET_KIND_RANK_ANOMALY_USER_IDS,
-)
+from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
 from ironsbot.services.seer.rank_lookup_service import (
     RankLookupDependencies,
 )
@@ -98,10 +96,6 @@ def get_rank_query_config() -> RankQueryConfig:
 
 def get_local_rank_config() -> LocalRankConfig:
     return get_app_config().seer.local_rank
-
-
-def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
-    return user_id in PET_KIND_RANK_ANOMALY_USER_IDS
 
 
 def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:

@@ -24,7 +24,7 @@ importlib.import_module(module_name)
 for forbidden in (
     "nonebot",
     "nonebot.log",
-    "ironsbot.services.seer.rank",
+    "ironsbot.services.seer.rank_service",
     "ironsbot.services.seer.rank_page_cache",
 ):
     if forbidden in sys.modules:

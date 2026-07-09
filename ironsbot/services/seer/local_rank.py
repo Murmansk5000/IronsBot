@@ -47,7 +47,7 @@ from ironsbot.services.seer.local_rank_models import (
     LocalRankEntry,
     LocalRankSummary,
 )
-from ironsbot.services.seer.rank import (
+from ironsbot.services.seer.rank_constants import (
     is_pet_kind_rank_anomaly_user,
 )
 from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
