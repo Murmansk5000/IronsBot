@@ -13,13 +13,20 @@ from ironsbot.services.ai.chat import (
     get_ai_chat_key,
     is_ai_error_reply,
     record_successful_ai_reply,
-    reset_ai_chat_context,
 )
-from ironsbot.services.ai.client import call_ai_chat, get_ai_key
-from ironsbot.services.ai.history import is_reset_prompt
+from ironsbot.services.ai.client import (
+    AI_CHAT_ERROR_ACTION_NAME,
+    AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+    call_ai_chat,
+    get_ai_key,
+)
 from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
+from ironsbot.services.ai.source_context import (
+    append_ai_notice_source_context,
+    build_ai_notice_source_context,
+)
 from ironsbot.shared.matcher_priority import (
     get_matcher_priority,
     get_pre_command_matcher_priority,
@@ -45,8 +52,7 @@ __plugin_meta__ = PluginMetadata(
     description="接入 DeepSeek / OpenAI-compatible API 的自定义聊天插件",
     usage=(
         "群聊中 @机器人 并附带问题\n"
-        "私聊中直接发送问题\n"
-        "@机器人 清空聊天"
+        "私聊中直接发送问题"
     ),
     config=Config,
 )
@@ -102,20 +108,18 @@ class AiChatPlugin:
             )
 
         key = get_ai_chat_key(event)
-        if is_reset_prompt(prompt):
-            reset_ai_chat_context(event, key)
-            await finish_event_reply(
-                matcher,
-                event,
-                "已清空这段聊天上下文和你的长期记忆。",
-                mention_sender=True,
-            )
+        source_context = build_ai_notice_source_context(event, prompt)
 
         if not get_ai_key():
             await notify_superusers_once(
                 "missing_api_key",
-                "AI聊天还没有配置 API Key。\n"
-                "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
+                append_ai_notice_source_context(
+                    "AI聊天还没有配置 API Key。\n"
+                    "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
+                    source_context,
+                ),
+                subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+                action_name=AI_CHAT_ERROR_ACTION_NAME,
             )
             await _finish_admin_notice_or_silent(
                 event,
@@ -138,6 +142,7 @@ class AiChatPlugin:
                 prompt,
                 chat_context.history,
                 chat_context.memory,
+                source_context=source_context,
             )
             if is_ai_error_reply(reply):
                 await _finish_admin_notice_or_silent(event, reply)
@@ -158,10 +163,15 @@ class AiChatPlugin:
             logger.warning("AI chat API timed out")
             await notify_superusers_once(
                 "timeout",
-                "AI聊天接口响应超时。\n"
-                f"接口：{config.base_url}\n"
-                f"超时时间：{config.timeout} 秒\n"
-                "请检查网络或适当调大 ai.timeout。",
+                append_ai_notice_source_context(
+                    "AI聊天接口响应超时。\n"
+                    f"接口：{config.base_url}\n"
+                    f"超时时间：{config.timeout} 秒\n"
+                    "请检查网络或适当调大 ai.timeout。",
+                    source_context,
+                ),
+                subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+                action_name=AI_CHAT_ERROR_ACTION_NAME,
             )
             await _finish_admin_notice_or_silent(
                 event,
@@ -171,9 +181,14 @@ class AiChatPlugin:
             logger.error(f"AI chat failed: {e}")
             await notify_superusers_once(
                 "unexpected",
-                "AI聊天处理失败。\n"
-                f"错误：{e}\n"
-                "请查看容器日志确认具体原因。",
+                append_ai_notice_source_context(
+                    "AI聊天处理失败。\n"
+                    f"错误：{e}\n"
+                    "请查看容器日志确认具体原因。",
+                    source_context,
+                ),
+                subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+                action_name=AI_CHAT_ERROR_ACTION_NAME,
             )
             await _finish_admin_notice_or_silent(
                 event,

@@ -8,10 +8,13 @@ from ironsbot.config import get_app_config, load_secrets_config
 from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
 from ironsbot.services.ai.notifier import notify_superusers_once
+from ironsbot.services.ai.source_context import append_ai_notice_source_context
 
 HTTP_PAYMENT_REQUIRED = 402
 HTTP_TOO_MANY_REQUESTS = 429
 HTTP_BAD_REQUEST = 400
+AI_CHAT_ERROR_SUBSCRIPTION_KEY = "ai_chat_error_notice"
+AI_CHAT_ERROR_ACTION_NAME = "AI chat error notice"
 
 
 def get_ai_key() -> str:
@@ -77,6 +80,8 @@ async def call_ai_chat(
     prompt: str,
     history: list[HistoryMessage],
     memory: list[HistoryMessage] | None = None,
+    *,
+    source_context: str | None = None,
 ) -> str:
     config = get_app_config().ai
     payload = {
@@ -117,13 +122,18 @@ async def call_ai_chat(
         )
         await notify_superusers_once(
             f"http_{response.status_code}",
-            "AI聊天接口异常。\n"
-            f"类型：{error_title}\n"
-            f"HTTP：{response.status_code}\n"
-            f"模型：{config.model}\n"
-            f"接口：{config.base_url}\n"
-            f"详情：{error_detail}\n"
-            "请检查 AI_KEY、账户额度、模型名和网络连接。",
+            append_ai_notice_source_context(
+                "AI聊天接口异常。\n"
+                f"类型：{error_title}\n"
+                f"HTTP：{response.status_code}\n"
+                f"模型：{config.model}\n"
+                f"接口：{config.base_url}\n"
+                f"详情：{error_detail}\n"
+                "请检查 AI_KEY、账户额度、模型名和网络连接。",
+                source_context,
+            ),
+            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         return REQUEST_FAILED_REPLY
 
@@ -131,9 +141,14 @@ async def call_ai_chat(
     if not reply:
         await notify_superusers_once(
             "empty_reply",
-            "AI聊天接口返回了空内容。\n"
-            f"模型：{config.model}\n"
-            "请检查模型配置或稍后重试。",
+            append_ai_notice_source_context(
+                "AI聊天接口返回了空内容。\n"
+                f"模型：{config.model}\n"
+                "请检查模型配置或稍后重试。",
+                source_context,
+            ),
+            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         return EMPTY_REPLY
 
