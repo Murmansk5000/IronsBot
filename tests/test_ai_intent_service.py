@@ -1,12 +1,11 @@
 import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import nonebot
 import pytest
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.ai import AiIntentAction
+from ironsbot.config.models.ai import AiConfig, AiIntentAction
 from ironsbot.services.ai import intent
 from tests.helpers.onebot_events import group_message_event
 
@@ -168,8 +167,8 @@ def _group_event(text: str):
     )
 
 
-def _ai_intent_enabled_config() -> SimpleNamespace:
-    return SimpleNamespace(intent_actions_enabled=True)
+def _ai_intent_enabled_config() -> AiConfig:
+    return AiConfig(intent_actions_enabled=True)
 
 
 @pytest.mark.asyncio
