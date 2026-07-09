@@ -4,7 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.services.seer.rank_score_search import RankScoreSegmentDependencies
+from ironsbot.services.seer.rank_score_search_support import (
+    RankScoreSegmentDependencies,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
