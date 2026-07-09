@@ -20,6 +20,7 @@ from nonebot.rule import Rule
 
 from ironsbot.config import load_secrets_config
 from ironsbot.config.models.runtime import RemoteBuildConfig
+from ironsbot.integrations.db_registry import db_manager
 from ironsbot.integrations.db_sync.github_actions import (
     WorkflowRunResult,
     trigger_and_wait_workflow,
@@ -30,7 +31,6 @@ from ironsbot.utils.rule import no_reply
 
 from . import formatting as sync_formatting
 from . import remote_build as sync_remote_build
-from .manager import db_manager
 from .manual import ManualSyncContext, handle_manual_sync
 from .storage import (
     _fetch_remote_timestamp,

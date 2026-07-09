@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import os
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
@@ -9,12 +10,17 @@ import nonebot
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
+from ironsbot.config.loader import clear_app_config_cache
 from ironsbot.config.models.runtime import (
     DataSyncConfig,
     RemoteBuildConfig,
     RemoteBuildStepConfig,
 )
 from ironsbot.config.models.secrets import SecretsConfig
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()
@@ -27,9 +33,9 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
+from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 from ironsbot.plugins import db_sync
 from ironsbot.plugins.db_sync import runtime as db_sync_runtime
-from ironsbot.plugins.db_sync.github_actions import WorkflowRunResult
 
 CONNECT_ERROR_MESSAGE = "connection failed"
 
