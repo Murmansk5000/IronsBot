@@ -1,5 +1,14 @@
 from dataclasses import dataclass, field
 
+from ironsbot.services.seer.rank_cache_messages import (
+    build_local_rank_cache_status_message,
+    build_local_rank_refresh_empty_message,
+    build_local_rank_refresh_result_message,
+    build_local_rank_refresh_start_message,
+    build_rank_batch_no_players_message,
+    build_rank_batch_result_message,
+    build_rank_batch_start_message,
+)
 from ironsbot.services.seer.rank_list_formatting import (
     batch_raw_start,
     format_rank_intervals,
@@ -11,20 +20,7 @@ from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_line,
     format_global_rank_message,
 )
-from ironsbot.services.seer.rank_list_messages import (
-    build_local_rank_cache_status_message,
-    build_local_rank_refresh_empty_message,
-    build_local_rank_refresh_result_message,
-    build_local_rank_refresh_start_message,
-    build_rank_batch_no_players_message,
-    build_rank_batch_result_message,
-    build_rank_batch_start_message,
-    build_rank_page_cache_overview_message,
-    build_rank_page_cache_status_message,
-    build_rank_page_refresh_result_message,
-    build_rank_page_refresh_start_message,
-    format_local_rank_message,
-)
+from ironsbot.services.seer.rank_list_messages import format_local_rank_message
 from ironsbot.services.seer.rank_list_models import (
     GlobalRankSpec,
     LocalRankSpec,
@@ -44,6 +40,12 @@ from ironsbot.services.seer.rank_list_parsing import (
 )
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
+)
+from ironsbot.services.seer.rank_page_cache_messages import (
+    build_rank_page_cache_overview_message,
+    build_rank_page_cache_status_message,
+    build_rank_page_refresh_result_message,
+    build_rank_page_refresh_start_message,
 )
 
 
