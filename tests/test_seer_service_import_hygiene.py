@@ -3,7 +3,11 @@ import sys
 
 PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.autocard",
-    "ironsbot.services.seer.countermark_stat_rank",
+    "ironsbot.services.seer.countermark_stat_rank_messages",
+    "ironsbot.services.seer.countermark_stat_rank_models",
+    "ironsbot.services.seer.countermark_stat_rank_parsing",
+    "ironsbot.services.seer.countermark_stat_rank_ranking",
+    "ironsbot.services.seer.countermark_stat_rank_repository",
     "ironsbot.services.seer.player_formatting",
     "ironsbot.services.seer.player_query",
     "ironsbot.services.seer.rank_list_formatting",
@@ -29,6 +33,7 @@ importlib.import_module(module_name)
 for forbidden in (
     "nonebot",
     "nonebot.log",
+    "ironsbot.services.seer.local_rank",
     "ironsbot.services.seer.rank_service",
     "ironsbot.services.seer.rank_page_cache_queries",
 ):

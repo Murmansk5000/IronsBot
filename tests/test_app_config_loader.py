@@ -158,6 +158,9 @@ def _assert_default_matcher_priorities(
 
 def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert "群星牌" in config.rank_keys
+    assert "竞技段位" not in config.rank_keys
+    assert "狂野段位" not in config.rank_keys
+    assert "专家段位" not in config.rank_keys
     assert config.target_limits == {}
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
@@ -623,6 +626,9 @@ def test_refresh_and_startup_model_defaults_are_separate_from_public_example() -
         "座驾图鉴",
         "刻印图鉴",
         "群星牌",
+        "竞技段位",
+        "狂野段位",
+        "专家段位",
     ]
     assert defaults.target_limits == {}
     assert defaults.score_cutoffs == {"群星牌": 1000}

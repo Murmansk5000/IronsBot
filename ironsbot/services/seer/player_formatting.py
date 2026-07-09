@@ -28,7 +28,7 @@ from ironsbot.services.seer.player_hidden_details import (  # noqa: F401
 from ironsbot.services.seer.player_query import PlayerDetailMessages
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.local_rank import LocalRankSummary
+    from ironsbot.services.seer.local_rank_models import LocalRankSummary
     from ironsbot.services.seer.rank_models import (
         PeakSeasonRankSummary,
         PlayerRankSummary,

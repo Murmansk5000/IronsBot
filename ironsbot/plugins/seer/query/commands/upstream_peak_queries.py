@@ -39,7 +39,6 @@ async def _handle_peak_pool(
         action="peak_pool",
         pools=pools,
     )
-
 peak_expert_pool_matcher = matcher_group.on_fullmatch(
     ("专家池", "巅峰专家池", "专家禁用池"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
@@ -62,7 +61,6 @@ async def _handle_peak_expert_pool(
         action="peak_expert_pool",
         pools=pools,
     )
-
 peak_vote_matcher = matcher_group.on_fullmatch(
     ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
     rule=seer_feature_rule("seer_peak") & no_reply(),
@@ -175,30 +173,5 @@ async def _handle_peak_pet(  # noqa: PLR0913
         command=command,
         type_tuple=type_tuple,
         expert_pools=expert_pools,
-        game=game,
-    )
-
-peak_user_matcher = matcher_group.on_fullmatch(
-    ("竞技段位榜", "狂野段位榜", "专家段位榜"),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
-
-
-@peak_user_matcher.handle()
-async def _handle_peak_user(
-    matcher: Matcher,
-    event: Event,
-    seerapi_session: SeerAPISession,
-    type_tuple: upstream_peak._PeakTypeTuple = Depends(upstream_peak._get_peak_type),
-    game: upstream_peak.SeerGame = upstream_peak.GameClient,
-) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="peak_user",
-        seerapi_session=seerapi_session,
-        type_tuple=type_tuple,
         game=game,
     )
