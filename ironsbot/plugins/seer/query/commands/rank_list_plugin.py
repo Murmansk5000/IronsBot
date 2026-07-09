@@ -39,7 +39,7 @@ from ironsbot.services.seer.rank_list import (
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
 )
-from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
+from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_page_refresh import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,

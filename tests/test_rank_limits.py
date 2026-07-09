@@ -58,7 +58,7 @@ except RuntimeError as e:
 from ironsbot.services.seer import rank_pages
 from ironsbot.services.seer import rank_service as _rank
 from ironsbot.services.seer.rank_models import RankPageResult
-from ironsbot.services.seer.rank_page_cache import (
+from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankLookup,
 )
 

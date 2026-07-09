@@ -15,7 +15,7 @@ from ironsbot.services.seer.rank_lookup_service import (
 from ironsbot.services.seer.rank_lookup_service import (
     find_rank as _find_rank_impl,
 )
-from ironsbot.services.seer.rank_page_cache import (
+from ironsbot.services.seer.rank_page_cache_queries import (
     get_cached_rank_item,
     get_cached_rank_page_result,
     get_cached_rank_score_indexes,

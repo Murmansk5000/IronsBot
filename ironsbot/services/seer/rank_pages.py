@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
-from ironsbot.services.seer.rank_page_cache import (
+from ironsbot.services.seer.rank_page_cache_queries import (
     get_cached_rank_item_by_index,
     get_cached_rank_page_result,
-    save_rank_page,
 )
+from ironsbot.services.seer.rank_page_cache_writer import save_rank_page
 from ironsbot.services.seer.rank_pagination import (
     rank_page_size as _rank_page_size,
 )

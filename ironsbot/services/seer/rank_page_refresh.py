@@ -15,8 +15,7 @@ from ironsbot.services.seer.rank_list import (
     GlobalRankSpec,
     batch_raw_start,
 )
-from ironsbot.services.seer.rank_page_cache import (
-    CachedRankPageSummary,
+from ironsbot.services.seer.rank_page_cache_queries import (
     get_rank_page_cache_summary,
 )
 from ironsbot.services.seer.rank_pages import fetch_daily_rank_page
@@ -25,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
+    from ironsbot.services.seer.rank_page_cache_models import CachedRankPageSummary
 
 
 REFRESH_REASON_MISSING = "缺失"
