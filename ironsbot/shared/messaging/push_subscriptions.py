@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -24,15 +23,40 @@ from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     format_selection_menu,
 )
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.shared.sqlite import open_sqlite_schema
 
 if TYPE_CHECKING:
     import sqlite3
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterable, Sequence
+    from contextlib import AbstractContextManager
 
     from ironsbot.config.models.message import PushUnsubscribeConfig
 
 READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可查看 · 输入 0 退出"
+PUSH_SUBSCRIPTION_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS push_unsubscriptions ("
+    "target_type TEXT NOT NULL, "
+    "target_id INTEGER NOT NULL, "
+    "subscription_key TEXT NOT NULL, "
+    "feature TEXT NOT NULL, "
+    "created_at TEXT NOT NULL, "
+    "PRIMARY KEY (target_type, target_id, subscription_key)"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_push_unsubscriptions_lookup "
+    "ON push_unsubscriptions (target_type, subscription_key, target_id)",
+    "CREATE TABLE IF NOT EXISTS push_time_preferences ("
+    "target_type TEXT NOT NULL, "
+    "target_id INTEGER NOT NULL, "
+    "subscription_key TEXT NOT NULL, "
+    "preference_type TEXT NOT NULL, "
+    "value TEXT NOT NULL, "
+    "updated_at TEXT NOT NULL, "
+    "PRIMARY KEY (target_type, target_id, subscription_key, preference_type)"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_push_time_preferences_lookup "
+    "ON push_time_preferences "
+    "(target_type, subscription_key, preference_type, target_id)",
+)
 
 
 def private_schedule_key(index: int, task: ScheduledPushTask) -> str:
@@ -356,42 +380,8 @@ class PushUnsubscribeStore:
             and preference_type_row in {"cron_time", "activity_lead_hours"}
         ]
 
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
-        with open_sqlite(self.path) as con:
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS push_unsubscriptions ("
-                "target_type TEXT NOT NULL, "
-                "target_id INTEGER NOT NULL, "
-                "subscription_key TEXT NOT NULL, "
-                "feature TEXT NOT NULL, "
-                "created_at TEXT NOT NULL, "
-                "PRIMARY KEY (target_type, target_id, subscription_key)"
-                ")"
-            )
-            con.execute(
-                "CREATE INDEX IF NOT EXISTS idx_push_unsubscriptions_lookup "
-                "ON push_unsubscriptions (target_type, subscription_key, target_id)"
-            )
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS push_time_preferences ("
-                "target_type TEXT NOT NULL, "
-                "target_id INTEGER NOT NULL, "
-                "subscription_key TEXT NOT NULL, "
-                "preference_type TEXT NOT NULL, "
-                "value TEXT NOT NULL, "
-                "updated_at TEXT NOT NULL, "
-                "PRIMARY KEY ("
-                "target_type, target_id, subscription_key, preference_type"
-                ")"
-                ")"
-            )
-            con.execute(
-                "CREATE INDEX IF NOT EXISTS idx_push_time_preferences_lookup "
-                "ON push_time_preferences "
-                "(target_type, subscription_key, preference_type, target_id)"
-            )
-            yield con
+    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
+        return open_sqlite_schema(self.path, PUSH_SUBSCRIPTION_SCHEMA)
 
 
 def build_schedule_subscription_options(
