@@ -1,12 +1,10 @@
 from nonebot import get_driver
 
 from ironsbot.config.loader import get_app_config, load_secrets_config
-from ironsbot.config.models.ai import (
-    AiConfig as AiChatConfig,
-)
+from ironsbot.config.models.ai import AiConfig
 
 
-def get_ai_config() -> AiChatConfig:
+def get_ai_config() -> AiConfig:
     return get_app_config().ai
 
 
@@ -21,7 +19,7 @@ def get_ai_key() -> str:
         return ""
 
 __all__ = [
-    "AiChatConfig",
+    "AiConfig",
     "get_ai_config",
     "get_ai_key",
 ]

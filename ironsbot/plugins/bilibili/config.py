@@ -12,13 +12,12 @@ from ironsbot.config.models.bilibili import (
     BiliStorageConfig,
 )
 
-DEFAULT_SUPPRESS_PATTERNS = DEFAULT_BILI_SUPPRESS_PATTERNS
 
 def get_bili_config() -> BiliConfig:
     return get_app_config().bilibili
 
 __all__ = [
-    "DEFAULT_SUPPRESS_PATTERNS",
+    "DEFAULT_BILI_SUPPRESS_PATTERNS",
     "INVALID_INTERVAL_TIME_ERROR",
     "BiliConfig",
     "BiliFilterConfig",

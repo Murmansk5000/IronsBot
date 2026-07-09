@@ -1,10 +1,8 @@
 from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.ai import (
     AiActionBase,
+    AiConfig,
     AiIntentAction,
-)
-from ironsbot.config.models.ai import (
-    AiConfig as AiIntentConfig,
 )
 from ironsbot.services.ai.client import get_ai_key
 from ironsbot.services.ai.intent import (
@@ -13,14 +11,14 @@ from ironsbot.services.ai.intent import (
 )
 
 
-def get_ai_config() -> AiIntentConfig:
+def get_ai_config() -> AiConfig:
     return get_app_config().ai
 
 
 __all__ = [
     "AiActionBase",
+    "AiConfig",
     "AiIntentAction",
-    "AiIntentConfig",
     "get_ai_config",
     "get_ai_key",
     "get_configured_actions",
