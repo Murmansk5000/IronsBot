@@ -20,9 +20,11 @@ from ironsbot.config.models.message import (
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
+)
+from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
