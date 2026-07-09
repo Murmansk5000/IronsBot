@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import (
     PushUnsubscribeConfig,
@@ -53,6 +54,7 @@ class StubSeerConfig:
 
 @dataclass(frozen=True)
 class StubAppConfig:
+    activity: ActivityConfig = field(default_factory=ActivityConfig)
     feature: FeatureConfig = field(default_factory=FeatureConfig)
     ai: StubAiConfig = field(default_factory=StubAiConfig)
     message: StubMessageConfig = field(default_factory=StubMessageConfig)
@@ -61,6 +63,7 @@ class StubAppConfig:
 
 def stub_app_config(  # noqa: PLR0913
     *,
+    activity_config: ActivityConfig | None = None,
     ai_intent_enabled: bool = True,
     feature_config: FeatureConfig | None = None,
     push_unsubscribe_config: PushUnsubscribeConfig | None = None,
@@ -69,6 +72,7 @@ def stub_app_config(  # noqa: PLR0913
     group_actions: list[StubMessageAction] | None = None,
 ) -> StubAppConfig:
     return StubAppConfig(
+        activity=activity_config or ActivityConfig(),
         feature=feature_config or FeatureConfig(),
         ai=StubAiConfig(intent_actions_enabled=ai_intent_enabled),
         message=StubMessageConfig(
