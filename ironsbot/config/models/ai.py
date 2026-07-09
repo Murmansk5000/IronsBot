@@ -23,10 +23,6 @@ AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt
 UNKNOWN_AI_ACTION_ERROR = (
     "unknown AI intent action must configure a complete action definition"
 )
-LEGACY_INTENT_ACTIONS_ERROR = (
-    "ai.intent_actions must use [ai.intent_actions.<id>] tables; "
-    "legacy [[ai.intent_actions]] arrays are not supported"
-)
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
@@ -49,11 +45,12 @@ DEFAULT_JOIN_TEAM_MESSAGE = (
     "noverify=0&group_code=719544559"
 )
 DEFAULT_FIRE_MANUAL_INTENT = (
-    "Judge whether the QQ group message means the sender wants a manual, "
-    "handbook, guide, reference page, or the Fire manual for Seer information. "
-    "Answer yes when the sender asks for 手册, 火火手册, or where to read the manual. "
-    "Answer no when the message only mentions a book-like item, a game skill, "
-    "announces or shares a manual release/link, or is unrelated to manuals."
+    "Judge whether the QQ group message explicitly asks for the Fire manual "
+    "entry, link, address, URL, download, or where to read it. Answer yes only "
+    "when the sender is requesting the manual link/入口/地址/下载. Answer no when "
+    "the message only mentions 手册 or 火火手册, discusses manual content, cites the "
+    "manual as a source, asks why it has not updated or cannot open, announces "
+    "or shares a manual release/link, or is unrelated to asking for the link."
 )
 DEFAULT_CLASSIFIER_PROMPT = (
     "You are a strict intent classifier for a QQ bot.\n"
@@ -73,6 +70,8 @@ DEFAULT_KEYWORD_INFO_PROMPT = (
 
 
 class AiActionBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = ""
     enabled: bool = True
     feature: str = "ai_intent"
@@ -128,8 +127,8 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             ),
             reply_prompt=DEFAULT_KEYWORD_INFO_PROMPT,
         ),
-        "fire_manual": AiIntentAction(
-            id="fire_manual",
+        "fire_manual_ad": AiIntentAction(
+            id="fire_manual_ad",
             feature=FIRE_MANUAL_FEATURE,
             keywords=["手册"],
             action="message",
@@ -143,7 +142,7 @@ def default_ai_actions() -> dict[str, AiIntentAction]:
     actions = builtin_ai_actions()
     return {
         "join_team": actions["join_team"],
-        "fire_manual": actions["fire_manual"],
+        "fire_manual_ad": actions["fire_manual_ad"],
     }
 
 
@@ -153,9 +152,6 @@ class AiConfig(BaseModel):
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-pro"
     prompt: str = DEFAULT_AI_PROMPT
-    reset_commands: list[str] = Field(
-        default_factory=lambda: ["清空聊天", "重置聊天", "清空上下文"]
-    )
     history_turns: int = Field(default=6, ge=0, le=20)
     memory: bool = True
     memory_path: Path = Path("data/ai_chat/memory.sqlite")
@@ -189,11 +185,6 @@ class AiConfig(BaseModel):
     def normalize_base_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
 
-    @field_validator("reset_commands", mode="before")
-    @classmethod
-    def normalize_commands(cls, value: object) -> object:
-        return string_list(value)
-
     @field_validator("intent_actions", mode="before")
     @classmethod
     def normalize_actions(cls, value: object) -> object:
@@ -205,9 +196,6 @@ class AiConfig(BaseModel):
             if not text:
                 return default_ai_actions()
             return json_object(text, name="APP_CONFIG.ai.intent_actions")
-
-        if isinstance(value, list):
-            raise TypeError(LEGACY_INTENT_ACTIONS_ERROR)
 
         return value
 
@@ -292,7 +280,6 @@ __all__ = [
     "DEFAULT_JOIN_TEAM_MESSAGE",
     "DEFAULT_KEYWORD_INFO_PROMPT",
     "KEYWORDS_REQUIRED_ERROR",
-    "LEGACY_INTENT_ACTIONS_ERROR",
     "MESSAGE_REQUIRED_ERROR",
     "UNKNOWN_AI_ACTION_ERROR",
     "AiActionBase",

@@ -1,5 +1,6 @@
 import sqlite3
 import time
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
@@ -7,6 +8,26 @@ from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.services.ai.history import HistoryMessage
+from ironsbot.shared.sqlite import open_sqlite_schema
+
+AI_MEMORY_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        session_key TEXT NOT NULL,
+        chat_scope TEXT NOT NULL,
+        chat_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at REAL NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ai_memory_user_time
+    ON messages (user_id, created_at DESC)
+    """,
+)
 
 
 def _get_ai_config():
@@ -17,33 +38,8 @@ def _memory_path() -> Path:
     return _get_ai_config().memory_path
 
 
-def _connect() -> sqlite3.Connection:
-    path = _memory_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            session_key TEXT NOT NULL,
-            chat_scope TEXT NOT NULL,
-            chat_id INTEGER NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at REAL NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_ai_memory_user_time
-        ON messages (user_id, created_at DESC)
-        """
-    )
-    return conn
+def _connect() -> AbstractContextManager[sqlite3.Connection]:
+    return open_sqlite_schema(_memory_path(), AI_MEMORY_SCHEMA)
 
 
 def _is_memory_enabled() -> bool:
@@ -56,14 +52,6 @@ def _event_context(event: MessageEvent) -> tuple[str, int]:
         return "group", int(event.group_id)
 
     return "private", int(event.user_id)
-
-
-def reset_user_memory(user_id: int) -> None:
-    try:
-        with _connect() as conn:
-            conn.execute("DELETE FROM messages WHERE user_id = ?", (int(user_id),))
-    except sqlite3.Error as e:
-        logger.warning(f"failed to reset AI memory for {user_id}: {e}")
 
 
 def append_user_memory(

@@ -1,3 +1,5 @@
+from typing import Any
+
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
@@ -21,8 +23,10 @@ from ironsbot.services.ai.intent import (
     get_ai_intent_config,
     get_configured_actions,
     is_action_allowed,
+    passes_action_prefilter,
     reply_is_yes,
 )
+from ironsbot.services.ai.source_context import build_ai_notice_source_context
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
@@ -68,13 +72,18 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
             not action.enabled
             or not is_action_allowed(event, action)
             or not contains_any_keyword(text, action.keywords)
+            or not passes_action_prefilter(text, action)
             or excluded_by_command(text, action)
             or excluded_by_context(text, action)
         ):
             continue
 
         try:
-            reply = await call_ai_chat(build_intent_prompt(action, text), [])
+            reply = await call_ai_chat(
+                build_intent_prompt(action, text),
+                [],
+                source_context=build_ai_notice_source_context(event, text),
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning(f"AI intent action failed to classify {action.id}: {e}")
             return False
@@ -102,7 +111,7 @@ ai_intent_action_matcher = on_message(
 
 async def _handle_ai_reply_action(
     action: AiIntentAction,
-    matcher: Matcher,
+    matcher: Any,
     event: MessageEvent,
 ) -> None:
     prompt = format_action_template(
@@ -110,7 +119,14 @@ async def _handle_ai_reply_action(
         action.reply_prompt,
         event.get_plaintext().strip(),
     )
-    reply = await call_ai_chat(prompt, [])
+    reply = await call_ai_chat(
+        prompt,
+        [],
+        source_context=build_ai_notice_source_context(
+            event,
+            event.get_plaintext().strip(),
+        ),
+    )
     if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
         return
 

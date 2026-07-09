@@ -10,12 +10,10 @@ from ironsbot.services.ai.history import (
     append_turn,
     get_history,
     history_key,
-    reset_history,
 )
 from ironsbot.services.ai.memory import (
     append_user_memory,
     get_user_memory,
-    reset_user_memory,
 )
 from ironsbot.shared.features import group_has_feature, is_superuser
 
@@ -61,11 +59,6 @@ def build_ai_chat_context(
         history=history,
         memory=memory,
     )
-
-
-def reset_ai_chat_context(event: MessageEvent, key: str) -> None:
-    reset_history(key)
-    reset_user_memory(event.user_id)
 
 
 def is_ai_error_reply(reply: str) -> bool:

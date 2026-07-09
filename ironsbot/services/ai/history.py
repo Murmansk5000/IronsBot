@@ -68,20 +68,8 @@ def format_memory(memory: list[HistoryMessage]) -> str:
     return "\n".join(lines)
 
 
-def is_reset_prompt(prompt: str) -> bool:
-    normalized = "".join(prompt.split())
-    return any(
-        normalized == "".join(command.split())
-        for command in _get_ai_config().reset_commands
-    )
-
-
 def get_history(key: str) -> list[HistoryMessage]:
     return _HISTORY.get(key, [])
-
-
-def reset_history(key: str) -> None:
-    _HISTORY.pop(key, None)
 
 
 def append_turn(key: str, prompt: str, reply: str) -> None:
