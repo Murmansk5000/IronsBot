@@ -11,6 +11,7 @@ from ironsbot.plugins.startup_notice.runtime import (
     _startup_notice_runtime_state,
     send_startup_notice,
 )
+from ironsbot.shared.messaging.admin_notice import AdminNoticeTargets
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from ironsbot.shared.plugin_runtime import startup_ready, startup_ready_runtime
 from ironsbot.shared.runtime.startup_notice import StartupNoticePart
@@ -104,13 +105,8 @@ def test_startup_notice_appends_db_sync_notice(
     )
     monkeypatch.setattr(
         startup_notice_runtime.startup_notice_service,
-        "superuser_loader",
-        lambda: {1},
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service,
-        "feature_group_loader",
-        lambda _feature: [],
+        "target_loader",
+        lambda: AdminNoticeTargets(private_user_ids=[1], group_ids=[]),
     )
     monkeypatch.setattr(
         startup_notice_runtime,
@@ -176,13 +172,8 @@ def test_startup_notice_appends_docker_update_before_db_sync(
     )
     monkeypatch.setattr(
         startup_notice_runtime.startup_notice_service,
-        "superuser_loader",
-        lambda: {1},
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service,
-        "feature_group_loader",
-        lambda _feature: [],
+        "target_loader",
+        lambda: AdminNoticeTargets(private_user_ids=[1], group_ids=[]),
     )
     monkeypatch.setattr(
         startup_notice_runtime,

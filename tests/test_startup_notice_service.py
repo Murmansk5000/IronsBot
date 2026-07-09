@@ -16,6 +16,7 @@ _SERVICE = module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = _SERVICE
 _SPEC.loader.exec_module(_SERVICE)
 StartupNoticeService = _SERVICE.StartupNoticeService
+AdminNoticeTargets = _SERVICE.AdminNoticeTargets
 
 
 @dataclass
@@ -35,8 +36,10 @@ def test_startup_notice_service_respects_enabled_and_busy_state() -> None:
 
 def test_startup_notice_service_resolves_targets() -> None:
     service = StartupNoticeService(
-        superuser_loader=lambda: {3, 1},
-        feature_group_loader=lambda feature: [9] if feature == "admin_notice" else [],
+        target_loader=lambda: AdminNoticeTargets(
+            private_user_ids=[1, 3],
+            group_ids=[9],
+        ),
     )
 
     targets = service.get_targets()
