@@ -2,8 +2,9 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from nonebot.log import logger
@@ -14,7 +15,7 @@ from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot_for_item,
 )
 from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
-from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite
+from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,43 +31,51 @@ class DynamicHistoryRecord:
     suppression_reason: str
 
 
-@contextmanager
-def _connect() -> Iterator[sqlite3.Connection]:
+BILI_DYNAMIC_HISTORY_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS checkpoints (
+        uid INTEGER PRIMARY KEY,
+        pub_ts INTEGER NOT NULL,
+        updated_at REAL NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dynamics (
+        dynamic_id TEXT PRIMARY KEY,
+        uid INTEGER NOT NULL,
+        author_name TEXT NOT NULL,
+        pub_ts INTEGER NOT NULL,
+        brief TEXT NOT NULL,
+        raw_json TEXT NOT NULL,
+        pushed INTEGER NOT NULL DEFAULT 0,
+        suppressed INTEGER NOT NULL DEFAULT 0,
+        suppression_reason TEXT NOT NULL DEFAULT '',
+        created_at REAL NOT NULL,
+        updated_at REAL NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_bili_dynamics_uid_time
+    ON dynamics (uid, pub_ts DESC)
+    """,
+)
+
+
+def _connect() -> AbstractContextManager[sqlite3.Connection]:
     db_file = dynamic_history_db_file()
-    with open_sqlite(db_file, row_factory=sqlite3.Row) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS checkpoints (
-                uid INTEGER PRIMARY KEY,
-                pub_ts INTEGER NOT NULL,
-                updated_at REAL NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS dynamics (
-                dynamic_id TEXT PRIMARY KEY,
-                uid INTEGER NOT NULL,
-                author_name TEXT NOT NULL,
-                pub_ts INTEGER NOT NULL,
-                brief TEXT NOT NULL,
-                raw_json TEXT NOT NULL,
-                pushed INTEGER NOT NULL DEFAULT 0,
-                suppressed INTEGER NOT NULL DEFAULT 0,
-                suppression_reason TEXT NOT NULL DEFAULT '',
-                created_at REAL NOT NULL,
-                updated_at REAL NOT NULL
-            )
-            """
-        )
+    return _connect_dynamic_history(db_file)
+
+
+@contextmanager
+def _connect_dynamic_history(
+    db_file: str | Path,
+) -> Iterator[sqlite3.Connection]:
+    with open_sqlite_schema(
+        db_file,
+        BILI_DYNAMIC_HISTORY_SCHEMA,
+        row_factory=sqlite3.Row,
+    ) as conn:
         _ensure_dynamic_columns(conn)
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_bili_dynamics_uid_time
-            ON dynamics (uid, pub_ts DESC)
-            """
-        )
         yield conn
 
 

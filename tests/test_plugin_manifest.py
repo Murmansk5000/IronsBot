@@ -1,5 +1,4 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 import tomli
 
@@ -11,6 +10,14 @@ from ironsbot.app.plugin_manifest import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class RuntimeModule:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    def setup(self) -> None:
+        self._calls.append("setup")
 
 
 def test_plugin_manifest_validates() -> None:
@@ -43,7 +50,7 @@ def test_runtime_setups_run_manifest_refs() -> None:
 
     def import_module(module_name: str) -> object:
         assert module_name == "example.runtime"
-        return SimpleNamespace(setup=lambda: called.append("setup"))
+        return RuntimeModule(called)
 
     assert run_runtime_setups(
         ("example.runtime:setup",),

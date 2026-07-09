@@ -19,15 +19,19 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
 from ironsbot.config import load_secrets_config
-from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
+from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
 from . import formatting as sync_formatting
-from .github_actions import WorkflowRunResult, trigger_and_wait_workflow
+from . import remote_build as sync_remote_build
+from ironsbot.integrations.db_sync.github_actions import (
+    WorkflowRunResult,
+    trigger_and_wait_workflow,
+)
 from .manager import db_manager
+from .manual import ManualSyncContext, handle_manual_sync
 from .storage import (
     _fetch_remote_timestamp,
     _file_timestamp,
@@ -369,125 +373,15 @@ def _remote_build_names() -> list[str]:
     ]
 
 
-def _workflow_page(config: RemoteBuildConfig | RemoteBuildStepConfig) -> str:
-    return (
-        f"https://github.com/{config.repository}/actions/workflows/"
-        f"{config.workflow_id}"
-    )
-
-
-def _remote_build_failure(
-    *,
-    config: RemoteBuildConfig | RemoteBuildStepConfig,
-    message: str,
-) -> WorkflowRunResult:
-    return WorkflowRunResult(
-        ok=False,
-        status="error",
-        conclusion=None,
-        html_url=(
-            _workflow_page(config)
-            if config.repository and config.workflow_id
-            else ""
-        ),
-        message=message,
-    )
-
-
-def _format_exception_message(error: Exception) -> str:
-    text = str(error).strip()
-    if text:
-        return f"{type(error).__name__}: {text}"
-    return type(error).__name__
-
-
-def _configured_remote_build_steps(
-    config: RemoteBuildConfig,
-) -> list[RemoteBuildStepConfig]:
-    return config.build_steps()
-
-
 async def _run_remote_build(name: str, entry: _SyncEntry) -> bool:
-    config = entry.remote_build
-    if config is None or not config.enabled:
-        return True
-
-    steps = _configured_remote_build_steps(config)
-    if not steps:
-        _remote_build_results[name] = _remote_build_failure(
-            config=config,
-            message="远程构建配置缺少 steps 或 repository/workflow_id",
-        )
-        logger.warning(f"数据库 '{name}' 远程构建配置缺少可执行 workflow")
-        return False
-
     token = load_secrets_config().github_workflow_token.strip()
-    if not token:
-        _remote_build_results[name] = _remote_build_failure(
-            config=config,
-            message="缺少 GITHUB_WORKFLOW_TOKEN，未触发远程构建",
-        )
-        logger.warning(
-            f"数据库 '{name}' 远程构建已启用，但未配置 GITHUB_WORKFLOW_TOKEN"
-        )
-        return False
-
-    for step_index, step in enumerate(steps, start=1):
-        if not step.repository or not step.workflow_id:
-            _remote_build_results[name] = _remote_build_failure(
-                config=step,
-                message=(
-                    f"远程构建步骤 {step.display_name} "
-                    "缺少 repository 或 workflow_id"
-                ),
-            )
-            logger.warning(
-                f"数据库 '{name}' 远程构建步骤配置不完整: {step.display_name}"
-            )
-            return False
-
-        logger.info(
-            f"开始触发数据库 '{name}' 远程构建步骤 "
-            f"{step_index}/{len(steps)}: {step.display_name} "
-            f"({step.repository}/{step.workflow_id}@{step.ref})"
-        )
-        try:
-            result = await trigger_and_wait_workflow(step, token=token)
-        except Exception as e:  # noqa: BLE001
-            logger.opt(exception=True).error(
-                f"数据库 '{name}' 远程构建步骤请求失败: {step.display_name}"
-            )
-            result = _remote_build_failure(
-                config=step,
-                message=(
-                    f"{step.display_name}: {_format_exception_message(e)}"
-                ),
-            )
-
-        _remote_build_results[name] = result
-        if result.ok:
-            logger.info(
-                f"数据库 '{name}' 远程构建步骤成功: "
-                f"{step.display_name}; Actions: {result.html_url}"
-            )
-            continue
-
-        logger.warning(
-            f"数据库 '{name}' 远程构建步骤失败: "
-            f"{step.display_name}; {result.message}; Actions: {result.html_url}"
-        )
-        if not result.message.startswith(step.display_name):
-            _remote_build_results[name] = WorkflowRunResult(
-                ok=result.ok,
-                status=result.status,
-                conclusion=result.conclusion,
-                html_url=result.html_url,
-                message=f"{step.display_name}: {result.message}",
-            )
-        return False
-
-    logger.info(f"数据库 '{name}' 远程构建流水线成功，共 {len(steps)} 步")
-    return True
+    return await sync_remote_build.run_remote_build(
+        name=name,
+        config=entry.remote_build,
+        token=token,
+        results=_remote_build_results,
+        trigger_workflow=lambda step: trigger_and_wait_workflow(step, token=token),
+    )
 
 
 async def sync_all_databases(*, trigger_remote_build: bool = False) -> dict[str, bool]:
@@ -567,61 +461,20 @@ def _prepare_local_database(name: str, file_path: str) -> None:
 
 @manual_sync_matcher.handle()
 async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
-    if not _registered_syncs:
-        await finish_event_reply(matcher, event, "当前没有已注册的远程同步数据库。")
-
-    if is_sync_running():
-        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
-
-    names = list(_registered_syncs)
-    remote_names = _remote_build_names()
-    start_message = (
-        f"开始远程构建数据：{', '.join(remote_names)}；"
-        f"随后更新数据：{', '.join(names)}，请稍等。"
-        if remote_names
-        else f"开始更新数据：{', '.join(names)}，请稍等。"
-    )
-    await send_event_reply(
+    await handle_manual_sync(
         matcher,
         event,
-        start_message,
+        context=ManualSyncContext(
+            registered_syncs=_registered_syncs,
+            last_sync_statuses=_last_sync_statuses,
+            default_sync_status=_SyncStatus(ok=True),
+            is_sync_running=is_sync_running,
+            remote_build_names=_remote_build_names,
+            run_sync_all_databases=run_sync_all_databases,
+            format_sync_statuses=_format_sync_statuses,
+            format_remote_build_failures=_format_remote_build_failures,
+        ),
     )
-
-    did_run, results = await run_sync_all_databases(trigger_remote_build=True)
-
-    if not did_run:
-        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
-
-    failed = [name for name, ok in results.items() if not ok]
-    succeeded = [name for name, ok in results.items() if ok]
-    status_text = _format_sync_statuses(results)
-
-    if failed:
-        remote_failure_text = _format_remote_build_failures(failed)
-        extra_text = f"\n{remote_failure_text}" if remote_failure_text else ""
-        status_extra = f"\n{status_text}" if status_text else ""
-        await finish_event_reply(
-            matcher,
-            event,
-            "数据更新完成，但有失败项。\n"
-            f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
-            f"失败：{', '.join(failed)}"
-            f"{status_extra}"
-            f"{extra_text}\n"
-            "请查看容器日志确认网络或下载错误。"
-        )
-
-    skipped = [
-        name
-        for name, ok in results.items()
-        if ok and _last_sync_statuses.get(name, _SyncStatus(ok=True)).skipped
-    ]
-    if skipped and len(skipped) == len(results):
-        title = f"数据已是最新，无需更新：{', '.join(skipped)}"
-    else:
-        title = f"数据更新完成：{', '.join(succeeded)}"
-    status_extra = f"\n{status_text}" if status_text else ""
-    await finish_event_reply(matcher, event, f"{title}{status_extra}")
 
 
 def _format_remote_build_failures(failed_names: list[str]) -> str:

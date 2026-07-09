@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import nonebot
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from pytest import MonkeyPatch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +16,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.plugins.messaging import matcher_rules, runtime
+from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
@@ -25,6 +24,7 @@ from ironsbot.shared.messaging.push_subscriptions import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
+from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
 
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
@@ -95,22 +95,13 @@ def _group_event(
     text: str = "TD",
     *,
     user_id: int = SUPERUSER_ID,
-    role: str = "member",
-) -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+    role: GroupMemberRole = "member",
+):
+    return group_member_message_event(
+        text,
         user_id=user_id,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=2002,
-        sender={"role": role},
+        role=role,
     )
 
 
@@ -133,7 +124,7 @@ def test_messaging_runtime_setup_registers_startup_once(
 
 
 def test_push_subscription_menu_prompt_marks_current_state() -> None:
-    prompt = runtime._push_subscription_menu_prompt(
+    prompt = push_management_runtime._push_subscription_menu_prompt(
         "private",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -153,7 +144,7 @@ def test_push_subscription_menu_prompt_marks_current_state() -> None:
 
 
 def test_push_subscription_menu_prompt_can_be_read_only() -> None:
-    prompt = runtime._push_subscription_menu_prompt(
+    prompt = push_management_runtime._push_subscription_menu_prompt(
         "group",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),

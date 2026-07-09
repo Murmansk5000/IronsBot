@@ -1,24 +1,33 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from ironsbot.config import get_app_config
-from ironsbot.shared.sqlite import open_sqlite, resolve_sqlite_path
+from ironsbot.shared.sqlite import open_sqlite_schema, resolve_sqlite_path
 
 from .planning import reminder_key
 
 if TYPE_CHECKING:
     import sqlite3
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
     from .models import ActivityReminder
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+SENT_ACTIVITY_REMINDERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sent_activity_reminders (
+    activity_id INTEGER NOT NULL,
+    end_time TEXT NOT NULL,
+    lead_hours INTEGER NOT NULL,
+    sent_at TEXT NOT NULL,
+    PRIMARY KEY (activity_id, end_time, lead_hours)
+)
+"""
 
 
 def _cache_path(cache_path: Path | None = None) -> Path:
@@ -26,21 +35,10 @@ def _cache_path(cache_path: Path | None = None) -> Path:
     return resolve_sqlite_path(path)
 
 
-@contextmanager
-def _connect_cache(cache_path: Path | None = None) -> Iterator[sqlite3.Connection]:
-    with open_sqlite(_cache_path(cache_path)) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sent_activity_reminders (
-                activity_id INTEGER NOT NULL,
-                end_time TEXT NOT NULL,
-                lead_hours INTEGER NOT NULL,
-                sent_at TEXT NOT NULL,
-                PRIMARY KEY (activity_id, end_time, lead_hours)
-            )
-            """
-        )
-        yield conn
+def _connect_cache(
+    cache_path: Path | None = None,
+) -> AbstractContextManager[sqlite3.Connection]:
+    return open_sqlite_schema(_cache_path(cache_path), SENT_ACTIVITY_REMINDERS_SCHEMA)
 
 
 def filter_unsent(

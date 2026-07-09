@@ -30,12 +30,13 @@ from ironsbot.shared.messaging.outbound_rate_limit import (
     check_group_outbound_rate_limit,
 )
 from ironsbot.shared.messaging.text import build_message, render_text
-from ironsbot.shared.scheduler import add_or_replace_job
+from ironsbot.shared.scheduler import JobRegistry
 
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 TEAM_AUDIT_WELCOME_PLUGIN_NAME = "team_audit_welcome"
+TEAM_AUDIT_FOLLOWUP_JOB_PREFIX = "team_audit_followup_"
 FOLLOWUP_SCAN_INTERVAL_MINUTES = 10
 FIRST_FOLLOWUP_STEP = 1
 FINAL_FOLLOWUP_STEP = 2
@@ -101,11 +102,23 @@ def _followup_cache_path() -> str:
 
 
 def _followup_job_id(group_id: int, user_id: int) -> str:
-    return f"team_audit_followup_{group_id}_{user_id}"
+    return f"{TEAM_AUDIT_FOLLOWUP_JOB_PREFIX}{_followup_job_suffix(group_id, user_id)}"
+
+
+def _followup_job_suffix(group_id: int, user_id: int) -> str:
+    return f"{group_id}_{user_id}"
 
 
 def _followup_scan_job_id(bot: Bot) -> str:
-    return f"team_audit_followup_scan_{bot.self_id}"
+    return f"{TEAM_AUDIT_FOLLOWUP_JOB_PREFIX}{_followup_scan_job_suffix(bot)}"
+
+
+def _followup_scan_job_suffix(bot: Bot) -> str:
+    return f"scan_{bot.self_id}"
+
+
+def _followup_job_registry(scheduler: "AsyncIOScheduler") -> JobRegistry:
+    return JobRegistry(scheduler, prefix=TEAM_AUDIT_FOLLOWUP_JOB_PREFIX)
 
 
 def _now_utc() -> datetime:
@@ -145,13 +158,12 @@ def schedule_team_audit_followup(
     if run_at <= now:
         run_at = now + timedelta(seconds=1)
 
-    add_or_replace_job(
-        scheduler,
+    _followup_job_registry(scheduler).add(
         send_team_audit_followup,
         "date",
         run_date=run_at,
         args=[bot, reminder.group_id, reminder.user_id],
-        job_id=_followup_job_id(reminder.group_id, reminder.user_id),
+        job_id=_followup_job_suffix(reminder.group_id, reminder.user_id),
         misfire_grace_time=3600,
     )
 
@@ -172,13 +184,12 @@ def register_team_audit_followup_scan(
     scheduler: "AsyncIOScheduler",
     bot: Bot,
 ) -> None:
-    add_or_replace_job(
-        scheduler,
+    _followup_job_registry(scheduler).add(
         schedule_pending_team_audit_followups,
         "interval",
         minutes=FOLLOWUP_SCAN_INTERVAL_MINUTES,
         args=[bot, scheduler],
-        job_id=_followup_scan_job_id(bot),
+        job_id=_followup_scan_job_suffix(bot),
     )
 
 

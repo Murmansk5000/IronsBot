@@ -1,8 +1,8 @@
 import time
-from types import SimpleNamespace
 
 from ironsbot.config.models.seer import RankPageRefreshConfig
 from ironsbot.services.seer.rank_list import GlobalRankSpec
+from ironsbot.services.seer.rank_page_cache_models import CachedRankPageSummary
 from ironsbot.services.seer.rank_page_refresh import (
     REFRESH_REASON_MISSING,
     REFRESH_REASON_PARTIAL,
@@ -15,6 +15,29 @@ from ironsbot.services.seer.rank_page_refresh import (
 )
 
 PER_RANK_TARGET_LIMIT = 200
+
+
+def page_summary(  # noqa: PLR0913
+    *,
+    start_index: int,
+    end_index: int,
+    item_count: int = 100,
+    expected_count: int = 100,
+    fetched_at: float = 0.0,
+    is_partial: bool = False,
+    min_score: int | None = None,
+) -> CachedRankPageSummary:
+    return CachedRankPageSummary(
+        start_index=start_index,
+        end_index=end_index,
+        item_count=item_count,
+        expected_count=expected_count,
+        fetched_at=fetched_at,
+        is_partial=is_partial,
+        min_score=min_score,
+    )
+
+
 TEST_SCORE_CUTOFF = 1000
 TEST_SCORE_TARGET_LABEL = "分数 >= 1000（最多前 500 名）"
 
@@ -23,7 +46,7 @@ def test_select_rank_page_refresh_targets_prefers_first_missing_gap() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(target_limit=500, page_size=100, pages_per_run=2)
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=100,
@@ -31,7 +54,7 @@ def test_select_rank_page_refresh_targets_prefers_first_missing_gap() -> None:
             fetched_at=time.time(),
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=200,
             end_index=299,
             item_count=100,
@@ -63,7 +86,7 @@ def test_select_rank_page_refresh_targets_uses_partial_missing_ratio() -> None:
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=99,
@@ -71,7 +94,7 @@ def test_select_rank_page_refresh_targets_uses_partial_missing_ratio() -> None:
             fetched_at=time.time() - 48 * 3600,
             is_partial=True,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -102,7 +125,7 @@ def test_select_rank_page_refresh_targets_uses_stale_after_complete_pages() -> N
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=100,
@@ -110,7 +133,7 @@ def test_select_rank_page_refresh_targets_uses_stale_after_complete_pages() -> N
             fetched_at=time.time() - 48 * 3600,
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -141,7 +164,7 @@ def test_select_rank_page_refresh_targets_prioritizes_front_pages_by_index() -> 
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=100,
@@ -149,7 +172,7 @@ def test_select_rank_page_refresh_targets_prioritizes_front_pages_by_index() -> 
             fetched_at=time.time() - 48 * 3600,
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -181,7 +204,7 @@ def test_select_rank_page_refresh_targets_uses_rank_position_page_index() -> Non
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=start_index,
             end_index=start_index + 99,
             item_count=100,
@@ -215,7 +238,7 @@ def test_select_rank_page_refresh_targets_scores_partial_by_missing_ratio() -> N
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=10,
@@ -223,7 +246,7 @@ def test_select_rank_page_refresh_targets_scores_partial_by_missing_ratio() -> N
             fetched_at=time.time(),
             is_partial=True,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -256,7 +279,7 @@ def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> N
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=100,
@@ -264,7 +287,7 @@ def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> N
             fetched_at=time.time(),
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -272,7 +295,7 @@ def test_select_rank_page_refresh_targets_scores_older_stale_pages_higher() -> N
             fetched_at=time.time() - 25 * 3600,
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=200,
             end_index=299,
             item_count=100,
@@ -305,7 +328,7 @@ def test_select_rank_page_refresh_targets_caps_stale_age_score() -> None:
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=100,
@@ -313,7 +336,7 @@ def test_select_rank_page_refresh_targets_caps_stale_age_score() -> None:
             fetched_at=time.time() - 25 * 3600,
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -367,7 +390,7 @@ def test_rank_page_refresh_score_cutoff_stops_after_boundary_page() -> None:
         refresh_stale_after_hours=24,
     )
     pages = [
-        SimpleNamespace(
+        page_summary(
             start_index=0,
             end_index=99,
             item_count=100,
@@ -376,7 +399,7 @@ def test_rank_page_refresh_score_cutoff_stops_after_boundary_page() -> None:
             min_score=1200,
             is_partial=False,
         ),
-        SimpleNamespace(
+        page_summary(
             start_index=100,
             end_index=199,
             item_count=100,
@@ -403,10 +426,10 @@ def test_filter_standard_rank_page_summaries_ignores_lookup_fragments() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(target_limit=300, page_size=100)
     pages = [
-        SimpleNamespace(start_index=0, end_index=0),
-        SimpleNamespace(start_index=0, end_index=99),
-        SimpleNamespace(start_index=23, end_index=23),
-        SimpleNamespace(start_index=100, end_index=199),
+        page_summary(start_index=0, end_index=0),
+        page_summary(start_index=0, end_index=99),
+        page_summary(start_index=23, end_index=23),
+        page_summary(start_index=100, end_index=199),
     ]
 
     filtered = filter_standard_rank_page_summaries(
@@ -429,9 +452,9 @@ def test_filter_standard_rank_page_summaries_uses_per_rank_target_limit() -> Non
         page_size=100,
     )
     pages = [
-        SimpleNamespace(start_index=0, end_index=99),
-        SimpleNamespace(start_index=100, end_index=199),
-        SimpleNamespace(start_index=200, end_index=299),
+        page_summary(start_index=0, end_index=99),
+        page_summary(start_index=100, end_index=199),
+        page_summary(start_index=200, end_index=299),
     ]
 
     filtered = filter_standard_rank_page_summaries(
@@ -455,9 +478,9 @@ def test_filter_standard_rank_page_summaries_stops_at_score_cutoff() -> None:
         page_size=100,
     )
     pages = [
-        SimpleNamespace(start_index=0, end_index=99, min_score=1200),
-        SimpleNamespace(start_index=100, end_index=199, min_score=900),
-        SimpleNamespace(start_index=200, end_index=299, min_score=100),
+        page_summary(start_index=0, end_index=99, min_score=1200),
+        page_summary(start_index=100, end_index=199, min_score=900),
+        page_summary(start_index=200, end_index=299, min_score=100),
     ]
 
     filtered = filter_standard_rank_page_summaries(

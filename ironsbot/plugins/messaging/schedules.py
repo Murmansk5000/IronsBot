@@ -19,7 +19,7 @@ from ironsbot.shared.promotions import (
     append_fire_manual_ad_for_group,
     append_fire_manual_ad_text,
 )
-from ironsbot.shared.scheduler import add_or_replace_job, remove_jobs_by_prefix
+from ironsbot.shared.scheduler import JobRegistry
 
 from .config import (
     GroupScheduledMessageAction,
@@ -34,6 +34,16 @@ MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
 
 def _push_subscription_store() -> PushUnsubscribeStore:
     return PushUnsubscribeStore(get_message_config().push_unsubscribe.data_path)
+
+
+def message_schedule_registry(scheduler: Any) -> JobRegistry:
+    return JobRegistry(scheduler, prefix=MESSAGE_SCHEDULE_JOB_PREFIX)
+
+
+def message_schedule_job_suffix(job_id: str) -> str:
+    if not job_id.startswith(MESSAGE_SCHEDULE_JOB_PREFIX):
+        return job_id
+    return job_id.removeprefix(MESSAGE_SCHEDULE_JOB_PREFIX)
 
 
 async def send_private_schedule(
@@ -121,12 +131,18 @@ def schedule_override_job_id(
 def schedule_override_trigger_kwargs(
     task: PrivateScheduledMessageAction | GroupScheduledMessageAction,
     value: str,
-) -> dict[str, int | str]:
+) -> dict[str, Any]:
     hour, minute = daily_time_parts_for_push(value)
-    trigger_kwargs = build_schedule_trigger_kwargs(task)
+    trigger_kwargs = schedule_trigger_kwargs(task)
     trigger_kwargs["hour"] = hour
     trigger_kwargs["minute"] = minute
     return trigger_kwargs
+
+
+def schedule_trigger_kwargs(
+    task: PrivateScheduledMessageAction | GroupScheduledMessageAction,
+) -> dict[str, Any]:
+    return dict(build_schedule_trigger_kwargs(task))
 
 
 def _register_private_schedule_overrides(
@@ -136,6 +152,7 @@ def _register_private_schedule_overrides(
 ) -> None:
     key = private_schedule_key(index, task)
     eligible_user_ids = set(users_with_superusers(users_for_feature(task.feature)))
+    registry = message_schedule_registry(scheduler)
     store = _push_subscription_store()
     for preference in store.all_time_preferences(
         target_type="private",
@@ -148,8 +165,13 @@ def _register_private_schedule_overrides(
             trigger_kwargs = schedule_override_trigger_kwargs(task, preference.value)
         except ValueError:
             continue
-        add_or_replace_job(
-            scheduler,
+        job_id = schedule_override_job_id(
+            "private_schedule",
+            index,
+            key,
+            preference.target_id,
+        )
+        registry.add(
             send_private_schedule,
             "cron",
             kwargs={
@@ -157,12 +179,7 @@ def _register_private_schedule_overrides(
                 "index": index,
                 "target_user_ids": (preference.target_id,),
             },
-            job_id=schedule_override_job_id(
-                "private_schedule",
-                index,
-                key,
-                preference.target_id,
-            ),
+            job_id=message_schedule_job_suffix(job_id),
             **trigger_kwargs,
         )
 
@@ -174,6 +191,7 @@ def _register_group_schedule_overrides(
 ) -> None:
     key = group_schedule_key(index, task)
     eligible_group_ids = set(groups_for_feature(task.feature))
+    registry = message_schedule_registry(scheduler)
     store = _push_subscription_store()
     for preference in store.all_time_preferences(
         target_type="group",
@@ -186,8 +204,13 @@ def _register_group_schedule_overrides(
             trigger_kwargs = schedule_override_trigger_kwargs(task, preference.value)
         except ValueError:
             continue
-        add_or_replace_job(
-            scheduler,
+        job_id = schedule_override_job_id(
+            "group_schedule",
+            index,
+            key,
+            preference.target_id,
+        )
+        registry.add(
             send_group_schedule,
             "cron",
             kwargs={
@@ -195,12 +218,7 @@ def _register_group_schedule_overrides(
                 "index": index,
                 "target_group_ids": (preference.target_id,),
             },
-            job_id=schedule_override_job_id(
-                "group_schedule",
-                index,
-                key,
-                preference.target_id,
-            ),
+            job_id=message_schedule_job_suffix(job_id),
             **trigger_kwargs,
         )
 
@@ -213,13 +231,13 @@ def _register_private_schedule(
     if not task.enabled:
         return
 
-    add_or_replace_job(
-        scheduler,
+    job_id = build_schedule_job_id("private_schedule", index, task.id)
+    message_schedule_registry(scheduler).add(
         send_private_schedule,
         "cron",
         kwargs={"task": task, "index": index},
-        job_id=build_schedule_job_id("private_schedule", index, task.id),
-        **build_schedule_trigger_kwargs(task),
+        job_id=message_schedule_job_suffix(job_id),
+        **schedule_trigger_kwargs(task),
     )
     _register_private_schedule_overrides(scheduler, index, task)
 
@@ -232,13 +250,13 @@ def _register_group_schedule(
     if not task.enabled:
         return
 
-    add_or_replace_job(
-        scheduler,
+    job_id = build_schedule_job_id("group_schedule", index, task.id)
+    message_schedule_registry(scheduler).add(
         send_group_schedule,
         "cron",
         kwargs={"task": task, "index": index},
-        job_id=build_schedule_job_id("group_schedule", index, task.id),
-        **build_schedule_trigger_kwargs(task),
+        job_id=message_schedule_job_suffix(job_id),
+        **schedule_trigger_kwargs(task),
     )
     _register_group_schedule_overrides(scheduler, index, task)
 
@@ -254,4 +272,4 @@ async def register_message_schedules(scheduler: Any) -> None:
 
 
 def clear_message_schedule_jobs(scheduler: Any) -> None:
-    remove_jobs_by_prefix(scheduler, MESSAGE_SCHEDULE_JOB_PREFIX)
+    message_schedule_registry(scheduler).remove_by_prefix()

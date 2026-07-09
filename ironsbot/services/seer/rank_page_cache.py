@@ -3,54 +3,25 @@ import sqlite3
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import RankQueryConfig
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.services.seer.rank_page_cache_models import (
+    CachedRankItem,
+    CachedRankLookup,
+    CachedRankPage,
+    CachedRankPageSummary,
+)
+from ironsbot.services.seer.rank_page_cache_storage import (
+    connect_rank_page_cache as _connect_storage,
+)
 
 
 def get_rank_query_config() -> RankQueryConfig:
     return get_app_config().seer.rank
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankItem:
-    id: int
-    nick: str
-    score: int
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankPage:
-    items: list[CachedRankItem]
-    fetched_at: float
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankLookup:
-    id: int
-    nick: str
-    score: int
-    rank_index: int
-    fetched_at: float
-    is_stale: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankPageSummary:
-    start_index: int
-    end_index: int
-    item_count: int
-    expected_count: int
-    fetched_at: float
-    min_score: int | None = None
-    max_score: int | None = None
-    is_stale: bool = False
-    is_partial: bool = False
 
 
 def _cache_path() -> Path:
@@ -59,60 +30,7 @@ def _cache_path() -> Path:
 
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
-    with open_sqlite(_cache_path()) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS rank_players (
-                user_id INTEGER PRIMARY KEY,
-                nick TEXT NOT NULL DEFAULT '',
-                updated_at REAL NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS rank_pages (
-                key INTEGER NOT NULL,
-                sub_key INTEGER NOT NULL,
-                start_index INTEGER NOT NULL,
-                end_index INTEGER NOT NULL,
-                page_size INTEGER NOT NULL,
-                fetched_at REAL NOT NULL,
-                expected_count INTEGER NOT NULL,
-                actual_count INTEGER NOT NULL,
-                PRIMARY KEY (key, sub_key, start_index, end_index)
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS player_rank_facts (
-                key INTEGER NOT NULL,
-                sub_key INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                rank_index INTEGER NOT NULL,
-                score INTEGER NOT NULL,
-                display TEXT NOT NULL DEFAULT '',
-                fetched_at REAL NOT NULL,
-                source_start_index INTEGER NOT NULL,
-                source_end_index INTEGER NOT NULL,
-                PRIMARY KEY (key, sub_key, user_id),
-                UNIQUE (key, sub_key, rank_index)
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_player_rank_facts_rank
-            ON player_rank_facts (key, sub_key, rank_index)
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_player_rank_facts_score
-            ON player_rank_facts (key, sub_key, score DESC, rank_index)
-            """
-        )
+    with _connect_storage(_cache_path()) as conn:
         yield conn
 
 

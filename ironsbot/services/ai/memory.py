@@ -1,7 +1,6 @@
 import sqlite3
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
@@ -9,7 +8,26 @@ from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.services.ai.history import HistoryMessage
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.shared.sqlite import open_sqlite_schema
+
+AI_MEMORY_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        session_key TEXT NOT NULL,
+        chat_scope TEXT NOT NULL,
+        chat_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at REAL NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ai_memory_user_time
+    ON messages (user_id, created_at DESC)
+    """,
+)
 
 
 def _get_ai_config():
@@ -20,30 +38,8 @@ def _memory_path() -> Path:
     return _get_ai_config().memory_path
 
 
-@contextmanager
-def _connect() -> Iterator[sqlite3.Connection]:
-    with open_sqlite(_memory_path()) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                session_key TEXT NOT NULL,
-                chat_scope TEXT NOT NULL,
-                chat_id INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at REAL NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_ai_memory_user_time
-            ON messages (user_id, created_at DESC)
-            """
-        )
-        yield conn
+def _connect() -> AbstractContextManager[sqlite3.Connection]:
+    return open_sqlite_schema(_memory_path(), AI_MEMORY_SCHEMA)
 
 
 def _is_memory_enabled() -> bool:

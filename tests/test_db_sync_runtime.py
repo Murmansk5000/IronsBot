@@ -3,14 +3,18 @@ import hashlib
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 import httpx
 import nonebot
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
-from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
+from ironsbot.config.models.runtime import (
+    DataSyncConfig,
+    RemoteBuildConfig,
+    RemoteBuildStepConfig,
+)
+from ironsbot.config.models.secrets import SecretsConfig
 
 try:
     nonebot.get_driver()
@@ -28,6 +32,23 @@ from ironsbot.plugins.db_sync import runtime as db_sync_runtime
 from ironsbot.plugins.db_sync.github_actions import WorkflowRunResult
 
 CONNECT_ERROR_MESSAGE = "connection failed"
+
+
+def _data_sync_config(
+    *,
+    interval_enabled: bool,
+    on_startup: bool,
+    startup_trigger_remote_build: bool = False,
+) -> DataSyncConfig:
+    return DataSyncConfig(
+        interval_enabled=interval_enabled,
+        on_startup=on_startup,
+        startup_trigger_remote_build=startup_trigger_remote_build,
+    )
+
+
+def _secrets_config(*, github_workflow_token: str) -> SecretsConfig:
+    return SecretsConfig(github_workflow_token=github_workflow_token)
 
 
 class FakeDriver:
@@ -107,7 +128,7 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
     monkeypatch.setattr(
         db_sync_runtime,
         "get_data_sync_config",
-        lambda: SimpleNamespace(interval_enabled=True, on_startup=False),
+        lambda: _data_sync_config(interval_enabled=True, on_startup=False),
     )
 
     asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
@@ -150,7 +171,7 @@ def test_db_sync_startup_can_trigger_remote_build(
     monkeypatch.setattr(
         db_sync_runtime,
         "get_data_sync_config",
-        lambda: SimpleNamespace(
+        lambda: _data_sync_config(
             interval_enabled=False,
             on_startup=True,
             startup_trigger_remote_build=True,
@@ -208,7 +229,7 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
     monkeypatch.setattr(
         db_sync_runtime,
         "get_data_sync_config",
-        lambda: SimpleNamespace(
+        lambda: _data_sync_config(
             interval_enabled=False,
             on_startup=True,
             startup_trigger_remote_build=False,
@@ -307,7 +328,7 @@ def test_manual_sync_triggers_remote_build_before_download(
     monkeypatch.setattr(
         db_sync,
         "load_secrets_config",
-        lambda: SimpleNamespace(github_workflow_token="token"),
+        lambda: _secrets_config(github_workflow_token="token"),
     )
 
     async def fake_build(
@@ -361,7 +382,7 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
     monkeypatch.setattr(
         db_sync,
         "load_secrets_config",
-        lambda: SimpleNamespace(github_workflow_token="token"),
+        lambda: _secrets_config(github_workflow_token="token"),
     )
 
     async def fake_build(
@@ -424,7 +445,7 @@ def test_remote_build_failure_skips_old_release_download(
     monkeypatch.setattr(
         db_sync,
         "load_secrets_config",
-        lambda: SimpleNamespace(github_workflow_token="token"),
+        lambda: _secrets_config(github_workflow_token="token"),
     )
 
     async def fake_build(
@@ -512,7 +533,7 @@ def test_remote_build_enabled_without_token_fails_fast(
     monkeypatch.setattr(
         db_sync,
         "load_secrets_config",
-        lambda: SimpleNamespace(github_workflow_token=""),
+        lambda: _secrets_config(github_workflow_token=""),
     )
 
     async def fake_sync(name: str) -> bool:

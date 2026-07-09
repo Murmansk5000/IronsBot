@@ -1,12 +1,21 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
 
-from ironsbot.shared.scheduler import add_or_replace_job, remove_jobs_by_prefix
+from ironsbot.shared.scheduler import (
+    JobRegistry,
+    add_or_replace_job,
+    remove_jobs_by_prefix,
+)
+
+
+@dataclass(frozen=True)
+class FakeJob:
+    id: str
 
 
 class FakeScheduler:
     def __init__(self, job_ids: list[str] | None = None) -> None:
         job_ids = job_ids or []
-        self.jobs = [SimpleNamespace(id=job_id) for job_id in job_ids]
+        self.jobs = [FakeJob(id=job_id) for job_id in job_ids]
         self.added_jobs: list[dict[str, object]] = []
         self.removed: list[str] = []
 
@@ -15,7 +24,7 @@ class FakeScheduler:
         self.added_jobs.append(job)
         return job
 
-    def get_jobs(self) -> list[SimpleNamespace]:
+    def get_jobs(self) -> list[FakeJob]:
         return self.jobs
 
     def remove_job(self, job_id: str) -> None:
@@ -66,3 +75,26 @@ def test_add_or_replace_job_sets_standard_job_fields() -> None:
         "args": ["unit"],
     }
     assert scheduler.added_jobs == [job]
+
+
+def test_job_registry_scopes_job_ids_and_prefix_removal() -> None:
+    scheduler = FakeScheduler(
+        [
+            "activity_reminder_startup_scan",
+            "activity_reminder_1h_123",
+            "message_schedule_group_1",
+        ]
+    )
+    registry = JobRegistry(scheduler, prefix="activity_reminder_")
+
+    job = registry.add(
+        "task",
+        "date",
+        job_id="startup_scan",
+        next_run_time="soon",
+    )
+    removed = registry.remove_by_prefix(exclude={"startup_scan"})
+
+    assert job["id"] == "activity_reminder_startup_scan"
+    assert removed == 1
+    assert scheduler.removed == ["activity_reminder_1h_123"]
