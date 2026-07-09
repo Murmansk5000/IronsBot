@@ -68,7 +68,7 @@ SEER_QUERY_USAGE_SECTIONS = (
         lines=(
             "【巅峰相关】feature: seer_peak",
             "竞技池 / 专家池 / 巅峰投票",
-            "竞技套装榜 / 狂野称号榜 / 专家段位榜",
+            "竞技套装榜 / 狂野称号榜",
             "竞技精灵月榜 / 竞技精灵总榜",
         ),
     ),
@@ -85,6 +85,7 @@ SEER_QUERY_USAGE_SECTIONS = (
         lines=(
             "【榜单入口】feature: seer_rank",
             "榜单 / 榜单帮助 / 榜单情况 / 样本情况",
+            "图鉴榜 / 群星牌榜 / 竞技段位榜 / 专家段位榜",
         ),
     ),
     SeerQueryUsageSection(

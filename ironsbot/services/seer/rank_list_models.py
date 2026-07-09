@@ -10,6 +10,7 @@ from ironsbot.services.seer.rank_constants import (
     BOOK_RANK_SUB_KEY,
     COUNTERMARK_RANK_KEY,
     COUNTERMARK_RANK_SUB_KEY,
+    EXPERT_PEAK_USER_RANK_KEY,
     MOUNT_RANK_SUB_KEY,
     OUTFIT_PART_RANK_SUB_KEY,
     OUTFIT_RANK_KEY,
@@ -19,6 +20,8 @@ from ironsbot.services.seer.rank_constants import (
     PET_KIND_RANK_SUB_KEY,
     SKIN_RANK_KEY,
     SKIN_RANK_SUB_KEY,
+    STANDARD_PEAK_USER_RANK_KEY,
+    WILD_PEAK_USER_RANK_KEY,
 )
 
 RANK_LIST_SIZE = 10
@@ -42,6 +45,8 @@ class GlobalRankSpec:
     unit: str
     start: int = 0
     rank_offset: int = 0
+    peak_season_sub_key: bool = False
+    score_format: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +113,29 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
     ),
     "群星牌": GlobalRankSpec(
         "群星之巅榜", AUTOCARD_RANK_KEY, AUTOCARD_RANK_SUB_KEY, "分"
+    ),
+    "竞技段位": GlobalRankSpec(
+        "竞技段位榜",
+        STANDARD_PEAK_USER_RANK_KEY,
+        0,
+        "分",
+        peak_season_sub_key=True,
+        score_format="peak_rating",
+    ),
+    "狂野段位": GlobalRankSpec(
+        "狂野段位榜",
+        WILD_PEAK_USER_RANK_KEY,
+        0,
+        "分",
+        peak_season_sub_key=True,
+        score_format="peak_rating",
+    ),
+    "专家段位": GlobalRankSpec(
+        "专家段位榜",
+        EXPERT_PEAK_USER_RANK_KEY,
+        0,
+        "分",
+        peak_season_sub_key=True,
     ),
 }
 

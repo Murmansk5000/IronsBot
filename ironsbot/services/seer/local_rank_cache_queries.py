@@ -50,7 +50,7 @@ def count_metric_rows(
     )
 
 
-def get_local_rank_entries_sql(
+def get_local_rank_entries(
     metric_key: str,
     *,
     limit: int,
@@ -106,7 +106,7 @@ def get_local_rank_entries_sql(
         return entries[start_index : start_index + requested_limit], sample_count
 
 
-def get_cached_player_ids_sql() -> list[int]:
+def get_cached_player_ids() -> list[int]:
     with connect_local_rank_cache() as conn:
         rows = conn.execute(
             """
@@ -119,7 +119,7 @@ def get_cached_player_ids_sql() -> list[int]:
     return [int(row["user_id"]) for row in rows]
 
 
-def get_refresh_candidate_player_ids_sql(
+def get_refresh_candidate_player_ids(
     *,
     limit: int,
     max_age_hours: int,
@@ -145,7 +145,7 @@ def get_refresh_candidate_player_ids_sql(
     return [int(row["user_id"]) for row in rows]
 
 
-def get_local_rank_cache_stats_sql() -> LocalRankCacheStats:
+def get_local_rank_cache_stats() -> LocalRankCacheStats:
     with connect_local_rank_cache() as conn:
         total_player_count = int(
             conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
@@ -182,7 +182,7 @@ def get_local_rank_cache_stats_sql() -> LocalRankCacheStats:
     )
 
 
-def can_cache_player_id_sql(player_id: int) -> bool:
+def can_cache_player_id(player_id: int) -> bool:
     if is_pet_kind_rank_anomaly_user(player_id):
         return False
 
@@ -203,10 +203,10 @@ def can_cache_player_id_sql(player_id: int) -> bool:
 
 
 __all__ = [
-    "can_cache_player_id_sql",
+    "can_cache_player_id",
     "count_metric_rows",
-    "get_cached_player_ids_sql",
-    "get_local_rank_cache_stats_sql",
-    "get_local_rank_entries_sql",
-    "get_refresh_candidate_player_ids_sql",
+    "get_cached_player_ids",
+    "get_local_rank_cache_stats",
+    "get_local_rank_entries",
+    "get_refresh_candidate_player_ids",
 ]

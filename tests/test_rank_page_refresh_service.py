@@ -3,7 +3,7 @@ import time
 from ironsbot.config.models.seer import RankPageRefreshConfig
 from ironsbot.services.seer.rank_list_models import GlobalRankSpec
 from ironsbot.services.seer.rank_page_cache_models import CachedRankPageSummary
-from ironsbot.services.seer.rank_page_refresh import (
+from ironsbot.services.seer.rank_page_refresh_selection import (
     REFRESH_REASON_MISSING,
     REFRESH_REASON_PARTIAL,
     REFRESH_REASON_STALE,

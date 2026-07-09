@@ -1,10 +1,14 @@
+from importlib import import_module
+
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.config.models.app import AppConfig
+from ironsbot.services.sendpic_fixed_image import FIXED_IMAGE_COMMANDS
 
-from . import fixed_images as fixed_images
 from .config import enabled_pic_configs, get_sendpic_config
 from .matchers import matcher_group as matcher_group
+
+import_module(f"{__name__}.fixed_images")
 
 
 def _format_command_names(command: str, aliases: set[str]) -> str:
@@ -26,7 +30,7 @@ def _format_config_command_help() -> list[str]:
 
 def _format_fixed_image_help() -> list[str]:
     filename_to_commands: dict[str, list[str]] = {}
-    for command, filename in fixed_images.IMAGE_COMMANDS.items():
+    for command, filename in FIXED_IMAGE_COMMANDS.items():
         filename_to_commands.setdefault(filename, []).append(command)
 
     lines: list[str] = []
