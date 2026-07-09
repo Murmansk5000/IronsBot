@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ironsbot.config.models.feature import FeatureConfig
+
 
 @dataclass(frozen=True)
 class StubAiConfig:
@@ -41,6 +43,7 @@ class StubSeerConfig:
 
 @dataclass(frozen=True)
 class StubAppConfig:
+    feature: FeatureConfig = field(default_factory=FeatureConfig)
     ai: StubAiConfig = field(default_factory=StubAiConfig)
     message: StubMessageConfig = field(default_factory=StubMessageConfig)
     seer: StubSeerConfig = field(default_factory=StubSeerConfig)
@@ -49,10 +52,12 @@ class StubAppConfig:
 def stub_app_config(
     *,
     ai_intent_enabled: bool = True,
+    feature_config: FeatureConfig | None = None,
     team_subscriptions: list[object] | None = None,
     group_actions: list[StubMessageAction] | None = None,
 ) -> StubAppConfig:
     return StubAppConfig(
+        feature=feature_config or FeatureConfig(),
         ai=StubAiConfig(intent_actions_enabled=ai_intent_enabled),
         message=StubMessageConfig(group_commands=group_actions or []),
         seer=StubSeerConfig(
