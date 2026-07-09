@@ -9,7 +9,7 @@ from math import log1p, sqrt
 from typing import TYPE_CHECKING
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.services.seer.client import get_game_client
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,

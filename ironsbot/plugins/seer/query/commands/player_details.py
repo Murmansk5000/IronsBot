@@ -10,12 +10,12 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
 )
-from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank import LocalRankSummary, update_local_rank_cache
 from ironsbot.services.seer.player_formatting import format_player_detail_messages

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from nonebot import logger
 
-from ironsbot.services.seer.client import get_game_client
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank import get_local_rank_entries
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start, timestamp_text
 from ironsbot.services.seer.rank_list_global_messages import (

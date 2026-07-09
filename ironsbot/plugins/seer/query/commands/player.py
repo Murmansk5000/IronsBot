@@ -9,6 +9,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -18,7 +19,6 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank import LocalRankSummary
 from ironsbot.services.seer.packets import ensure_extended_packets

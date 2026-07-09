@@ -6,6 +6,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -15,7 +16,6 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.errors import format_socket_recv_error
 from ironsbot.services.seer.team import (
     format_team_generic_error_message,
