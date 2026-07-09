@@ -6,9 +6,9 @@ from typing import Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
+from ironsbot.integrations.db_sync import service as db_sync_service
 from ironsbot.shared.scheduler import JobRegistry
 
-from . import service as db_sync_service
 from .config import get_data_sync_config
 
 _db_sync_runtime_state = {"registered": False}

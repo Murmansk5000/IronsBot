@@ -33,9 +33,9 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
+from ironsbot.integrations.db_sync import service as db_sync
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 from ironsbot.plugins.db_sync import runtime as db_sync_runtime
-from ironsbot.plugins.db_sync import service as db_sync
 
 CONNECT_ERROR_MESSAGE = "connection failed"
 

@@ -6,11 +6,11 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
+from ironsbot.integrations.db_sync import service
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
-from . import service
 from .manual import ManualSyncContext, handle_manual_sync
 
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
