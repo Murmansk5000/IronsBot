@@ -11,6 +11,9 @@ LAYER_ROOTS = (
     ROOT / "ironsbot" / "shared",
 )
 PLUGIN_OWNER_PARTS = 3
+SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
+SQLITE_HELPER_PATH = PACKAGE_ROOT / "shared" / "sqlite.py"
+RUNTIME_JOBS_PATH = PACKAGE_ROOT / "shared" / "runtime" / "jobs.py"
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -166,3 +169,58 @@ def test_production_code_uses_current_foundation_modules() -> None:
             "ironsbot.services.seer.client",
         }
     ) == []
+
+
+def _call_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
+
+
+def _sqlite_connect_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        if path == SQLITE_HELPER_PATH:
+            continue
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "connect"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "sqlite3"
+            ):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
+    return offenders
+
+
+def test_sqlite_connections_go_through_shared_helper() -> None:
+    assert _sqlite_connect_offenders() == []
+
+
+def _direct_scheduler_job_call_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        if path == RUNTIME_JOBS_PATH:
+            continue
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            call_name = _call_name(node)
+            if call_name in SCHEDULER_JOB_METHODS:
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{node.lineno} calls "
+                    f"{call_name}"
+                )
+    return offenders
+
+
+def test_scheduler_job_changes_go_through_runtime_jobs() -> None:
+    assert _direct_scheduler_job_call_offenders() == []
