@@ -2,6 +2,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = ROOT / "ironsbot"
 LAYER_ROOTS = (
     ROOT / "ironsbot" / "config",
     ROOT / "ironsbot" / "integrations",
@@ -10,8 +11,16 @@ LAYER_ROOTS = (
 )
 
 
+def _python_files(root: Path) -> list[Path]:
+    return sorted(root.rglob("*.py"))
+
+
+def _parse_python(path: Path) -> ast.AST:
+    return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+
+
 def _imported_modules(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    tree = _parse_python(path)
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -34,3 +43,23 @@ def _plugin_import_offenders() -> list[str]:
 
 def test_lower_layers_do_not_import_plugins() -> None:
     assert _plugin_import_offenders() == []
+
+
+def _star_import_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and any(
+                alias.name == "*" for alias in node.names
+            ):
+                module_name = node.module or "."
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{node.lineno} "
+                    f"imports * from {module_name}"
+                )
+    return offenders
+
+
+def test_production_code_does_not_use_star_imports() -> None:
+    assert _star_import_offenders() == []

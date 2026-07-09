@@ -1,5 +1,6 @@
 import importlib
 from pathlib import Path
+from typing import Any
 
 import nonebot
 import pytest
@@ -12,6 +13,7 @@ from ironsbot.config.models.bilibili import (
     BiliStorageConfig,
 )
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
+from ironsbot.services.bilibili.state import BiliTargetRule
 from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
 
 try:
@@ -28,7 +30,7 @@ def _rule(
     *,
     mode: str = "full",
     modes: dict[str, str] | None = None,
-) -> state.BiliTargetRule:
+) -> BiliTargetRule:
     modes = modes or {}
     return state.BiliTargetRule(
         accounts=frozenset(accounts),
@@ -37,6 +39,10 @@ def _rule(
         mode=mode,
         modes=modes,
     )
+
+
+def _bili_config(**data: Any) -> BiliConfig:
+    return BiliConfig.model_validate(data)
 
 
 def test_bili_login_notice_cooldown_lives_in_bili_config() -> None:
@@ -57,7 +63,7 @@ def test_bili_config_defaults_to_official_account() -> None:
 
 
 def test_bili_config_accepts_named_group_accounts() -> None:
-    config = BiliConfig(
+    config = _bili_config(
         accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}},
         push={
             "groups": {
@@ -77,7 +83,9 @@ def test_bili_config_accepts_named_group_accounts() -> None:
 
 
 def test_bili_account_display_label_uses_nickname() -> None:
-    config = BiliConfig(accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}})
+    config = _bili_config(
+        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}}
+    )
 
     assert (
         state.account_display_label("fire", config)
@@ -90,7 +98,9 @@ def test_bili_account_display_label_uses_nickname() -> None:
 
 
 def test_bili_account_reference_accepts_alias_or_nickname() -> None:
-    config = BiliConfig(accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}})
+    config = _bili_config(
+        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}}
+    )
 
     assert state.resolve_account_reference("fire", config) == "fire"
     assert state.resolve_account_reference("火火", config) == "fire"
@@ -193,7 +203,7 @@ def test_push_group_rules_use_global_accounts_for_feature_groups(
 
 
 def test_global_modes_apply_to_extra_group_accounts() -> None:
-    config = BiliConfig(
+    config = _bili_config(
         accounts={"fire": FIRE_BILI_UID},
         push={
             "mode": "link",
@@ -210,7 +220,7 @@ def test_global_modes_apply_to_extra_group_accounts() -> None:
 
 
 def test_group_modes_override_global_modes() -> None:
-    config = BiliConfig(
+    config = _bili_config(
         accounts={"fire": FIRE_BILI_UID},
         push={
             "mode": "link",
@@ -314,7 +324,7 @@ def test_bili_push_subscription_options_use_rule_nicknames(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = BiliConfig(
+    config = _bili_config(
         accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}},
         push={"groups": {"main": {"accounts": ["fire"]}}},
     )

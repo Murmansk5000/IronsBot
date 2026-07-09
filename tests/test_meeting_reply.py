@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, PrivateMessageEvent
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 _SERVICE_PATH = (
     Path(__file__).resolve().parents[1]
@@ -30,38 +30,18 @@ class MeetingConfig:
     )
 
 
-def _group_event(text: str = "会议") -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+def _group_event(text: str = "会议"):
+    return group_message_event(
+        text,
         user_id=2,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=4,
-        sender={},
     )
 
 
-def _private_event(text: str = "会议") -> PrivateMessageEvent:
-    return PrivateMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="friend",
+def _private_event(text: str = "会议"):
+    return private_message_event(
+        text,
         user_id=2,
-        message_type="private",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
-        sender={},
     )
 
 

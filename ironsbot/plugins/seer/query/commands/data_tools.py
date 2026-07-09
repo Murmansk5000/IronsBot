@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from httpx import HTTPStatusError, RequestError
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot_plugin_saa import Image, MessageFactory, Text
+from nonebot_plugin_saa import Image, MessageFactory, MessageSegmentFactory, Text
 
 from ironsbot.integrations.seer_data.image import PreviewImageGetter
 from ironsbot.plugins.http_client import get_http_origin_client
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from ..depends import SeerAPISession
 
 
-async def fetch_weekly_preview_image(image_url: str) -> Image:
+async def fetch_weekly_preview_image(image_url: str) -> MessageSegmentFactory:
     try:
         response = await get_http_origin_client().get(image_url)
         response.raise_for_status()

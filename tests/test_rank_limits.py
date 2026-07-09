@@ -1,5 +1,6 @@
 import asyncio
-from types import SimpleNamespace
+from dataclasses import dataclass, field
+from typing import Protocol, cast
 
 import nonebot
 from pytest import MonkeyPatch
@@ -60,6 +61,61 @@ from ironsbot.services.seer.rank_page_cache import (
 )
 
 
+@dataclass(frozen=True)
+class RankConfig:
+    limit: int
+    online_limit: int
+    page_size: int
+    page_cache: bool
+    page_cache_ttl_seconds: int
+    allow_stale_cache: bool
+    refresh_stale_cache: bool
+    score_search_probe_limit: int
+    score_search_tie_page_limit: int
+    peak_subkey: int | None
+
+
+@dataclass(frozen=True)
+class LocalRankConfig:
+    refresh_interval_seconds: int
+
+
+@dataclass(frozen=True)
+class RankItem:
+    score: int
+    id: int = 0
+    nick: str = ""
+
+
+@dataclass(frozen=True)
+class RankPageSummary:
+    start_index: int
+    end_index: int
+    min_score: int
+    max_score: int
+    item_count: int = 0
+    expected_count: int = 0
+    fetched_at: float = 0.0
+    is_stale: bool = False
+    is_partial: bool = False
+
+
+@dataclass(frozen=True)
+class CachedRankPageResult:
+    fetched_at: float
+    items: list[RankItem] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RankListResponse:
+    rank_list: list[RankItem]
+
+
+class RankRequestParam(Protocol):
+    start: int
+    end: int
+
+
 def _patch_rank_config(  # noqa: PLR0913
     monkeypatch: MonkeyPatch,
     *,
@@ -69,7 +125,7 @@ def _patch_rank_config(  # noqa: PLR0913
     score_search_probe_limit: int = 32,
     score_search_tie_page_limit: int = 5,
 ) -> None:
-    rank_config = SimpleNamespace(
+    rank_config = RankConfig(
         limit=rank_limit,
         online_limit=online_limit,
         page_size=page_size,
@@ -81,7 +137,7 @@ def _patch_rank_config(  # noqa: PLR0913
         score_search_tie_page_limit=score_search_tie_page_limit,
         peak_subkey=None,
     )
-    local_rank_config = SimpleNamespace(refresh_interval_seconds=0)
+    local_rank_config = LocalRankConfig(refresh_interval_seconds=0)
     monkeypatch.setattr(
         _rank,
         "get_rank_query_config",
@@ -116,9 +172,9 @@ def test_score_rank_lookup_uses_rank_limit_not_online_limit(
         *_args: object,
         index: int,
         **_kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> RankItem:
         requested_indexes.append(index)
-        return SimpleNamespace(score=0)
+        return RankItem(score=0)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
 
@@ -155,10 +211,10 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
         start: int,
         end: int,
         **_kwargs: object,
-    ) -> list[SimpleNamespace]:
+    ) -> list[RankItem]:
         requested_pages.append((start, end))
         return [
-            SimpleNamespace(id=rank_index, score=online_limit - rank_index)
+            RankItem(id=rank_index, score=online_limit - rank_index)
             for rank_index in range(start, end + 1)
         ]
 
@@ -192,9 +248,9 @@ def test_score_rank_lookup_rejects_target_below_boundary(
         *_args: object,
         index: int,
         **_kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> RankItem:
         requested_indexes.append(index)
-        return SimpleNamespace(score=100)
+        return RankItem(score=100)
 
     monkeypatch.setattr(_rank, "_fetch_rank_item", fake_fetch_rank_item)
 
@@ -228,19 +284,19 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
         *_args: object,
         index: int,
         **_kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> RankItem:
         requested_indexes.append(index)
-        return SimpleNamespace(score=RANK_LIMIT - index)
+        return RankItem(score=RANK_LIMIT - index)
 
     async def fake_fetch_rank_page(
         *_args: object,
         start: int,
         end: int,
         **_kwargs: object,
-    ) -> list[SimpleNamespace]:
+    ) -> list[RankItem]:
         requested_pages.append((start, end))
         return [
-            SimpleNamespace(
+            RankItem(
                 id=105023264 if rank_index == BINARY_TARGET_INDEX else rank_index,
                 score=RANK_LIMIT - rank_index,
             )
@@ -288,18 +344,18 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
         *_args: object,
         index: int,  # noqa: ARG001
         **_kwargs: object,
-    ) -> SimpleNamespace:
-        return SimpleNamespace(score=TIED_SCORE)
+    ) -> RankItem:
+        return RankItem(score=TIED_SCORE)
 
     async def fake_fetch_rank_page(
         *_args: object,
         start: int,
         end: int,
         **_kwargs: object,
-    ) -> list[SimpleNamespace]:
+    ) -> list[RankItem]:
         requested_pages.append((start, end))
         return [
-            SimpleNamespace(id=rank_index, score=TIED_SCORE)
+            RankItem(id=rank_index, score=TIED_SCORE)
             for rank_index in range(start, end + 1)
         ]
 
@@ -346,7 +402,7 @@ def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
         index: int,
         use_cache: bool = True,
         **_kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> RankItem:
         probe_use_cache_values.append(use_cache)
         if index < SEGMENT_START_INDEX:
             score = 200
@@ -354,7 +410,7 @@ def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
             score = SEGMENT_SCORE
         else:
             score = SEGMENT_BOUNDARY_SCORE
-        return SimpleNamespace(id=index, nick=f"Player{index}", score=score)
+        return RankItem(id=index, nick=f"Player{index}", score=score)
 
     async def fake_fetch_rank_page_result(
         *_args: object,
@@ -374,7 +430,7 @@ def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
             else:
                 score = SEGMENT_BOUNDARY_SCORE
             items.append(
-                SimpleNamespace(
+                RankItem(
                     id=rank_index,
                     nick=f"Player{rank_index}",
                     score=score,
@@ -427,9 +483,9 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
         _rank,
         "get_rank_page_cache_summary",
         lambda **_: [
-            SimpleNamespace(start_index=20, end_index=29, min_score=150, max_score=200),
-            SimpleNamespace(start_index=30, end_index=39, min_score=150, max_score=150),
-            SimpleNamespace(start_index=40, end_index=49, min_score=100, max_score=150),
+            RankPageSummary(start_index=20, end_index=29, min_score=150, max_score=200),
+            RankPageSummary(start_index=30, end_index=39, min_score=150, max_score=150),
+            RankPageSummary(start_index=40, end_index=49, min_score=100, max_score=150),
         ],
     )
 
@@ -454,7 +510,7 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
             else:
                 score = SEGMENT_BOUNDARY_SCORE
             items.append(
-                SimpleNamespace(
+                RankItem(
                     id=rank_index,
                     nick=f"Player{rank_index}",
                     score=score,
@@ -520,7 +576,7 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
         for rank_index in range(start, end + 1):
             score = SEGMENT_SCORE if rank_index == SEGMENT_START_INDEX else 200
             items.append(
-                SimpleNamespace(
+                RankItem(
                     id=rank_index,
                     nick=f"Player{rank_index}",
                     score=score,
@@ -565,7 +621,7 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
         _rank,
         "get_rank_page_cache_summary",
         lambda **_: [
-            SimpleNamespace(
+            RankPageSummary(
                 start_index=50,
                 end_index=59,
                 item_count=10,
@@ -582,10 +638,10 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
     monkeypatch.setattr(
         _rank,
         "get_cached_rank_page_result",
-        lambda **_: SimpleNamespace(
+        lambda **_: CachedRankPageResult(
             fetched_at=FETCHED_AT,
             items=[
-                SimpleNamespace(id=1000 + index, nick=f"Player{index}", score=score)
+                RankItem(id=1000 + index, nick=f"Player{index}", score=score)
                 for index, score in enumerate(
                     [
                         10080,
@@ -661,9 +717,9 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
         *_args: object,
         index: int,
         **_kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> RankItem:
         score = ONLINE_GAP_UPPER_SCORE if index < SEGMENT_START_INDEX else SEGMENT_SCORE
-        return SimpleNamespace(id=index, nick=f"Player{index}", score=score)
+        return RankItem(id=index, nick=f"Player{index}", score=score)
 
     async def fake_fetch_rank_page_result(
         *_args: object,
@@ -680,7 +736,7 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
                 else SEGMENT_SCORE
             )
             items.append(
-                SimpleNamespace(
+                RankItem(
                     id=rank_index,
                     nick=f"Player{rank_index}",
                     score=score,
@@ -724,9 +780,9 @@ def test_fetch_rank_score_segment_rejects_score_below_boundary(
         *_args: object,
         index: int,
         **_kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> RankItem:
         requested_indexes.append(index)
-        return SimpleNamespace(
+        return RankItem(
             id=index,
             nick=f"Player{index}",
             score=SEGMENT_BOUNDARY_SCORE,
@@ -766,7 +822,7 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
         *_args: object,
         index: int,
         **_kwargs: object,
-    ) -> SimpleNamespace | None:
+    ) -> RankItem | None:
         if index >= actual_count:
             return None
         if index < SEGMENT_START_INDEX:
@@ -775,7 +831,7 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
             score = SEGMENT_SCORE
         else:
             score = SEGMENT_BOUNDARY_SCORE
-        return SimpleNamespace(id=index, nick=f"Player{index}", score=score)
+        return RankItem(id=index, nick=f"Player{index}", score=score)
 
     async def fake_fetch_rank_page_result(
         *_args: object,
@@ -792,7 +848,7 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
             else:
                 score = SEGMENT_BOUNDARY_SCORE
             items.append(
-                SimpleNamespace(
+                RankItem(
                     id=rank_index,
                     nick=f"Player{rank_index}",
                     score=score,
@@ -848,12 +904,12 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
         start: int,
         end: int,
         use_cache: bool = True,
-    ) -> list[SimpleNamespace]:
+    ) -> list[RankItem]:
         _ = (key, sub_key)
         requested_ranges.append((start, end))
         assert use_cache is False
         return [
-            SimpleNamespace(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
+            RankItem(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
         ]
 
     monkeypatch.setattr(_rank, "_fetch_rank_page", fake_fetch_rank_page)
@@ -900,11 +956,11 @@ def test_cached_rank_without_target_score_is_verified_nearby(
         start: int,
         end: int,
         use_cache: bool = True,
-    ) -> list[SimpleNamespace]:
+    ) -> list[RankItem]:
         _ = (key, sub_key, use_cache)
         requested_ranges.append((start, end))
         return [
-            SimpleNamespace(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
+            RankItem(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
         ]
 
     monkeypatch.setattr(_rank, "_fetch_rank_page", fake_fetch_rank_page)
@@ -939,12 +995,12 @@ def test_fetch_rank_item_fetches_aligned_page_on_cache_miss(
             self,
             *_args: object,
             **_kwargs: object,
-        ) -> tuple[None, SimpleNamespace]:
-            param = _args[1]
+        ) -> tuple[None, RankListResponse]:
+            param = cast("RankRequestParam", _args[1])
             requested_ranges.append((param.start, param.end))
-            return None, SimpleNamespace(
+            return None, RankListResponse(
                 rank_list=[
-                    SimpleNamespace(id=index, nick=f"Player{index}", score=1000 - index)
+                    RankItem(id=index, nick=f"Player{index}", score=1000 - index)
                     for index in range(param.start, param.end + 1)
                 ]
             )
@@ -977,7 +1033,7 @@ def test_daily_rank_page_result_fetches_aligned_page_and_slices(
         requested_ranges.append((start, end))
         return _rank.RankPageResult(
             items=[
-                SimpleNamespace(id=index, nick=f"Player{index}", score=1000 - index)
+                RankItem(id=index, nick=f"Player{index}", score=1000 - index)
                 for index in range(start, end + 1)
             ],
             fetched_at=FETCHED_AT,

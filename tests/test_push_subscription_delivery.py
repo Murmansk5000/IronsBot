@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Message
@@ -13,8 +12,10 @@ if TYPE_CHECKING:
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging import senders
+from ironsbot.shared.messaging.outbound_rate_limit import OutboundRateLimitDecision
 from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
 from ironsbot.shared.messaging.targets import MessageTarget
+from tests.helpers.config import stub_app_config
 
 
 class FakeBot:
@@ -46,12 +47,12 @@ def test_send_target_messages_filters_unsubscribed_push_targets(
     monkeypatch.setattr(
         senders,
         "get_app_config",
-        lambda: SimpleNamespace(message=SimpleNamespace(push_unsubscribe=config)),
+        lambda: stub_app_config(push_unsubscribe_config=config),
     )
     monkeypatch.setattr(
         senders,
         "check_group_outbound_rate_limit",
-        lambda _group_id: SimpleNamespace(allowed=True, cooldown_message=None),
+        lambda _group_id: OutboundRateLimitDecision(allowed=True),
     )
 
     summary = asyncio.run(
@@ -87,12 +88,12 @@ def test_send_target_messages_does_not_share_mutated_message_between_targets(
     monkeypatch.setattr(
         senders,
         "get_app_config",
-        lambda: SimpleNamespace(message=SimpleNamespace(push_unsubscribe=config)),
+        lambda: stub_app_config(push_unsubscribe_config=config),
     )
     monkeypatch.setattr(
         senders,
         "check_group_outbound_rate_limit",
-        lambda _group_id: SimpleNamespace(allowed=True, cooldown_message=None),
+        lambda _group_id: OutboundRateLimitDecision(allowed=True),
     )
 
     asyncio.run(

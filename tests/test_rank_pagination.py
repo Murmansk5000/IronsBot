@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
 from typing import cast
 
 from ironsbot.config.models.seer import RankQueryConfig
@@ -13,9 +13,14 @@ MID_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
 
 
+@dataclass(frozen=True)
+class RawRankQueryConfig:
+    page_size: int
+
+
 def test_rank_page_size_clamps_protocol_limit() -> None:
     assert (
-        rank_page_size(cast("RankQueryConfig", SimpleNamespace(page_size=0)))
+        rank_page_size(cast("RankQueryConfig", RawRankQueryConfig(page_size=0)))
         == MIN_PAGE_SIZE
     )
     assert rank_page_size(RankQueryConfig(page_size=MID_PAGE_SIZE)) == MID_PAGE_SIZE

@@ -9,7 +9,7 @@ from ironsbot.shared.help_hints import (
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FakePokeEvent:
     self_id: int
     target_id: int

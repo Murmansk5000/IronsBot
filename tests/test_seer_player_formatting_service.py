@@ -1,4 +1,5 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
+from typing import Any, cast
 
 from ironsbot.services.seer.player_formatting import (
     append_extra_errors,
@@ -19,6 +20,112 @@ TEAM_ID = 987654321
 REG_TIME = 946684800
 
 
+def _as_any(value: object) -> Any:
+    return cast("Any", value)
+
+
+@dataclass(frozen=True)
+class UserInfo:
+    user_id: int = PLAYER_ID
+    nick: str = "赛小息"
+    vip: int = 0
+    vip_level: int = 0
+    login_time: int = 0
+    last_offline_time: int = 0
+    team_id: int = 0
+    team_is_show: bool = True
+
+
+@dataclass(frozen=True)
+class OnlineInfo:
+    server_id: int
+    map_type: int
+    map_id: int
+
+
+@dataclass(frozen=True)
+class MoreInfo:
+    reg_time: int = REG_TIME
+    pet_all_num: int = 0
+    total_achieve: int = 0
+
+
+@dataclass(frozen=True)
+class UnityPartOne:
+    achievement_num: int
+    pet_kind_num: int
+    skin_num: int
+
+
+@dataclass(frozen=True)
+class RankResult:
+    score: int
+    rank: int = 1
+
+
+@dataclass(frozen=True)
+class RankBreakdown:
+    pet_kind: RankResult
+    skin: RankResult
+    outfit_suit: RankResult
+    outfit_part: RankResult
+    mount: RankResult
+    countermark: RankResult
+    unlocked_count: int
+
+
+@dataclass(frozen=True)
+class RankSummary:
+    book: RankResult
+    achieve: RankResult
+    breakdown: RankBreakdown
+
+
+@dataclass(frozen=True)
+class PeakRank:
+    rank: int | None
+
+
+@dataclass(frozen=True)
+class PeakSummary:
+    standard: PeakRank
+    wild: PeakRank
+    expert: PeakRank
+
+
+@dataclass(frozen=True)
+class AutocardRankSummary:
+    rank: int | None = 12
+    score: int | None = 3456
+    queried: bool = True
+    searched_limit: int = 2000
+
+
+@dataclass(frozen=True)
+class UnityPeak:
+    current_j_rank: int = 3
+    current_j_star: int = 2
+    history_j_rank: int = 4
+    history_j_star: int = 1
+    current_j_win: int = 6
+    current_j_all: int = 10
+    current_k_rank: int = 2
+    current_k_star: int = 5
+    history_k_rank: int = 3
+    history_k_star: int = 4
+    current_k_win: int = 0
+    current_k_all: int = 0
+    current_z_score: int = 1234
+    history_z_score: int = 2345
+    current_z_win: int = 2
+    current_z_all: int = 4
+
+
+@dataclass(frozen=True)
+class Empty:
+    pass
+
+
 class _LocalSummary:
     def __init__(
         self,
@@ -33,15 +140,15 @@ class _LocalSummary:
         return self._ranks.get(key, self._rank_text)
 
 
-def _rank_result(score: int, rank: int = 1) -> SimpleNamespace:
-    return SimpleNamespace(score=score, rank=rank)
+def _rank_result(score: int, rank: int = 1) -> RankResult:
+    return RankResult(score=score, rank=rank)
 
 
-def _rank_summary() -> SimpleNamespace:
-    return SimpleNamespace(
+def _rank_summary() -> RankSummary:
+    return RankSummary(
         book=_rank_result(1234),
         achieve=_rank_result(56),
-        breakdown=SimpleNamespace(
+        breakdown=RankBreakdown(
             pet_kind=_rank_result(100),
             skin=_rank_result(10),
             outfit_suit=_rank_result(20),
@@ -53,11 +160,11 @@ def _rank_summary() -> SimpleNamespace:
     )
 
 
-def _peak_summary() -> SimpleNamespace:
-    return SimpleNamespace(
-        standard=SimpleNamespace(rank=1),
-        wild=SimpleNamespace(rank=None),
-        expert=SimpleNamespace(rank=3),
+def _peak_summary() -> PeakSummary:
+    return PeakSummary(
+        standard=PeakRank(rank=1),
+        wild=PeakRank(rank=None),
+        expert=PeakRank(rank=3),
     )
 
 
@@ -67,8 +174,8 @@ def _autocard_rank_summary(
     score: int | None = 3456,
     queried: bool = True,
     searched_limit: int = 2000,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+) -> AutocardRankSummary:
+    return AutocardRankSummary(
         rank=rank,
         score=score,
         queried=queried,
@@ -76,25 +183,8 @@ def _autocard_rank_summary(
     )
 
 
-def _unity_peak() -> SimpleNamespace:
-    return SimpleNamespace(
-        current_j_rank=3,
-        current_j_star=2,
-        history_j_rank=4,
-        history_j_star=1,
-        current_j_win=6,
-        current_j_all=10,
-        current_k_rank=2,
-        current_k_star=5,
-        history_k_rank=3,
-        history_k_star=4,
-        current_k_win=0,
-        current_k_all=0,
-        current_z_score=1234,
-        history_z_score=2345,
-        current_z_win=2,
-        current_z_all=4,
-    )
+def _unity_peak() -> UnityPeak:
+    return UnityPeak()
 
 
 def test_format_id_name_helpers_render_missing_ids_and_known_names() -> None:
@@ -107,8 +197,8 @@ def test_format_id_name_helpers_render_missing_ids_and_known_names() -> None:
 
 
 def test_format_player_identity_team_vip_and_online_text() -> None:
-    user_info = SimpleNamespace(team_id=TEAM_ID, team_is_show=False, vip=1, vip_level=6)
-    online_info = SimpleNamespace(server_id=1, map_type=2, map_id=3)
+    user_info = UserInfo(team_id=TEAM_ID, team_is_show=False, vip=1, vip_level=6)
+    online_info = OnlineInfo(server_id=1, map_type=2, map_id=3)
 
     assert (
         format_player_identity(PLAYER_ID, "赛小息")
@@ -127,11 +217,11 @@ def test_format_player_identity_team_vip_and_online_text() -> None:
 
 
 def test_format_login_timeline_orders_login_after_offline() -> None:
-    user_info = SimpleNamespace(
+    user_info = UserInfo(
         login_time=1_780_000_000,
         last_offline_time=1_779_990_000,
     )
-    online_info = SimpleNamespace(server_id=1, map_type=2, map_id=3)
+    online_info = OnlineInfo(server_id=1, map_type=2, map_id=3)
 
     assert format_login_timeline_lines(user_info, online_info) == [
         "最后离线：2026年5月29日 01:40:00",
@@ -141,11 +231,11 @@ def test_format_login_timeline_orders_login_after_offline() -> None:
 
 
 def test_format_login_timeline_orders_offline_after_login() -> None:
-    user_info = SimpleNamespace(
+    user_info = UserInfo(
         login_time=1_779_990_000,
         last_offline_time=1_780_000_000,
     )
-    online_info = SimpleNamespace(server_id=1, map_type=2, map_id=3)
+    online_info = OnlineInfo(server_id=1, map_type=2, map_id=3)
 
     assert format_login_timeline_lines(user_info, online_info) == [
         "最后登录：2026年5月29日 01:40:00",
@@ -155,7 +245,7 @@ def test_format_login_timeline_orders_offline_after_login() -> None:
 
 
 def test_format_login_timeline_keeps_online_info_as_source_of_truth() -> None:
-    user_info = SimpleNamespace(
+    user_info = UserInfo(
         login_time=1_780_000_000,
         last_offline_time=1_779_990_000,
     )
@@ -173,7 +263,7 @@ def test_format_win_rate_handles_empty_and_non_empty_records() -> None:
 
 
 def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
-    user_info = SimpleNamespace(
+    user_info = UserInfo(
         user_id=PLAYER_ID,
         nick="赛小息",
         vip=0,
@@ -181,16 +271,16 @@ def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
         last_offline_time=0,
         team_id=0,
     )
-    more_info = SimpleNamespace(reg_time=REG_TIME)
+    more_info = MoreInfo(reg_time=REG_TIME)
 
     message = format_compact_player_info(
         user_info,
         more_info,
         team_name="无",
         online_info=None,
-        unity_peak=SimpleNamespace(),
-        peak_rank_summary=SimpleNamespace(),
-        local_summary=_LocalSummary(),
+        unity_peak=_as_any(Empty()),
+        peak_rank_summary=_as_any(Empty()),
+        local_summary=_as_any(_LocalSummary()),
         has_collection=True,
         has_peak=True,
         has_autocard=True,
@@ -209,21 +299,21 @@ def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
 
 
 def test_format_player_detail_messages_builds_collection_and_peak() -> None:
-    user_info = SimpleNamespace(nick="赛小息")
-    more_info = SimpleNamespace(pet_all_num=321, total_achieve=56)
-    unity_part_one = SimpleNamespace(achievement_num=7, pet_kind_num=100, skin_num=10)
+    user_info = UserInfo(nick="赛小息")
+    more_info = MoreInfo(pet_all_num=321, total_achieve=56)
+    unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
 
     messages = format_player_detail_messages(
         player_id=PLAYER_ID,
         user_info=user_info,
         more_info=more_info,
-        unity_part_one=unity_part_one,
-        unity_peak=_unity_peak(),
-        rank_summary=_rank_summary(),
-        peak_rank_summary=_peak_summary(),
-        autocard_rank_summary=_autocard_rank_summary(),
-        local_rank_summary=_LocalSummary("样本第1"),
-        empty_local_rank_summary=_LocalSummary(),
+        unity_part_one=_as_any(unity_part_one),
+        unity_peak=_as_any(_unity_peak()),
+        rank_summary=_as_any(_rank_summary()),
+        peak_rank_summary=_as_any(_peak_summary()),
+        autocard_rank_summary=_as_any(_autocard_rank_summary()),
+        local_rank_summary=_as_any(_LocalSummary("样本第1")),
+        empty_local_rank_summary=_as_any(_LocalSummary()),
         has_collection=True,
         needs_peak_section=True,
         has_autocard_rank=True,
@@ -248,21 +338,21 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
 
 
 def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
-    user_info = SimpleNamespace(nick="赛小息")
-    more_info = SimpleNamespace(pet_all_num=321, total_achieve=56)
-    unity_part_one = SimpleNamespace(achievement_num=7, pet_kind_num=100, skin_num=10)
+    user_info = UserInfo(nick="赛小息")
+    more_info = MoreInfo(pet_all_num=321, total_achieve=56)
+    unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
 
     messages = format_player_detail_messages(
         player_id=PLAYER_ID,
         user_info=user_info,
         more_info=more_info,
-        unity_part_one=unity_part_one,
-        unity_peak=_unity_peak(),
-        rank_summary=_rank_summary(),
-        peak_rank_summary=_peak_summary(),
-        autocard_rank_summary=_autocard_rank_summary(),
-        local_rank_summary=_LocalSummary("样本第1"),
-        empty_local_rank_summary=_LocalSummary(),
+        unity_part_one=_as_any(unity_part_one),
+        unity_peak=_as_any(_unity_peak()),
+        rank_summary=_as_any(_rank_summary()),
+        peak_rank_summary=_as_any(_peak_summary()),
+        autocard_rank_summary=_as_any(_autocard_rank_summary()),
+        local_rank_summary=_as_any(_LocalSummary("样本第1")),
+        empty_local_rank_summary=_as_any(_LocalSummary()),
         has_collection=True,
         needs_peak_section=False,
         has_autocard_rank=False,

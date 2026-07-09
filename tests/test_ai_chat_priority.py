@@ -1,4 +1,13 @@
+import os
+from pathlib import Path
+
 import nonebot
+
+from ironsbot.config import clear_app_config_cache
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()

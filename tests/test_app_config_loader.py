@@ -4,6 +4,7 @@ import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -18,12 +19,20 @@ from ironsbot.config import (
     load_deployment_config,
     load_secrets_config,
 )
-from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
+from ironsbot.config.loader import (
+    CONFIG_EXAMPLE_PATH_ENV,
+    ENV_EXAMPLE_PATH_ENV,
+    parse_toml_file,
+)
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
-from ironsbot.config.models.seer import RankPageRefreshConfig, TeamResourceConfig
+from ironsbot.config.models.seer import (
+    RankPageRefreshConfig,
+    TeamResourceConfig,
+    TeamResourceSubscriptionConfig,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
@@ -242,6 +251,10 @@ def test_example_config_parses() -> None:
     assert config.runtime.help.ignored_plugins == []
 
 
+def test_example_config_has_no_unknown_fields() -> None:
+    AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
+
+
 def test_public_config_docs_do_not_reference_stale_fields() -> None:
     stale_matches: list[str] = []
 
@@ -379,15 +392,18 @@ def test_dev_and_prod_configs_parse() -> None:
 
 def test_team_resource_config_accepts_subscription_shapes() -> None:
     config = TeamResourceConfig(
-        times="08:30,23:00",
-        subscriptions=[
-            {
-                "group": "anjie",
-                "team_ids": "1234567,2345678",
-                "threshold": TEAM_RESOURCE_THRESHOLD,
-                "at_users": "owner,1234567890",
-            }
-        ],
+        times=cast("list[str]", "08:30,23:00"),
+        subscriptions=cast(
+            "list[TeamResourceSubscriptionConfig]",
+            [
+                {
+                    "group": "anjie",
+                    "team_ids": "1234567,2345678",
+                    "threshold": TEAM_RESOURCE_THRESHOLD,
+                    "at_users": "owner,1234567890",
+                }
+            ],
+        ),
     )
 
     assert config.times == ["08:30", "23:00"]

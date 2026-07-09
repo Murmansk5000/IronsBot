@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: PLR0913, PLR2004, TRY003
 from collections.abc import Callable
 from types import EllipsisType
 from typing import (
