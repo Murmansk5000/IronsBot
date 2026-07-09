@@ -1,16 +1,21 @@
 import asyncio
 from collections.abc import Callable
-from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.runtime import StartupConfig
 from ironsbot.plugins.startup_notice import runtime as startup_notice_runtime
 from ironsbot.plugins.startup_notice.runtime import (
     _setup_startup_notice_runtime,
     _startup_notice_runtime_state,
     send_startup_notice,
 )
+from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from ironsbot.shared.plugin_runtime import startup_ready, startup_ready_runtime
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Bot
 
 
 class FakeDriver:
@@ -78,7 +83,7 @@ def test_startup_notice_appends_db_sync_notice(
     monkeypatch.setattr(
         startup_notice_runtime,
         "get_startup_config",
-        lambda: SimpleNamespace(enabled=True, message="机器人已开启。", delay=0),
+        lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
     )
 
     async def fake_ensure_startup_ready(_bot: object) -> None:
@@ -87,9 +92,9 @@ def test_startup_notice_appends_db_sync_notice(
     async def fake_send_broadcast_message(
         message: object,
         **kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> TargetSendSummary:
         sent_messages.append((str(message), kwargs.get("subscription_key")))
-        return SimpleNamespace(succeeded=[1])
+        return TargetSendSummary([MessageTarget("private", 1)], [])
 
     monkeypatch.setattr(
         startup_notice_runtime,
@@ -119,7 +124,7 @@ def test_startup_notice_appends_db_sync_notice(
         fake_send_broadcast_message,
     )
 
-    asyncio.run(startup_notice_runtime.send_startup_notice(object()))
+    asyncio.run(startup_notice_runtime.send_startup_notice(cast("Bot", object())))
 
     assert sent_messages == [
         ("机器人已开启。", "startup_notice"),
@@ -147,7 +152,7 @@ def test_startup_notice_appends_docker_update_before_db_sync(
     monkeypatch.setattr(
         startup_notice_runtime,
         "get_startup_config",
-        lambda: SimpleNamespace(enabled=True, message="机器人已开启。", delay=0),
+        lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
     )
 
     async def fake_ensure_startup_ready(_bot: object) -> None:
@@ -156,9 +161,9 @@ def test_startup_notice_appends_docker_update_before_db_sync(
     async def fake_send_broadcast_message(
         message: object,
         **kwargs: object,
-    ) -> SimpleNamespace:
+    ) -> TargetSendSummary:
         sent_messages.append((str(message), kwargs.get("subscription_key")))
-        return SimpleNamespace(succeeded=[1])
+        return TargetSendSummary([MessageTarget("private", 1)], [])
 
     monkeypatch.setattr(
         startup_notice_runtime,
@@ -188,7 +193,7 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         fake_send_broadcast_message,
     )
 
-    asyncio.run(startup_notice_runtime.send_startup_notice(object()))
+    asyncio.run(startup_notice_runtime.send_startup_notice(cast("Bot", object())))
 
     assert sent_messages == [
         ("机器人已开启。", "startup_notice"),
