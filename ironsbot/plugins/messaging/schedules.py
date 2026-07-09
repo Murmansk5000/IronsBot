@@ -146,13 +146,12 @@ def schedule_trigger_kwargs(
 
 
 def _register_private_schedule_overrides(
-    scheduler: Any,
+    registry: JobRegistry,
     index: int,
     task: PrivateScheduledMessageAction,
 ) -> None:
     key = private_schedule_key(index, task)
     eligible_user_ids = set(users_with_superusers(users_for_feature(task.feature)))
-    registry = message_schedule_registry(scheduler)
     store = _push_subscription_store()
     for preference in store.all_time_preferences(
         target_type="private",
@@ -185,13 +184,12 @@ def _register_private_schedule_overrides(
 
 
 def _register_group_schedule_overrides(
-    scheduler: Any,
+    registry: JobRegistry,
     index: int,
     task: GroupScheduledMessageAction,
 ) -> None:
     key = group_schedule_key(index, task)
     eligible_group_ids = set(groups_for_feature(task.feature))
-    registry = message_schedule_registry(scheduler)
     store = _push_subscription_store()
     for preference in store.all_time_preferences(
         target_type="group",
@@ -224,7 +222,7 @@ def _register_group_schedule_overrides(
 
 
 def _register_private_schedule(
-    scheduler: Any,
+    registry: JobRegistry,
     index: int,
     task: PrivateScheduledMessageAction,
 ) -> None:
@@ -232,18 +230,18 @@ def _register_private_schedule(
         return
 
     job_id = build_schedule_job_id("private_schedule", index, task.id)
-    message_schedule_registry(scheduler).add(
+    registry.add(
         send_private_schedule,
         "cron",
         kwargs={"task": task, "index": index},
         job_id=message_schedule_job_suffix(job_id),
         **schedule_trigger_kwargs(task),
     )
-    _register_private_schedule_overrides(scheduler, index, task)
+    _register_private_schedule_overrides(registry, index, task)
 
 
 def _register_group_schedule(
-    scheduler: Any,
+    registry: JobRegistry,
     index: int,
     task: GroupScheduledMessageAction,
 ) -> None:
@@ -251,24 +249,27 @@ def _register_group_schedule(
         return
 
     job_id = build_schedule_job_id("group_schedule", index, task.id)
-    message_schedule_registry(scheduler).add(
+    registry.add(
         send_group_schedule,
         "cron",
         kwargs={"task": task, "index": index},
         job_id=message_schedule_job_suffix(job_id),
         **schedule_trigger_kwargs(task),
     )
-    _register_group_schedule_overrides(scheduler, index, task)
+    _register_group_schedule_overrides(registry, index, task)
 
 
 async def register_message_schedules(scheduler: Any) -> None:
-    clear_message_schedule_jobs(scheduler)
     config = get_message_config()
-    for index, task in enumerate(config.private_schedules, start=1):
-        _register_private_schedule(scheduler, index, task)
 
-    for index, task in enumerate(config.group_schedules, start=1):
-        _register_group_schedule(scheduler, index, task)
+    def register_jobs(registry: JobRegistry) -> None:
+        for index, task in enumerate(config.private_schedules, start=1):
+            _register_private_schedule(registry, index, task)
+
+        for index, task in enumerate(config.group_schedules, start=1):
+            _register_group_schedule(registry, index, task)
+
+    message_schedule_registry(scheduler).replace_all(register_jobs)
 
 
 def clear_message_schedule_jobs(scheduler: Any) -> None:

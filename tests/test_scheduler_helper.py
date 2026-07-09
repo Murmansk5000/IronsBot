@@ -98,3 +98,24 @@ def test_job_registry_scopes_job_ids_and_prefix_removal() -> None:
     assert job["id"] == "activity_reminder_startup_scan"
     assert removed == 1
     assert scheduler.removed == ["activity_reminder_1h_123"]
+
+
+def test_job_registry_replace_all_clears_prefix_before_registering() -> None:
+    scheduler = FakeScheduler(
+        [
+            "message_action_old",
+            "message_action_keep",
+            "activity_reminder_1h_123",
+        ]
+    )
+    registry = JobRegistry(scheduler, prefix="message_action_")
+
+    def register_jobs(active_registry: JobRegistry) -> object:
+        return active_registry.add("task", "cron", job_id="new", minute=0)
+
+    job = registry.replace_all(register_jobs, exclude={"keep"})
+
+    assert isinstance(job, dict)
+    assert scheduler.removed == ["message_action_old"]
+    assert job["id"] == "message_action_new"
+    assert scheduler.added_jobs == [job]

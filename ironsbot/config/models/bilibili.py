@@ -61,11 +61,12 @@ def _normalize_account_nickname(value: object) -> str:
 
 def _parse_account_definition(value: object) -> tuple[int, str | None]:
     if isinstance(value, dict):
-        uid = int(value.get("uid", 0))
+        raw_uid = value.get("uid", 0)
+        uid = raw_uid if isinstance(raw_uid, int) else int(str(raw_uid))
         raw_nickname = value.get("nickname", value.get("name", ""))
         nickname = _normalize_account_nickname(raw_nickname)
         return uid, nickname or None
-    return int(value), None
+    return int(str(value)), None
 
 
 class BiliIntervalWindow(BaseModel):

@@ -72,7 +72,42 @@ def schedule_reminder_jobs(
     *,
     grace_minutes: int,
 ) -> int:
-    registry = activity_job_registry(scheduler)
+    return _schedule_reminder_jobs(
+        activity_job_registry(scheduler),
+        send_func,
+        reminders,
+        grace_minutes=grace_minutes,
+    )
+
+
+def replace_reminder_jobs(
+    scheduler: Any,
+    send_func: Callable[..., object],
+    reminders: Iterable[ActivityReminder],
+    *,
+    grace_minutes: int,
+) -> int:
+    def register_jobs(registry: JobRegistry) -> int:
+        return _schedule_reminder_jobs(
+            registry,
+            send_func,
+            reminders,
+            grace_minutes=grace_minutes,
+        )
+
+    return activity_job_registry(scheduler).replace_all(
+        register_jobs,
+        exclude={STARTUP_SCAN_JOB_SUFFIX, DAILY_SCAN_JOB_SUFFIX},
+    )
+
+
+def _schedule_reminder_jobs(
+    registry: JobRegistry,
+    send_func: Callable[..., object],
+    reminders: Iterable[ActivityReminder],
+    *,
+    grace_minutes: int,
+) -> int:
     scheduled_count = 0
     for (lead_hours, send_time), lead_reminders in group_by_send_time(
         reminders

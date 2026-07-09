@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +49,15 @@ class JobRegistry:
             scoped_prefix,
             exclude=scoped_exclude,
         )
+
+    def replace_all(
+        self,
+        register: Callable[[JobRegistry], _T],
+        *,
+        exclude: Collection[str] = (),
+    ) -> _T:
+        self.remove_by_prefix(exclude=exclude)
+        return register(self)
 
 
 def add_or_replace_job(
