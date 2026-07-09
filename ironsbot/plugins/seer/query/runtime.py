@@ -6,12 +6,13 @@ from typing import Any
 
 from nonebot import get_driver, logger, require
 
-from ironsbot.shared.scheduler import add_or_replace_job
+from ironsbot.shared.scheduler import JobRegistry
 
 from .config import get_local_rank_config, get_rank_query_config
 
 _local_rank_scheduler_runtime_state = {"registered": False}
 _render_crash_report_runtime_state = {"registered": False}
+SEER_QUERY_JOB_PREFIX = "seer_"
 
 
 def _minute_of_day(value: str) -> int:
@@ -50,13 +51,12 @@ async def _scheduled_local_rank_refresh() -> None:
 
 def register_local_rank_refresh_job(scheduler: Any) -> None:
     local_rank_config = get_local_rank_config()
-    add_or_replace_job(
-        scheduler,
+    JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
         _scheduled_local_rank_refresh,
         "cron",
         hour=local_rank_config.refresh_hour,
         minute=local_rank_config.refresh_minute,
-        job_id="seer_local_rank_refresh",
+        job_id="local_rank_refresh",
     )
 
 
@@ -82,29 +82,28 @@ def register_rank_page_refresh_jobs(scheduler: Any) -> None:
     if not rank_config.enabled:
         return
 
+    registry = JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX)
     if rank_config.interval_minutes > 0:
         minute_pattern = (
             f"{rank_config.interval_offset_minutes}/{rank_config.interval_minutes}"
         )
-        add_or_replace_job(
-            scheduler,
+        registry.add(
             _scheduled_rank_page_refresh,
             "cron",
             minute=minute_pattern,
             jitter=rank_config.schedule_jitter_seconds,
-            job_id="seer_rank_page_refresh_interval",
+            job_id="rank_page_refresh_interval",
         )
 
     for refresh_time in rank_config.times:
         hour_text, minute_text = refresh_time.split(":", maxsplit=1)
-        add_or_replace_job(
-            scheduler,
+        registry.add(
             _scheduled_rank_page_refresh,
             "cron",
             hour=int(hour_text),
             minute=int(minute_text),
             jitter=rank_config.schedule_jitter_seconds,
-            job_id=f"seer_rank_page_refresh_{hour_text}{minute_text}",
+            job_id=f"rank_page_refresh_{hour_text}{minute_text}",
         )
 
 
