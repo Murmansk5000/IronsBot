@@ -1,11 +1,16 @@
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from types import SimpleNamespace
+from typing import cast
 
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.config.models.feature import FeatureConfig
+from ironsbot.config.models.seer import (
+    TeamResourceConfig,
+    TeamResourceSubscriptionConfig,
+)
+from tests.helpers.config import stub_app_config
 
 ROOT = Path(__file__).resolve().parents[1]
 TEAM_RESOURCE_THRESHOLD = 2000
@@ -23,13 +28,13 @@ def _load_team_resource_config_module():
     return module
 
 
-def _app_config(team_resource: TeamResourceConfig) -> SimpleNamespace:
-    return SimpleNamespace(
-        feature=SimpleNamespace(
+def _app_config(team_resource: TeamResourceConfig):
+    return stub_app_config(
+        feature_config=FeatureConfig(
             group_aliases={"example": 987654321},
             user_aliases={"owner": 1234567890},
         ),
-        seer=SimpleNamespace(team_resource=team_resource),
+        team_resource_config=team_resource,
     )
 
 
@@ -37,14 +42,17 @@ def test_team_resource_subscription_resolves_aliases(
     monkeypatch: MonkeyPatch,
 ) -> None:
     config = TeamResourceConfig(
-        subscriptions=[
-            {
-                "group": "example",
-                "team_ids": [1234567, 2345678],
-                "threshold": TEAM_RESOURCE_THRESHOLD,
-                "at_users": ["owner", "2345678901"],
-            }
-        ]
+        subscriptions=cast(
+            "list[TeamResourceSubscriptionConfig]",
+            [
+                {
+                    "group": "example",
+                    "team_ids": [1234567, 2345678],
+                    "threshold": TEAM_RESOURCE_THRESHOLD,
+                    "at_users": ["owner", "2345678901"],
+                }
+            ],
+        )
     )
     team_resource_config = _load_team_resource_config_module()
     monkeypatch.setattr(
@@ -69,12 +77,15 @@ def test_team_resource_disabled_has_no_subscriptions(
 ) -> None:
     config = TeamResourceConfig(
         enabled=False,
-        subscriptions=[
-            {
-                "group": "example",
-                "team_ids": [1234567],
-            }
-        ],
+        subscriptions=cast(
+            "list[TeamResourceSubscriptionConfig]",
+            [
+                {
+                    "group": "example",
+                    "team_ids": [1234567],
+                }
+            ],
+        ),
     )
     team_resource_config = _load_team_resource_config_module()
     monkeypatch.setattr(

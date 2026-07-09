@@ -1,33 +1,15 @@
-from dataclasses import dataclass
-from types import SimpleNamespace
-
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from pytest import MonkeyPatch
 
 from ironsbot.shared.features import visibility
+from tests.helpers.config import StubMessageAction, stub_app_config
+from tests.helpers.onebot_events import group_message_event
 
 
-@dataclass(frozen=True)
-class Action:
-    enabled: bool
-    feature: str
-
-
-def _group_event(text: str = "帮助") -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
+def _group_event(text: str = "帮助"):
+    return group_message_event(
+        text,
         user_id=2,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=4,
-        sender={},
     )
 
 
@@ -35,21 +17,12 @@ def _config(
     *,
     ai_intent_enabled: bool = True,
     team_subscriptions: list[object] | None = None,
-    group_actions: list[Action] | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        ai=SimpleNamespace(intent_actions_enabled=ai_intent_enabled),
-        message=SimpleNamespace(
-            group_commands=group_actions or [],
-            group_schedules=[],
-            private_commands=[],
-            private_schedules=[],
-        ),
-        seer=SimpleNamespace(
-            team_resource=SimpleNamespace(
-                subscriptions=team_subscriptions or [],
-            ),
-        ),
+    group_actions: list[StubMessageAction] | None = None,
+):
+    return stub_app_config(
+        ai_intent_enabled=ai_intent_enabled,
+        team_subscriptions=team_subscriptions,
+        group_actions=group_actions,
     )
 
 
@@ -120,7 +93,9 @@ def test_messaging_visibility_reads_app_config(
     monkeypatch.setattr(
         visibility,
         "get_app_config",
-        lambda: _config(group_actions=[Action(enabled=True, feature="text")]),
+        lambda: _config(
+            group_actions=[StubMessageAction(enabled=True, feature="text")]
+        ),
     )
     monkeypatch.setattr(
         visibility,

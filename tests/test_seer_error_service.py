@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
 
 from ironsbot.integrations.headless_seer.exception import (
     NotLoggedInError,
@@ -7,8 +7,13 @@ from ironsbot.integrations.headless_seer.exception import (
 from ironsbot.services.seer.errors import format_player_query_error
 
 
+@dataclass(frozen=True)
+class SocketHead:
+    result: int
+
+
 def test_format_player_query_error_for_missing_player() -> None:
-    error = SocketRecvError(SimpleNamespace(result=101105))
+    error = SocketRecvError(SocketHead(result=101105))
 
     assert (
         format_player_query_error(123456, error)

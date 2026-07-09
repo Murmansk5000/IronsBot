@@ -58,7 +58,7 @@ class PushManagementHandlerContext:
 
 @dataclass(frozen=True)
 class PushTimeValueContext:
-    selected: object
+    selected: int
     target_type: PushTargetType
     target_id: int
 
@@ -227,6 +227,9 @@ async def handle_push_time_select(
     if selected is None:
         await _handle_push_time_index(matcher, state, text, options)
         return
+    if not isinstance(selected, int):
+        state.pop(PUSH_TIME_SELECTED_KEY, None)
+        await matcher.finish()
 
     await _handle_push_time_value(
         matcher,
@@ -272,7 +275,7 @@ async def _handle_push_time_value(
     options: list[PushTimeOption],
     context: PushTimeValueContext,
 ) -> None:
-    selected_index = int(context.selected)
+    selected_index = context.selected
     if selected_index < 0 or selected_index >= len(options):
         state.pop(PUSH_TIME_SELECTED_KEY, None)
         await _reject_push_time_selection(

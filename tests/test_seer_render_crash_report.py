@@ -1,9 +1,10 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
+from ironsbot.config.models.runtime import LoggingConfig
 from ironsbot.services.seer import render_crash_report
+from tests.helpers.config import stub_app_config
 
 
 def test_render_crash_marker_clears_after_success(
@@ -49,12 +50,10 @@ def test_report_previous_render_crash_notifies_superusers(
     monkeypatch.setattr(
         render_crash_report,
         "get_app_config",
-        lambda: SimpleNamespace(
-            runtime=SimpleNamespace(
-                logging=SimpleNamespace(
-                    file_enabled=True,
-                    file_path=str(log_path),
-                )
+        lambda: stub_app_config(
+            logging_config=LoggingConfig(
+                file_enabled=True,
+                file_path=str(log_path),
             )
         ),
     )

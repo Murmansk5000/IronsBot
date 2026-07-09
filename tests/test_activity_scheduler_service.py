@@ -10,6 +10,7 @@ from ironsbot.services.activity.scheduler import (
     clear_reminder_jobs,
     register_scan_jobs,
     reminder_job_id,
+    replace_reminder_jobs,
     schedule_reminder_jobs,
 )
 
@@ -100,6 +101,32 @@ def test_schedule_reminder_jobs_groups_by_send_time() -> None:
     assert len(scheduler.jobs) == 1
     assert scheduler.jobs[0]["id"] == reminder_job_id(1, send_time)
     assert scheduler.jobs[0]["misfire_grace_time"] == EXPECTED_MISFIRE_GRACE_SECONDS
+
+
+def test_replace_reminder_jobs_keeps_scan_jobs_and_replaces_reminders() -> None:
+    scheduler = FakeScheduler()
+    send_time = dt(2026, 6, 12, 9)
+    scheduler.jobs = [
+        {"id": STARTUP_SCAN_JOB_ID},
+        {"id": DAILY_SCAN_JOB_ID},
+        {"id": f"{REMINDER_JOB_ID_PREFIX}1h_123"},
+        {"id": "other_job"},
+    ]
+
+    scheduled_count = replace_reminder_jobs(
+        scheduler,
+        _send,
+        [_reminder(1, send_time), _reminder(2, send_time)],
+        grace_minutes=15,
+    )
+
+    assert scheduled_count == EXPECTED_SCHEDULED_COUNT
+    assert [job["id"] for job in scheduler.jobs] == [
+        STARTUP_SCAN_JOB_ID,
+        DAILY_SCAN_JOB_ID,
+        "other_job",
+        reminder_job_id(1, send_time),
+    ]
 
 
 def test_clear_reminder_jobs_keeps_scan_jobs() -> None:

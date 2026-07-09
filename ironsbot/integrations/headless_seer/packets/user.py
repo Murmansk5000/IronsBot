@@ -1,52 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# public static void setForSimpleInfo(UserInfo info, ByteArray data)
-# {
-# 	info.hasSimpleInfo = true;
-# 	data.position = 0;
-# 	info.userID = (int)data.ReadUnsignedInt();
-# 	info.nick = data.ReadUTFByte(16);
-# 	info.color = (int)data.ReadUnsignedInt();
-# 	info.texture = (int)data.ReadUnsignedInt();
-# 	info.vip = (int)data.ReadUnsignedInt();
-# 	int num = (int)data.ReadUnsignedByte();
-# 	info.isExtremeNono = BitUtil.getBit(num, 1) > 0;
-# 	if (!info.isVip)
-# 	{
-# 		info.isExtremeNono = false;
-# 	}
-# 	info.status = (int)data.ReadUnsignedInt();
-# 	info.mapType = (int)data.ReadUnsignedInt();
-# 	info.mapID = (int)data.ReadUnsignedInt();
-# 	info.isCanBeTeacher = data.ReadUnsignedInt() == 1U;
-# 	info.teacherID = (int)data.ReadUnsignedInt();
-# 	info.studentID = (int)data.ReadUnsignedInt();
-# 	info.graduationCount = (int)data.ReadUnsignedInt();
-# 	info.vipLevel = (int)data.ReadUnsignedInt();
-# 	TeamInfo teamInfo = new TeamInfo(null);
-# 	teamInfo.id = (int)data.ReadUnsignedInt();
-# 	teamInfo.isShow = data.ReadUnsignedInt() > 0U;
-# 	info.teamInfo = teamInfo;
-# 	info.teamID = teamInfo.id;
-# 	int num2 = (int)data.ReadUnsignedInt();
-# 	info.clothes.Clear();
-# 	for (int i = 0; i < num2; i++)
-# 	{
-# 		int num3 = (int)data.ReadUnsignedInt();
-# 		int num4 = (int)data.ReadUnsignedInt();
-# 		info.clothes.Add(new PeopleItemInfo(num3, num4));
-# 	}
-# 	info.fightArenaPoint = (int)data.ReadUnsignedInt();
-# 	info.fireBuff = (int)data.ReadUnsignedByte();
-# 	info.loginTime = (int)data.ReadUnsignedInt();
-# 	info.ollast = (int)data.ReadUnsignedInt();
-# 	info.isFriend = data.ReadUnsignedByte() > 0;
-# 	info.isBlack = data.ReadUnsignedByte() > 0;
-# 	info._head_id = (int)data.ReadUnsignedInt();
-# 	info._head_id = ((info._head_id == 0) ? 1 : info._head_id);
-# 	info._head_frame_id = (int)data.ReadUnsignedInt();
-# 	info.nickBg = (int)data.ReadUnsignedInt();
-# 	info.nickBg = ((info.nickBg == 0) ? 33 : info.nickBg);
-# }
 from typing import Annotated
 
 import ironsbot.integrations.headless_seer.packet.fields as f
@@ -129,3 +81,12 @@ class OnLineInfo(Deserializable):
 class OnLineInfos(Deserializable):
     length: f.UInt
     infos: Annotated[list[OnLineInfo], f.Array[f.size_by("length"), OnLineInfo]]
+
+
+__all__ = [
+    "MoreInfo",
+    "OnLineInfo",
+    "OnLineInfos",
+    "UserForeverValue",
+    "UserInfo",
+]

@@ -1,10 +1,9 @@
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, PrivateMessageEvent
-
 from ironsbot.shared.messaging.conversations import (
     command_reply_check,
     event_conversation_session_id,
     is_self_message_event,
 )
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 
 def _group_event(
@@ -12,38 +11,19 @@ def _group_event(
     *,
     user_id: int = 2,
     self_id: int = 1,
-) -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=self_id,
-        post_type="message",
-        sub_type="normal",
+):
+    return group_message_event(
+        text,
         user_id=user_id,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
         group_id=4,
-        sender={},
+        self_id=self_id,
     )
 
 
-def _private_event(text: str = "帮助") -> PrivateMessageEvent:
-    return PrivateMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="friend",
+def _private_event(text: str = "帮助"):
+    return private_message_event(
+        text,
         user_id=2,
-        message_type="private",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
-        sender={},
     )
 
 

@@ -13,7 +13,6 @@ from ironsbot.plugins.db_sync import (
     register_local_database,
 )
 
-from . import db, image  # noqa: F401
 from .config import Config, get_data_sync_config
 
 _SEERAPI_DB = "seerapi"

@@ -1,13 +1,27 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import json
+import logging
 import random
 import time
 from typing import NamedTuple, overload
 
 import httpx
-from nonebot import logger
 
+from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
+from ironsbot.integrations.headless_seer.core import SeerConnect, SeerEncryptConnect
+from ironsbot.integrations.headless_seer.exception import ClientNotInitializedError
+from ironsbot.integrations.headless_seer.packets import (
+    DailyRankInfo,
+    DailyRankList,
+    DailyRankParam,
+    HeadInfo,
+    MoreInfo,
+    OnLineInfo,
+    SessionPackct,
+    SimpleTeamInfo,
+    UserInfo,
+)
 from ironsbot.integrations.headless_seer.peak import (
     PEAK_PET_KEY_MAP,
     PEAK_SUIT_KEY_MAP,
@@ -18,21 +32,11 @@ from ironsbot.integrations.headless_seer.peak import (
     PeakItemData,
     PeakType,
 )
-from ironsbot.plugins.headless_seer.packets.head import HeadInfo
-from ironsbot.plugins.headless_seer.packets.peak import DailyRankList
-
-from .command_id import COMMAND_ID
-from .core import SeerConnect, SeerEncryptConnect
-from .exception import ClientNotInitializedError
-from .packets import (
-    MoreInfo,
-    OnLineInfo,
-    SimpleTeamInfo,
-    UserInfo,
+from ironsbot.integrations.headless_seer.type_hint import (
+    CommandID,
+    SocketRecvPacketBody,
+    T_Deserializable,
 )
-from .packets.login import SessionPackct
-from .packets.peak import DailyRankInfo, DailyRankParam
-from .type_hint import CommandID, SocketRecvPacketBody, T_Deserializable
 
 __all__ = [
     "PEAK_PET_KEY_MAP",
@@ -45,6 +49,7 @@ __all__ = [
     "PeakType",
     "SeerGame",
 ]
+logger = logging.getLogger(__name__)
 
 
 class Address(NamedTuple):
@@ -197,7 +202,7 @@ class SeerGame:
                 if len(res) == 0:
                     raise RuntimeError("登录失败，响应为空")
             except BaseException as e:
-                logger.opt(exception=False).error(f"{self.user_id}：登录失败，原因 {e}")
+                logger.error(f"{self.user_id}：登录失败，原因 {e}")
                 impl.disconnect()
                 raise
 
@@ -255,8 +260,9 @@ class SeerGame:
             except asyncio.CancelledError:
                 return
             except Exception:
-                logger.opt(exception=True).warning(
-                    f"{self.user_id}：重连失败 ({attempt}/{retries_label})"
+                logger.warning(
+                    f"{self.user_id}：重连失败 ({attempt}/{retries_label})",
+                    exc_info=True,
                 )
             else:
                 logger.info(f"{self.user_id}：重连成功")

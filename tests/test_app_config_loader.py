@@ -4,6 +4,7 @@ import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -18,12 +19,20 @@ from ironsbot.config import (
     load_deployment_config,
     load_secrets_config,
 )
-from ironsbot.config.loader import CONFIG_EXAMPLE_PATH_ENV, ENV_EXAMPLE_PATH_ENV
+from ironsbot.config.loader import (
+    CONFIG_EXAMPLE_PATH_ENV,
+    ENV_EXAMPLE_PATH_ENV,
+    parse_toml_file,
+)
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
-from ironsbot.config.models.seer import RankPageRefreshConfig, TeamResourceConfig
+from ironsbot.config.models.seer import (
+    RankPageRefreshConfig,
+    TeamResourceConfig,
+    TeamResourceSubscriptionConfig,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
@@ -40,12 +49,12 @@ DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
-DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 0
-DEFAULT_RANK_REFRESH_INTERVAL_MINUTES = 0
-DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES = 0
-DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 0
-DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 0.0
-DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 0.0
+DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 1
+DEFAULT_RANK_REFRESH_INTERVAL_MINUTES = 15
+DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES = 4
+DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
+DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 3.0
+DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 3.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
@@ -76,7 +85,7 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\baction_templates\b",
     r"\bdefault_uids\b",
     r"\bextra_uids\b",
-    "\\[\\s*(?:\"fire_manual\"|'fire_manual'|fire_manual)\\s*(?:\\.|\\])",
+    r"\bfire_manual\b",
 )
 
 
@@ -150,62 +159,42 @@ def _assert_default_matcher_priorities(
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
 
 
-EXAMPLE_AI_CHAT_PRIORITY = 99
-EXAMPLE_SEER_PLAYER_PRIORITY = 5
-
-
-def _assert_example_matcher_priorities(
-    matcher_priority: MatcherPriorityConfig,
-) -> None:
-    assert matcher_priority.seer_query < matcher_priority.ai_chat
-    assert matcher_priority.ai_group_at < 0
-    assert matcher_priority.ai_mention_guard < 0
-    assert matcher_priority.ai_chat == EXAMPLE_AI_CHAT_PRIORITY
-    assert matcher_priority.seer_player == EXAMPLE_SEER_PLAYER_PRIORITY
-    assert matcher_priority.sendpic < matcher_priority.seer_pet
-    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
-    assert matcher_priority.seer_pet > matcher_priority.seer_rank
-    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
-    priorities = matcher_priority.model_dump()
-    non_negative_priorities = [value for value in priorities.values() if value >= 0]
-    assert len(non_negative_priorities) == len(set(non_negative_priorities))
-
-
 def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert "群星牌" in config.rank_keys
     assert config.target_limits == {}
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
     assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
-    assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
-    assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
-    assert (
-        config.interval_offset_minutes
-        == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
-    )
-    assert (
-        config.schedule_jitter_seconds
-        == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
-    )
-    assert (
-        config.request_interval_seconds
-        == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
-    )
-    assert (
-        config.request_jitter_seconds
-        == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
-    )
+    assert config.pages_per_run_min == 0
+    assert config.interval_minutes == 0
+    assert config.interval_offset_minutes == 0
+    assert config.schedule_jitter_seconds == 0
+    assert config.request_interval_seconds == 0.0
+    assert config.request_jitter_seconds == 0.0
     assert config.active_start == ""
     assert config.active_end == ""
     assert config.times == [
-        "01:15",
-        "01:45",
-        "02:15",
-        "02:45",
-        "03:15",
-        "03:45",
-        "04:15",
-        "04:45",
+            "01:15",
+            "01:45",
+            "02:15",
+            "02:45",
+            "03:15",
+            "03:45",
+            "04:15",
+            "04:45",
+        ]
+
+    assert config.pages_per_run == 10
+    assert config.rank_keys == [
+        "图鉴积分",
+        "成就点数",
+        "精灵图鉴",
+        "皮肤图鉴",
+        "套装图鉴",
+        "部件图鉴",
+        "座驾图鉴",
+        "刻印图鉴",
+        "群星牌",
     ]
 
 
@@ -241,7 +230,7 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
-    assert not config.runtime.data_sync.on_startup
+    assert config.runtime.data_sync.on_startup is False
     assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
@@ -250,8 +239,19 @@ def test_example_config_parses() -> None:
     assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
     assert config.runtime.logging.error_file_path == "/app/logs/ironsbot.error.log"
-    _assert_default_matcher_priorities(MatcherPriorityConfig())
-    _assert_example_matcher_priorities(config.runtime.matcher_priority)
+    matcher_priority = config.runtime.matcher_priority
+    assert matcher_priority.seer_query < matcher_priority.ai_chat
+    assert matcher_priority.ai_group_at < 0
+    assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_chat == 99
+    assert matcher_priority.seer_player == 5
+    assert matcher_priority.sendpic < matcher_priority.seer_pet
+    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
+    assert matcher_priority.seer_pet > matcher_priority.seer_rank
+    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
+    priorities = matcher_priority.model_dump()
+    non_negative_priorities = [value for value in priorities.values() if value >= 0]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
@@ -271,6 +271,10 @@ def test_example_config_parses() -> None:
     )
     assert remote_build_steps[2].inputs == {"debug_enabled": False}
     assert config.runtime.help.ignored_plugins == []
+
+
+def test_example_config_has_no_unknown_fields() -> None:
+    AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
 
 
 def test_public_config_docs_do_not_reference_stale_fields() -> None:
@@ -400,7 +404,7 @@ display_limit = "not an integer"
 
 def test_dev_and_prod_configs_parse() -> None:
     assert load_app_config(ROOT / "config.dev.toml").feature.group_aliases == {}
-    assert not load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+    assert load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
     assert (
         not load_app_config(ROOT / "config.prod.toml")
         .runtime.data_sync
@@ -409,17 +413,20 @@ def test_dev_and_prod_configs_parse() -> None:
 
 
 def test_team_resource_config_accepts_subscription_shapes() -> None:
-    config = TeamResourceConfig.model_validate({
-        "times": "08:30,23:00",
-        "subscriptions": [
-            {
-                "group": "anjie",
-                "team_ids": "1234567,2345678",
-                "threshold": TEAM_RESOURCE_THRESHOLD,
-                "at_users": "owner,1234567890",
-            }
-        ],
-    })
+    config = TeamResourceConfig(
+        times=cast("list[str]", "08:30,23:00"),
+        subscriptions=cast(
+            "list[TeamResourceSubscriptionConfig]",
+            [
+                {
+                    "group": "anjie",
+                    "team_ids": "1234567,2345678",
+                    "threshold": TEAM_RESOURCE_THRESHOLD,
+                    "at_users": "owner,1234567890",
+                }
+            ],
+        ),
+    )
 
     assert config.times == ["08:30", "23:00"]
     assert config.subscriptions[0].group == "anjie"
@@ -610,3 +617,53 @@ def test_seer_plugin_config_accessors_read_app_config(
         )
     finally:
         clear_app_config_cache()
+
+
+def test_refresh_and_startup_model_defaults_are_separate_from_public_example() -> None:
+    from ironsbot.config.models.runtime import (DataSyncConfig, LoggingConfig, MatcherPriorityConfig)
+
+    defaults = RankPageRefreshConfig()
+    assert defaults.rank_keys == [
+        "图鉴积分",
+        "成就点数",
+        "精灵图鉴",
+        "皮肤图鉴",
+        "套装图鉴",
+        "部件图鉴",
+        "座驾图鉴",
+        "刻印图鉴",
+        "群星牌",
+    ]
+    assert defaults.target_limits == {}
+    assert defaults.score_cutoffs == {"群星牌": 1000}
+    assert defaults.stale_age_weight == 0.08
+    assert defaults.stale_age_max_multiplier == 5.0
+    assert defaults.pages_per_run == 10
+    assert defaults.pages_per_run_min == 0
+    assert defaults.interval_minutes == 0
+    assert defaults.interval_offset_minutes == 0
+    assert defaults.schedule_jitter_seconds == 0
+    assert defaults.request_interval_seconds == 0.0
+    assert defaults.request_jitter_seconds == 0.0
+    assert defaults.active_start == ""
+    assert defaults.active_end == ""
+    assert defaults.times == [
+        "01:15",
+        "01:45",
+        "02:15",
+        "02:45",
+        "03:15",
+        "03:45",
+        "04:15",
+        "04:45",
+    ]
+    assert DataSyncConfig().on_startup is True
+    assert DataSyncConfig().startup_trigger_remote_build is False
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(pages_per_run=0)
+    with pytest.raises(ValidationError):
+        RankPageRefreshConfig(schedule_jitter_seconds=-1)
+
+    assert LoggingConfig().file_path == "logs/ironsbot.log"
+    assert LoggingConfig().error_file_path == "logs/ironsbot.error.log"
+    _assert_default_matcher_priorities(MatcherPriorityConfig())

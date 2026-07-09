@@ -1,8 +1,8 @@
 from collections.abc import Callable
-from types import SimpleNamespace
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.runtime import HeadlessNoticeConfig
 from ironsbot.plugins.headless_seer_notice import (
     runtime as headless_notice_runtime,
 )
@@ -59,7 +59,7 @@ def test_register_reconnect_checks_uses_standard_scheduler_fields(
     monkeypatch.setattr(
         headless_notice_runtime,
         "get_headless_notice_config",
-        lambda: SimpleNamespace(parsed_reconnect_check_times=["00:01", "00:02"]),
+        lambda: HeadlessNoticeConfig(reconnect_check_times="00:01,00:02"),
     )
 
     headless_notice_runtime._register_reconnect_checks(scheduler)

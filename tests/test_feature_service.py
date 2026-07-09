@@ -1,10 +1,9 @@
-from types import SimpleNamespace
-
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.feature import FEATURE_ALIASES, SEER_FEATURES, FeatureConfig
 from ironsbot.shared.features import service
 from ironsbot.shared.features.registry import features_for_module
+from tests.helpers.config import stub_app_config
 
 
 def test_feature_service_reads_app_config_feature(
@@ -20,7 +19,7 @@ def test_feature_service_reads_app_config_feature(
     monkeypatch.setattr(
         service,
         "get_app_config",
-        lambda: SimpleNamespace(feature=feature_config),
+        lambda: stub_app_config(feature_config=feature_config),
     )
 
     feature_service = service.FeatureService()
@@ -47,7 +46,7 @@ def test_feature_service_reads_query_alias(
     monkeypatch.setattr(
         service,
         "get_app_config",
-        lambda: SimpleNamespace(feature=feature_config),
+        lambda: stub_app_config(feature_config=feature_config),
     )
 
     feature_service = service.FeatureService()
@@ -71,7 +70,7 @@ def test_seer_alias_enables_all_seer_subfeatures(
     monkeypatch.setattr(
         service,
         "get_app_config",
-        lambda: SimpleNamespace(feature=feature_config),
+        lambda: stub_app_config(feature_config=feature_config),
     )
 
     feature_service = service.FeatureService()
@@ -91,7 +90,7 @@ def test_rank_alias_enables_seer_rank(
     monkeypatch.setattr(
         service,
         "get_app_config",
-        lambda: SimpleNamespace(feature=feature_config),
+        lambda: stub_app_config(feature_config=feature_config),
     )
 
     feature_service = service.FeatureService()
@@ -115,7 +114,7 @@ def test_all_feature_alias_does_not_include_admin_notice(
     monkeypatch.setattr(
         service,
         "get_app_config",
-        lambda: SimpleNamespace(feature=feature_config),
+        lambda: stub_app_config(feature_config=feature_config),
     )
 
     feature_service = service.FeatureService()

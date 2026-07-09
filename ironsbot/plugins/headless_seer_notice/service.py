@@ -1,3 +1,4 @@
+from ironsbot.integrations.headless_seer.client import client_manager
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -6,7 +7,6 @@ from ironsbot.plugins.headless_seer.config import (
     get_headless_config,
     get_headless_credentials,
 )
-from ironsbot.plugins.headless_seer.manager import client_manager
 
 HEADLESS_CONFIG_MISSING_MESSAGE = (
     "未配置 HEADLESS_SEER_USER_ID 或 HEADLESS_SEER_PASSWORD"

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable
 
 from ironsbot.services.seer.player_query import (
     PLAYER_AUTOCARD_KEY,
@@ -190,7 +191,7 @@ def test_optional_player_extra_skips_disabled_factory() -> None:
     async def run() -> str:
         return "unused"
 
-    def factory() -> object:
+    def factory() -> Awaitable[str]:
         nonlocal called
         called = True
         return run()

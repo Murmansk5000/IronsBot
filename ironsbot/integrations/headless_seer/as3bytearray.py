@@ -12,7 +12,7 @@ class AS3ByteArray(bytearray):
     # forked from https://github.com/wwqgtxx/lyp_pv/blob/master/lib/_b/_flash/byte_array.py
     __slots__ = ("_endian", "_pos")
 
-    def __init__(self, *args) -> None:
+    def __init__(self, *args: Any) -> None:
         super().__init__(*args)
         self._endian: EndianTypes = "!"
         self._pos: int = 0  # position
@@ -30,7 +30,7 @@ class AS3ByteArray(bytearray):
         try:
             out = bytes(self[self._pos : self._pos + size])
         except IndexError:
-            raise IndexError("no enough data to read, bytes size", size)
+            raise IndexError("no enough data to read, bytes size", size) from None
         self._pos += size
         return out
 
@@ -128,7 +128,7 @@ class AS3ByteArray(bytearray):
         # decode blob to text
         return blob.decode(charset)
 
-    def writeMultiByte(self, value: str, charset: str):
+    def writeMultiByte(self, value: str, charset: str) -> None:
         # encode text to binary
         blob = value.encode(charset)
         self.write_bytes(blob)
