@@ -24,12 +24,7 @@ from ironsbot.services.seer.rank_list_messages import (
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
 )
-from ironsbot.services.seer.rank_list_models import (
-    GLOBAL_RANKS,
-    RankCacheBatchCommand,
-    RankPageCacheRefreshCommand,
-    RankPageCacheStatusCommand,
-)
+from ironsbot.services.seer.rank_list_spec_resolution import get_global_rank_spec
 from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_page_refresh import (
     configured_rank_specs,
@@ -53,6 +48,12 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
+
+    from ironsbot.services.seer.rank_list_models import (
+        RankCacheBatchCommand,
+        RankPageCacheRefreshCommand,
+        RankPageCacheStatusCommand,
+    )
 
 
 async def handle_cache_batch(
@@ -100,7 +101,7 @@ async def handle_page_cache_status(
     state: T_State,
 ) -> None:
     command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
-    spec = GLOBAL_RANKS[command.rank_key]
+    spec = get_global_rank_spec(command.rank_key)
     pages = filter_standard_rank_page_summaries(
         spec,
         get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),

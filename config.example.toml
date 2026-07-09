@@ -669,10 +669,10 @@ active_end = "01:30"
 # EN: Additional fixed daily refresh times. Keep empty when interval_minutes is used.
 # ZH: 额外的每日固定刷榜时间；使用 interval_minutes 时通常保持为空。
 times = []
-# Default: collection-related global ranks.
+# Default: collection-related global ranks plus peak user rank lists.
 # EN: Global ranks included in scheduled page refresh.
-# ZH: 定时刷新的全服榜。
-rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴", "群星牌"]
+# ZH: 定时刷新的全服榜；竞技/狂野/专家段位使用当前巅峰赛季。
+rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "套装图鉴", "部件图鉴", "座驾图鉴", "刻印图鉴", "群星牌", "竞技段位", "狂野段位", "专家段位"]
 # Default: 24
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。

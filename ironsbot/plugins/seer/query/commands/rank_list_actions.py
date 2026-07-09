@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot import logger
 
 from ironsbot.integrations.headless_seer.client import get_game_client
@@ -10,16 +12,12 @@ from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_message,
 )
 from ironsbot.services.seer.rank_list_messages import format_local_rank_message
-from ironsbot.services.seer.rank_list_models import (
-    GLOBAL_RANKS,
-    GlobalRankSpec,
-    LocalRankSpec,
-    RankCacheBatchCommand,
-    RankListCommand,
-    RankScoreCommand,
-)
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
+)
+from ironsbot.services.seer.rank_list_spec_resolution import (
+    get_global_rank_spec,
+    global_rank_spec_needs_sub_key,
 )
 from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_pages import (
@@ -30,11 +28,23 @@ from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 
 from ..config import get_local_rank_config
 
+if TYPE_CHECKING:
+    from ironsbot.services.seer.rank_list_models import (
+        GlobalRankSpec,
+        LocalRankSpec,
+        RankCacheBatchCommand,
+        RankListCommand,
+        RankScoreCommand,
+    )
+
 
 async def build_global_rank_message(
     spec: GlobalRankSpec,
     command: RankListCommand,
 ) -> str:
+    spec = get_global_rank_spec(command.rank_key)
+    if global_rank_spec_needs_sub_key(spec):
+        return "❌找不到当前巅峰赛季数据。"
     game = get_game_client()
     result = await fetch_daily_rank_page_result(
         game,
@@ -58,6 +68,9 @@ async def build_global_rank_score_message(
     *,
     display_limit: int,
 ) -> str:
+    spec = get_global_rank_spec(command.rank_key)
+    if global_rank_spec_needs_sub_key(spec):
+        return "❌找不到当前巅峰赛季数据。"
     game = get_game_client()
     result = await fetch_rank_score_segment(
         game,
@@ -92,8 +105,10 @@ async def build_global_rank_score_message(
 async def cache_global_rank_batch(
     command: RankCacheBatchCommand,
 ) -> tuple[GlobalRankSpec, int, int]:
-    spec = GLOBAL_RANKS[command.rank_key]
+    spec = get_global_rank_spec(command.rank_key)
     requested_count = command.end_rank - command.start_rank + 1
+    if global_rank_spec_needs_sub_key(spec):
+        return spec, 0, requested_count
     count = min(requested_count, get_local_rank_config().batch_limit)
     raw_start = batch_raw_start(spec, command.start_rank)
     items = await fetch_daily_rank_page(

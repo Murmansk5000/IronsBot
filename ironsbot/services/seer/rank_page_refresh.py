@@ -15,6 +15,10 @@ from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
     GlobalRankSpec,
 )
+from ironsbot.services.seer.rank_list_spec_resolution import (
+    global_rank_spec_needs_sub_key,
+    resolve_global_rank_spec,
+)
 from ironsbot.services.seer.rank_page_cache_queries import (
     get_rank_page_cache_summary,
 )
@@ -115,7 +119,10 @@ def configured_rank_specs(
         if spec is None:
             continue
         seen.add(key)
-        specs.append((key, spec))
+        resolved_spec = resolve_global_rank_spec(spec)
+        if global_rank_spec_needs_sub_key(resolved_spec):
+            continue
+        specs.append((key, resolved_spec))
     return specs
 
 
