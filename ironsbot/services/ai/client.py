@@ -4,7 +4,7 @@ import httpx
 from nonebot import get_driver
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config, load_secrets_config
+from ironsbot.config.loader import get_app_config, load_secrets_config
 from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
 from ironsbot.services.ai.notifier import notify_superusers_once

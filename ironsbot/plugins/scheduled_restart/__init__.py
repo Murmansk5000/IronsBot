@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from .config import Config
+from ironsbot.config.models.app import AppConfig
 
 __plugin_meta__ = PluginMetadata(
     name="定时重启",
@@ -10,5 +10,5 @@ __plugin_meta__ = PluginMetadata(
         "runtime.restart.times 配置为 04:30,16:10 "
         "时每天在这些时间点重启。"
     ),
-    config=Config,
+    config=AppConfig,
 )

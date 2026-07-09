@@ -7,7 +7,7 @@ from hishel.httpx import AsyncCacheClient
 from httpx import AsyncClient
 from nonebot import get_driver, logger
 
-from . import _close_http_client, _http_client_instances
+from ironsbot.integrations.http_client import _close_http_client, _http_client_instances
 
 _http_client_runtime_state = {"registered": False}
 

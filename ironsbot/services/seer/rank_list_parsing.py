@@ -3,33 +3,6 @@ from __future__ import annotations
 
 import re
 
-from ironsbot.services.seer.rank_list_formatting import (
-    batch_raw_start,
-    format_rank_intervals,
-    merge_rank_intervals,
-    page_cache_rank_interval,
-)
-from ironsbot.services.seer.rank_list_formatting import (
-    timestamp_text as _timestamp_text,
-)
-from ironsbot.services.seer.rank_list_messages import (
-    build_local_rank_cache_status_message,
-    build_local_rank_refresh_empty_message,
-    build_local_rank_refresh_result_message,
-    build_local_rank_refresh_start_message,
-    build_rank_batch_no_players_message,
-    build_rank_batch_result_message,
-    build_rank_batch_start_message,
-    build_rank_page_cache_overview_message,
-    build_rank_page_cache_status_message,
-    build_rank_page_refresh_result_message,
-    build_rank_page_refresh_start_message,
-    format_global_rank_line,
-    format_global_rank_message,
-    format_global_rank_score_message,
-    format_local_rank_message,
-    format_refresh_ranges,
-)
 from ironsbot.services.seer.rank_list_models import (
     BATCH_CACHE_PREFIXES,
     GLOBAL_RANKS,
@@ -38,8 +11,6 @@ from ironsbot.services.seer.rank_list_models import (
     RANK_LIST_SIZE,
     RANK_PAGE_CACHE_REFRESH_PREFIXES,
     RANK_PAGE_CACHE_STATUS_PREFIXES,
-    GlobalRankSpec,
-    LocalRankSpec,
     RankCacheBatchCommand,
     RankListCommand,
     RankPageCacheRefreshCommand,
@@ -48,58 +19,16 @@ from ironsbot.services.seer.rank_list_models import (
 )
 
 __all__ = [
-    "BATCH_CACHE_PREFIXES",
-    "GLOBAL_RANKS",
-    "LOCAL_RANKS",
-    "RANK_LIST_MAX_SIZE",
-    "RANK_LIST_SIZE",
-    "RANK_PAGE_CACHE_REFRESH_PREFIXES",
-    "RANK_PAGE_CACHE_STATUS_PREFIXES",
-    "GlobalRankSpec",
-    "LocalRankSpec",
-    "RankCacheBatchCommand",
-    "RankListCommand",
-    "RankPageCacheRefreshCommand",
-    "RankPageCacheStatusCommand",
-    "RankScoreCommand",
-    "batch_raw_start",
-    "build_local_rank_cache_status_message",
-    "build_local_rank_refresh_empty_message",
-    "build_local_rank_refresh_result_message",
-    "build_local_rank_refresh_start_message",
-    "build_rank_batch_no_players_message",
-    "build_rank_batch_result_message",
-    "build_rank_batch_start_message",
-    "build_rank_page_cache_overview_message",
-    "build_rank_page_cache_status_message",
-    "build_rank_page_refresh_result_message",
-    "build_rank_page_refresh_start_message",
-    "format_global_rank_line",
-    "format_global_rank_message",
-    "format_global_rank_score_message",
-    "format_local_rank_message",
-    "format_rank_intervals",
-    "format_refresh_ranges",
-    "merge_rank_intervals",
-    "page_cache_rank_interval",
     "parse_rank_cache_batch_command",
     "parse_rank_list_command",
     "parse_rank_page_cache_refresh_command",
     "parse_rank_page_cache_status_command",
     "parse_rank_score_command",
-    "timestamp_text",
     "with_admin_prefix",
 ]
 
-
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(f"/{command}" for command in commands)
-
-
-def timestamp_text(timestamp: float) -> str:
-    return _timestamp_text(timestamp)
-
-
 
 
 def parse_rank_list_command(
@@ -260,7 +189,7 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
         "部件图鉴": ("部件图鉴榜", "部件榜"),
         "座驾图鉴": ("座驾图鉴榜", "座驾榜"),
         "刻印图鉴": ("刻印图鉴榜", "刻印榜"),
-        "群星牌": ("群星之巅榜", "群星百强榜", "群星牌百强榜"),
+        "群星牌": ("群星牌榜", "群星之巅榜", "群星百强榜", "群星牌百强榜"),
     }
     for key, names in aliases.items():
         for name in names:
@@ -277,7 +206,7 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
             "机器人精灵总数榜",
         ),
         "精灵图鉴": ("样本精灵榜", "机器人精灵榜"),
-        "群星牌": ("样本群星积分榜", "机器人群星积分榜"),
+        "群星牌": ("样本群星牌积分榜", "机器人群星牌积分榜"),
         "已解锁图鉴": ("样本已解锁图鉴榜", "机器人已解锁图鉴榜", "解锁图鉴榜"),
         "成就数量": ("样本成就数量榜", "机器人成就数量榜"),
         "竞技段位": ("样本竞技段位榜", "机器人竞技段位榜", "样本竞技榜"),
@@ -315,8 +244,6 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
             *(f"机器人{name}" for name in aliases.get(key, ())),
         )
         local_aliases[key] = (*local_aliases.get(key, ()), *names)
-        if key == "群星牌":
-            local_aliases[key] = tuple(name.replace("群星牌", "群星") for name in local_aliases[key])
 
     for key, names in local_aliases.items():
         for name in names:

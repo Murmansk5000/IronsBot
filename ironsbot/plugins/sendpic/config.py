@@ -2,18 +2,11 @@ from pathlib import Path
 
 from nonebot import get_driver
 
-from ironsbot.config import AppConfig, get_app_config, load_secrets_config
+from ironsbot.config.loader import get_app_config, load_secrets_config
 from ironsbot.config.models.message import (
-    DEFAULT_SENDPIC_MESSAGE_TEMPLATE,
     PicConfig,
-    SendpicBackendType,
     SendpicBehaviorConfig,
 )
-
-BackendType = SendpicBackendType
-Config = AppConfig
-DEFAULT_MESSAGE_TEMPLATE = DEFAULT_SENDPIC_MESSAGE_TEMPLATE
-SendpicConfig = SendpicBehaviorConfig
 
 
 def pic_id_is_enabled(config: SendpicBehaviorConfig, pic_id: str) -> bool:
@@ -56,11 +49,8 @@ def get_sendpic_local_root() -> Path:
 
 
 __all__ = [
-    "DEFAULT_MESSAGE_TEMPLATE",
-    "BackendType",
-    "Config",
     "PicConfig",
-    "SendpicConfig",
+    "SendpicBehaviorConfig",
     "enabled_pic_configs",
     "get_sendpic_cnb_repo",
     "get_sendpic_cnb_token",

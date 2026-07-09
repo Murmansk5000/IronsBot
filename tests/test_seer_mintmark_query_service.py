@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 import nonebot
 from pytest import MonkeyPatch
 
-from ironsbot.config import clear_app_config_cache
+from ironsbot.config.loader import clear_app_config_cache
 from ironsbot.config.models.seer import MintmarkQueryConfig
 
 if TYPE_CHECKING:

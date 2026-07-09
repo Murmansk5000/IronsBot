@@ -3,26 +3,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot import logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from ironsbot.plugins.admin_priority import release_superuser_priority
-from ironsbot.services.seer.client import get_game_client
-from ironsbot.services.seer.local_rank import (
-    get_local_rank_cache_stats,
-    get_local_rank_entries,
-)
+from ironsbot.services.admin_priority import release_superuser_priority
+from ironsbot.services.seer.local_rank import get_local_rank_cache_stats
 from ironsbot.services.seer.local_rank_refresh import (
     format_refresh_failures,
     refresh_local_rank_cache,
 )
 from ironsbot.services.seer.packets import ensure_extended_packets
-from ironsbot.services.seer.rank import (
-    fetch_daily_rank_page,
-    fetch_daily_rank_page_result,
-    fetch_rank_score_segment,
-    get_current_peak_sub_key,
-)
 from ironsbot.services.seer.rank_display import (
     build_rank_display_limit_denied_message,
     build_rank_display_limit_invalid_message,
@@ -30,17 +19,7 @@ from ironsbot.services.seer.rank_display import (
     rank_display_limit_for_group,
     set_group_rank_display_limit,
 )
-from ironsbot.services.seer.rank_list import (
-    GLOBAL_RANKS,
-    LOCAL_RANKS,
-    GlobalRankSpec,
-    LocalRankSpec,
-    RankCacheBatchCommand,
-    RankListCommand,
-    RankPageCacheRefreshCommand,
-    RankPageCacheStatusCommand,
-    RankScoreCommand,
-    batch_raw_start,
+from ironsbot.services.seer.rank_list_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
     build_local_rank_refresh_result_message,
@@ -52,12 +31,17 @@ from ironsbot.services.seer.rank_list import (
     build_rank_page_cache_status_message,
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
-    format_global_rank_message,
-    format_global_rank_score_message,
-    format_local_rank_message,
-    timestamp_text,
 )
-from ironsbot.services.seer.rank_page_cache import get_rank_page_cache_summary
+from ironsbot.services.seer.rank_list_models import (
+    GLOBAL_RANKS,
+    LOCAL_RANKS,
+    RankCacheBatchCommand,
+    RankListCommand,
+    RankPageCacheRefreshCommand,
+    RankPageCacheStatusCommand,
+    RankScoreCommand,
+)
+from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_page_refresh import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
@@ -74,6 +58,12 @@ from ironsbot.shared.messaging import (
 from ironsbot.shared.plugin_system import PluginContext, register_plugin
 
 from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
+from .rank_list_actions import (
+    build_global_rank_message,
+    build_global_rank_score_message,
+    build_local_rank_message,
+    cache_global_rank_batch,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -87,101 +77,6 @@ RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 RANK_PAGE_CACHE_REFRESH_COMMAND_KEY = "_rank_page_cache_refresh_command"
 RANK_DISPLAY_LIMIT_COMMAND_KEY = "_rank_display_limit_command"
 RANK_LIST_PLUGIN_NAME = "seer_rank_list"
-
-
-async def _build_global_rank_message(
-    spec: GlobalRankSpec,
-    command: RankListCommand,
-) -> str:
-    game = get_game_client()
-    result = await fetch_daily_rank_page_result(
-        game,
-        key=spec.key,
-        sub_key=spec.sub_key,
-        start=batch_raw_start(spec, command.start_rank),
-        count=command.limit,
-    )
-    return format_global_rank_message(
-        spec,
-        result.items,
-        timestamp=timestamp_text(result.fetched_at),
-        start_rank=command.start_rank,
-        requested_count=command.limit,
-    )
-
-
-async def _build_global_rank_score_message(
-    spec: GlobalRankSpec,
-    command: RankScoreCommand,
-    *,
-    display_limit: int,
-) -> str:
-    game = get_game_client()
-    result = await fetch_rank_score_segment(
-        game,
-        key=spec.key,
-        sub_key=spec.sub_key,
-        title=spec.title,
-        score_name=spec.unit,
-        target_score=command.score,
-        start_index=spec.start,
-        rank_offset=spec.rank_offset,
-    )
-    logger.info(
-        "rank score lookup completed: title={} key={} sub_key={} score={} "
-        "items={} boundary={} searched_limit={} truncated={}",
-        spec.title,
-        spec.key,
-        spec.sub_key,
-        command.score,
-        len(result.items),
-        result.boundary_score,
-        result.searched_limit,
-        result.truncated,
-    )
-    return format_global_rank_score_message(
-        spec,
-        result,
-        timestamp=timestamp_text(result.fetched_at) if result.fetched_at else None,
-        display_limit=display_limit,
-    )
-
-
-async def _cache_global_rank_batch(
-    command: RankCacheBatchCommand,
-) -> tuple[GlobalRankSpec, int, int]:
-    spec = GLOBAL_RANKS[command.rank_key]
-    requested_count = command.end_rank - command.start_rank + 1
-    count = min(requested_count, get_local_rank_config().batch_limit)
-    raw_start = batch_raw_start(spec, command.start_rank)
-    items = await fetch_daily_rank_page(
-        get_game_client(),
-        key=spec.key,
-        sub_key=spec.sub_key,
-        start=raw_start,
-        count=count,
-        use_cache=False,
-    )
-    return spec, len(items), requested_count
-
-
-def _build_local_rank_message(spec: LocalRankSpec, command: RankListCommand) -> str:
-    season_sub_key = get_current_peak_sub_key() if spec.season_limited else None
-    season_sub_key_text = str(season_sub_key) if season_sub_key is not None else None
-    entries, sample_count = get_local_rank_entries(
-        spec.metric_key,
-        limit=command.limit,
-        start_rank=command.start_rank,
-        season_sub_key=season_sub_key,
-    )
-    return format_local_rank_message(
-        spec,
-        entries,
-        sample_count=sample_count,
-        season_sub_key=season_sub_key_text,
-        start_rank=command.start_rank,
-        requested_count=command.limit,
-    )
 
 
 class RankListPlugin:
@@ -244,7 +139,7 @@ class RankListPlugin:
             await finish_event_reply(
                 matcher,
                 event,
-                await _build_global_rank_message(
+                await build_global_rank_message(
                     GLOBAL_RANKS[command.rank_key],
                     command,
                 ),
@@ -253,7 +148,7 @@ class RankListPlugin:
         await finish_event_reply(
             matcher,
             event,
-            _build_local_rank_message(LOCAL_RANKS[command.rank_key], command),
+            build_local_rank_message(LOCAL_RANKS[command.rank_key], command),
         )
 
     async def _handle_score(
@@ -266,7 +161,7 @@ class RankListPlugin:
         await finish_event_reply(
             matcher,
             event,
-            await _build_global_rank_score_message(
+            await build_global_rank_score_message(
                 GLOBAL_RANKS[command.rank_key],
                 command,
                 display_limit=rank_display_limit_for_group(_event_group_id(event)),
@@ -281,7 +176,7 @@ class RankListPlugin:
     ) -> None:
         ensure_extended_packets()
         command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
-        spec, item_count, requested_count = await _cache_global_rank_batch(command)
+        spec, item_count, requested_count = await cache_global_rank_batch(command)
         if item_count <= 0:
             await finish_event_reply(
                 matcher,

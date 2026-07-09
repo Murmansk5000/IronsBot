@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ironsbot.services.seer.rank_list_formatting import batch_raw_start, now_text
+from ironsbot.services.seer.rank_list_models import RANK_LIST_SIZE, GlobalRankSpec
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
+
+def format_global_rank_line(
+    item: Any,
+    *,
+    index: int,
+    spec: GlobalRankSpec,
+) -> str:
+    rank = index + 1 + spec.rank_offset
+    return f"{rank}. {item.nick}（{item.id}） {item.score}{spec.unit}"
+
+
+def format_global_rank_message(
+    spec: GlobalRankSpec,
+    items: Sequence[Any],
+    *,
+    timestamp: str | None = None,
+    start_rank: int = 1,
+    requested_count: int = RANK_LIST_SIZE,
+) -> str:
+    if not items:
+        return f"❌找不到{spec.title}数据。"
+
+    from ironsbot.services.seer.rank_list_formatting import format_rank_window
+
+    range_text = format_rank_window(start_rank, len(items), requested_count)
+    if range_text:
+        lines = [f"{spec.title}（{range_text}，截至{timestamp or now_text()}）"]
+    else:
+        lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
+    lines.extend(
+        format_global_rank_line(
+            item,
+            index=batch_raw_start(spec, start_rank) + index,
+            spec=spec,
+        )
+        for index, item in enumerate(items)
+    )
+    return "\n".join(lines)
+
+
+__all__ = [
+    "format_global_rank_line",
+    "format_global_rank_message",
+]

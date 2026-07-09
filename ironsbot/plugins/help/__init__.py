@@ -13,7 +13,8 @@ from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.matcher_priority import get_matcher_priority
@@ -56,7 +57,6 @@ DEFAULT_IGNORED_PLUGINS = [
 ]
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_PLUGIN_NAME = "help"
-Config = AppConfig
 HELP_GROUP_ORDER = (
     "core",
     "seer",
@@ -113,7 +113,7 @@ __plugin_meta__ = PluginMetadata(
         "📖 帮助 — 查看当前会话可用的功能列表，输入序号查看详细帮助\n"
         "帮助菜单会根据群号、用户 QQ、超级管理员和各插件变量自动过滤。"
     ),
-    config=Config,
+    config=AppConfig,
 )
 
 help_cmd = on_fullmatch(

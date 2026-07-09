@@ -27,10 +27,6 @@ PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
 
 
-def _default_sendpic_local_root() -> Path:
-    return Path("sendpic")
-
-
 class BaseMessageAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -288,31 +284,6 @@ class SendpicBehaviorConfig(BaseModel):
     @classmethod
     def normalize_enabled_ids(cls, value: object) -> object:
         return string_list(value)
-
-
-class SendpicConfig(SendpicBehaviorConfig):
-    cnb_token: str | None = None
-    local_root: Path = Field(default_factory=_default_sendpic_local_root)
-
-    @field_validator("configs")
-    @classmethod
-    def validate_pics(cls, value: list[PicConfig]) -> list[PicConfig]:
-        seen: set[str] = set()
-        for pic in value:
-            if pic.id in seen:
-                raise ValueError(f"图片类型【{pic.id}】重复")
-            seen.add(pic.id)
-
-        return value
-
-    @model_validator(mode="after")
-    def validate_configs(self) -> Self:
-        for pic in self.configs:
-            if pic.backend == "cnb" and (not self.cnb_token or not self.cnb_repo):
-                raise ValueError(  # noqa: TRY003
-                    f"CNB 相关配置未设置，而命令【{pic.command}】需要该配置"
-                )
-        return self
 
 
 class MessageConfig(BaseModel):

@@ -1,6 +1,6 @@
 import pytest
 
-from ironsbot.services.bilibili.cache import DynamicHistoryRecord
+from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
 from ironsbot.services.bilibili.menu import (
     build_dynamic_detail_for_selection,
     build_dynamic_menu_text,

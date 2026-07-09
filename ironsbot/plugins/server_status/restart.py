@@ -9,18 +9,10 @@ from anyio import Path as AsyncPath
 from .docker_update import (
     DockerUpdateResult,
     WatchtowerUpdateOptions,
-)
-from .docker_update import (
-    format_docker_update_reply as _format_docker_update_reply,
-)
-from .docker_update import (
-    is_docker_update_started as _is_docker_update_started,
-)
-from .docker_update import (
-    resolve_docker_container_name as _resolve_docker_container_name,
-)
-from .docker_update import (
-    start_watchtower_update as _start_watchtower_update,
+    format_docker_update_reply,
+    is_docker_update_started,
+    resolve_docker_container_name,
+    start_watchtower_update,
 )
 
 if TYPE_CHECKING:
@@ -36,12 +28,12 @@ class DockerSelfUpdateService:
         self._config = config
 
     def resolve_container_name(self) -> str:
-        return _resolve_docker_container_name(str(self._config.container_name))
+        return resolve_docker_container_name(str(self._config.container_name))
 
     async def run(self) -> tuple[str, DockerUpdateResult]:
         container_name = self.resolve_container_name()
         async with _docker_update_lock:
-            result = await _start_watchtower_update(
+            result = await start_watchtower_update(
                 container_name=container_name,
                 image=str(self._config.image),
                 socket_path=str(self._config.docker_socket_path),
@@ -65,12 +57,12 @@ class RestartService:
             return await self._prepare_restart_without_image_check()
 
         container_name, result = await DockerSelfUpdateService(self._config).run()
-        reply = _format_docker_update_reply(
+        reply = format_docker_update_reply(
             container_name=container_name,
             image=str(self._config.image),
             result=result,
         )
-        if _is_docker_update_started(result):
+        if is_docker_update_started(result):
             message = reply
             action: RestartAction = "none"
         elif result.up_to_date:

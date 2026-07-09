@@ -13,7 +13,7 @@ assert _SPEC is not None and _SPEC.loader is not None
 _CONFIG = module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_CONFIG)
 PicConfig = _CONFIG.PicConfig
-SendpicConfig = _CONFIG.SendpicConfig
+SendpicBehaviorConfig = _CONFIG.SendpicBehaviorConfig
 enabled_pic_configs = _CONFIG.enabled_pic_configs
 pic_id_is_enabled = _CONFIG.pic_id_is_enabled
 
@@ -29,7 +29,7 @@ def _pic(pic_id: str) -> PicConfig:
 
 
 def test_pic_id_is_enabled_uses_config_enabled_ids() -> None:
-    config = SendpicConfig(enabled_ids={"enabled"})
+    config = SendpicBehaviorConfig(enabled_ids={"enabled"})
 
     assert pic_id_is_enabled(config, "enabled")
     assert not pic_id_is_enabled(config, "disabled")
@@ -38,7 +38,7 @@ def test_pic_id_is_enabled_uses_config_enabled_ids() -> None:
 def test_enabled_pic_configs_filters_by_enabled_ids() -> None:
     enabled = _pic("enabled")
     disabled = _pic("disabled")
-    config = SendpicConfig(
+    config = SendpicBehaviorConfig(
         configs=[enabled, disabled],
         enabled_ids={"enabled"},
     )

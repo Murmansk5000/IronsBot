@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "ironsbot"
+PLUGIN_ROOT = PACKAGE_ROOT / "plugins"
 LAYER_ROOTS = (
     ROOT / "ironsbot" / "config",
     ROOT / "ironsbot" / "integrations",
@@ -45,6 +46,20 @@ def test_lower_layers_do_not_import_plugins() -> None:
     assert _plugin_import_offenders() == []
 
 
+def _plugin_absolute_import_offenders() -> list[str]:
+    return [
+        f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
+        for path in PLUGIN_ROOT.rglob("*.py")
+        for module_name in _imported_modules(path)
+        if module_name == "ironsbot.plugins"
+        or module_name.startswith("ironsbot.plugins.")
+    ]
+
+
+def test_plugins_do_not_absolute_import_other_plugins() -> None:
+    assert _plugin_absolute_import_offenders() == []
+
+
 def _star_import_offenders() -> list[str]:
     offenders: list[str] = []
     for path in _python_files(PACKAGE_ROOT):
@@ -63,3 +78,20 @@ def _star_import_offenders() -> list[str]:
 
 def test_production_code_does_not_use_star_imports() -> None:
     assert _star_import_offenders() == []
+
+
+def _forbidden_module_import_offenders(forbidden_modules: set[str]) -> list[str]:
+    return [
+        f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
+        for path in _python_files(PACKAGE_ROOT)
+        for module_name in _imported_modules(path)
+        if module_name in forbidden_modules
+    ]
+
+
+def test_production_code_uses_current_foundation_modules() -> None:
+    assert _forbidden_module_import_offenders(
+        {
+            "ironsbot.services.seer.client",
+        }
+    ) == []
