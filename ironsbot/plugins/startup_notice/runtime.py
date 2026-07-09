@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
 from ironsbot.shared.plugin_runtime.startup_ready import ensure_startup_ready
+from ironsbot.shared.runtime.startup_notice import startup_notice_parts
 
 from .config import get_startup_config
 from .service import StartupNoticeService
@@ -42,9 +43,6 @@ async def _send_notice_part(
 
 
 async def send_startup_notice(bot: Bot) -> None:
-    from ironsbot.plugins.db_sync.runtime import get_startup_sync_notice
-    from ironsbot.plugins.server_status.runtime import get_startup_docker_update_notice
-
     config = get_startup_config()
     if not startup_notice_service.should_send(config):
         return
@@ -72,27 +70,17 @@ async def send_startup_notice(bot: Bot) -> None:
             )
         )
 
-        startup_docker_update_notice = get_startup_docker_update_notice()
-        if startup_docker_update_notice:
-            summaries.append(
+        summaries.extend(
+            [
                 await _send_notice_part(
                     bot=bot,
-                    message_text=startup_docker_update_notice,
-                    subscription_key="startup_docker_update",
-                    action_name="startup docker update notice",
+                    message_text=part.message,
+                    subscription_key=part.subscription_key,
+                    action_name=part.action_name,
                 )
-            )
-
-        startup_sync_notice = get_startup_sync_notice()
-        if startup_sync_notice:
-            summaries.append(
-                await _send_notice_part(
-                    bot=bot,
-                    message_text=startup_sync_notice,
-                    subscription_key="startup_data_sync",
-                    action_name="startup data sync notice",
-                )
-            )
+                for part in startup_notice_parts()
+            ]
+        )
         succeeded = [
             target
             for summary in summaries

@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
 
-from ironsbot.services.activity import notice
+from ironsbot.services.activity import offer_notice as notice
 from ironsbot.services.activity.models import ActivityInfo
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -63,7 +63,7 @@ def test_offer_blocks_filters_notice_text_without_network(
 ) -> None:
     monkeypatch.setattr(
         notice,
-        "_fetch_unity_notice_text",
+        "fetch_unity_notice_text",
         lambda _now: (
             "◇「审判天使」\n"
             "首周优惠截止至6月12日 10:00\n"

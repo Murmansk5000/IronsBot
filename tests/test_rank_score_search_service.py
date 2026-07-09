@@ -1,7 +1,7 @@
 import pytest
 
 from ironsbot.config.models.seer import RankQueryConfig
-from ironsbot.services.seer.rank_score_search import (
+from ironsbot.services.seer.rank_score_search_support import (
     find_last_existing_score_index,
     score_search_probe_limit,
     score_search_tie_page_limit,

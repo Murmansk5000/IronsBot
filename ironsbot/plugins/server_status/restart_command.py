@@ -9,7 +9,7 @@ from nonebot import logger
 from ironsbot.shared.messaging import send_event_reply
 
 from .config import get_docker_update_config
-from .docker_update import (
+from .docker_update_client import (
     resolve_docker_container_name,
     restart_docker_container,
 )

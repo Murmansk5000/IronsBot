@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .adapters import dispatch_plugin
-from .base import Plugin, PluginBase, PluginContext
+from .base import Plugin, PluginContext
 from .registry import (
     PluginRegistry,
     PluginRegistryError,
@@ -12,7 +12,6 @@ from .registry import (
 
 __all__ = [
     "Plugin",
-    "PluginBase",
     "PluginContext",
     "PluginRegistry",
     "PluginRegistryError",

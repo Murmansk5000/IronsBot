@@ -6,7 +6,11 @@ from typing import Any
 from nonebot import get_driver
 from nonebot.log import logger
 
+from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
+
 from .config import get_docker_update_config
+from .docker_update_formatting import format_docker_update_reply
+from .restart import DockerSelfUpdateService
 
 _docker_update_runtime_state = {"registered": False}
 _startup_docker_update_state: dict[str, str | None] = {"notice": None}
@@ -23,11 +27,6 @@ async def _start_docker_update_runtime() -> None:
         logger.info("startup docker image check disabled")
         return
 
-    from ironsbot.plugins.server_status import (
-        DockerSelfUpdateService,
-        _format_docker_update_reply,
-    )
-
     docker_update_service = DockerSelfUpdateService(config)
     container_name = docker_update_service.resolve_container_name()
     logger.warning(
@@ -36,7 +35,7 @@ async def _start_docker_update_runtime() -> None:
         config.image,
     )
     container_name, result = await docker_update_service.run()
-    _startup_docker_update_state["notice"] = _format_docker_update_reply(
+    _startup_docker_update_state["notice"] = format_docker_update_reply(
         container_name=container_name,
         image=config.image,
         result=result,
@@ -55,6 +54,12 @@ def _setup_docker_update_runtime(driver: Any) -> None:
 
 
 def setup_docker_update_runtime() -> None:
+    register_startup_notice_provider(
+        "docker_update",
+        subscription_key="startup_docker_update",
+        action_name="startup docker update notice",
+        get_message=get_startup_docker_update_notice,
+    )
     _setup_docker_update_runtime(get_driver())
 
 

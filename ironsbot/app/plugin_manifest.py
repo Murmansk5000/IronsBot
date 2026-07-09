@@ -41,8 +41,10 @@ FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.ai_intent",
     "ironsbot.plugins.team_recommend",
     "ironsbot.plugins.bilibili",
+    "ironsbot.plugins.bilibili.commands",
     "ironsbot.plugins.about",
     "ironsbot.plugins.seer.query",
+    "ironsbot.plugins.seer.query.commands",
     "ironsbot.plugins.help",
     "ironsbot.plugins.help_hint",
     "ironsbot.plugins.team_audit_welcome",
@@ -51,6 +53,7 @@ FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.seer.rank_help",
     "ironsbot.plugins.scheduled_restart",
     "ironsbot.plugins.server_status",
+    "ironsbot.plugins.server_status.handlers",
     "ironsbot.plugins.startup_notice",
 )
 

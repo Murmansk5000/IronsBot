@@ -22,6 +22,3 @@ class Plugin(Protocol):
 
     async def handle(self, event: Any, context: PluginContext) -> Any:
         """Handle a matched event."""
-
-
-PluginBase = Plugin

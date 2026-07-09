@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from .config import Config
+from ironsbot.config.models.app import AppConfig
 
 __plugin_meta__ = PluginMetadata(
     name="自定义无头登录",
@@ -13,5 +13,5 @@ __plugin_meta__ = PluginMetadata(
         "检查无头状态，掉线则尝试重连。\n"
         "超级管理员可发送 /开服查询 触发开服查询和无头重连。"
     ),
-    config=Config,
+    config=AppConfig,
 )

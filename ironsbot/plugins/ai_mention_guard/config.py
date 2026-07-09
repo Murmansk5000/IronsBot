@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.ai import AiConfig
 
 

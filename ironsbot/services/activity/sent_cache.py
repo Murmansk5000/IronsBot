@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.shared.sqlite import open_sqlite_schema, resolve_sqlite_path
 
 from .planning import reminder_key

@@ -9,8 +9,8 @@ from typing import Any
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 
-from ironsbot.plugins.headless_seer_notice.service import login_headless_client
-from ironsbot.plugins.headless_seer_notice.state import (
+from ironsbot.services.headless_seer_notice.service import login_headless_client
+from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )

@@ -5,12 +5,14 @@ from pathlib import Path
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.seer import RankQueryConfig
-from ironsbot.services.seer import rank_page_cache
-from ironsbot.services.seer.rank_page_cache import (
+from ironsbot.services.seer import rank_page_cache_policy
+from ironsbot.services.seer.rank_page_cache_queries import (
     get_cached_rank_item,
     get_cached_rank_item_by_index,
     get_cached_rank_page_result,
     get_rank_page_cache_summary,
+)
+from ironsbot.services.seer.rank_page_cache_writer import (
     save_rank_page,
 )
 
@@ -32,7 +34,7 @@ class RankItem:
 
 def _patch_rank_cache_config(monkeypatch: MonkeyPatch, cache_path: Path) -> None:
     monkeypatch.setattr(
-        rank_page_cache,
+        rank_page_cache_policy,
         "get_rank_query_config",
         lambda: RankQueryConfig(
             page_cache=True,

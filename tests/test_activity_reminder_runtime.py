@@ -1,8 +1,15 @@
+import os
 from collections.abc import Callable
 from pathlib import Path
 
 import nonebot
 from pytest import MonkeyPatch
+
+from ironsbot.config.loader import clear_app_config_cache
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()
@@ -13,8 +20,10 @@ from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.plugins import activity
 from ironsbot.plugins.activity import runtime as activity_runtime
 from ironsbot.services.activity.delivery import ActivityReminderTargets
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
+)
+from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from tests.helpers.config import stub_app_config

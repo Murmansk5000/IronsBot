@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 
 if TYPE_CHECKING:
     from ironsbot.config.models.runtime import LoggingConfig

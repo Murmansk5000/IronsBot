@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.services.seer.formatting import format_datetime
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.local_rank import LocalRankSummary
-    from ironsbot.services.seer.rank import RankLookupResult
+    from ironsbot.services.seer.local_rank_models import LocalRankSummary
+    from ironsbot.services.seer.rank_models import RankLookupResult
 
 METRIC_SEPARATOR = "\uFF5C"
 PEAK_RANK_NAMES = {

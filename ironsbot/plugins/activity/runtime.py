@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
+from ironsbot.services.activity.config import get_activity_config
 from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
     build_reminder_delivery,
 )
+from ironsbot.services.activity.runtime_keys import ACTIVITY_REMINDER_REFRESH_KEY
 from ironsbot.services.activity.scheduler import (
-    clear_reminder_jobs,
     register_scan_jobs,
-    schedule_reminder_jobs,
+    replace_reminder_jobs,
 )
 from ironsbot.services.activity.seer_activity import (
     scheduled_reminders,
@@ -22,14 +23,16 @@ from ironsbot.services.activity.seer_activity import (
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 from ironsbot.shared.config.parsing import positive_int_list
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
+)
+from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
+from ironsbot.shared.runtime.refresh import register_runtime_refresh
 
 from . import _now, _seer_activity_source
-from .config import get_activity_config
 
 if TYPE_CHECKING:
     from ironsbot.services.activity.models import ActivityReminder
@@ -96,8 +99,6 @@ async def schedule_activity_reminders() -> None:
     if not config.enabled:
         return
 
-    clear_reminder_jobs(scheduler)
-
     try:
         reminders = filter_unsent(
             scheduled_reminders(
@@ -115,7 +116,7 @@ async def schedule_activity_reminders() -> None:
         logger.info("activity reminder scan found no pending reminders")
         return
 
-    scheduled_count = schedule_reminder_jobs(
+    scheduled_count = replace_reminder_jobs(
         scheduler,
         send_activity_reminder,
         reminders,
@@ -126,7 +127,7 @@ async def schedule_activity_reminders() -> None:
 
 
 def _activity_push_store() -> PushUnsubscribeStore:
-    from ironsbot.config import get_app_config
+    from ironsbot.config.loader import get_app_config
 
     return PushUnsubscribeStore(get_app_config().message.push_unsubscribe.data_path)
 
@@ -191,6 +192,7 @@ def _setup_activity_reminder_runtime(driver: Any, scheduler: Any) -> None:
         return
 
     _activity_reminder_runtime_state["scheduler"] = scheduler
+    register_runtime_refresh(ACTIVITY_REMINDER_REFRESH_KEY, schedule_activity_reminders)
 
     @driver.on_startup
     async def _register_activity_reminder_jobs_on_startup() -> None:

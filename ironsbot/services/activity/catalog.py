@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from nonebot.log import logger
 
 from .models import ActivityInfo
-from .notice import offer_blocks, offer_end_time, offer_window_from_blocks
+from .offer_notice import offer_blocks, offer_end_time, offer_window_from_blocks
 from .planning import activity_sort_end_time
 
 if TYPE_CHECKING:

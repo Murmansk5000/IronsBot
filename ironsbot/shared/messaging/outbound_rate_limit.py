@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.shared.features import feature_service
 from ironsbot.shared.messaging.rate_limits import (
     hit_sliding_window_rate_limit,

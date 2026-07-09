@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
     from ironsbot.config.models.bilibili import BiliPushMode
-    from ironsbot.shared.messaging.push_subscriptions import PushTargetType
+    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
 BiliRuntimePushMode = Literal["full", "link"]

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from nonebot.plugin import PluginMetadata
 
-from .config import Config
+from ironsbot.config.models.app import AppConfig
 
 NORMAL_SERVER_STATUS_COMMAND = "开服了吗"
 DISABLED_BARE_ADMIN_COMMAND = "开服查询"
@@ -30,7 +30,7 @@ __plugin_meta__ = PluginMetadata(
   Broadcast targets use FEATURE_GROUP_POLICY / FEATURE_USER_POLICY
   feature: server_status_push.
   配置的目标广播。""",
-    config=Config,
+    config=AppConfig,
     supported_adapters={"~onebot.v11"},
 )
 

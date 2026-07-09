@@ -1,4 +1,4 @@
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.runtime import StartupConfig
 
 

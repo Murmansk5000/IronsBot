@@ -1,20 +1,27 @@
 import asyncio
 import hashlib
+import os
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import nonebot
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
+from ironsbot.config.loader import clear_app_config_cache
 from ironsbot.config.models.runtime import (
     DataSyncConfig,
     RemoteBuildConfig,
     RemoteBuildStepConfig,
 )
 from ironsbot.config.models.secrets import SecretsConfig
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()
@@ -27,9 +34,12 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.plugins import db_sync
+from ironsbot.integrations.db_sync import registry as db_sync_registry
+from ironsbot.integrations.db_sync import runner as db_sync_runner
+from ironsbot.integrations.db_sync import state as db_sync_state
+from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
+from ironsbot.integrations.db_sync.models import SyncEntry
 from ironsbot.plugins.db_sync import runtime as db_sync_runtime
-from ironsbot.plugins.db_sync.github_actions import WorkflowRunResult
 
 CONNECT_ERROR_MESSAGE = "connection failed"
 
@@ -45,6 +55,10 @@ def _data_sync_config(
         on_startup=on_startup,
         startup_trigger_remote_build=startup_trigger_remote_build,
     )
+
+
+def _app_config(*, data_sync: DataSyncConfig) -> object:
+    return SimpleNamespace(runtime=SimpleNamespace(data_sync=data_sync))
 
 
 def _secrets_config(*, github_workflow_token: str) -> SecretsConfig:
@@ -90,17 +104,21 @@ def test_register_database_defers_engine_and_scheduler_setup(
     monkeypatch: MonkeyPatch,
 ) -> None:
     registered_engines: list[str] = []
-    monkeypatch.setattr(db_sync, "_registered_syncs", {})
-    monkeypatch.setattr(db_sync, "_registered_local_databases", {})
-    monkeypatch.setattr(db_sync.db_manager, "register", registered_engines.append)
+    monkeypatch.setattr(db_sync_state, "registered_syncs", {})
+    monkeypatch.setattr(db_sync_state, "registered_local_databases", {})
+    monkeypatch.setattr(
+        db_sync_runner.db_manager,
+        "register",
+        registered_engines.append,
+    )
 
-    db_sync.register_database(
+    db_sync_registry.register_database(
         "unit",
         sync_url="https://example.invalid/unit.sqlite",
         sync_interval_minutes=15,
     )
 
-    assert "unit" in db_sync._registered_syncs
+    assert "unit" in db_sync_state.registered_syncs
     assert registered_engines == []
 
 
@@ -109,11 +127,9 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
 ) -> None:
     registered_engines: list[str] = []
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "unit": db_sync._SyncEntry(
+            "unit": SyncEntry(
                 "https://example.invalid/unit.sqlite",
                 15,
                 None,
@@ -122,13 +138,19 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
             )
         },
     )
-    monkeypatch.setattr(db_sync, "_registered_local_databases", {})
-    monkeypatch.setattr(db_sync, "_prepared_databases", set())
-    monkeypatch.setattr(db_sync.db_manager, "register", registered_engines.append)
+    monkeypatch.setattr(db_sync_state, "registered_local_databases", {})
+    monkeypatch.setattr(db_sync_state, "prepared_databases", set())
+    monkeypatch.setattr(
+        db_sync_runner.db_manager,
+        "register",
+        registered_engines.append,
+    )
     monkeypatch.setattr(
         db_sync_runtime,
-        "get_data_sync_config",
-        lambda: _data_sync_config(interval_enabled=True, on_startup=False),
+        "get_app_config",
+        lambda: _app_config(
+            data_sync=_data_sync_config(interval_enabled=True, on_startup=False)
+        ),
     )
 
     asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
@@ -136,7 +158,7 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
     assert registered_engines == ["unit"]
     assert scheduler.jobs == [
         {
-            "func": db_sync.run_sync_database,
+            "func": db_sync_runner.run_sync_database,
             "trigger": "interval",
             "args": ["unit"],
             "minutes": 15,
@@ -151,11 +173,9 @@ def test_db_sync_startup_can_trigger_remote_build(
 ) -> None:
     calls: list[bool] = []
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "unit": db_sync._SyncEntry(
+            "unit": SyncEntry(
                 "https://example.invalid/unit.sqlite",
                 15,
                 None,
@@ -164,17 +184,19 @@ def test_db_sync_startup_can_trigger_remote_build(
             )
         },
     )
-    monkeypatch.setattr(db_sync, "_registered_local_databases", {})
-    monkeypatch.setattr(db_sync, "_prepared_databases", set())
-    monkeypatch.setattr(db_sync.db_manager, "register", lambda _name: None)
-    monkeypatch.setattr(db_sync, "load_cached_database", lambda _name: False)
+    monkeypatch.setattr(db_sync_state, "registered_local_databases", {})
+    monkeypatch.setattr(db_sync_state, "prepared_databases", set())
+    monkeypatch.setattr(db_sync_runner.db_manager, "register", lambda _name: None)
+    monkeypatch.setattr(db_sync_runner, "load_cached_database", lambda _name: False)
     monkeypatch.setattr(
         db_sync_runtime,
-        "get_data_sync_config",
-        lambda: _data_sync_config(
-            interval_enabled=False,
-            on_startup=True,
-            startup_trigger_remote_build=True,
+        "get_app_config",
+        lambda: _app_config(
+            data_sync=_data_sync_config(
+                interval_enabled=False,
+                on_startup=True,
+                startup_trigger_remote_build=True,
+            )
         ),
     )
 
@@ -186,13 +208,11 @@ def test_db_sync_startup_can_trigger_remote_build(
         return True, {"unit": True}
 
     monkeypatch.setattr(
-        db_sync,
+        db_sync_runner,
         "run_sync_all_databases",
         fake_run_sync_all_databases,
     )
-    monkeypatch.setattr(
-        db_sync,
-        "format_sync_result_notice",
+    monkeypatch.setattr(db_sync_runner, "format_sync_result_notice",
         lambda results, *, title_prefix: f"{title_prefix}:{results}",
     )
 
@@ -209,11 +229,9 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
 ) -> None:
     loaded: list[str] = []
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "unit": db_sync._SyncEntry(
+            "unit": SyncEntry(
                 "https://example.invalid/unit.sqlite",
                 15,
                 None,
@@ -222,17 +240,19 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
             )
         },
     )
-    monkeypatch.setattr(db_sync, "_registered_local_databases", {})
-    monkeypatch.setattr(db_sync, "_prepared_databases", set())
-    monkeypatch.setattr(db_sync.db_manager, "register", lambda _name: None)
-    monkeypatch.setattr(db_sync, "load_cached_database", loaded.append)
+    monkeypatch.setattr(db_sync_state, "registered_local_databases", {})
+    monkeypatch.setattr(db_sync_state, "prepared_databases", set())
+    monkeypatch.setattr(db_sync_runner.db_manager, "register", lambda _name: None)
+    monkeypatch.setattr(db_sync_runner, "load_cached_database", loaded.append)
     monkeypatch.setattr(
         db_sync_runtime,
-        "get_data_sync_config",
-        lambda: _data_sync_config(
-            interval_enabled=False,
-            on_startup=True,
-            startup_trigger_remote_build=False,
+        "get_app_config",
+        lambda: _app_config(
+            data_sync=_data_sync_config(
+                interval_enabled=False,
+                on_startup=True,
+                startup_trigger_remote_build=False,
+            )
         ),
     )
 
@@ -244,13 +264,11 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
         return True, {"unit": False}
 
     monkeypatch.setattr(
-        db_sync,
+        db_sync_runner,
         "run_sync_all_databases",
         fake_run_sync_all_databases,
     )
-    monkeypatch.setattr(
-        db_sync,
-        "format_sync_result_notice",
+    monkeypatch.setattr(db_sync_runner, "format_sync_result_notice",
         lambda results, *, title_prefix: f"{title_prefix}:{results}",
     )
 
@@ -305,18 +323,16 @@ def test_manual_sync_triggers_remote_build_before_download(
     monkeypatch: MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "seerapi": db_sync._SyncEntry(
+            "seerapi": SyncEntry(
                 "https://example.invalid/seerapi.sqlite",
                 60,
                 None,
                 None,
                 _remote_build_config(),
             ),
-            "aliases": db_sync._SyncEntry(
+            "aliases": SyncEntry(
                 "https://example.invalid/aliases.sqlite",
                 60,
                 None,
@@ -325,9 +341,7 @@ def test_manual_sync_triggers_remote_build_before_download(
             ),
         },
     )
-    monkeypatch.setattr(
-        db_sync,
-        "load_secrets_config",
+    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
         lambda: _secrets_config(github_workflow_token="token"),
     )
 
@@ -349,10 +363,10 @@ def test_manual_sync_triggers_remote_build_before_download(
         calls.append(f"sync:{name}")
         return True
 
-    monkeypatch.setattr(db_sync, "trigger_and_wait_workflow", fake_build)
-    monkeypatch.setattr(db_sync, "sync_database", fake_sync)
+    monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
+    monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
 
     assert results == {"seerapi": True, "aliases": True}
     assert calls == [
@@ -366,11 +380,9 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
     monkeypatch: MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "seerapi": db_sync._SyncEntry(
+            "seerapi": SyncEntry(
                 "https://example.invalid/seerapi.sqlite",
                 60,
                 None,
@@ -379,9 +391,7 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
             ),
         },
     )
-    monkeypatch.setattr(
-        db_sync,
-        "load_secrets_config",
+    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
         lambda: _secrets_config(github_workflow_token="token"),
     )
 
@@ -403,10 +413,10 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
         calls.append(f"sync:{name}")
         return True
 
-    monkeypatch.setattr(db_sync, "trigger_and_wait_workflow", fake_build)
-    monkeypatch.setattr(db_sync, "sync_database", fake_sync)
+    monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
+    monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
 
     assert results == {"seerapi": True}
     assert calls == [
@@ -422,18 +432,16 @@ def test_remote_build_failure_skips_old_release_download(
     monkeypatch: MonkeyPatch,
 ) -> None:
     synced: list[str] = []
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "seerapi": db_sync._SyncEntry(
+            "seerapi": SyncEntry(
                 "https://example.invalid/seerapi.sqlite",
                 60,
                 None,
                 None,
                 _remote_build_config(),
             ),
-            "aliases": db_sync._SyncEntry(
+            "aliases": SyncEntry(
                 "https://example.invalid/aliases.sqlite",
                 60,
                 None,
@@ -442,9 +450,7 @@ def test_remote_build_failure_skips_old_release_download(
             ),
         },
     )
-    monkeypatch.setattr(
-        db_sync,
-        "load_secrets_config",
+    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
         lambda: _secrets_config(github_workflow_token="token"),
     )
 
@@ -465,10 +471,10 @@ def test_remote_build_failure_skips_old_release_download(
         synced.append(name)
         return True
 
-    monkeypatch.setattr(db_sync, "trigger_and_wait_workflow", fake_build)
-    monkeypatch.setattr(db_sync, "sync_database", fake_sync)
+    monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
+    monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
 
     assert results == {"seerapi": False, "aliases": True}
     assert synced == ["aliases"]
@@ -478,11 +484,9 @@ def test_scheduled_sync_does_not_trigger_remote_build(
     monkeypatch: MonkeyPatch,
 ) -> None:
     synced: list[str] = []
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "seerapi": db_sync._SyncEntry(
+            "seerapi": SyncEntry(
                 "https://example.invalid/seerapi.sqlite",
                 60,
                 None,
@@ -504,10 +508,10 @@ def test_scheduled_sync_does_not_trigger_remote_build(
         synced.append(name)
         return True
 
-    monkeypatch.setattr(db_sync, "trigger_and_wait_workflow", fail_build)
-    monkeypatch.setattr(db_sync, "sync_database", fake_sync)
+    monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fail_build)
+    monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync.sync_all_databases())
+    results = asyncio.run(db_sync_runner.sync_all_databases())
 
     assert results == {"seerapi": True}
     assert synced == ["seerapi"]
@@ -517,11 +521,9 @@ def test_remote_build_enabled_without_token_fails_fast(
     monkeypatch: MonkeyPatch,
 ) -> None:
     synced: list[str] = []
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "seerapi": db_sync._SyncEntry(
+            "seerapi": SyncEntry(
                 "https://example.invalid/seerapi.sqlite",
                 60,
                 None,
@@ -530,9 +532,7 @@ def test_remote_build_enabled_without_token_fails_fast(
             )
         },
     )
-    monkeypatch.setattr(
-        db_sync,
-        "load_secrets_config",
+    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
         lambda: _secrets_config(github_workflow_token=""),
     )
 
@@ -540,9 +540,9 @@ def test_remote_build_enabled_without_token_fails_fast(
         synced.append(name)
         return True
 
-    monkeypatch.setattr(db_sync, "sync_database", fake_sync)
+    monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
 
     assert results == {"seerapi": False}
     assert synced == []
@@ -569,12 +569,10 @@ def test_sync_database_handles_connect_error(monkeypatch: MonkeyPatch) -> None:
         def stream(self, *_args: object, **_kwargs: object) -> FailingStream:
             return FailingStream()
 
-    monkeypatch.setattr(db_sync.httpx, "AsyncClient", FakeClient)
-    monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+    monkeypatch.setattr(db_sync_runner.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "network_fail": db_sync._SyncEntry(
+            "network_fail": SyncEntry(
                 "https://example.invalid/data.sqlite",
                 60,
                 None,
@@ -583,7 +581,7 @@ def test_sync_database_handles_connect_error(monkeypatch: MonkeyPatch) -> None:
         },
     )
 
-    result = asyncio.run(db_sync.sync_database("network_fail"))
+    result = asyncio.run(db_sync_runner.sync_database("network_fail"))
 
     assert result is False
 
@@ -633,15 +631,17 @@ def test_sync_database_skips_download_when_local_matches_remote(
     def fake_load_from_file(name: str, file_path: str) -> None:
         loaded.append((name, file_path))
 
-    monkeypatch.setattr(db_sync.httpx, "AsyncClient", FakeClient)
-    monkeypatch.setattr(db_sync.db_manager, "load_from_file", fake_load_from_file)
-    monkeypatch.setattr(db_sync, "_last_sync_statuses", {})
-    monkeypatch.setattr(db_sync, "_fingerprints", {})
+    monkeypatch.setattr(db_sync_runner.httpx, "AsyncClient", FakeClient)
     monkeypatch.setattr(
-        db_sync,
-        "_registered_syncs",
+        db_sync_runner.db_manager,
+        "load_from_file",
+        fake_load_from_file,
+    )
+    monkeypatch.setattr(db_sync_state, "last_sync_statuses", {})
+    monkeypatch.setattr(db_sync_state, "fingerprints", {})
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
         {
-            "same": db_sync._SyncEntry(
+            "same": SyncEntry(
                 "https://example.invalid/data.sqlite",
                 60,
                 fake_fingerprint,
@@ -650,12 +650,12 @@ def test_sync_database_skips_download_when_local_matches_remote(
         },
     )
 
-    result = asyncio.run(db_sync.sync_database("same"))
+    result = asyncio.run(db_sync_runner.sync_database("same"))
 
     assert result is True
     assert streamed == []
     assert loaded == [("same", str(db_path))]
-    status = db_sync._last_sync_statuses["same"]
+    status = db_sync_state.last_sync_statuses["same"]
     assert status.ok is True
     assert status.skipped is True
     assert status.local_before.fingerprint == fingerprint

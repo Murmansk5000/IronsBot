@@ -131,6 +131,24 @@ ignore = [
     "TRY003",
     "TRY301",
 ]
+"ironsbot/integrations/headless_seer/**/*.py" = [
+    "ANN002",
+    "ANN201",
+    "B904",
+    "BLE001",
+    "C901",
+    "E501",
+    "FBT001",
+    "FBT002",
+    "PERF401",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR2004",
+    "TRY003",
+    "TRY301",
+    "TRY400",
+]
 "ironsbot/plugins/bilibili/auth.py" = [
     "BLE001",
     "FBT001",

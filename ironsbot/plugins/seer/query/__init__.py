@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot.plugin import PluginMetadata
 
-from . import commands as commands
-
 __plugin_meta__ = PluginMetadata(
     name="赛尔号查询",
     description="按当前权限开放赛尔号查询子功能",
@@ -11,5 +9,3 @@ __plugin_meta__ = PluginMetadata(
         "seer_mintmark 等子功能动态显示可用指令。"
     ),
 )
-
-__all__ = ["commands"]

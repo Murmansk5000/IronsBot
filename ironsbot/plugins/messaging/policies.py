@@ -1,4 +1,4 @@
-from ironsbot.plugins.admin_priority import wait_for_superuser_priority
+from ironsbot.services.admin_priority import wait_for_superuser_priority
 from ironsbot.shared.messaging import configure_reply_delivery_policy
 
 _policy_state = {"registered": False}

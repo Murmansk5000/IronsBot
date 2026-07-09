@@ -3,18 +3,18 @@ import httpx
 from nonebot import logger, require
 from nonebot.plugin import PluginMetadata
 
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
+
 require("ironsbot.plugins.db_sync")
 require("ironsbot.plugins.http_client")
 
 from ironsbot.config.models.runtime import RemoteBuildConfig
-from ironsbot.plugins.db_sync import (
-    GetFingerprintFn,
+from ironsbot.integrations.db_sync.models import GetFingerprintFn
+from ironsbot.integrations.db_sync.registry import (
     register_database,
     register_local_database,
 )
-
-from . import db, image  # noqa: F401
-from .config import Config, get_data_sync_config
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
@@ -53,7 +53,7 @@ def _fingerprint_getter(url: str) -> GetFingerprintFn | None:
 
 
 def _register_source(name: str) -> None:
-    source = get_data_sync_config().sources.get(name)
+    source = get_app_config().runtime.data_sync.sources.get(name)
     if source is None:
         logger.warning(f"数据源 '{name}' 未在 runtime.data_sync.sources 中配置")
         return
@@ -75,5 +75,5 @@ __plugin_meta__ = PluginMetadata(
     name="赛尔号数据",
     description="赛尔号 API 数据库同步、查询依赖与游戏资源图片获取",
     usage="其他插件通过 require 后使用 db 与 image 模块中的依赖注入",
-    config=Config,
+    config=AppConfig,
 )

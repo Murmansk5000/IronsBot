@@ -3,10 +3,23 @@ import sys
 
 PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.autocard",
-    "ironsbot.services.seer.countermark_stat_rank",
-    "ironsbot.services.seer.player_formatting",
+    "ironsbot.services.seer.countermark_stat_rank_messages",
+    "ironsbot.services.seer.countermark_stat_rank_models",
+    "ironsbot.services.seer.countermark_stat_rank_parsing",
+    "ironsbot.services.seer.countermark_stat_rank_ranking",
+    "ironsbot.services.seer.countermark_stat_rank_repository",
+    "ironsbot.services.seer.player_collection_formatting",
+    "ironsbot.services.seer.player_compact_formatting",
+    "ironsbot.services.seer.player_detail_formatting",
+    "ironsbot.services.seer.player_formatting_common",
     "ironsbot.services.seer.player_query",
-    "ironsbot.services.seer.rank_list",
+    "ironsbot.services.seer.player_peak_formatting",
+    "ironsbot.services.seer.rank_list_formatting",
+    "ironsbot.services.seer.rank_list_global_messages",
+    "ironsbot.services.seer.rank_list_messages",
+    "ironsbot.services.seer.rank_list_models",
+    "ironsbot.services.seer.rank_list_parsing",
+    "ironsbot.services.seer.rank_list_score_messages",
     "ironsbot.services.seer.rank_usage",
     "ironsbot.services.seer.render_paths",
     "ironsbot.services.seer.team",
@@ -24,8 +37,9 @@ importlib.import_module(module_name)
 for forbidden in (
     "nonebot",
     "nonebot.log",
-    "ironsbot.services.seer.rank",
-    "ironsbot.services.seer.rank_page_cache",
+    "ironsbot.services.seer.local_rank",
+    "ironsbot.services.seer.rank_service",
+    "ironsbot.services.seer.rank_page_cache_queries",
 ):
     if forbidden in sys.modules:
         raise SystemExit(f"{module_name} imported {forbidden}")
