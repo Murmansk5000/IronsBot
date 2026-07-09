@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable
+from dataclasses import dataclass
 
 from ironsbot.services.seer.player_query import (
     PLAYER_AUTOCARD_KEY,
@@ -36,6 +37,18 @@ from ironsbot.services.seer.player_query import (
     safe_player_extra,
     store_player_detail_messages,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class FakeUnityPeak:
+    current_j_rank: int
+    current_j_star: int
+    current_j_all: int
+    current_k_rank: int
+    current_k_star: int
+    current_k_all: int
+    current_z_score: int
+    current_z_all: int
 
 
 def test_extract_player_query_arg_reads_known_prefixes() -> None:
@@ -146,20 +159,16 @@ def test_build_peak_rating_score_matches_rank_score_shape() -> None:
 
 
 def test_calculate_player_peak_scores_uses_only_played_modes() -> None:
-    unity_peak = type(
-        "UnityPeak",
-        (),
-        {
-            "current_j_rank": 7,
-            "current_j_star": 3,
-            "current_j_all": 10,
-            "current_k_rank": 5,
-            "current_k_star": 2,
-            "current_k_all": 0,
-            "current_z_score": 1234,
-            "current_z_all": 6,
-        },
-    )()
+    unity_peak = FakeUnityPeak(
+        current_j_rank=7,
+        current_j_star=3,
+        current_j_all=10,
+        current_k_rank=5,
+        current_k_star=2,
+        current_k_all=0,
+        current_z_score=1234,
+        current_z_all=6,
+    )
 
     assert calculate_player_peak_scores(unity_peak) == PlayerPeakScores(
         standard=700003,
