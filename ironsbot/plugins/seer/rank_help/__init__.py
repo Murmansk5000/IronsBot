@@ -4,7 +4,10 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 from nonebot.rule import Rule
 
-from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.services.seer.rank_usage import (
+    RANK_HELP_ENTRY_COMMANDS,
+    build_rank_help_message,
+)
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.plugin_system import (
@@ -23,7 +26,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 rank_help_entry = on_fullmatch(
-    ("榜单", "排行榜"),
+    RANK_HELP_ENTRY_COMMANDS,
     rule=Rule(lambda event: is_event_feature_allowed(event, "seer_rank")) & no_reply(),
     priority=get_matcher_priority("seer_rank_help", 2),
     block=True,
