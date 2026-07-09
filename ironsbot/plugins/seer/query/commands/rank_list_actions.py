@@ -6,8 +6,6 @@ from nonebot import logger
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.local_rank import get_local_rank_entries
 from ironsbot.services.seer.rank import (
-    fetch_daily_rank_page,
-    fetch_daily_rank_page_result,
     fetch_rank_score_segment,
     get_current_peak_sub_key,
 )
@@ -23,6 +21,10 @@ from ironsbot.services.seer.rank_list import (
     format_global_rank_score_message,
     format_local_rank_message,
     timestamp_text,
+)
+from ironsbot.services.seer.rank_pages import (
+    fetch_daily_rank_page,
+    fetch_daily_rank_page_result,
 )
 
 from ..config import get_local_rank_config

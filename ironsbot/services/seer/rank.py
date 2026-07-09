@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.config import get_app_config
+from ironsbot.services.seer import rank_pages
 from ironsbot.services.seer.rank_constants import (
     PET_KIND_RANK_ANOMALY_USER_IDS,
 )
-from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
 from ironsbot.services.seer.rank_lookup_service import (
     RankLookupDependencies,
 )
@@ -19,15 +19,11 @@ from ironsbot.services.seer.rank_lookup_service import (
 )
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
-    get_cached_rank_item_by_index,
     get_cached_rank_page_result,
     get_cached_rank_score_indexes,
     get_rank_page_cache_summary,
-    save_rank_page,
 )
 from ironsbot.services.seer.rank_pagination import (
-    rank_page_size,
-    rank_page_start,
     rank_window_page_starts,
 )
 from ironsbot.services.seer.rank_peak import (
@@ -38,12 +34,6 @@ from ironsbot.services.seer.rank_peak import (
 )
 from ironsbot.services.seer.rank_position_cache import (
     find_rank_by_cached_position as _find_rank_by_cached_position_impl,
-)
-from ironsbot.services.seer.rank_range import (
-    fetch_rank_range as _fetch_rank_range_impl,
-)
-from ironsbot.services.seer.rank_range import (
-    fetch_rank_range_result as _fetch_rank_range_result_impl,
 )
 from ironsbot.services.seer.rank_score_cache import (
     cached_score_candidate_page_starts as _cached_score_candidate_page_starts_impl,
@@ -95,7 +85,6 @@ if TYPE_CHECKING:
         PeakSeasonRankSummary,
         PlayerRankSummary,
         RankLookupResult,
-        RankPageResult,
         RankScoreSearchResult,
     )
 
@@ -111,57 +100,8 @@ def get_local_rank_config() -> LocalRankConfig:
     return get_app_config().seer.local_rank
 
 
-def _rank_page_size() -> int:
-    return rank_page_size(get_rank_query_config())
-
-
-def _rank_page_start(index: int) -> int:
-    return rank_page_start(index, page_size=_rank_page_size())
-
-
 def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
     return user_id in PET_KIND_RANK_ANOMALY_USER_IDS
-
-
-async def _fetch_rank_page_result(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    start: int,
-    end: int,
-    use_cache: bool = False,
-) -> RankPageResult:
-    return await fetch_rank_page_result_from_game(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        end=end,
-        use_cache=use_cache,
-        get_cached_page=get_cached_rank_page_result,
-        save_page=save_rank_page,
-    )
-
-
-async def _fetch_rank_page(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    start: int,
-    end: int,
-    use_cache: bool = False,
-) -> list[Any]:
-    result = await _fetch_rank_page_result(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        end=end,
-        use_cache=use_cache,
-    )
-    return result.items
 
 
 def _rank_window_page_starts(*, center_index: int, page_size: int) -> list[int]:
@@ -190,80 +130,7 @@ async def _find_rank_by_cached_position(  # noqa: PLR0913
         result=result,
         get_cached_rank_item=get_cached_rank_item,
         rank_window_page_starts=_rank_window_page_starts,
-        fetch_rank_page=_fetch_rank_page,
-    )
-
-
-async def _fetch_rank_item(
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    index: int,
-    use_cache: bool = False,
-) -> Any | None:
-    if use_cache:
-        cached_item = get_cached_rank_item_by_index(
-            key=key,
-            sub_key=sub_key,
-            rank_index=index,
-        )
-        if cached_item is not None:
-            return cached_item
-
-    page_size = _rank_page_size()
-    page_start = _rank_page_start(index)
-    items = await _fetch_rank_page(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=page_start,
-        end=page_start + page_size - 1,
-        use_cache=use_cache,
-    )
-    offset = index - page_start
-    return items[offset] if 0 <= offset < len(items) else None
-
-
-async def fetch_daily_rank_page(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    start: int,
-    count: int,
-    use_cache: bool = False,
-) -> list[Any]:
-    return await _fetch_rank_range_impl(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        count=count,
-        use_cache=use_cache,
-        rank_page_size=_rank_page_size,
-        fetch_rank_page_result=_fetch_rank_page_result,
-    )
-
-
-async def fetch_daily_rank_page_result(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    start: int,
-    count: int,
-    use_cache: bool = False,
-) -> RankPageResult:
-    return await _fetch_rank_range_result_impl(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        count=count,
-        use_cache=use_cache,
-        rank_page_size=_rank_page_size,
-        fetch_rank_page_result=_fetch_rank_page_result,
+        fetch_rank_page=rank_pages.fetch_rank_page,
     )
 
 
@@ -289,7 +156,7 @@ async def _find_rank_by_linear_scan(  # noqa: PLR0913
         limit=limit,
         page_size=page_size,
         result=result,
-        fetch_rank_page=_fetch_rank_page,
+        fetch_rank_page=rank_pages.fetch_rank_page,
     )
 
 
@@ -324,8 +191,8 @@ async def _find_rank_by_score(  # noqa: PLR0913
         score_search_probe_limit=_score_search_probe_limit,
         score_search_tie_page_limit=_score_search_tie_page_limit,
         find_last_existing_score_index=_find_last_existing_score_index,
-        fetch_rank_item=_fetch_rank_item,
-        fetch_rank_page=_fetch_rank_page,
+        fetch_rank_item=rank_pages.fetch_rank_item,
+        fetch_rank_page=rank_pages.fetch_rank_page,
     )
 
 
@@ -371,8 +238,8 @@ def _score_search_limit(search_limit: int | None = None) -> int:
 
 def _rank_score_facade_dependencies() -> RankScoreFacadeDependencies:
     return RankScoreFacadeDependencies(
-        rank_page_size=_rank_page_size,
-        rank_page_start=_rank_page_start,
+        rank_page_size=rank_pages.rank_page_size,
+        rank_page_start=rank_pages.rank_page_start,
         score_search_limit=_score_search_limit,
         score_search_probe_limit=_score_search_probe_limit,
         score_search_tie_page_limit=_score_search_tie_page_limit,
@@ -387,8 +254,8 @@ def _rank_score_facade_dependencies() -> RankScoreFacadeDependencies:
         ),
         cached_score_miss_boundary_impl=_cached_score_miss_boundary_impl,
         find_last_existing_score_index=_find_last_existing_score_index,
-        fetch_rank_item=_fetch_rank_item,
-        fetch_rank_page_result=_fetch_rank_page_result,
+        fetch_rank_item=rank_pages.fetch_rank_item,
+        fetch_rank_page_result=rank_pages.fetch_rank_page_result,
     )
 
 

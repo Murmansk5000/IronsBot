@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 from ironsbot.config import get_app_config
 from ironsbot.services.seer.client import get_game_client
-from ironsbot.services.seer.rank import fetch_daily_rank_page
 from ironsbot.services.seer.rank_list import (
     GLOBAL_RANKS,
     GlobalRankSpec,
@@ -20,6 +19,7 @@ from ironsbot.services.seer.rank_page_cache import (
     CachedRankPageSummary,
     get_rank_page_cache_summary,
 )
+from ironsbot.services.seer.rank_pages import fetch_daily_rank_page
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
