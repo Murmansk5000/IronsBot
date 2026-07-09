@@ -68,6 +68,10 @@ PUBLIC_CONFIG_DOC_PATHS = (
     ROOT / "templates" / "ironsbot.xml",
     ROOT / "docker-compose.yml",
 )
+PUBLIC_TEXT_PATHS = (
+    *PUBLIC_CONFIG_DOC_PATHS,
+    ROOT / "ironsbot" / "plugins" / "seer_data" / "__init__.py",
+)
 STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\buid_modes\b",
     r"\bdefault_mode\b",
@@ -83,6 +87,12 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\bdefault_uids\b",
     r"\bextra_uids\b",
     r"\bfire_manual\b",
+)
+STALE_PUBLIC_TEXT_PATTERNS = (
+    *STALE_PUBLIC_CONFIG_PATTERNS,
+    r"README\.old",
+    r"旧榜单",
+    r"db\s*(?:与|和)\s*image\s*模块",
 )
 
 
@@ -255,14 +265,14 @@ def test_example_config_has_no_unknown_fields() -> None:
     AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
 
 
-def test_public_config_docs_do_not_reference_stale_fields() -> None:
+def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
     stale_matches: list[str] = []
 
-    for path in PUBLIC_CONFIG_DOC_PATHS:
+    for path in PUBLIC_TEXT_PATHS:
         text = path.read_text(encoding="utf-8")
         stale_matches.extend(
             f"{path.relative_to(ROOT)}: {pattern}"
-            for pattern in STALE_PUBLIC_CONFIG_PATTERNS
+            for pattern in STALE_PUBLIC_TEXT_PATTERNS
             if re.search(pattern, text)
         )
 
