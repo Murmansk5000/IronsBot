@@ -26,12 +26,12 @@ from ironsbot.services.seer.rank_list_messages import (
 )
 from ironsbot.services.seer.rank_list_spec_resolution import get_global_rank_spec
 from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
-from ironsbot.services.seer.rank_page_refresh import (
+from ironsbot.services.seer.rank_page_refresh import refresh_rank_page_cache
+from ironsbot.services.seer.rank_page_refresh_selection import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
     preview_rank_page_refresh_targets,
     rank_refresh_target_label,
-    refresh_rank_page_cache,
 )
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 
