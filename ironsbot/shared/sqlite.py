@@ -6,9 +6,8 @@ import sqlite3
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
-RowFactory = Callable[[sqlite3.Cursor, Sequence[Any]], object]
+RowFactory = Callable[[sqlite3.Cursor, sqlite3.Row], object] | type[sqlite3.Row]
 SqliteSchema = str | Sequence[str]
 _SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
