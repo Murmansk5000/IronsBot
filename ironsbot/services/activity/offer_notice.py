@@ -1,24 +1,17 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import html
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-import httpx
-from nonebot.log import logger
-
-from ironsbot.config.loader import get_app_config
+from .notice_source import fetch_unity_notice_text
 
 if TYPE_CHECKING:
     from .models import ActivityInfo
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-UNITY_NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
-UNITY_NOTICE_CACHE_TTL = timedelta(minutes=30)
 NOTICE_ACTIVITY_BLOCK_CHARS = 900
 NOTICE_ACTIVITY_LOOKBEHIND_CHARS = 80
 DAYS_PER_WEEK = 7
@@ -62,49 +55,6 @@ CHINESE_NUMBER_MAP = {
 }
 
 
-@dataclass(slots=True)
-class NoticeCache:
-    text: str = ""
-    expires_at: datetime | None = None
-
-
-_notice_cache = NoticeCache()
-
-
-def _normalize_notice_text(text_value: str) -> str:
-    return html.unescape(
-        text_value
-        .replace("\\r", "\n")
-        .replace("\\n", "\n")
-        .replace("\\/", "/")
-    )
-
-
-def _fetch_unity_notice_text(now: datetime) -> str:
-    if (
-        _notice_cache.expires_at is not None
-        and _notice_cache.expires_at > now
-    ):
-        return _notice_cache.text
-
-    try:
-        response = httpx.get(
-            UNITY_NOTICE_URL,
-            headers={"User-Agent": "IronsBot activity reminder"},
-            timeout=get_app_config().activity.notice_timeout_seconds,
-        )
-        response.raise_for_status()
-        raw_text = response.content.decode("utf-8", "replace")
-    except (OSError, httpx.HTTPError) as e:
-        logger.warning(f"activity notice fetch failed: {e}")
-        _notice_cache.expires_at = now + timedelta(minutes=5)
-        return _notice_cache.text
-
-    _notice_cache.text = _normalize_notice_text(raw_text)
-    _notice_cache.expires_at = now + UNITY_NOTICE_CACHE_TTL
-    return _notice_cache.text
-
-
 def _activity_notice_blocks(activity_name: str, notice_text: str) -> list[str]:
     escaped_name = re.escape(activity_name)
     blocks: list[str] = []
@@ -135,7 +85,7 @@ def offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
     if activity.start_time is None:
         return []
 
-    notice_text = _fetch_unity_notice_text(now)
+    notice_text = fetch_unity_notice_text(now)
     if not notice_text:
         return []
     if activity.name not in notice_text:
