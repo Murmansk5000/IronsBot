@@ -10,12 +10,12 @@ from nonebot.log import logger
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
-from ironsbot.shared.scheduler import add_or_replace_job
+from ironsbot.shared.scheduler import JobRegistry
 
 from .config import INVALID_RECONNECT_TIME_ERROR, get_headless_notice_config
 from .state import mark_headless_available, mark_headless_unavailable
 
-RECONNECT_JOB_PREFIX = "headless_reconnect_check"
+RECONNECT_JOB_PREFIX = "headless_reconnect_check:"
 _headless_notice_runtime_state = {"registered": False}
 
 
@@ -117,16 +117,16 @@ async def _daily_reconnect_check(scheduled_time: str) -> None:
 
 def _register_reconnect_checks(scheduler: Any) -> None:
     reconnect_times = get_headless_notice_config().parsed_reconnect_check_times
+    registry = JobRegistry(scheduler, prefix=RECONNECT_JOB_PREFIX)
     for scheduled_time in reconnect_times:
         hour, minute = daily_time_parts(
             scheduled_time,
             error_message=INVALID_RECONNECT_TIME_ERROR,
         )
-        add_or_replace_job(
-            scheduler,
+        registry.add(
             _daily_reconnect_check,
             "cron",
-            job_id=f"{RECONNECT_JOB_PREFIX}:{scheduled_time}",
+            job_id=scheduled_time,
             args=[scheduled_time],
             hour=hour,
             minute=minute,
