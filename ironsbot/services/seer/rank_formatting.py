@@ -1,9 +1,52 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from dataclasses import dataclass
+
 from ironsbot.services.seer.rank_models import (
     BookBreakdownSummary,
     PlayerRankSummary,
     RankLookupResult,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RankPositionTextStyle:
+    ranked_prefix: str = "全服第"
+    ranked_suffix: str = ""
+    unranked_prefix: str = "全服未进入前"
+    unranked_suffix: str = ""
+    include_zero_limit: bool = False
+
+
+GLOBAL_RANK_POSITION_STYLE = RankPositionTextStyle()
+RANK_LOOKUP_POSITION_STYLE = RankPositionTextStyle(
+    ranked_prefix="第 ",
+    ranked_suffix=" 名",
+    unranked_prefix="前 ",
+    unranked_suffix=" 名未上榜",
+    include_zero_limit=True,
+)
+GLOBAL_RANK_MISS_POSITION_STYLE = RankPositionTextStyle(
+    unranked_prefix="前 ",
+    unranked_suffix=" 名未上榜",
+    include_zero_limit=True,
+)
+
+
+def format_rank_position_text(
+    result: RankLookupResult | None,
+    *,
+    style: RankPositionTextStyle = GLOBAL_RANK_POSITION_STYLE,
+) -> str:
+    if result is None:
+        return ""
+
+    if result.rank is not None:
+        return f"{style.ranked_prefix}{result.rank}{style.ranked_suffix}"
+
+    if result.queried and (style.include_zero_limit or result.searched_limit > 0):
+        return f"{style.unranked_prefix}{result.searched_limit}{style.unranked_suffix}"
+
+    return ""
 
 
 def format_rank_lookup(result: RankLookupResult) -> str:
@@ -18,7 +61,11 @@ def format_rank_lookup(result: RankLookupResult) -> str:
         )
         return f"{result.title}：前 {result.searched_limit} 名未上榜{suffix}"
 
-    return f"{result.title}：第 {result.rank} 名（{result.score_name}：{result.score}）"
+    position_text = format_rank_position_text(
+        result,
+        style=RANK_LOOKUP_POSITION_STYLE,
+    )
+    return f"{result.title}：{position_text}（{result.score_name}：{result.score}）"
 
 
 def format_peak_rank_lookup(result: RankLookupResult, *, inactive_text: str) -> str:
@@ -26,22 +73,28 @@ def format_peak_rank_lookup(result: RankLookupResult, *, inactive_text: str) -> 
         return inactive_text
     if not result.queried:
         return "未查询"
-    if result.rank is None:
-        return f"前 {result.searched_limit} 名未上榜"
-    return f"第 {result.rank} 名"
+    return (
+        format_rank_position_text(
+            result,
+            style=RANK_LOOKUP_POSITION_STYLE,
+        )
+        or "未查询"
+    )
 
 
 def _format_score_rank(result: RankLookupResult | None) -> str:
     if result is None or not result.queried:
         return "未查询"
 
+    position_text = format_rank_position_text(
+        result,
+        style=RANK_LOOKUP_POSITION_STYLE,
+    )
+
     if result.score is None:
-        return f"前 {result.searched_limit} 名未上榜"
+        return position_text or "未查询"
 
-    if result.rank is None:
-        return f"{result.score}（前 {result.searched_limit} 名未上榜）"
-
-    return f"{result.score}（第 {result.rank} 名）"
+    return f"{result.score}（{position_text}）" if position_text else str(result.score)
 
 
 def format_book_breakdown(summary: BookBreakdownSummary) -> str:
@@ -87,9 +140,13 @@ def format_player_rank_summary(summary: PlayerRankSummary) -> str:
 
 
 __all__ = [
+    "GLOBAL_RANK_MISS_POSITION_STYLE",
+    "GLOBAL_RANK_POSITION_STYLE",
+    "RANK_LOOKUP_POSITION_STYLE",
+    "RankPositionTextStyle",
     "format_book_breakdown",
     "format_peak_rank_lookup",
     "format_player_rank_summary",
     "format_rank_lookup",
+    "format_rank_position_text",
 ]
-

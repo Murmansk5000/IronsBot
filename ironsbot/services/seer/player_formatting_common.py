@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer.formatting import format_datetime
+from ironsbot.services.seer.rank_formatting import format_rank_position_text
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank_models import LocalRankSummary
@@ -128,16 +129,6 @@ def join_metric_parts(*parts: str) -> str:
     return METRIC_SEPARATOR.join(part for part in parts if part)
 
 
-def rank_lookup_text(result: RankLookupResult | None) -> str:
-    if result is None:
-        return ""
-    if result.rank is not None:
-        return f"全服第{result.rank}"
-    if result.queried and result.searched_limit > 0:
-        return f"全服未进入前{result.searched_limit}"
-    return ""
-
-
 def sample_rank_text(summary: LocalRankSummary, key: str) -> str:
     return summary.sample_rank(key)
 
@@ -154,7 +145,7 @@ def format_metric_line(
 
     metric_text = join_metric_parts(
         value_text,
-        rank_lookup_text(rank_result),
+        format_rank_position_text(rank_result),
         sample_rank_text(local_summary, local_key),
     )
     return f"{title}：{metric_text}"
@@ -195,6 +186,5 @@ __all__ = [
     "format_vip",
     "format_win_rate",
     "join_metric_parts",
-    "rank_lookup_text",
     "sample_rank_text",
 ]
