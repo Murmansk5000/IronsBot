@@ -121,7 +121,7 @@ def test_all_feature_alias_does_not_include_admin_notice(
     feature_service = service.FeatureService()
 
     assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
-    assert feature_service.is_group_feature_allowed(999, 123, "fire_manual")
+    assert feature_service.is_group_feature_allowed(999, 123, "fire_manual_ad")
     assert not feature_service.is_group_feature_allowed(999, 123, "admin_notice")
     assert feature_service.groups_for_feature("seer_pet") == [123]
     assert feature_service.groups_for_feature("admin_notice") == []
@@ -143,5 +143,5 @@ def test_team_resource_feature_is_registered() -> None:
 
 
 def test_fire_manual_feature_is_registered() -> None:
-    assert "fire_manual" in FEATURE_ALIASES["all"]
-    assert features_for_module("ironsbot.plugins.fire_manual_ad") == ("fire_manual",)
+    assert "fire_manual_ad" in FEATURE_ALIASES["all"]
+    assert features_for_module("ironsbot.plugins.fire_manual_ad") == ("fire_manual_ad",)

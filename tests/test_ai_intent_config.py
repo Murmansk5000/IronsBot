@@ -29,8 +29,8 @@ def test_default_ai_actions_include_join_team_and_fire_manual() -> None:
     assert "group_code=719544559" in action.message
 
     manual_action = actions[1]
-    assert manual_action.id == "fire_manual"
-    assert manual_action.feature == "fire_manual"
+    assert manual_action.id == "fire_manual_ad"
+    assert manual_action.feature == "fire_manual_ad"
     assert manual_action.keywords == ["手册"]
     assert manual_action.action == "message"
     assert manual_action.intent == DEFAULT_FIRE_MANUAL_INTENT
@@ -67,18 +67,18 @@ def test_configured_actions_override_builtin_actions_by_id() -> None:
         )
     )
 
-    assert [action.id for action in actions] == ["join_team", "fire_manual"]
+    assert [action.id for action in actions] == ["join_team", "fire_manual_ad"]
     assert actions[0].message == "自定义战队回复"
     assert actions[1].message == FIRE_MANUAL_LINK_MESSAGE
 
 
 def test_default_actions_can_be_disabled_explicitly() -> None:
     actions = resolve_configured_actions(
-        AiConfig(intent_actions={"fire_manual": AiIntentAction(enabled=False)})
+        AiConfig(intent_actions={"fire_manual_ad": AiIntentAction(enabled=False)})
     )
 
     manual_action = next(
-        action for action in actions if action.id == "fire_manual"
+        action for action in actions if action.id == "fire_manual_ad"
     )
     assert not manual_action.enabled
 
