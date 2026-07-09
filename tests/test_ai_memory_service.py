@@ -1,31 +1,13 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from pytest import MonkeyPatch
 
 from ironsbot.services.ai import memory
+from tests.helpers.onebot_events import group_message_event
 
 GROUP_ID = 456
 USER_ID = 123
-
-
-def _group_event(text: str = "hello") -> GroupMessageEvent:
-    return GroupMessageEvent(
-        time=0,
-        self_id=1,
-        post_type="message",
-        sub_type="normal",
-        user_id=USER_ID,
-        message_type="group",
-        message_id=3,
-        message=Message(text),
-        original_message=Message(text),
-        raw_message=text,
-        font=0,
-        group_id=GROUP_ID,
-        sender={},
-    )
 
 
 def _enable_memory(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
@@ -46,7 +28,7 @@ def test_ai_memory_appends_and_reads_recent_turn(
     tmp_path: Path,
 ) -> None:
     _enable_memory(monkeypatch, tmp_path)
-    event = _group_event()
+    event = group_message_event(user_id=USER_ID, group_id=GROUP_ID)
 
     memory.append_user_memory(
         event,
@@ -76,7 +58,7 @@ def test_ai_memory_excludes_current_short_history_session(
     tmp_path: Path,
 ) -> None:
     _enable_memory(monkeypatch, tmp_path)
-    event = _group_event()
+    event = group_message_event(user_id=USER_ID, group_id=GROUP_ID)
 
     memory.append_user_memory(
         event,
