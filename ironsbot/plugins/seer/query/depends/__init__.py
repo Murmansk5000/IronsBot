@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from ironsbot.integrations.seer_data.db import (
+from ironsbot.integrations.seer_data.getters import (
     GemCategoryDataGetter,
     GemDataGetter,
     GetGemCategoryData,
@@ -12,13 +12,15 @@ from ironsbot.integrations.seer_data.db import (
     MintmarkDataGetter,
     PetDataGetter,
     PetSkinDataGetter,
-    SeerAPISession,
 )
 from ironsbot.integrations.seer_data.image import (
     MintmarkBodyImage,
     MintmarkBodyImageGetter,
     PetBodyImage,
     PetBodyImageGetter,
+)
+from ironsbot.integrations.seer_data.sessions import (
+    SeerAPISession,
 )
 
 from .headless import GameClient

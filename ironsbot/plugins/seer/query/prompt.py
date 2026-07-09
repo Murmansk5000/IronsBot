@@ -9,7 +9,8 @@ from nonebot_plugin_saa import MessageFactory
 from seerapi_models.build_model import BaseResModel
 from sqlmodel import Session
 
-from ironsbot.integrations.seer_data.db import Getter, SeerAPISession
+from ironsbot.integrations.seer_data.resolvers import Getter
+from ironsbot.integrations.seer_data.sessions import SeerAPISession
 from ironsbot.utils.prompt import (
     PROMPT_STATE_KEY,
     Prompt,

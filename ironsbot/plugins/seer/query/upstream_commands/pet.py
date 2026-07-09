@@ -8,7 +8,7 @@ from nonebot_plugin_saa import Image, MessageFactory
 from seerapi_models import PetORM, PetSkinORM
 from sqlmodel import select
 
-from ironsbot.integrations.seer_data.db import SQLModelSession
+from ironsbot.integrations.seer_data.sessions import SQLModelSession
 from ironsbot.services.seer.rendering.upstream_pet_info import (
     render_upstream_pet_info,
 )

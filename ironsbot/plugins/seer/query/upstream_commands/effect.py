@@ -6,7 +6,7 @@ from nonebot.typing import T_State
 from nonebot_plugin_saa import MessageFactory
 from seerapi_models import BattleEffectORM
 
-from ironsbot.integrations.seer_data.db import (
+from ironsbot.integrations.seer_data.getters import (
     BattleEffectDataGetter,
     GetBattleEffectData,
 )

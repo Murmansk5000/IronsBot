@@ -16,7 +16,7 @@ from ironsbot.shared.selection_menu import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.seer_data.db import SeerAPISession
+    from ironsbot.integrations.seer_data.sessions import SeerAPISession
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
