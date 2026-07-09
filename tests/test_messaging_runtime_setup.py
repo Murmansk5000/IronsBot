@@ -17,7 +17,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.plugins.messaging import runtime
+from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
@@ -133,7 +133,7 @@ def test_messaging_runtime_setup_registers_startup_once(
 
 
 def test_push_subscription_menu_prompt_marks_current_state() -> None:
-    prompt = runtime._push_subscription_menu_prompt(
+    prompt = push_management_runtime._push_subscription_menu_prompt(
         "private",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -153,7 +153,7 @@ def test_push_subscription_menu_prompt_marks_current_state() -> None:
 
 
 def test_push_subscription_menu_prompt_can_be_read_only() -> None:
-    prompt = runtime._push_subscription_menu_prompt(
+    prompt = push_management_runtime._push_subscription_menu_prompt(
         "group",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -171,46 +171,48 @@ def test_group_push_subscription_command_allows_superuser_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        runtime,
+        matcher_rules,
         "is_superuser",
         lambda user_id: user_id == SUPERUSER_ID,
     )
     monkeypatch.setattr(
-        runtime,
-        "get_message_config",
-        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
-    )
-
-    assert asyncio.run(runtime._match_push_subscription_command(_group_event(), {}))
-
-
-def test_group_push_subscription_command_allows_regular_member_to_view(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(runtime, "is_superuser", lambda _user_id: False)
-    monkeypatch.setattr(
-        runtime,
+        matcher_rules,
         "get_message_config",
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
 
     assert asyncio.run(
-        runtime._match_push_subscription_command(_group_event(), {})
+        matcher_rules.match_push_subscription_command(_group_event(), {})
+    )
+
+
+def test_group_push_subscription_command_allows_regular_member_to_view(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
+    monkeypatch.setattr(
+        matcher_rules,
+        "get_message_config",
+        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
+    )
+
+    assert asyncio.run(
+        matcher_rules.match_push_subscription_command(_group_event(), {})
     )
 
 
 def test_group_push_subscription_management_command_matches_regular_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(runtime, "is_superuser", lambda _user_id: False)
+    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
     monkeypatch.setattr(
-        runtime,
+        matcher_rules,
         "get_message_config",
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
 
     assert asyncio.run(
-        runtime._match_push_subscription_command(
+        matcher_rules.match_push_subscription_command(
             _group_event("推送管理", user_id=3003),
             {},
         )
