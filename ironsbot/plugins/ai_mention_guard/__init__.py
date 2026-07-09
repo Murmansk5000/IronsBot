@@ -3,6 +3,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.services.ai.config import get_ai_config
 from ironsbot.services.ai.mention_guard import (
     GuardReplyLimiter,
     should_guard_non_ai_group_mention,
@@ -19,8 +20,6 @@ from ironsbot.shared.plugin_system import (
     dispatch_plugin,
     register_plugin,
 )
-
-from .config import get_ai_config
 
 _guard_reply_limiter: GuardReplyLimiter | None = None
 AI_MENTION_GUARD_PLUGIN_NAME = "ai_mention_guard"

@@ -9,7 +9,8 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.config.models.app import AppConfig
-from ironsbot.services.ai.client import call_ai_chat, get_ai_key
+from ironsbot.services.ai.client import call_ai_chat
+from ironsbot.services.ai.config import get_ai_key
 from ironsbot.services.ai.constants import (
     EMPTY_REPLY,
     REQUEST_FAILED_REPLY,

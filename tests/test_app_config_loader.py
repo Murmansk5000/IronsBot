@@ -463,17 +463,13 @@ def test_small_plugin_config_accessors_read_app_config(
     monkeypatch.setenv("HEADLESS_SEER_USER_ID", str(HEADLESS_USER_ID))
     monkeypatch.setenv("HEADLESS_SEER_PASSWORD", "md5")
 
-    ai_chat_config = _load_module_from_path(
-        "ai_chat_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "ai_chat" / "config.py",
+    ai_config = _load_module_from_path(
+        "ai_config_for_app_config_test",
+        ROOT / "ironsbot" / "services" / "ai" / "config.py",
     )
-    ai_intent_config = _load_module_from_path(
-        "ai_intent_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "ai_intent" / "config.py",
-    )
-    ai_mention_config = _load_module_from_path(
-        "ai_mention_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "ai_mention_guard" / "config.py",
+    ai_intent_service = _load_module_from_path(
+        "ai_intent_service_for_app_config_test",
+        ROOT / "ironsbot" / "services" / "ai" / "intent.py",
     )
     activity_config = _load_module_from_path(
         "activity_reminder_config_for_app_config_test",
@@ -522,12 +518,12 @@ def test_small_plugin_config_accessors_read_app_config(
 
     try:
         app_config = load_app_config(ROOT / "config.example.toml")
-        assert ai_chat_config.get_ai_config().model == "deepseek-v4-pro"
-        assert ai_chat_config.get_ai_key() == "sk-test"
-        assert ai_intent_config.get_configured_actions()
-        assert ai_intent_config.get_team_resource_config().commands == ["战队"]
+        assert ai_config.get_ai_config().model == "deepseek-v4-pro"
+        assert ai_config.get_ai_key() == "sk-test"
+        assert ai_intent_service.get_configured_actions()
+        assert ai_intent_service.get_team_resource_config().commands == ["战队"]
         assert (
-            ai_mention_config.get_ai_config().mention_guard_reply_max_per_window
+            ai_config.get_ai_config().mention_guard_reply_max_per_window
             == DEFAULT_MENTION_GUARD_MAX_PER_WINDOW
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]

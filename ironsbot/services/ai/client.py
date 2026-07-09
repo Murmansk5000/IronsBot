@@ -1,10 +1,10 @@
 from typing import Any
 
 import httpx
-from nonebot import get_driver
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config, load_secrets_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.services.ai.config import get_ai_key
 from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
 from ironsbot.services.ai.notifier import notify_superusers_once
@@ -15,17 +15,6 @@ HTTP_TOO_MANY_REQUESTS = 429
 HTTP_BAD_REQUEST = 400
 AI_CHAT_ERROR_SUBSCRIPTION_KEY = "ai_chat_error_notice"
 AI_CHAT_ERROR_ACTION_NAME = "AI chat error notice"
-
-
-def get_ai_key() -> str:
-    key = load_secrets_config().ai_key.strip()
-    if key:
-        return key
-
-    try:
-        return str(getattr(get_driver().config, "ai_key", "") or "").strip()
-    except ValueError:
-        return ""
 
 
 def _extract_reply(data: dict[str, Any]) -> str:
