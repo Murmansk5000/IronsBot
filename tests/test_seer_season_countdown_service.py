@@ -1,5 +1,5 @@
+from dataclasses import dataclass
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any
 
 from pytest import MonkeyPatch
@@ -9,6 +9,18 @@ from ironsbot.services.seer import season_countdown
 from tests.helpers.config import stub_app_config
 
 CHINA_TZ = season_countdown.CHINA_TZ
+
+
+class FakeDateTime:
+    @staticmethod
+    def now(_tz: object) -> datetime:
+        return datetime(2026, 6, 28, 12, 0, 0, tzinfo=CHINA_TZ)
+
+
+@dataclass(frozen=True)
+class PeakSeason:
+    start_time: datetime
+    end_time: datetime
 
 
 class FakeSession:
@@ -36,11 +48,9 @@ def test_format_season_countdown_uses_peak_season(
     monkeypatch.setattr(
         season_countdown,
         "datetime",
-        SimpleNamespace(
-            now=lambda _tz: datetime(2026, 6, 28, 12, 0, 0, tzinfo=CHINA_TZ),
-        ),
+        FakeDateTime,
     )
-    peak = SimpleNamespace(
+    peak = PeakSeason(
         start_time=datetime(2026, 4, 17, 10, 0, 0, tzinfo=CHINA_TZ),
         end_time=datetime(2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ),
     )
@@ -73,9 +83,7 @@ def test_format_season_countdown_uses_configured_autocard_time(
     monkeypatch.setattr(
         season_countdown,
         "datetime",
-        SimpleNamespace(
-            now=lambda _tz: datetime(2026, 6, 28, 12, 0, 0, tzinfo=CHINA_TZ),
-        ),
+        FakeDateTime,
     )
 
     message = season_countdown.format_season_countdown(FakeSession(None))
