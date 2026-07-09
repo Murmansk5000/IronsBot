@@ -12,7 +12,11 @@ from ironsbot.config.models.message import (
     TeamAuditWelcomeConfig,
 )
 from ironsbot.config.models.runtime import LoggingConfig
-from ironsbot.config.models.seer import RankQueryConfig, SeasonCountdownConfig
+from ironsbot.config.models.seer import (
+    MintmarkQueryConfig,
+    RankQueryConfig,
+    SeasonCountdownConfig,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
@@ -57,6 +61,7 @@ class StubTeamResourceConfig:
 
 @dataclass(frozen=True)
 class StubSeerConfig:
+    mintmark: MintmarkQueryConfig = field(default_factory=MintmarkQueryConfig)
     rank: RankQueryConfig = field(default_factory=RankQueryConfig)
     season: SeasonCountdownConfig = field(default_factory=SeasonCountdownConfig)
     team_resource: TeamResourceConfig | StubTeamResourceConfig = field(
@@ -85,6 +90,7 @@ def stub_app_config(  # noqa: PLR0913
     ai_intent_enabled: bool = True,
     feature_config: FeatureConfig | None = None,
     logging_config: LoggingConfig | None = None,
+    mintmark_config: MintmarkQueryConfig | None = None,
     outbound_rate_limit_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe_config: PushUnsubscribeConfig | None = None,
     rank_config: RankQueryConfig | None = None,
@@ -110,6 +116,7 @@ def stub_app_config(  # noqa: PLR0913
         ),
         runtime=StubRuntimeConfig(logging=logging_config or LoggingConfig()),
         seer=StubSeerConfig(
+            mintmark=mintmark_config or MintmarkQueryConfig(),
             rank=rank_config or RankQueryConfig(),
             season=season_config or SeasonCountdownConfig(),
             team_resource=(
