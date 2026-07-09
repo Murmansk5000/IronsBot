@@ -3,7 +3,11 @@ import sys
 
 PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.autocard",
-    "ironsbot.services.seer.countermark_stat_rank",
+    "ironsbot.services.seer.countermark_stat_rank_messages",
+    "ironsbot.services.seer.countermark_stat_rank_models",
+    "ironsbot.services.seer.countermark_stat_rank_parsing",
+    "ironsbot.services.seer.countermark_stat_rank_ranking",
+    "ironsbot.services.seer.countermark_stat_rank_repository",
     "ironsbot.services.seer.player_formatting",
     "ironsbot.services.seer.player_query",
     "ironsbot.services.seer.rank_list_formatting",
