@@ -83,6 +83,19 @@ def test_lower_layers_do_not_import_plugins() -> None:
     assert _plugin_import_offenders() == []
 
 
+def _plugin_reference_offenders() -> list[str]:
+    return [
+        path.relative_to(ROOT).as_posix()
+        for root in LAYER_ROOTS
+        for path in root.rglob("*.py")
+        if "ironsbot.plugins" in path.read_text(encoding="utf-8-sig")
+    ]
+
+
+def test_lower_layers_do_not_reference_plugin_modules() -> None:
+    assert _plugin_reference_offenders() == []
+
+
 def _plugin_owner(path: Path) -> str:
     relative_parts = path.relative_to(PLUGIN_ROOT).parts
     return f"ironsbot.plugins.{relative_parts[0]}"

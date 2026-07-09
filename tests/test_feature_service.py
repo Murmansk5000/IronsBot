@@ -2,7 +2,6 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.feature import FEATURE_ALIASES, SEER_FEATURES, FeatureConfig
 from ironsbot.shared.features import service
-from ironsbot.shared.features.registry import features_for_module
 from tests.helpers.config import stub_app_config
 
 
@@ -128,19 +127,12 @@ def test_all_feature_alias_does_not_include_admin_notice(
 
 def test_team_audit_feature_is_registered() -> None:
     assert "team_audit" in FEATURE_ALIASES["message"]
-    assert features_for_module("ironsbot.plugins.team_audit_welcome") == (
-        "team_audit",
-    )
 
 
 def test_team_resource_feature_is_registered() -> None:
     assert "team_resource_subscription" in FEATURE_ALIASES["message"]
     assert "team_resource_subscription" in FEATURE_ALIASES["all"]
-    assert features_for_module("ironsbot.plugins.team_resource_subscription") == (
-        "team_resource_subscription",
-    )
 
 
 def test_fire_manual_feature_is_registered() -> None:
     assert "fire_manual_ad" in FEATURE_ALIASES["all"]
-    assert features_for_module("ironsbot.plugins.fire_manual_ad") == ("fire_manual_ad",)

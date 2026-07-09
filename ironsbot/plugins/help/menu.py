@@ -8,12 +8,13 @@ from nonebot import get_loaded_plugins
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.query_usage import build_seer_query_usage_message
-from ironsbot.shared.features.visibility import plugin_visible_for_event
 from ironsbot.shared.selection_menu import (
     HELP_SELECTION_FOOTER,
     SelectionMenuSection,
     format_selection_menu,
 )
+
+from .visibility import plugin_visible_for_event
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
