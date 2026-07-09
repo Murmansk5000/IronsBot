@@ -7,7 +7,7 @@ require("ironsbot.plugins.db_sync")
 require("ironsbot.plugins.http_client")
 
 from ironsbot.config.models.runtime import RemoteBuildConfig
-from ironsbot.plugins.db_sync import (
+from ironsbot.plugins.db_sync.service import (
     GetFingerprintFn,
     register_database,
     register_local_database,
