@@ -23,8 +23,10 @@ from ironsbot.services.activity.seer_activity import (
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 from ironsbot.shared.config.parsing import positive_int_list
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
+)
+from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group

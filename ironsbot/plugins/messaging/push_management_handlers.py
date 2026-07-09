@@ -43,7 +43,7 @@ from .push_management_runtime import (
 from .push_time import PushTimeOption
 
 if TYPE_CHECKING:
-    from ironsbot.shared.messaging.push_subscriptions import (
+    from ironsbot.shared.messaging.push_subscription_models import (
         PushSubscriptionOption,
         PushTargetType,
     )

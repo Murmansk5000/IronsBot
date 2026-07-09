@@ -28,9 +28,11 @@ from ironsbot.shared.features import (
     resolve_user_refs,
     users_for_feature,
 )
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     PushSubscriptionOption,
     PushTargetType,
+)
+from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 

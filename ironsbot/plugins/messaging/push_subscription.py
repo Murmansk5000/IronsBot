@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ironsbot.shared.features import (
     groups_for_feature,
     users_for_feature,
     users_with_superusers,
 )
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     BUILTIN_PUSH_OPTIONS,
     PushSubscriptionOption,
     PushTargetType,
-    PushUnsubscribeStore,
+)
+from ironsbot.shared.messaging.push_subscriptions import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
 )
 
 from .config import get_message_config
+
+if TYPE_CHECKING:
+    from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 
 def _eligible_target_ids_by_feature(

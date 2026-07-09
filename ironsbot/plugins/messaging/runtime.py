@@ -10,7 +10,7 @@ from nonebot.typing import T_State
 
 from ironsbot.services.activity.runtime_keys import ACTIVITY_REMINDER_REFRESH_KEY
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     CRON_TIME_PREFERENCE,
 )
 from ironsbot.shared.runtime.refresh import refresh_runtime

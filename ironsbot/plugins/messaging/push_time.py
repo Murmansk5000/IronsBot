@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ironsbot.shared.config.parsing import positive_int_list
 from ironsbot.shared.config.time import normalize_daily_time
@@ -9,12 +10,13 @@ from ironsbot.shared.features import (
     users_for_feature,
     users_with_superusers,
 )
-from ironsbot.shared.messaging.push_subscriptions import (
+from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
     CRON_TIME_PREFERENCE,
     PushPreferenceType,
     PushTargetType,
-    PushUnsubscribeStore,
+)
+from ironsbot.shared.messaging.push_subscriptions import (
     group_schedule_key,
     group_schedule_label,
     private_schedule_key,
@@ -27,6 +29,9 @@ from ironsbot.shared.selection_menu import (
 )
 
 from .config import get_message_config
+
+if TYPE_CHECKING:
+    from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 DEFAULT_TEXT = "默认"
 TIME_INPUT_ERROR = (

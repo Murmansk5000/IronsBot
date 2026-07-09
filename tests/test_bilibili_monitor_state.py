@@ -14,7 +14,7 @@ from ironsbot.config.models.bilibili import (
 )
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.state import BiliTargetRule
-from ironsbot.shared.messaging.push_subscriptions import PushUnsubscribeStore
+from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 try:
     nonebot.get_driver()
