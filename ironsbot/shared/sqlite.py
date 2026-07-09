@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -92,17 +92,38 @@ def ensure_sqlite_column(
     column_name: str,
     column_definition: str,
 ) -> bool:
-    if column_name in sqlite_table_columns(conn, table_name):
-        return False
+    return column_name in ensure_sqlite_columns(
+        conn,
+        table_name=table_name,
+        columns={column_name: column_definition},
+    )
 
+
+def ensure_sqlite_columns(
+    conn: sqlite3.Connection,
+    *,
+    table_name: str,
+    columns: Mapping[str, str],
+) -> set[str]:
     table_sql = quote_sqlite_identifier(table_name)
-    conn.execute(f"ALTER TABLE {table_sql} ADD COLUMN {column_definition}")
-    return True
+    existing = sqlite_table_columns(conn, table_name)
+    added: set[str] = set()
+
+    for column_name, column_definition in columns.items():
+        quote_sqlite_identifier(column_name)
+        if column_name in existing:
+            continue
+        conn.execute(f"ALTER TABLE {table_sql} ADD COLUMN {column_definition}")
+        existing.add(column_name)
+        added.add(column_name)
+
+    return added
 
 
 __all__ = [
     "connect_sqlite",
     "ensure_sqlite_column",
+    "ensure_sqlite_columns",
     "open_sqlite",
     "open_sqlite_schema",
     "quote_sqlite_identifier",
