@@ -1,20 +1,90 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Final
 
-_state: dict[str, Callable[[], Any] | None] = {"game_client_getter": None}
+from ironsbot.integrations.headless_seer.exception import (
+    DisconnectedError,
+    NotLoggedInError,
+)
+from ironsbot.integrations.headless_seer.game import SeerGame
+
+logger = logging.getLogger(__name__)
+
+GameClientGetter = Callable[[], SeerGame]
+_state: dict[str, GameClientGetter | None] = {"game_client_getter": None}
 
 
 class GameClientGetterNotRegisteredError(RuntimeError):
     """Raised when the headless Seer client provider is not registered."""
 
 
-def register_game_client_getter(getter: Callable[[], Any]) -> None:
+class ClientManager:
+    """Manage the process-wide headless Seer game client."""
+
+    def __init__(self) -> None:
+        self._client: SeerGame | None = None
+
+    def get_client(self) -> SeerGame:
+        if self._client is None or self._client._impl is None:
+            raise NotLoggedInError("Headless Seer client is not logged in")
+        if not self._client._impl.is_connected or not self._client._is_logged_in:
+            raise DisconnectedError("Headless Seer client is disconnected")
+        return self._client
+
+    async def login(
+        self,
+        user_id: int,
+        password: str,
+        login_server_url: str,
+        *,
+        heartbeat_interval: float | None = None,
+        reconnect_retries: int = 0,
+        reconnect_delay: float = 5.0,
+        reconnect_delay_max: float = 120.0,
+    ) -> SeerGame:
+        game = SeerGame(
+            user_id,
+            password,
+            login_server_url=login_server_url,
+            heartbeat_interval=heartbeat_interval,
+            reconnect_retries=reconnect_retries,
+            reconnect_delay=reconnect_delay,
+            reconnect_delay_max=reconnect_delay_max,
+        )
+        self._client = game
+        try:
+            await game.login()
+            logger.info("Headless Seer client logged in: %s", user_id)
+        except Exception:
+            if reconnect_retries != 0:
+                logger.warning(
+                    "Headless Seer initial login failed; reconnect scheduled",
+                    exc_info=True,
+                )
+                game.schedule_reconnect()
+            else:
+                self._client = None
+                raise
+        return game
+
+    def shutdown(self) -> None:
+        if self._client is not None:
+            self._client.logout()
+            logger.info("Headless Seer client disconnected")
+            self._client = None
+
+
+def register_game_client_getter(getter: GameClientGetter) -> None:
     _state["game_client_getter"] = getter
 
 
-def get_game_client() -> Any:
+def get_game_client() -> SeerGame:
     getter = _state["game_client_getter"]
     if getter is None:
         raise GameClientGetterNotRegisteredError
     return getter()
+
+
+client_manager: Final[ClientManager] = ClientManager()
+register_game_client_getter(client_manager.get_client)

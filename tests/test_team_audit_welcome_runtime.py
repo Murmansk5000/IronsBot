@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, get_type_hints
 
 from nonebot.adapters.onebot.v11 import Bot
 
+from ironsbot.config.models.message import TeamAuditWelcomeConfig
 from ironsbot.plugins import team_audit_welcome
 from ironsbot.plugins.team_audit_welcome import runtime
 from ironsbot.services.team_audit_welcome import TeamAuditPendingReminder
+from tests.helpers.config import stub_app_config
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,13 +38,16 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
+@dataclass(frozen=True)
+class FakeBot:
+    self_id: int = 123456
+
+
 def _app_config(*, enabled: bool = True, followup_enabled: bool = True):
-    return SimpleNamespace(
-        message=SimpleNamespace(
-            team_audit_welcome=SimpleNamespace(
-                enabled=enabled,
-                followup_enabled=followup_enabled,
-            )
+    return stub_app_config(
+        team_audit_welcome_config=TeamAuditWelcomeConfig(
+            enabled=enabled,
+            followup_enabled=followup_enabled,
         )
     )
 
@@ -70,7 +75,7 @@ def test_schedule_team_audit_followup_uses_standard_scheduler_fields(
     monkeypatch: MonkeyPatch,
 ) -> None:
     scheduler = FakeScheduler()
-    bot = SimpleNamespace(self_id=123456)
+    bot = FakeBot()
     remind_at = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
     reminder = TeamAuditPendingReminder(
         group_id=987654321,
@@ -110,7 +115,7 @@ def test_schedule_team_audit_followup_uses_standard_scheduler_fields(
 
 def test_register_team_audit_followup_scan_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
-    bot = SimpleNamespace(self_id=123456)
+    bot = FakeBot()
 
     team_audit_welcome.register_team_audit_followup_scan(
         scheduler,  # type: ignore[arg-type]

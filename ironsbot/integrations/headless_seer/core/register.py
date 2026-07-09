@@ -1,18 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Final
+from __future__ import annotations
 
-from ..type_hint import T_Deserializable
+from typing import TYPE_CHECKING, Final, TypeVar
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ..packet.packet import Deserializable
+
+_T_Packet = TypeVar("_T_Packet", bound="Deserializable")
 
 
 class PacketRegister(dict[int, type["Deserializable"]]):
     def register(
         self, cmd_id: int
-    ) -> Callable[[type[T_Deserializable]], type[T_Deserializable]]:
-        def wrapper(cls: type[T_Deserializable]) -> type[T_Deserializable]:
+    ) -> Callable[[type[_T_Packet]], type[_T_Packet]]:
+        def wrapper(cls: type[_T_Packet]) -> type[_T_Packet]:
             self[cmd_id] = cls
             return cls
 

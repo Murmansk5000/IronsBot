@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from types import SimpleNamespace
 
 import nonebot
 from pytest import MonkeyPatch
@@ -15,6 +14,11 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
+from ironsbot.config.models.seer import (
+    LocalRankConfig,
+    RankPageRefreshConfig,
+    RankQueryConfig,
+)
 from ironsbot.plugins.seer.query import runtime as seer_runtime
 
 
@@ -60,7 +64,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
     monkeypatch.setattr(
         seer_runtime,
         "get_local_rank_config",
-        lambda: SimpleNamespace(refresh_hour=3, refresh_minute=30),
+        lambda: LocalRankConfig(refresh_hour=3, refresh_minute=30),
     )
 
     seer_runtime.register_local_rank_refresh_job(scheduler)
@@ -84,8 +88,8 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
     monkeypatch.setattr(
         seer_runtime,
         "get_rank_query_config",
-        lambda: SimpleNamespace(
-            page_refresh=SimpleNamespace(
+        lambda: RankQueryConfig(
+            page_refresh=RankPageRefreshConfig(
                 enabled=True,
                 interval_minutes=15,
                 interval_offset_minutes=4,

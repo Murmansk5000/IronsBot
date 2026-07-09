@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
 
 from ironsbot.services.seer.team import (
     format_team_generic_error_message,
@@ -13,8 +13,37 @@ from ironsbot.services.seer.team import (
 TEAM_ID = 123456
 
 
-def _team_info() -> SimpleNamespace:
-    return SimpleNamespace(
+@dataclass(frozen=True)
+class TeamInfo:
+    name: str
+    team_id: int
+    leader: int
+    member_count: int
+    new_team_level: int
+    exp: int
+    score: int
+    super_core_num: int
+    last_pay_time: int
+    tech_center_level: int
+    bonus_center_level: int
+    res_center_level: int
+    total_boss_dmg: int
+    interest: int
+    join_flag: int
+    visit_flag: int
+    team_func_disalbed: int
+    drawing_uint: int
+    logo_bg: int
+    logo_icon: int
+    logo_color: int
+    txt_color: int
+    logo_word: str
+    slogan: str
+    notice: str
+
+
+def _team_info() -> TeamInfo:
+    return TeamInfo(
         name="测试战队",
         team_id=123456,
         leader=654321,

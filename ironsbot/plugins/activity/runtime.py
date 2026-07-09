@@ -12,9 +12,8 @@ from ironsbot.services.activity.delivery import (
     build_reminder_delivery,
 )
 from ironsbot.services.activity.scheduler import (
-    clear_reminder_jobs,
     register_scan_jobs,
-    schedule_reminder_jobs,
+    replace_reminder_jobs,
 )
 from ironsbot.services.activity.seer_activity import (
     scheduled_reminders,
@@ -96,8 +95,6 @@ async def schedule_activity_reminders() -> None:
     if not config.enabled:
         return
 
-    clear_reminder_jobs(scheduler)
-
     try:
         reminders = filter_unsent(
             scheduled_reminders(
@@ -115,7 +112,7 @@ async def schedule_activity_reminders() -> None:
         logger.info("activity reminder scan found no pending reminders")
         return
 
-    scheduled_count = schedule_reminder_jobs(
+    scheduled_count = replace_reminder_jobs(
         scheduler,
         send_activity_reminder,
         reminders,

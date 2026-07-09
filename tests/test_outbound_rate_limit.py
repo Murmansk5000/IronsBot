@@ -1,12 +1,12 @@
-from types import SimpleNamespace
-
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.message import OutboundRateLimitConfig
 from ironsbot.shared.messaging import outbound_rate_limit
 from ironsbot.shared.messaging.outbound_rate_limit import (
     check_group_outbound_rate_limit,
     reset_outbound_rate_limit_state,
 )
+from tests.helpers.config import stub_app_config
 
 GROUP_ID = 100
 ADMIN_GROUP_ID = 200
@@ -21,14 +21,12 @@ def _set_config(
     monkeypatch.setattr(
         outbound_rate_limit,
         "get_app_config",
-        lambda: SimpleNamespace(
-            message=SimpleNamespace(
-                outbound_rate_limit=SimpleNamespace(
-                    enabled=True,
-                    window_seconds=window_seconds,
-                    max_messages=max_messages,
-                    cooldown_message="进入冷却",
-                )
+        lambda: stub_app_config(
+            outbound_rate_limit_config=OutboundRateLimitConfig(
+                enabled=True,
+                window_seconds=window_seconds,
+                max_messages=max_messages,
+                cooldown_message="进入冷却",
             )
         ),
     )

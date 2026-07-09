@@ -1,3 +1,5 @@
+from typing import cast
+
 import httpx
 import pytest
 
@@ -37,7 +39,7 @@ def test_bili_auth_invalid_accepts_http_and_api_codes() -> None:
 def test_bili_auth_invalid_ignores_success_and_non_dict_data() -> None:
     assert not is_bili_auth_invalid(200, {"code": 0})
     assert not is_bili_auth_invalid(200, None)
-    assert not is_bili_auth_invalid(200, ["not", "a", "dict"])
+    assert not is_bili_auth_invalid(200, cast("dict", ["not", "a", "dict"]))
 
 
 def test_extract_bili_login_cookie_merges_response_and_login_url() -> None:

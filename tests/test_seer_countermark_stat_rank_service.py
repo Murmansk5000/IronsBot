@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from dataclasses import dataclass
 from typing import Any, cast
 
 from ironsbot.services.seer.countermark_stat_rank import (
@@ -16,6 +16,34 @@ FIVE_ANGLE_COUNT = 5
 SIX_ANGLE_COUNT = 6
 SHIELD_VALUE = 37.0
 SHIELD_HP_VALUE = 57.0
+
+
+@dataclass(frozen=True)
+class FakeMintmark:
+    id: int
+    name: str
+
+
+@dataclass(frozen=True)
+class FakeAttrs:
+    total: float
+
+
+def _rank_item(
+    *,
+    mintmark_id: int,
+    name: str,
+    value: float,
+    angle_count: int,
+) -> CountermarkStatRankItem:
+    return CountermarkStatRankItem(
+        mintmark=cast("Any", FakeMintmark(id=mintmark_id, name=name)),
+        attrs=cast("Any", FakeAttrs(total=TOTAL_VALUE)),
+        value=value,
+        total=TOTAL_VALUE,
+        class_name="限定",
+        angle_count=angle_count,
+    )
 
 
 def test_parse_countermark_stat_rank_command_reads_all_scope() -> None:
@@ -157,18 +185,10 @@ def test_build_countermark_message_explains_empty_five_angle_result() -> None:
 
 
 def test_build_countermark_message_renders_ranked_items() -> None:
-    item = CountermarkStatRankItem(
-        mintmark=cast(
-            "Any",
-            SimpleNamespace(
-                id=1001,
-                name="怒火刻印",
-            ),
-        ),
-        attrs=cast("Any", SimpleNamespace(total=TOTAL_VALUE)),
+    item = _rank_item(
+        mintmark_id=1001,
+        name="怒火刻印",
         value=ATTACK_VALUE,
-        total=TOTAL_VALUE,
-        class_name="限定",
         angle_count=5,
     )
 
@@ -184,18 +204,10 @@ def test_build_countermark_message_renders_ranked_items() -> None:
 
 
 def test_build_countermark_message_renders_composite_stats() -> None:
-    item = CountermarkStatRankItem(
-        mintmark=cast(
-            "Any",
-            SimpleNamespace(
-                id=1002,
-                name="守护刻印",
-            ),
-        ),
-        attrs=cast("Any", SimpleNamespace(total=TOTAL_VALUE)),
+    item = _rank_item(
+        mintmark_id=1002,
+        name="守护刻印",
         value=SHIELD_VALUE,
-        total=TOTAL_VALUE,
-        class_name="限定",
         angle_count=SIX_ANGLE_COUNT,
     )
 
@@ -214,18 +226,10 @@ def test_build_countermark_message_renders_composite_stats() -> None:
 
 
 def test_build_countermark_message_renders_stat_combinations() -> None:
-    item = CountermarkStatRankItem(
-        mintmark=cast(
-            "Any",
-            SimpleNamespace(
-                id=1003,
-                name="厚重刻印",
-            ),
-        ),
-        attrs=cast("Any", SimpleNamespace(total=TOTAL_VALUE)),
+    item = _rank_item(
+        mintmark_id=1003,
+        name="厚重刻印",
         value=SHIELD_HP_VALUE,
-        total=TOTAL_VALUE,
-        class_name="限定",
         angle_count=TWO_ANGLE_COUNT,
     )
 

@@ -35,8 +35,8 @@ class MessagingPlugin:
     def __init__(
         self,
         *,
-        private_matcher: Matcher,
-        group_matcher: Matcher,
+        private_matcher: type[Matcher],
+        group_matcher: type[Matcher],
     ) -> None:
         self._private_matcher = private_matcher
         self._group_matcher = group_matcher
@@ -87,8 +87,8 @@ class MessagingPlugin:
 
 def register_messaging_plugin(
     *,
-    private_matcher: Matcher,
-    group_matcher: Matcher,
+    private_matcher: type[Matcher],
+    group_matcher: type[Matcher],
 ) -> None:
     register_plugin(
         MessagingPlugin(
@@ -100,7 +100,7 @@ def register_messaging_plugin(
 
 async def dispatch_private_command(
     *,
-    private_matcher: Matcher,
+    private_matcher: type[Matcher],
     event: PrivateMessageEvent,
     state: T_State,
 ) -> None:
@@ -115,7 +115,7 @@ async def dispatch_private_command(
 
 async def dispatch_group_command(
     *,
-    group_matcher: Matcher,
+    group_matcher: type[Matcher],
     event: GroupMessageEvent,
     state: T_State,
 ) -> None:

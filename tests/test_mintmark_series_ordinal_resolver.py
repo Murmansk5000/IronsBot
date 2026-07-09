@@ -1,6 +1,5 @@
-from types import SimpleNamespace
-
 import nonebot
+import pytest
 from pytest import MonkeyPatch
 from seerapi_models import MintmarkClassCategoryORM, MintmarkORM
 from seerapi_models.mintmark import MintmarkMaxAttrORM, UniversalPartORM
@@ -11,9 +10,11 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.seer_data import db
-from ironsbot.plugins.seer_data.orm import MintmarkClassAliasORM
+from ironsbot.config.models.seer import MintmarkQueryConfig
+from ironsbot.integrations.seer_data import db, mintmark_series_resolvers
+from ironsbot.integrations.seer_data.orm import MintmarkClassAliasORM
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY
+from tests.helpers.config import stub_app_config
 
 
 def _make_session() -> Session:
@@ -42,26 +43,29 @@ def _add_mintmark(  # noqa: PLR0913
             spd=attrs[4],
             hp=attrs[5],
         )
-    session.add(
-        UniversalPartORM(
-            mintmark_id=id_,
-            mintmark_class_id=class_id,
-            connect_id=connect_id,
-            max_attr_value=max_attr_value,
-        )
+    universal_part = UniversalPartORM(
+        mintmark_id=id_,
+        mintmark_class_id=class_id,
+        connect_id=connect_id,
     )
+    if max_attr_value is not None:
+        universal_part.max_attr_value = max_attr_value
+    session.add(universal_part)
 
 
 def _patch_merge_connected(monkeypatch: MonkeyPatch, *, value: bool) -> None:
     monkeypatch.setattr(
-        db,
+        mintmark_series_resolvers,
         "get_app_config",
-        lambda: SimpleNamespace(
-            seer=SimpleNamespace(
-                mintmark=SimpleNamespace(merge_connected=value),
-            ),
+        lambda: stub_app_config(
+            mintmark_config=MintmarkQueryConfig(merge_connected=value),
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def _patch_default_mintmark_config(monkeypatch: MonkeyPatch) -> None:
+    _patch_merge_connected(monkeypatch, value=True)
 
 
 def test_mintmark_series_ordinal_resolves_class_alias(

@@ -94,22 +94,21 @@ def test_mark_history_snapshot_pushed_preserves_existing_fields() -> None:
 
 
 def test_decide_dynamic_push_before_targets_handles_skip_and_suppression() -> None:
-    assert (
-        decide_dynamic_push_before_targets(
-            pub_ts=OLD_TS,
-            last_saved_time=NEW_TS,
-            suppression_reason="",
-        ).status
-        == "skip_existing"
+    skip_existing_decision = decide_dynamic_push_before_targets(
+        pub_ts=OLD_TS,
+        last_saved_time=NEW_TS,
+        suppression_reason="",
     )
-    assert (
-        decide_dynamic_push_before_targets(
-            pub_ts=NEW_TS,
-            last_saved_time=OLD_TS,
-            suppression_reason="命中规则：测试",
-        ).status
-        == "suppressed"
+    assert skip_existing_decision is not None
+    assert skip_existing_decision.status == "skip_existing"
+
+    suppressed_decision = decide_dynamic_push_before_targets(
+        pub_ts=NEW_TS,
+        last_saved_time=OLD_TS,
+        suppression_reason="命中规则：测试",
     )
+    assert suppressed_decision is not None
+    assert suppressed_decision.status == "suppressed"
 
     assert (
         decide_dynamic_push_before_targets(

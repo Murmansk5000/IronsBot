@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: C901, PERF401, PLR0912, PLR0915, TRY003
 import dataclasses
 import struct
 from dataclasses import dataclass

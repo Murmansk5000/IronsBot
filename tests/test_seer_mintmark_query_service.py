@@ -1,12 +1,19 @@
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import nonebot
 from pytest import MonkeyPatch
 
+from ironsbot.config import clear_app_config_cache
 from ironsbot.config.models.seer import MintmarkQueryConfig
 
 if TYPE_CHECKING:
     from seerapi_models import MintmarkORM
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()

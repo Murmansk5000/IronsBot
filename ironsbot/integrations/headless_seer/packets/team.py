@@ -31,3 +31,6 @@ class SimpleTeamInfo(Deserializable):
     total_boss_dmg: f.UInt
     team_func_disalbed: f.UInt
     last_pay_time: f.UInt
+
+
+__all__ = ["SimpleTeamInfo"]
