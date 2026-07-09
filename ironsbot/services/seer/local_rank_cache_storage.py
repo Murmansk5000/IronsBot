@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.config import get_app_config
 from ironsbot.services.seer.local_rank_metrics import MetricValue, positive_int
-from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite
+from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -25,10 +25,43 @@ def sqlite_cache_path() -> Path:
     return get_app_config().seer.local_rank.path
 
 
+LOCAL_RANK_BASE_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS players (
+        user_id INTEGER PRIMARY KEY,
+        nick TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS metrics (
+        user_id INTEGER NOT NULL,
+        metric_key TEXT NOT NULL,
+        value INTEGER NOT NULL,
+        season_sub_key INTEGER,
+        display TEXT,
+        PRIMARY KEY (user_id, metric_key),
+        FOREIGN KEY (user_id) REFERENCES players(user_id) ON DELETE CASCADE
+    )
+    """,
+)
+LOCAL_RANK_INDEX_SCHEMA = (
+    """
+    CREATE INDEX IF NOT EXISTS idx_players_sample
+    ON players(sample_enabled, user_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_metrics_rank
+    ON metrics(metric_key, season_sub_key, value DESC, user_id)
+    """,
+)
+
+
 @contextmanager
 def connect_local_rank_cache() -> Iterator[sqlite3.Connection]:
-    with open_sqlite(
+    with open_sqlite_schema(
         sqlite_cache_path(),
+        LOCAL_RANK_BASE_SCHEMA,
         row_factory=cast("RowFactory", sqlite3.Row),
     ) as conn:
         ensure_local_rank_cache_schema(conn)
@@ -36,15 +69,6 @@ def connect_local_rank_cache() -> Iterator[sqlite3.Connection]:
 
 
 def ensure_local_rank_cache_schema(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS players (
-            user_id INTEGER PRIMARY KEY,
-            nick TEXT NOT NULL DEFAULT '',
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
     ensure_sqlite_column(
         conn,
         table_name="players",
@@ -65,31 +89,8 @@ def ensure_local_rank_cache_schema(conn: sqlite3.Connection) -> None:
               AND sampled_at IS NULL
             """
         )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS metrics (
-            user_id INTEGER NOT NULL,
-            metric_key TEXT NOT NULL,
-            value INTEGER NOT NULL,
-            season_sub_key INTEGER,
-            display TEXT,
-            PRIMARY KEY (user_id, metric_key),
-            FOREIGN KEY (user_id) REFERENCES players(user_id) ON DELETE CASCADE
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_players_sample
-        ON players(sample_enabled, user_id)
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_metrics_rank
-        ON metrics(metric_key, season_sub_key, value DESC, user_id)
-        """
-    )
+    for statement in LOCAL_RANK_INDEX_SCHEMA:
+        conn.execute(statement)
 
 
 def write_player_metrics(  # noqa: PLR0913
