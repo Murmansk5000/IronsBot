@@ -27,7 +27,6 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import and_, col, func, or_, select
 
-from ironsbot import config as app_config
 from ironsbot.integrations.db_registry import db_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 
@@ -47,7 +46,6 @@ from .orm import (
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
-get_app_config = app_config.get_app_config
 
 _T_Model = TypeVar("_T_Model", bound=BaseResModel)
 _T_Model_co = TypeVar("_T_Model_co", bound=BaseResModel, covariant=True)

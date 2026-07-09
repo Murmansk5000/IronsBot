@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.ai.notifier import notify_superusers_once
 
 if TYPE_CHECKING:

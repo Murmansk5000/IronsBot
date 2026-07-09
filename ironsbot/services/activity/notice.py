@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 
 if TYPE_CHECKING:
     from .models import ActivityInfo

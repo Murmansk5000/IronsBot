@@ -1,6 +1,6 @@
 import pytest
 from ironsbot.services.seer.rank_ranges import MAX_RANK_POSITION, RankRangeError, validate_rank_interval
-from ironsbot.services.seer.rank_list import parse_rank_list_command
+from ironsbot.services.seer.rank_list_parsing import parse_rank_list_command
 
 def test_historical_rank_bounds_are_not_search_budgets():
     validate_rank_interval(10001, 20000)

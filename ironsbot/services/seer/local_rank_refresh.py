@@ -1,18 +1,18 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
-from ironsbot.services.seer.client import get_game_client
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank import (
     can_cache_player_id,
     get_refresh_candidate_player_ids,
     update_local_rank_cache,
 )
-from ironsbot.services.seer.rank import (
+from ironsbot.services.seer.rank_service import (
     build_peak_rating_score,
     fetch_player_rank_summary,
     get_current_peak_sub_key,

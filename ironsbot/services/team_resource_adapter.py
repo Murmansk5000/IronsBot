@@ -1,6 +1,6 @@
 from typing import Any, NamedTuple
 
-from ironsbot.services.seer.client import get_game_client
+from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.team import format_team_info
 
 

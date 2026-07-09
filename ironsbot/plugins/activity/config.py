@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.app import AppConfig
 
 Config = AppConfig
 

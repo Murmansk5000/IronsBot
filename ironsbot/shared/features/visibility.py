@@ -7,7 +7,7 @@ from nonebot import get_driver
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
-from ironsbot.config import get_app_config, load_secrets_config
+from ironsbot.config.loader import get_app_config, load_secrets_config
 from ironsbot.shared.features.registry import features_for_module
 
 from .service import (

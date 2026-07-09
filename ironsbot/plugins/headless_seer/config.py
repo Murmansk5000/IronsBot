@@ -1,13 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from nonebot import get_driver
 
-from ironsbot.config import (
-    AppConfig,
-    CredentialsConfig,
-    get_app_config,
-    load_credentials_config,
-)
+from ironsbot.config.loader import get_app_config, load_credentials_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.runtime import HeadlessConfig
+from ironsbot.config.models.secrets import CredentialsConfig
 
 Config = AppConfig
 

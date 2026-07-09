@@ -58,3 +58,7 @@ PET_KIND_RANK_ANOMALY_USER_IDS = frozenset(
     )
 )
 PET_KIND_RANK_ANOMALY_COUNT = len(PET_KIND_RANK_ANOMALY_USER_IDS)
+
+
+def is_pet_kind_rank_anomaly_user(user_id: int) -> bool:
+    return user_id in PET_KIND_RANK_ANOMALY_USER_IDS
