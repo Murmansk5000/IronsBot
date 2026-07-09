@@ -9,7 +9,7 @@ from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepCon
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 
 TriggerWorkflowFn = Callable[
-    [RemoteBuildStepConfig, str],
+    [RemoteBuildStepConfig],
     Awaitable[WorkflowRunResult],
 ]
 
@@ -56,7 +56,7 @@ async def run_remote_build(
     *,
     name: str,
     config: RemoteBuildConfig | None,
-    load_token: Callable[[], str],
+    token: str,
     results: MutableMapping[str, WorkflowRunResult],
     trigger_workflow: TriggerWorkflowFn,
 ) -> bool:
@@ -72,7 +72,6 @@ async def run_remote_build(
         logger.warning(f"数据库 '{name}' 远程构建配置缺少可执行 workflow")
         return False
 
-    token = load_token()
     if not token:
         results[name] = remote_build_failure(
             config=config,
@@ -103,7 +102,7 @@ async def run_remote_build(
             f"({step.repository}/{step.workflow_id}@{step.ref})"
         )
         try:
-            result = await trigger_workflow(step, token)
+            result = await trigger_workflow(step)
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).error(
                 f"数据库 '{name}' 远程构建步骤请求失败: {step.display_name}"
