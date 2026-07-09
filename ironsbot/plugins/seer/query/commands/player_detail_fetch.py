@@ -9,7 +9,9 @@ from nonebot import logger
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.local_rank_update import update_local_rank_cache
-from ironsbot.services.seer.player_formatting import format_player_detail_messages
+from ironsbot.services.seer.player_detail_formatting import (
+    format_player_detail_messages,
+)
 from ironsbot.services.seer.player_query import (
     PlayerDetailMessages,
     calculate_player_peak_scores,

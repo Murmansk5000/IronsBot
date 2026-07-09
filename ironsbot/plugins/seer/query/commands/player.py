@@ -22,7 +22,7 @@ from ironsbot.services.headless_seer_notice.state import (
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.packets import ensure_extended_packets
-from ironsbot.services.seer.player_formatting import (
+from ironsbot.services.seer.player_compact_formatting import (
     format_compact_player_info,
 )
 from ironsbot.services.seer.player_query import (
