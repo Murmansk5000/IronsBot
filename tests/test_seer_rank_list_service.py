@@ -178,7 +178,17 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         kind="global",
         rank_key="竞技段位",
     )
+    assert parse_rank_list_command("狂野榜20名") == RankListCommand(
+        kind="global",
+        rank_key="狂野段位",
+        start_rank=20,
+        limit=1,
+    )
     assert parse_rank_list_command("专家段位榜") == RankListCommand(
+        kind="global",
+        rank_key="专家段位",
+    )
+    assert parse_rank_list_command("专家榜") == RankListCommand(
         kind="global",
         rank_key="专家段位",
     )
@@ -213,10 +223,19 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
         rank_key="狂野段位",
         score=400036,
     )
-    assert parse_rank_score_command("狂野段位榜宇宙圣皇1") == RankScoreCommand(
+    assert parse_rank_score_command("狂野榜圣皇36星") == RankScoreCommand(
         rank_key="狂野段位",
-        score=500001,
+        score=400036,
     )
+    assert parse_rank_score_command("狂野段位榜宇宙圣皇100星") == RankScoreCommand(
+        rank_key="狂野段位",
+        score=400100,
+    )
+    assert parse_rank_score_command("狂野段位榜宇宙圣皇136") == RankScoreCommand(
+        rank_key="狂野段位",
+        score=400136,
+    )
+    assert parse_rank_score_command("狂野段位榜宇宙圣皇1") is None
     assert parse_rank_score_command("专家段位榜3000分") == RankScoreCommand(
         rank_key="专家段位",
         score=3000,
@@ -362,10 +381,10 @@ def test_format_global_rank_line_formats_peak_rating_score() -> None:
         unit="分",
         score_format="peak_rating",
     )
-    item = RankItem(nick="Alice", id=100, score=500036)
+    item = RankItem(nick="Alice", id=100, score=400136)
 
     assert format_global_rank_line(item, index=0, spec=spec) == (
-        "1. Alice（100） 宇宙圣皇36星（500036）"
+        "1. Alice（100） 宇宙圣皇136星（400136）"
     )
 
 

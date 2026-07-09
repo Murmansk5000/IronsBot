@@ -19,6 +19,8 @@ PEAK_RANK_NAMES = {
     4: "圣皇",
     5: "宇宙圣皇",
 }
+COSMIC_SAINT_RANK_VALUE = 4
+COSMIC_SAINT_MIN_STAR = 100
 
 
 def filter_blank_lines(lines: list[str]) -> list[str]:
@@ -115,6 +117,8 @@ def format_vip(user_info: Any) -> str:
 
 def format_rank_star_compact(rank: int, star: int) -> str:
     name = PEAK_RANK_NAMES.get(rank, f"段位{rank}")
+    if rank == COSMIC_SAINT_RANK_VALUE and star >= COSMIC_SAINT_MIN_STAR:
+        name = "宇宙圣皇"
     return f"{name}{star}星"
 
 
