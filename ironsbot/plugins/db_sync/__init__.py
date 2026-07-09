@@ -21,13 +21,13 @@ from nonebot.rule import Rule
 from ironsbot.config import load_secrets_config
 from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.shared.messaging.text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
 from . import formatting as sync_formatting
 from .github_actions import WorkflowRunResult, trigger_and_wait_workflow
 from .manager import db_manager
+from .manual import ManualSyncContext, handle_manual_sync
 from .storage import (
     _fetch_remote_timestamp,
     _file_timestamp,
@@ -567,61 +567,20 @@ def _prepare_local_database(name: str, file_path: str) -> None:
 
 @manual_sync_matcher.handle()
 async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
-    if not _registered_syncs:
-        await finish_event_reply(matcher, event, "当前没有已注册的远程同步数据库。")
-
-    if is_sync_running():
-        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
-
-    names = list(_registered_syncs)
-    remote_names = _remote_build_names()
-    start_message = (
-        f"开始远程构建数据：{', '.join(remote_names)}；"
-        f"随后更新数据：{', '.join(names)}，请稍等。"
-        if remote_names
-        else f"开始更新数据：{', '.join(names)}，请稍等。"
-    )
-    await send_event_reply(
+    await handle_manual_sync(
         matcher,
         event,
-        start_message,
+        context=ManualSyncContext(
+            registered_syncs=_registered_syncs,
+            last_sync_statuses=_last_sync_statuses,
+            default_sync_status=_SyncStatus(ok=True),
+            is_sync_running=is_sync_running,
+            remote_build_names=_remote_build_names,
+            run_sync_all_databases=run_sync_all_databases,
+            format_sync_statuses=_format_sync_statuses,
+            format_remote_build_failures=_format_remote_build_failures,
+        ),
     )
-
-    did_run, results = await run_sync_all_databases(trigger_remote_build=True)
-
-    if not did_run:
-        await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
-
-    failed = [name for name, ok in results.items() if not ok]
-    succeeded = [name for name, ok in results.items() if ok]
-    status_text = _format_sync_statuses(results)
-
-    if failed:
-        remote_failure_text = _format_remote_build_failures(failed)
-        extra_text = f"\n{remote_failure_text}" if remote_failure_text else ""
-        status_extra = f"\n{status_text}" if status_text else ""
-        await finish_event_reply(
-            matcher,
-            event,
-            "数据更新完成，但有失败项。\n"
-            f"成功：{', '.join(succeeded) if succeeded else '无'}\n"
-            f"失败：{', '.join(failed)}"
-            f"{status_extra}"
-            f"{extra_text}\n"
-            "请查看容器日志确认网络或下载错误。"
-        )
-
-    skipped = [
-        name
-        for name, ok in results.items()
-        if ok and _last_sync_statuses.get(name, _SyncStatus(ok=True)).skipped
-    ]
-    if skipped and len(skipped) == len(results):
-        title = f"数据已是最新，无需更新：{', '.join(skipped)}"
-    else:
-        title = f"数据更新完成：{', '.join(succeeded)}"
-    status_extra = f"\n{status_text}" if status_text else ""
-    await finish_event_reply(matcher, event, f"{title}{status_extra}")
 
 
 def _format_remote_build_failures(failed_names: list[str]) -> str:
