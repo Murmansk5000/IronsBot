@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import logging
 import struct
 from abc import abstractmethod
 from asyncio import BaseTransport, StreamReader, StreamReaderProtocol, StreamWriter
@@ -9,14 +10,12 @@ from contextlib import AbstractAsyncContextManager
 from types import TracebackType
 from typing import Any, Generic, TypeGuard, TypeVar, overload
 
-from nonebot import logger
 from typing_extensions import Self, TypeVarTuple, Unpack
-
-from ironsbot.integrations.headless_seer.exception import SocketRecvError
 
 from .. import decrypt
 from ..as3bytearray import AS3ByteArray
 from ..command_id import COMMAND_ID
+from ..exception import SocketRecvError
 from ..packet.packet import Deserializable
 from ..packets.head import HeadInfo
 from ..type_hint import (
@@ -31,6 +30,7 @@ from .register import packet_register
 
 _T_CommandID = TypeVar("_T_CommandID", bound=CommandID)
 _T_UnpackedType = TypeVarTuple("_T_UnpackedType")
+logger = logging.getLogger(__name__)
 
 
 def _serialize_binary(data: AS3ByteArray, *args: Any) -> None:
@@ -193,7 +193,7 @@ class AbstractSocketConnect(
                     logger.exception("错误")
                     break
                 except Exception:
-                    logger.opt(exception=True).warning("处理封包时出错")
+                    logger.warning("处理封包时出错", exc_info=True)
                     if not self.is_connected:
                         break
                     continue

@@ -1,15 +1,22 @@
+import os
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 import nonebot
 from pytest import MonkeyPatch
+
+from ironsbot.config import clear_app_config_cache
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
+from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.plugins import activity
 from ironsbot.plugins.activity import runtime as activity_runtime
 from ironsbot.services.activity.delivery import ActivityReminderTargets
@@ -17,6 +24,7 @@ from ironsbot.shared.messaging.push_subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
     PushUnsubscribeStore,
 )
+from tests.helpers.config import stub_app_config
 
 
 class FakeDriver:
@@ -67,7 +75,7 @@ def test_register_activity_reminder_jobs_installs_startup_and_daily_scans(
     monkeypatch.setattr(
         activity_runtime,
         "get_activity_config",
-        lambda: SimpleNamespace(enabled=True),
+        lambda: ActivityConfig(enabled=True),
     )
 
     activity_runtime.register_activity_reminder_jobs(scheduler)
@@ -101,7 +109,7 @@ def test_load_activity_rows_resolves_session_factory_at_runtime(
     monkeypatch.setattr(
         activity,
         "get_activity_config",
-        lambda: SimpleNamespace(only_shown=False),
+        lambda: ActivityConfig(only_shown=False),
     )
     monkeypatch.setattr(
         activity,
@@ -137,7 +145,9 @@ def test_activity_lead_hour_overrides_filter_targets(
     monkeypatch.setattr(
         activity_runtime,
         "get_activity_config",
-        lambda: SimpleNamespace(lead_hours=[11, 1]),
+        lambda: stub_app_config(
+            activity_config=ActivityConfig(lead_hours=[11, 1])
+        ).activity,
     )
     monkeypatch.setattr(
         activity_runtime,

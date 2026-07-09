@@ -9,7 +9,7 @@ from nonebot.params import Depends
 from ironsbot.services.seer.client import get_game_client
 
 if TYPE_CHECKING:
-    from ironsbot.plugins.headless_seer.game import SeerGame
+    from ironsbot.integrations.headless_seer.game import SeerGame
 
 
 async def _get_game_client(matcher: Matcher) -> SeerGame:

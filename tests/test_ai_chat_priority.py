@@ -1,11 +1,18 @@
+import os
+from pathlib import Path
+
 import nonebot
+
+from ironsbot.config import clear_app_config_cache
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+clear_app_config_cache()
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
-
-nonebot.require("ironsbot.plugins.http_client")
 
 from ironsbot.plugins.ai_chat import AI_CHAT_PRIORITY, AI_GROUP_AT_CHAT_PRIORITY
 from ironsbot.plugins.ai_mention_guard import AI_MENTION_GUARD_PRIORITY

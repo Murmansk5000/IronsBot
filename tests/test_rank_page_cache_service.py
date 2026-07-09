@@ -1,9 +1,10 @@
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.seer import RankQueryConfig
 from ironsbot.services.seer import rank_page_cache
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item,
@@ -22,15 +23,18 @@ OVERLAP_LOOKUP_INDEX = 14
 OVERLAP_NEW_USER_ID = 2000
 
 
-def test_save_rank_page_deduplicates_user_within_same_rank(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    cache_path = tmp_path / "rank_page_cache.sqlite"
+@dataclass(frozen=True)
+class RankItem:
+    id: int
+    nick: str
+    score: int
+
+
+def _patch_rank_cache_config(monkeypatch: MonkeyPatch, cache_path: Path) -> None:
     monkeypatch.setattr(
         rank_page_cache,
         "get_rank_query_config",
-        lambda: SimpleNamespace(
+        lambda: RankQueryConfig(
             page_cache=True,
             page_cache_path=cache_path,
             page_cache_ttl_seconds=3600,
@@ -38,19 +42,27 @@ def test_save_rank_page_deduplicates_user_within_same_rank(
         ),
     )
 
+
+def test_save_rank_page_deduplicates_user_within_same_rank(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "rank_page_cache.sqlite"
+    _patch_rank_cache_config(monkeypatch, cache_path)
+
     save_rank_page(
         key=1,
         sub_key=2,
         start=0,
         end=99,
-        items=[SimpleNamespace(id=100, nick="旧名", score=999)],
+        items=[RankItem(id=100, nick="旧名", score=999)],
     )
     save_rank_page(
         key=1,
         sub_key=2,
         start=100,
         end=199,
-        items=[SimpleNamespace(id=100, nick="新名", score=1001)],
+        items=[RankItem(id=100, nick="新名", score=1001)],
     )
 
     cached = get_cached_rank_item(key=1, sub_key=2, user_id=100)
@@ -82,23 +94,14 @@ def test_rank_page_cache_uses_player_rank_fact_schema(
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    monkeypatch.setattr(
-        rank_page_cache,
-        "get_rank_query_config",
-        lambda: SimpleNamespace(
-            page_cache=True,
-            page_cache_path=cache_path,
-            page_cache_ttl_seconds=3600,
-            allow_stale_cache=True,
-        ),
-    )
+    _patch_rank_cache_config(monkeypatch, cache_path)
 
     save_rank_page(
         key=1,
         sub_key=2,
         start=0,
         end=99,
-        items=[SimpleNamespace(id=100, nick="Alice", score=999)],
+        items=[RankItem(id=100, nick="Alice", score=999)],
     )
 
     with sqlite3.connect(cache_path) as conn:
@@ -119,16 +122,7 @@ def test_save_rank_page_replaces_overlapping_ranges(
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    monkeypatch.setattr(
-        rank_page_cache,
-        "get_rank_query_config",
-        lambda: SimpleNamespace(
-            page_cache=True,
-            page_cache_path=cache_path,
-            page_cache_ttl_seconds=3600,
-            allow_stale_cache=True,
-        ),
-    )
+    _patch_rank_cache_config(monkeypatch, cache_path)
 
     save_rank_page(
         key=1,
@@ -136,7 +130,7 @@ def test_save_rank_page_replaces_overlapping_ranges(
         start=0,
         end=99,
         items=[
-            SimpleNamespace(id=1000 + index, nick=f"Old{index}", score=2000 - index)
+            RankItem(id=1000 + index, nick=f"Old{index}", score=2000 - index)
             for index in range(100)
         ],
         fetched_at=FETCHED_AT,
@@ -146,7 +140,7 @@ def test_save_rank_page_replaces_overlapping_ranges(
         sub_key=2,
         start=OVERLAP_LOOKUP_INDEX,
         end=OVERLAP_LOOKUP_INDEX,
-        items=[SimpleNamespace(id=OVERLAP_NEW_USER_ID, nick="New15", score=1999)],
+        items=[RankItem(id=OVERLAP_NEW_USER_ID, nick="New15", score=1999)],
         fetched_at=FETCHED_AT + 60,
     )
 
@@ -173,23 +167,14 @@ def test_cached_rank_page_result_preserves_fetched_at(
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    monkeypatch.setattr(
-        rank_page_cache,
-        "get_rank_query_config",
-        lambda: SimpleNamespace(
-            page_cache=True,
-            page_cache_path=cache_path,
-            page_cache_ttl_seconds=3600,
-            allow_stale_cache=True,
-        ),
-    )
+    _patch_rank_cache_config(monkeypatch, cache_path)
 
     save_rank_page(
         key=1,
         sub_key=2,
         start=0,
         end=0,
-        items=[SimpleNamespace(id=100, nick="Alice", score=999)],
+        items=[RankItem(id=100, nick="Alice", score=999)],
         fetched_at=FETCHED_AT,
     )
 
@@ -205,16 +190,7 @@ def test_cached_rank_item_by_index_reads_containing_page(
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    monkeypatch.setattr(
-        rank_page_cache,
-        "get_rank_query_config",
-        lambda: SimpleNamespace(
-            page_cache=True,
-            page_cache_path=cache_path,
-            page_cache_ttl_seconds=3600,
-            allow_stale_cache=True,
-        ),
-    )
+    _patch_rank_cache_config(monkeypatch, cache_path)
 
     save_rank_page(
         key=1,
@@ -222,7 +198,7 @@ def test_cached_rank_item_by_index_reads_containing_page(
         start=100,
         end=199,
         items=[
-            SimpleNamespace(id=100 + index, nick=f"Player{index}", score=1000 - index)
+            RankItem(id=100 + index, nick=f"Player{index}", score=1000 - index)
             for index in range(100)
         ],
         fetched_at=FETCHED_AT,

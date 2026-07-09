@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from dataclasses import dataclass, field
 
 from ironsbot.services.seer.rank_list import (
     GlobalRankSpec,
@@ -35,6 +35,94 @@ from ironsbot.services.seer.rank_list import (
     timestamp_text,
     with_admin_prefix,
 )
+
+
+@dataclass(frozen=True)
+class RankItem:
+    id: int
+    nick: str
+    score: int
+    rank_index: int = 0
+
+
+@dataclass(frozen=True)
+class ScoreGap:
+    score: int
+    start_rank: int
+    end_rank: int
+    total_count: int
+    truncated: bool = False
+    items: list[RankItem] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ScoreResult:
+    queried: bool
+    target_score: int
+    searched_limit: int
+    boundary_score: int | None
+    items: list[RankItem]
+    start_rank: int | None = None
+    end_rank: int | None = None
+    total_count: int = 0
+    truncated: bool = False
+    higher_gap: ScoreGap | None = None
+    lower_gap: ScoreGap | None = None
+
+
+@dataclass(frozen=True)
+class PageSummary:
+    start_index: int
+    item_count: int
+    end_index: int = 0
+    expected_count: int = 0
+    is_stale: bool = False
+    is_partial: bool = False
+
+    def __post_init__(self) -> None:
+        if self.expected_count == 0:
+            object.__setattr__(self, "expected_count", self.item_count)
+
+
+@dataclass(frozen=True)
+class RefreshTarget:
+    reason: str
+    start_rank: int
+    end_rank: int
+    spec: GlobalRankSpec
+
+
+@dataclass(frozen=True)
+class PageRefreshResult:
+    total: int
+    success: int
+    failed: int
+    refreshed: list[RefreshTarget] = field(default_factory=list)
+    failures: list[object] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LocalRankEntry:
+    rank: int
+    nick: str
+    user_id: int
+    display: str
+
+
+@dataclass(frozen=True)
+class LocalRankStats:
+    player_count: int
+    max_players: int
+    total_player_count: int = 0
+    metric_counts: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LocalRefreshResult:
+    total: int
+    success: int
+    skipped_full: int
+    failed: int
 
 
 def test_parse_rank_list_command_reads_global_aliases() -> None:
@@ -208,7 +296,7 @@ def test_format_global_rank_line_applies_spec_rank_offset() -> None:
         start=10,
         rank_offset=-2,
     )
-    item = SimpleNamespace(nick="Alice", id=100, score=123)
+    item = RankItem(nick="Alice", id=100, score=123)
 
     assert format_global_rank_line(item, index=10, spec=spec) == (
         "9. Alice（100） 123分"
@@ -217,7 +305,7 @@ def test_format_global_rank_line_applies_spec_rank_offset() -> None:
 
 def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
-    item = SimpleNamespace(nick="Alice", id=100, score=123)
+    item = RankItem(nick="Alice", id=100, score=123)
 
     assert format_global_rank_message(
         spec,
@@ -236,7 +324,7 @@ def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
 
 def test_format_global_rank_score_message() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
-    result = SimpleNamespace(
+    result = ScoreResult(
         queried=True,
         target_score=3149,
         searched_limit=10000,
@@ -246,9 +334,9 @@ def test_format_global_rank_score_message() -> None:
         total_count=3,
         truncated=False,
         items=[
-            SimpleNamespace(id=101, nick="Alice", score=3149, rank_index=20),
-            SimpleNamespace(id=102, nick="Bob", score=3149, rank_index=21),
-            SimpleNamespace(id=103, nick="Carol", score=3149, rank_index=22),
+            RankItem(id=101, nick="Alice", score=3149, rank_index=20),
+            RankItem(id=102, nick="Bob", score=3149, rank_index=21),
+            RankItem(id=103, nick="Carol", score=3149, rank_index=22),
         ],
     )
 
@@ -267,7 +355,7 @@ def test_format_global_rank_score_message() -> None:
 
 def test_format_global_rank_score_message_shows_cached_hit_without_boundary() -> None:
     spec = GlobalRankSpec("图鉴积分榜", key=156, sub_key=1, unit="分")
-    result = SimpleNamespace(
+    result = ScoreResult(
         queried=True,
         target_score=55933,
         searched_limit=10000,
@@ -277,7 +365,7 @@ def test_format_global_rank_score_message_shows_cached_hit_without_boundary() ->
         total_count=1,
         truncated=False,
         items=[
-            SimpleNamespace(
+            RankItem(
                 id=291439942,
                 nick="桐生 战兔",
                 score=55933,
@@ -298,7 +386,7 @@ def test_format_global_rank_score_message_shows_cached_hit_without_boundary() ->
 
 def test_format_rank_score_message_needs_data_without_items_or_boundary() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
-    result = SimpleNamespace(
+    result = ScoreResult(
         queried=True,
         target_score=3149,
         searched_limit=10000,
@@ -311,7 +399,7 @@ def test_format_rank_score_message_needs_data_without_items_or_boundary() -> Non
 
 def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
-    result = SimpleNamespace(
+    result = ScoreResult(
         queried=True,
         target_score=999,
         searched_limit=10000,
@@ -327,20 +415,20 @@ def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
 
 def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
     spec = GlobalRankSpec("群星之巅榜", key=240, sub_key=1, unit="分")
-    result = SimpleNamespace(
+    result = ScoreResult(
         queried=True,
         target_score=10000,
         searched_limit=50000,
         boundary_score=9970,
         items=[],
-        higher_gap=SimpleNamespace(
+        higher_gap=ScoreGap(
             score=10001,
             start_rank=57,
             end_rank=57,
             total_count=1,
             truncated=False,
             items=[
-                SimpleNamespace(
+                RankItem(
                     id=910731260,
                     nick="流苏",
                     score=10001,
@@ -348,14 +436,14 @@ def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
                 )
             ],
         ),
-        lower_gap=SimpleNamespace(
+        lower_gap=ScoreGap(
             score=9970,
             start_rank=58,
             end_rank=58,
             total_count=1,
             truncated=False,
             items=[
-                SimpleNamespace(
+                RankItem(
                     id=264391071,
                     nick="慎重格劳瑞",
                     score=9970,
@@ -399,11 +487,11 @@ def test_page_cache_rank_interval_and_interval_formatting() -> None:
         unit="项",
         rank_offset=-2,
     )
-    page = SimpleNamespace(start_index=10, item_count=5)
+    page = PageSummary(start_index=10, item_count=5)
 
     assert page_cache_rank_interval(page, spec) == (9, 13)
     assert page_cache_rank_interval(
-        SimpleNamespace(start_index=10, item_count=0),
+        PageSummary(start_index=10, item_count=0),
         spec,
     ) is None
     assert merge_rank_intervals([(5, 6), (1, 3), (4, 4), (10, 10)]) == [
@@ -417,9 +505,9 @@ def test_page_cache_rank_interval_and_interval_formatting() -> None:
 def test_build_rank_page_cache_status_message_groups_valid_and_stale_pages() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     pages = [
-        SimpleNamespace(start_index=0, item_count=2, is_stale=False),
-        SimpleNamespace(start_index=2, item_count=2, is_stale=False),
-        SimpleNamespace(start_index=10, item_count=3, is_stale=True),
+        PageSummary(start_index=0, item_count=2, is_stale=False),
+        PageSummary(start_index=2, item_count=2, is_stale=False),
+        PageSummary(start_index=10, item_count=3, is_stale=True),
     ]
 
     assert build_rank_page_cache_status_message(
@@ -444,7 +532,7 @@ def test_build_rank_page_cache_status_message_groups_valid_and_stale_pages() -> 
 def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     pages = [
-        SimpleNamespace(
+        PageSummary(
             start_index=0,
             item_count=99,
             expected_count=100,
@@ -474,14 +562,14 @@ def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() ->
 def test_build_rank_page_cache_status_does_not_double_count_partial_stale() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     pages = [
-        SimpleNamespace(
+        PageSummary(
             start_index=0,
             item_count=90,
             expected_count=100,
             is_stale=True,
             is_partial=True,
         ),
-        SimpleNamespace(
+        PageSummary(
             start_index=100,
             item_count=100,
             expected_count=100,
@@ -510,7 +598,7 @@ def test_build_rank_page_cache_status_does_not_double_count_partial_stale() -> N
 
 def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
-    target = SimpleNamespace(
+    target = RefreshTarget(
         reason="缺失",
         start_rank=101,
         end_rank=200,
@@ -521,7 +609,14 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
             (
                 "测试",
                 spec,
-                [SimpleNamespace(item_count=100, is_partial=False, is_stale=False)],
+                [
+                    PageSummary(
+                        start_index=0,
+                        item_count=100,
+                        is_partial=False,
+                        is_stale=False,
+                    )
+                ],
                 [target],
                 500,
             )
@@ -534,13 +629,13 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
         RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
     ) == "🔄 正在刷新皮肤图鉴榜缓存。"
     assert build_rank_page_refresh_result_message(
-        SimpleNamespace(total=0, success=0, failed=0, refreshed=[], failures=[])
+        PageRefreshResult(total=0, success=0, failed=0)
     ) == "✅【榜单页缓存刷新】当前没有缺失、部分缺失或过期页面。"
 
 
 def test_format_local_rank_message_uses_sample_and_season_context() -> None:
     spec = LocalRankSpec("样本测试榜", "test_metric", season_limited=True)
-    entry = SimpleNamespace(
+    entry = LocalRankEntry(
         rank=1,
         nick="Alice",
         user_id=100,
@@ -597,7 +692,7 @@ def test_build_rank_batch_admin_messages() -> None:
 
 
 def test_build_local_rank_cache_status_message() -> None:
-    stats = SimpleNamespace(
+    stats = LocalRankStats(
         player_count=10,
         total_player_count=15,
         max_players=100,
@@ -628,9 +723,9 @@ def test_build_local_rank_cache_status_message() -> None:
 
 
 def test_build_local_rank_refresh_messages() -> None:
-    before_stats = SimpleNamespace(player_count=10, max_players=100)
-    after_stats = SimpleNamespace(player_count=11, max_players=100)
-    result = SimpleNamespace(total=10, success=9, skipped_full=0, failed=1)
+    before_stats = LocalRankStats(player_count=10, max_players=100)
+    after_stats = LocalRankStats(player_count=11, max_players=100)
+    result = LocalRefreshResult(total=10, success=9, skipped_full=0, failed=1)
 
     assert build_local_rank_refresh_empty_message() == (
         "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。"
