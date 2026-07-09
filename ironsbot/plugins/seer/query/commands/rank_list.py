@@ -18,6 +18,7 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_score_command,
     with_admin_prefix,
 )
+from ironsbot.services.seer.rank_usage import RANK_HELP_DETAIL_COMMANDS
 from ironsbot.shared.plugin_system import (
     dispatch_plugin,
 )
@@ -94,7 +95,7 @@ async def _is_rank_page_cache_refresh_command(event: Event, state: T_State) -> b
 
 
 rank_help_matcher = matcher_group.on_fullmatch(
-    ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
+    RANK_HELP_DETAIL_COMMANDS,
     rule=seer_feature_rule("seer_rank") & no_reply(),
     priority=seer_feature_priority("seer_rank_help"),
 )

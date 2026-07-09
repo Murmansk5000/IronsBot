@@ -12,8 +12,8 @@ from ironsbot.services.seer.rank_display import (
     build_rank_display_limit_message,
     set_group_rank_display_limit,
 )
-from ironsbot.shared.features import is_superuser
 from ironsbot.shared.messaging import finish_event_reply
+from ironsbot.shared.permissions import can_manage_group_event
 
 from ..config import get_rank_query_config
 from .rank_list_context import RANK_DISPLAY_LIMIT_COMMAND_KEY
@@ -34,7 +34,7 @@ async def handle_display_limit(
         await finish_event_reply(matcher, event, "❌ 这个设置只能在群聊中修改。")
         return
 
-    if not _can_manage_group_rank_display(event):
+    if not can_manage_group_event(event):
         await finish_event_reply(
             matcher,
             event,
@@ -64,10 +64,3 @@ async def handle_display_limit(
             limit=command.limit,
         ),
     )
-
-
-def _can_manage_group_rank_display(event: GroupMessageEvent) -> bool:
-    if is_superuser(int(event.user_id)):
-        return True
-    role = getattr(getattr(event, "sender", None), "role", "")
-    return role in {"owner", "admin"}

@@ -1,5 +1,14 @@
 from dataclasses import dataclass, field
 
+from ironsbot.services.seer.rank_cache_messages import (
+    build_local_rank_cache_status_message,
+    build_local_rank_refresh_empty_message,
+    build_local_rank_refresh_result_message,
+    build_local_rank_refresh_start_message,
+    build_rank_batch_no_players_message,
+    build_rank_batch_result_message,
+    build_rank_batch_start_message,
+)
 from ironsbot.services.seer.rank_list_formatting import (
     batch_raw_start,
     format_rank_intervals,
@@ -11,20 +20,7 @@ from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_line,
     format_global_rank_message,
 )
-from ironsbot.services.seer.rank_list_messages import (
-    build_local_rank_cache_status_message,
-    build_local_rank_refresh_empty_message,
-    build_local_rank_refresh_result_message,
-    build_local_rank_refresh_start_message,
-    build_rank_batch_no_players_message,
-    build_rank_batch_result_message,
-    build_rank_batch_start_message,
-    build_rank_page_cache_overview_message,
-    build_rank_page_cache_status_message,
-    build_rank_page_refresh_result_message,
-    build_rank_page_refresh_start_message,
-    format_local_rank_message,
-)
+from ironsbot.services.seer.rank_list_messages import format_local_rank_message
 from ironsbot.services.seer.rank_list_models import (
     GlobalRankSpec,
     LocalRankSpec,
@@ -44,6 +40,12 @@ from ironsbot.services.seer.rank_list_parsing import (
 )
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
+)
+from ironsbot.services.seer.rank_page_cache_messages import (
+    build_rank_page_cache_overview_message,
+    build_rank_page_cache_status_message,
+    build_rank_page_refresh_result_message,
+    build_rank_page_refresh_start_message,
 )
 
 
@@ -166,6 +168,20 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         start_rank=11,
         limit=10,
     )
+    assert parse_rank_list_command("竞技段位榜50名") == RankListCommand(
+        kind="global",
+        rank_key="竞技段位",
+        start_rank=50,
+        limit=1,
+    )
+    assert parse_rank_list_command("竞技榜") == RankListCommand(
+        kind="global",
+        rank_key="竞技段位",
+    )
+    assert parse_rank_list_command("专家段位榜") == RankListCommand(
+        kind="global",
+        rank_key="专家段位",
+    )
 
 
 def test_parse_rank_score_command_reads_global_score_query() -> None:
@@ -180,6 +196,14 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
     assert parse_rank_score_command("成就榜13605分") == RankScoreCommand(
         rank_key="成就点数",
         score=13605,
+    )
+    assert parse_rank_score_command("竞技段位榜400036分") == RankScoreCommand(
+        rank_key="竞技段位",
+        score=400036,
+    )
+    assert parse_rank_score_command("专家段位榜3000分") == RankScoreCommand(
+        rank_key="专家段位",
+        score=3000,
     )
     assert parse_rank_score_command("样本群星牌榜3149分") is None
     assert parse_rank_score_command("群星牌榜第3149名") is None
@@ -310,6 +334,21 @@ def test_format_global_rank_line_applies_spec_rank_offset() -> None:
 
     assert format_global_rank_line(item, index=10, spec=spec) == (
         "9. Alice（100） 123分"
+    )
+
+
+def test_format_global_rank_line_formats_peak_rating_score() -> None:
+    spec = GlobalRankSpec(
+        "竞技段位榜",
+        key=120,
+        sub_key=20260417,
+        unit="分",
+        score_format="peak_rating",
+    )
+    item = RankItem(nick="Alice", id=100, score=500036)
+
+    assert format_global_rank_line(item, index=0, spec=spec) == (
+        "1. Alice（100） 宇宙圣皇36星（500036）"
     )
 
 

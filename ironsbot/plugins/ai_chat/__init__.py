@@ -19,8 +19,8 @@ from ironsbot.services.ai.client import (
     AI_CHAT_ERROR_ACTION_NAME,
     AI_CHAT_ERROR_SUBSCRIPTION_KEY,
     call_ai_chat,
-    get_ai_key,
 )
+from ironsbot.services.ai.config import get_ai_config, get_ai_key
 from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
@@ -41,8 +41,6 @@ from ironsbot.shared.plugin_system import (
     dispatch_plugin,
     register_plugin,
 )
-
-from .config import get_ai_config
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)

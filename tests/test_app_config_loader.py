@@ -68,6 +68,10 @@ PUBLIC_CONFIG_DOC_PATHS = (
     ROOT / "templates" / "ironsbot.xml",
     ROOT / "docker-compose.yml",
 )
+PUBLIC_TEXT_PATHS = (
+    *PUBLIC_CONFIG_DOC_PATHS,
+    ROOT / "ironsbot" / "plugins" / "seer_data" / "__init__.py",
+)
 STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\buid_modes\b",
     r"\bdefault_mode\b",
@@ -83,6 +87,13 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\bdefault_uids\b",
     r"\bextra_uids\b",
     r"\bfire_manual\b",
+)
+STALE_PUBLIC_TEXT_PATTERNS = (
+    *STALE_PUBLIC_CONFIG_PATTERNS,
+    r"README\.old",
+    r"旧榜单",
+    r"db\s*(?:与|和)\s*image\s*模块",
+    r"seer_rank`\s*/\s*`rank",
 )
 
 
@@ -158,6 +169,9 @@ def _assert_default_matcher_priorities(
 
 def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert "群星牌" in config.rank_keys
+    assert "竞技段位" in config.rank_keys
+    assert "狂野段位" in config.rank_keys
+    assert "专家段位" in config.rank_keys
     assert config.target_limits == {}
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
@@ -252,14 +266,14 @@ def test_example_config_has_no_unknown_fields() -> None:
     AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
 
 
-def test_public_config_docs_do_not_reference_stale_fields() -> None:
+def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
     stale_matches: list[str] = []
 
-    for path in PUBLIC_CONFIG_DOC_PATHS:
+    for path in PUBLIC_TEXT_PATHS:
         text = path.read_text(encoding="utf-8")
         stale_matches.extend(
             f"{path.relative_to(ROOT)}: {pattern}"
-            for pattern in STALE_PUBLIC_CONFIG_PATTERNS
+            for pattern in STALE_PUBLIC_TEXT_PATTERNS
             if re.search(pattern, text)
         )
 
@@ -449,17 +463,13 @@ def test_small_plugin_config_accessors_read_app_config(
     monkeypatch.setenv("HEADLESS_SEER_USER_ID", str(HEADLESS_USER_ID))
     monkeypatch.setenv("HEADLESS_SEER_PASSWORD", "md5")
 
-    ai_chat_config = _load_module_from_path(
-        "ai_chat_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "ai_chat" / "config.py",
+    ai_config = _load_module_from_path(
+        "ai_config_for_app_config_test",
+        ROOT / "ironsbot" / "services" / "ai" / "config.py",
     )
-    ai_intent_config = _load_module_from_path(
-        "ai_intent_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "ai_intent" / "config.py",
-    )
-    ai_mention_config = _load_module_from_path(
-        "ai_mention_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "ai_mention_guard" / "config.py",
+    ai_intent_service = _load_module_from_path(
+        "ai_intent_service_for_app_config_test",
+        ROOT / "ironsbot" / "services" / "ai" / "intent.py",
     )
     activity_config = _load_module_from_path(
         "activity_reminder_config_for_app_config_test",
@@ -508,12 +518,12 @@ def test_small_plugin_config_accessors_read_app_config(
 
     try:
         app_config = load_app_config(ROOT / "config.example.toml")
-        assert ai_chat_config.get_ai_config().model == "deepseek-v4-pro"
-        assert ai_chat_config.get_ai_key() == "sk-test"
-        assert ai_intent_config.get_configured_actions()
-        assert ai_intent_config.get_team_resource_config().commands == ["战队"]
+        assert ai_config.get_ai_config().model == "deepseek-v4-pro"
+        assert ai_config.get_ai_key() == "sk-test"
+        assert ai_intent_service.get_configured_actions()
+        assert ai_intent_service.get_team_resource_config().commands == ["战队"]
         assert (
-            ai_mention_config.get_ai_config().mention_guard_reply_max_per_window
+            ai_config.get_ai_config().mention_guard_reply_max_per_window
             == DEFAULT_MENTION_GUARD_MAX_PER_WINDOW
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]

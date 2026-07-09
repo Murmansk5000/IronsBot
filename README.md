@@ -173,7 +173,7 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
+example = ["seer", "image", "seer_rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
 
 [feature.user_policy]
 owner = ["all"]
@@ -229,7 +229,7 @@ at_users = ["owner"]
 | `seer_type` | 属性克制、异常状态查询。 |
 | `seer_peak` | 巅峰池、票选、巅峰榜、精灵出场榜。 |
 | `seer_autocard` | 群星牌资料和群星之巅榜。 |
-| `seer_rank` / `rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
+| `seer_rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
 | `seer_data` | 下周预告、数据版本等数据工具。 |
 | `image` | 固定图片/本地图发送。 |
 | `meeting` | 腾讯会议回复。 |
@@ -252,7 +252,7 @@ at_users = ["owner"]
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
 | `ai_intent` | AI 意图分析，用于战队推荐、手册等意图动作。 |
 | `fire_manual_ad` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
-| `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃等具体推送可在 TD 菜单中单独退订。 |
+| `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
 
 ## 数据与缓存
 
@@ -342,7 +342,7 @@ check_on_restart = false
 `watchtower_docker_api_version = "1.40"` 即可。
 
 推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
-AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、按账号拆分的 B站动态、活动结束提醒和
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、按账号拆分的 B站动态、活动结束提醒和
 开服推送。私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送；发送 `推送时间` 可修改本群可编辑推送的提醒时间。
 
@@ -394,10 +394,6 @@ $env:PYTHONIOENCODING = "utf-8"
 ```powershell
 uv run python scripts/check_repo.py --static
 ```
-
-## README 说明
-
-原作者/上游叙事版本已保留为 [README.old.md](README.old.md)。当前 `README.md` 只描述本仓库现在维护的 IronsBot 自定义版。
 
 ## 鸣谢
 

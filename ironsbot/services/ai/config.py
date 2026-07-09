@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from nonebot import get_driver
 
 from ironsbot.config.loader import get_app_config, load_secrets_config
@@ -17,6 +18,7 @@ def get_ai_key() -> str:
         return str(getattr(get_driver().config, "ai_key", "") or "").strip()
     except ValueError:
         return ""
+
 
 __all__ = [
     "AiConfig",

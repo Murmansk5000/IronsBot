@@ -4,7 +4,6 @@ from typing import Any
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
-    PrivateMessageEvent,
 )
 
 from ironsbot.config.loader import get_app_config
@@ -15,7 +14,6 @@ from ironsbot.services.bilibili.accounts import (
     bili_accounts,
     resolve_account_reference,
 )
-from ironsbot.services.bilibili.permissions import is_bili_superuser
 from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
     normalize_push_mode_text,
@@ -33,6 +31,9 @@ from ironsbot.shared.messaging.push_subscription_models import (
 from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
+from ironsbot.shared.permissions import (
+    can_manage_conversation_event,
+)
 from ironsbot.shared.plugin_system import PluginContext
 
 BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"
@@ -40,14 +41,7 @@ BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 
 def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        role = getattr(event.sender, "role", None)
-        return role in {"owner", "admin"} or is_bili_superuser(event.user_id)
-
-    if isinstance(event, PrivateMessageEvent):
-        return is_bili_superuser(event.user_id)
-
-    return False
+    return can_manage_conversation_event(event)
 
 
 def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:

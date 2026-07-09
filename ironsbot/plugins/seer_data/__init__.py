@@ -1,14 +1,10 @@
 # SPDX-License-Identifier: MIT
 import httpx
-from nonebot import logger, require
+from nonebot import logger
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.app import AppConfig
-
-require("ironsbot.plugins.db_sync")
-require("ironsbot.plugins.http_client")
-
 from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.integrations.db_sync.models import GetFingerprintFn
 from ironsbot.integrations.db_sync.registry import (
@@ -74,6 +70,9 @@ _register_source(_ALIAS_DB)
 __plugin_meta__ = PluginMetadata(
     name="赛尔号数据",
     description="赛尔号 API 数据库同步、查询依赖与游戏资源图片获取",
-    usage="其他插件通过 require 后使用 db 与 image 模块中的依赖注入",
+    usage=(
+        "加载后注册 seerapi 与 aliases 数据源；"
+        "查询和图片访问使用 integrations.seer_data。"
+    ),
     config=AppConfig,
 )

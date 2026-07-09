@@ -9,9 +9,13 @@ from ironsbot.services.seer.rank_list_models import RANK_LIST_MAX_SIZE, GlobalRa
 if TYPE_CHECKING:
     from typing import Any
 
-from ironsbot.services.seer.rank_list_global_messages import format_global_rank_line
+from ironsbot.services.seer.rank_list_global_messages import (
+    format_global_rank_line,
+    format_global_rank_score,
+)
 
 __all__ = ["format_global_rank_score_message"]
+
 
 def format_global_rank_score_message(
     spec: GlobalRankSpec,
@@ -20,16 +24,17 @@ def format_global_rank_score_message(
     display_limit: int = RANK_LIST_MAX_SIZE,
     timestamp: str | None = None,
 ) -> str:
-    score_text = f"{result.target_score}{spec.unit}"
+    score_text = format_global_rank_score(result.target_score, spec)
     if not result.queried:
         return f"❌{spec.title}分数查询未启用。"
     if not result.items:
         if result.boundary_score is None:
             return f"❌找不到{spec.title}数据。"
         if result.target_score < result.boundary_score:
+            boundary_score = format_global_rank_score(result.boundary_score, spec)
             return (
                 f"❌{score_text}不在{spec.title}前 {result.searched_limit} 名范围内。\n"
-                f"当前范围末位约为 {result.boundary_score}{spec.unit}。"
+                f"当前范围末位约为 {boundary_score}。"
             )
         proof_lines = _format_score_gap_proof(spec, result)
         if proof_lines:
@@ -76,7 +81,10 @@ def _format_score_gap_proof(spec: GlobalRankSpec, result: Any) -> list[str]:
             if gap.start_rank == gap.end_rank
             else f"第 {gap.start_rank}-{gap.end_rank} 名"
         )
-        lines.append(f"{gap.score}{spec.unit}：{rank_text}，共 {gap.total_count} 人")
+        lines.append(
+            f"{format_global_rank_score(gap.score, spec)}：{rank_text}，"
+            f"共 {gap.total_count} 人"
+        )
         lines.extend(
             format_global_rank_line(item, index=item.rank_index, spec=spec)
             for item in getattr(gap, "items", [])

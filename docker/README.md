@@ -35,7 +35,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 
 ## Included Plugins
 
-- `seer.query`: Seer player, pet, mintmark, rank, Autocard, activity, and data tools.
+- `seer.query`: Seer player, pet, mintmark, Seer ranks, Autocard, activity, and data tools.
 - `help`: show only features enabled for the current group or private user.
 - `about`: show current IronsBot project information.
 - `sendpic`: reply with fixed local images by command keywords.
@@ -159,7 +159,7 @@ versions if Watchtower reports that client API version 1.25 is too old.
 
 Push notices are split into separate subscriptions, such as bot startup,
 Docker image check, startup data sync, AI chat errors, Bilibili login notices,
-headless Seer notices, render crash notices, Bilibili pushes, activity
+headless Seer notices, render crash notices, red packet notices, Bilibili pushes, activity
 reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
@@ -226,7 +226,7 @@ Feature names are used in `[feature.group_policy]` and
 | feature | Meaning |
 | --- | --- |
 | `all` | Most features except `admin_notice`; admin notices are explicit. |
-| `query` | Common query bundle: Seer queries, image, rank, Bilibili query, activity query, server status query. |
+| `query` | Common query bundle: Seer queries, image replies, Seer ranks, Bilibili query, activity query, server status query. |
 | `seer` | All Seer query sub-features. |
 | `seer_player` | Mimi ID/player info, collection/peak/Autocard follow-up replies. |
 | `seer_team` | Team ID query. |
@@ -236,7 +236,7 @@ Feature names are used in `[feature.group_policy]` and
 | `seer_type` | Type matchup and abnormal status queries. |
 | `seer_peak` | Peak pools, votes, peak ranks, and pet usage ranks. |
 | `seer_autocard` | Autocard data and Autocard global rank. |
-| `seer_rank` / `rank` | Global ranks, sample ranks, rank/sample status, and rank cache commands. |
+| `seer_rank` | Global ranks, sample ranks, rank/sample status, and rank cache commands. |
 | `seer_data` | Weekly preview, data version, and data tools. |
 | `image` | Fixed/local image replies. |
 | `meeting` | Tencent Meeting reply. |
@@ -259,7 +259,7 @@ Feature names are used in `[feature.group_policy]` and
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
 | `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
 | `fire_manual_ad` | "手册" AI intent and Fire manual links appended to proactive pushes. |
-| `admin_notice` | Target permission for admin notices. Concrete push categories can be unsubscribed separately through `TD`. |
+| `admin_notice` | Target permission for admin notices, including startup, AI errors, Bilibili login, headless Seer, render crash, red packet, and similar notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.

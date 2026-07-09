@@ -17,7 +17,7 @@ from ..upstream_commands import pet as upstream_pet
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
-    from ironsbot.integrations.seer_data.db import SQLModelSession
+    from ironsbot.integrations.seer_data.sessions import SQLModelSession
 
     from ..prompt import PromptItem
 

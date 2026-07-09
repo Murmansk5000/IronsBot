@@ -10,8 +10,7 @@ from ironsbot.services.seer.local_rank_refresh import (
     refresh_local_rank_cache,
 )
 from ironsbot.services.seer.packets import ensure_extended_packets
-from ironsbot.services.seer.rank_display import rank_display_limit_for_group
-from ironsbot.services.seer.rank_list_messages import (
+from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
     build_local_rank_refresh_result_message,
@@ -19,24 +18,22 @@ from ironsbot.services.seer.rank_list_messages import (
     build_rank_batch_no_players_message,
     build_rank_batch_result_message,
     build_rank_batch_start_message,
+)
+from ironsbot.services.seer.rank_display import rank_display_limit_for_group
+from ironsbot.services.seer.rank_list_spec_resolution import get_global_rank_spec
+from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_cache_overview_message,
     build_rank_page_cache_status_message,
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
 )
-from ironsbot.services.seer.rank_list_models import (
-    GLOBAL_RANKS,
-    RankCacheBatchCommand,
-    RankPageCacheRefreshCommand,
-    RankPageCacheStatusCommand,
-)
 from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
-from ironsbot.services.seer.rank_page_refresh import (
+from ironsbot.services.seer.rank_page_refresh import refresh_rank_page_cache
+from ironsbot.services.seer.rank_page_refresh_selection import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
     preview_rank_page_refresh_targets,
     rank_refresh_target_label,
-    refresh_rank_page_cache,
 )
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 
@@ -53,6 +50,12 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
+
+    from ironsbot.services.seer.rank_list_models import (
+        RankCacheBatchCommand,
+        RankPageCacheRefreshCommand,
+        RankPageCacheStatusCommand,
+    )
 
 
 async def handle_cache_batch(
@@ -100,7 +103,7 @@ async def handle_page_cache_status(
     state: T_State,
 ) -> None:
     command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
-    spec = GLOBAL_RANKS[command.rank_key]
+    spec = get_global_rank_spec(command.rank_key)
     pages = filter_standard_rank_page_summaries(
         spec,
         get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),

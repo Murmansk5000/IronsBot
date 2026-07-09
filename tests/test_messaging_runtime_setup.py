@@ -53,6 +53,11 @@ class FakeMessageConfig:
     group_schedules: list[GroupScheduledMessageAction] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class FakeJob:
+    id: str
+
+
 def _private_schedule(
     message: str,
     *,
@@ -94,11 +99,8 @@ class FakeScheduler:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
-    def get_jobs(self) -> list[object]:
-        return [
-            type("FakeJob", (), {"id": str(job["id"])})()
-            for job in self.jobs
-        ]
+    def get_jobs(self) -> list[FakeJob]:
+        return [FakeJob(id=str(job["id"])) for job in self.jobs]
 
     def remove_job(self, job_id: str) -> None:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
@@ -176,11 +178,6 @@ def test_group_push_subscription_command_allows_superuser_member(
 ) -> None:
     monkeypatch.setattr(
         matcher_rules,
-        "is_superuser",
-        lambda user_id: user_id == SUPERUSER_ID,
-    )
-    monkeypatch.setattr(
-        matcher_rules,
         "get_message_config",
         lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
     )
@@ -193,7 +190,6 @@ def test_group_push_subscription_command_allows_superuser_member(
 def test_group_push_subscription_command_allows_regular_member_to_view(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
     monkeypatch.setattr(
         matcher_rules,
         "get_message_config",
@@ -208,7 +204,6 @@ def test_group_push_subscription_command_allows_regular_member_to_view(
 def test_group_push_subscription_management_command_matches_regular_member(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(matcher_rules, "is_superuser", lambda _user_id: False)
     monkeypatch.setattr(
         matcher_rules,
         "get_message_config",

@@ -3,8 +3,7 @@ from __future__ import annotations
 
 FeatureModuleRegistry = dict[str, tuple[str, ...]]
 
-
-FEATURE_REGISTRY: FeatureModuleRegistry = {
+FEATURE_MODULE_REGISTRY: FeatureModuleRegistry = {
     "about": ("ironsbot.plugins.about",),
     "help": ("ironsbot.plugins.help",),
     "seer": ("ironsbot.plugins.seer.query",),
@@ -22,7 +21,6 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
     ),
     "seer_data": ("ironsbot.plugins.seer.query",),
     "image": ("ironsbot.plugins.sendpic",),
-    "rank": ("ironsbot.plugins.seer.rank_help",),
     "meeting": ("ironsbot.plugins.meeting",),
     "text": ("ironsbot.plugins.messaging",),
     "text_push": ("ironsbot.plugins.messaging",),
@@ -47,23 +45,27 @@ FEATURE_REGISTRY: FeatureModuleRegistry = {
 }
 
 
-def module_for_feature(feature: str) -> tuple[str, ...]:
-    """Return configured plugin module prefixes for a feature."""
-    return FEATURE_REGISTRY.get(feature, ())
-
-
-def features_for_module(module_name: str) -> tuple[str, ...]:
-    """Infer feature keys from a plugin module prefix."""
+def features_for_plugin_module(module_name: str) -> tuple[str, ...]:
     features: list[str] = []
-    for feature, modules in FEATURE_REGISTRY.items():
+    for feature, modules in FEATURE_MODULE_REGISTRY.items():
         if any(module_name.startswith(module_prefix) for module_prefix in modules):
             features.append(feature)
     return tuple(features)
 
 
+def iter_feature_module_prefixes() -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            module_prefix
+            for modules in FEATURE_MODULE_REGISTRY.values()
+            for module_prefix in modules
+        )
+    )
+
+
 __all__ = [
-    "FEATURE_REGISTRY",
+    "FEATURE_MODULE_REGISTRY",
     "FeatureModuleRegistry",
-    "features_for_module",
-    "module_for_feature",
+    "features_for_plugin_module",
+    "iter_feature_module_prefixes",
 ]

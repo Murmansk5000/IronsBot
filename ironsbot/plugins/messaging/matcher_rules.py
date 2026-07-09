@@ -10,9 +10,9 @@ from nonebot.typing import T_State  # noqa: TC002
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
-    is_superuser,
 )
 from ironsbot.shared.messaging import command_text_matches
+from ironsbot.shared.permissions import can_manage_group_event
 
 from .config import (
     PrivateCommandMessageAction,
@@ -79,10 +79,7 @@ async def match_group_command(event: MessageEvent, state: T_State) -> bool:
 
 
 def is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
-    if is_superuser(int(event.user_id)):
-        return True
-    role = getattr(event.sender, "role", None)
-    return role in {"owner", "admin"}
+    return can_manage_group_event(event)
 
 
 async def match_push_subscription_command(

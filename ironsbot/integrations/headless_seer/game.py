@@ -12,7 +12,6 @@ from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.core import SeerConnect, SeerEncryptConnect
 from ironsbot.integrations.headless_seer.exception import ClientNotInitializedError
 from ironsbot.integrations.headless_seer.packets import (
-    DailyRankInfo,
     DailyRankList,
     DailyRankParam,
     HeadInfo,
@@ -27,7 +26,6 @@ from ironsbot.integrations.headless_seer.peak import (
     PEAK_SUIT_KEY_MAP,
     PEAK_TITLE_KEY_MAP,
     PEAK_TYPE_NAME_MAP,
-    PEAK_USER_KEY_MAP,
     PeakData,
     PeakItemData,
     PeakType,
@@ -43,7 +41,6 @@ __all__ = [
     "PEAK_SUIT_KEY_MAP",
     "PEAK_TITLE_KEY_MAP",
     "PEAK_TYPE_NAME_MAP",
-    "PEAK_USER_KEY_MAP",
     "PeakData",
     "PeakItemData",
     "PeakType",
@@ -364,16 +361,6 @@ class SeerGame:
             _merge_win_and_count_rank(win_body[1], count_body[1], length=20),
             ban_body[1],
         )
-
-    async def get_peak_user_rank(
-        self, sub_key: int, peak_type: PeakType
-    ) -> list[DailyRankInfo]:
-        key = PEAK_USER_KEY_MAP[peak_type]
-        result: tuple[HeadInfo, DailyRankList] = await self.send_and_wait(
-            COMMAND_ID.GET_DAILY_RANK_INFO,
-            DailyRankParam(key=key, sub_key=sub_key, start=0, end=19),
-        )
-        return result[1].rank_list
 
     async def get_user_peak_expert_data(self, user_id: int) -> PeakData:
         result = await asyncio.gather(

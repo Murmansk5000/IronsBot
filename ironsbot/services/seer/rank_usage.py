@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+RANK_HELP_ENTRY_COMMANDS = ("榜单", "排行榜")
+RANK_HELP_DETAIL_COMMANDS = ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单")
+
 
 def build_rank_help_message() -> str:
     return "\n".join(
         [
             "📊【可用榜单】",
-            "发送“榜单”或“排行榜”查看本页。",
+            f"发送“{RANK_HELP_ENTRY_COMMANDS[0]}”或"
+            f"“{RANK_HELP_ENTRY_COMMANDS[1]}”查看本页。",
             "普通榜单默认显示前 10 名；可写第2页、21-40、第100名。",
             "已知分数也可反查同分用户，例如：群星牌榜3149分。",
             "",
@@ -13,6 +17,10 @@ def build_rank_help_message() -> str:
             "图鉴榜 / 成就榜 / 精灵榜 / 皮肤榜",
             "套装榜 / 部件榜 / 座驾榜 / 刻印榜 / 群星牌榜",
             "也可写完整名：图鉴积分榜、成就点数榜、精灵图鉴榜等。",
+            "",
+            "【全服巅峰段位榜】",
+            "竞技段位榜 / 狂野段位榜 / 专家段位榜",
+            "可查指定名次或分数，例如：竞技段位榜50名 / 专家段位榜3000分。",
             "",
             "【刻印数值榜】",
             "基础属性：刻印攻击榜 / 特攻榜 / 速度榜 / 体力榜 / 总和榜",
@@ -45,3 +53,10 @@ def build_rank_help_message() -> str:
             "/缓存榜单 刻印榜 1-100 / /缓存榜单 图鉴榜 1001-1100",
         ]
     )
+
+
+__all__ = [
+    "RANK_HELP_DETAIL_COMMANDS",
+    "RANK_HELP_ENTRY_COMMANDS",
+    "build_rank_help_message",
+]

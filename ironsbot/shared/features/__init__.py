@@ -19,7 +19,6 @@ from .service import (
     users_for_feature,
     users_with_superusers,
 )
-from .visibility import plugin_visible_for_event
 
 __all__ = [
     "FEATURE_ALIASES",
@@ -35,7 +34,6 @@ __all__ = [
     "is_group_feature_allowed",
     "is_private_feature_allowed",
     "is_superuser",
-    "plugin_visible_for_event",
     "resolve_group_policy",
     "resolve_group_refs",
     "resolve_user_policy",

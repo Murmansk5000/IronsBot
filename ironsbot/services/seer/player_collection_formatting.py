@@ -8,6 +8,10 @@ from ironsbot.services.seer.player_formatting_common import (
     join_metric_parts,
     sample_rank_text,
 )
+from ironsbot.services.seer.rank_formatting import (
+    GLOBAL_RANK_MISS_POSITION_STYLE,
+    format_rank_position_text,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank_models import LocalRankSummary
@@ -130,11 +134,18 @@ def format_autocard_rank_info(
         lines.append("群星之巅：未查询")
     elif result.rank is None:
         if result.score is None:
-            lines.append(f"群星之巅：前 {result.searched_limit} 名未上榜")
+            position_text = format_rank_position_text(
+                result,
+                style=GLOBAL_RANK_MISS_POSITION_STYLE,
+            )
+            lines.append(f"群星之巅：{position_text}")
         else:
             metric_text = join_metric_parts(
                 f"{result.score}分",
-                f"前 {result.searched_limit} 名未上榜",
+                format_rank_position_text(
+                    result,
+                    style=GLOBAL_RANK_MISS_POSITION_STYLE,
+                ),
                 sample_text,
             )
             lines.append(f"群星之巅：{metric_text}")
@@ -142,7 +153,7 @@ def format_autocard_rank_info(
         score_text = "未知分" if result.score is None else f"{result.score}分"
         metric_text = join_metric_parts(
             score_text,
-            f"全服第{result.rank}",
+            format_rank_position_text(result),
             sample_text,
         )
         lines.append(f"群星之巅：{metric_text}")
