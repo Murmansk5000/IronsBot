@@ -37,16 +37,16 @@ from ironsbot.services.seer.player_query import (
     resolve_player_detail_reply,
     store_player_detail_messages,
 )
+from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
     RankLookupResult,
 )
-from ironsbot.services.seer.rank_service import (
+from ironsbot.services.seer.rank_summary_runtime import (
     fetch_autocard_rank_summary,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
-    get_current_peak_sub_key,
 )
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,

@@ -21,14 +21,12 @@ from ironsbot.services.seer.rank_list_models import (
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
 )
+from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_pages import (
     fetch_daily_rank_page,
     fetch_daily_rank_page_result,
 )
-from ironsbot.services.seer.rank_service import (
-    fetch_rank_score_segment,
-    get_current_peak_sub_key,
-)
+from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 
 from ..config import get_local_rank_config
 
