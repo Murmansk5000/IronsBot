@@ -10,6 +10,10 @@ from ironsbot.services.seer.rank_list_formatting import (
 from ironsbot.services.seer.rank_list_formatting import (
     timestamp_text as _timestamp_text,
 )
+from ironsbot.services.seer.rank_list_global_messages import (
+    format_global_rank_line,
+    format_global_rank_message,
+)
 from ironsbot.services.seer.rank_list_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
@@ -22,9 +26,6 @@ from ironsbot.services.seer.rank_list_messages import (
     build_rank_page_cache_status_message,
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
-    format_global_rank_line,
-    format_global_rank_message,
-    format_global_rank_score_message,
     format_local_rank_message,
     format_refresh_ranges,
 )
@@ -51,6 +52,9 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_page_cache_status_command,
     parse_rank_score_command,
     with_admin_prefix,
+)
+from ironsbot.services.seer.rank_list_score_messages import (
+    format_global_rank_score_message,
 )
 
 __all__ = [
