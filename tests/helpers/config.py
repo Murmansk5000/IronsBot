@@ -11,6 +11,7 @@ from ironsbot.config.models.message import (
     PushUnsubscribeConfig,
     TeamAuditWelcomeConfig,
 )
+from ironsbot.config.models.runtime import LoggingConfig
 from ironsbot.config.models.seer import RankQueryConfig
 
 if TYPE_CHECKING:
@@ -63,11 +64,17 @@ class StubSeerConfig:
 
 
 @dataclass(frozen=True)
+class StubRuntimeConfig:
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+
+
+@dataclass(frozen=True)
 class StubAppConfig:
     activity: ActivityConfig = field(default_factory=ActivityConfig)
     feature: FeatureConfig = field(default_factory=FeatureConfig)
     ai: StubAiConfig = field(default_factory=StubAiConfig)
     message: StubMessageConfig = field(default_factory=StubMessageConfig)
+    runtime: StubRuntimeConfig = field(default_factory=StubRuntimeConfig)
     seer: StubSeerConfig = field(default_factory=StubSeerConfig)
 
 
@@ -76,6 +83,7 @@ def stub_app_config(  # noqa: PLR0913
     activity_config: ActivityConfig | None = None,
     ai_intent_enabled: bool = True,
     feature_config: FeatureConfig | None = None,
+    logging_config: LoggingConfig | None = None,
     outbound_rate_limit_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe_config: PushUnsubscribeConfig | None = None,
     rank_config: RankQueryConfig | None = None,
@@ -98,6 +106,7 @@ def stub_app_config(  # noqa: PLR0913
             ),
             group_commands=group_actions or [],
         ),
+        runtime=StubRuntimeConfig(logging=logging_config or LoggingConfig()),
         seer=StubSeerConfig(
             rank=rank_config or RankQueryConfig(),
             team_resource=(
