@@ -17,7 +17,7 @@ from ironsbot.services.bilibili.push import (
 from ironsbot.services.bilibili.storage import (
     dynamic_history_db_file,
 )
-from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
+from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,17 +82,13 @@ def _connect_dynamic_history(
 
 
 def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
-    ensure_sqlite_column(
+    ensure_sqlite_columns(
         conn,
         table_name="dynamics",
-        column_name="suppressed",
-        column_definition="suppressed INTEGER NOT NULL DEFAULT 0",
-    )
-    ensure_sqlite_column(
-        conn,
-        table_name="dynamics",
-        column_name="suppression_reason",
-        column_definition="suppression_reason TEXT NOT NULL DEFAULT ''",
+        columns={
+            "suppressed": "suppressed INTEGER NOT NULL DEFAULT 0",
+            "suppression_reason": "suppression_reason TEXT NOT NULL DEFAULT ''",
+        },
     )
 
 
