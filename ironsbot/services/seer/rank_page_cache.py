@@ -3,54 +3,23 @@ import sqlite3
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 
 from nonebot.log import logger
 
 from ironsbot.config import get_app_config
 from ironsbot.config.models.seer import RankQueryConfig
+from ironsbot.services.seer.rank_page_cache_models import (
+    CachedRankItem,
+    CachedRankLookup,
+    CachedRankPage,
+    CachedRankPageSummary,
+)
 from ironsbot.shared.sqlite import open_sqlite
 
 
 def get_rank_query_config() -> RankQueryConfig:
     return get_app_config().seer.rank
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankItem:
-    id: int
-    nick: str
-    score: int
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankPage:
-    items: list[CachedRankItem]
-    fetched_at: float
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankLookup:
-    id: int
-    nick: str
-    score: int
-    rank_index: int
-    fetched_at: float
-    is_stale: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class CachedRankPageSummary:
-    start_index: int
-    end_index: int
-    item_count: int
-    expected_count: int
-    fetched_at: float
-    min_score: int | None = None
-    max_score: int | None = None
-    is_stale: bool = False
-    is_partial: bool = False
 
 
 def _cache_path() -> Path:
