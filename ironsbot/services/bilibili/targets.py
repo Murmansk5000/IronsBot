@@ -1,6 +1,4 @@
-import asyncio
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -8,17 +6,17 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.bilibili import (
     BiliConfig,
     BiliPushMode,
     BiliPushTargetConfig,
 )
+from ironsbot.services.bilibili.accounts import account_uid, get_bili_config
 from ironsbot.services.bilibili.preferences import (
-    BiliPushPreferenceStore,
     bili_push_subscription_key,
     bili_push_subscription_label,
 )
+from ironsbot.services.bilibili.storage import push_preference_store
 from ironsbot.shared.features import (
     groups_for_feature,
     is_group_feature_allowed,
@@ -67,8 +65,8 @@ class BiliTargetRule:
             return str(int(uid))
         nickname = self.account_nicknames.get(account)
         if nickname:
-            return f"{nickname}（{int(uid)}）"
-        return f"{account}（{int(uid)}）"
+            return f"{nickname}\uff08{int(uid)}\uff09"
+        return f"{account}\uff08{int(uid)}\uff09"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,77 +92,7 @@ CONFIGURED_GROUP_RULES: dict[int, BiliTargetRule] | None = None
 CONFIGURED_USER_RULES: dict[int, BiliTargetRule] | None = None
 PUSH_GROUP_RULES: dict[int, BiliTargetRule] | None = None
 PUSH_USER_RULES: dict[int, BiliTargetRule] | None = None
-TARGET_GROUP_IDS: list[int] | None = None
-TARGET_USER_IDS: list[int] | None = None
 MONITORED_UIDS: list[int] | None = None
-
-
-def get_bili_config() -> BiliConfig:
-    return get_app_config().bilibili
-
-
-def bili_accounts(config: BiliConfig | None = None) -> dict[str, int]:
-    return dict((config or get_bili_config()).accounts)
-
-
-def account_uid(account: str, config: BiliConfig | None = None) -> int | None:
-    return bili_accounts(config).get(account.strip().lower())
-
-
-def resolve_account_reference(
-    reference: str,
-    config: BiliConfig | None = None,
-) -> str | None:
-    bili_config = config or get_bili_config()
-    normalized = reference.strip().lower()
-    if not normalized:
-        return None
-    if normalized in bili_config.accounts:
-        return normalized
-
-    folded = reference.strip().casefold()
-    matches = [
-        account
-        for account, nickname in bili_config.account_nicknames.items()
-        if nickname.strip().casefold() == folded
-    ]
-    if len(matches) == 1:
-        return matches[0]
-    return None
-
-
-def account_for_uid(uid: int, config: BiliConfig | None = None) -> str | None:
-    for account, account_uid_value in bili_accounts(config).items():
-        if account_uid_value == int(uid):
-            return account
-    return None
-
-
-def account_nickname(account: str, config: BiliConfig | None = None) -> str | None:
-    normalized = account.strip().lower()
-    nickname = (config or get_bili_config()).account_nicknames.get(normalized)
-    return nickname or None
-
-
-def account_display_label(
-    account: str,
-    config: BiliConfig | None = None,
-    *,
-    uid: int | None = None,
-) -> str:
-    normalized = account.strip().lower()
-    resolved_uid = uid if uid is not None else account_uid(normalized, config)
-    nickname = account_nickname(normalized, config)
-    if resolved_uid is None:
-        return nickname or normalized
-    if nickname:
-        return f"{nickname}（{int(resolved_uid)}）"
-    return f"{normalized}（{int(resolved_uid)}）"
-
-
-def account_label(uid: int, config: BiliConfig | None = None) -> str:
-    account = account_for_uid(uid, config)
-    return account_display_label(account, config) if account else str(int(uid))
 
 
 def _target_accounts(
@@ -288,18 +216,6 @@ def push_user_rules() -> dict[int, BiliTargetRule]:
     }
 
 
-def target_group_ids() -> list[int]:
-    if TARGET_GROUP_IDS is not None:
-        return TARGET_GROUP_IDS
-    return _unique_ints(list(push_group_rules()))
-
-
-def target_user_ids() -> list[int]:
-    if TARGET_USER_IDS is not None:
-        return TARGET_USER_IDS
-    return _unique_ints(list(push_user_rules()))
-
-
 def monitored_uids() -> list[int]:
     if MONITORED_UIDS is not None:
         return MONITORED_UIDS
@@ -312,29 +228,6 @@ def monitored_uids() -> list[int]:
     ]:
         uids.update(rule.uids)
     return _unique_ints(sorted(uids))
-
-
-def bili_storage_dir() -> Path:
-    return get_bili_config().storage.data_dir
-
-
-def dynamic_history_db_file() -> Path:
-    return bili_storage_dir() / "dynamic_history.sqlite"
-
-
-def cookie_cache_file() -> Path:
-    return bili_storage_dir() / "bili_cookie_cache.txt"
-
-
-def push_preferences_db_file() -> Path:
-    return bili_storage_dir() / "push_preferences.sqlite"
-
-
-def push_preference_store() -> BiliPushPreferenceStore:
-    return BiliPushPreferenceStore(push_preferences_db_file())
-
-
-check_lock = asyncio.Lock()
 
 
 def query_uids_for_group(user_id: int, group_id: int) -> list[int]:

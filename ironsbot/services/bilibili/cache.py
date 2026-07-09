@@ -14,7 +14,10 @@ from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,
 )
-from ironsbot.services.bilibili.state import cookie_cache_file, dynamic_history_db_file
+from ironsbot.services.bilibili.storage import (
+    cookie_cache_file,
+    dynamic_history_db_file,
+)
 from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
 
 

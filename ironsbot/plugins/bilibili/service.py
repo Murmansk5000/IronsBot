@@ -29,14 +29,14 @@ from ironsbot.services.bilibili.push import (
     mark_history_snapshot_pushed,
 )
 from ironsbot.services.bilibili.responses import check_dynamic_response
+from ironsbot.services.bilibili.runtime_state import check_lock
 from ironsbot.services.bilibili.schedule import (
     AutoCheckState,
     auto_check_due,
     mark_auto_check,
 )
-from ironsbot.services.bilibili.state import (
+from ironsbot.services.bilibili.targets import (
     BiliPushTargets,
-    check_lock,
     monitored_uids,
     push_targets_for_uid,
 )

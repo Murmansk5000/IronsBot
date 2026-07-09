@@ -21,7 +21,7 @@ from ironsbot.services.bilibili.menu import (
     dynamic_record_ids,
 )
 from ironsbot.services.bilibili.parser import target_dynamics_from_response
-from ironsbot.services.bilibili.state import query_uids_for_event
+from ironsbot.services.bilibili.targets import query_uids_for_event
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,

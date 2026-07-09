@@ -8,20 +8,22 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from ironsbot.config.loader import get_app_config
+from ironsbot.services.bilibili.accounts import (
+    account_display_label,
+    account_nickname,
+    account_uid,
+    bili_accounts,
+    resolve_account_reference,
+)
 from ironsbot.services.bilibili.permissions import is_bili_superuser
 from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
     normalize_push_mode_text,
     push_mode_label,
 )
-from ironsbot.services.bilibili.state import (
-    account_display_label,
-    account_nickname,
-    account_uid,
-    bili_accounts,
+from ironsbot.services.bilibili.storage import push_preference_store
+from ironsbot.services.bilibili.targets import (
     mode_for_target_account,
-    push_preference_store,
-    resolve_account_reference,
     target_rule,
 )
 from ironsbot.shared.messaging import finish_event_reply

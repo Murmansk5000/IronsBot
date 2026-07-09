@@ -97,7 +97,7 @@ def build_messaging_push_subscription_options(
     *,
     store: PushUnsubscribeStore,
 ) -> list[PushSubscriptionOption]:
-    from ironsbot.services.bilibili.state import bili_push_subscription_options
+    from ironsbot.services.bilibili.targets import bili_push_subscription_options
 
     return [
         *bili_push_subscription_options(
