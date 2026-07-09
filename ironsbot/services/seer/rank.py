@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer import rank_pages
 from ironsbot.services.seer.rank_constants import (
     PET_KIND_RANK_ANOMALY_USER_IDS,

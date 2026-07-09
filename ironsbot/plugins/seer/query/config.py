@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.seer import (
     PLAYER_SECTION_KEYS,
     TEAM_SECTION_KEYS,

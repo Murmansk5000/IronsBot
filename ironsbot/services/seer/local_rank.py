@@ -3,7 +3,7 @@ import asyncio
 import sqlite3
 from typing import Any
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig
 from ironsbot.services.seer import local_rank_formatting
 from ironsbot.services.seer.local_rank_cache_queries import (

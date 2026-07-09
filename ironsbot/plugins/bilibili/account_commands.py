@@ -7,7 +7,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.permissions import is_bili_superuser
 from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,

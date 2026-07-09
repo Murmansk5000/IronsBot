@@ -4,7 +4,7 @@ from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.shared.features import (
     get_superuser_ids,
     groups_for_feature,

@@ -123,7 +123,7 @@ async def schedule_activity_reminders() -> None:
 
 
 def _activity_push_store() -> PushUnsubscribeStore:
-    from ironsbot.config import get_app_config
+    from ironsbot.config.loader import get_app_config
 
     return PushUnsubscribeStore(get_app_config().message.push_unsubscribe.data_path)
 

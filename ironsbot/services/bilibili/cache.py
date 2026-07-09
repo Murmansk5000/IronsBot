@@ -9,7 +9,7 @@ from typing import Any
 
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,

@@ -9,25 +9,22 @@ from typing import cast
 import pytest
 from pydantic import ValidationError
 
-from ironsbot.config import (
-    CredentialsConfig,
-    DeploymentConfig,
-    SecretsConfig,
+from ironsbot.config.loader import (
+    CONFIG_EXAMPLE_PATH_ENV,
+    ENV_EXAMPLE_PATH_ENV,
     clear_app_config_cache,
     load_app_config,
     load_credentials_config,
     load_deployment_config,
     load_secrets_config,
-)
-from ironsbot.config.loader import (
-    CONFIG_EXAMPLE_PATH_ENV,
-    ENV_EXAMPLE_PATH_ENV,
     parse_toml_file,
 )
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
+from ironsbot.config.models.deployment import DeploymentConfig
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
+from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
 from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
     TeamResourceConfig,

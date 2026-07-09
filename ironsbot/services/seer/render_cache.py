@@ -9,7 +9,7 @@ from seerapi_models import ApiMetadataORM
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_registry import db_manager
 
 if TYPE_CHECKING:

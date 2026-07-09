@@ -7,7 +7,7 @@ from pathlib import Path
 
 from nonebot.log import logger
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import RankQueryConfig
 from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankItem,

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
 from ironsbot.services.seer.rank_page_cache import (
     get_cached_rank_item_by_index,

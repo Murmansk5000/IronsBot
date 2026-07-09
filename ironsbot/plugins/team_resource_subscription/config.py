@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.feature import unique_ints
 from ironsbot.config.models.seer import (
     TeamResourceConfig,

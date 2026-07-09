@@ -1,4 +1,5 @@
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.message import (
     ENABLED_COMMANDS_REQUIRED_ERROR,
     BaseMessageAction,

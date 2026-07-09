@@ -1,4 +1,5 @@
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import (
     DEFAULT_BILI_SUPPRESS_PATTERNS,
     INVALID_INTERVAL_TIME_ERROR,

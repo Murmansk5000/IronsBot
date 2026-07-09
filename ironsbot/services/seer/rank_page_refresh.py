@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from math import log1p, sqrt
 from typing import TYPE_CHECKING
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.rank_list import (
     GLOBAL_RANKS,

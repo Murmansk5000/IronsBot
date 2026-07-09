@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.local_rank_metrics import MetricValue, positive_int
 from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
 

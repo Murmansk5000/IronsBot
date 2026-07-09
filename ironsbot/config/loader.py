@@ -11,12 +11,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from ironsbot.config.models import (
-    AppConfig,
-    CredentialsConfig,
-    DeploymentConfig,
-    SecretsConfig,
-)
+from ironsbot.config.models.app import AppConfig
+from ironsbot.config.models.deployment import DeploymentConfig
+from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

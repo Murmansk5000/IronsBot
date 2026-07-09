@@ -1,4 +1,5 @@
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.runtime import (
     INVALID_RECONNECT_TIME_ERROR,
     HeadlessNoticeConfig,

@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 
 from .normalization import normalize_key
 from .orm import MintmarkClassAliasORM

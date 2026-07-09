@@ -1,10 +1,10 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ironsbot.config import get_app_config
+from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
 from ironsbot.services.seer.client import get_game_client
 from ironsbot.services.seer.local_rank import (

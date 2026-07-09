@@ -11,7 +11,8 @@ from nonebot.message import event_postprocessor, event_preprocessor
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.config import AppConfig, get_app_config
+from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.app import AppConfig
 from ironsbot.shared.features import is_superuser
 
 if TYPE_CHECKING:

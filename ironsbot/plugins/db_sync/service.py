@@ -12,7 +12,7 @@ from anyio import Path as AsyncPath
 from anyio import to_thread
 from nonebot.log import logger
 
-from ironsbot.config import load_secrets_config
+from ironsbot.config.loader import load_secrets_config
 from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.integrations.db_registry import db_manager
 from ironsbot.integrations.db_sync.github_actions import (
