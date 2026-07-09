@@ -26,7 +26,10 @@ from ironsbot.utils.rule import no_reply
 
 from . import formatting as sync_formatting
 from . import remote_build as sync_remote_build
-from .github_actions import WorkflowRunResult, trigger_and_wait_workflow
+from ironsbot.integrations.db_sync.github_actions import (
+    WorkflowRunResult,
+    trigger_and_wait_workflow,
+)
 from .manager import db_manager
 from .manual import ManualSyncContext, handle_manual_sync
 from .storage import (

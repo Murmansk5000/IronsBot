@@ -6,8 +6,7 @@ from collections.abc import Awaitable, Callable, MutableMapping
 from nonebot.log import logger
 
 from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
-
-from .github_actions import WorkflowRunResult
+from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 
 TriggerWorkflowFn = Callable[
     [RemoteBuildStepConfig],

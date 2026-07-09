@@ -7,31 +7,22 @@ from typing import Any
 import httpx
 
 from ironsbot.config.models.runtime import RemoteBuildConfig
-from ironsbot.plugins.db_sync.github_actions import (
+from ironsbot.integrations.db_sync.github_actions import (
     WorkflowRunResult,
     trigger_and_wait_workflow,
 )
 
-HTTP_ERROR_STATUS = 400
 
-
-class FakeResponse:
-    def __init__(
-        self,
-        *,
-        status_code: int = 200,
-        payload: dict[str, Any] | None = None,
-    ) -> None:
-        self.status_code = status_code
-        self._payload = payload or {}
-
-    def json(self) -> dict[str, Any]:
-        return self._payload
-
-    def raise_for_status(self) -> None:
-        if self.status_code >= HTTP_ERROR_STATUS:
-            msg = f"unexpected HTTP status: {self.status_code}"
-            raise AssertionError(msg)
+def _response(
+    *,
+    status_code: int = 200,
+    payload: dict[str, Any] | None = None,
+) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        json=payload,
+        request=httpx.Request("GET", "https://api.github.test/"),
+    )
 
 
 class FakeGitHubClient:
@@ -45,9 +36,9 @@ class FakeGitHubClient:
         *,
         headers: dict[str, str],
         json: dict[str, object],
-    ) -> FakeResponse:
+    ) -> httpx.Response:
         self.posts.append({"url": url, "headers": headers, "json": json})
-        return FakeResponse(status_code=204)
+        return _response(status_code=204)
 
     async def get(
         self,
@@ -55,11 +46,11 @@ class FakeGitHubClient:
         *,
         headers: dict[str, str],
         params: dict[str, object] | None = None,
-    ) -> FakeResponse:
+    ) -> httpx.Response:
         _ = (url, params)
         assert headers["Authorization"] == "Bearer token"
         payload = self.get_payloads.pop(0)
-        return FakeResponse(payload=payload)
+        return _response(payload=payload)
 
 
 class FlakyDispatchGitHubClient(FakeGitHubClient):
@@ -73,7 +64,7 @@ class FlakyDispatchGitHubClient(FakeGitHubClient):
         *,
         headers: dict[str, str],
         json: dict[str, object],
-    ) -> FakeResponse:
+    ) -> httpx.Response:
         if not self.failed_once:
             self.failed_once = True
             raise httpx.ConnectTimeout("connect timeout")  # noqa: TRY003

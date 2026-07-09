@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: MIT
-from __future__ import annotations
-
 from ironsbot.integrations.db_sync.github_actions import (
     GitHubActionsClientError,
     WorkflowRunResult,
