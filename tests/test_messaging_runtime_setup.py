@@ -17,7 +17,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.plugins.messaging import matcher_rules, runtime
+from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscriptions import (
     CRON_TIME_PREFERENCE,
@@ -133,7 +133,7 @@ def test_messaging_runtime_setup_registers_startup_once(
 
 
 def test_push_subscription_menu_prompt_marks_current_state() -> None:
-    prompt = runtime._push_subscription_menu_prompt(
+    prompt = push_management_runtime._push_subscription_menu_prompt(
         "private",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -153,7 +153,7 @@ def test_push_subscription_menu_prompt_marks_current_state() -> None:
 
 
 def test_push_subscription_menu_prompt_can_be_read_only() -> None:
-    prompt = runtime._push_subscription_menu_prompt(
+    prompt = push_management_runtime._push_subscription_menu_prompt(
         "group",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
