@@ -159,7 +159,7 @@ versions if Watchtower reports that client API version 1.25 is too old.
 
 Push notices are split into separate subscriptions, such as bot startup,
 Docker image check, startup data sync, AI chat errors, Bilibili login notices,
-headless Seer notices, render crash notices, Bilibili pushes, activity
+headless Seer notices, render crash notices, red packet notices, Bilibili pushes, activity
 reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
