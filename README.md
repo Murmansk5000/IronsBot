@@ -395,10 +395,6 @@ $env:PYTHONIOENCODING = "utf-8"
 uv run python scripts/check_repo.py --static
 ```
 
-## README 说明
-
-原作者/上游叙事版本已保留为 [README.old.md](README.old.md)。当前 `README.md` 只描述本仓库现在维护的 IronsBot 自定义版。
-
 ## 鸣谢
 
 - 上游项目：[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
