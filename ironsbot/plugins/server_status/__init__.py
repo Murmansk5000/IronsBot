@@ -1,10 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import asyncio
-import os
-import signal
-from dataclasses import dataclass
 from typing import Any
 
 from nonebot import logger
@@ -13,23 +9,17 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_fullmatch
 
-from ironsbot.integrations.headless_seer.exception import (
-    DisconnectedError,
-    NotLoggedInError,
-)
 from ironsbot.plugins.headless_seer_notice.service import login_headless_client
 from ironsbot.plugins.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.services.seer.client import get_game_client
 from ironsbot.shared.features import (
     is_event_feature_allowed,
 )
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
-    send_event_reply,
 )
 from ironsbot.shared.plugin_system import (
     PluginContext,
@@ -41,7 +31,6 @@ from ironsbot.utils.rule import no_reply
 from .broadcast import broadcast_opened
 from .config import (
     Config,
-    get_docker_update_config,
 )
 from .docker_update import (
     DockerUpdateResult,
@@ -59,9 +48,6 @@ from .docker_update import (
 from .docker_update import (
     resolve_docker_container_name as _resolve_docker_container_name,
 )
-from .docker_update import (
-    restart_docker_container as _restart_docker_container,
-)
 from .notice import (
     _build_fetch_failed_reply,
     _build_no_notice_reply,
@@ -71,6 +57,9 @@ from .notice import (
     fetch_server_notice_text,
 )
 from .restart import DockerSelfUpdateService, RestartService
+from .restart_command import handle_restart_command
+from .status import HeadlessStatus
+from .status import get_headless_status as _get_headless_status
 
 __all__ = [
     "DockerSelfUpdateService",
@@ -91,9 +80,6 @@ ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
 BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 DOCKER_UPDATE_COMMANDS = ("/更新镜像", "/更新Docker", "/更新docker")
 SERVER_STATUS_PLUGIN_NAME = "server_status"
-BOT_RESTART_DELAY_SECONDS = 1.0
-PARENT_EXIT_WAIT_SECONDS = 5.0
-RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
@@ -116,12 +102,6 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
     supported_adapters={"~onebot.v11"},
 )
-
-
-@dataclass(frozen=True, slots=True)
-class HeadlessStatus:
-    connected: bool
-    reason: str = ""
 
 
 normal_server_status_matcher = on_fullmatch(
@@ -300,33 +280,7 @@ class ServerStatusPlugin:
         )
 
     async def _handle_restart(self, matcher: Any, event: MessageEvent) -> None:
-        config = get_docker_update_config()
-        restart_service = RestartService(config)
-        message, restart_action = await restart_service.prepare_manual_restart()
-        await send_event_reply(
-            matcher,
-            event,
-            message,
-            mention_sender=True,
-        )
-        if restart_action == "docker":
-            await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-            try:
-                await _restart_docker_container(
-                    container_name=_resolve_docker_container_name(
-                        str(config.container_name)
-                    ),
-                    socket_path=str(config.docker_socket_path),
-                    timeout_seconds=float(config.timeout_seconds),
-                )
-            except Exception:  # noqa: BLE001
-                logger.opt(exception=True).warning(
-                    "docker container restart failed; falling back to process restart"
-                )
-                await _restart_bot_process()
-        elif restart_action == "process":
-            await asyncio.sleep(BOT_RESTART_DELAY_SECONDS)
-            await _restart_bot_process()
+        await handle_restart_command(matcher, event)
 
 
 register_plugin(ServerStatusPlugin())
@@ -380,52 +334,6 @@ async def handle_docker_update(matcher: Matcher, event: MessageEvent) -> None:
         matcher=matcher,
         action="docker_update",
     )
-
-
-def _get_headless_status() -> HeadlessStatus:
-    try:
-        game = get_game_client()
-    except (DisconnectedError, NotLoggedInError) as e:
-        return HeadlessStatus(connected=False, reason=str(e))
-    except Exception:  # noqa: BLE001
-        logger.opt(exception=True).warning("开服查询检查无头客户端状态失败")
-        return HeadlessStatus(
-            connected=False,
-            reason="检查机器人登录状态失败",
-        )
-
-    if bool(getattr(game, "is_logged_in", False)):
-        return HeadlessStatus(connected=True)
-
-    return HeadlessStatus(
-        connected=False,
-        reason="无头客户端未处于已登录状态",
-    )
-
-
-def _format_headless_unavailable_text(reason: str) -> str:
-    reason = reason.strip() or "状态未知"
-    return f"机器人登录状态：{reason}。"
-
-
-async def _restart_bot_process() -> None:
-    current_pid = os.getpid()
-    parent_pid = os.getppid()
-    target_pid = parent_pid if parent_pid > 0 else current_pid
-    logger.warning(
-        "admin requested bot restart: current_pid={}, target_pid={}",
-        current_pid,
-        target_pid,
-    )
-    os.kill(target_pid, signal.SIGTERM)
-    if target_pid != current_pid:
-        await asyncio.sleep(PARENT_EXIT_WAIT_SECONDS)
-        logger.warning(
-            "bot restart parent did not stop current worker yet; "
-            "sending SIGTERM to current_pid={}",
-            current_pid,
-        )
-        os.kill(current_pid, signal.SIGTERM)
 
 
 _format_docker_image_created = format_docker_image_created
