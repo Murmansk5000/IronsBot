@@ -7,12 +7,13 @@ from nonebot import get_bots, get_driver, require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.shared.scheduler import add_or_replace_job
+from ironsbot.shared.scheduler import JobRegistry
 
 from . import scan_team_resource_subscriptions
 from .config import get_team_resource_config
 
 _team_resource_runtime_state = {"registered": False}
+TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
 
 
 async def _scan_team_resources_with_bot() -> None:
@@ -34,15 +35,15 @@ def _register_team_resource_jobs(scheduler: Any) -> None:
     if not config.enabled:
         return
 
+    registry = JobRegistry(scheduler, prefix=TEAM_RESOURCE_JOB_PREFIX)
     for time_text in config.times:
         hour_text, minute_text = time_text.split(":", maxsplit=1)
-        add_or_replace_job(
-            scheduler,
+        registry.add(
             _scan_team_resources_with_bot,
             "cron",
             hour=int(hour_text),
             minute=int(minute_text),
-            job_id=f"team_resource_scan_{time_text.replace(':', '')}",
+            job_id=time_text.replace(":", ""),
         )
 
 
