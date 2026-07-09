@@ -2,7 +2,7 @@ from typing import Any
 
 from pytest import MonkeyPatch
 
-from ironsbot.services.bilibili import cache
+from ironsbot.services.bilibili import dynamic_history
 from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 
 AUTHOR_UID = 1310714247
@@ -41,7 +41,7 @@ def test_save_dynamic_history_snapshot_forwards_snapshot_fields(
         calls.append((item, kwargs))
 
     monkeypatch.setattr(
-        cache,
+        dynamic_history,
         "save_dynamic_history_item",
         fake_save_dynamic_history_item,
     )
@@ -57,7 +57,7 @@ def test_save_dynamic_history_snapshot_forwards_snapshot_fields(
         suppression_reason="命中规则：测试",
     )
 
-    cache.save_dynamic_history_snapshot(snapshot)
+    dynamic_history.save_dynamic_history_snapshot(snapshot)
 
     assert calls == [
         (
@@ -86,12 +86,12 @@ def test_save_target_dynamic_history_builds_and_saves_snapshots(
         saved_snapshots.append(snapshot)
 
     monkeypatch.setattr(
-        cache,
+        dynamic_history,
         "save_dynamic_history_snapshot",
         fake_save_dynamic_history_snapshot,
     )
 
-    saved_count = cache.save_target_dynamic_history(
+    saved_count = dynamic_history.save_target_dynamic_history(
         [
             (PUB_TS, _dynamic_item()),
             (PUB_TS, {"id_str": "missing-author"}),

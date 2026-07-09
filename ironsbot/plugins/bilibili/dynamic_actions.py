@@ -8,12 +8,12 @@ from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
-from ironsbot.services.bilibili.cache import (
-    get_saved_cookie,
+from ironsbot.services.bilibili.client import fetch_dynamic_feed
+from ironsbot.services.bilibili.cookie_cache import get_saved_cookie
+from ironsbot.services.bilibili.dynamic_history import (
     list_dynamic_history,
     save_target_dynamic_history,
 )
-from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_IDS_STATE_KEY,
     build_dynamic_detail_for_selection,

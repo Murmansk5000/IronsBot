@@ -15,7 +15,6 @@ from ironsbot.services.bilibili.push import (
     build_dynamic_history_snapshot_for_item,
 )
 from ironsbot.services.bilibili.storage import (
-    cookie_cache_file,
     dynamic_history_db_file,
 )
 from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
@@ -132,20 +131,6 @@ def save_last_saved_times(checkpoints: dict[int, int]) -> None:
             )
     except sqlite3.Error as e:
         logger.warning(f"failed to write Bilibili checkpoints to SQLite: {e}")
-
-
-def get_saved_cookie() -> str:
-    cache_file = cookie_cache_file()
-    if not cache_file.exists():
-        return ""
-
-    return cache_file.read_text(encoding="utf-8").strip()
-
-
-def save_new_cookie(cookie_str: str) -> None:
-    cache_file = cookie_cache_file()
-    cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(cookie_str, encoding="utf-8")
 
 
 def _dynamic_id(item: dict) -> str:

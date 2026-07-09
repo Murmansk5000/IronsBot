@@ -25,7 +25,7 @@ from ironsbot.services.bilibili.auth import (
     should_send_bili_login_notice,
     store_bili_login_qr_request,
 )
-from ironsbot.services.bilibili.cache import save_new_cookie
+from ironsbot.services.bilibili.cookie_cache import save_new_cookie
 from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
 
 from .bot_access import get_first_bot
