@@ -26,7 +26,7 @@ from ironsbot.services.bilibili.auth import (
     store_bili_login_qr_request,
 )
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
-from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
+from ironsbot.shared.messaging.admin_notice import send_admin_notice
 
 from .bot_access import get_first_bot
 from .config import get_bili_config
@@ -48,17 +48,25 @@ async def _send_private_to_superusers(
     bot: Bot | None = None,
     user_ids: list[int] | None = None,
 ) -> None:
-    from ironsbot.shared.messaging import send_broadcast_message
+    if user_ids is None:
+        await send_admin_notice(
+            message,
+            bot=bot or get_first_bot(),
+            action_name="Bilibili login notice",
+            interval_seconds=1.2,
+            subscription_key="bili_login_notice",
+        )
+        return
 
-    target_user_ids = user_ids or get_bili_superuser_uids()
-
-    if not target_user_ids:
+    if not user_ids:
         logger.warning("Bilibili monitor has no superusers for login notice")
         return
 
+    from ironsbot.shared.messaging import send_broadcast_message
+
     await send_broadcast_message(
         message,
-        private_user_ids=target_user_ids,
+        private_user_ids=user_ids,
         bot=bot or get_first_bot(),
         action_name="Bilibili login notice",
         interval_seconds=1.2,
