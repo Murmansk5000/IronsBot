@@ -4,7 +4,6 @@ from typing import Any
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
-    PrivateMessageEvent,
 )
 
 from ironsbot.config.loader import get_app_config
@@ -33,8 +32,7 @@ from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.permissions import (
-    can_manage_group_event,
-    is_superuser_event,
+    can_manage_conversation_event,
 )
 from ironsbot.shared.plugin_system import PluginContext
 
@@ -43,13 +41,7 @@ BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 
 def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return can_manage_group_event(event)
-
-    if isinstance(event, PrivateMessageEvent):
-        return is_superuser_event(event)
-
-    return False
+    return can_manage_conversation_event(event)
 
 
 def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:
