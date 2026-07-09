@@ -1,9 +1,9 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 from pytest import MonkeyPatch
 
 from ironsbot.services.ai import memory
+from tests.helpers.config import stub_ai_memory_config
 from tests.helpers.onebot_events import group_message_event
 
 GROUP_ID = 456
@@ -14,12 +14,7 @@ def _enable_memory(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         memory,
         "_get_ai_config",
-        lambda: SimpleNamespace(
-            memory=True,
-            memory_path=tmp_path / "memory.sqlite",
-            memory_turns=1,
-            memory_max_chars=200,
-        ),
+        lambda: stub_ai_memory_config(memory_path=tmp_path / "memory.sqlite"),
     )
 
 

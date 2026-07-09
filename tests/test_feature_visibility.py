@@ -1,16 +1,8 @@
-from dataclasses import dataclass
-from types import SimpleNamespace
-
 from pytest import MonkeyPatch
 
 from ironsbot.shared.features import visibility
+from tests.helpers.config import StubMessageAction, stub_app_config
 from tests.helpers.onebot_events import group_message_event
-
-
-@dataclass(frozen=True)
-class Action:
-    enabled: bool
-    feature: str
 
 
 def _group_event(text: str = "帮助"):
@@ -25,21 +17,12 @@ def _config(
     *,
     ai_intent_enabled: bool = True,
     team_subscriptions: list[object] | None = None,
-    group_actions: list[Action] | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        ai=SimpleNamespace(intent_actions_enabled=ai_intent_enabled),
-        message=SimpleNamespace(
-            group_commands=group_actions or [],
-            group_schedules=[],
-            private_commands=[],
-            private_schedules=[],
-        ),
-        seer=SimpleNamespace(
-            team_resource=SimpleNamespace(
-                subscriptions=team_subscriptions or [],
-            ),
-        ),
+    group_actions: list[StubMessageAction] | None = None,
+):
+    return stub_app_config(
+        ai_intent_enabled=ai_intent_enabled,
+        team_subscriptions=team_subscriptions,
+        group_actions=group_actions,
     )
 
 
@@ -110,7 +93,9 @@ def test_messaging_visibility_reads_app_config(
     monkeypatch.setattr(
         visibility,
         "get_app_config",
-        lambda: _config(group_actions=[Action(enabled=True, feature="text")]),
+        lambda: _config(
+            group_actions=[StubMessageAction(enabled=True, feature="text")]
+        ),
     )
     monkeypatch.setattr(
         visibility,
