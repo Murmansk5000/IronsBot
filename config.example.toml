@@ -16,7 +16,7 @@
 # - seer：开启全部赛尔查询子功能。
 # - seer_pet / seer_mintmark / seer_player / seer_rank / seer_autocard：
 #   只开放精灵、刻印、米米号、榜单、群星牌等单项赛尔功能。
-# - image：图片发送；rank：榜单查询别名；meeting：会议回复。
+# - image：图片发送；meeting：会议回复。
 # - bili_query / bili_push：B 站动态查询 / 推送。
 # - web_activity_link / web_activity_push：游戏外签到链接查询 / 定时提醒。
 # - seer_activity_query / seer_activity_push：游戏内活动结束提醒查询 / 推送。

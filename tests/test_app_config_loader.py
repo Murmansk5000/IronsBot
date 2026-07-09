@@ -93,6 +93,7 @@ STALE_PUBLIC_TEXT_PATTERNS = (
     r"README\.old",
     r"旧榜单",
     r"db\s*(?:与|和)\s*image\s*模块",
+    r"seer_rank`\s*/\s*`rank",
 )
 
 

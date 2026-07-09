@@ -32,7 +32,6 @@ FEATURE_MODULE_REGISTRY: FeatureModuleRegistry = {
     ),
     "seer_data": ("ironsbot.plugins.seer.query",),
     "image": ("ironsbot.plugins.sendpic",),
-    "rank": ("ironsbot.plugins.seer.rank_help",),
     "meeting": ("ironsbot.plugins.meeting",),
     "text": ("ironsbot.plugins.messaging",),
     "text_push": ("ironsbot.plugins.messaging",),

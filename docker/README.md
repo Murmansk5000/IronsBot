@@ -35,7 +35,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 
 ## Included Plugins
 
-- `seer.query`: Seer player, pet, mintmark, rank, Autocard, activity, and data tools.
+- `seer.query`: Seer player, pet, mintmark, Seer ranks, Autocard, activity, and data tools.
 - `help`: show only features enabled for the current group or private user.
 - `about`: show current IronsBot project information.
 - `sendpic`: reply with fixed local images by command keywords.
@@ -226,7 +226,7 @@ Feature names are used in `[feature.group_policy]` and
 | feature | Meaning |
 | --- | --- |
 | `all` | Most features except `admin_notice`; admin notices are explicit. |
-| `query` | Common query bundle: Seer queries, image, rank, Bilibili query, activity query, server status query. |
+| `query` | Common query bundle: Seer queries, image replies, Seer ranks, Bilibili query, activity query, server status query. |
 | `seer` | All Seer query sub-features. |
 | `seer_player` | Mimi ID/player info, collection/peak/Autocard follow-up replies. |
 | `seer_team` | Team ID query. |
@@ -236,7 +236,7 @@ Feature names are used in `[feature.group_policy]` and
 | `seer_type` | Type matchup and abnormal status queries. |
 | `seer_peak` | Peak pools, votes, peak ranks, and pet usage ranks. |
 | `seer_autocard` | Autocard data and Autocard global rank. |
-| `seer_rank` / `rank` | Global ranks, sample ranks, rank/sample status, and rank cache commands. |
+| `seer_rank` | Global ranks, sample ranks, rank/sample status, and rank cache commands. |
 | `seer_data` | Weekly preview, data version, and data tools. |
 | `image` | Fixed/local image replies. |
 | `meeting` | Tencent Meeting reply. |

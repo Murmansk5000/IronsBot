@@ -173,7 +173,7 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-example = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
+example = ["seer", "image", "seer_rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
 
 [feature.user_policy]
 owner = ["all"]
@@ -229,7 +229,7 @@ at_users = ["owner"]
 | `seer_type` | 属性克制、异常状态查询。 |
 | `seer_peak` | 巅峰池、票选、巅峰榜、精灵出场榜。 |
 | `seer_autocard` | 群星牌资料和群星之巅榜。 |
-| `seer_rank` / `rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
+| `seer_rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
 | `seer_data` | 下周预告、数据版本等数据工具。 |
 | `image` | 固定图片/本地图发送。 |
 | `meeting` | 腾讯会议回复。 |
