@@ -7,12 +7,12 @@ from nonebot import get_driver
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
-from ironsbot.config.loader import get_app_config, load_secrets_config
-from ironsbot.shared.features.plugin_modules import (
+from ironsbot.app.feature_modules import (
     FEATURE_MODULE_REGISTRY,
     FeatureModuleRegistry,
     features_for_plugin_module,
 )
+from ironsbot.config.loader import get_app_config, load_secrets_config
 from ironsbot.shared.features.service import is_superuser
 from ironsbot.shared.features.visibility import feature_visible_for_help
 

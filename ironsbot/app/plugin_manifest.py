@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from ironsbot.shared.features.plugin_modules import iter_feature_module_prefixes
+from ironsbot.app.feature_modules import iter_feature_module_prefixes
 
 
 @dataclass(frozen=True, slots=True)

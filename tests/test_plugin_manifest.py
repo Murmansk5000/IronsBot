@@ -3,12 +3,12 @@ from pathlib import Path
 import tomli
 
 from ironsbot.app.bootstrap import load_manifest_plugins, run_runtime_setups
+from ironsbot.app.feature_modules import iter_feature_module_prefixes
 from ironsbot.app.plugin_manifest import (
     RUNTIME_SETUP_CALLS,
     iter_plugin_modules,
     validate_plugin_manifest,
 )
-from ironsbot.shared.features.plugin_modules import iter_feature_module_prefixes
 
 ROOT = Path(__file__).resolve().parents[1]
 
