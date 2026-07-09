@@ -50,10 +50,12 @@ def test_register_restart_job_uses_standard_scheduler_fields(
     monkeypatch.setattr(
         scheduled_restart_runtime,
         "get_restart_config",
-        lambda: RestartConfig(
-            enabled=True,
-            times=["04:30"],
-            grace_seconds=0,
+        lambda: RestartConfig.model_validate(
+            {
+                "enabled": True,
+                "times": ["04:30"],
+                "grace_seconds": 0,
+            }
         ),
     )
 
