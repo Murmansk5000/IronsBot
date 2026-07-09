@@ -2,7 +2,6 @@ from nonebot.plugin import PluginMetadata
 
 from ironsbot.config.models.app import AppConfig
 
-from . import runtime as runtime
 from .policies import setup_messaging_delivery_policies
 
 setup_messaging_delivery_policies()
@@ -19,7 +18,3 @@ __plugin_meta__ = PluginMetadata(
     ),
     config=AppConfig,
 )
-
-__all__ = [
-    "runtime",
-]
