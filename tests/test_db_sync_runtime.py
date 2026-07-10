@@ -306,11 +306,6 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
         enabled=True,
         steps=[
             RemoteBuildStepConfig(
-                name="update_unity_config",
-                repository="Murmansk5000/seer-unity-config-parser",
-                workflow_id="schedule.yml",
-            ),
-            RemoteBuildStepConfig(
                 name="sync_config_sources",
                 repository="Murmansk5000/config-sources",
                 workflow_id="sync-upstream.yml",
@@ -430,12 +425,66 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
 
     assert results == {"seerapi": True}
     assert calls == [
-        "build:update_unity_config:Murmansk5000/seer-unity-config-parser:token",
         "build:sync_config_sources:Murmansk5000/config-sources:token",
         "build:build_seer_data:Murmansk5000/seer-data:token",
         "build:build_ironsbot_data:Murmansk5000/seerapi:token",
         "sync:seerapi",
     ]
+
+
+def test_force_remote_build_adds_force_input_to_supported_steps(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    inputs_seen: dict[str, dict[str, object]] = {}
+    monkeypatch.setattr(db_sync_state, "registered_syncs",
+        {
+            "seerapi": SyncEntry(
+                "https://example.invalid/seerapi.sqlite",
+                60,
+                None,
+                None,
+                _remote_build_pipeline_config(),
+            ),
+        },
+    )
+    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
+        lambda: _secrets_config(github_workflow_token="token"),
+    )
+
+    async def fake_build(
+        config: RemoteBuildStepConfig,
+        *,
+        token: str,
+    ) -> WorkflowRunResult:
+        assert token == "token"
+        inputs_seen[config.name] = dict(config.inputs)
+        return WorkflowRunResult(
+            ok=True,
+            status="completed",
+            conclusion="success",
+            html_url=f"https://github.com/{config.repository}/actions/runs/1",
+            message="ok",
+        )
+
+    async def fake_sync(_name: str) -> bool:
+        return True
+
+    monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
+    monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
+
+    results = asyncio.run(
+        db_sync_runner.sync_all_databases(
+            trigger_remote_build=True,
+            force_remote_build=True,
+        )
+    )
+
+    assert results == {"seerapi": True}
+    assert inputs_seen == {
+        "sync_config_sources": {"force": True},
+        "build_seer_data": {"force": True},
+        "build_ironsbot_data": {"force": True},
+    }
 
 
 def test_remote_build_failure_skips_old_release_download(
