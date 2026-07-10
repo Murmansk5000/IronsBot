@@ -256,11 +256,11 @@ def test_example_config_parses() -> None:
         "seerapi"
     ].remote_build.steps
     assert [step.name for step in remote_build_steps] == [
-        "update_unity_config",
-        "sync_config_sources",
-        "build_seer_data",
-        "build_ironsbot_data",
-    ]
+            "update_unity_config",
+            "sync_config_sources",
+            "build_seer_data",
+            "build_ironsbot_data",
+        ]
     assert (
         remote_build_steps[-1].repository
         == "Murmansk5000/seerapi"
@@ -269,8 +269,44 @@ def test_example_config_parses() -> None:
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
+    assert remote_build_steps[0].inputs == {}
+    assert remote_build_steps[1].inputs == {}
     assert remote_build_steps[2].inputs == {"debug_enabled": False}
     assert config.runtime.help.ignored_plugins == []
+
+    assert [
+        [step.name, step.repository, step.workflow_id, step.ref, dict(step.inputs)]
+        for step in remote_build_steps
+    ] == [
+        [
+            "update_unity_config",
+            "Murmansk5000/seer-unity-config-parser",
+            "schedule.yml",
+            "main",
+            {},
+        ],
+        [
+            "sync_config_sources",
+            "Murmansk5000/config-sources",
+            "sync-upstream.yml",
+            "main",
+            {},
+        ],
+        [
+            "build_seer_data",
+            "Murmansk5000/seer-data",
+            "main.yml",
+            "main",
+            {"debug_enabled": False},
+        ],
+        [
+            "build_ironsbot_data",
+            "Murmansk5000/seerapi",
+            "build-ironsbot-data-db.yml",
+            "main",
+            {},
+        ],
+    ]
 
 
 def test_example_config_has_no_unknown_fields() -> None:
@@ -663,3 +699,40 @@ def test_refresh_and_startup_model_defaults_are_separate_from_public_example() -
     assert LoggingConfig().file_path == "logs/ironsbot.log"
     assert LoggingConfig().error_file_path == "logs/ironsbot.error.log"
     _assert_default_matcher_priorities(MatcherPriorityConfig())
+
+def test_example_pipeline_force_inputs_preserve_the_ordinary_four_steps() -> None:
+    import hashlib
+    import json
+
+    from ironsbot.integrations.db_sync.remote_build import (
+        FORCE_INPUT_WORKFLOWS,
+        configured_remote_build_steps,
+    )
+
+    config = load_app_config(ROOT / "config.example.toml")
+    remote = config.runtime.data_sync.sources["seerapi"].remote_build
+    assert remote is not None
+    original = remote.build_steps()
+    inputs_before = [dict(step.inputs) for step in original]
+    ordinary = configured_remote_build_steps(remote, force=False)
+    forced = configured_remote_build_steps(remote, force=True)
+    assert len(original) == len(ordinary) == len(forced) == 4
+    ordinary_contract = [
+        [s.name, s.repository, s.workflow_id, s.ref, dict(s.inputs)]
+        for s in ordinary
+    ]
+    serialized = json.dumps(ordinary_contract, sort_keys=True, separators=(",", ":"))
+    assert hashlib.sha256(serialized.encode()).hexdigest() == (
+        "2a877ae604abbcf6c89db9dfe053f72cbb67d24adbbf47bd9cd05fb77d7b8582"
+    )
+    supported = json.dumps(sorted(FORCE_INPUT_WORKFLOWS), separators=(",", ":"))
+    assert hashlib.sha256(supported.encode()).hexdigest() == (
+        "65277be6b286b1a56249ed488e82a77d44a313f75c1bdfaa1833fe7b1bcf41d1"
+    )
+    for base, plain, changed in zip(original, ordinary, forced, strict=True):
+        assert plain.inputs == base.inputs
+        if (base.repository, base.workflow_id) in FORCE_INPUT_WORKFLOWS:
+            assert changed.inputs == {**base.inputs, "force": True}
+        else:
+            assert changed.inputs == base.inputs
+    assert [dict(step.inputs) for step in remote.steps] == inputs_before
