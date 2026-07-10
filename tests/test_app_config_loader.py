@@ -245,7 +245,6 @@ def test_example_config_parses() -> None:
         "seerapi"
     ].remote_build.steps
     assert [step.name for step in remote_build_steps] == [
-        "update_unity_config",
         "sync_config_sources",
         "build_seer_data",
         "build_ironsbot_data",
@@ -258,7 +257,12 @@ def test_example_config_parses() -> None:
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
-    assert remote_build_steps[2].inputs == {"debug_enabled": False}
+    assert remote_build_steps[0].inputs == {"force": False}
+    assert remote_build_steps[1].inputs == {
+        "debug_enabled": False,
+        "force": False,
+    }
+    assert remote_build_steps[2].inputs == {"force": False}
     assert config.runtime.help.ignored_plugins == []
 
 

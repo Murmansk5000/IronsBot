@@ -245,7 +245,12 @@ def remote_build_names() -> list[str]:
     ]
 
 
-async def _run_remote_build(name: str, entry: SyncEntry) -> bool:
+async def _run_remote_build(
+    name: str,
+    entry: SyncEntry,
+    *,
+    force: bool = False,
+) -> bool:
     token = load_secrets_config().github_workflow_token.strip()
     return await sync_remote_build.run_remote_build(
         name=name,
@@ -253,16 +258,25 @@ async def _run_remote_build(name: str, entry: SyncEntry) -> bool:
         token=token,
         results=sync_state.remote_build_results,
         trigger_workflow=lambda step: trigger_and_wait_workflow(step, token=token),
+        force=force,
     )
 
 
-async def sync_all_databases(*, trigger_remote_build: bool = False) -> dict[str, bool]:
+async def sync_all_databases(
+    *,
+    trigger_remote_build: bool = False,
+    force_remote_build: bool = False,
+) -> dict[str, bool]:
     results: dict[str, bool] = {}
     if trigger_remote_build:
         sync_state.remote_build_results.clear()
 
     for name, entry in sync_state.registered_syncs.items():
-        if trigger_remote_build and not await _run_remote_build(name, entry):
+        if trigger_remote_build and not await _run_remote_build(
+            name,
+            entry,
+            force=force_remote_build,
+        ):
             results[name] = False
             continue
         results[name] = await sync_database(name)
@@ -272,6 +286,7 @@ async def sync_all_databases(*, trigger_remote_build: bool = False) -> dict[str,
 async def run_sync_all_databases(
     *,
     trigger_remote_build: bool = False,
+    force_remote_build: bool = False,
 ) -> tuple[bool, dict[str, bool]]:
     if sync_state.sync_all_lock.locked():
         logger.info("数据库全量同步正在运行，跳过本次手动触发")
@@ -290,7 +305,8 @@ async def run_sync_all_databases(
             return False, {}
 
         return True, await sync_all_databases(
-            trigger_remote_build=trigger_remote_build
+            trigger_remote_build=trigger_remote_build,
+            force_remote_build=force_remote_build,
         )
 
 

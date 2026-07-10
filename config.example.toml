@@ -748,8 +748,9 @@ cache_max_size_mb = 200
 [runtime.data_sync]
 # 数据同步分两层：
 # - 普通启动/定时同步默认只下载 GitHub Release 里已经构建好的 SQLite。
-# - /更新数据 或 startup_trigger_remote_build=true 才会先触发上游 Actions 流水线，再下载新库。
-# 如果只是想避免开机慢，改 on_startup=false；如果想开机也强制跑流水线，改 startup_trigger_remote_build=true。
+# - /更新数据 会先让 Actions 检查官方/上游是否有变化，有变化才重建；随后下载新库。
+# - /强制更新数据 会传 force=true，强制 Actions 重建，用于排查或 parser 修复后重跑。
+# 如果只是想避免开机慢，改 on_startup=false；如果想开机也检查远程构建，改 startup_trigger_remote_build=true。
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
 on_startup = true
 # Default: false; EN: Trigger remote build pipeline during startup sync. ZH: 启动同步时先触发远程构建流水线；开启后才近似等同 /更新数据。
@@ -772,15 +773,7 @@ local_path = "data/ironsbot-data.sqlite"
 enabled = true
 
 # EN: Ordered GitHub Actions pipeline executed before downloading this database.
-# ZH: 下载该数据库前顺序执行的 GitHub Actions 流水线。
-[[runtime.data_sync.sources.seerapi.remote_build.steps]]
-name = "update_unity_config"
-repository = "Murmansk5000/seer-unity-config-parser"
-workflow_id = "schedule.yml"
-ref = "main"
-timeout_seconds = 1800
-poll_interval_seconds = 10
-
+# ZH: 下载该数据库前顺序执行的 GitHub Actions 流水线；各 workflow 会先检查输入是否变化。
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
 name = "sync_config_sources"
 repository = "Murmansk5000/config-sources"
@@ -788,6 +781,7 @@ workflow_id = "sync-upstream.yml"
 ref = "main"
 timeout_seconds = 600
 poll_interval_seconds = 10
+inputs = { force = false }
 
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_seer_data"
@@ -796,7 +790,7 @@ workflow_id = "main.yml"
 ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
-inputs = { debug_enabled = false }
+inputs = { debug_enabled = false, force = false }
 
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
@@ -805,6 +799,7 @@ workflow_id = "build-ironsbot-data-db.yml"
 ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
+inputs = { force = false }
 
 [runtime.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
