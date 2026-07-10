@@ -10,14 +10,18 @@ os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 from ironsbot.app.plugin_manifest import RUNTIME_SETUP_CALLS
 from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
-from ironsbot.plugins.server_status.docker_update import (
-    DockerUpdateResult,
-    WatchtowerUpdateOptions,
+from ironsbot.plugins.server_status.docker_update_client import (
     create_watchtower_container,
-    format_docker_image_created,
-    format_docker_update_reply,
     resolve_docker_container_name,
     split_docker_image,
+)
+from ironsbot.plugins.server_status.docker_update_formatting import (
+    format_docker_image_created,
+    format_docker_update_reply,
+)
+from ironsbot.plugins.server_status.docker_update_models import (
+    DockerUpdateResult,
+    WatchtowerUpdateOptions,
 )
 from ironsbot.plugins.server_status.restart import (
     DockerSelfUpdateService,

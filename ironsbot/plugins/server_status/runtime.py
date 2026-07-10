@@ -9,7 +9,7 @@ from nonebot.log import logger
 from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
 
 from .config import get_docker_update_config
-from .docker_update import format_docker_update_reply
+from .docker_update_formatting import format_docker_update_reply
 from .restart import DockerSelfUpdateService
 
 _docker_update_runtime_state = {"registered": False}
