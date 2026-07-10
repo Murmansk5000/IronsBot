@@ -8,6 +8,12 @@ from nonebot.log import logger
 from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 
+FORCE_INPUT_WORKFLOWS = {
+    ("Murmansk5000/config-sources", "sync-upstream.yml"),
+    ("Murmansk5000/seer-data", "main.yml"),
+    ("Murmansk5000/seerapi", "build-ironsbot-data-db.yml"),
+}
+
 TriggerWorkflowFn = Callable[
     [RemoteBuildStepConfig],
     Awaitable[WorkflowRunResult],
@@ -48,22 +54,35 @@ def format_exception_message(error: Exception) -> str:
 
 def configured_remote_build_steps(
     config: RemoteBuildConfig,
+    *,
+    force: bool = False,
 ) -> list[RemoteBuildStepConfig]:
-    return config.build_steps()
+    steps = config.build_steps()
+    if not force:
+        return steps
+
+    forced_steps: list[RemoteBuildStepConfig] = []
+    for step in steps:
+        inputs = dict(step.inputs)
+        if (step.repository, step.workflow_id) in FORCE_INPUT_WORKFLOWS:
+            inputs["force"] = True
+        forced_steps.append(step.model_copy(update={"inputs": inputs}))
+    return forced_steps
 
 
-async def run_remote_build(
+async def run_remote_build(  # noqa: PLR0913
     *,
     name: str,
     config: RemoteBuildConfig | None,
     token: str,
     results: MutableMapping[str, WorkflowRunResult],
     trigger_workflow: TriggerWorkflowFn,
+    force: bool = False,
 ) -> bool:
     if config is None or not config.enabled:
         return True
 
-    steps = configured_remote_build_steps(config)
+    steps = configured_remote_build_steps(config, force=force)
     if not steps:
         results[name] = remote_build_failure(
             config=config,

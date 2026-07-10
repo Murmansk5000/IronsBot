@@ -41,6 +41,7 @@ async def handle_manual_sync(
     event: MessageEvent,
     *,
     context: ManualSyncContext,
+    force_remote_build: bool = False,
 ) -> None:
     if not context.registered_syncs:
         await finish_event_reply(matcher, event, "当前没有已注册的远程同步数据库。")
@@ -50,19 +51,24 @@ async def handle_manual_sync(
 
     names = list(context.registered_syncs)
     remote_names = context.remote_build_names()
-    start_message = (
-        f"开始远程构建数据：{', '.join(remote_names)}；"
-        f"随后更新数据：{', '.join(names)}，请稍等。"
-        if remote_names
-        else f"开始更新数据：{', '.join(names)}，请稍等。"
-    )
+    if remote_names:
+        remote_action = "强制远程重建数据" if force_remote_build else "检查远程数据更新"
+        start_message = (
+            f"开始{remote_action}：{', '.join(remote_names)}；"
+            f"随后更新数据：{', '.join(names)}，请稍等。"
+        )
+    else:
+        start_message = f"开始更新数据：{', '.join(names)}，请稍等。"
     await send_event_reply(
         matcher,
         event,
         start_message,
     )
 
-    did_run, results = await context.run_sync_all_databases(trigger_remote_build=True)
+    did_run, results = await context.run_sync_all_databases(
+        trigger_remote_build=True,
+        force_remote_build=force_remote_build,
+    )
 
     if not did_run:
         await finish_event_reply(matcher, event, "⏳ 数据更新正在进行中，请稍后再试。")
