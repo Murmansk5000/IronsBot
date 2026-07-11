@@ -86,7 +86,7 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\baction_templates\b",
     r"\bdefault_uids\b",
     r"\bextra_uids\b",
-    r"\bfire_manual\b",
+    r"\bfire_manual_intent\b",
 )
 STALE_PUBLIC_TEXT_PATTERNS = (
     *STALE_PUBLIC_CONFIG_PATTERNS,
@@ -204,8 +204,8 @@ def test_example_config_parses() -> None:
 
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
-    assert "fire_manual_ad" in config.ai.intent_actions
-    assert "fire_manual" not in config.ai.intent_actions
+    assert "fire_manual" in config.ai.intent_actions
+    assert "fire_manual_intent" not in config.ai.intent_actions
     assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
     assert config.bilibili.account_nicknames["seer"] == "赛尔号官方"
     assert config.bilibili.push.mode == "link"

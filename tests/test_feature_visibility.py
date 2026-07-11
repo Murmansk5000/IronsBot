@@ -50,6 +50,13 @@ def test_help_visibility_maps_features_to_plugin_modules() -> None:
     assert visibility.features_for_plugin_module("ironsbot.plugins.fire_manual_ad") == (
         "fire_manual_ad",
     )
+    assert visibility.features_for_plugin_module("ironsbot.plugins.ai_intent") == (
+        "ai_intent",
+        "ai_intent_fire_manual",
+    )
+    assert visibility.features_for_plugin_module(
+        "ironsbot.plugins.team_recommend"
+    ) == ("ai_intent_team_recommend",)
 
 
 def test_feature_module_visibility_uses_feature_service(

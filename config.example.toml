@@ -22,7 +22,9 @@
 # - seer_activity_query / seer_activity_push：游戏内活动结束提醒查询 / 推送。
 # - server_status_query / server_status_push：开服状态查询 / 开服推送。
 # - ai_chat / ai_intent：AI聊天 / AI意图分析。
-# - fire_manual_ad：火火手册广告追加和手册链接意图。
+# - fire_manual_ad：主动推送末尾追加火火手册链接。
+# - ai_intent_fire_manual：用户明确索要火火手册链接时的 AI 意图动作。
+# - ai_intent_team_recommend：用户想加战队时的 AI 战队推荐动作。
 # - team_audit：战队审核群入群提示；team_resource_subscription：战队资源订阅。
 # - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
@@ -59,7 +61,9 @@ superuser_bypass = true
 # 改写 seer_player、seer_rank、seer_autocard 等精细子功能。
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
 # 游戏外活动链接使用 web_activity_link / web_activity_push。
-# fire_manual_ad 控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
+# fire_manual_ad 控制主动推送末尾的火火手册链接。
+# ai_intent_fire_manual 控制“手册”AI 意图识别。
+# ai_intent_team_recommend 控制“想加战队”AI 战队推荐动作。
 # team_resource_subscription 控制战队订阅查询和低资源定时提醒。
 # admin_notice 不包含在 all 里；管理群要收启动、异常等管理通知时需要显式写 admin_notice。
 # 具体推送项可在 TD 菜单里分别退订。
@@ -187,11 +191,11 @@ intent_actions_enabled = true
 # Omitted fields inherit built-in defaults for known actions.
 # ZH: AI 意图动作按 [ai.intent_actions.<id>] 配置；已知动作未写字段会继承内置默认值。
 
-[ai.intent_actions.join_team]
+[ai.intent_actions.team_recommend]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
 
-[ai.intent_actions.fire_manual_ad]
+[ai.intent_actions.fire_manual]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
 enabled = true
 

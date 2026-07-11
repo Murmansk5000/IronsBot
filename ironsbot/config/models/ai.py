@@ -13,7 +13,7 @@ from ironsbot.shared.config.parsing import (
     string_list,
 )
 from ironsbot.shared.promotions import (
-    FIRE_MANUAL_FEATURE,
+    FIRE_MANUAL_INTENT_FEATURE,
     FIRE_MANUAL_LINK_MESSAGE,
 )
 
@@ -110,8 +110,9 @@ class AiIntentAction(AiActionBase):
 
 def builtin_ai_actions() -> dict[str, AiIntentAction]:
     return {
-        "join_team": AiIntentAction(
-            id="join_team",
+        "team_recommend": AiIntentAction(
+            id="team_recommend",
+            feature="ai_intent_team_recommend",
             keywords=["战队"],
             action="team_recommend",
             intent=DEFAULT_JOIN_TEAM_INTENT,
@@ -127,9 +128,9 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             ),
             reply_prompt=DEFAULT_KEYWORD_INFO_PROMPT,
         ),
-        "fire_manual_ad": AiIntentAction(
-            id="fire_manual_ad",
-            feature=FIRE_MANUAL_FEATURE,
+        "fire_manual": AiIntentAction(
+            id="fire_manual",
+            feature=FIRE_MANUAL_INTENT_FEATURE,
             keywords=["手册"],
             action="message",
             intent=DEFAULT_FIRE_MANUAL_INTENT,
@@ -141,8 +142,8 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
 def default_ai_actions() -> dict[str, AiIntentAction]:
     actions = builtin_ai_actions()
     return {
-        "join_team": actions["join_team"],
-        "fire_manual_ad": actions["fire_manual_ad"],
+        "team_recommend": actions["team_recommend"],
+        "fire_manual": actions["fire_manual"],
     }
 
 

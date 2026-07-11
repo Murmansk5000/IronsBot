@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-FIRE_MANUAL_FEATURE = "fire_manual_ad"
+FIRE_MANUAL_AD_FEATURE = "fire_manual_ad"
+FIRE_MANUAL_INTENT_FEATURE = "ai_intent_fire_manual"
 FIRE_MANUAL_URL = "https://seerinfo.yuyuqaq.cn/firedict"
 FIRE_MANUAL_LINK_MESSAGE = f"火火手册链接：{FIRE_MANUAL_URL}"
 
@@ -30,7 +31,7 @@ def fire_manual_ad_enabled_for_group(group_id: int | None) -> bool:
 
     from ironsbot.shared.features import group_has_feature
 
-    return group_has_feature(group_id, FIRE_MANUAL_FEATURE)
+    return group_has_feature(group_id, FIRE_MANUAL_AD_FEATURE)
 
 
 def append_fire_manual_ad_for_group(
@@ -58,7 +59,8 @@ def split_fire_manual_ad_group_ids(
 
 
 __all__ = [
-    "FIRE_MANUAL_FEATURE",
+    "FIRE_MANUAL_AD_FEATURE",
+    "FIRE_MANUAL_INTENT_FEATURE",
     "FIRE_MANUAL_LINK_MESSAGE",
     "FIRE_MANUAL_URL",
     "append_fire_manual_ad_for_group",
