@@ -17,6 +17,7 @@ from ironsbot.services.ai.intent import (
     get_ai_intent_config,
     get_configured_actions,
     is_action_allowed,
+    is_ai_intent_allowed,
     passes_action_prefilter,
     reply_is_yes,
 )
@@ -39,7 +40,7 @@ async def classify_ai_intent_action(event: MessageEvent) -> AiIntentAction | Non
         return None
 
     text = event.get_plaintext().strip()
-    if not text or not get_ai_key():
+    if not text or not get_ai_key() or not is_ai_intent_allowed(event):
         return None
 
     for action in get_configured_actions():

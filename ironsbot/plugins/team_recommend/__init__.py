@@ -93,7 +93,7 @@ async def _handle_team_resource_action(
 
 class TeamRecommendPlugin:
     name = TEAM_RECOMMEND_PLUGIN_NAME
-    feature = "ai_intent"
+    feature = "ai_intent_team_recommend"
     enabled = True
 
     async def handle(self, event: MessageEvent, context: PluginContext) -> None:

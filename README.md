@@ -110,7 +110,7 @@ services:
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
 | `ai_intent` | AI 意图分析，并把命中的意图分发给对应功能。 |
-| `team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
+| `ai_intent_team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
@@ -173,7 +173,7 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-example = ["seer", "image", "seer_rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual_ad"]
+example = ["seer", "image", "seer_rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_intent_team_recommend", "ai_chat", "ai_intent", "fire_manual_ad", "ai_intent_fire_manual"]
 
 [feature.user_policy]
 owner = ["all"]
@@ -212,7 +212,8 @@ at_users = ["owner"]
 `all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
 游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
 使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual_ad`
-控制“手册”AI 意图识别和主动推送末尾的火火手册链接。
+只控制主动推送末尾的火火手册链接；`ai_intent_fire_manual`
+控制用户明确索要手册链接时的 AI 意图动作。
 
 ### Feature 对照表
 
@@ -250,8 +251,10 @@ at_users = ["owner"]
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
 | `team_audit` | 战队审核群入群提示和 24 小时 follow-up。 |
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
-| `ai_intent` | AI 意图分析，用于战队推荐、手册等意图动作。 |
-| `fire_manual_ad` | “手册”AI 意图识别，以及主动推送末尾追加火火手册链接。 |
+| `ai_intent` | AI 意图分析总开关；具体动作还需要对应 feature。 |
+| `ai_intent_team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
+| `fire_manual_ad` | 主动推送末尾追加火火手册链接。 |
+| `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
 
 ## 数据与缓存

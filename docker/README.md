@@ -46,9 +46,11 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 - `startup_notice`: send separate startup, Docker update, and startup data sync notices.
 - `team_resource_subscription`: team resource subscriptions and low-resource reminders.
 - `team_audit_welcome`: dedicated team audit group join prompt and 24-hour follow-up.
-- `fire_manual_ad`: Fire manual AI intent and Fire manual link appended to proactive pushes.
+- `fire_manual_ad`: Fire manual link appended to proactive pushes.
+- `ai_intent_fire_manual`: AI intent action for explicit Fire manual link requests.
 - `ai_chat`: chat with DeepSeek/OpenAI-compatible APIs through mentions or authorized private messages.
-- `ai_intent`: classify configured intent actions such as team recommendation and Fire manual link requests.
+- `ai_intent`: classify configured intent actions, then dispatch to the enabled action feature.
+- `ai_intent_team_recommend`: send configured team recommendation or audit group info after AI intent classification.
 - `scheduled_restart`: restart the bot container at configured daily times from APP_CONFIG.
 
 Behavior values such as group IDs, user IDs, team IDs, meeting numbers, feature policies, Bilibili subscriptions, and private reply text belong in a mounted TOML config file. Environment variables are reserved for secrets, credentials, and deployment runtime knobs. They are intentionally not baked into the image.
@@ -257,8 +259,10 @@ Feature names are used in `[feature.group_policy]` and
 | `team_resource_subscription` | Subscribed team query and low-resource @ reminders. |
 | `team_audit` | Team audit group join prompt and 24-hour follow-up. |
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
-| `ai_intent` | AI intent dispatch for team recommendation, Fire manual, and similar actions. |
-| `fire_manual_ad` | "手册" AI intent and Fire manual links appended to proactive pushes. |
+| `ai_intent` | AI intent dispatch switch; each action also requires its own feature. |
+| `ai_intent_team_recommend` | Team recommendation / audit group info triggered by AI intent classification. |
+| `fire_manual_ad` | Fire manual link appended to proactive pushes. |
+| `ai_intent_fire_manual` | AI intent action for explicit Fire manual link requests. |
 | `admin_notice` | Target permission for admin notices, including startup, AI errors, Bilibili login, headless Seer, render crash, red packet, and similar notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
@@ -277,7 +281,7 @@ owner = 1234567890
 
 [feature.group_policy]
 admin = ["admin_notice"]
-main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual_ad"]
+main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "ai_intent", "ai_intent_team_recommend", "fire_manual_ad", "ai_intent_fire_manual"]
 
 [feature.user_policy]
 owner = ["all"]
