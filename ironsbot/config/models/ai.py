@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +24,7 @@ AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt
 UNKNOWN_AI_ACTION_ERROR = (
     "unknown AI intent action must configure a complete action definition"
 )
+_LOGGER = logging.getLogger("ironsbot.config")
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
@@ -252,7 +254,16 @@ def _resolve_action_map(
 
         builtin_action = builtins.get(action_id)
         if builtin_action is None:
-            _validate_custom_action(action)
+            try:
+                _validate_custom_action(action)
+            except ValueError:
+                _LOGGER.warning(
+                    "Ignored unknown AI intent action '%s' because it does not "
+                    "define a complete custom action. Built-in action ids are: %s",
+                    action_id,
+                    ", ".join(sorted(builtins)),
+                )
+                continue
             resolved_action = action.model_copy(update={"id": action_id})
         else:
             resolved_action = AiIntentAction.model_validate(
