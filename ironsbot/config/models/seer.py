@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from ironsbot.shared.config.time import normalized_daily_times
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+_LOGGER = logging.getLogger("ironsbot.config")
 
 PLAYER_SECTION_KEYS: tuple[str, ...] = (
     "basic",
@@ -106,7 +109,9 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
             normalized.append(section)
 
     if unknown:
-        raise ValueError(f"unknown sections: {', '.join(unknown)}")  # noqa: TRY003
+        _LOGGER.warning(
+            "Ignored unknown Seer query section(s): " + ", ".join(unknown)
+        )
 
     return normalized
 
