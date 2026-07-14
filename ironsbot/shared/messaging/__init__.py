@@ -49,17 +49,9 @@ from .targets import (
     group_targets,
     private_targets,
 )
-from .text import (
-    DEFAULT_COMMAND_PREFIXES,
-    build_message,
-    command_text_matches,
-    normalize_command_text,
-    render_text,
-    strip_command_prefix,
-)
+from .text import build_message, render_text
 
 __all__ = [
-    "DEFAULT_COMMAND_PREFIXES",
     "DEFAULT_SELECTION_FOOTER",
     "HELP_SELECTION_FOOTER",
     "TOGGLE_SELECTION_FOOTER",
@@ -79,7 +71,6 @@ __all__ = [
     "broadcast_targets",
     "build_message",
     "command_reply_check",
-    "command_text_matches",
     "configure_reply_delivery_policy",
     "configure_sender_message_limiter",
     "enter_event_reply_conversation",
@@ -91,7 +82,6 @@ __all__ = [
     "format_selection_menu",
     "get_bot_or_none",
     "group_targets",
-    "normalize_command_text",
     "peek_user_rate_limit",
     "penalize_user_rate_limit",
     "private_targets",
@@ -101,5 +91,4 @@ __all__ = [
     "send_event_reply",
     "send_matcher_message",
     "send_target_messages",
-    "strip_command_prefix",
 ]
