@@ -3,6 +3,7 @@ from pathlib import Path
 import tomli
 
 from ironsbot.app.bootstrap import load_manifest_plugins, run_runtime_setups
+from ironsbot.app.feature_modules import iter_feature_module_prefixes
 from ironsbot.app.plugin_manifest import (
     RUNTIME_SETUP_CALLS,
     iter_plugin_modules,
@@ -25,6 +26,18 @@ def test_plugin_manifest_validates() -> None:
     assert RUNTIME_SETUP_CALLS
 
 
+def test_manifest_covers_feature_visibility_modules() -> None:
+    modules = iter_plugin_modules()
+
+    for module_prefix in iter_feature_module_prefixes():
+        assert any(
+            loaded_module == module_prefix
+            or loaded_module.startswith(f"{module_prefix}.")
+            or module_prefix.startswith(f"{loaded_module}.")
+            for loaded_module in modules
+        ), module_prefix
+
+
 def test_bootstrap_loads_manifest_order() -> None:
     loaded_modules: list[str] = []
 
@@ -34,6 +47,20 @@ def test_bootstrap_loads_manifest_order() -> None:
 
     assert load_manifest_plugins(load_plugin) == iter_plugin_modules()
     assert tuple(loaded_modules) == iter_plugin_modules()
+
+
+def test_manifest_loads_foundation_plugins_before_dependents() -> None:
+    modules = iter_plugin_modules()
+
+    assert modules.index("ironsbot.plugins.db_sync") < modules.index(
+        "ironsbot.plugins.seer_data"
+    )
+    assert modules.index("ironsbot.plugins.http_client") < modules.index(
+        "ironsbot.plugins.seer_data"
+    )
+    assert modules.index("ironsbot.plugins.seer_data") < modules.index(
+        "ironsbot.plugins.activity"
+    )
 
 
 def test_pyproject_does_not_define_plugin_loading_lists() -> None:

@@ -10,11 +10,11 @@ from seerapi_models import ElementTypeORM
 from seerapi_models.element_type import TypeCombinationORM
 from sqlmodel import select
 
-from ironsbot.integrations.seer_data.db import (
+from ironsbot.integrations.seer_data.getters import (
     GetTypeCombinationData,
-    SQLModelSession,
     TypeCombinationDataGetter,
 )
+from ironsbot.integrations.seer_data.sessions import SQLModelSession
 from ironsbot.services.seer.rendering.type_matchup import render_type_matchup
 from ironsbot.services.seer.type_calc import (
     calc_attack_table,

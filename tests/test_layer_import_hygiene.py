@@ -10,6 +10,42 @@ LAYER_ROOTS = (
     ROOT / "ironsbot" / "services",
     ROOT / "ironsbot" / "shared",
 )
+PLUGIN_OWNER_PARTS = 3
+SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
+SQLITE_HELPER_PATH = PACKAGE_ROOT / "shared" / "sqlite.py"
+RUNTIME_JOBS_PATH = PACKAGE_ROOT / "shared" / "runtime" / "jobs.py"
+OBSOLETE_FOUNDATION_MODULES = (
+    "ironsbot.integrations.seer_data.db",
+    "ironsbot.plugins.db_sync.config",
+    "ironsbot.plugins.db_sync.formatting",
+    "ironsbot.plugins.db_sync.github_actions",
+    "ironsbot.plugins.db_sync.manager",
+    "ironsbot.plugins.db_sync.remote_build",
+    "ironsbot.plugins.db_sync.service",
+    "ironsbot.plugins.db_sync.storage",
+    "ironsbot.plugins.headless_seer.as3bytearray",
+    "ironsbot.plugins.headless_seer.client",
+    "ironsbot.plugins.headless_seer.command_id",
+    "ironsbot.plugins.headless_seer.config",
+    "ironsbot.plugins.headless_seer.core",
+    "ironsbot.plugins.headless_seer.decrypt",
+    "ironsbot.plugins.headless_seer.exception",
+    "ironsbot.plugins.headless_seer.game",
+    "ironsbot.plugins.headless_seer.manager",
+    "ironsbot.plugins.headless_seer.packet",
+    "ironsbot.plugins.headless_seer.packets",
+    "ironsbot.plugins.headless_seer.type_hint",
+    "ironsbot.plugins.headless_seer.utils",
+    "ironsbot.plugins.seer.query.commands.upstream_queries",
+    "ironsbot.plugins.seer_data.config",
+    "ironsbot.plugins.seer_data.db",
+    "ironsbot.plugins.seer_data.image",
+    "ironsbot.plugins.seer_data.orm",
+    "ironsbot.services.seer.client",
+    "ironsbot.services.seer.local_rank",
+    "ironsbot.services.seer.rank",
+    "ironsbot.services.seer.rank_service",
+)
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -20,14 +56,50 @@ def _parse_python(path: Path) -> ast.AST:
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
+def _module_name_for_path(path: Path) -> str:
+    parts = path.relative_to(ROOT).with_suffix("").parts
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _package_name_for_path(path: Path) -> str:
+    module_name = _module_name_for_path(path)
+    if path.name == "__init__.py":
+        return module_name
+    return module_name.rsplit(".", 1)[0]
+
+
+def _resolve_import_from(path: Path, node: ast.ImportFrom) -> str | None:
+    if node.level == 0:
+        return node.module
+
+    package_parts = _package_name_for_path(path).split(".")
+    if node.level > len(package_parts):
+        return None
+
+    base_parts = package_parts[: len(package_parts) - node.level + 1]
+    if node.module:
+        base_parts.extend(node.module.split("."))
+    return ".".join(base_parts)
+
+
 def _imported_modules(path: Path) -> set[str]:
     tree = _parse_python(path)
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            modules.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            module_name = _resolve_import_from(path, node)
+            if module_name is None:
+                continue
+            modules.add(module_name)
+            modules.update(
+                f"{module_name}.{alias.name}"
+                for alias in node.names
+                if alias.name != "*"
+            )
     return modules
 
 
@@ -46,18 +118,74 @@ def test_lower_layers_do_not_import_plugins() -> None:
     assert _plugin_import_offenders() == []
 
 
-def _plugin_absolute_import_offenders() -> list[str]:
+def _plugin_reference_offenders() -> list[str]:
     return [
-        f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
-        for path in PLUGIN_ROOT.rglob("*.py")
-        for module_name in _imported_modules(path)
-        if module_name == "ironsbot.plugins"
-        or module_name.startswith("ironsbot.plugins.")
+        path.relative_to(ROOT).as_posix()
+        for root in LAYER_ROOTS
+        for path in root.rglob("*.py")
+        if "ironsbot.plugins" in path.read_text(encoding="utf-8-sig")
     ]
 
 
-def test_plugins_do_not_absolute_import_other_plugins() -> None:
-    assert _plugin_absolute_import_offenders() == []
+def test_lower_layers_do_not_reference_plugin_modules() -> None:
+    assert _plugin_reference_offenders() == []
+
+
+def _plugin_owner(path: Path) -> str:
+    relative_parts = path.relative_to(PLUGIN_ROOT).parts
+    return f"ironsbot.plugins.{relative_parts[0]}"
+
+
+def _imported_plugin_owner(module_name: str) -> str | None:
+    parts = module_name.split(".")
+    if parts[:2] != ["ironsbot", "plugins"]:
+        return None
+    if len(parts) < PLUGIN_OWNER_PARTS:
+        return "ironsbot.plugins"
+    return ".".join(parts[:PLUGIN_OWNER_PARTS])
+
+
+def _plugin_cross_import_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in PLUGIN_ROOT.rglob("*.py"):
+        owner = _plugin_owner(path)
+        for module_name in _imported_modules(path):
+            imported_owner = _imported_plugin_owner(module_name)
+            if imported_owner is not None and imported_owner != owner:
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
+                )
+    return offenders
+
+
+def test_plugins_do_not_import_other_plugins() -> None:
+    assert _plugin_cross_import_offenders() == []
+
+
+def _internal_plugin_require_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in PLUGIN_ROOT.rglob("*.py"):
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node) != "require" or not node.args:
+                continue
+            first_arg = node.args[0]
+            if not isinstance(first_arg, ast.Constant):
+                continue
+            if not isinstance(first_arg.value, str):
+                continue
+            if first_arg.value.startswith("ironsbot.plugins."):
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{node.lineno} requires "
+                    f"{first_arg.value}"
+                )
+    return offenders
+
+
+def test_plugins_do_not_require_other_internal_plugins() -> None:
+    assert _internal_plugin_require_offenders() == []
 
 
 def _star_import_offenders() -> list[str]:
@@ -80,20 +208,93 @@ def test_production_code_does_not_use_star_imports() -> None:
     assert _star_import_offenders() == []
 
 
-def _forbidden_module_import_offenders(forbidden_modules: set[str]) -> list[str]:
+def _forbidden_module_import_offenders(forbidden_modules: tuple[str, ...]) -> list[str]:
     return [
         f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
         for path in _python_files(PACKAGE_ROOT)
         for module_name in _imported_modules(path)
-        if module_name in forbidden_modules
+        if any(
+            module_name == forbidden_module
+            or module_name.startswith(f"{forbidden_module}.")
+            for forbidden_module in forbidden_modules
+        )
     ]
 
 
 def test_production_code_uses_current_foundation_modules() -> None:
-    assert _forbidden_module_import_offenders(
-        {
-            "ironsbot.services.seer.local_rank",
-            "ironsbot.services.seer.rank_service",
-            "ironsbot.services.seer.client",
-        }
-    ) == []
+    assert _forbidden_module_import_offenders(OBSOLETE_FOUNDATION_MODULES) == []
+
+
+def _module_source_path(module_name: str) -> Path:
+    return ROOT.joinpath(*module_name.split(".")).with_suffix(".py")
+
+
+def _module_package_init_path(module_name: str) -> Path:
+    return ROOT.joinpath(*module_name.split("."), "__init__.py")
+
+
+def test_obsolete_foundation_module_sources_do_not_exist() -> None:
+    assert [
+        path.relative_to(ROOT).as_posix()
+        for module_name in OBSOLETE_FOUNDATION_MODULES
+        for path in (
+            _module_source_path(module_name),
+            _module_package_init_path(module_name),
+        )
+        if path.exists()
+    ] == []
+
+
+def _call_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
+
+
+def _sqlite_connect_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        if path == SQLITE_HELPER_PATH:
+            continue
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "connect"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "sqlite3"
+            ):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
+    return offenders
+
+
+def test_sqlite_connections_go_through_shared_helper() -> None:
+    assert _sqlite_connect_offenders() == []
+
+
+def _direct_scheduler_job_call_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        if path == RUNTIME_JOBS_PATH:
+            continue
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            call_name = _call_name(node)
+            if call_name in SCHEDULER_JOB_METHODS:
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{node.lineno} calls "
+                    f"{call_name}"
+                )
+    return offenders
+
+
+def test_scheduler_job_changes_go_through_runtime_jobs() -> None:
+    assert _direct_scheduler_job_call_offenders() == []
