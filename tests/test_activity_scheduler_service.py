@@ -4,15 +4,13 @@ from zoneinfo import ZoneInfo
 
 from ironsbot.services.activity.models import ActivityReminder
 from ironsbot.services.activity.scheduler import (
-    DAILY_SCAN_JOB_ID,
+    DAILY_SCAN_JOB_SUFFIX,
     REMINDER_JOB_ID_PREFIX,
     STARTUP_SCAN_DELAY,
-    STARTUP_SCAN_JOB_ID,
-    clear_reminder_jobs,
+    STARTUP_SCAN_JOB_SUFFIX,
     register_scan_jobs,
-    reminder_job_id,
+    reminder_job_suffix,
     replace_reminder_jobs,
-    schedule_reminder_jobs,
 )
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -74,8 +72,8 @@ def test_register_scan_jobs_installs_startup_and_daily_jobs() -> None:
     register_scan_jobs(scheduler, _scan, enabled=True, now=now)
 
     assert [job["id"] for job in scheduler.jobs] == [
-        STARTUP_SCAN_JOB_ID,
-        DAILY_SCAN_JOB_ID,
+        f"{REMINDER_JOB_ID_PREFIX}{STARTUP_SCAN_JOB_SUFFIX}",
+        f"{REMINDER_JOB_ID_PREFIX}{DAILY_SCAN_JOB_SUFFIX}",
     ]
     assert scheduler.jobs[0]["next_run_time"] == now + STARTUP_SCAN_DELAY
 
@@ -88,30 +86,12 @@ def test_register_scan_jobs_skips_when_disabled() -> None:
     assert scheduler.jobs == []
 
 
-def test_schedule_reminder_jobs_groups_by_send_time() -> None:
-    scheduler = FakeScheduler()
-    send_time = dt(2026, 6, 12, 9)
-    reminders = [_reminder(1, send_time), _reminder(2, send_time)]
-
-    scheduled_count = schedule_reminder_jobs(
-        scheduler,
-        _send,
-        reminders,
-        grace_minutes=15,
-    )
-
-    assert scheduled_count == EXPECTED_SCHEDULED_COUNT
-    assert len(scheduler.jobs) == 1
-    assert scheduler.jobs[0]["id"] == reminder_job_id(1, send_time)
-    assert scheduler.jobs[0]["misfire_grace_time"] == EXPECTED_MISFIRE_GRACE_SECONDS
-
-
 def test_replace_reminder_jobs_keeps_scan_jobs_and_replaces_reminders() -> None:
     scheduler = FakeScheduler()
     send_time = dt(2026, 6, 12, 9)
     scheduler.jobs = [
-        {"id": STARTUP_SCAN_JOB_ID},
-        {"id": DAILY_SCAN_JOB_ID},
+        {"id": f"{REMINDER_JOB_ID_PREFIX}{STARTUP_SCAN_JOB_SUFFIX}"},
+        {"id": f"{REMINDER_JOB_ID_PREFIX}{DAILY_SCAN_JOB_SUFFIX}"},
         {"id": f"{REMINDER_JOB_ID_PREFIX}1h_123"},
         {"id": "other_job"},
     ]
@@ -125,26 +105,9 @@ def test_replace_reminder_jobs_keeps_scan_jobs_and_replaces_reminders() -> None:
 
     assert scheduled_count == EXPECTED_SCHEDULED_COUNT
     assert [job["id"] for job in scheduler.jobs] == [
-        STARTUP_SCAN_JOB_ID,
-        DAILY_SCAN_JOB_ID,
+        f"{REMINDER_JOB_ID_PREFIX}{STARTUP_SCAN_JOB_SUFFIX}",
+        f"{REMINDER_JOB_ID_PREFIX}{DAILY_SCAN_JOB_SUFFIX}",
         "other_job",
-        reminder_job_id(1, send_time),
+        f"{REMINDER_JOB_ID_PREFIX}{reminder_job_suffix(1, send_time)}",
     ]
-
-
-def test_clear_reminder_jobs_keeps_scan_jobs() -> None:
-    scheduler = FakeScheduler()
-    scheduler.jobs = [
-        {"id": STARTUP_SCAN_JOB_ID},
-        {"id": DAILY_SCAN_JOB_ID},
-        {"id": f"{REMINDER_JOB_ID_PREFIX}1h_123"},
-        {"id": "other_job"},
-    ]
-
-    clear_reminder_jobs(scheduler)
-
-    assert [job["id"] for job in scheduler.jobs] == [
-        STARTUP_SCAN_JOB_ID,
-        DAILY_SCAN_JOB_ID,
-        "other_job",
-    ]
+    assert scheduler.jobs[-1]["misfire_grace_time"] == EXPECTED_MISFIRE_GRACE_SECONDS
