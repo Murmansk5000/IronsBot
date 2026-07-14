@@ -11,8 +11,8 @@ _COMMAND_MODULES = [
     "player",
     "rank_list",
     "team",
+    "type_queries",
     "upstream_peak_queries",
-    "upstream_type_queries",
 ]
 
 for _module in _COMMAND_MODULES:
