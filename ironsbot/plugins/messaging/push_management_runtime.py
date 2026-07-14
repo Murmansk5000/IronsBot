@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, cast
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
-    MessageEvent,
     PrivateMessageEvent,
 )
 
@@ -51,15 +50,10 @@ PUSH_TIME_TARGET_TYPE_KEY = "_message_push_time_target_type"
 PUSH_TIME_VERSION_KEY = "_message_push_time_version"
 PUSH_TIME_NAMESPACE = "message_push_time"
 PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
+
+
 def _push_subscription_store() -> PushUnsubscribeStore:
     return PushUnsubscribeStore(get_message_config().push_unsubscribe.data_path)
-
-
-def _target_type_and_id(event: MessageEvent) -> tuple[PushTargetType, int]:
-    if isinstance(event, GroupMessageEvent):
-        return "group", int(event.group_id)
-    return "private", int(event.user_id)
-
 
 
 def _push_subscription_options(
@@ -84,6 +78,7 @@ def _push_subscription_menu_prompt(
         options,
         read_only=read_only,
     )
+
 
 def _push_time_options(
     target_type: PushTargetType,
@@ -140,10 +135,7 @@ def _push_time_selection_rule(
     def _check(next_event: Event) -> bool:
         if not isinstance(next_event, event_type):
             return False
-        if (
-            event_conversation_session_id(PUSH_TIME_NAMESPACE, next_event)
-            != session_id
-        ):
+        if event_conversation_session_id(PUSH_TIME_NAMESPACE, next_event) != session_id:
             return False
         if next_event.user_id == next_event.self_id:
             return False
@@ -164,10 +156,7 @@ def _push_time_input_rule(
     def _check(next_event: Event) -> bool:
         if not isinstance(next_event, event_type):
             return False
-        if (
-            event_conversation_session_id(PUSH_TIME_NAMESPACE, next_event)
-            != session_id
-        ):
+        if event_conversation_session_id(PUSH_TIME_NAMESPACE, next_event) != session_id:
             return False
         if next_event.user_id == next_event.self_id:
             return False

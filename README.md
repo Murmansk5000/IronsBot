@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 通知与提示的边界
+
+启动管理通知共用管理收件目标，包括超级管理员和显式启用 `admin_notice` 的群；群内通知不是仅管理员可见的私密消息。
+TD 退订提示按目标与本地日期记录准备尝试，不代表消息已经送达。消息先为目标复制，再使用显式传入的转换器；省略转换器不会自动恢复旧全局转换策略。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：

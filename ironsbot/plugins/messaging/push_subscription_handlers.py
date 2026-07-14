@@ -6,7 +6,10 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.shared.messaging import event_conversation_session_id
+from ironsbot.shared.messaging import (
+    event_conversation_session_id,
+    message_event_target,
+)
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
 from .matcher_rules import is_group_push_subscription_manager
@@ -22,7 +25,6 @@ from .push_management_runtime import (
     _push_subscription_selection_rule,
     _push_subscription_store,
     _reject_push_subscription_selection,
-    _target_type_and_id,
 )
 
 if TYPE_CHECKING:
@@ -37,7 +39,7 @@ async def handle_push_subscription_menu(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    target_type, target_id = _target_type_and_id(event)
+    target_type, target_id, _ = message_event_target(event)
     read_only = isinstance(event, GroupMessageEvent) and not (
         is_group_push_subscription_manager(event)
     )
