@@ -41,6 +41,8 @@ HELP_GROUP_TITLES = {
     "admin": "管理工具",
     "other": "其他",
 }
+
+
 @dataclass(frozen=True, slots=True)
 class HelpEntry:
     key: str
@@ -55,11 +57,11 @@ def get_help_config() -> HelpConfig:
     return get_app_config().runtime.help
 
 
-def plugin_module_name(plugin: "Plugin") -> str:
+def plugin_module_name(plugin: Plugin) -> str:
     return str(getattr(plugin, "module_name", "") or getattr(plugin, "name", ""))
 
 
-def plugin_key(plugin: "Plugin") -> str:
+def plugin_key(plugin: Plugin) -> str:
     return plugin_module_name(plugin) or cast("PluginMetadata", plugin.metadata).name
 
 
@@ -80,7 +82,7 @@ def is_supported_type(metadata: PluginMetadata) -> bool:
     return metadata.type is None or metadata.type == "application"
 
 
-def entry_from_plugin(plugin: "Plugin") -> HelpEntry:
+def entry_from_plugin(plugin: Plugin) -> HelpEntry:
     metadata = cast("PluginMetadata", plugin.metadata)
     group, order = help_layout_for_module(plugin_module_name(plugin))
     return HelpEntry(
@@ -110,9 +112,7 @@ def visible_help_entries(bot: "Bot", event: "Event") -> list[HelpEntry]:
     plugins = sorted(
         get_loaded_plugins(),
         key=lambda plugin: (
-            cast("PluginMetadata", plugin.metadata).name
-            if plugin.metadata
-            else ""
+            cast("PluginMetadata", plugin.metadata).name if plugin.metadata else ""
         ),
     )
     for plugin in plugins:
