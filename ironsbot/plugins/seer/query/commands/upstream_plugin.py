@@ -8,7 +8,7 @@ from ..upstream_commands import effect as upstream_effect
 from ..upstream_commands import mintmark as upstream_mintmark
 from ..upstream_commands import peak as upstream_peak
 from ..upstream_commands import type as upstream_type
-from . import data_tools, upstream_pet_handlers
+from . import upstream_pet_handlers
 from .upstream_help import finish_query_help
 
 if TYPE_CHECKING:
@@ -21,9 +21,6 @@ UPSTREAM_QUERY_PLUGIN_NAME = "seer_upstream_queries"
 UPSTREAM_QUERY_ACTION_METHODS = {
     "pet_image": "_handle_pet_image",
     "pet_info": "_handle_pet_info",
-    "preview": "_handle_preview",
-    "data_version": "_handle_data_version",
-    "season_countdown": "_handle_season_countdown",
     "mintmark": "_handle_mintmark",
     "gem": "_handle_gem",
     "type": "_handle_type",
@@ -71,37 +68,6 @@ class UpstreamQueryPlugin:
         context: PluginContext,
     ) -> None:
         await upstream_pet_handlers.handle_pet_info(matcher, event, context)
-
-    async def _handle_preview(
-        self,
-        _: Matcher,
-        __: Event,
-        context: PluginContext,
-    ) -> None:
-        await data_tools.handle_preview(session=context.data["session"])
-
-    async def _handle_data_version(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await data_tools.handle_data_version(
-            matcher=matcher,
-            session=context.data["session"],
-        )
-
-    async def _handle_season_countdown(
-        self,
-        matcher: Matcher,
-        event: Event,
-        context: PluginContext,
-    ) -> None:
-        await data_tools.handle_season_countdown(
-            matcher=matcher,
-            event=event,
-            session=context.data["session"],
-        )
 
     async def _handle_mintmark(
         self,
