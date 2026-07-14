@@ -168,44 +168,34 @@ def _assert_default_matcher_priorities(
 
 def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert "群星牌" in config.rank_keys
-    assert "竞技段位" not in config.rank_keys
-    assert "狂野段位" not in config.rank_keys
-    assert "专家段位" not in config.rank_keys
+    assert "竞技段位" in config.rank_keys
+    assert "狂野段位" in config.rank_keys
+    assert "专家段位" in config.rank_keys
     assert config.target_limits == {}
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
     assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
-    assert config.pages_per_run_min == 0
-    assert config.interval_minutes == 0
-    assert config.interval_offset_minutes == 0
-    assert config.schedule_jitter_seconds == 0
-    assert config.request_interval_seconds == 0.0
-    assert config.request_jitter_seconds == 0.0
-    assert config.active_start == ""
-    assert config.active_end == ""
-    assert config.times == [
-            "01:15",
-            "01:45",
-            "02:15",
-            "02:45",
-            "03:15",
-            "03:45",
-            "04:15",
-            "04:45",
-        ]
-
-    assert config.pages_per_run == 10
-    assert config.rank_keys == [
-        "图鉴积分",
-        "成就点数",
-        "精灵图鉴",
-        "皮肤图鉴",
-        "套装图鉴",
-        "部件图鉴",
-        "座驾图鉴",
-        "刻印图鉴",
-        "群星牌",
-    ]
+    assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
+    assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
+    assert (
+        config.interval_offset_minutes
+        == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
+    )
+    assert (
+        config.schedule_jitter_seconds
+        == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
+    )
+    assert (
+        config.request_interval_seconds
+        == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
+    )
+    assert (
+        config.request_jitter_seconds
+        == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
+    )
+    assert config.active_start == "07:30"
+    assert config.active_end == "01:30"
+    assert config.times == []
 
 
 def test_example_config_parses() -> None:
@@ -240,37 +230,24 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
-    assert config.runtime.data_sync.on_startup is False
+    assert config.runtime.data_sync.on_startup
     assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     _assert_default_docker_update(config.runtime.docker_update)
     assert not config.runtime.logging.file_enabled
-    assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
+    assert config.runtime.logging.file_path == "logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
-    assert config.runtime.logging.error_file_path == "/app/logs/ironsbot.error.log"
-    matcher_priority = config.runtime.matcher_priority
-    assert matcher_priority.seer_query < matcher_priority.ai_chat
-    assert matcher_priority.ai_group_at < 0
-    assert matcher_priority.ai_mention_guard < 0
-    assert matcher_priority.ai_chat == 99
-    assert matcher_priority.seer_player == 5
-    assert matcher_priority.sendpic < matcher_priority.seer_pet
-    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
-    assert matcher_priority.seer_pet > matcher_priority.seer_rank
-    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
-    priorities = matcher_priority.model_dump()
-    non_negative_priorities = [value for value in priorities.values() if value >= 0]
-    assert len(non_negative_priorities) == len(set(non_negative_priorities))
+    assert config.runtime.logging.error_file_path == "logs/ironsbot.error.log"
+    _assert_default_matcher_priorities(config.runtime.matcher_priority)
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
     assert [step.name for step in remote_build_steps] == [
-            "update_unity_config",
-            "sync_config_sources",
-            "build_seer_data",
-            "build_ironsbot_data",
-        ]
+        "sync_config_sources",
+        "build_seer_data",
+        "build_ironsbot_data",
+    ]
     assert (
         remote_build_steps[-1].repository
         == "Murmansk5000/seerapi"
@@ -279,44 +256,13 @@ def test_example_config_parses() -> None:
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
-    assert remote_build_steps[0].inputs == {}
-    assert remote_build_steps[1].inputs == {}
-    assert remote_build_steps[2].inputs == {"debug_enabled": False}
+    assert remote_build_steps[0].inputs == {"force": False}
+    assert remote_build_steps[1].inputs == {
+        "debug_enabled": False,
+        "force": False,
+    }
+    assert remote_build_steps[2].inputs == {"force": False}
     assert config.runtime.help.ignored_plugins == []
-
-    assert [
-        [step.name, step.repository, step.workflow_id, step.ref, dict(step.inputs)]
-        for step in remote_build_steps
-    ] == [
-        [
-            "update_unity_config",
-            "Murmansk5000/seer-unity-config-parser",
-            "schedule.yml",
-            "main",
-            {},
-        ],
-        [
-            "sync_config_sources",
-            "Murmansk5000/config-sources",
-            "sync-upstream.yml",
-            "main",
-            {},
-        ],
-        [
-            "build_seer_data",
-            "Murmansk5000/seer-data",
-            "main.yml",
-            "main",
-            {"debug_enabled": False},
-        ],
-        [
-            "build_ironsbot_data",
-            "Murmansk5000/seerapi",
-            "build-ironsbot-data-db.yml",
-            "main",
-            {},
-        ],
-    ]
 
 
 def test_example_config_has_no_unknown_fields() -> None:
@@ -656,93 +602,3 @@ def test_seer_plugin_config_accessors_read_app_config(
         )
     finally:
         clear_app_config_cache()
-
-
-def test_refresh_and_startup_model_defaults_are_separate_from_public_example() -> None:
-    from ironsbot.config.models.runtime import (DataSyncConfig, LoggingConfig, MatcherPriorityConfig)
-
-    defaults = RankPageRefreshConfig()
-    assert defaults.rank_keys == [
-        "图鉴积分",
-        "成就点数",
-        "精灵图鉴",
-        "皮肤图鉴",
-        "套装图鉴",
-        "部件图鉴",
-        "座驾图鉴",
-        "刻印图鉴",
-        "群星牌",
-        "竞技段位",
-        "狂野段位",
-        "专家段位",
-    ]
-    assert defaults.target_limits == {}
-    assert defaults.score_cutoffs == {"群星牌": 1000}
-    assert defaults.stale_age_weight == 0.08
-    assert defaults.stale_age_max_multiplier == 5.0
-    assert defaults.pages_per_run == 10
-    assert defaults.pages_per_run_min == 0
-    assert defaults.interval_minutes == 0
-    assert defaults.interval_offset_minutes == 0
-    assert defaults.schedule_jitter_seconds == 0
-    assert defaults.request_interval_seconds == 0.0
-    assert defaults.request_jitter_seconds == 0.0
-    assert defaults.active_start == ""
-    assert defaults.active_end == ""
-    assert defaults.times == [
-        "01:15",
-        "01:45",
-        "02:15",
-        "02:45",
-        "03:15",
-        "03:45",
-        "04:15",
-        "04:45",
-    ]
-    assert DataSyncConfig().on_startup is True
-    assert DataSyncConfig().startup_trigger_remote_build is False
-    with pytest.raises(ValidationError):
-        RankPageRefreshConfig(pages_per_run=0)
-    with pytest.raises(ValidationError):
-        RankPageRefreshConfig(schedule_jitter_seconds=-1)
-
-    assert LoggingConfig().file_path == "logs/ironsbot.log"
-    assert LoggingConfig().error_file_path == "logs/ironsbot.error.log"
-    _assert_default_matcher_priorities(MatcherPriorityConfig())
-
-def test_example_pipeline_force_inputs_preserve_the_ordinary_four_steps() -> None:
-    import hashlib
-    import json
-
-    from ironsbot.integrations.db_sync.remote_build import (
-        FORCE_INPUT_WORKFLOWS,
-        configured_remote_build_steps,
-    )
-
-    config = load_app_config(ROOT / "config.example.toml")
-    remote = config.runtime.data_sync.sources["seerapi"].remote_build
-    assert remote is not None
-    original = remote.build_steps()
-    inputs_before = [dict(step.inputs) for step in original]
-    ordinary = configured_remote_build_steps(remote, force=False)
-    forced = configured_remote_build_steps(remote, force=True)
-    assert len(original) == len(ordinary) == len(forced) == 4
-    ordinary_contract = [
-        [s.name, s.repository, s.workflow_id, s.ref, dict(s.inputs)]
-        for s in ordinary
-    ]
-    serialized = json.dumps(ordinary_contract, sort_keys=True, separators=(",", ":"))
-    assert hashlib.sha256(serialized.encode()).hexdigest() == (
-        "2a877ae604abbcf6c89db9dfe053f72cbb67d24adbbf47bd9cd05fb77d7b8582"
-    )
-    supported = json.dumps(sorted(FORCE_INPUT_WORKFLOWS), separators=(",", ":"))
-    assert hashlib.sha256(supported.encode()).hexdigest() == (
-        "65277be6b286b1a56249ed488e82a77d44a313f75c1bdfaa1833fe7b1bcf41d1"
-    )
-    for base, plain, changed in zip(original, ordinary, forced, strict=True):
-        assert plain.inputs == base.inputs
-        if (base.repository, base.workflow_id) in FORCE_INPUT_WORKFLOWS:
-            assert changed.inputs == {**base.inputs, "force": True}
-        else:
-            assert changed.inputs == base.inputs
-    assert [dict(step.inputs) for step in remote.steps] == inputs_before

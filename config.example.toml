@@ -278,8 +278,6 @@ message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_lis
 notice_timeout_seconds = 8.0
 
 [message]
-group_commands = []
-group_schedules = []
 # Default: []
 # EN: Private fixed command replies.
 # ZH: 私聊固定文本回复动作。
@@ -318,12 +316,14 @@ hint = "回复 TD 可管理私聊推送订阅。"
 # EN: Group fixed command replies.
 # ZH: 群聊固定文本回复动作。
 # Example action fields: id, enabled, feature, message, commands, at_user_ids.
+group_commands = []
 
 # Default: []
 # EN: Group scheduled messages.
 # ZH: 群聊定时文本动作。
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week,
 # at_user_ids.
+group_schedules = []
 
 [message.outbound_rate_limit]
 # Default: true
@@ -623,31 +623,11 @@ resource_message = "出来买资源，别逼我求你😡"
 cache_dir = "render_cache"
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
-
-# Historical runtime/deployment defaults; comments do not override the values below.
-# EN: runtime.data_sync.on_startup defaults to true; this example deliberately keeps false.
-# ZH: 启动下载模型默认 true；本示例仍显式保留 false，不因此触发启动下载。
-# EN: startup_trigger_remote_build defaults to false; ordinary startup/interval downloads do not force a remote build.
-# ZH: 启动触发远程构建默认关闭；普通启动和定时下载不强制远程构建。
-# runtime.docker_update.check_on_startup model default: true
-# runtime.docker_update.check_on_restart model default: true
-# EN: Docker image update/restart commands require the superuser route and a usable socket.
-# ZH: 镜像更新/重启使用超级管理员入口；Docker 操作需要可用 socket。
-# EN: updater launch is not completed deployment; process fallback follows this version restart service.
-# ZH: 更新器启动不等于部署完成；进程回退以本版实际重启服务决策为准。
-# EN: render caches persist across startup; capacity eviction remains, with no startup-clear switch.
-# ZH: 渲染缓存跨启动保留，容量淘汰仍有效，已无启动清空开关。
-# message.red_packet_notice.enabled model default: true
-# EN: red-packet observation only notifies superusers privately; it does not claim packets.
-# ZH: 红包观察只向超级管理员私聊通知，不领取红包。
-# seer.rank.page_refresh additional supported fields in this version: active_end, active_start, interval_minutes, interval_offset_minutes, pages_per_run_min, request_interval_seconds, request_jitter_seconds, schedule_jitter_seconds
-# EN: original model validation and request/probe/page limits still apply.
-# ZH: 仍由本版原模型校验，页面、请求和探测预算不因文案而放宽。
-# EN: config validation is not a NoneBot bootstrap/callback-annotation verification.
-# ZH: 配置校验不等于已完成 NoneBot 启动或回调运行时注解验证。
+# Default: true; EN: Clear render cache on startup. ZH: 启动时清理渲染缓存。
+clear_on_startup = true
 
 [runtime.data_sync]
-# Model default: true; explicit example: false. EN: Startup download override. ZH: 模型默认启动下载；本示例显式关闭，保留此设置。
+# Default: false; EN: Sync remote SQLite DBs on startup. ZH: 启动时同步远程 SQLite。
 on_startup = false
 # Default: true; EN: Enable scheduled DB sync. ZH: 启用定时数据库同步。
 interval_enabled = true

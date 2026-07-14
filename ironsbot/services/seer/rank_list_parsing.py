@@ -11,12 +11,14 @@ from ironsbot.services.seer.rank_list_models import (
     RANK_LIST_SIZE,
     RANK_PAGE_CACHE_REFRESH_PREFIXES,
     RANK_PAGE_CACHE_STATUS_PREFIXES,
+    GlobalRankSpec,
     RankCacheBatchCommand,
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
     RankScoreCommand,
 )
+from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
 
 __all__ = [
     "parse_rank_cache_batch_command",
@@ -80,14 +82,7 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
             reverse=True,
         )
     )
-    score_match = re.fullmatch(
-        rf"(\d+)(?:{unit_pattern})",
-        suffix,
-    )
-    if score_match is None:
-        return None
-
-    score = int(score_match.group(1))
+    score = _parse_rank_score_suffix(suffix, spec, unit_pattern)
     if score <= 0:
         return None
     return RankScoreCommand(rank_key=rank_key, score=score)
@@ -175,6 +170,25 @@ def parse_rank_page_cache_refresh_command(
         return None
 
     return RankPageCacheRefreshCommand(rank_key=rank_command[1])
+
+
+def _parse_rank_score_suffix(
+    suffix: str,
+    spec: GlobalRankSpec,
+    unit_pattern: str,
+) -> int:
+    if spec.score_format == "peak_rating":
+        peak_score = parse_peak_rating_score_text(suffix)
+        if peak_score is not None:
+            return peak_score
+
+    score_match = re.fullmatch(
+        rf"(\d+)(?:{unit_pattern})",
+        suffix,
+    )
+    if score_match is None:
+        return 0
+    return int(score_match.group(1))
 
 
 def _build_command_map() -> dict[str, tuple[str, str]]:
