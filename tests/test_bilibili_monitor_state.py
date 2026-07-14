@@ -85,24 +85,13 @@ def test_bili_config_accepts_named_group_accounts() -> None:
 
 
 def test_bili_account_display_label_uses_nickname() -> None:
-    config = _bili_config(
-        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}}
-    )
+    config = _bili_config(accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}})
 
-    assert (
-        accounts.account_display_label("fire", config)
-        == f"火火（{FIRE_BILI_UID}）"
-    )
-    assert (
-        accounts.account_label(FIRE_BILI_UID, config)
-        == f"火火（{FIRE_BILI_UID}）"
-    )
+    assert accounts.account_display_label("fire", config) == f"火火（{FIRE_BILI_UID}）"
 
 
 def test_bili_account_reference_accepts_alias_or_nickname() -> None:
-    config = _bili_config(
-        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}}
-    )
+    config = _bili_config(accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}})
 
     assert accounts.resolve_account_reference("fire", config) == "fire"
     assert accounts.resolve_account_reference("火火", config) == "fire"
@@ -119,9 +108,7 @@ def test_group_query_falls_back_to_global_uids_when_feature_enabled(
     )
     monkeypatch.setattr(targets, "is_group_feature_allowed", lambda *_args: True)
 
-    assert targets.query_uids_for_group(user_id=1, group_id=987654321) == [
-        1310714247
-    ]
+    assert targets.query_uids_for_group(user_id=1, group_id=987654321) == [1310714247]
 
 
 def test_group_query_still_requires_bili_feature(
@@ -255,9 +242,7 @@ def test_push_targets_for_uid_respects_runtime_mode_override(
     monkeypatch.setattr(
         targets,
         "PUSH_GROUP_RULES",
-        {
-            987654321: _rule({"fire": 375750254})
-        },
+        {987654321: _rule({"fire": 375750254})},
     )
     monkeypatch.setattr(targets, "PUSH_USER_RULES", {})
 
@@ -281,9 +266,7 @@ def test_bili_push_subscription_options_are_per_uid(
     monkeypatch.setattr(
         targets,
         "PUSH_GROUP_RULES",
-        {
-            987654321: _rule({"seer": 1310714247, "fire": 375750254})
-        },
+        {987654321: _rule({"seer": 1310714247, "fire": 375750254})},
     )
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 

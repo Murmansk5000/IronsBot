@@ -11,7 +11,6 @@ import httpx
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
-DEFAULT_UPDATE_WEEKDAY = 4
 DEFAULT_START_TIME = time(hour=10)
 DEFAULT_END_TIME = time(hour=15)
 HTTP_TIMEOUT_SECONDS = 12.0
@@ -196,13 +195,6 @@ def _minute_group(
     chinese_name: str,
 ) -> int:
     return _int_group(match, colon_name, _int_group(match, chinese_name, 0))
-
-
-def _is_default_update_window(now: datetime) -> bool:
-    return (
-        now.weekday() == DEFAULT_UPDATE_WEEKDAY
-        and DEFAULT_START_TIME <= now.time() < DEFAULT_END_TIME
-    )
 
 
 def _clean_notice_text(text: str) -> str:
