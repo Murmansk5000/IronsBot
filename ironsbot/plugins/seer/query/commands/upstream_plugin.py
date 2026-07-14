@@ -3,11 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..upstream_commands import cloth as upstream_cloth
-from ..upstream_commands import effect as upstream_effect
 from ..upstream_commands import mintmark as upstream_mintmark
 from ..upstream_commands import peak as upstream_peak
-from ..upstream_commands import type as upstream_type
 from . import upstream_pet_handlers
 from .upstream_help import finish_query_help
 
@@ -23,11 +20,6 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "pet_info": "_handle_pet_info",
     "mintmark": "_handle_mintmark",
     "gem": "_handle_gem",
-    "type": "_handle_type",
-    "battle_effect": "_handle_battle_effect",
-    "suit": "_handle_suit",
-    "equip": "_handle_equip",
-    "title": "_handle_title",
     "peak_pool": "_handle_peak_pool",
     "peak_expert_pool": "_handle_peak_expert_pool",
     "peak_vote": "_handle_peak_vote",
@@ -100,72 +92,6 @@ class UpstreamQueryPlugin:
             state=context.state if context.state is not None else {},
             event=event,
             categories=context.data["categories"],
-        )
-
-    async def _handle_type(
-        self,
-        matcher: Matcher,
-        event: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_type.handle_type(
-            matcher=matcher,
-            state=context.state if context.state is not None else {},
-            event=event,
-            session=context.data["session"],
-            type_combinations=context.data["type_combinations"],
-        )
-
-    async def _handle_battle_effect(
-        self,
-        matcher: Matcher,
-        event: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_effect.handle_battle_effect(
-            matcher=matcher,
-            event=event,
-            state=context.state if context.state is not None else {},
-            battle_effects=context.data["battle_effects"],
-        )
-
-    async def _handle_suit(
-        self,
-        matcher: Matcher,
-        event: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_cloth.handle_suit(
-            matcher=matcher,
-            state=context.state if context.state is not None else {},
-            event=event,
-            suits=context.data["suits"],
-        )
-
-    async def _handle_equip(
-        self,
-        matcher: Matcher,
-        event: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_cloth.handle_equip(
-            matcher=matcher,
-            state=context.state if context.state is not None else {},
-            event=event,
-            equips=context.data["equips"],
-        )
-
-    async def _handle_title(
-        self,
-        matcher: Matcher,
-        event: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_cloth.handle_title(
-            matcher=matcher,
-            state=context.state if context.state is not None else {},
-            event=event,
-            titles=context.data["titles"],
         )
 
     async def _handle_peak_pool(
