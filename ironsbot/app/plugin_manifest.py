@@ -52,7 +52,7 @@ class PluginManifestError(ValueError):
     @classmethod
     def missing_feature_modules(cls, modules: list[str]) -> PluginManifestError:
         return cls(
-            "feature visibility registry references unloaded plugin modules: "
+            "feature catalog references unloaded plugin modules: "
             + ", ".join(modules)
         )
 
@@ -78,7 +78,7 @@ def validate_plugin_manifest() -> None:
     if duplicates:
         raise PluginManifestError.duplicate_modules(duplicates)
 
-    _validate_feature_module_registry()
+    _validate_feature_module_coverage()
 
     for setup_ref in RUNTIME_SETUP_CALLS:
         module_name, separator, function_name = setup_ref.partition(":")
@@ -91,7 +91,7 @@ def validate_plugin_manifest() -> None:
                 raise PluginManifestError.invalid_setup_ref(setup_ref)
 
 
-def _validate_feature_module_registry() -> None:
+def _validate_feature_module_coverage() -> None:
     loaded_modules = iter_plugin_modules()
     missing_feature_modules = [
         module_prefix
