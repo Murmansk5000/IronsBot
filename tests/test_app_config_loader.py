@@ -1,4 +1,3 @@
-import logging
 import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
@@ -336,46 +335,10 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_are_ignored_with_warning(
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_unknown_app_config_fields_fail_with_exact_path(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-unknown_root = true
-
-[feature]
-superuser_bypass = false
-unknown_feature = "old value"
-
-[feature.group_aliases]
-main = 123456789
-
-[feature.group_policy]
-main = ["seer_player", "rank", "old_feature"]
-
-[ai]
-unknown_ai = "old value"
-
-[ai.intent_actions.fire_manual_ad]
-enabled = true
-
-[bilibili]
-unknown_bili_field = true
-
-[bilibili.accounts]
-seer = 1310714247
-
-[bilibili.push]
-accounts = ["seer", "old_bili"]
-modes = { old_bili = "link" }
-unknown_push_field = true
-
-[bilibili.push.groups.main]
-accounts = ["old_bili"]
-modes = { old_bili = "full" }
-
 [[message.group_commands]]
 id = "hello"
 commands = ["hello"]
@@ -386,30 +349,59 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
-        config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert not config.feature.superuser_bypass
-    assert config.feature.group_policy["main"] == [
-        "seer_player",
-        "rank",
-        "old_feature",
-    ]
-    assert config.bilibili.push.accounts == ["seer"]
-    assert config.bilibili.push.modes == {}
-    assert config.bilibili.push.groups["main"].accounts == []
-    assert config.bilibili.push.groups["main"].modes == {}
-    assert config.message.group_commands[0].id == "hello"
-    assert "unknown_root" in caplog.text
-    assert "ai.unknown_ai" in caplog.text
-    assert "Ignored unknown AI intent action 'fire_manual_ad'" in caplog.text
-    assert "bilibili.unknown_bili_field" in caplog.text
-    assert "bilibili.push.unknown_push_field" in caplog.text
-    assert "Ignored unknown Bilibili account alias" in caplog.text
-    assert "feature.unknown_feature" in caplog.text
-    assert "Obsolete feature policy key(s) ignored" in caplog.text
-    assert "old_feature" in caplog.text
-    assert "message.group_commands[0].unknown_command_field" in caplog.text
+    assert "message.group_commands.0.unknown_command_field" in str(exc_info.value)
+
+
+def test_unregistered_feature_policy_fails_with_exact_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[feature.group_policy]
+main = ["seer_player", "rank"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
+
+    assert "feature.group_policy.main[1]=rank" in str(exc_info.value)
+
+
+def test_unknown_bilibili_account_fails_with_exact_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bilibili.push.groups.main]
+accounts = ["old_bili"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
+
+    assert "bilibili.push.groups.main.accounts[0]" in str(exc_info.value)
+
+
+def test_unknown_seer_section_fails_with_exact_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player]
+sections = ["basic", "legacy"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
+
+    assert "seer.player.sections" in str(exc_info.value)
+    assert "legacy" in str(exc_info.value)
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:

@@ -1,5 +1,3 @@
-import logging
-
 import pytest
 
 from ironsbot.config.models.ai import (
@@ -88,26 +86,19 @@ def test_default_actions_can_be_disabled_explicitly() -> None:
     assert not manual_action.enabled
 
 
-def test_unknown_incomplete_action_is_ignored_with_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
-        actions = resolve_configured_actions(
-            AiConfig(intent_actions={"custom": AiIntentAction()})
-        )
+def test_custom_action_requires_complete_definition() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        AiConfig(intent_actions={"custom": AiIntentAction()})
 
-    assert [action.id for action in actions] == ["team_recommend", "fire_manual"]
-    assert UNKNOWN_AI_ACTION_ERROR not in caplog.text
-    assert "Ignored unknown AI intent action 'custom'" in caplog.text
+    error = str(exc_info.value)
+    assert "ai.intent_actions.custom" in error
+    assert UNKNOWN_AI_ACTION_ERROR in error
 
 
-def test_unknown_action_without_explicit_action_is_ignored_with_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
-        actions = resolve_configured_actions(
-            AiConfig(intent_actions={"custom": AiIntentAction(keywords=["测试"])})
-        )
+def test_custom_action_requires_explicit_action() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        AiConfig(intent_actions={"custom": AiIntentAction(keywords=["测试"])})
 
-    assert [action.id for action in actions] == ["team_recommend", "fire_manual"]
-    assert "Ignored unknown AI intent action 'custom'" in caplog.text
+    error = str(exc_info.value)
+    assert "ai.intent_actions.custom" in error
+    assert UNKNOWN_AI_ACTION_ERROR in error
