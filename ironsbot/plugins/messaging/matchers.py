@@ -6,14 +6,15 @@ from nonebot import on_message
 from nonebot.rule import Rule
 
 from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.shared.messaging import (
+    event_sender_at_user_ids,
+    finish_matcher_message,
+)
 from ironsbot.utils.rule import no_reply
 
-from .command_handlers import (
-    dispatch_group_command,
-    dispatch_private_command,
-    register_messaging_plugin,
-)
 from .matcher_rules import (
+    GROUP_ACTION_KEY,
+    PRIVATE_ACTION_KEY,
     match_group_command,
     match_private_command,
     match_push_subscription_command,
@@ -24,6 +25,7 @@ from .runtime import refresh_push_time_jobs
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
+    from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
 
@@ -56,21 +58,17 @@ group_command_matcher = on_message(
 )
 
 
-register_messaging_plugin(
-    private_matcher=private_command_matcher,
-    group_matcher=group_command_matcher,
-)
-
-
 @private_command_matcher.handle()
 async def handle_private_command(
+    matcher: Matcher,
     event: PrivateMessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_private_command(
-        private_matcher=private_command_matcher,
+    action = state[PRIVATE_ACTION_KEY]
+    await finish_matcher_message(
+        matcher,
+        action.message,
         event=event,
-        state=state,
     )
 
 
@@ -82,11 +80,21 @@ register_push_management_handlers(
 
 
 @group_command_matcher.handle()
-async def handle_group_command(event: GroupMessageEvent, state: T_State) -> None:
-    await dispatch_group_command(
-        group_matcher=group_command_matcher,
+async def handle_group_command(
+    matcher: Matcher,
+    event: GroupMessageEvent,
+    state: T_State,
+) -> None:
+    action = state[GROUP_ACTION_KEY]
+    at_user_ids = [
+        *event_sender_at_user_ids(event),
+        *action.at_user_ids,
+    ]
+    await finish_matcher_message(
+        matcher,
+        action.message,
+        at_user_ids=at_user_ids,
         event=event,
-        state=state,
     )
 
 
