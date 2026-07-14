@@ -216,11 +216,26 @@ at_users = ["owner"]
 控制用户明确索要手册链接时的 AI 意图动作。
 
 TOML 使用严格校验：未知字段、未注册 feature、未知 B站账号引用、未知 Seer
-展示区块和残缺 AI action 都会阻止启动，并在错误中给出配置路径。旧 `rank`
-必须删除或改为 `seer_rank`。帮助提示与未开启 AI 群的 @ 提示共用
-`[runtime.help]` 下的 `hint_window_seconds` 和 `hint_max_per_window`；旧的
-`[ai].mention_guard_reply_window_seconds` 与
-`[ai].mention_guard_reply_max_per_window` 必须删除。
+展示区块和残缺 AI action 都会阻止启动，并在错误中给出配置路径。
+
+### 配置迁移
+
+升级后若启动时报 `extra_forbidden`，按错误路径直接迁移，不要把旧字段留空：
+
+| 旧写法 | 处理方式 | 当前写法 |
+| --- | --- | --- |
+| `ai.reset_commands` | 删除，无替代 | AI 上下文/长期记忆清空入口已移除，避免误删数据。 |
+| `ai.mention_guard_reply_window_seconds` | 移动 | `runtime.help.hint_window_seconds` |
+| `ai.mention_guard_reply_max_per_window` | 移动 | `runtime.help.hint_max_per_window` |
+| `bilibili.uids` | 改为命名账号 | 在 `[bilibili.accounts]` 中定义账号，再由 `bilibili.push.accounts` 或目标的 `accounts` 引用账号名。 |
+| `bilibili.push.default_mode` | 改名 | `bilibili.push.mode` |
+| `message.private_unsubscribe` | 移动并统一 | `[message.push_unsubscribe]`，同时管理私聊和群聊推送。 |
+| `seer.render.clear_on_startup` | 删除，无替代 | 使用 `seer.render.cache_max_size_mb` 进行容量淘汰，不再在启动时清空缓存。 |
+| feature `rank` | 改名 | `seer_rank`；旧 feature 不会被忽略或兼容。 |
+
+帮助提示与未开启 AI 群的 @ 提示共用 `[runtime.help]` 的两项限流配置。
+行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥，
+不需要为上述迁移新增或保留环境变量。
 
 ### Feature 对照表
 

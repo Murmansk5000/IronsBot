@@ -305,6 +305,15 @@ mode = "link"
 # B站推送模式 seer 默认
 ```
 
+### Behavior Config Migration
+
+Behavior settings belong in `/config/ironsbot.toml`. The current `.env` and
+Unraid template only contain deployment settings and secrets, so behavior
+upgrades do not require adding legacy variables to the container template.
+Before upgrading an existing config, follow the authoritative
+[strict TOML migration table](../README.md#配置迁移). Unknown or removed fields
+stop startup and report their exact TOML path instead of being ignored.
+
 ## Team Resource Subscription
 
 If you use this Docker image for a Seer team/guild QQ group, you can subscribe that group to one or more teams. The same subscription lets members query those teams with a short command and lets the bot remind configured users when team resources are low.
