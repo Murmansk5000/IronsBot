@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..upstream_commands import mintmark as upstream_mintmark
-from ..upstream_commands import peak as upstream_peak
 from . import upstream_pet_handlers
 from .upstream_help import finish_query_help
 
@@ -20,12 +19,6 @@ UPSTREAM_QUERY_ACTION_METHODS = {
     "pet_info": "_handle_pet_info",
     "mintmark": "_handle_mintmark",
     "gem": "_handle_gem",
-    "peak_pool": "_handle_peak_pool",
-    "peak_expert_pool": "_handle_peak_expert_pool",
-    "peak_vote": "_handle_peak_vote",
-    "peak_suit": "_handle_peak_suit",
-    "peak_title": "_handle_peak_title",
-    "peak_pet": "_handle_peak_pet",
 }
 
 
@@ -92,81 +85,4 @@ class UpstreamQueryPlugin:
             state=context.state if context.state is not None else {},
             event=event,
             categories=context.data["categories"],
-        )
-
-    async def _handle_peak_pool(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_pool(
-            matcher=matcher,
-            pools=context.data["pools"],
-        )
-
-    async def _handle_peak_expert_pool(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_expert_pool(
-            matcher=matcher,
-            pools=context.data["pools"],
-        )
-
-    async def _handle_peak_vote(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_vote(
-            matcher=matcher,
-            session=context.data["session"],
-            game=context.data["game"],
-        )
-
-    async def _handle_peak_suit(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_suit(
-            matcher=matcher,
-            seerapi_session=context.data["seerapi_session"],
-            sessions=context.data["sessions"],
-            type_tuple=context.data["type_tuple"],
-            game=context.data["game"],
-        )
-
-    async def _handle_peak_title(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_title(
-            matcher=matcher,
-            seerapi_session=context.data["seerapi_session"],
-            sessions=context.data["sessions"],
-            type_tuple=context.data["type_tuple"],
-            game=context.data["game"],
-        )
-
-    async def _handle_peak_pet(
-        self,
-        matcher: Matcher,
-        _: Event,
-        context: PluginContext,
-    ) -> None:
-        await upstream_peak.handle_peak_pet(
-            matcher=matcher,
-            seerapi_session=context.data["seerapi_session"],
-            command=context.data["command"],
-            type_tuple=context.data["type_tuple"],
-            expert_pools=context.data["expert_pools"],
-            game=context.data["game"],
         )
