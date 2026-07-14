@@ -86,7 +86,7 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\baction_templates\b",
     r"\bdefault_uids\b",
     r"\bextra_uids\b",
-    r"\bfire_manual\b",
+    r"\bfire_manual_intent\b",
 )
 STALE_PUBLIC_TEXT_PATTERNS = (
     *STALE_PUBLIC_CONFIG_PATTERNS,
@@ -167,35 +167,36 @@ def _assert_default_matcher_priorities(
 
 
 def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
+    expected = RankPageRefreshConfig.model_validate(
+        parse_toml_file(ROOT / "config.example.toml")["seer"]["rank"]["page_refresh"],
+    )
+    assert config.rank_keys == expected.rank_keys
     assert "群星牌" in config.rank_keys
-    assert "竞技段位" in config.rank_keys
-    assert "狂野段位" in config.rank_keys
-    assert "专家段位" in config.rank_keys
     assert config.target_limits == {}
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
     assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
-    assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
-    assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
+    assert config.pages_per_run_min == expected.pages_per_run_min
+    assert config.interval_minutes == expected.interval_minutes
     assert (
         config.interval_offset_minutes
-        == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
+        == expected.interval_offset_minutes
     )
     assert (
         config.schedule_jitter_seconds
-        == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
+        == expected.schedule_jitter_seconds
     )
     assert (
         config.request_interval_seconds
-        == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
+        == expected.request_interval_seconds
     )
     assert (
         config.request_jitter_seconds
-        == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
+        == expected.request_jitter_seconds
     )
-    assert config.active_start == "07:30"
-    assert config.active_end == "01:30"
-    assert config.times == []
+    assert config.active_start == expected.active_start
+    assert config.active_end == expected.active_end
+    assert config.times == expected.times
 
 
 def test_example_config_parses() -> None:
@@ -204,7 +205,7 @@ def test_example_config_parses() -> None:
     assert config.feature.superuser_bypass
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual_ad" in config.ai.intent_actions
-    assert "fire_manual" not in config.ai.intent_actions
+    assert "fire_manual_intent" not in config.ai.intent_actions
     assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
     assert config.bilibili.account_nicknames["seer"] == "赛尔号官方"
     assert config.bilibili.push.mode == "link"
@@ -230,20 +231,21 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
-    assert config.runtime.data_sync.on_startup
+    assert not config.runtime.data_sync.on_startup
     assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
     _assert_default_docker_update(config.runtime.docker_update)
     assert not config.runtime.logging.file_enabled
-    assert config.runtime.logging.file_path == "logs/ironsbot.log"
+    assert config.runtime.logging.file_path == "/app/logs/ironsbot.log"
     assert not config.runtime.logging.error_file_enabled
-    assert config.runtime.logging.error_file_path == "logs/ironsbot.error.log"
-    _assert_default_matcher_priorities(config.runtime.matcher_priority)
+    assert config.runtime.logging.error_file_path == "/app/logs/ironsbot.error.log"
+    _assert_example_matcher_priorities(config.runtime.matcher_priority)
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
     assert [step.name for step in remote_build_steps] == [
+        "update_unity_config",
         "sync_config_sources",
         "build_seer_data",
         "build_ironsbot_data",
@@ -256,13 +258,20 @@ def test_example_config_parses() -> None:
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
-    assert remote_build_steps[0].inputs == {"force": False}
     assert remote_build_steps[1].inputs == {
-        "debug_enabled": False,
-        "force": False,
     }
-    assert remote_build_steps[2].inputs == {"force": False}
+    assert remote_build_steps[2].inputs == {
+        "debug_enabled": False,
+    }
+    assert remote_build_steps[3].inputs == {
+    }
     assert config.runtime.help.ignored_plugins == []
+    declared_step = parse_toml_file(ROOT / "config.example.toml")["runtime"][
+        "data_sync"
+    ]["sources"]["seerapi"]["remote_build"]["steps"][0]
+    assert remote_build_steps[0] == type(remote_build_steps[0]).model_validate(
+        declared_step,
+    )
 
 
 def test_example_config_has_no_unknown_fields() -> None:
@@ -273,7 +282,7 @@ def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
     stale_matches: list[str] = []
 
     for path in PUBLIC_TEXT_PATHS:
-        text = path.read_text(encoding="utf-8")
+        text = _active_public_text(path, path.read_text(encoding="utf-8"))
         stale_matches.extend(
             f"{path.relative_to(ROOT)}: {pattern}"
             for pattern in STALE_PUBLIC_TEXT_PATTERNS
@@ -396,7 +405,7 @@ display_limit = "not an integer"
 
 def test_dev_and_prod_configs_parse() -> None:
     assert load_app_config(ROOT / "config.dev.toml").feature.group_aliases == {}
-    assert load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
+    assert not load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
     assert (
         not load_app_config(ROOT / "config.prod.toml")
         .runtime.data_sync
@@ -602,3 +611,123 @@ def test_seer_plugin_config_accessors_read_app_config(
         )
     finally:
         clear_app_config_cache()
+
+
+def _assert_native_default_rank_catalog(config: RankPageRefreshConfig) -> None:
+    assert "竞技段位" in config.rank_keys
+    assert "狂野段位" in config.rank_keys
+    assert "专家段位" in config.rank_keys
+
+
+def test_rank_page_refresh_native_default_catalog_keeps_added_domains() -> None:
+    _assert_native_default_rank_catalog(RankPageRefreshConfig())
+
+
+def _active_public_text(path: Path, text: str) -> str:
+    """Separate a declared local historical document from active instructions."""
+    if path.suffix != ".md":
+        return text
+    lines: list[str] = []
+    fence: str | None = None
+    for original_line in text.splitlines(keepends=True):
+        line = original_line
+        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if marker:
+            kind = marker.group(1)[0]
+            fence = None if fence == kind else kind if fence is None else fence
+            lines.append(line)
+            continue
+        declared_archive = re.search(
+            r"(?:原作者|上游|历史|归档)[^\n]*已保留为", line,
+        )
+        if fence is None and declared_archive:
+            def archive(match: re.Match[str], current_line: str = line) -> str:
+                target = match.group(2)
+                if not current_line[:match.start()].rstrip().endswith("已保留为"):
+                    return match.group(0)
+                if (
+                    ":" in target or "#" in target or "?" in target
+                    or not target.endswith(".old.md")
+                ):
+                    return match.group(0)
+                resolved = (path.parent / target).resolve()
+                if not resolved.is_relative_to(ROOT) or not resolved.is_file():
+                    return match.group(0)
+                if "当前" not in current_line or "README.md" not in current_line:
+                    return match.group(0)
+                return "[historical-document]"
+            line = re.sub(r"\[([^\]\n]+)\]\(([^)\s]+)\)", archive, line)
+        lines.append(line)
+    return "".join(lines)
+
+
+def test_archived_document_links_are_not_active_configuration_entries() -> None:
+    path = ROOT / "README.md"
+    valid = (
+        "历史文档已保留为 [README.old.md](README.old.md)。"
+        "当前 README.md 是现行说明。"
+    )
+    assert not re.search(r"README\.old", _active_public_text(path, valid))
+    for invalid in (
+        "按 [README.old.md](README.old.md) 部署。",
+        "README.old.md 是当前配置入口。",
+        valid + " 请按 [README.old.md](README.old.md) 部署。",
+        "```toml\n" + valid + "\n```",
+        valid.replace("(README.old.md)", "(README.old.missing.old.md)"),
+        valid.replace("(README.old.md)", "(../README.old.md)"),
+        valid.replace("(README.old.md)", "(https://invalid.example/README.old.md)"),
+    ):
+        assert re.search(r"README\.old", _active_public_text(path, invalid))
+    assert re.search(
+        r"\bdefault_mode\b", _active_public_text(path, valid + " default_mode"),
+    )
+
+
+def _assert_example_matcher_priorities(
+    matcher_priority: MatcherPriorityConfig,
+) -> None:
+    expected = MatcherPriorityConfig.model_validate(
+        parse_toml_file(ROOT / "config.example.toml")["runtime"][
+            "matcher_priority"
+        ],
+    )
+    assert matcher_priority.model_dump() == expected.model_dump()
+    assert matcher_priority.seer_query < matcher_priority.ai_chat
+    assert matcher_priority.ai_group_at < 0
+    assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_chat == expected.ai_chat
+    assert matcher_priority.seer_player == expected.seer_player
+    assert matcher_priority.sendpic < matcher_priority.seer_pet
+    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
+    assert matcher_priority.seer_pet > matcher_priority.seer_rank
+    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
+    priorities = matcher_priority.model_dump()
+    non_negative_priorities = [value for value in priorities.values() if value >= 0]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
+
+
+def test_native_default_matcher_priorities_remain_covered() -> None:
+    _assert_default_matcher_priorities(MatcherPriorityConfig())
+
+
+def test_native_bilibili_rejects_unknown_target_aliases() -> None:
+    valid = AppConfig.model_validate(
+        {"bilibili": {"accounts": {"known": 1}, "push": {"accounts": ["known"]}}},
+    )
+    assert valid.bilibili.push.accounts == ["known"]
+    for malformed in (
+        {"accounts": ["missing"]},
+        {"modes": {"missing": "full"}},
+        {"groups": {"target": {"accounts": ["missing"]}}},
+        {"groups": {"target": {"modes": {"missing": "full"}}}},
+        {"users": {"target": {"accounts": ["missing"]}}},
+        {"users": {"target": {"modes": {"missing": "full"}}}},
+    ):
+        with pytest.raises(ValidationError) as caught:
+            AppConfig.model_validate(
+                {"bilibili": {"accounts": {"known": 1}, "push": malformed}},
+            )
+        assert any(
+            error["loc"] == ("bilibili",) and error["type"] == "value_error"
+            for error in caught.value.errors(include_input=False, include_context=False)
+        )

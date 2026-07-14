@@ -147,3 +147,8 @@ def test_team_resource_feature_is_registered() -> None:
 
 def test_fire_manual_feature_is_registered() -> None:
     assert "fire_manual_ad" in FEATURE_ALIASES["all"]
+    assert "ai_intent_fire_manual" in FEATURE_ALIASES["all"]
+
+
+def test_team_recommend_feature_is_registered() -> None:
+    assert "ai_intent_team_recommend" in FEATURE_ALIASES["all"]

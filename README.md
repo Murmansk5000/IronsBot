@@ -102,7 +102,9 @@ services:
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent` | AI 意图分析，并把命中的意图分发给对应功能。 |
+| `ai_intent` | AI 意图动作的通用权限；下列两个默认内置动作使用各自专门权限 |
+| `ai_intent_fire_manual` | 默认手册推荐动作（action ID：`fire_manual_ad`） |
+| `ai_intent_team_recommend` | 默认战队推荐动作（action ID：`join_team`） |
 | `team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
@@ -149,6 +151,8 @@ team_ids = [1234567]
 threshold = 1000
 at_users = ["owner"]
 ```
+
+内置手册推荐和战队推荐分别检查 `ai_intent_fire_manual`、`ai_intent_team_recommend`；上述通用 `ai_intent` 授权不替代这两个权限。动作仍受 AI 总开关和现有准入控制。`fire_manual_ad` 作为消息推送 Feature 与同名手册动作 ID 属于不同配置维度，不能互代。
 
 配置字段、默认值、中英文说明和示例集中维护在
 [config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
