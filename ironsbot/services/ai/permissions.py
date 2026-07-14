@@ -4,11 +4,11 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
+from ironsbot.shared.command_text import normalize_command_text
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
-from ironsbot.shared.messaging.text import normalize_command_text
 
 RESERVED_PRIVATE_COMMANDS = {
     "help",

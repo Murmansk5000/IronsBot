@@ -1,10 +1,7 @@
 # SPDX-License-Identifier: MIT
-from typing import Any
-
-from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
-)
+from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.matcher import Matcher
+from nonebot.typing import T_State
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.accounts import (
@@ -24,7 +21,7 @@ from ironsbot.services.bilibili.targets import (
     mode_for_target_account,
     target_rule,
 )
-from ironsbot.shared.messaging import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply, message_event_target
 from ironsbot.shared.messaging.push_subscription_models import (
     PushTargetType,
 )
@@ -34,7 +31,6 @@ from ironsbot.shared.messaging.push_subscription_store import (
 from ironsbot.shared.permissions import (
     can_manage_conversation_event,
 )
-from ironsbot.shared.plugin_system import PluginContext
 
 BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"
 BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
@@ -42,12 +38,6 @@ BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
     return can_manage_conversation_event(event)
-
-
-def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:
-    if isinstance(event, GroupMessageEvent):
-        return "group", int(event.group_id)
-    return "private", int(event.user_id)
 
 
 def _bili_push_mode_usage() -> str:
@@ -78,12 +68,10 @@ def _format_account_mode_line(
 
 
 async def handle_bili_accounts_action(
+    matcher: Matcher,
     event: MessageEvent,
-    context: PluginContext,
-    fallback_matcher: Any,
 ) -> None:
-    matcher = context.matcher or fallback_matcher
-    target_type, target_id = _push_mode_target(event)
+    target_type, target_id, _ = message_event_target(event)
     rule = target_rule(target_type, target_id)
     accounts = bili_accounts()
 
@@ -123,13 +111,10 @@ async def handle_bili_accounts_action(
 
 
 async def handle_bili_push_mode_action(
+    matcher: Matcher,
     event: MessageEvent,
-    context: PluginContext,
-    fallback_matcher: Any,
+    state: T_State,
 ) -> None:
-    matcher = context.matcher or fallback_matcher
-    state = context.state if context.state is not None else {}
-
     if not _is_bili_push_mode_manager(event):
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
         return
@@ -150,7 +135,7 @@ async def handle_bili_push_mode_action(
         )
         return
 
-    target_type, target_id = _push_mode_target(event)
+    target_type, target_id, _ = message_event_target(event)
     rule = target_rule(target_type, target_id)
     current_mode = mode_for_target_account(target_type, target_id, account)
     if current_mode is None:

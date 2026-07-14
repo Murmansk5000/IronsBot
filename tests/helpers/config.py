@@ -11,7 +11,7 @@ from ironsbot.config.models.message import (
     PushUnsubscribeConfig,
     TeamAuditWelcomeConfig,
 )
-from ironsbot.config.models.runtime import LoggingConfig
+from ironsbot.config.models.runtime import HelpConfig, LoggingConfig
 from ironsbot.config.models.seer import (
     MintmarkQueryConfig,
     RankQueryConfig,
@@ -71,6 +71,7 @@ class StubSeerConfig:
 
 @dataclass(frozen=True)
 class StubRuntimeConfig:
+    help: HelpConfig = field(default_factory=HelpConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 

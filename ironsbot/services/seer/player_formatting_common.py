@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank_models import LocalRankSummary
     from ironsbot.services.seer.rank_models import RankLookupResult
 
-METRIC_SEPARATOR = "\uFF5C"
+METRIC_SEPARATOR = "\uff5c"
 PEAK_RANK_NAMES = {
     0: "学徒",
     1: "猛将",
@@ -36,22 +36,6 @@ def filter_blank_lines(lines: list[str]) -> list[str]:
     return result
 
 
-def format_id_name(item_id: int, names: dict[int, str]) -> str:
-    if item_id <= 0:
-        return "无"
-
-    name = names.get(item_id)
-    if not name:
-        return str(item_id)
-
-    return f"{name}（{item_id}）"
-
-
-def format_id_name_list(ids: tuple[int, ...], names: dict[int, str]) -> str:
-    items = [format_id_name(item_id, names) for item_id in ids if item_id > 0]
-    return "、".join(items) if items else "无"
-
-
 def format_team_text(user_info: Any, team_name: str) -> str:
     team_id = getattr(user_info, "team_id", 0)
     if team_id <= 0:
@@ -74,10 +58,7 @@ def format_online_text(online_info: Any | None) -> str:
     if online_info is None:
         return "离线"
 
-    return (
-        "在线"
-        f"（服务器：{online_info.server_id}，地图类型：{online_info.map_type}）"
-    )
+    return f"在线（服务器：{online_info.server_id}，地图类型：{online_info.map_type}）"
 
 
 def format_login_timeline_lines(user_info: Any, online_info: Any | None) -> list[str]:
@@ -99,14 +80,6 @@ def format_login_timeline_lines(user_info: Any, online_info: Any | None) -> list
     ]
     lines.append(f"是否在线：{format_online_text(online_info)}")
     return lines
-
-
-def format_status(value: int) -> str:
-    if value == 1:
-        return "正常"
-    if value == 0:
-        return "未知"
-    return f"状态值：{value}"
 
 
 def format_vip(user_info: Any) -> str:
@@ -173,12 +146,11 @@ def format_local_rank_suffix(
         text = f"{label}{text.removeprefix('样本')}"
     return f"（{text}）"
 
+
 __all__ = [
     "METRIC_SEPARATOR",
     "PEAK_RANK_NAMES",
     "filter_blank_lines",
-    "format_id_name",
-    "format_id_name_list",
     "format_local_rank_suffix",
     "format_login_timeline_lines",
     "format_metric_line",

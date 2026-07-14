@@ -16,8 +16,7 @@ from ironsbot.services.seer.rank_score_cache import (
     fetch_rank_score_segment_from_cached_candidates,
 )
 from ironsbot.services.seer.rank_score_helpers import score_miss_proof_from_page
-from ironsbot.services.seer.rank_score_search_support import (
-    find_last_existing_score_index,
+from ironsbot.services.seer.rank_score_search import (
     score_search_probe_limit,
     score_search_tie_page_limit,
 )
@@ -70,7 +69,6 @@ def rank_score_service_dependencies() -> RankScoreServiceDependencies:
         fetch_rank_score_segment_impl=fetch_rank_score_segment_online,
         cached_score_candidate_page_starts_impl=cached_score_candidate_page_starts,
         cached_score_miss_boundary_impl=cached_score_miss_boundary,
-        find_last_existing_score_index=find_last_existing_score_index,
         fetch_rank_item=rank_pages.fetch_rank_item,
         fetch_rank_page_result=rank_pages.fetch_rank_page_result,
     )

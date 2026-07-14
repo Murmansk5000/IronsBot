@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.feature import unique_ints
 from ironsbot.config.models.seer import (
     TeamResourceConfig,
     TeamResourceSubscriptionConfig,
@@ -58,26 +57,15 @@ def at_users_for_subscription(
 ) -> list[int]:
     return [
         user_id
-        for user_id in (
-            resolve_user_id(user_ref) for user_ref in subscription.at_users
-        )
+        for user_id in (resolve_user_id(user_ref) for user_ref in subscription.at_users)
         if user_id is not None
     ]
-
-
-def get_all_subscription_team_ids() -> list[int]:
-    return unique_ints(
-        team_id
-        for subscription in get_team_resource_subscriptions()
-        for team_id in subscription.team_ids
-    )
 
 
 __all__ = [
     "TeamResourceConfig",
     "TeamResourceSubscriptionConfig",
     "at_users_for_subscription",
-    "get_all_subscription_team_ids",
     "get_team_resource_config",
     "get_team_resource_subscriptions",
     "resolve_group_id",

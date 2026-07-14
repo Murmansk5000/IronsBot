@@ -18,7 +18,6 @@ from .targets import MessageTarget, TargetSendSummary, broadcast_targets
 from .text import build_message
 
 MessageLimiter = Callable[[str | Message, int | None], str | Message]
-_message_limiter: MessageLimiter | None = None
 
 
 def _copy_outbound_message(message: str | Message) -> str | Message:
@@ -26,11 +25,9 @@ def _copy_outbound_message(message: str | Message) -> str | Message:
 
 
 class OneBotMessageSender(Protocol):
-    async def send_private_msg(self, *, user_id: int, message: Message) -> object:
-        ...
+    async def send_private_msg(self, *, user_id: int, message: Message) -> object: ...
 
-    async def send_group_msg(self, *, group_id: int, message: Message) -> object:
-        ...
+    async def send_group_msg(self, *, group_id: int, message: Message) -> object: ...
 
 
 def get_bot_or_none() -> OneBotMessageSender | None:
@@ -40,14 +37,6 @@ def get_bot_or_none() -> OneBotMessageSender | None:
         logger.warning(f"message action failed to get bot: {e}")
         return None
     return bot if isinstance(bot, Bot) else None
-
-
-def configure_sender_message_limiter(
-    message_limiter: MessageLimiter | None,
-) -> None:
-    global _message_limiter  # noqa: PLW0603
-
-    _message_limiter = message_limiter
 
 
 async def send_target_messages(  # noqa: PLR0913
@@ -82,11 +71,10 @@ async def send_target_messages(  # noqa: PLR0913
             failed.append(target)
             continue
 
-        active_limiter = message_limiter or _message_limiter
         target_message = _copy_outbound_message(message)
         limited_message = (
-            active_limiter(target_message, group_id)
-            if active_limiter is not None
+            message_limiter(target_message, group_id)
+            if message_limiter is not None
             else target_message
         )
         if subscription_key:
@@ -98,11 +86,7 @@ async def send_target_messages(  # noqa: PLR0913
             )
         rendered_message = build_message(
             limited_message,
-            at_user_ids=(
-                target.at_user_ids
-                if target.target_type == "group"
-                else ()
-            ),
+            at_user_ids=(target.at_user_ids if target.target_type == "group" else ()),
         )
 
         try:
@@ -183,12 +167,6 @@ def _filter_subscribed_targets(
     return [
         target
         for target in targets
-        if (
-            target.target_type == "private"
-            and target.target_id in allowed_private_ids
-        )
-        or (
-            target.target_type == "group"
-            and target.target_id in allowed_group_ids
-        )
+        if (target.target_type == "private" and target.target_id in allowed_private_ids)
+        or (target.target_type == "group" and target.target_id in allowed_group_ids)
     ]

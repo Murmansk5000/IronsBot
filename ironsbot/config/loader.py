@@ -9,8 +9,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pydantic import ValidationError
-
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.deployment import DeploymentConfig
 from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
@@ -39,7 +37,6 @@ DEFAULT_ENV_EXAMPLE_PATHS = (
     Path("/app/.env.example"),
 )
 _LOGGER = logging.getLogger("ironsbot.config")
-_EXTRA_FORBIDDEN_ERROR = "extra_forbidden"
 
 
 def parse_toml_file(path: str | Path) -> dict[str, Any]:
@@ -50,84 +47,6 @@ def parse_toml_file(path: str | Path) -> dict[str, Any]:
         msg = f"config file must contain a TOML table: {config_path}"
         raise TypeError(msg)
     return data
-
-
-def _format_config_path(location: tuple[object, ...]) -> str:
-    parts: list[str] = []
-    for item in location:
-        if isinstance(item, int):
-            if parts:
-                parts[-1] = f"{parts[-1]}[{item}]"
-            else:
-                parts.append(f"[{item}]")
-            continue
-        parts.append(str(item))
-    return ".".join(parts)
-
-
-def _remove_extra_config_value(data: Any, location: tuple[object, ...]) -> bool:
-    if not location:
-        return False
-
-    current = data
-    for item in location[:-1]:
-        if isinstance(item, int):
-            if not isinstance(current, list) or item >= len(current):
-                return False
-            current = current[item]
-            continue
-        if not isinstance(current, dict) or item not in current:
-            return False
-        current = current[item]
-
-    final_key = location[-1]
-    if not isinstance(final_key, str) or not isinstance(current, dict):
-        return False
-    if final_key not in current:
-        return False
-
-    del current[final_key]
-    return True
-
-
-def _validate_app_config_or_extra_errors(
-    data: dict[str, Any],
-) -> AppConfig | list[Any]:
-    try:
-        return AppConfig.model_validate(data)
-    except ValidationError as exc:
-        errors = exc.errors()
-        if not errors or any(
-            error.get("type") != _EXTRA_FORBIDDEN_ERROR
-            for error in errors
-        ):
-            raise
-        return errors
-
-
-def _load_app_config_ignoring_extra_fields(data: dict[str, Any]) -> AppConfig:
-    ignored_fields: set[str] = set()
-    while True:
-        validation_result = _validate_app_config_or_extra_errors(data)
-        if isinstance(validation_result, AppConfig):
-            validation_result.feature.warn_obsolete_policy_features()
-            validation_result.feature.warn_unregistered_policy_features()
-            return validation_result
-
-        removed_any = False
-        for error in validation_result:
-            location = tuple(error.get("loc", ()))
-            if _remove_extra_config_value(data, location):
-                ignored_fields.add(_format_config_path(location))
-                removed_any = True
-
-        if not removed_any:
-            AppConfig.model_validate(data)
-
-        _LOGGER.warning(
-            "Ignored unknown app config field(s): "
-            + ", ".join(sorted(ignored_fields))
-        )
 
 
 def resolve_app_config_path(
@@ -258,7 +177,7 @@ def load_app_config(
 ) -> AppConfig:
     resolved_path = Path(path) if path is not None else resolve_app_config_path(env)
     ensure_app_config_file(resolved_path, env)
-    return _load_app_config_ignoring_extra_fields(parse_toml_file(resolved_path))
+    return AppConfig.model_validate(parse_toml_file(resolved_path))
 
 
 @lru_cache(maxsize=1)

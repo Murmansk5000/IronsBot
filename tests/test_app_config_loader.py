@@ -1,4 +1,3 @@
-import logging
 import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
@@ -37,7 +36,7 @@ HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
-DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
+DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -61,18 +60,19 @@ DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
 )
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
-PUBLIC_CONFIG_DOC_PATHS = (
+ACTIVE_CONFIG_SURFACE_PATHS = (
+    ROOT / ".env.example",
     ROOT / "config.example.toml",
-    ROOT / "README.md",
-    ROOT / "docker" / "README.md",
     ROOT / "templates" / "ironsbot.xml",
     ROOT / "docker-compose.yml",
 )
 PUBLIC_TEXT_PATHS = (
-    *PUBLIC_CONFIG_DOC_PATHS,
+    *ACTIVE_CONFIG_SURFACE_PATHS,
+    ROOT / "README.md",
+    ROOT / "docker" / "README.md",
     ROOT / "ironsbot" / "plugins" / "seer_data" / "__init__.py",
 )
-STALE_PUBLIC_CONFIG_PATTERNS = (
+STALE_ACTIVE_CONFIG_PATTERNS = (
     r"\buid_modes\b",
     r"\bdefault_mode\b",
     r"\bdefault_accounts\b",
@@ -89,11 +89,19 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\bfire_manual_intent\b",
 )
 STALE_PUBLIC_TEXT_PATTERNS = (
-    *STALE_PUBLIC_CONFIG_PATTERNS,
     r"README\.old",
     r"旧榜单",
     r"db\s*(?:与|和)\s*image\s*模块",
     r"seer_rank`\s*/\s*`rank",
+)
+CONFIG_MIGRATION_FIELDS = (
+    "ai.reset_commands",
+    "ai.mention_guard_reply_window_seconds",
+    "ai.mention_guard_reply_max_per_window",
+    "bilibili.push.default_mode",
+    "bilibili.uids",
+    "message.private_unsubscribe",
+    "seer.render.clear_on_startup",
 )
 
 
@@ -270,7 +278,21 @@ def test_example_config_has_no_unknown_fields() -> None:
     AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
 
 
-def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
+def test_active_config_surfaces_do_not_reference_stale_fields() -> None:
+    stale_matches: list[str] = []
+
+    for path in ACTIVE_CONFIG_SURFACE_PATHS:
+        text = path.read_text(encoding="utf-8")
+        stale_matches.extend(
+            f"{path.relative_to(ROOT)}: {pattern}"
+            for pattern in STALE_ACTIVE_CONFIG_PATTERNS
+            if re.search(pattern, text)
+        )
+
+    assert stale_matches == []
+
+
+def test_public_text_does_not_reference_stale_structures() -> None:
     stale_matches: list[str] = []
 
     for path in PUBLIC_TEXT_PATHS:
@@ -282,6 +304,13 @@ def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
         )
 
     assert stale_matches == []
+
+
+def test_readme_documents_strict_config_migration() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for field in CONFIG_MIGRATION_FIELDS:
+        assert f"`{field}`" in text
 
 
 def test_rank_page_refresh_interval_offset_must_be_smaller_than_interval() -> None:
@@ -336,46 +365,10 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_are_ignored_with_warning(
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_unknown_app_config_fields_fail_with_exact_path(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-unknown_root = true
-
-[feature]
-superuser_bypass = false
-unknown_feature = "old value"
-
-[feature.group_aliases]
-main = 123456789
-
-[feature.group_policy]
-main = ["seer_player", "rank", "old_feature"]
-
-[ai]
-unknown_ai = "old value"
-
-[ai.intent_actions.fire_manual_ad]
-enabled = true
-
-[bilibili]
-unknown_bili_field = true
-
-[bilibili.accounts]
-seer = 1310714247
-
-[bilibili.push]
-accounts = ["seer", "old_bili"]
-modes = { old_bili = "link" }
-unknown_push_field = true
-
-[bilibili.push.groups.main]
-accounts = ["old_bili"]
-modes = { old_bili = "full" }
-
 [[message.group_commands]]
 id = "hello"
 commands = ["hello"]
@@ -386,30 +379,59 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
-        config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert not config.feature.superuser_bypass
-    assert config.feature.group_policy["main"] == [
-        "seer_player",
-        "rank",
-        "old_feature",
-    ]
-    assert config.bilibili.push.accounts == ["seer"]
-    assert config.bilibili.push.modes == {}
-    assert config.bilibili.push.groups["main"].accounts == []
-    assert config.bilibili.push.groups["main"].modes == {}
-    assert config.message.group_commands[0].id == "hello"
-    assert "unknown_root" in caplog.text
-    assert "ai.unknown_ai" in caplog.text
-    assert "Ignored unknown AI intent action 'fire_manual_ad'" in caplog.text
-    assert "bilibili.unknown_bili_field" in caplog.text
-    assert "bilibili.push.unknown_push_field" in caplog.text
-    assert "Ignored unknown Bilibili account alias" in caplog.text
-    assert "feature.unknown_feature" in caplog.text
-    assert "Obsolete feature policy key(s) ignored" in caplog.text
-    assert "old_feature" in caplog.text
-    assert "message.group_commands[0].unknown_command_field" in caplog.text
+    assert "message.group_commands.0.unknown_command_field" in str(exc_info.value)
+
+
+def test_unregistered_feature_policy_fails_with_exact_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[feature.group_policy]
+main = ["seer_player", "rank"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
+
+    assert "feature.group_policy.main[1]=rank" in str(exc_info.value)
+
+
+def test_unknown_bilibili_account_fails_with_exact_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bilibili.push.groups.main]
+accounts = ["missing_account"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
+
+    assert "bilibili.push.groups.main.accounts[0]" in str(exc_info.value)
+
+
+def test_unknown_seer_section_fails_with_exact_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player]
+sections = ["basic", "unknown_section"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
+
+    assert "seer.player.sections" in str(exc_info.value)
+    assert "unknown_section" in str(exc_info.value)
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
@@ -558,8 +580,8 @@ def test_small_plugin_config_accessors_read_app_config(
         assert ai_intent_service.get_configured_actions()
         assert ai_intent_service.get_team_resource_config().commands == ["战队"]
         assert (
-            ai_config.get_ai_config().mention_guard_reply_max_per_window
-            == DEFAULT_MENTION_GUARD_MAX_PER_WINDOW
+            app_config.runtime.help.hint_max_per_window
+            == DEFAULT_HELP_HINT_MAX_PER_WINDOW
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"

@@ -62,6 +62,8 @@ _MINTMARK_TYPE_SUFFIXES = (
     "特",
     "攻",
 )
+_MINTMARK_TYPE_MARKERS = ("双攻", "双刀", "双防", "物", "特", "攻", "速", "盾", "体")
+_MINTMARK_TYPE_QUERY_CHARS = frozenset(("物", "特", "攻", "速", "盾", "体"))
 _ATTACK_MARK_THRESHOLD = 54
 _SPEED_MARK_THRESHOLD = 40
 _DEFENSE_MARK_THRESHOLD = 40
@@ -237,7 +239,32 @@ def _resolve_unique_partial_mintmark_class_id(
     return matches if len(matches) == 1 else []
 
 
-def _split_series_type_arg(arg: str) -> tuple[str, str] | None:
+def _is_mintmark_type_query(query: str) -> bool:
+    normalized = query.replace("双刀", "双攻").replace("双防", "盾")
+    if normalized == "双攻":
+        return True
+    if normalized.startswith("双攻"):
+        normalized = normalized.removeprefix("双攻")
+    return bool(normalized) and all(
+        char in _MINTMARK_TYPE_QUERY_CHARS for char in normalized
+    )
+
+
+def _split_series_type_by_type_marker(arg: str) -> tuple[str, str] | None:
+    stripped = arg.strip()
+    for index, _char in enumerate(stripped):
+        prefix = stripped[:index].strip()
+        type_query = stripped[index:].strip()
+        if (
+            prefix
+            and type_query.startswith(_MINTMARK_TYPE_MARKERS)
+            and _is_mintmark_type_query(type_query)
+        ):
+            return prefix, type_query
+    return None
+
+
+def _split_series_type_by_suffix(arg: str) -> tuple[str, str] | None:
     normalized_arg = normalize_key(arg)
     for suffix in _MINTMARK_TYPE_SUFFIXES:
         normalized_suffix = normalize_key(suffix)
@@ -245,6 +272,10 @@ def _split_series_type_arg(arg: str) -> tuple[str, str] | None:
             prefix = arg[: len(arg) - len(suffix)].strip()
             return (prefix, suffix) if prefix else None
     return None
+
+
+def _split_series_type_arg(arg: str) -> tuple[str, str] | None:
+    return _split_series_type_by_type_marker(arg) or _split_series_type_by_suffix(arg)
 
 
 def _mintmark_type_matches(description: str, query: str) -> bool:

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
 
@@ -10,6 +10,7 @@ from .countermark_stat_rank_models import (
     CountermarkStatRankItem,
     StatSpec,
 )
+from .value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from seerapi_models.common import SixAttributes
 
 _MINTMARK_QUALITY_KEYS = ("Quality", "quality")
+
 
 def collect_countermark_rank_items(
     mintmarks: list[MintmarkORM],
@@ -63,6 +65,7 @@ def collect_countermark_rank_items(
         reverse=True,
     )
 
+
 def _mark_attributes(mintmark: MintmarkORM) -> SixAttributes | None:
     part = mintmark.ability_part or mintmark.skill_part or mintmark.universal_part
     if isinstance(part, AbilityPartORM):
@@ -90,21 +93,13 @@ def _mintmark_class_name(mintmark: MintmarkORM) -> str:
 
     return part.mintmark_class.name
 
-def _coerce_quality(value: object) -> int | None:
-    try:
-        quality = int(cast("Any", value))
-    except (TypeError, ValueError):
-        return None
-
-    return quality if quality > 0 else None
-
 
 def _object_quality(obj: object | None) -> int | None:
     if obj is None:
         return None
 
     for key in _MINTMARK_QUALITY_KEYS:
-        quality = _coerce_quality(getattr(obj, key, None))
+        quality = coerce_positive_int(getattr(obj, key, None))
         if quality is not None:
             return quality
 
@@ -112,7 +107,7 @@ def _object_quality(obj: object | None) -> int | None:
     if callable(model_dump):
         dumped = cast("Mapping[str, object]", model_dump())
         for key in _MINTMARK_QUALITY_KEYS:
-            quality = _coerce_quality(dumped.get(key))
+            quality = coerce_positive_int(dumped.get(key))
             if quality is not None:
                 return quality
 
@@ -141,6 +136,7 @@ def _mintmark_angle_count(
             return quality
 
     return None
+
 
 def _get_stat_value(attrs: SixAttributes, stat: StatSpec) -> float:
     if stat.key == "total":

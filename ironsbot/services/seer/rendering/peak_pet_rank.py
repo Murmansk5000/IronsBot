@@ -9,8 +9,8 @@ from ironsbot.integrations.seer_data.image import (
     PetHeadImageGetter,
 )
 from ironsbot.services.seer.render_paths import (
-    UPSTREAM_PEAK_PET_RANK_TEMPLATE_PATH,
-    UPSTREAM_SHARED_TEMPLATE_PATH,
+    PEAK_PET_RANK_TEMPLATE_PATH,
+    SHARED_TEMPLATE_PATH,
 )
 from ironsbot.utils import time
 from ironsbot.utils.image import to_data_uri
@@ -21,8 +21,8 @@ if TYPE_CHECKING:
     from ironsbot.integrations.headless_seer.packets.peak import DailyRankInfo
     from ironsbot.integrations.headless_seer.peak import PeakItemData
 
-TEMPLATE_PATH = UPSTREAM_PEAK_PET_RANK_TEMPLATE_PATH
-SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
+TEMPLATE_PATH = PEAK_PET_RANK_TEMPLATE_PATH
+SHARED_PATH = SHARED_TEMPLATE_PATH
 
 TABLE_WIDTH = 580
 CONTAINER_PADDING = 20 * 2

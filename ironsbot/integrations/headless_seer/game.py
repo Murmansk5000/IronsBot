@@ -26,7 +26,6 @@ from ironsbot.integrations.headless_seer.peak import (
     PEAK_SUIT_KEY_MAP,
     PEAK_TITLE_KEY_MAP,
     PEAK_TYPE_NAME_MAP,
-    PeakData,
     PeakItemData,
     PeakType,
 )
@@ -41,7 +40,6 @@ __all__ = [
     "PEAK_SUIT_KEY_MAP",
     "PEAK_TITLE_KEY_MAP",
     "PEAK_TYPE_NAME_MAP",
-    "PeakData",
     "PeakItemData",
     "PeakType",
     "SeerGame",
@@ -360,42 +358,6 @@ class SeerGame:
         return (
             _merge_win_and_count_rank(win_body[1], count_body[1], length=20),
             ban_body[1],
-        )
-
-    async def get_user_peak_expert_data(self, user_id: int) -> PeakData:
-        result = await asyncio.gather(
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 129441),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 129442),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 129443),
-        )
-        return PeakData(
-            current_score=result[0][1].value,
-            current_highest_score=result[1][1].value,
-            history_highest_score=result[2][1].value,
-        )
-
-    async def get_user_peak_data(self, user_id: int) -> PeakData:
-        result = await asyncio.gather(
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124801),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124802),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124800),
-        )
-        return PeakData(
-            current_score=result[0][1].value,
-            history_highest_score=result[1][1].value,
-            current_highest_score=result[2][1].value,
-        )
-
-    async def get_user_peak_wild_data(self, user_id: int) -> PeakData:
-        result = await asyncio.gather(
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124790),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124791),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124792),
-        )
-        return PeakData(
-            current_highest_score=result[0][1].value,
-            current_score=result[1][1].value,
-            history_highest_score=result[2][1].value,
         )
 
     async def get_user_online_info(self, user_id: int) -> OnLineInfo | None:

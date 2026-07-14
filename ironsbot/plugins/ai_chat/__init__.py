@@ -3,6 +3,7 @@ from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
@@ -35,11 +36,6 @@ from ironsbot.shared.matcher_priority import (
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
-)
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
 )
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
@@ -89,113 +85,112 @@ async def _ai_chat_group_at_rule(event: GroupMessageEvent, state: T_State) -> bo
     return True
 
 
-class AiChatPlugin:
-    name = "ai_chat"
-    feature = "ai_chat"
-    enabled = True
+async def _run_ai_chat(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
+    if not prompt:
+        await finish_event_reply(
+            matcher,
+            event,
+            "你想聊什么？可以 @我 后面直接写问题。",
+            mention_sender=True,
+        )
 
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        matcher = context.matcher or ai_chat_matcher
-        state = context.state if context.state is not None else {}
-        prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
-        if not prompt:
-            await finish_event_reply(
-                matcher,
-                event,
-                "你想聊什么？可以 @我 后面直接写问题。",
-                mention_sender=True,
-            )
+    key = get_ai_chat_key(event)
+    source_context = build_ai_notice_source_context(event, prompt)
 
-        key = get_ai_chat_key(event)
-        source_context = build_ai_notice_source_context(event, prompt)
+    if not get_ai_key():
+        await notify_superusers_once(
+            "missing_api_key",
+            append_ai_notice_source_context(
+                "AI聊天还没有配置 API Key。\n"
+                "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
+                source_context,
+            ),
+            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+            action_name=AI_CHAT_ERROR_ACTION_NAME,
+        )
+        await _finish_admin_notice_or_silent(
+            matcher,
+            event,
+            "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
+        )
 
-        if not get_ai_key():
-            await notify_superusers_once(
-                "missing_api_key",
-                append_ai_notice_source_context(
-                    "AI聊天还没有配置 API Key。\n"
-                    "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
-                    source_context,
-                ),
-                subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-                action_name=AI_CHAT_ERROR_ACTION_NAME,
-            )
-            await _finish_admin_notice_or_silent(
-                event,
-                "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
-            )
+    config = get_ai_config()
+    if config.waiting_notice:
+        await send_event_reply(
+            matcher,
+            event,
+            "处理中...",
+            mention_sender=True,
+        )
 
-        config = get_ai_config()
-        if config.waiting_notice:
-            await send_event_reply(
-                matcher,
-                event,
-                "处理中...",
-                mention_sender=True,
-            )
+    chat_context = build_ai_chat_context(event, prompt, key=key)
 
-        chat_context = build_ai_chat_context(event, prompt, key=key)
+    try:
+        reply = await call_ai_chat(
+            prompt,
+            chat_context.history,
+            chat_context.memory,
+            source_context=source_context,
+        )
+        if is_ai_error_reply(reply):
+            await _finish_admin_notice_or_silent(matcher, event, reply)
 
-        try:
-            reply = await call_ai_chat(
-                prompt,
-                chat_context.history,
-                chat_context.memory,
-                source_context=source_context,
-            )
-            if is_ai_error_reply(reply):
-                await _finish_admin_notice_or_silent(event, reply)
+        if not is_ai_error_reply(reply):
+            record_successful_ai_reply(event, chat_context, reply)
 
-            if not is_ai_error_reply(reply):
-                record_successful_ai_reply(event, chat_context, reply)
+        await finish_event_reply(
+            matcher,
+            event,
+            reply,
+            mention_sender=True,
+        )
 
-            await finish_event_reply(
-                matcher,
-                event,
-                reply,
-                mention_sender=True,
-            )
-
-        except FinishedException:
-            raise
-        except httpx.TimeoutException:
-            logger.warning("AI chat API timed out")
-            await notify_superusers_once(
-                "timeout",
-                append_ai_notice_source_context(
-                    "AI聊天接口响应超时。\n"
-                    f"接口：{config.base_url}\n"
-                    f"超时时间：{config.timeout} 秒\n"
-                    "请检查网络或适当调大 ai.timeout。",
-                    source_context,
-                ),
-                subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-                action_name=AI_CHAT_ERROR_ACTION_NAME,
-            )
-            await _finish_admin_notice_or_silent(
-                event,
-                "AI接口响应超时，我已经通知超级管理员。",
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"AI chat failed: {e}")
-            await notify_superusers_once(
-                "unexpected",
-                append_ai_notice_source_context(
-                    "AI聊天处理失败。\n"
-                    f"错误：{e}\n"
-                    "请查看容器日志确认具体原因。",
-                    source_context,
-                ),
-                subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-                action_name=AI_CHAT_ERROR_ACTION_NAME,
-            )
-            await _finish_admin_notice_or_silent(
-                event,
-                "AI聊天出错了，我已经通知超级管理员。",
-            )
+    except FinishedException:
+        raise
+    except httpx.TimeoutException:
+        logger.warning("AI chat API timed out")
+        await notify_superusers_once(
+            "timeout",
+            append_ai_notice_source_context(
+                "AI聊天接口响应超时。\n"
+                f"接口：{config.base_url}\n"
+                f"超时时间：{config.timeout} 秒\n"
+                "请检查网络或适当调大 ai.timeout。",
+                source_context,
+            ),
+            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+            action_name=AI_CHAT_ERROR_ACTION_NAME,
+        )
+        await _finish_admin_notice_or_silent(
+            matcher,
+            event,
+            "AI接口响应超时，我已经通知超级管理员。",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"AI chat failed: {e}")
+        await notify_superusers_once(
+            "unexpected",
+            append_ai_notice_source_context(
+                "AI聊天处理失败。\n"
+                f"错误：{e}\n"
+                "请查看容器日志确认具体原因。",
+                source_context,
+            ),
+            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
+            action_name=AI_CHAT_ERROR_ACTION_NAME,
+        )
+        await _finish_admin_notice_or_silent(
+            matcher,
+            event,
+            "AI聊天出错了，我已经通知超级管理员。",
+        )
 
 
-register_plugin(AiChatPlugin())
 
 
 ai_chat_matcher = on_message(
@@ -212,6 +207,7 @@ ai_chat_group_at_matcher = on_message(
 
 
 async def _finish_admin_notice_or_silent(
+    matcher: Matcher,
     event: MessageEvent,
     message: str,
 ) -> None:
@@ -219,7 +215,7 @@ async def _finish_admin_notice_or_silent(
         raise FinishedException
 
     await finish_event_reply(
-        ai_chat_matcher,
+        matcher,
         event,
         message,
         mention_sender=True,
@@ -227,20 +223,18 @@ async def _finish_admin_notice_or_silent(
 
 
 @ai_chat_matcher.handle()
-async def handle_ai_chat(event: MessageEvent, state: T_State) -> None:
-    await dispatch_plugin(
-        plugin_name="ai_chat",
-        event=event,
-        matcher=ai_chat_matcher,
-        state=state,
-    )
+async def handle_ai_chat(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await _run_ai_chat(matcher, event, state)
 
 
 @ai_chat_group_at_matcher.handle()
-async def handle_group_at_ai_chat(event: GroupMessageEvent, state: T_State) -> None:
-    await dispatch_plugin(
-        plugin_name="ai_chat",
-        event=event,
-        matcher=ai_chat_group_at_matcher,
-        state=state,
-    )
+async def handle_group_at_ai_chat(
+    matcher: Matcher,
+    event: GroupMessageEvent,
+    state: T_State,
+) -> None:
+    await _run_ai_chat(matcher, event, state)

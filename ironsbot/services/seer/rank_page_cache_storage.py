@@ -62,12 +62,6 @@ def connect_rank_page_cache(path: Path) -> AbstractContextManager[sqlite3.Connec
     return open_sqlite_schema(path, RANK_PAGE_CACHE_SCHEMA)
 
 
-def ensure_rank_page_cache_schema(conn: sqlite3.Connection) -> None:
-    for statement in RANK_PAGE_CACHE_SCHEMA:
-        conn.execute(statement)
-
-
 __all__ = [
     "connect_rank_page_cache",
-    "ensure_rank_page_cache_schema",
 ]

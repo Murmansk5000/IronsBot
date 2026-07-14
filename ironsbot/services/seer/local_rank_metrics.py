@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer import local_rank_formatting
+from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
@@ -50,14 +51,6 @@ def metric_from_rank(result: RankLookupResult | None) -> int | None:
     if result is None:
         return None
     return result.score
-
-
-def positive_int(value: object) -> int | None:
-    try:
-        number = int(cast("Any", value))
-    except (TypeError, ValueError):
-        return None
-    return number if number > 0 else None
 
 
 def metric(
@@ -107,20 +100,22 @@ def collect_metrics(  # noqa: PLR0913
     values: dict[str, MetricValue] = {
         "book_score": metric(metric_from_rank(rank_summary.book)),
         "achievement_score": metric(
-            positive_int(getattr(more_info, "total_achieve", 0))
+            coerce_positive_int(getattr(more_info, "total_achieve", 0))
         ),
-        "achievement_count": metric(positive_int(unity_part_one.achievement_num)),
+        "achievement_count": metric(
+            coerce_positive_int(unity_part_one.achievement_num)
+        ),
         "pet_total_count": metric(
-            positive_int(getattr(more_info, "pet_all_num", 0))
+            coerce_positive_int(getattr(more_info, "pet_all_num", 0))
         ),
-        "pet_kind_count": metric(positive_int(unity_part_one.pet_kind_num)),
+        "pet_kind_count": metric(coerce_positive_int(unity_part_one.pet_kind_num)),
         "countermark_count": metric(metric_from_rank(breakdown.countermark)),
         "outfit_suit_count": metric(metric_from_rank(breakdown.outfit_suit)),
         "outfit_part_count": metric(metric_from_rank(breakdown.outfit_part)),
         "mount_count": metric(metric_from_rank(breakdown.mount)),
-        "skin_count": metric(positive_int(unity_part_one.skin_num)),
+        "skin_count": metric(coerce_positive_int(unity_part_one.skin_num)),
         "autocard_score": metric(metric_from_rank(autocard_rank_summary)),
-        "unlocked_book_entries": metric(positive_int(breakdown.unlocked_count)),
+        "unlocked_book_entries": metric(coerce_positive_int(breakdown.unlocked_count)),
     }
 
     if peak_sub_key is not None:
@@ -130,7 +125,7 @@ def collect_metrics(  # noqa: PLR0913
             + unity_peak.current_z_all
         )
         if unity_peak.current_j_all > 0:
-            standard_score = positive_int(peak_standard_score)
+            standard_score = coerce_positive_int(peak_standard_score)
             values["peak_standard"] = metric(
                 standard_score,
                 season_sub_key=peak_sub_key,
@@ -149,12 +144,12 @@ def collect_metrics(  # noqa: PLR0913
                 season_sub_key=peak_sub_key,
             )
             values["peak_standard_matches"] = metric(
-                positive_int(unity_peak.current_j_all),
+                coerce_positive_int(unity_peak.current_j_all),
                 season_sub_key=peak_sub_key,
                 display=f"{unity_peak.current_j_all}场",
             )
         if unity_peak.current_k_all > 0:
-            wild_score = positive_int(peak_wild_score)
+            wild_score = coerce_positive_int(peak_wild_score)
             values["peak_wild"] = metric(
                 wild_score,
                 season_sub_key=peak_sub_key,
@@ -173,12 +168,12 @@ def collect_metrics(  # noqa: PLR0913
                 season_sub_key=peak_sub_key,
             )
             values["peak_wild_matches"] = metric(
-                positive_int(unity_peak.current_k_all),
+                coerce_positive_int(unity_peak.current_k_all),
                 season_sub_key=peak_sub_key,
                 display=f"{unity_peak.current_k_all}场",
             )
         if unity_peak.current_z_all > 0:
-            expert_score = positive_int(peak_expert_score)
+            expert_score = coerce_positive_int(peak_expert_score)
             values["peak_expert"] = metric(
                 expert_score,
                 season_sub_key=peak_sub_key,
@@ -197,19 +192,17 @@ def collect_metrics(  # noqa: PLR0913
                 season_sub_key=peak_sub_key,
             )
             values["peak_expert_matches"] = metric(
-                positive_int(unity_peak.current_z_all),
+                coerce_positive_int(unity_peak.current_z_all),
                 season_sub_key=peak_sub_key,
                 display=f"{unity_peak.current_z_all}场",
             )
         if total_matches > 0:
             values["peak_total_matches"] = metric(
-                positive_int(total_matches),
+                coerce_positive_int(total_matches),
                 season_sub_key=peak_sub_key,
                 display=f"{total_matches}场",
             )
 
     return {
-        key: value
-        for key, value in values.items()
-        if value.get("value") is not None
+        key: value for key, value in values.items() if value.get("value") is not None
     }

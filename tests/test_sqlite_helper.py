@@ -6,7 +6,6 @@ from pytest import MonkeyPatch
 
 from ironsbot.shared.sqlite import (
     connect_sqlite,
-    ensure_sqlite_column,
     ensure_sqlite_columns,
     open_sqlite,
     open_sqlite_schema,
@@ -86,26 +85,6 @@ def test_open_sqlite_schema_initializes_schema(tmp_path: Path) -> None:
     assert ("idx_sample_id",) in index_rows
 
 
-def test_ensure_sqlite_column_adds_missing_column_once(tmp_path: Path) -> None:
-    with connect_sqlite(tmp_path / "cache.sqlite") as conn:
-        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
-
-        assert ensure_sqlite_column(
-            conn,
-            table_name="sample",
-            column_name="name",
-            column_definition="name TEXT NOT NULL DEFAULT ''",
-        )
-        assert not ensure_sqlite_column(
-            conn,
-            table_name="sample",
-            column_name="name",
-            column_definition="name TEXT NOT NULL DEFAULT ''",
-        )
-
-        assert sqlite_table_columns(conn, "sample") == {"id", "name"}
-
-
 def test_ensure_sqlite_columns_adds_missing_columns_once(tmp_path: Path) -> None:
     with connect_sqlite(tmp_path / "cache.sqlite") as conn:
         conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
@@ -118,14 +97,17 @@ def test_ensure_sqlite_columns_adds_missing_columns_once(tmp_path: Path) -> None
                 "updated_at": "updated_at TEXT",
             },
         ) == {"name", "updated_at"}
-        assert ensure_sqlite_columns(
-            conn,
-            table_name="sample",
-            columns={
-                "name": "name TEXT NOT NULL DEFAULT ''",
-                "updated_at": "updated_at TEXT",
-            },
-        ) == set()
+        assert (
+            ensure_sqlite_columns(
+                conn,
+                table_name="sample",
+                columns={
+                    "name": "name TEXT NOT NULL DEFAULT ''",
+                    "updated_at": "updated_at TEXT",
+                },
+            )
+            == set()
+        )
 
         assert sqlite_table_columns(conn, "sample") == {
             "id",

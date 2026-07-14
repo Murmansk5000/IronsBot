@@ -35,10 +35,6 @@ _login_state = BiliLoginRuntimeState()
 _login_poll_task: asyncio.Task[None] | None = None
 
 
-def is_bili_login_required() -> bool:
-    return _login_state.required
-
-
 def _set_bili_login_required(required: bool) -> None:
     mark_bili_login_required(_login_state, required=required)
 
@@ -77,15 +73,15 @@ async def _send_private_to_superusers(
 def _build_login_qrcode_message(qr_url: str) -> Message:
     parts = build_bili_login_qrcode_message_parts(qr_url)
     if parts.image_base64:
-        return Message([
-            MessageSegment.image(f"base64://{parts.image_base64}"),
-            MessageSegment.text("\n" + parts.tip_text),
-        ])
+        return Message(
+            [
+                MessageSegment.image(f"base64://{parts.image_base64}"),
+                MessageSegment.text("\n" + parts.tip_text),
+            ]
+        )
 
     if parts.image_error:
-        logger.warning(
-            f"failed to build Bilibili login QR image: {parts.image_error}"
-        )
+        logger.warning(f"failed to build Bilibili login QR image: {parts.image_error}")
     return Message(parts.tip_text)
 
 
@@ -96,9 +92,7 @@ async def request_bili_login_qrcode(
     global _login_poll_task
 
     now = time.time()
-    poll_task_running = bool(
-        _login_poll_task and not _login_poll_task.done()
-    )
+    poll_task_running = bool(_login_poll_task and not _login_poll_task.done())
     if is_bili_login_qr_reusable(
         _login_state,
         now=now,
@@ -115,8 +109,7 @@ async def request_bili_login_qrcode(
         follow_redirects=True,
     ) as client:
         response = await client.get(
-            "https://passport.bilibili.com/"
-            "x/passport-login/web/qrcode/generate"
+            "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
         )
 
     qr_request = parse_bili_login_qrcode_response(response.json())
@@ -169,10 +162,12 @@ async def send_bili_login_qrcode_to_superusers(
         return
 
     await _send_private_to_superusers(
-        Message([
-            MessageSegment.text(build_bili_login_notice_text(reason)),
-            *qr_message,
-        ]),
+        Message(
+            [
+                MessageSegment.text(build_bili_login_notice_text(reason)),
+                *qr_message,
+            ]
+        ),
         bot=bot,
     )
 
@@ -194,14 +189,11 @@ async def _poll_bili_login(
                 await asyncio.sleep(5)
 
                 poll_res = await client.get(
-                    "https://passport.bilibili.com/"
-                    "x/passport-login/web/qrcode/poll",
+                    "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
                     params={"qrcode_key": qrcode_key},
                 )
                 poll_data = poll_res.json().get("data", {})
-                poll_status = classify_bili_login_poll_code(
-                    poll_data.get("code")
-                )
+                poll_status = classify_bili_login_poll_code(poll_data.get("code"))
 
                 if poll_status == "confirmed":
                     new_cookie = extract_bili_login_cookie(

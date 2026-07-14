@@ -7,11 +7,11 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.shared.command_text import command_text_matches
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
-from ironsbot.shared.messaging import command_text_matches
 from ironsbot.shared.permissions import can_manage_group_event
 
 from .config import (

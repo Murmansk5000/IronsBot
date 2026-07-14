@@ -1,7 +1,6 @@
 from ironsbot.services.seer.rank_formatting import (
     GLOBAL_RANK_MISS_POSITION_STYLE,
     RANK_LOOKUP_POSITION_STYLE,
-    format_peak_rank_lookup,
     format_rank_position_text,
 )
 from ironsbot.services.seer.rank_models import RankLookupResult
@@ -66,33 +65,4 @@ def test_format_rank_position_text_can_keep_zero_limit_for_existing_messages() -
             style=GLOBAL_RANK_MISS_POSITION_STYLE,
         )
         == "前 0 名未上榜"
-    )
-
-
-def test_format_peak_rank_lookup_keeps_existing_position_text() -> None:
-    assert (
-        format_peak_rank_lookup(
-            RankLookupResult(
-                title="竞技赛季榜",
-                score_name="段位分",
-                rank=7,
-                score=1234,
-                queried=True,
-            ),
-            inactive_text="未参赛",
-        )
-        == "第 7 名"
-    )
-
-    assert (
-        format_peak_rank_lookup(
-            RankLookupResult(
-                title="竞技赛季榜",
-                score_name="段位分",
-                searched_limit=500,
-                queried=True,
-            ),
-            inactive_text="未参赛",
-        )
-        == "前 500 名未上榜"
     )

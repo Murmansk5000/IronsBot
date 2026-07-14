@@ -7,11 +7,10 @@
 | 范围 | 协议 | 说明 |
 | --- | --- | --- |
 | 整机 / 组合作品（完整仓库、Docker 镜像、可运行的 bot） | **GPL-3.0-or-later** | 因包含下方 GPL 组件，整体作为"组合作品"对外分发时必须遵守 GPL-3.0。 |
-| `ironsbot/plugins/seer/query/**` | **GPL-3.0-or-later** | 赛尔号查询插件适配层与仍在使用的 upstream-derived helper 边界。 |
+| `ironsbot/plugins/seer/query/**` | **GPL-3.0-or-later** | 正式的赛尔号查询命令、处理器与展示入口。 |
 | `ironsbot/services/seer/**` | **GPL-3.0-or-later** | 从赛尔号查询插件抽出的领域服务、渲染与纯计算逻辑。 |
 | `ironsbot/plugins/seer/rank_help/**` | **GPL-3.0-or-later** | 榜单帮助入口，依赖 GPL Seer 榜单说明服务。 |
 | `ironsbot/plugins/seer/assets/**` | **GPL-3.0-or-later** | Seer 渲染模板、图片和 CSS 资产。 |
-| `ironsbot/vendor/seer_upstream/**` | **GPL-3.0-or-later** | 保留的 upstream 渲染模板、图片资产、文档与许可资料；不作为 NoneBot 插件加载。 |
 | `ironsbot/plugins/headless_seer/**` | **GPL-3.0-or-later** | 见 [ironsbot/plugins/headless_seer/LICENSE](ironsbot/plugins/headless_seer/LICENSE)，另见同目录 `NOTICE` |
 | 其余全部代码（其他插件、`ironsbot/utils`、`bot.py`、`docker/` 等） | **MIT** | 见根目录 [LICENSE](LICENSE) |
 
@@ -31,6 +30,10 @@ GPL-3.0 全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)。
 - GPL 文件：`# SPDX-License-Identifier: GPL-3.0-or-later`
 
 ## 第三方出处
+
+赛尔号查询、领域服务和渲染资源源自并持续改造自
+[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)（GPL-3.0-or-later）。
+正式使用的代码和资源均保留在上方列出的 GPL 目录中，不再保留无运行时用途的历史镜像。
 
 `ironsbot/plugins/headless_seer` 中的 session 获取与登录数据包构建相关函数改写自
 [oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)（MIT, Copyright (c) 2025 Adai）。

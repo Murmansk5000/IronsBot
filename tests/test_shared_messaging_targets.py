@@ -2,8 +2,10 @@ from ironsbot.shared.messaging.targets import (
     MessageTarget,
     broadcast_targets,
     group_targets,
+    message_event_target,
     private_targets,
 )
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 
 def test_private_targets_deduplicate_users() -> None:
@@ -29,3 +31,12 @@ def test_broadcast_targets_keep_groups_before_private_users() -> None:
         MessageTarget("group", 10, (2,)),
         MessageTarget("private", 1),
     ]
+
+
+def test_message_event_target_uses_conversation_scope() -> None:
+    assert message_event_target(group_message_event(group_id=10)) == MessageTarget(
+        "group", 10
+    )
+    assert message_event_target(private_message_event(user_id=20)) == MessageTarget(
+        "private", 20
+    )

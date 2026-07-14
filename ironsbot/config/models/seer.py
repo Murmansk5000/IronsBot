@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,8 +11,6 @@ from ironsbot.shared.config.time import normalized_daily_times
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-_LOGGER = logging.getLogger("ironsbot.config")
 
 PLAYER_SECTION_KEYS: tuple[str, ...] = (
     "basic",
@@ -92,7 +89,12 @@ def _coerce_sections(value: object) -> object:
     return string_list(value)
 
 
-def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[str]:
+def _normalize_sections(
+    value: Iterable[str],
+    allowed: tuple[str, ...],
+    *,
+    path: str,
+) -> list[str]:
     normalized: list[str] = []
     unknown: list[str] = []
 
@@ -109,8 +111,8 @@ def _normalize_sections(value: Iterable[str], allowed: tuple[str, ...]) -> list[
             normalized.append(section)
 
     if unknown:
-        _LOGGER.warning(
-            "Ignored unknown Seer query section(s): " + ", ".join(unknown)
+        raise ValueError(  # noqa: TRY003
+            f"{path} contains unknown section(s): {', '.join(unknown)}"
         )
 
     return normalized
@@ -140,7 +142,11 @@ class PlayerQueryConfig(BaseModel):
     @field_validator("sections")
     @classmethod
     def normalize_sections(cls, value: list[str]) -> list[str]:
-        return _normalize_sections(value, PLAYER_SECTION_KEYS)
+        return _normalize_sections(
+            value,
+            PLAYER_SECTION_KEYS,
+            path="seer.player.sections",
+        )
 
 
 class TeamQueryConfig(BaseModel):
@@ -159,7 +165,11 @@ class TeamQueryConfig(BaseModel):
     @field_validator("sections")
     @classmethod
     def normalize_sections(cls, value: list[str]) -> list[str]:
-        return _normalize_sections(value, TEAM_SECTION_KEYS)
+        return _normalize_sections(
+            value,
+            TEAM_SECTION_KEYS,
+            path="seer.team.sections",
+        )
 
 
 class MintmarkQueryConfig(BaseModel):

@@ -58,42 +58,7 @@ class AllSvrListInfo(Deserializable):
     svr_list: Annotated[list[ServerInfo], f.Array[size_by("online_cnt"), ServerInfo]]
     friend_data: Annotated[AS3ByteArray, f.Char[...]]
 
-    def __post_init__(self) -> None:
-        self.is_vip = bool(self.vip_number)
-
-    # @classmethod
-    # def from_buffer(cls, buffer: Buffer) -> "AllSvrListInfo":
-    #     buffer = AS3ByteArray(buffer)
-    #     # buffer.position = 0
-    #     max_online_id = buffer.readUnsignedInt()
-    #     vip_number = buffer.readUnsignedInt()
-    #     online_time = buffer.readUnsignedInt()
-    #     network_operator = buffer.readUnsignedInt()
-    #     online_cnt = buffer.readUnsignedInt()
-    #     svr_list = (
-    #         tuple([ServerInfo.from_buffer(buffer) for _ in range(online_cnt)])
-    #         if online_cnt > 1
-    #         else ()
-    #     )
-    #     friend_data = AS3ByteArray(buffer[buffer.position :])
-    #     return cls(
-    #         max_online_id,
-    #         vip_number,
-    #         online_time,
-    #         network_operator,
-    #         online_cnt,
-    #         svr_list,
-    #         friend_data,
-    #     )
-
 
 class RangeSvrInfo(Deserializable):
     online_cnt: f.UInt
     svr_list: Annotated[list[ServerInfo], f.Array[f.size_by("online_cnt"), ServerInfo]]
-
-    # @classmethod
-    # def from_buffer(cls, buffer: Buffer) -> "RangeSvrInfo":
-    #     buffer = AS3ByteArray(buffer)
-    #     online_cnt = buffer.readUnsignedInt()
-    #     svr_list = tuple([ServerInfo.from_buffer(buffer) for _ in range(online_cnt)])
-    #     return cls(online_cnt, svr_list)

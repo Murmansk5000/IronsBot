@@ -16,16 +16,10 @@ if TYPE_CHECKING:
 REMINDER_JOB_ID_PREFIX = "activity_reminder_"
 STARTUP_SCAN_JOB_SUFFIX = "startup_scan"
 DAILY_SCAN_JOB_SUFFIX = "daily_scan"
-STARTUP_SCAN_JOB_ID = f"{REMINDER_JOB_ID_PREFIX}{STARTUP_SCAN_JOB_SUFFIX}"
-DAILY_SCAN_JOB_ID = f"{REMINDER_JOB_ID_PREFIX}{DAILY_SCAN_JOB_SUFFIX}"
 STARTUP_SCAN_DELAY = timedelta(seconds=30)
 STARTUP_SCAN_MISFIRE_GRACE_SECONDS = 300
 DAILY_SCAN_MISFIRE_GRACE_SECONDS = 300
 SECONDS_PER_MINUTE = 60
-
-
-def reminder_job_id(lead_hours: int, send_time: datetime) -> str:
-    return f"{REMINDER_JOB_ID_PREFIX}{reminder_job_suffix(lead_hours, send_time)}"
 
 
 def reminder_job_suffix(lead_hours: int, send_time: datetime) -> str:
@@ -62,21 +56,6 @@ def register_scan_jobs(
         minute=0,
         second=0,
         misfire_grace_time=DAILY_SCAN_MISFIRE_GRACE_SECONDS,
-    )
-
-
-def schedule_reminder_jobs(
-    scheduler: Any,
-    send_func: Callable[..., object],
-    reminders: Iterable[ActivityReminder],
-    *,
-    grace_minutes: int,
-) -> int:
-    return _schedule_reminder_jobs(
-        activity_job_registry(scheduler),
-        send_func,
-        reminders,
-        grace_minutes=grace_minutes,
     )
 
 
@@ -125,9 +104,3 @@ def _schedule_reminder_jobs(
         )
         scheduled_count += len(lead_reminders)
     return scheduled_count
-
-
-def clear_reminder_jobs(scheduler: Any) -> None:
-    activity_job_registry(scheduler).remove_by_prefix(
-        exclude={STARTUP_SCAN_JOB_SUFFIX, DAILY_SCAN_JOB_SUFFIX},
-    )

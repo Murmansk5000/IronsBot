@@ -4,16 +4,15 @@ from importlib import import_module
 _COMMAND_MODULES = [
     "autocard",
     "countermark_stat_rank",
+    "data_queries",
+    "equipment_queries",
+    "mintmark_queries",
+    "peak_queries",
+    "pet_queries",
     "player",
     "rank_list",
-    "rank_list_plugin",
     "team",
-    "upstream_data_queries",
-    "upstream_equipment_queries",
-    "upstream_mintmark_queries",
-    "upstream_peak_queries",
-    "upstream_pet_queries",
-    "upstream_type_queries",
+    "type_queries",
 ]
 
 for _module in _COMMAND_MODULES:

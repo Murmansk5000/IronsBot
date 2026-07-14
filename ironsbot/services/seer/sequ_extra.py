@@ -9,8 +9,6 @@ from ironsbot.services.seer.binary import BufferReader
 UNITY_INFO_CMD = 41298
 USER_FOREVER_VALUE_CMD = 40002
 PEAK_QUERY_DELAY_SECONDS = 0.005
-DISPLAY_PET_COUNT = 4
-DISPLAY_PET_BLOCK_PADDING = 132
 PEAK_PARAMS: tuple[int, ...] = (
     124801,
     124802,
@@ -36,18 +34,6 @@ class UnityPartOneInfo:
     title2: int = 0
     title3: int = 0
     title4: int = 0
-
-
-@dataclass(slots=True)
-class UnityPartTwoInfo:
-    show_pet1: int = 0
-    show_pet2: int = 0
-    show_pet3: int = 0
-    show_pet4: int = 0
-
-    @property
-    def show_pets(self) -> tuple[int, int, int, int]:
-        return (self.show_pet1, self.show_pet2, self.show_pet3, self.show_pet4)
 
 
 @dataclass(slots=True)
@@ -89,25 +75,6 @@ def parse_unity_part_one(data: bytes | bytearray | memoryview) -> UnityPartOneIn
     )
 
 
-def parse_unity_part_two(data: bytes | bytearray | memoryview) -> UnityPartTwoInfo:
-    reader = BufferReader(data)
-    if reader.has_remaining(12):
-        reader.skip(12)
-
-    pet_ids: list[int] = []
-    for index in range(DISPLAY_PET_COUNT):
-        if not reader.has_remaining(4):
-            break
-        pet_ids.append(reader.read_uint32())
-        if index < DISPLAY_PET_COUNT - 1 and reader.has_remaining(
-            DISPLAY_PET_BLOCK_PADDING
-        ):
-            reader.skip(DISPLAY_PET_BLOCK_PADDING)
-
-    pet_ids.extend([0] * (DISPLAY_PET_COUNT - len(pet_ids)))
-    return UnityPartTwoInfo(*pet_ids[:DISPLAY_PET_COUNT])
-
-
 def parse_unity_peak(data: bytes | bytearray | memoryview) -> UnityPeakInfo:
     reader = BufferReader(data)
     return UnityPeakInfo(
@@ -137,10 +104,6 @@ async def _fetch_unity_part(game: Any, part: int, player_id: int) -> bytes:
 
 async def fetch_unity_part_one(game: Any, player_id: int) -> UnityPartOneInfo:
     return parse_unity_part_one(await _fetch_unity_part(game, 1, player_id))
-
-
-async def fetch_unity_part_two(game: Any, player_id: int) -> UnityPartTwoInfo:
-    return parse_unity_part_two(await _fetch_unity_part(game, 5, player_id))
 
 
 async def fetch_unity_peak(game: Any, player_id: int) -> UnityPeakInfo:

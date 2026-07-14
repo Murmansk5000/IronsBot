@@ -1,5 +1,3 @@
-from typing import Any
-
 import httpx
 from nonebot.log import logger
 
@@ -8,26 +6,11 @@ from ironsbot.services.ai.config import get_ai_key
 from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
 from ironsbot.services.ai.notifier import notify_superusers_once
+from ironsbot.services.ai.responses import parse_ai_response
 from ironsbot.services.ai.source_context import append_ai_notice_source_context
 
-HTTP_PAYMENT_REQUIRED = 402
-HTTP_TOO_MANY_REQUESTS = 429
-HTTP_BAD_REQUEST = 400
 AI_CHAT_ERROR_SUBSCRIPTION_KEY = "ai_chat_error_notice"
 AI_CHAT_ERROR_ACTION_NAME = "AI chat error notice"
-
-
-def _extract_reply(data: dict[str, Any]) -> str:
-    choices = data.get("choices") or []
-    if not choices:
-        return ""
-
-    message = choices[0].get("message") or {}
-    content = message.get("content") or ""
-    if isinstance(content, str):
-        return content.strip()
-
-    return ""
 
 
 def _truncate_reply(text: str) -> str:
@@ -36,33 +19,6 @@ def _truncate_reply(text: str) -> str:
         return text
 
     return text[:max_chars].rstrip() + "\n\n（回复过长，已截断）"
-
-
-def _extract_error_detail(response: httpx.Response) -> str:
-    try:
-        data = response.json()
-    except ValueError:
-        return response.text[:300]
-
-    error = data.get("error")
-    if isinstance(error, dict):
-        message = error.get("message") or error.get("code") or str(error)
-        return str(message)[:300]
-
-    return str(data)[:300]
-
-
-def _api_error_title(status_code: int) -> str:
-    if status_code in {401, 403}:
-        return "密钥错误或没有接口权限"
-
-    if status_code == HTTP_PAYMENT_REQUIRED:
-        return "API额度不足或账户余额不足"
-
-    if status_code == HTTP_TOO_MANY_REQUESTS:
-        return "请求过于频繁或触发限流"
-
-    return "接口返回异常"
 
 
 async def call_ai_chat(
@@ -102,22 +58,25 @@ async def call_ai_chat(
             json=payload,
         )
 
-    if response.status_code >= HTTP_BAD_REQUEST:
-        error_title = _api_error_title(response.status_code)
-        error_detail = _extract_error_detail(response)
+    result = parse_ai_response(response)
+    if not result.ok and result.error_kind != "empty_reply":
         logger.warning(
             "AI chat API failed: "
-            f"HTTP {response.status_code}, {error_detail}"
+            f"HTTP {result.status_code}, {result.error_detail}"
         )
         await notify_superusers_once(
-            f"http_{response.status_code}",
+            (
+                f"http_{result.status_code}"
+                if result.error_kind == "http"
+                else str(result.error_kind)
+            ),
             append_ai_notice_source_context(
                 "AI聊天接口异常。\n"
-                f"类型：{error_title}\n"
-                f"HTTP：{response.status_code}\n"
+                f"类型：{result.error_title}\n"
+                f"HTTP：{result.status_code}\n"
                 f"模型：{config.model}\n"
                 f"接口：{config.base_url}\n"
-                f"详情：{error_detail}\n"
+                f"详情：{result.error_detail}\n"
                 "请检查 AI_KEY、账户额度、模型名和网络连接。",
                 source_context,
             ),
@@ -126,8 +85,7 @@ async def call_ai_chat(
         )
         return REQUEST_FAILED_REPLY
 
-    reply = _extract_reply(response.json())
-    if not reply:
+    if result.error_kind == "empty_reply":
         await notify_superusers_once(
             "empty_reply",
             append_ai_notice_source_context(
@@ -141,4 +99,4 @@ async def call_ai_chat(
         )
         return EMPTY_REPLY
 
-    return _truncate_reply(reply)
+    return _truncate_reply(result.reply)

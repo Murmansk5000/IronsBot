@@ -120,10 +120,7 @@ def save_last_saved_times(checkpoints: dict[int, int]) -> None:
                 REPLACE INTO checkpoints (uid, pub_ts, updated_at)
                 VALUES (?, ?, ?)
                 """,
-                [
-                    (uid, pub_time, time.time())
-                    for uid, pub_time in cleaned.items()
-                ],
+                [(uid, pub_time, time.time()) for uid, pub_time in cleaned.items()],
             )
     except sqlite3.Error as e:
         logger.warning(f"failed to write Bilibili checkpoints to SQLite: {e}")
@@ -131,10 +128,6 @@ def save_last_saved_times(checkpoints: dict[int, int]) -> None:
 
 def _dynamic_id(item: dict) -> str:
     return str(item.get("id_str") or item.get("id") or "")
-
-
-def dynamic_id_for_item(item: dict) -> str:
-    return _dynamic_id(item)
 
 
 def save_dynamic_history_item(  # noqa: PLR0913

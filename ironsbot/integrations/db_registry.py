@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import ExitStack
 from typing import Final
 
@@ -21,7 +21,6 @@ class DatabaseManager:
 
     def __init__(self) -> None:
         self._engines: dict[str, Engine] = {}
-        self._post_load_hooks: dict[str, list[Callable[[Engine], None]]] = {}
 
     @staticmethod
     def _create_memory_engine() -> Engine:
@@ -43,16 +42,6 @@ class DatabaseManager:
         """获取指定名称的数据库引擎。"""
         return self._engines.get(name)
 
-    def register_post_load_hook(
-        self, name: str, hook: Callable[[Engine], None]
-    ) -> None:
-        """注册一个在数据库从文件加载到内存后执行的钩子。
-
-        钩子在新引擎完成 backup、替换旧引擎之前被调用，
-        接收新的内存 Engine 作为参数。
-        """
-        self._post_load_hooks.setdefault(name, []).append(hook)
-
     def load_from_file(self, name: str, file_path: str) -> None:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
@@ -63,14 +52,6 @@ class DatabaseManager:
                 source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
             finally:
                 raw_conn.close()
-
-        for hook in self._post_load_hooks.get(name, []):
-            try:
-                hook(new_engine)
-            except Exception:  # noqa: BLE001, PERF203
-                logger.opt(exception=True).warning(
-                    f"数据库 '{name}' 的 post-load 钩子执行失败"
-                )
 
         old_engine = self._engines.get(name)
         self._engines[name] = new_engine
@@ -103,18 +84,6 @@ class DatabaseManager:
                 for name, engine in self._engines.items()
             }
             yield sessions
-
-    def dispose_all(self) -> None:
-        """释放所有引擎的连接池。"""
-        for name, engine in self._engines.items():
-            engine.dispose()
-            logger.debug(f"已释放数据库引擎 '{name}'")
-        self._engines.clear()
-
-    @property
-    def registered_names(self) -> list[str]:
-        """获取所有已注册的数据库名称。"""
-        return list(self._engines.keys())
 
 
 db_manager: Final[DatabaseManager] = DatabaseManager()

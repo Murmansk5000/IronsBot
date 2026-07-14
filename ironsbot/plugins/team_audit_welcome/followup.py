@@ -44,7 +44,7 @@ def _followup_scan_job_suffix(bot: Bot) -> str:
     return f"scan_{bot.self_id}"
 
 
-def _followup_job_registry(scheduler: "AsyncIOScheduler") -> JobRegistry:
+def _followup_job_registry(scheduler: AsyncIOScheduler) -> JobRegistry:
     return JobRegistry(scheduler, prefix=TEAM_AUDIT_FOLLOWUP_JOB_PREFIX)
 
 
@@ -66,7 +66,7 @@ async def _is_member_still_in_group(
 
 
 def schedule_team_audit_followup(
-    scheduler: "AsyncIOScheduler",
+    scheduler: AsyncIOScheduler,
     bot: Bot,
     reminder: TeamAuditPendingReminder,
     *,
@@ -93,7 +93,7 @@ def schedule_team_audit_followup(
 
 async def schedule_pending_team_audit_followups(
     bot: Bot,
-    scheduler: "AsyncIOScheduler",
+    scheduler: AsyncIOScheduler,
 ) -> None:
     config = get_app_config().message.team_audit_welcome
     if not config.enabled or not config.followup_enabled:
@@ -104,7 +104,7 @@ async def schedule_pending_team_audit_followups(
 
 
 def register_team_audit_followup_scan(
-    scheduler: "AsyncIOScheduler",
+    scheduler: AsyncIOScheduler,
     bot: Bot,
 ) -> None:
     _followup_job_registry(scheduler).add(

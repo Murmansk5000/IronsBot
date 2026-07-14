@@ -85,20 +85,6 @@ def sqlite_table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
     }
 
 
-def ensure_sqlite_column(
-    conn: sqlite3.Connection,
-    *,
-    table_name: str,
-    column_name: str,
-    column_definition: str,
-) -> bool:
-    return column_name in ensure_sqlite_columns(
-        conn,
-        table_name=table_name,
-        columns={column_name: column_definition},
-    )
-
-
 def ensure_sqlite_columns(
     conn: sqlite3.Connection,
     *,
@@ -122,7 +108,6 @@ def ensure_sqlite_columns(
 
 __all__ = [
     "connect_sqlite",
-    "ensure_sqlite_column",
     "ensure_sqlite_columns",
     "open_sqlite",
     "open_sqlite_schema",

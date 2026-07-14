@@ -7,13 +7,14 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.services.seer.local_rank_metrics import MetricValue, positive_int
+from ironsbot.services.seer.value_coercion import coerce_positive_int
 from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from ironsbot.services.seer.local_rank_metrics import MetricValue
     from ironsbot.shared.sqlite import RowFactory
 
 
@@ -124,7 +125,7 @@ def write_player_metrics(  # noqa: PLR0913
         (player_id, nick, timestamp, sample_flag, sampled_at),
     )
     for key, metric in metrics.items():
-        value = positive_int(metric.get("value"))
+        value = coerce_positive_int(metric.get("value"))
         if value is None:
             continue
 

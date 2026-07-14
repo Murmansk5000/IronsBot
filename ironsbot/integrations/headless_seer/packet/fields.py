@@ -181,9 +181,7 @@ class Unicode(str, SequenceTag):
         codec: type[StringCodec] = params[1] if len(params) > 1 else UTF8Codec
 
         if not isinstance(codec, type) or not issubclass(codec, StringCodec):
-            raise TypeError(
-                "Unicode 的第二个参数必须是实现了 StringCodec 协议的类"
-            )
+            raise TypeError("Unicode 的第二个参数必须是实现了 StringCodec 协议的类")
 
         if arg is Ellipsis:
             return _create_wrapper(
@@ -215,10 +213,6 @@ class BooleanType(BinaryTag):
 
 class Byte(int, BinaryTag):
     format_str: ClassVar[str] = "b"
-
-
-class UByte(int, BinaryTag):
-    format_str: ClassVar[str] = "B"
 
 
 class ShortType(int, BinaryTag):

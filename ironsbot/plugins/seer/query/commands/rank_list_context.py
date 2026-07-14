@@ -12,7 +12,6 @@ RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
 RANK_PAGE_CACHE_REFRESH_COMMAND_KEY = "_rank_page_cache_refresh_command"
 RANK_DISPLAY_LIMIT_COMMAND_KEY = "_rank_display_limit_command"
-RANK_LIST_PLUGIN_NAME = "seer_rank_list"
 
 
 def event_group_id(event: Event) -> int | None:

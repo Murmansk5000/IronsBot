@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata, on_fullmatch
 from nonebot.rule import Rule
@@ -10,14 +9,7 @@ from ironsbot.services.seer.rank_usage import (
 )
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import no_reply
-
-RANK_HELP_PLUGIN_NAME = "rank_help"
 
 __plugin_meta__ = PluginMetadata(
     name="榜单",
@@ -33,23 +25,6 @@ rank_help_entry = on_fullmatch(
 )
 
 
-class RankHelpPlugin:
-    name = RANK_HELP_PLUGIN_NAME
-    feature = "seer_rank"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:  # noqa: ARG002
-        matcher = context.matcher or rank_help_entry
-        await matcher.finish(build_rank_help_message())
-
-
-register_plugin(RankHelpPlugin())
-
-
 @rank_help_entry.handle()
-async def handle_rank_help_entry(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_HELP_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-    )
+async def handle_rank_help_entry(matcher: Matcher) -> None:
+    await matcher.finish(build_rank_help_message())
