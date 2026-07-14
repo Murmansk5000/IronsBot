@@ -34,7 +34,7 @@ async def handle_display_limit(
         await finish_event_reply(matcher, event, "❌ 这个设置只能在群聊中修改。")
         return
 
-    if not _can_manage_group_rank_display(event):
+    if not can_manage_group_event(event):
         await finish_event_reply(
             matcher,
             event,
@@ -64,7 +64,3 @@ async def handle_display_limit(
             limit=command.limit,
         ),
     )
-
-
-def _can_manage_group_rank_display(event: GroupMessageEvent) -> bool:
-    return can_manage_group_event(event)
