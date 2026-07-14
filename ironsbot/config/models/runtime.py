@@ -232,6 +232,8 @@ class HelpConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ignored_plugins: list[str] = Field(default_factory=list)
+    hint_window_seconds: float = Field(default=60.0, gt=0)
+    hint_max_per_window: int = Field(default=3, ge=1)
 
     @field_validator("ignored_plugins", mode="before")
     @classmethod

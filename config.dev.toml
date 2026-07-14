@@ -7,3 +7,8 @@ user_aliases = {}
 group_policy = {}
 user_policy = {}
 superuser_bypass = true
+
+[runtime.help]
+ignored_plugins = []
+hint_window_seconds = 60.0
+hint_max_per_window = 3

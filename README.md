@@ -215,6 +215,13 @@ at_users = ["owner"]
 只控制主动推送末尾的火火手册链接；`ai_intent_fire_manual`
 控制用户明确索要手册链接时的 AI 意图动作。
 
+TOML 使用严格校验：未知字段、未注册 feature、未知 B站账号引用、未知 Seer
+展示区块和残缺 AI action 都会阻止启动，并在错误中给出配置路径。旧 `rank`
+必须删除或改为 `seer_rank`。帮助提示与未开启 AI 群的 @ 提示共用
+`[runtime.help]` 下的 `hint_window_seconds` 和 `hint_max_per_window`；旧的
+`[ai].mention_guard_reply_window_seconds` 与
+`[ai].mention_guard_reply_max_per_window` 必须删除。
+
 ### Feature 对照表
 
 | feature | 作用 |

@@ -36,7 +36,7 @@ HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
-DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
+DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -550,8 +550,8 @@ def test_small_plugin_config_accessors_read_app_config(
         assert ai_intent_service.get_configured_actions()
         assert ai_intent_service.get_team_resource_config().commands == ["战队"]
         assert (
-            ai_config.get_ai_config().mention_guard_reply_max_per_window
-            == DEFAULT_MENTION_GUARD_MAX_PER_WINDOW
+            app_config.runtime.help.hint_max_per_window
+            == DEFAULT_HELP_HINT_MAX_PER_WINDOW
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"

@@ -27,8 +27,6 @@ DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
 )
-DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS = 60.0
-DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW = 10
 DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS = 600.0
 DEFAULT_JOIN_TEAM_INTENT = (
     "Judge whether the QQ group message means the sender wants to join, apply for, "
@@ -164,14 +162,6 @@ class AiConfig(BaseModel):
     thinking: bool = False
     waiting_notice: bool = False
     max_reply_chars: int = Field(default=1500, gt=0)
-    mention_guard_reply_window_seconds: float = Field(
-        default=DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS,
-        gt=0,
-    )
-    mention_guard_reply_max_per_window: int = Field(
-        default=DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW,
-        ge=1,
-    )
     admin_notice_cooldown_seconds: float = Field(
         default=DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
         ge=0,
@@ -280,8 +270,6 @@ def resolve_configured_actions(config: AiConfig) -> list[AiIntentAction]:
 __all__ = [
     "AI_REPLY_PROMPT_REQUIRED_ERROR",
     "DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS",
-    "DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW",
-    "DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS",
     "DEFAULT_AI_PROMPT",
     "DEFAULT_CLASSIFIER_PROMPT",
     "DEFAULT_FIRE_MANUAL_INTENT",

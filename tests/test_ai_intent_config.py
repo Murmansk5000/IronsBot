@@ -2,8 +2,6 @@ import pytest
 
 from ironsbot.config.models.ai import (
     DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
-    DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW,
-    DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS,
     DEFAULT_FIRE_MANUAL_INTENT,
     DEFAULT_JOIN_TEAM_MESSAGE,
     UNKNOWN_AI_ACTION_ERROR,
@@ -41,17 +39,9 @@ def test_default_ai_actions_include_team_recommend_and_fire_manual() -> None:
     assert FIRE_MANUAL_URL in manual_action.message
 
 
-def test_ai_mention_guard_defaults_live_in_ai_config() -> None:
+def test_admin_notice_defaults_live_in_ai_config() -> None:
     config = AiConfig()
 
-    assert (
-        config.mention_guard_reply_window_seconds
-        == DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS
-    )
-    assert (
-        config.mention_guard_reply_max_per_window
-        == DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW
-    )
     assert (
         config.admin_notice_cooldown_seconds
         == DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS
