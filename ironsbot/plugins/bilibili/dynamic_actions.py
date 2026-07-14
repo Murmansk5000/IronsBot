@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Any
-
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
@@ -27,17 +25,15 @@ from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.plugin_system import PluginContext, dispatch_plugin
 
 from .auth import send_bili_login_qrcode_to_superusers
-from .command_context import BILI_PLUGIN_NAME
 from .command_rules import is_dynamic_select_reply
 from .config import get_bili_config
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 
 async def wait_dynamic_select(
-    matcher: Any,
+    matcher: Matcher,
     event: MessageEvent,
 ) -> None:
     await enter_event_reply_conversation(
@@ -49,12 +45,10 @@ async def wait_dynamic_select(
     )
 
 async def handle_dynamic_menu_action(
+    matcher: Matcher,
     event: MessageEvent,
-    context: PluginContext,
-    fallback_matcher: Any,
+    state: T_State,
 ) -> None:
-    matcher = context.matcher or fallback_matcher
-    state = context.state if context.state is not None else {}
     try:
         query_uids = query_uids_for_event(event)
         logger.info(
@@ -62,7 +56,7 @@ async def handle_dynamic_menu_action(
         )
         if not query_uids:
             await finish_event_reply(
-                fallback_matcher,
+                matcher,
                 event,
                 "📭 当前会话没有配置可查询的 B 站账号。",
             )
@@ -73,7 +67,7 @@ async def handle_dynamic_menu_action(
                 "用户查询动态时发现 B 站登录失效"
             )
             await finish_event_reply(
-                fallback_matcher,
+                matcher,
                 event,
                 "⚠️ B 站 Cookie 已失效，请超级管理员重新登录。",
             )
@@ -92,7 +86,7 @@ async def handle_dynamic_menu_action(
         records = list_dynamic_history(limit=10, uids=query_uids)
         if not records:
             await finish_event_reply(
-                fallback_matcher,
+                matcher,
                 event,
                 "📭 没有可展示的历史动态。",
             )
@@ -116,18 +110,16 @@ async def handle_dynamic_menu_action(
     except Exception as e:  # noqa: BLE001
         logger.error(f"Bilibili dynamic menu failed: {e}")
         await finish_event_reply(
-            fallback_matcher,
+            matcher,
             event,
             "❌ 获取动态列表失败。",
         )
 
 async def handle_dynamic_select_action(
+    matcher: Matcher,
     event: MessageEvent,
-    context: PluginContext,
-    fallback_matcher: Any,
+    state: T_State,
 ) -> None:
-    matcher = context.matcher or fallback_matcher
-    state = context.state if context.state is not None else {}
     try:
         cached_ids = state.get(DYNAMIC_IDS_STATE_KEY, [])
         selection = build_dynamic_detail_for_selection(
@@ -198,10 +190,4 @@ async def handle_dynamic_select(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=BILI_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="select",
-    )
+    await handle_dynamic_select_action(matcher, event, state)
