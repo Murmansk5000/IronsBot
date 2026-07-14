@@ -54,6 +54,7 @@ from .targets import (
     TargetSendSummary,
     broadcast_targets,
     group_targets,
+    message_event_target,
     private_targets,
 )
 from .text import (
@@ -102,6 +103,7 @@ __all__ = [
     "get_bot_or_none",
     "get_first_onebot_bot",
     "group_targets",
+    "message_event_target",
     "normalize_command_text",
     "peek_user_rate_limit",
     "penalize_user_rate_limit",

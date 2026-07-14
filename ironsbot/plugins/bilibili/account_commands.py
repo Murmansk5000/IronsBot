@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: MIT
-from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
-)
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
@@ -24,7 +21,7 @@ from ironsbot.services.bilibili.targets import (
     mode_for_target_account,
     target_rule,
 )
-from ironsbot.shared.messaging import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply, message_event_target
 from ironsbot.shared.messaging.push_subscription_models import (
     PushTargetType,
 )
@@ -41,12 +38,6 @@ BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
     return can_manage_conversation_event(event)
-
-
-def _push_mode_target(event: MessageEvent) -> tuple[PushTargetType, int]:
-    if isinstance(event, GroupMessageEvent):
-        return "group", int(event.group_id)
-    return "private", int(event.user_id)
 
 
 def _bili_push_mode_usage() -> str:
@@ -80,7 +71,7 @@ async def handle_bili_accounts_action(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    target_type, target_id = _push_mode_target(event)
+    target_type, target_id, _ = message_event_target(event)
     rule = target_rule(target_type, target_id)
     accounts = bili_accounts()
 
@@ -144,7 +135,7 @@ async def handle_bili_push_mode_action(
         )
         return
 
-    target_type, target_id = _push_mode_target(event)
+    target_type, target_id, _ = message_event_target(event)
     rule = target_rule(target_type, target_id)
     current_mode = mode_for_target_account(target_type, target_id, account)
     if current_mode is None:

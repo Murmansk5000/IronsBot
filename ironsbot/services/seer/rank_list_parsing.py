@@ -19,6 +19,7 @@ from ironsbot.services.seer.rank_list_models import (
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
+from ironsbot.shared.messaging.text import strip_command_prefix
 
 __all__ = [
     "parse_rank_cache_batch_command",
@@ -28,6 +29,7 @@ __all__ = [
     "parse_rank_score_command",
     "with_admin_prefix",
 ]
+
 
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(f"/{command}" for command in commands)
@@ -89,7 +91,7 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
 
 
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
-    stripped = _strip_command_prefix(text)
+    stripped = strip_command_prefix(text)
     if stripped is None:
         return None
 
@@ -126,7 +128,7 @@ def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
 def parse_rank_page_cache_status_command(
     text: str,
 ) -> RankPageCacheStatusCommand | None:
-    stripped = _strip_command_prefix(text)
+    stripped = strip_command_prefix(text)
     if stripped is None:
         return None
 
@@ -149,7 +151,7 @@ def parse_rank_page_cache_status_command(
 def parse_rank_page_cache_refresh_command(
     text: str,
 ) -> RankPageCacheRefreshCommand | None:
-    stripped = _strip_command_prefix(text)
+    stripped = strip_command_prefix(text)
     if stripped is None:
         return None
 
@@ -325,14 +327,6 @@ def _parse_rank_window(  # noqa: PLR0911
     return None
 
 
-def _strip_command_prefix(text: str, prefixes: tuple[str, ...] = ("/",)) -> str | None:
-    stripped = text.strip()
-    for prefix in prefixes:
-        if prefix and stripped.startswith(prefix):
-            return stripped[len(prefix) :].strip()
-    return None
-
-
 def _matching_normalized_prefix(
     command: str,
     prefixes: tuple[str, ...],
@@ -341,9 +335,7 @@ def _matching_normalized_prefix(
         (
             normalized_prefix
             for prefix in prefixes
-            if command.startswith(
-                normalized_prefix := _normalize_command_text(prefix)
-            )
+            if command.startswith(normalized_prefix := _normalize_command_text(prefix))
         ),
         None,
     )
@@ -351,6 +343,5 @@ def _matching_normalized_prefix(
 
 _COMMANDS = _build_command_map()
 _NORMALIZED_COMMANDS = {
-    _normalize_command_text(command): value
-    for command, value in _COMMANDS.items()
+    _normalize_command_text(command): value for command, value in _COMMANDS.items()
 }

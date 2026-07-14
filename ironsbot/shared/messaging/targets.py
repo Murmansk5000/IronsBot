@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -18,11 +20,14 @@ class TargetSendSummary(NamedTuple):
     failed: list[MessageTarget]
 
 
+def message_event_target(event: MessageEvent) -> MessageTarget:
+    if isinstance(event, GroupMessageEvent):
+        return MessageTarget("group", int(event.group_id))
+    return MessageTarget("private", int(event.user_id))
+
+
 def private_targets(user_ids: Iterable[int]) -> list[MessageTarget]:
-    return [
-        MessageTarget("private", user_id)
-        for user_id in dict.fromkeys(user_ids)
-    ]
+    return [MessageTarget("private", user_id) for user_id in dict.fromkeys(user_ids)]
 
 
 def group_targets(
