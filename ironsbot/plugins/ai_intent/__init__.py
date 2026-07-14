@@ -1,5 +1,3 @@
-from typing import Any
-
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
@@ -18,16 +16,11 @@ from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
 )
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import no_reply
 
+from .team_actions import run_team_action
+
 ACTION_KEY = "_ai_intent_action"
-AI_INTENT_PLUGIN_NAME = "ai_intent"
-TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
 
 
 __plugin_meta__ = PluginMetadata(
@@ -61,7 +54,7 @@ ai_intent_action_matcher = on_message(
 
 async def _handle_ai_reply_action(
     action: AiIntentAction,
-    matcher: Any,
+    matcher: Matcher,
     event: MessageEvent,
 ) -> None:
     reply = await run_ai_reply_action(action, event)
@@ -82,44 +75,18 @@ async def handle_ai_intent_action(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=AI_INTENT_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
+    action = state[ACTION_KEY]
+    if is_team_action(action):
+        await run_team_action(matcher, event, action)
+        return
+
+    if action.action == "ai_reply":
+        await _handle_ai_reply_action(action, matcher, event)
+        return
+
+    await finish_event_reply(
+        matcher,
+        event,
+        action.message,
+        mention_sender=True,
     )
-
-
-class AiIntentPlugin:
-    name = AI_INTENT_PLUGIN_NAME
-    feature = "ai_intent"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        state = context.state if context.state is not None else {}
-        action = state[ACTION_KEY]
-        matcher = context.matcher or ai_intent_action_matcher
-
-        if is_team_action(action):
-            await dispatch_plugin(
-                plugin_name=TEAM_RECOMMEND_PLUGIN_NAME,
-                event=event,
-                matcher=matcher,
-                action=action.action,
-                ai_action=action,
-            )
-            return
-
-        if action.action == "ai_reply":
-            await _handle_ai_reply_action(action, matcher, event)
-            return
-
-        await finish_event_reply(
-            matcher,
-            event,
-            action.message,
-            mention_sender=True,
-        )
-
-
-register_plugin(AiIntentPlugin())

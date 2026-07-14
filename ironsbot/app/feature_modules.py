@@ -39,7 +39,7 @@ FEATURE_MODULE_REGISTRY: FeatureModuleRegistry = {
     "ai_intent": (
         "ironsbot.plugins.ai_intent",
     ),
-    "ai_intent_team_recommend": ("ironsbot.plugins.team_recommend",),
+    "ai_intent_team_recommend": ("ironsbot.plugins.ai_intent",),
     "ai_intent_fire_manual": ("ironsbot.plugins.ai_intent",),
     "fire_manual_ad": ("ironsbot.plugins.fire_manual_ad",),
     "admin_notice": ("ironsbot.plugins.ai_chat",),
