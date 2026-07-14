@@ -8,7 +8,10 @@ from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.shared.messaging import event_conversation_session_id
+from ironsbot.shared.messaging import (
+    event_conversation_session_id,
+    message_event_target,
+)
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
 from .push_management_runtime import (
@@ -27,7 +30,6 @@ from .push_management_runtime import (
     _push_time_value_prompt,
     _reject_push_time_input,
     _reject_push_time_selection,
-    _target_type_and_id,
 )
 from .push_time import PushTimeOption
 
@@ -61,7 +63,7 @@ async def handle_push_time_menu(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    target_type, target_id = _target_type_and_id(event)
+    target_type, target_id, _ = message_event_target(event)
     options = _push_time_options(target_type, target_id)
     if not options:
         await matcher.finish("当前没有可修改时间的推送。")

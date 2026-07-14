@@ -40,6 +40,16 @@ PUSH_SUBSCRIPTION_SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_push_time_preferences_lookup "
     "ON push_time_preferences "
     "(target_type, subscription_key, preference_type, target_id)",
+    "CREATE TABLE IF NOT EXISTS push_daily_hints ("
+    "target_type TEXT NOT NULL, "
+    "target_id INTEGER NOT NULL, "
+    "hint_key TEXT NOT NULL, "
+    "delivered_on TEXT NOT NULL, "
+    "updated_at TEXT NOT NULL, "
+    "PRIMARY KEY (target_type, target_id, hint_key)"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_push_daily_hints_lookup "
+    "ON push_daily_hints (target_type, hint_key, delivered_on)",
 )
 
 
@@ -216,6 +226,32 @@ class PushUnsubscribeStore:
                 (str(key), cast("PushPreferenceType", preference_type_text))
             ] = str(value)
         return preferences
+
+    def mark_daily_hint_sent(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        hint_key: str,
+        *,
+        today: str | None = None,
+    ) -> bool:
+        delivered_on = today or datetime.now().astimezone().date().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT delivered_on FROM push_daily_hints "
+                "WHERE target_type = ? AND target_id = ? AND hint_key = ?",
+                (target_type, int(target_id), hint_key),
+            ).fetchone()
+            if row is not None and str(row[0]) == delivered_on:
+                return False
+            con.execute(
+                "INSERT OR REPLACE INTO push_daily_hints "
+                "(target_type, target_id, hint_key, delivered_on, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (target_type, int(target_id), hint_key, delivered_on, now),
+            )
+        return True
 
     def all_time_preferences(
         self,
