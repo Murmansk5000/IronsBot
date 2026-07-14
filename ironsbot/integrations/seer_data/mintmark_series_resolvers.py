@@ -23,6 +23,15 @@ _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
 _SERIES_ORDINAL_PATTERN = re.compile(r"(?P<prefix>.+?)(?P<ordinal>\d{1,2})$")
 _MINTMARK_TYPE_SUFFIXES = (
+    "物速盾体",
+    "特速盾体",
+    "物速盾",
+    "特速盾",
+    "物速体",
+    "特速体",
+    "速盾体",
+    "速盾",
+    "速体",
     "物攻盾体",
     "特攻盾体",
     "物攻盾",

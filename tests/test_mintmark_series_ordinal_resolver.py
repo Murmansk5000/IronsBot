@@ -303,6 +303,28 @@ def test_mintmark_series_type_resolves_class_alias() -> None:
     assert [item.id for item in result] == [41292, 41293]
 
 
+def test_mintmark_series_type_resolves_speed_hp_suffix() -> None:
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=101, name="泳池系列"))
+    examples = [
+        (45017, "星璨·梦响", (32, 0, 0, 0, 45, 112)),
+        (45023, "灵籁·欢夏", (32, 0, 0, 0, 45, 112)),
+        (45027, "灵籁·爽夏", (32, 45, 0, 45, 45, 0)),
+        (45028, "灵籁·晴夏", (0, 0, 32, 0, 45, 112)),
+    ]
+    for id_, name, attrs in examples:
+        _add_mintmark(data_session, id_, name, 101, attrs=attrs)
+    data_session.commit()
+    alias_session.commit()
+
+    resolver = mintmark_series_resolvers.MintmarkSeriesTypeResolver()
+    sessions = {"seerapi": data_session, "aliases": alias_session}
+
+    assert [item.id for item in resolver(sessions, "泳池物速体")] == [45017, 45023]
+    assert [item.id for item in resolver(sessions, "泳池物速盾")] == [45027]
+
+
 def test_mintmark_series_type_resolves_short_alias_with_connected_merge(
     monkeypatch: MonkeyPatch,
 ) -> None:
