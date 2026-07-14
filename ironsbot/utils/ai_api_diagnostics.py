@@ -5,10 +5,9 @@ from typing import Any
 
 import httpx
 
+from ironsbot.services.ai.responses import parse_ai_response
+
 AI_TEST_PROMPT = "请只回复 OK"
-HTTP_BAD_REQUEST = 400
-HTTP_PAYMENT_REQUIRED = 402
-HTTP_TOO_MANY_REQUESTS = 429
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,46 +26,6 @@ class AiApiTestResult:
     status_code: int | None = None
     reply: str = ""
     error: str = ""
-
-
-def _extract_reply(data: dict[str, Any]) -> str:
-    choices = data.get("choices") or []
-    if not choices:
-        return ""
-
-    message = choices[0].get("message") or {}
-    content = message.get("content") or ""
-    if isinstance(content, str):
-        return content.strip()
-
-    return ""
-
-
-def _extract_error_detail(response: httpx.Response) -> str:
-    try:
-        data = response.json()
-    except ValueError:
-        return response.text[:300]
-
-    error = data.get("error")
-    if isinstance(error, dict):
-        message = error.get("message") or error.get("code") or str(error)
-        return str(message)[:300]
-
-    return str(data)[:300]
-
-
-def _api_error_title(status_code: int) -> str:
-    if status_code in {401, 403}:
-        return "密钥错误或没有接口权限"
-
-    if status_code == HTTP_PAYMENT_REQUIRED:
-        return "API额度不足或账户余额不足"
-
-    if status_code == HTTP_TOO_MANY_REQUESTS:
-        return "请求过于频繁或触发限流"
-
-    return "接口返回异常"
 
 
 def _build_test_payload(settings: AiApiSettings) -> dict[str, Any]:
@@ -95,7 +54,7 @@ def _elapsed_ms(started_at: float) -> int:
     return int((perf_counter() - started_at) * 1000)
 
 
-async def check_ai_api(settings: AiApiSettings) -> AiApiTestResult:  # noqa: PLR0911
+async def check_ai_api(settings: AiApiSettings) -> AiApiTestResult:
     if not settings.api_key:
         return AiApiTestResult(
             ok=False,
@@ -134,39 +93,18 @@ async def check_ai_api(settings: AiApiSettings) -> AiApiTestResult:  # noqa: PLR
         )
 
     elapsed_ms = _elapsed_ms(started_at)
-    if response.status_code >= HTTP_BAD_REQUEST:
+    parsed = parse_ai_response(response)
+    if not parsed.ok:
         return AiApiTestResult(
             ok=False,
             elapsed_ms=elapsed_ms,
-            status_code=response.status_code,
-            error=(
-                f"{_api_error_title(response.status_code)}："
-                f"{_extract_error_detail(response)}"
-            ),
-        )
-
-    try:
-        data = response.json()
-    except ValueError:
-        return AiApiTestResult(
-            ok=False,
-            elapsed_ms=elapsed_ms,
-            status_code=response.status_code,
-            error=f"接口返回成功，但响应不是有效 JSON：{response.text[:120]}",
-        )
-
-    reply = _extract_reply(data)
-    if not reply:
-        return AiApiTestResult(
-            ok=False,
-            elapsed_ms=elapsed_ms,
-            status_code=response.status_code,
-            error="接口返回成功，但没有有效文本内容",
+            status_code=parsed.status_code,
+            error=f"{parsed.error_title}：{parsed.error_detail}",
         )
 
     return AiApiTestResult(
         ok=True,
         elapsed_ms=elapsed_ms,
-        status_code=response.status_code,
-        reply=reply,
+        status_code=parsed.status_code,
+        reply=parsed.reply,
     )
