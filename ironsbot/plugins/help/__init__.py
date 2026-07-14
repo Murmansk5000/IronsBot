@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import cast
-
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
@@ -19,11 +17,6 @@ from ironsbot.shared.messaging import (
 )
 from ironsbot.shared.messaging.replies import event_sender_at_user_ids
 from ironsbot.shared.messaging.text import build_message
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.matcher import (
     enter_prompt_loop,
     prompt_session_manager,
@@ -33,7 +26,6 @@ from ironsbot.utils.rule import no_reply
 
 from .menu import (
     HELP_ENTRIES_KEY,
-    HELP_PLUGIN_NAME,
     format_plugin_detail,
     format_plugin_list,
     visible_help_entries,
@@ -91,36 +83,6 @@ def _is_digit_input(event: Event) -> bool:
     return event.get_plaintext().strip().isdigit()
 
 
-class CustomHelpPlugin:
-    name = HELP_PLUGIN_NAME
-    feature = "help"
-    enabled = True
-
-    async def handle(self, event: Event, context: PluginContext) -> None:
-        matcher = cast("Matcher", context.matcher)
-        bot = cast("Bot", context.data["bot"])
-        state = cast("T_State", context.state)
-        entries = visible_help_entries(bot, event)
-        if not entries:
-            await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
-
-        state[HELP_ENTRIES_KEY] = entries
-        session_id = event.get_session_id()
-        version = prompt_session_manager.acquire(session_id)
-        rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
-        handler = _create_selection_handler(session_id, version)
-
-        await enter_prompt_loop(
-            matcher,
-            handlers=[handler],
-            rule=rule,
-            prompt=_help_prompt_message(event, format_plugin_list(entries)),
-        )
-
-
-register_plugin(CustomHelpPlugin())
-
-
 @help_cmd.handle()
 async def handle_help(
     bot: Bot,
@@ -128,12 +90,21 @@ async def handle_help(
     event: Event,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=HELP_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        bot=bot,
+    entries = visible_help_entries(bot, event)
+    if not entries:
+        await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
+
+    state[HELP_ENTRIES_KEY] = entries
+    session_id = event.get_session_id()
+    version = prompt_session_manager.acquire(session_id)
+    rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
+    handler = _create_selection_handler(session_id, version)
+
+    await enter_prompt_loop(
+        matcher,
+        handlers=[handler],
+        rule=rule,
+        prompt=_help_prompt_message(event, format_plugin_list(entries)),
     )
 
 
