@@ -8,14 +8,14 @@ from sqlalchemy.orm import object_session
 
 from ironsbot.integrations.seer_data.image import ElementTypeImageGetter
 from ironsbot.services.seer.render_cache import render_cache
-from ironsbot.services.seer.render_paths import UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH
+from ironsbot.services.seer.render_paths import TYPE_MATCHUP_TEMPLATE_PATH
 from ironsbot.services.seer.type_calc import calc_attack_table, calc_defense_table
 from ironsbot.utils.image import to_data_uri
 
 if TYPE_CHECKING:
     from sqlmodel import Session
 
-TEMPLATE_PATH = UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH
+TEMPLATE_PATH = TYPE_MATCHUP_TEMPLATE_PATH
 
 GRID_COLUMNS = 10
 CELL_SIZE = 72
@@ -49,10 +49,7 @@ async def _resolve_custom_target_icons(
         primary_bytes = await ElementTypeImageGetter.get_bytes(str(target.primary_id))
         return to_data_uri(primary_bytes), None
 
-    if (
-        target_icon_data_uri is not None
-        and target_icon_secondary_data_uri is not None
-    ):
+    if target_icon_data_uri is not None and target_icon_secondary_data_uri is not None:
         return target_icon_data_uri, target_icon_secondary_data_uri
 
     primary_bytes, secondary_bytes = await asyncio.gather(
