@@ -22,46 +22,6 @@ if TYPE_CHECKING:
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
 _SERIES_ORDINAL_PATTERN = re.compile(r"(?P<prefix>.+?)(?P<ordinal>\d{1,2})$")
-_MINTMARK_TYPE_SUFFIXES = (
-    "物速盾体",
-    "特速盾体",
-    "物速盾",
-    "特速盾",
-    "物速体",
-    "特速体",
-    "速盾体",
-    "速盾",
-    "速体",
-    "物攻盾体",
-    "特攻盾体",
-    "物攻盾",
-    "特攻盾",
-    "物攻体",
-    "特攻体",
-    "物盾体",
-    "特盾体",
-    "物速",
-    "特速",
-    "物攻",
-    "特攻",
-    "物体",
-    "特体",
-    "物盾",
-    "特盾",
-    "双攻",
-    "双刀",
-    "双防",
-    "盾体",
-    "双防体",
-    "攻盾",
-    "攻体",
-    "速",
-    "盾",
-    "体",
-    "物",
-    "特",
-    "攻",
-)
 _MINTMARK_TYPE_MARKERS = ("双攻", "双刀", "双防", "物", "特", "攻", "速", "盾", "体")
 _MINTMARK_TYPE_QUERY_CHARS = frozenset(("物", "特", "攻", "速", "盾", "体"))
 _ATTACK_MARK_THRESHOLD = 54
@@ -250,7 +210,7 @@ def _is_mintmark_type_query(query: str) -> bool:
     )
 
 
-def _split_series_type_by_type_marker(arg: str) -> tuple[str, str] | None:
+def _iter_series_type_splits(arg: str) -> Iterable[tuple[str, str]]:
     stripped = arg.strip()
     for index, _char in enumerate(stripped):
         prefix = stripped[:index].strip()
@@ -260,22 +220,7 @@ def _split_series_type_by_type_marker(arg: str) -> tuple[str, str] | None:
             and type_query.startswith(_MINTMARK_TYPE_MARKERS)
             and _is_mintmark_type_query(type_query)
         ):
-            return prefix, type_query
-    return None
-
-
-def _split_series_type_by_suffix(arg: str) -> tuple[str, str] | None:
-    normalized_arg = normalize_key(arg)
-    for suffix in _MINTMARK_TYPE_SUFFIXES:
-        normalized_suffix = normalize_key(suffix)
-        if normalized_arg.endswith(normalized_suffix):
-            prefix = arg[: len(arg) - len(suffix)].strip()
-            return (prefix, suffix) if prefix else None
-    return None
-
-
-def _split_series_type_arg(arg: str) -> tuple[str, str] | None:
-    return _split_series_type_by_type_marker(arg) or _split_series_type_by_suffix(arg)
+            yield prefix, type_query
 
 
 def _mintmark_type_matches(description: str, query: str) -> bool:
@@ -443,15 +388,18 @@ class MintmarkSeriesTypeResolver:
         sessions: dict[str, SQLModelSession],
         arg: str,
     ) -> Iterable[MintmarkORM]:
-        parsed = _split_series_type_arg(arg)
-        if parsed is None:
-            return ()
-
-        raw_prefix, type_query = parsed
-        class_ids = MintmarkSeriesOrdinalResolver(
+        class_ids: list[int] = []
+        type_query = ""
+        ordinal_resolver = MintmarkSeriesOrdinalResolver(
             alias_db=self.alias_db,
             data_db=self.data_db,
-        )._resolve_class_ids(sessions, raw_prefix)
+        )
+        for raw_prefix, candidate_type_query in _iter_series_type_splits(arg):
+            class_ids = ordinal_resolver._resolve_class_ids(sessions, raw_prefix)
+            if class_ids:
+                type_query = candidate_type_query
+                break
+
         if not class_ids:
             return ()
 
