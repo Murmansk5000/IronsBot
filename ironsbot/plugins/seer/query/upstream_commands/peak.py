@@ -286,6 +286,8 @@ async def handle_peak_suit(
 
 
 PEAK_RATING_NAMES = ("学徒", "猛将", "天骄", "王者", "圣皇", "宇宙圣皇")
+COSMIC_SAINT_RANK_VALUE = 4
+COSMIC_SAINT_MIN_STAR = 100
 
 
 def _format_peak_rating(data: int) -> str:
@@ -294,8 +296,11 @@ def _format_peak_rating(data: int) -> str:
         return "未知"
 
     score = data - first_digit * 100000
+    name = PEAK_RATING_NAMES[first_digit]
+    if first_digit == COSMIC_SAINT_RANK_VALUE and score >= COSMIC_SAINT_MIN_STAR:
+        name = "宇宙圣皇"
     end_str = "星" if first_digit >= RATING_STAR_THRESHOLD else "分"
-    return f"{PEAK_RATING_NAMES[first_digit]}{score}{end_str}"
+    return f"{name}{score}{end_str}"
 
 
 def _format_peak_score(score: int) -> str:
