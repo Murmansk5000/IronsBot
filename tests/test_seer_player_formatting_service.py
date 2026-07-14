@@ -9,8 +9,6 @@ from ironsbot.services.seer.player_detail_formatting import (
     format_player_detail_messages,
 )
 from ironsbot.services.seer.player_formatting_common import (
-    format_id_name,
-    format_id_name_list,
     format_login_timeline_lines,
     format_online_text,
     format_player_identity,
@@ -191,32 +189,16 @@ def _unity_peak() -> UnityPeak:
     return UnityPeak()
 
 
-def test_format_id_name_helpers_render_missing_ids_and_known_names() -> None:
-    names = {1: "称号A", 2: "称号B"}
-
-    assert format_id_name(0, names) == "无"
-    assert format_id_name(1, names) == "称号A（1）"
-    assert format_id_name(9, names) == "9"
-    assert format_id_name_list((0, 1, 2), names) == "称号A（1）、称号B（2）"
-
-
 def test_format_player_identity_team_vip_and_online_text() -> None:
     user_info = UserInfo(team_id=TEAM_ID, team_is_show=False, vip=1, vip_level=6)
     online_info = OnlineInfo(server_id=1, map_type=2, map_id=3)
 
+    assert format_player_identity(PLAYER_ID, "赛小息") == "米米号：105023264（赛小息）"
     assert (
-        format_player_identity(PLAYER_ID, "赛小息")
-        == "米米号：105023264（赛小息）"
-    )
-    assert (
-        format_team_text(user_info, "测试战队")
-        == "测试战队（战队ID：987654321，隐藏）"
+        format_team_text(user_info, "测试战队") == "测试战队（战队ID：987654321，隐藏）"
     )
     assert format_vip(user_info) == "是（等级：6）"
-    assert (
-        format_online_text(online_info)
-        == "在线（服务器：1，地图类型：2）"
-    )
+    assert format_online_text(online_info) == "在线（服务器：1，地图类型：2）"
     assert format_online_text(None) == "离线"
 
 

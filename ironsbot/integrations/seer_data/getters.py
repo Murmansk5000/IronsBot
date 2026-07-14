@@ -97,10 +97,6 @@ GemDataGetter = Getter(
 )
 
 
-def GetGemData() -> Any:
-    return Depends(GemDataGetter)
-
-
 GemCategoryDataGetter = Getter(
     GemCategoryORM,
     # IdResolver(GemCategoryORM),

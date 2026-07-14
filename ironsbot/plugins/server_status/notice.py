@@ -11,6 +11,7 @@ import httpx
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
+DEFAULT_UPDATE_WEEKDAY = 4
 DEFAULT_START_TIME = time(hour=10)
 DEFAULT_END_TIME = time(hour=15)
 HTTP_TIMEOUT_SECONDS = 12.0

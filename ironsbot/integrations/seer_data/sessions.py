@@ -9,6 +9,7 @@ from sqlmodel import Session as SQLModelSession
 from ironsbot.integrations.db_registry import db_manager
 
 _SEERAPI_DB = "seerapi"
+_ALIAS_DB = "aliases"
 
 
 def _session_factory(

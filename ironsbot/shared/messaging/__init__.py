@@ -44,7 +44,6 @@ from .replies import (
 from .senders import (
     MessageLimiter,
     OneBotMessageSender,
-    configure_sender_message_limiter,
     get_bot_or_none,
     send_broadcast_message,
     send_target_messages,
@@ -92,7 +91,6 @@ __all__ = [
     "command_reply_check",
     "command_text_matches",
     "configure_reply_delivery_policy",
-    "configure_sender_message_limiter",
     "enter_event_reply_conversation",
     "event_conversation_session_id",
     "event_sender_at_user_ids",
