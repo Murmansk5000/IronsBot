@@ -60,7 +60,7 @@ def test_fire_manual_announcement_or_share_is_not_request() -> None:
     text = "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict"
     action = AiIntentAction(
         id="manual",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -74,7 +74,7 @@ def test_fire_manual_announcement_or_share_is_not_request() -> None:
 def test_fire_manual_request_is_not_context_excluded() -> None:
     action = AiIntentAction(
         id="manual",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -115,7 +115,7 @@ def test_fire_manual_strong_request_prefilter_rejects_weak_mentions() -> None:
 def test_fire_manual_action_prefilter_is_feature_specific() -> None:
     manual_action = AiIntentAction(
         id="manual",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -143,7 +143,7 @@ def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> 
     )
     action = AiIntentAction(
         id="manual",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -178,7 +178,7 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
     called = False
     action = AiIntentAction(
         id="fire_manual_ad",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -225,7 +225,7 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
     state: dict[str, object] = {}
     action = AiIntentAction(
         id="fire_manual_ad",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
@@ -271,7 +271,7 @@ async def test_fire_manual_strong_intent_respects_ai_no(
     state: dict[str, object] = {}
     action = AiIntentAction(
         id="fire_manual_ad",
-        feature="fire_manual_ad",
+        feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",

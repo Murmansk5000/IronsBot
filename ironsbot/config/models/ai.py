@@ -13,7 +13,7 @@ from ironsbot.shared.config.parsing import (
     string_list,
 )
 from ironsbot.shared.promotions import (
-    FIRE_MANUAL_FEATURE,
+    FIRE_MANUAL_INTENT_FEATURE,
     FIRE_MANUAL_LINK_MESSAGE,
 )
 
@@ -112,6 +112,7 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
     return {
         "join_team": AiIntentAction(
             id="join_team",
+            feature="ai_intent_team_recommend",
             keywords=["战队"],
             action="team_recommend",
             intent=DEFAULT_JOIN_TEAM_INTENT,
@@ -129,7 +130,7 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
         ),
         "fire_manual_ad": AiIntentAction(
             id="fire_manual_ad",
-            feature=FIRE_MANUAL_FEATURE,
+            feature=FIRE_MANUAL_INTENT_FEATURE,
             keywords=["手册"],
             action="message",
             intent=DEFAULT_FIRE_MANUAL_INTENT,
