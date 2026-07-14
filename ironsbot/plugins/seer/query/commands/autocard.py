@@ -8,7 +8,7 @@ from nonebot.params import Depends
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.integrations.seer_data.db import SeerAPISession
+from ironsbot.integrations.seer_data.sessions import SeerAPISession
 from ironsbot.services.seer.autocard import (
     AUTOCARD_PROMPT_MAX_ITEMS,
     AUTOCARD_QUERY_PREFIXES,

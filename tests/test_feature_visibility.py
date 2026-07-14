@@ -1,6 +1,12 @@
+import os
+from pathlib import Path
+
 from pytest import MonkeyPatch
 
-from ironsbot.shared.features import visibility
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+
+from ironsbot.plugins.help import visibility
 from tests.helpers.config import StubMessageAction, stub_app_config
 from tests.helpers.onebot_events import group_message_event
 
@@ -34,12 +40,24 @@ def test_always_visible_help_is_shown() -> None:
     )
 
 
+def test_help_visibility_maps_features_to_plugin_modules() -> None:
+    assert visibility.features_for_plugin_module(
+        "ironsbot.plugins.team_audit_welcome"
+    ) == ("team_audit",)
+    assert visibility.features_for_plugin_module(
+        "ironsbot.plugins.team_resource_subscription"
+    ) == ("team_resource_subscription",)
+    assert visibility.features_for_plugin_module("ironsbot.plugins.fire_manual_ad") == (
+        "fire_manual_ad",
+    )
+
+
 def test_feature_module_visibility_uses_feature_service(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "group_has_feature",
+        "feature_visible_for_help",
         lambda _event, feature: feature == "seer",
     )
 
@@ -60,7 +78,7 @@ def test_seer_query_visible_when_any_seer_subfeature_allowed(
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "group_has_feature",
+        "feature_visible_for_help",
         lambda _event, feature: feature == "seer_pet",
     )
 
@@ -76,7 +94,7 @@ def test_rank_help_visible_when_seer_rank_allowed(
 ) -> None:
     monkeypatch.setattr(
         visibility,
-        "group_has_feature",
+        "feature_visible_for_help",
         lambda _event, feature: feature == "seer_rank",
     )
 
@@ -99,8 +117,8 @@ def test_messaging_visibility_reads_app_config(
     )
     monkeypatch.setattr(
         visibility,
-        "group_has_feature",
-        lambda _group_id, feature: feature == "text",
+        "feature_visible_for_help",
+        lambda _event, feature: feature == "text",
     )
 
     assert visibility.plugin_visible_for_event(
@@ -125,7 +143,7 @@ def test_ai_intent_visibility_requires_key_and_feature(
     )
     monkeypatch.setattr(
         visibility,
-        "group_has_feature",
+        "feature_visible_for_help",
         lambda _event, feature: feature == "ai_intent",
     )
 
@@ -156,8 +174,8 @@ def test_team_resource_visibility_reads_app_config(
     )
     monkeypatch.setattr(
         visibility,
-        "group_has_feature",
-        lambda _group_id, feature: feature == "team_resource_subscription",
+        "feature_visible_for_help",
+        lambda _event, feature: feature == "team_resource_subscription",
     )
 
     assert visibility.plugin_visible_for_event(

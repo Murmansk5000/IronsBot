@@ -10,8 +10,6 @@ DISABLED_BARE_ADMIN_COMMAND = "开服查询"
 ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
 BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 DOCKER_UPDATE_COMMANDS = ("/更新镜像", "/更新Docker", "/更新docker")
-SERVER_STATUS_PLUGIN_NAME = "server_status"
-
 __plugin_meta__ = PluginMetadata(
     name="开服查询",
     description="查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服",
@@ -40,6 +38,5 @@ __all__ = [
     "DISABLED_BARE_ADMIN_COMMAND",
     "DOCKER_UPDATE_COMMANDS",
     "NORMAL_SERVER_STATUS_COMMAND",
-    "SERVER_STATUS_PLUGIN_NAME",
     "__plugin_meta__",
 ]

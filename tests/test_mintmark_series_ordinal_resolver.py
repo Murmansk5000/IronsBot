@@ -11,7 +11,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.seer import MintmarkQueryConfig
-from ironsbot.integrations.seer_data import db, mintmark_series_resolvers
+from ironsbot.integrations.seer_data import getters, mintmark_series_resolvers
 from ironsbot.integrations.seer_data.orm import MintmarkClassAliasORM
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY
 from tests.helpers.config import stub_app_config
@@ -88,7 +88,7 @@ def test_mintmark_series_ordinal_resolves_class_alias(
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesOrdinalResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesOrdinalResolver()
     result = resolver({"seerapi": data_session, "aliases": alias_session}, "九霄05")
 
     assert [item.id for item in result] == [41290]
@@ -127,7 +127,7 @@ def test_mintmark_series_ordinal_uses_merged_connected_order(
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesOrdinalResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesOrdinalResolver()
     result = resolver({"seerapi": data_session, "aliases": alias_session}, "k1405")
 
     assert [item.id for item in result] == [45043]
@@ -158,7 +158,7 @@ def test_mintmark_series_ordinal_uses_stat_based_slots(
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesOrdinalResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesOrdinalResolver()
     sessions = {"seerapi": data_session, "aliases": alias_session}
 
     assert [item.id for item in resolver(sessions, "九霄01")] == [41286]
@@ -190,7 +190,7 @@ def test_mintmark_series_ordinal_returns_ties(
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesOrdinalResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesOrdinalResolver()
     sessions = {"seerapi": data_session, "aliases": alias_session}
 
     assert [item.id for item in resolver(sessions, "星璨灵籁01")] == [45026, 45027]
@@ -215,10 +215,10 @@ def test_mintmark_series_resolvers_use_unique_partial_class_name(
 
     sessions = {"seerapi": data_session, "aliases": alias_session}
 
-    ordinal = db.MintmarkSeriesOrdinalResolver()
+    ordinal = mintmark_series_resolvers.MintmarkSeriesOrdinalResolver()
     assert [item.id for item in ordinal(sessions, "君子01")] == [43001]
 
-    series_type = db.MintmarkSeriesTypeResolver()
+    series_type = mintmark_series_resolvers.MintmarkSeriesTypeResolver()
     assert [item.id for item in series_type(sessions, "君子速")] == [43001, 43002]
 
 
@@ -235,7 +235,7 @@ def test_mintmark_series_resolver_ignores_ambiguous_partial_class_name(
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesOrdinalResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesOrdinalResolver()
     result = resolver({"seerapi": data_session, "aliases": alias_session}, "君子01")
 
     assert list(result) == []
@@ -269,7 +269,7 @@ def test_mintmark_series_ordinal_is_used_after_mintmark_command_prefix(
     alias_session.commit()
 
     state = {BOT_COMMAND_ARG_KEY: "九霄05"}
-    result = db.MintmarkDataGetter(
+    result = getters.MintmarkDataGetter(
         {"seerapi": data_session, "aliases": alias_session},
         state[BOT_COMMAND_ARG_KEY],
     )
@@ -297,7 +297,7 @@ def test_mintmark_series_type_resolves_class_alias() -> None:
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesTypeResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesTypeResolver()
     result = resolver({"seerapi": data_session, "aliases": alias_session}, "九霄盾")
 
     assert [item.id for item in result] == [41292, 41293]
@@ -332,7 +332,7 @@ def test_mintmark_series_type_resolves_short_alias_with_connected_merge(
     data_session.commit()
     alias_session.commit()
 
-    resolver = db.MintmarkSeriesTypeResolver()
+    resolver = mintmark_series_resolvers.MintmarkSeriesTypeResolver()
     result = resolver({"seerapi": data_session, "aliases": alias_session}, "k14特攻")
 
     assert [item.id for item in result] == [45042]
@@ -348,7 +348,7 @@ def test_mintmark_series_type_getter_uses_mintmark_command_arg() -> None:
     alias_session.commit()
 
     state = {BOT_COMMAND_ARG_KEY: "九霄盾"}
-    result = db.MintmarkDataGetter(
+    result = getters.MintmarkDataGetter(
         {"seerapi": data_session, "aliases": alias_session},
         state[BOT_COMMAND_ARG_KEY],
     )

@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
-from typing import Any
-
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
     PrivateMessageEvent,
 )
+from nonebot.matcher import Matcher
+from nonebot.typing import T_State
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.accounts import (
@@ -15,7 +15,6 @@ from ironsbot.services.bilibili.accounts import (
     bili_accounts,
     resolve_account_reference,
 )
-from ironsbot.services.bilibili.permissions import is_bili_superuser
 from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
     normalize_push_mode_text,
@@ -33,7 +32,10 @@ from ironsbot.shared.messaging.push_subscription_models import (
 from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
-from ironsbot.shared.plugin_system import PluginContext
+from ironsbot.shared.permissions import (
+    can_manage_group_event,
+    is_superuser_event,
+)
 
 BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"
 BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
@@ -41,11 +43,10 @@ BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
     if isinstance(event, GroupMessageEvent):
-        role = getattr(event.sender, "role", None)
-        return role in {"owner", "admin"} or is_bili_superuser(event.user_id)
+        return can_manage_group_event(event)
 
     if isinstance(event, PrivateMessageEvent):
-        return is_bili_superuser(event.user_id)
+        return is_superuser_event(event)
 
     return False
 
@@ -84,11 +85,9 @@ def _format_account_mode_line(
 
 
 async def handle_bili_accounts_action(
+    matcher: Matcher,
     event: MessageEvent,
-    context: PluginContext,
-    fallback_matcher: Any,
 ) -> None:
-    matcher = context.matcher or fallback_matcher
     target_type, target_id = _push_mode_target(event)
     rule = target_rule(target_type, target_id)
     accounts = bili_accounts()
@@ -129,13 +128,10 @@ async def handle_bili_accounts_action(
 
 
 async def handle_bili_push_mode_action(
+    matcher: Matcher,
     event: MessageEvent,
-    context: PluginContext,
-    fallback_matcher: Any,
+    state: T_State,
 ) -> None:
-    matcher = context.matcher or fallback_matcher
-    state = context.state if context.state is not None else {}
-
     if not _is_bili_push_mode_manager(event):
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
         return

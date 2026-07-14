@@ -12,6 +12,7 @@ from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.feature import (
     FEATURE_ALIASES,
     KNOWN_FEATURES,
+    OBSOLETE_FEATURES,
     FeatureConfig,
     unique_ints,
 )
@@ -178,7 +179,14 @@ class FeatureService:
         return False
 
     def _feature_matches(self, features: Iterable[str], feature: str) -> bool:
-        normalized = {item.strip() for item in features if item.strip()}
+        if feature in OBSOLETE_FEATURES:
+            return False
+
+        normalized = {
+            item.strip()
+            for item in features
+            if item.strip() and item.strip() not in OBSOLETE_FEATURES
+        }
         if feature in normalized:
             return True
 
@@ -234,6 +242,8 @@ class FeatureService:
         for raw_feature in features:
             feature = raw_feature.strip()
             if not feature:
+                continue
+            if feature in OBSOLETE_FEATURES:
                 continue
             if feature in FEATURE_ALIASES:
                 normalized.extend(FEATURE_ALIASES[feature])

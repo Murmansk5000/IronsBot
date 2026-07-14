@@ -6,7 +6,7 @@ from nonebot_plugin_saa import MessageFactory
 from nonebot_plugin_saa.abstract_factories import FinishedException
 from seerapi_models import EquipORM, SuitORM, TitlePartORM
 
-from ironsbot.integrations.seer_data.db import (
+from ironsbot.integrations.seer_data.getters import (
     EquipDataGetter,
     GetEquipData,
     GetSuitData,

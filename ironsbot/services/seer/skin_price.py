@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from ironsbot.integrations.seer_data.db import SeerAPISession
+    from ironsbot.integrations.seer_data.sessions import SeerAPISession
 
 FASHION_TICKET_VALUE = 10
 MAX_PRICE_ROWS = 3
