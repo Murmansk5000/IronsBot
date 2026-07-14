@@ -14,7 +14,6 @@ from ..depends import SeerAPISession
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ..upstream_commands import effect as upstream_effect
 from ..upstream_commands import type as upstream_type
-from .upstream_query_common import UPSTREAM_QUERY_PLUGIN_NAME, dispatch_plugin
 
 type_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_type")
@@ -35,12 +34,10 @@ async def _handle_type(
         ...,
     ] = upstream_type.GetTypeCombinationData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await upstream_type.handle_type(
         matcher=matcher,
         state=state,
-        action="type",
+        event=event,
         session=session,
         type_combinations=type_combinations,
     )
@@ -66,11 +63,9 @@ async def _handle_battle_effect(
         ...,
     ] = upstream_effect.GetBattleEffectData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await upstream_effect.handle_battle_effect(
         matcher=matcher,
         state=state,
-        action="battle_effect",
+        event=event,
         battle_effects=battle_effects,
     )

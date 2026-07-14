@@ -1,13 +1,14 @@
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
+    PET_INFO_IMAGES_PATH,
     UPSTREAM_PEAK_PET_RANK_TEMPLATE_PATH,
     UPSTREAM_PEAK_POOL_TEMPLATE_PATH,
     UPSTREAM_PEAK_POOL_VOTE_TEMPLATE_PATH,
-    UPSTREAM_PET_INFO_IMAGES_PATH,
-    UPSTREAM_PET_INFO_TEMPLATE_PATH,
     UPSTREAM_SEER_INFO_TEMPLATES_PATH,
     UPSTREAM_SHARED_TEMPLATE_PATH,
     UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH,
@@ -18,7 +19,6 @@ TEMPLATE_PATHS = (
     UPSTREAM_PEAK_PET_RANK_TEMPLATE_PATH,
     UPSTREAM_PEAK_POOL_TEMPLATE_PATH,
     UPSTREAM_PEAK_POOL_VOTE_TEMPLATE_PATH,
-    UPSTREAM_PET_INFO_TEMPLATE_PATH,
     UPSTREAM_TYPE_MATCHUP_TEMPLATE_PATH,
 )
 
@@ -28,7 +28,6 @@ ACTIVE_RENDER_MODULES = (
     "ironsbot.services.seer.rendering.peak_pool",
     "ironsbot.services.seer.rendering.peak_pool_vote",
     "ironsbot.services.seer.rendering.type_matchup",
-    "ironsbot.services.seer.rendering.upstream_pet_info",
 )
 
 
@@ -42,10 +41,10 @@ def test_active_seer_template_paths_exist() -> None:
 
 
 def test_active_seer_pet_gender_icon_paths_exist() -> None:
-    assert UPSTREAM_PET_INFO_IMAGES_PATH.is_dir()
+    assert PET_INFO_IMAGES_PATH.is_dir()
 
     for gender_id in ("0", "1", "2"):
-        assert (UPSTREAM_PET_INFO_IMAGES_PATH / f"{gender_id}.png").is_file()
+        assert (PET_INFO_IMAGES_PATH / f"{gender_id}.png").is_file()
 
 
 def test_active_seer_render_modules_import_after_bot_bootstrap() -> None:
@@ -64,6 +63,12 @@ print("render import ok")
         check=False,
         capture_output=True,
         text=True,
+        env={
+            **os.environ,
+            "APP_CONFIG_PATH": str(
+                Path(__file__).resolve().parents[1] / "config.example.toml"
+            ),
+        },
     )
 
     assert result.returncode == 0, result.stderr

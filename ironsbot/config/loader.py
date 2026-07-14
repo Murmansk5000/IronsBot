@@ -110,6 +110,8 @@ def _load_app_config_ignoring_extra_fields(data: dict[str, Any]) -> AppConfig:
     while True:
         validation_result = _validate_app_config_or_extra_errors(data)
         if isinstance(validation_result, AppConfig):
+            validation_result.feature.warn_obsolete_policy_features()
+            validation_result.feature.warn_unregistered_policy_features()
             return validation_result
 
         removed_any = False

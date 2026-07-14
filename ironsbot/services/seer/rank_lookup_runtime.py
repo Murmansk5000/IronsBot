@@ -25,8 +25,7 @@ from ironsbot.services.seer.rank_score_lookup import (
     find_rank_by_linear_scan,
     find_rank_by_score,
 )
-from ironsbot.services.seer.rank_score_search_support import (
-    find_last_existing_score_index,
+from ironsbot.services.seer.rank_score_search import (
     score_search_probe_limit,
     score_search_tie_page_limit,
 )
@@ -128,7 +127,6 @@ async def _find_rank_by_score(  # noqa: PLR0913
         result=result,
         score_search_probe_limit=_score_search_probe_limit,
         score_search_tie_page_limit=_score_search_tie_page_limit,
-        find_last_existing_score_index=find_last_existing_score_index,
         fetch_rank_item=rank_pages.fetch_rank_item,
         fetch_rank_page=rank_pages.fetch_rank_page,
     )

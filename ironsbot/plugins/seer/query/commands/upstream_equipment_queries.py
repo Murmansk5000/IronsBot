@@ -12,11 +12,7 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ..upstream_commands import cloth as upstream_cloth
-from .upstream_query_common import (
-    UPSTREAM_QUERY_PLUGIN_NAME,
-    dispatch_plugin,
-    not_rank_query,
-)
+from .upstream_query_common import not_rank_query
 
 suit_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_equipment")
@@ -40,12 +36,10 @@ async def _handle_suit(
         ...,
     ] = upstream_cloth.GetSuitData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await upstream_cloth.handle_suit(
         matcher=matcher,
         state=state,
-        action="suit",
+        event=event,
         suits=suits,
     )
 
@@ -71,12 +65,10 @@ async def _handle_equip(
         ...,
     ] = upstream_cloth.GetEquipData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await upstream_cloth.handle_equip(
         matcher=matcher,
         state=state,
-        action="equip",
+        event=event,
         equips=equips,
     )
 
@@ -102,11 +94,9 @@ async def _handle_title(
         ...,
     ] = upstream_cloth.GetTitleData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await upstream_cloth.handle_title(
         matcher=matcher,
         state=state,
-        action="title",
+        event=event,
         titles=titles,
     )
