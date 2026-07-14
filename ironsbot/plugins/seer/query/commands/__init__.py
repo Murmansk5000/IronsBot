@@ -6,7 +6,6 @@ _COMMAND_MODULES = [
     "countermark_stat_rank",
     "player",
     "rank_list",
-    "rank_list_plugin",
     "team",
     "upstream_data_queries",
     "upstream_equipment_queries",

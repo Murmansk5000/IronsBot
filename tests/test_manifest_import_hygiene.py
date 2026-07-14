@@ -98,11 +98,6 @@ for group in ("core", "infrastructure", "feature"):
         if plugin is None:
             raise AssertionError(f"failed to load plugin: {module}")
 
-from ironsbot.shared.plugin_system import plugin_registry
-
-if "seer_rank_list" not in plugin_registry.registered_plugins():
-    raise AssertionError("seer_rank_list plugin was not registered")
-
 runtime_paths = [
     pathlib.Path("data"),
     pathlib.Path("cache"),
