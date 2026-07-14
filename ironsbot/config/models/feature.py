@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -9,6 +10,8 @@ from ironsbot.shared.config.parsing import json_object, string_list, unique_item
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+_LOGGER = logging.getLogger("ironsbot.config")
 
 KNOWN_FEATURES = frozenset(
     {
@@ -94,6 +97,10 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
     ),
 }
 
+REGISTERED_FEATURE_KEYS = (
+    KNOWN_FEATURES | frozenset(FEATURE_ALIASES) | OBSOLETE_FEATURES
+)
+
 
 def _coerce_int_mapping(value: object) -> dict[str, int]:
     parsed = json_object(value, name="feature aliases")
@@ -134,6 +141,44 @@ class FeatureConfig(BaseModel):
     def normalize_policy(cls, value: object) -> object:
         return _coerce_policy_mapping(value)
 
+    def warn_unregistered_policy_features(self) -> None:
+        warnings: list[str] = []
+        for policy_name, policy in (
+            ("feature.group_policy", self.group_policy),
+            ("feature.user_policy", self.user_policy),
+        ):
+            for target, features in policy.items():
+                for index, raw_feature in enumerate(features):
+                    feature = raw_feature.strip()
+                    if not feature or feature in REGISTERED_FEATURE_KEYS:
+                        continue
+                    warnings.append(f"{policy_name}.{target}[{index}]={feature}")
+
+        if warnings:
+            _LOGGER.warning(
+                "Unregistered feature policy key(s) detected; bot will still start "
+                "and exact custom feature keys may still work, but old or misspelled "
+                "built-in features will have no effect: "
+                + ", ".join(warnings)
+            )
+
+    def warn_obsolete_policy_features(self) -> None:
+        warnings: list[str] = []
+        for policy_name, policy in (
+            ("feature.group_policy", self.group_policy),
+            ("feature.user_policy", self.user_policy),
+        ):
+            for target, features in policy.items():
+                for index, raw_feature in enumerate(features):
+                    feature = raw_feature.strip()
+                    if feature in OBSOLETE_FEATURES:
+                        warnings.append(f"{policy_name}.{target}[{index}]={feature}")
+
+        if warnings:
+            _LOGGER.warning(
+                "Obsolete feature policy key(s) ignored: " + ", ".join(warnings)
+            )
+
 
 def unique_ints(values: Iterable[int]) -> list[int]:
     return unique_items(values)
@@ -143,6 +188,7 @@ __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
     "OBSOLETE_FEATURES",
+    "REGISTERED_FEATURE_KEYS",
     "SEER_FEATURES",
     "FeatureConfig",
     "unique_ints",

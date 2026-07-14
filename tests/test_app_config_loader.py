@@ -349,14 +349,32 @@ unknown_root = true
 superuser_bypass = false
 unknown_feature = "old value"
 
+[feature.group_aliases]
+main = 123456789
+
+[feature.group_policy]
+main = ["seer_player", "rank", "old_feature"]
+
 [ai]
 unknown_ai = "old value"
+
+[ai.intent_actions.fire_manual_ad]
+enabled = true
 
 [bilibili]
 unknown_bili_field = true
 
+[bilibili.accounts]
+seer = 1310714247
+
 [bilibili.push]
+accounts = ["seer", "old_bili"]
+modes = { old_bili = "link" }
 unknown_push_field = true
+
+[bilibili.push.groups.main]
+accounts = ["old_bili"]
+modes = { old_bili = "full" }
 
 [[message.group_commands]]
 id = "hello"
@@ -372,12 +390,25 @@ unknown_command_field = true
         config = load_app_config(config_path)
 
     assert not config.feature.superuser_bypass
+    assert config.feature.group_policy["main"] == [
+        "seer_player",
+        "rank",
+        "old_feature",
+    ]
+    assert config.bilibili.push.accounts == ["seer"]
+    assert config.bilibili.push.modes == {}
+    assert config.bilibili.push.groups["main"].accounts == []
+    assert config.bilibili.push.groups["main"].modes == {}
     assert config.message.group_commands[0].id == "hello"
     assert "unknown_root" in caplog.text
     assert "ai.unknown_ai" in caplog.text
+    assert "Ignored unknown AI intent action 'fire_manual_ad'" in caplog.text
     assert "bilibili.unknown_bili_field" in caplog.text
     assert "bilibili.push.unknown_push_field" in caplog.text
+    assert "Ignored unknown Bilibili account alias" in caplog.text
     assert "feature.unknown_feature" in caplog.text
+    assert "Obsolete feature policy key(s) ignored" in caplog.text
+    assert "old_feature" in caplog.text
     assert "message.group_commands[0].unknown_command_field" in caplog.text
 
 

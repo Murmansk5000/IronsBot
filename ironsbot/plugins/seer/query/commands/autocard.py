@@ -34,11 +34,6 @@ from ironsbot.shared.messaging import (
     send_event_reply,
 )
 from ironsbot.shared.messaging.conversations import event_conversation_session_id
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
@@ -47,7 +42,6 @@ from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
-AUTOCARD_PLUGIN_NAME = "seer_autocard"
 
 
 async def _is_not_rank_query(event: MessageEvent) -> bool:
@@ -179,129 +173,39 @@ async def _handle_autocard_prompt_reply(
     state: T_State,
     session: SeerAPISession,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=AUTOCARD_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="prompt_reply",
-        session=session,
-    )
+    key_text = event.get_plaintext().strip()
+    if key_text == "0":
+        await finish_event_reply(matcher, event, "❌ 已退出群星牌选择")
 
+    values = tuple(state.get(AUTOCARD_PROMPT_STATE_KEY) or ())
+    if not values:
+        raise FinishedException
 
-class AutocardPlugin:
-    name = AUTOCARD_PLUGIN_NAME
-    feature = "seer_autocard"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        matcher = context.matcher
-        if matcher is None:
-            return
-
-        state = context.state if context.state is not None else {}
-        session: SeerAPISession = context.data["session"]
-        if context.action == "prompt_reply":
-            await self._handle_prompt_reply(matcher, event, state, session)
-            return
-        if context.action == "query":
-            arg = str(context.data.get("arg", ""))
-            await self._handle_query(matcher, event, state, session, arg)
-
-    async def _handle_prompt_reply(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-        session: SeerAPISession,
-    ) -> None:
-        key_text = event.get_plaintext().strip()
-        if key_text == "0":
-            await finish_event_reply(matcher, event, "❌ 已退出群星牌选择")
-
-        values = tuple(state.get(AUTOCARD_PROMPT_STATE_KEY) or ())
-        if not values:
-            raise FinishedException
-
-        index = int(key_text)
-        if index < 1 or index > len(values):
-            await finish_event_reply(
-                matcher,
-                event,
-                "⚠️ 序号超出范围，已退出群星牌选择",
-            )
-
-        value = values[index - 1]
-        dataset = load_autocard_dataset(session)
-        if value.kind == "role":
-            data = find_autocard_role_by_id(dataset, value.item_id)
-        else:
-            data = find_autocard_card_by_id(dataset, value.item_id)
-
-        if data is None:
-            await finish_event_reply(
-                matcher,
-                event,
-                "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。",
-            )
-            return
-
-        await _send_autocard_reply(matcher, event, dataset, value.kind, data)
-        await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
-
-    async def _handle_query(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-        session: SeerAPISession,
-        arg: str,
-    ) -> None:
-        _invalidate_autocard_prompt(event)
-
-        query = extract_autocard_query_arg(arg)
-        if is_autocard_help_query(query):
-            await finish_event_reply(matcher, event, format_autocard_public_info())
-
-        try:
-            dataset = load_autocard_dataset(session)
-        except Exception as e:  # noqa: BLE001
-            await finish_event_reply(
-                matcher,
-                event,
-                f"❌ 群星牌公开配置获取失败：{e}",
-            )
-            return
-
-        matches = search_autocard_items(dataset, query)
-        if not matches:
-            raise FinishedException
-
-        if len(matches) == 1:
-            kind, item = matches[0]
-            await _finish_autocard_reply(matcher, event, dataset, kind, item)
-
-        if len(matches) > AUTOCARD_PROMPT_MAX_ITEMS:
-            message = (
-                f"❌ 群星牌匹配超过 {AUTOCARD_PROMPT_MAX_ITEMS} 个，"
-                "请换更精确的关键词。"
-            )
-            await finish_event_reply(
-                matcher,
-                event,
-                message,
-            )
-
-        await _enter_autocard_prompt(
+    index = int(key_text)
+    if index < 1 or index > len(values):
+        await finish_event_reply(
             matcher,
             event,
-            state,
-            build_autocard_prompt_values(matches),
-            prompt=build_autocard_prompt_text(dataset, matches),
+            "⚠️ 序号超出范围，已退出群星牌选择",
         )
 
+    value = values[index - 1]
+    dataset = load_autocard_dataset(session)
+    if value.kind == "role":
+        data = find_autocard_role_by_id(dataset, value.item_id)
+    else:
+        data = find_autocard_card_by_id(dataset, value.item_id)
 
-register_plugin(AutocardPlugin())
+    if data is None:
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。",
+        )
+        return
+
+    await _send_autocard_reply(matcher, event, dataset, value.kind, data)
+    await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
 
 
 @autocard_matcher.handle()
@@ -312,12 +216,45 @@ async def handle_autocard_query(
     session: SeerAPISession,
     arg: str = Depends(parse_string_arg),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=AUTOCARD_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="query",
-        session=session,
-        arg=arg,
+    _invalidate_autocard_prompt(event)
+
+    query = extract_autocard_query_arg(arg)
+    if is_autocard_help_query(query):
+        await finish_event_reply(matcher, event, format_autocard_public_info())
+
+    try:
+        dataset = load_autocard_dataset(session)
+    except Exception as e:  # noqa: BLE001
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 群星牌公开配置获取失败：{e}",
+        )
+        return
+
+    matches = search_autocard_items(dataset, query)
+    if not matches:
+        raise FinishedException
+
+    if len(matches) == 1:
+        kind, item = matches[0]
+        await _finish_autocard_reply(matcher, event, dataset, kind, item)
+
+    if len(matches) > AUTOCARD_PROMPT_MAX_ITEMS:
+        message = (
+            f"❌ 群星牌匹配超过 {AUTOCARD_PROMPT_MAX_ITEMS} 个，"
+            "请换更精确的关键词。"
+        )
+        await finish_event_reply(
+            matcher,
+            event,
+            message,
+        )
+
+    await _enter_autocard_prompt(
+        matcher,
+        event,
+        state,
+        build_autocard_prompt_values(matches),
+        prompt=build_autocard_prompt_text(dataset, matches),
     )

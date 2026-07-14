@@ -19,24 +19,6 @@ from ironsbot.services.seer.rank_page_cache_policy import (
 )
 
 
-def get_cached_rank_page(
-    *,
-    key: int,
-    sub_key: int,
-    start: int,
-    end: int,
-    allow_stale: bool | None = None,
-) -> list[CachedRankItem] | None:
-    page = get_cached_rank_page_result(
-        key=key,
-        sub_key=sub_key,
-        start=start,
-        end=end,
-        allow_stale=allow_stale,
-    )
-    return None if page is None else page.items
-
-
 def get_cached_rank_page_result(
     *,
     key: int,

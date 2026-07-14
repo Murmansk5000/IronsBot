@@ -19,17 +19,18 @@ from ironsbot.services.seer.rank_list_parsing import (
     with_admin_prefix,
 )
 from ironsbot.services.seer.rank_usage import RANK_HELP_DETAIL_COMMANDS
-from ironsbot.shared.plugin_system import (
-    dispatch_plugin,
-)
 from ironsbot.utils.rule import no_reply
 
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from . import (
+    rank_list_cache_handlers,
+    rank_list_display_handlers,
+    rank_list_query_handlers,
+)
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
     RANK_LIST_COMMAND_KEY,
-    RANK_LIST_PLUGIN_NAME,
     RANK_PAGE_CACHE_REFRESH_COMMAND_KEY,
     RANK_PAGE_CACHE_STATUS_COMMAND_KEY,
     RANK_SCORE_COMMAND_KEY,
@@ -165,12 +166,7 @@ rank_display_limit_matcher = matcher_group.on_message(
 
 @rank_help_matcher.handle()
 async def handle_rank_help(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="help",
-    )
+    await rank_list_query_handlers.handle_help(matcher, event)
 
 
 @rank_list_matcher.handle()
@@ -179,13 +175,7 @@ async def handle_rank_list(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="list",
-    )
+    await rank_list_query_handlers.handle_list(matcher, event, state)
 
 
 @rank_score_matcher.handle()
@@ -194,13 +184,7 @@ async def handle_rank_score(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="score",
-    )
+    await rank_list_query_handlers.handle_score(matcher, event, state)
 
 
 @rank_cache_batch_matcher.handle()
@@ -209,13 +193,7 @@ async def handle_rank_cache_batch(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="cache_batch",
-    )
+    await rank_list_cache_handlers.handle_cache_batch(matcher, event, state)
 
 
 @rank_page_cache_status_matcher.handle()
@@ -224,13 +202,7 @@ async def handle_rank_page_cache_status(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="page_cache_status",
-    )
+    await rank_list_cache_handlers.handle_page_cache_status(matcher, event, state)
 
 
 @rank_page_cache_overview_matcher.handle()
@@ -238,12 +210,7 @@ async def handle_rank_page_cache_overview(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="page_cache_overview",
-    )
+    await rank_list_cache_handlers.handle_page_cache_overview(matcher, event)
 
 
 @rank_page_cache_refresh_matcher.handle()
@@ -252,13 +219,7 @@ async def handle_rank_page_cache_refresh(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="page_cache_refresh",
-    )
+    await rank_list_cache_handlers.handle_page_cache_refresh(matcher, event, state)
 
 
 @rank_cache_status_matcher.handle()
@@ -266,12 +227,7 @@ async def handle_rank_cache_status(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="cache_status",
-    )
+    await rank_list_cache_handlers.handle_cache_status(matcher, event)
 
 
 @rank_cache_refresh_matcher.handle()
@@ -280,13 +236,7 @@ async def handle_rank_cache_refresh(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="cache_refresh",
-    )
+    await rank_list_cache_handlers.handle_cache_refresh(matcher, event, state)
 
 
 @rank_display_limit_matcher.handle()
@@ -295,10 +245,4 @@ async def handle_rank_display_limit(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=RANK_LIST_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="display_limit",
-    )
+    await rank_list_display_handlers.handle_display_limit(matcher, event, state)

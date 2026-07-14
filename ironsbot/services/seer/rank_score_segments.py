@@ -1,15 +1,38 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
-from ironsbot.services.seer.rank_score_search_support import (
-    RankScoreSegmentDependencies,
-    RankSearchBudgetExhaustedError,
+from ironsbot.services.seer.rank_score_search import (
+    DescendingScoreSearchLimits,
+    locate_descending_score_range,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from ironsbot.services.seer.rank_models import RankPageResult, RankScoreMissProof
+
+
+@dataclass(frozen=True, slots=True)
+class RankScoreSegmentDependencies:
+    score_search_limit: Callable[[int | None], int]
+    rank_page_size: Callable[[], int]
+    rank_page_start: Callable[[int], int]
+    cached_score_miss_boundary: Callable[..., RankScoreMissProof | None]
+    cached_score_candidate_page_starts: Callable[..., list[int]]
+    fetch_cached_candidates: Callable[..., Awaitable[RankScoreSearchResult | None]]
+    score_search_probe_limit: Callable[[int], int]
+    score_search_tie_page_limit: Callable[[], int]
+    fetch_rank_item: Callable[..., Awaitable[Any | None]]
+    fetch_rank_page_result: Callable[..., Awaitable[RankPageResult]]
+    score_miss_proof_from_page: Callable[..., RankScoreMissProof | None]
 
 
 async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
@@ -64,7 +87,7 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
     result.lower_gap = proof.lower_gap
 
 
-async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
+async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0913, PLR0915
     game: Any,
     *,
     key: int,
@@ -126,19 +149,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
     if cached_result is not None:
         return cached_result
 
-    remaining_probes = deps.score_search_probe_limit(limit)
-    item_cache: dict[int, Any | None] = {}
-
-    async def item_at(index: int) -> Any | None:
-        nonlocal remaining_probes
-
-        if index in item_cache:
-            return item_cache[index]
-
-        if remaining_probes <= 0:
-            raise RankSearchBudgetExhaustedError
-
-        remaining_probes -= 1
+    async def fetch_score(index: int) -> int | None:
         item = await deps.fetch_rank_item(
             game,
             key=key,
@@ -146,85 +157,42 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
             index=index,
             use_cache=False,
         )
-        item_cache[index] = item
-        return item
-
-    async def score_at(index: int) -> int | None:
-        item = await item_at(index)
         return None if item is None else int(item.score)
 
-    try:
-        last_index, boundary_score = await deps.find_last_existing_score_index(
-            start_index,
-            end_index,
-            score_at,
-        )
-    except RankSearchBudgetExhaustedError:
+    score_range = await locate_descending_score_range(
+        start_index,
+        end_index,
+        target_score,
+        fetch_score,
+        limits=DescendingScoreSearchLimits(
+            probe_count=deps.score_search_probe_limit(limit),
+            tie_fallback_size=page_size * deps.score_search_tie_page_limit(),
+        ),
+    )
+    result.boundary_score = score_range.boundary_score
+    if score_range.last_index is None:
         return result
 
-    result.boundary_score = boundary_score
-    if last_index is None:
-        return result
-
-    end_index = last_index + 1
+    end_index = score_range.last_index + 1
     result.searched_limit = min(result.searched_limit, end_index - start_index)
-    if boundary_score is None or target_score < boundary_score:
-        return result
-
-    low = start_index
-    high = end_index
-    try:
-        while low < high:
-            mid = (low + high) // 2
-            score = await score_at(mid)
-            if score is None or score <= target_score:
-                high = mid
-            else:
-                low = mid + 1
-    except RankSearchBudgetExhaustedError:
-        return result
-
-    first_same_or_lower = low
-    if first_same_or_lower >= end_index:
-        return result
-
-    try:
-        first_score = await score_at(first_same_or_lower)
-    except RankSearchBudgetExhaustedError:
-        return result
-    if first_score != target_score:
+    if score_range.match_start is None or score_range.match_end is None:
+        if score_range.insertion_index is None or score_range.budget_exhausted:
+            return result
         await _populate_score_miss_proof_from_online_page(
             game,
             key=key,
             sub_key=sub_key,
             target_score=target_score,
-            gap_index=first_same_or_lower,
+            gap_index=score_range.insertion_index,
             rank_offset=rank_offset,
             result=result,
             deps=deps,
         )
         return result
 
-    low = first_same_or_lower
-    high = end_index
-    tie_end = end_index
-    try:
-        while low < high:
-            mid = (low + high) // 2
-            score = await score_at(mid)
-            if score is None or score < target_score:
-                high = mid
-            else:
-                low = mid + 1
-        tie_end = low
-    except RankSearchBudgetExhaustedError:
-        tie_end = min(
-            end_index,
-            first_same_or_lower + page_size * deps.score_search_tie_page_limit(),
-        )
-        result.truncated = True
-
-    tie_end = min(tie_end, end_index)
+    first_same_or_lower = score_range.match_start
+    tie_end = score_range.match_end
+    result.truncated = score_range.truncated
     result.start_rank = first_same_or_lower + 1 + rank_offset
     result.end_rank = tie_end + rank_offset
     result.total_count = max(0, tie_end - first_same_or_lower)
