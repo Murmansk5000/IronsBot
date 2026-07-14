@@ -7,12 +7,12 @@ _COMMAND_MODULES = [
     "data_queries",
     "equipment_queries",
     "mintmark_queries",
+    "peak_queries",
     "pet_queries",
     "player",
     "rank_list",
     "team",
     "type_queries",
-    "upstream_peak_queries",
 ]
 
 for _module in _COMMAND_MODULES:

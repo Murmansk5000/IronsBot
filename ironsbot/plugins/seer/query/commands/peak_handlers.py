@@ -1,11 +1,11 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 from collections.abc import Iterable
 from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, NamedTuple, TypedDict
 
 from nonebot.matcher import Matcher
-from nonebot.params import Depends, Fullmatch
+from nonebot.params import Fullmatch
 from nonebot_plugin_saa import Image, MessageFactory
 from seerapi_models import (
     PeakExpertPoolORM,
@@ -34,10 +34,8 @@ from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
 from ironsbot.utils import time
-from ironsbot.utils.rule import no_reply
 
-from ..depends import GameClient, PetDataGetter, SeerAPISession
-from ..upstream_noop_group import matcher_group
+from ..depends import PetDataGetter, SeerAPISession
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
@@ -46,7 +44,6 @@ if TYPE_CHECKING:
 
 LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
-RATING_STAR_THRESHOLD = 4
 
 
 class UnknownPeakCommandError(ValueError):
@@ -54,12 +51,7 @@ class UnknownPeakCommandError(ValueError):
         super().__init__(f"无法从命令 {command} 中获取巅峰类型")
 
 
-peak_pool_matcher = matcher_group.on_fullmatch(
-    ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"), rule=no_reply()
-)
-
-
-async def _get_standard_limit_pool(
+async def get_standard_limit_pool(
     session: SeerAPISession, matcher: Matcher
 ) -> list[PeakPoolORM]:
     statement = select(PeakPoolORM)
@@ -71,7 +63,7 @@ async def _get_standard_limit_pool(
     return list(pools)
 
 
-async def _get_expert_ban_pool(
+async def get_expert_ban_pool(
     session: SeerAPISession, matcher: Matcher
 ) -> list[PeakExpertPoolORM]:
     statement = select(PeakExpertPoolORM)
@@ -83,10 +75,9 @@ async def _get_expert_ban_pool(
     return list(pools)
 
 
-@peak_pool_matcher.handle()
 async def handle_peak_pool(
     matcher: Matcher,
-    pools: list[PeakPoolORM] = Depends(_get_standard_limit_pool),
+    pools: list[PeakPoolORM],
 ) -> None:
     await matcher.send("正在生成图片...")
     start_time = pools[0].start_time.strftime("%Y-%m-%d")
@@ -97,15 +88,9 @@ async def handle_peak_pool(
     await msg.finish(at_sender=False)
 
 
-peak_expert_pool_matcher = matcher_group.on_fullmatch(
-    ("专家池", "巅峰专家池", "专家禁用池"), rule=no_reply()
-)
-
-
-@peak_expert_pool_matcher.handle()
 async def handle_peak_expert_pool(
     matcher: Matcher,
-    pools: list[PeakExpertPoolORM] = Depends(_get_expert_ban_pool),
+    pools: list[PeakExpertPoolORM],
 ) -> None:
     await matcher.send("正在生成图片...")
     start_time = pools[0].start_time.strftime("%Y-%m-%d")
@@ -114,11 +99,6 @@ async def handle_peak_expert_pool(
     msg = MessageFactory()
     msg += Image(pic_bytes)
     await msg.finish(at_sender=False)
-
-
-peak_vote_matcher = matcher_group.on_fullmatch(
-    ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"), rule=no_reply()
-)
 
 
 class _VoteRank(TypedDict):
@@ -142,11 +122,10 @@ def sort_peak_pool_vote_by_time(
     return sorted(pool_list, key=time_distance)
 
 
-@peak_vote_matcher.handle()
 async def handle_peak_vote(
     matcher: Matcher,
     session: SeerAPISession,
-    game: SeerGame = GameClient,
+    game: SeerGame,
 ) -> None:
     pools: list[_VoteRank] = []
     now = time.now(tz=time.TZ_CN)
@@ -236,12 +215,12 @@ class _Rank:
         )
 
 
-class _PeakTypeTuple(NamedTuple):
+class PeakTypeSelection(NamedTuple):
     name: str
     peak_type: PeakType
 
 
-def _get_peak_type(command: Annotated[str, Fullmatch()]) -> _PeakTypeTuple:
+def get_peak_type(command: Annotated[str, Fullmatch()]) -> PeakTypeSelection:
     if "专家" in command:
         peak_type = PeakType.EXPERT
     elif "狂野" in command:
@@ -251,26 +230,20 @@ def _get_peak_type(command: Annotated[str, Fullmatch()]) -> _PeakTypeTuple:
     else:
         raise UnknownPeakCommandError(command)
 
-    return _PeakTypeTuple(name=PEAK_TYPE_NAME_MAP[peak_type], peak_type=peak_type)
+    return PeakTypeSelection(name=PEAK_TYPE_NAME_MAP[peak_type], peak_type=peak_type)
 
 
-peak_suit_matcher = matcher_group.on_fullmatch(
-    ("竞技套装榜", "狂野套装榜", "专家套装榜"), rule=no_reply()
-)
-
-
-@peak_suit_matcher.handle()
 async def handle_peak_suit(
     matcher: Matcher,
     seerapi_session: SeerAPISession,
     sessions: AllSessions,
-    type_tuple: _PeakTypeTuple = Depends(_get_peak_type),
-    game: SeerGame = GameClient,
+    type_selection: PeakTypeSelection,
+    game: SeerGame,
 ) -> None:
     if not (season := seerapi_session.get(PeakSeasonORM, 1)):
         await matcher.finish("❌找不到赛季数据（这是一个bug，请反馈给开发者）。")
 
-    name, peak_type = type_tuple
+    name, peak_type = type_selection
     rank = await game.get_peak_suit_rank(
         sub_key=_datetime_to_sub_key(season.start_time), peak_type=peak_type
     )
@@ -280,50 +253,20 @@ async def handle_peak_suit(
 
     rank = _Rank.from_peak_item_data(rank, getter=SuitDataGetter, sessions=sessions)
     timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
-    await matcher.finish(
-        f"{name}套装榜（截至{timestamp}）\n{rank}"
-    )
+    await matcher.finish(f"{name}套装榜（截至{timestamp}）\n{rank}")
 
 
-PEAK_RATING_NAMES = ("学徒", "猛将", "天骄", "王者", "圣皇", "宇宙圣皇")
-COSMIC_SAINT_RANK_VALUE = 4
-COSMIC_SAINT_MIN_STAR = 100
-
-
-def _format_peak_rating(data: int) -> str:
-    first_digit = int(data / (10 ** (len(str(int(data))) - 1)))
-    if first_digit >= len(PEAK_RATING_NAMES):
-        return "未知"
-
-    score = data - first_digit * 100000
-    name = PEAK_RATING_NAMES[first_digit]
-    if first_digit == COSMIC_SAINT_RANK_VALUE and score >= COSMIC_SAINT_MIN_STAR:
-        name = "宇宙圣皇"
-    end_str = "星" if first_digit >= RATING_STAR_THRESHOLD else "分"
-    return f"{name}{score}{end_str}"
-
-
-def _format_peak_score(score: int) -> str:
-    return f"{score}分"
-
-
-title_matcher = matcher_group.on_fullmatch(
-    ("竞技称号榜", "狂野称号榜", "专家称号榜"), rule=no_reply()
-)
-
-
-@title_matcher.handle()
 async def handle_title(
     matcher: Matcher,
     seerapi_session: SeerAPISession,
     sessions: AllSessions,
-    type_tuple: _PeakTypeTuple = Depends(_get_peak_type),
-    game: SeerGame = GameClient,
+    type_selection: PeakTypeSelection,
+    game: SeerGame,
 ) -> None:
     if not (season := seerapi_session.get(PeakSeasonORM, 1)):
         await matcher.finish("❌找不到赛季数据（这是一个bug，请反馈给开发者）。")
 
-    name, peak_type = type_tuple
+    name, peak_type = type_selection
     rank = await game.get_peak_title_rank(
         sub_key=_datetime_to_sub_key(season.start_time), peak_type=peak_type
     )
@@ -333,37 +276,21 @@ async def handle_title(
 
     rank = _Rank.from_peak_item_data(rank, getter=TitleDataGetter, sessions=sessions)
     timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
-    await matcher.finish(
-        f"{name}称号榜（截至{timestamp}）\n{rank}"
-    )
+    await matcher.finish(f"{name}称号榜（截至{timestamp}）\n{rank}")
 
 
-peak_pet_matcher = matcher_group.on_fullmatch(
-    (
-        "竞技精灵月榜",
-        "狂野精灵月榜",
-        "专家精灵月榜",
-        "竞技精灵总榜",
-        "狂野精灵总榜",
-        "专家精灵总榜",
-    ),
-    rule=no_reply(),
-)
-
-
-@peak_pet_matcher.handle()
 async def handle_peak_pet(  # noqa: PLR0913
     matcher: Matcher,
     seerapi_session: SeerAPISession,
     command: Annotated[str, Fullmatch()],
-    type_tuple: _PeakTypeTuple = Depends(_get_peak_type),
-    expert_pools: list[PeakExpertPoolORM] = Depends(_get_expert_ban_pool),
-    game: SeerGame = GameClient,
+    type_selection: PeakTypeSelection,
+    expert_pools: list[PeakExpertPoolORM],
+    game: SeerGame,
 ) -> None:
     if not (season := seerapi_session.get(PeakSeasonORM, 1)):
         await matcher.finish("❌找不到赛季数据（这是一个bug，请反馈给开发者）。")
 
-    name, peak_type = type_tuple
+    name, peak_type = type_selection
 
     if "月" in command:
         category = "月"
