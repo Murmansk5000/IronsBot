@@ -12,14 +12,14 @@ from ironsbot.config.models.ai import (
     resolve_configured_actions,
 )
 from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.shared.command_text import (
+    command_text_matches,
+    normalize_command_text,
+)
 from ironsbot.shared.features import (
     group_has_feature,
     is_group_feature_allowed,
     is_private_feature_allowed,
-)
-from ironsbot.shared.messaging.text import (
-    command_text_matches,
-    normalize_command_text,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_INTENT_FEATURE
 

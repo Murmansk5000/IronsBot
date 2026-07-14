@@ -7,6 +7,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.shared.command_text import command_text_matches
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
@@ -15,7 +16,6 @@ from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
 )
-from ironsbot.shared.messaging.text import command_text_matches
 from ironsbot.utils.rule import no_reply
 
 from .config import get_meeting_config

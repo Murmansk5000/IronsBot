@@ -19,7 +19,7 @@ from ironsbot.services.seer.rank_list_models import (
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
-from ironsbot.shared.messaging.text import strip_command_prefix
+from ironsbot.shared.command_text import normalize_command_text, strip_command_prefix
 
 __all__ = [
     "parse_rank_cache_batch_command",
@@ -41,7 +41,7 @@ def parse_rank_list_command(
     default_limit: int = RANK_LIST_SIZE,
     max_limit: int = RANK_LIST_MAX_SIZE,
 ) -> RankListCommand | None:
-    command = _normalize_command_text(text)
+    command = normalize_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
@@ -65,7 +65,7 @@ def parse_rank_list_command(
 
 
 def parse_rank_score_command(text: str) -> RankScoreCommand | None:
-    command = _normalize_command_text(text)
+    command = normalize_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
@@ -95,7 +95,7 @@ def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
     if stripped is None:
         return None
 
-    command = _normalize_command_text(stripped)
+    command = normalize_command_text(stripped)
     normalized_prefix = _matching_normalized_prefix(command, BATCH_CACHE_PREFIXES)
     if normalized_prefix is None:
         return None
@@ -132,7 +132,7 @@ def parse_rank_page_cache_status_command(
     if stripped is None:
         return None
 
-    command = _normalize_command_text(stripped)
+    command = normalize_command_text(stripped)
     normalized_prefix = _matching_normalized_prefix(
         command,
         RANK_PAGE_CACHE_STATUS_PREFIXES,
@@ -155,7 +155,7 @@ def parse_rank_page_cache_refresh_command(
     if stripped is None:
         return None
 
-    command = _normalize_command_text(stripped)
+    command = normalize_command_text(stripped)
     normalized_prefix = _matching_normalized_prefix(
         command,
         RANK_PAGE_CACHE_REFRESH_PREFIXES,
@@ -277,10 +277,6 @@ def _build_command_map() -> dict[str, tuple[str, str]]:
     return commands
 
 
-def _normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
 def _match_rank_list_command(command: str) -> tuple[str, str, str] | None:
     for prefix, value in sorted(
         _NORMALIZED_COMMANDS.items(),
@@ -335,7 +331,7 @@ def _matching_normalized_prefix(
         (
             normalized_prefix
             for prefix in prefixes
-            if command.startswith(normalized_prefix := _normalize_command_text(prefix))
+            if command.startswith(normalized_prefix := normalize_command_text(prefix))
         ),
         None,
     )
@@ -343,5 +339,5 @@ def _matching_normalized_prefix(
 
 _COMMANDS = _build_command_map()
 _NORMALIZED_COMMANDS = {
-    _normalize_command_text(command): value for command, value in _COMMANDS.items()
+    normalize_command_text(command): value for command, value in _COMMANDS.items()
 }

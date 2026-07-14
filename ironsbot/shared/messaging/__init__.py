@@ -57,17 +57,12 @@ from .targets import (
     private_targets,
 )
 from .text import (
-    DEFAULT_COMMAND_PREFIXES,
     build_message,
-    command_text_matches,
-    normalize_command_text,
     render_text,
-    strip_command_prefix,
 )
 
 __all__ = [
     "ADMIN_NOTICE_FEATURE",
-    "DEFAULT_COMMAND_PREFIXES",
     "DEFAULT_SELECTION_FOOTER",
     "HELP_SELECTION_FOOTER",
     "TOGGLE_SELECTION_FOOTER",
@@ -89,7 +84,6 @@ __all__ = [
     "broadcast_targets",
     "build_message",
     "command_reply_check",
-    "command_text_matches",
     "configure_reply_delivery_policy",
     "enter_event_reply_conversation",
     "event_conversation_session_id",
@@ -102,7 +96,6 @@ __all__ = [
     "get_first_onebot_bot",
     "group_targets",
     "message_event_target",
-    "normalize_command_text",
     "peek_user_rate_limit",
     "penalize_user_rate_limit",
     "private_targets",
@@ -113,5 +106,4 @@ __all__ = [
     "send_event_reply",
     "send_matcher_message",
     "send_target_messages",
-    "strip_command_prefix",
 ]

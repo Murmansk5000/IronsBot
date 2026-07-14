@@ -8,8 +8,8 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
+from ironsbot.shared.command_text import command_text_matches, strip_command_prefix
 from ironsbot.shared.features import is_event_feature_allowed
-from ironsbot.shared.messaging.text import command_text_matches, strip_command_prefix
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
