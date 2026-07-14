@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from typing import TYPE_CHECKING
 
 from nonebot import logger
+from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
+from nonebot.matcher import Matcher  # noqa: TC002
+from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -38,11 +40,6 @@ from ironsbot.shared.messaging import (
 from ironsbot.shared.messaging.conversations import command_reply_check
 
 from .player_context import PLAYER_DETAIL_NAMESPACE, PLAYER_ID_KEY
-
-if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
 
 
 async def handle_player_detail_reply(

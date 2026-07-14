@@ -9,8 +9,8 @@ from nonebot.log import logger
 from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
+from ironsbot.shared.runtime.jobs import JobRegistry
 from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
-from ironsbot.shared.scheduler import JobRegistry
 
 _db_sync_runtime_state = {"registered": False}
 _startup_sync_state: dict[str, str | None] = {"notice": None}

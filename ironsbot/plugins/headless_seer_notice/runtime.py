@@ -10,7 +10,7 @@ from nonebot.log import logger
 from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.features import get_superuser_ids
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
-from ironsbot.shared.scheduler import JobRegistry
+from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .config import INVALID_RECONNECT_TIME_ERROR, get_headless_notice_config
 from .state import mark_headless_available, mark_headless_unavailable

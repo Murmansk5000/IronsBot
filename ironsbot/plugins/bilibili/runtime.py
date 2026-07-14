@@ -8,7 +8,7 @@ from nonebot import get_driver, require
 from nonebot.log import logger
 
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
-from ironsbot.shared.scheduler import JobRegistry
+from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .service import run_check_logic
 

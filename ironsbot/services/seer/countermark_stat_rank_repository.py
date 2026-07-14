@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.seer_data.db import SeerAPISession
+    from ironsbot.integrations.seer_data.sessions import SeerAPISession
 
 MINTMARK_QUALITY_QUERY = text("SELECT mintmark_id, quality FROM mintmark_quality")
 MISSING_MINTMARK_QUALITY_MESSAGE = (
