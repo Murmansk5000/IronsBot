@@ -20,7 +20,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.seer.query.upstream_commands import mintmark
+from ironsbot.plugins.seer.query.commands import mintmark_handlers
 
 
 class FakeMintmark:
@@ -37,7 +37,7 @@ def test_deduplicate_and_filter_hides_connected_when_merge_enabled(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        mintmark,
+        mintmark_handlers,
         "get_mintmark_query_config",
         lambda: MintmarkQueryConfig(merge_connected=True),
     )
@@ -47,7 +47,7 @@ def test_deduplicate_and_filter_hides_connected_when_merge_enabled(
         cast("MintmarkORM", FakeMintmark(1)),
     ]
 
-    result = mintmark._deduplicate_and_filter(items)
+    result = mintmark_handlers._deduplicate_and_filter(items)
 
     assert [item.id for item in result] == [1]
 
@@ -56,7 +56,7 @@ def test_deduplicate_and_filter_keeps_connected_when_merge_disabled(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        mintmark,
+        mintmark_handlers,
         "get_mintmark_query_config",
         lambda: MintmarkQueryConfig(merge_connected=False),
     )
@@ -66,6 +66,6 @@ def test_deduplicate_and_filter_keeps_connected_when_merge_disabled(
         cast("MintmarkORM", FakeMintmark(1)),
     ]
 
-    result = mintmark._deduplicate_and_filter(items)
+    result = mintmark_handlers._deduplicate_and_filter(items)
 
     assert [item.id for item in result] == [1, 2]

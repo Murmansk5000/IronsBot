@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: TC002
-"""Upstream mintmark query matchers."""
+"""Mintmark and gem query matchers."""
 
 from __future__ import annotations
 
@@ -8,17 +8,16 @@ from nonebot.adapters import Event
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
+from seerapi_models import GemCategoryORM, MintmarkClassCategoryORM, MintmarkORM
 
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
+from ..depends import GetGemCategoryData, GetMintmarkClassData, GetMintmarkData
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from ..upstream_commands import mintmark as upstream_mintmark
-from .upstream_query_common import (
-    UPSTREAM_QUERY_PLUGIN_NAME,
-    dispatch_plugin,
-    not_rank_query,
-)
+from . import mintmark_handlers
+from .query_rules import not_rank_query
+from .upstream_help import finish_query_help
 
 mintmark_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_mintmark")
@@ -36,21 +35,21 @@ async def _handle_mintmark(  # noqa: PLR0913
     event: Event,
     arg: str = Depends(parse_string_arg),
     mintmarks: tuple[
-        upstream_mintmark.MintmarkORM,
+        MintmarkORM,
         ...,
-    ] = upstream_mintmark.GetMintmarkData(),
+    ] = GetMintmarkData(),
     classes: tuple[
-        upstream_mintmark.MintmarkClassCategoryORM,
+        MintmarkClassCategoryORM,
         ...,
-    ] = upstream_mintmark.GetMintmarkClassData(),
+    ] = GetMintmarkClassData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    if not arg.strip():
+        await finish_query_help(matcher, event, "mintmark")
+
+    await mintmark_handlers.handle_mintmark(
         matcher=matcher,
         state=state,
-        action="mintmark",
-        arg=arg,
+        event=event,
         mintmarks=mintmarks,
         classes=classes,
     )
@@ -70,16 +69,16 @@ async def _handle_gem(
     event: Event,
     arg: str = Depends(parse_string_arg),
     categories: tuple[
-        upstream_mintmark.GemCategoryORM,
+        GemCategoryORM,
         ...,
-    ] = upstream_mintmark.GetGemCategoryData(),
+    ] = GetGemCategoryData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    if not arg.strip():
+        await finish_query_help(matcher, event, "gem")
+
+    await mintmark_handlers.handle_gem(
         matcher=matcher,
         state=state,
-        action="gem",
-        arg=arg,
+        event=event,
         categories=categories,
     )
