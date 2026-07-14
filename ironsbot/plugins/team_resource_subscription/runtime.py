@@ -7,7 +7,7 @@ from nonebot import get_bots, get_driver, require
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.shared.scheduler import JobRegistry
+from ironsbot.shared.runtime.jobs import JobRegistry
 
 from . import scan_team_resource_subscriptions
 from .config import get_team_resource_config

@@ -26,11 +26,6 @@ from ironsbot.shared.features import group_has_feature, is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_message_sequence
 from ironsbot.shared.messaging.text import build_message, command_text_matches
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import no_reply
 
 from .config import (
@@ -40,7 +35,7 @@ from .config import (
     subscriptions_for_group,
 )
 
-TEAM_RESOURCE_PLUGIN_NAME = "team_resource_subscription"
+TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 
 __plugin_meta__ = PluginMetadata(
     name="战队资源订阅",
@@ -126,7 +121,7 @@ async def _is_team_resource_query(event: MessageEvent) -> bool:
     if not is_group_feature_allowed(
         event.user_id,
         event.group_id,
-        TEAM_RESOURCE_PLUGIN_NAME,
+        TEAM_RESOURCE_FEATURE,
     ):
         return False
 
@@ -189,48 +184,29 @@ async def scan_team_resource_subscriptions(bot: Bot) -> None:
                 f"invalid group {subscription.group!r}"
             )
             continue
-        if group_has_feature(group_id, TEAM_RESOURCE_PLUGIN_NAME):
+        if group_has_feature(group_id, TEAM_RESOURCE_FEATURE):
             await _scan_subscription(bot, group_id, subscription)
 
 
-class TeamResourcePlugin:
-    name = TEAM_RESOURCE_PLUGIN_NAME
-    feature = TEAM_RESOURCE_PLUGIN_NAME
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        if not isinstance(event, GroupMessageEvent):
-            return
-
-        matcher = context.matcher or team_resource_matcher
-        team_ids = _team_ids_for_manual_query(subscriptions_for_group(event.group_id))
-        replies: list[Message] = []
-        for team_id in team_ids:
-            result = await _fetch_team_result_for_manual(team_id)
-            replies.append(
-                Message(result.message)
-                if isinstance(result, TeamResourceResult)
-                else result
-            )
-
-        if replies:
-            await finish_message_sequence(matcher, replies, event=event)
-
-
-register_plugin(TeamResourcePlugin())
-
-
 @team_resource_matcher.handle()
-async def handle_team_resource(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=TEAM_RESOURCE_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-    )
+async def handle_team_resource(
+    matcher: Matcher,
+    event: GroupMessageEvent,
+) -> None:
+    team_ids = _team_ids_for_manual_query(subscriptions_for_group(event.group_id))
+    replies: list[Message] = []
+    for team_id in team_ids:
+        result = await _fetch_team_result_for_manual(team_id)
+        replies.append(
+            Message(result.message)
+            if isinstance(result, TeamResourceResult)
+            else result
+        )
+
+    if replies:
+        await finish_message_sequence(matcher, replies, event=event)
 
 
 __all__ = [
-    "TEAM_RESOURCE_PLUGIN_NAME",
-    "TeamResourcePlugin",
     "scan_team_resource_subscriptions",
 ]

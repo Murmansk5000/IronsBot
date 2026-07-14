@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.local_rank_metrics import MetricValue, positive_int
-from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
+from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -69,18 +69,15 @@ def connect_local_rank_cache() -> Iterator[sqlite3.Connection]:
 
 
 def ensure_local_rank_cache_schema(conn: sqlite3.Connection) -> None:
-    ensure_sqlite_column(
+    added_columns = ensure_sqlite_columns(
         conn,
         table_name="players",
-        column_name="sample_enabled",
-        column_definition="sample_enabled INTEGER NOT NULL DEFAULT 1",
+        columns={
+            "sample_enabled": "sample_enabled INTEGER NOT NULL DEFAULT 1",
+            "sampled_at": "sampled_at TEXT",
+        },
     )
-    if ensure_sqlite_column(
-        conn,
-        table_name="players",
-        column_name="sampled_at",
-        column_definition="sampled_at TEXT",
-    ):
+    if "sampled_at" in added_columns:
         conn.execute(
             """
             UPDATE players

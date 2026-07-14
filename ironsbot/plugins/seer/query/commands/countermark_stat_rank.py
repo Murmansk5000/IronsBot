@@ -7,7 +7,7 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.integrations.seer_data.db import SeerAPISession  # noqa: TC001
+from ironsbot.integrations.seer_data.sessions import SeerAPISession  # noqa: TC001
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
 )

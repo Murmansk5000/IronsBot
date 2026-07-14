@@ -1,4 +1,10 @@
-from ironsbot.plugins.help import HELP_ENTRY_ORDER, HELP_GROUP_TITLES
+import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+
+from ironsbot.plugins.help.menu import HELP_ENTRY_ORDER, HELP_GROUP_TITLES
 
 
 def test_team_entries_are_grouped_with_seer_queries() -> None:

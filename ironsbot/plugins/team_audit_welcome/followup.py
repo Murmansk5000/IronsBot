@@ -20,7 +20,7 @@ from ironsbot.shared.features import is_group_feature_allowed
 from ironsbot.shared.messaging.outbound_rate_limit import (
     check_group_outbound_rate_limit,
 )
-from ironsbot.shared.scheduler import JobRegistry
+from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .settings import (
     FINAL_FOLLOWUP_STEP,

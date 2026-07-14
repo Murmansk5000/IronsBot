@@ -5,9 +5,10 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from nonebot import on_message, require
+from nonebot import on_message
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
@@ -28,16 +29,11 @@ from ironsbot.services.activity.seer_activity import (
 )
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
+from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
-ACTIVITY_REMINDER_PLUGIN_NAME = "activity_reminder"
 SOON_ENDING_THRESHOLD = timedelta(days=7)
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 
@@ -73,7 +69,6 @@ def _now() -> datetime:
 
 
 def _activity_db_session_factory() -> Any:
-    require("ironsbot.plugins.seer_data")
     from ironsbot.integrations.db_registry import db_manager
 
     return db_manager.get_session
@@ -128,51 +123,25 @@ soon_ending_activity_matcher = on_message(
 )
 
 
-class ActivityReminderPlugin:
-    name = ACTIVITY_REMINDER_PLUGIN_NAME
-    feature = "seer_activity_query"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        from ironsbot.shared.messaging import finish_event_reply
-
-        matcher = context.matcher or soon_ending_activity_matcher
-        if context.action == "current":
-            await finish_event_reply(
-                matcher,
-                event,
-                await asyncio.to_thread(build_current_activity_message),
-            )
-            return
-
-        if context.action == "soon_ending":
-            await finish_event_reply(
-                matcher,
-                event,
-                await asyncio.to_thread(build_current_activity_message, soon_only=True),
-            )
-
-
-register_plugin(ActivityReminderPlugin())
-
-
 @current_activity_matcher.handle()
 async def handle_current_seer_activity(
+    matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=ACTIVITY_REMINDER_PLUGIN_NAME,
-        event=event,
-        matcher=current_activity_matcher,
-        action="current",
+    await finish_event_reply(
+        matcher,
+        event,
+        await asyncio.to_thread(build_current_activity_message),
     )
 
 
 @soon_ending_activity_matcher.handle()
-async def handle_soon_ending_seer_activity(event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=ACTIVITY_REMINDER_PLUGIN_NAME,
-        event=event,
-        matcher=soon_ending_activity_matcher,
-        action="soon_ending",
+async def handle_soon_ending_seer_activity(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await finish_event_reply(
+        matcher,
+        event,
+        await asyncio.to_thread(build_current_activity_message, soon_only=True),
     )

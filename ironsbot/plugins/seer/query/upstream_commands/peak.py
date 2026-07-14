@@ -21,13 +21,15 @@ from ironsbot.integrations.headless_seer.game import (
     PeakType,
     SeerGame,
 )
-from ironsbot.integrations.seer_data.db import (
-    AllSessions,
-    Getter,
+from ironsbot.integrations.seer_data.getters import (
     SuitDataGetter,
     TitleDataGetter,
+)
+from ironsbot.integrations.seer_data.resolvers import (
+    Getter,
     from_id_get_name,
 )
+from ironsbot.integrations.seer_data.sessions import AllSessions
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import cast
 
 from nonebot import MatcherGroup, logger
-from nonebot.adapters import Bot, Event, Message, MessageTemplate
+from nonebot.adapters import Bot, Message, MessageTemplate
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import CommandArg, Depends
@@ -11,11 +11,6 @@ from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
 from ironsbot.shared.features import is_event_feature_allowed
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
@@ -37,11 +32,6 @@ from .image_selection_service import (
 )
 
 matcher_group = MatcherGroup()
-SENDPIC_PLUGIN_PREFIX = "sendpic"
-
-
-def _plugin_name_for_config(config: PicConfig) -> str:
-    return f"{SENDPIC_PLUGIN_PREFIX}:{config.id}"
 
 
 def get_cnb_backend(
@@ -81,60 +71,36 @@ def create_image_command(
         rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
     )
     template = config.message_template
-    plugin_name = _plugin_name_for_config(config)
-
-    class ConfiguredImagePlugin:
-        name = plugin_name
-        feature = "image"
-        enabled = True
-
-        async def handle(self, event: object, context: PluginContext) -> None:  # noqa: ARG002
-            m = cast("Matcher", context.matcher)
-            bot = cast("Bot", context.data["bot"])
-            arg = cast("Message", context.data["arg"])
-            backend = cast("ImageBackend", context.data["backend"])
-
-            max_index = await backend.count(config.image_dir)
-            arg_str = arg.extract_plain_text()
-            try:
-                selection = select_image(arg_str, max_index)
-            except InvalidImageArgumentError:
-                raise FinishedException from None
-            except ImageIndexOutOfRangeError as e:
-                await m.finish(str(e))
-
-            file_path = build_image_file_path(
-                config.image_dir,
-                config.image_filename_template,
-                selection.index,
-            )
-            image = Image(await backend.get_file(file_path))
-            await m.finish(
-                MessageTemplate(template).format(
-                    command=config.command,
-                    random_text=selection.random_text,
-                    index=selection.index,
-                    total=max_index,
-                    image=await image.build(bot),
-                )
-            )
-
-    register_plugin(ConfiguredImagePlugin())
 
     async def _handler(
         m: Matcher,
         bot: Bot,
-        event: Event,
         arg: Message = CommandArg(),
         backend: ImageBackend = Depends(backend_factory),
     ) -> None:
-        await dispatch_plugin(
-            plugin_name=plugin_name,
-            event=event,
-            matcher=m,
-            bot=bot,
-            arg=arg,
-            backend=backend,
+        max_index = await backend.count(config.image_dir)
+        arg_str = arg.extract_plain_text()
+        try:
+            selection = select_image(arg_str, max_index)
+        except InvalidImageArgumentError:
+            raise FinishedException from None
+        except ImageIndexOutOfRangeError as e:
+            await m.finish(str(e))
+
+        file_path = build_image_file_path(
+            config.image_dir,
+            config.image_filename_template,
+            selection.index,
+        )
+        image = Image(await backend.get_file(file_path))
+        await m.finish(
+            MessageTemplate(template).format(
+                command=config.command,
+                random_text=selection.random_text,
+                index=selection.index,
+                total=max_index,
+                image=await image.build(bot),
+            )
         )
 
     matcher.append_handler(_handler)

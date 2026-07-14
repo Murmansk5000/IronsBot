@@ -6,11 +6,6 @@ from nonebot.plugin import PluginMetadata, on_fullmatch
 
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import no_reply
 
 __plugin_meta__ = PluginMetadata(
@@ -37,7 +32,6 @@ ABOUT_MESSAGE = """
 """.strip()
 
 VERSION_FILE_PATH = AsyncPath("__version__")
-ABOUT_PLUGIN_NAME = "about"
 
 matcher = on_fullmatch(
     "关于",
@@ -47,31 +41,15 @@ matcher = on_fullmatch(
 )
 
 
-class CustomAboutPlugin:
-    name = ABOUT_PLUGIN_NAME
-    feature = "about"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        try:
-            version = (await VERSION_FILE_PATH.read_text(encoding="utf-8")).strip()
-        except FileNotFoundError:
-            version = "未知"
-
-        await finish_event_reply(
-            context.matcher or matcher,
-            event,
-            ABOUT_MESSAGE.format(version=version),
-        )
-
-
-register_plugin(CustomAboutPlugin())
-
-
 @matcher.handle()
 async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=ABOUT_PLUGIN_NAME,
+    try:
+        version = (await VERSION_FILE_PATH.read_text(encoding="utf-8")).strip()
+    except FileNotFoundError:
+        version = "未知"
+
+    await finish_event_reply(
+        matcher,
         event=event,
-        matcher=matcher,
+        message=ABOUT_MESSAGE.format(version=version),
     )

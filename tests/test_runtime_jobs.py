@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ironsbot.shared.scheduler import (
+from ironsbot.shared.runtime.jobs import (
     JobRegistry,
     add_or_replace_job,
     remove_jobs_by_prefix,

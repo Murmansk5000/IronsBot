@@ -24,7 +24,6 @@ KNOWN_FEATURES = frozenset(
         "seer_rank",
         "seer_data",
         "image",
-        "rank",
         "meeting",
         "text",
         "text_push",
@@ -45,6 +44,7 @@ KNOWN_FEATURES = frozenset(
         "admin_notice",
     }
 )
+OBSOLETE_FEATURES = frozenset({"rank"})
 SEER_FEATURES = frozenset(
     {
         "seer_player",
@@ -66,13 +66,12 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
         {
             *SEER_FEATURES,
             "image",
-            "rank",
+            "seer_rank",
             "bili_query",
             "seer_activity_query",
             "server_status_query",
         }
     ),
-    "rank": frozenset({"rank", "seer_rank"}),
     "bili": frozenset({"bili_query", "bili_push"}),
     "activity": frozenset({"seer_activity_query", "seer_activity_push"}),
     "seer_activity": frozenset({"seer_activity_query", "seer_activity_push"}),
@@ -140,6 +139,7 @@ def unique_ints(values: Iterable[int]) -> list[int]:
 __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
+    "OBSOLETE_FEATURES",
     "SEER_FEATURES",
     "FeatureConfig",
     "unique_ints",
