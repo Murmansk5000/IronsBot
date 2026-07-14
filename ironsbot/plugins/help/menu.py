@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 from nonebot import get_loaded_plugins
 
 from ironsbot.config.loader import get_app_config
+from ironsbot.plugin_catalog import help_layout_for_module
 from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 from ironsbot.shared.selection_menu import (
     HELP_SELECTION_FOOTER,
@@ -22,15 +23,6 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.runtime import HelpConfig
 
-DEFAULT_IGNORED_PLUGINS = [
-    "发图",
-    "HTTP 缓存客户端",
-    "赛尔号数据",
-    "赛尔号信息查询",
-    "AI @ 提示拦截",
-    "超级管理员优先级",
-    "定时重启",
-]
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_PLUGIN_NAME = "help"
 HELP_GROUP_ORDER = (
@@ -49,33 +41,14 @@ HELP_GROUP_TITLES = {
     "admin": "管理工具",
     "other": "其他",
 }
-HELP_ENTRY_ORDER = {
-    "帮助": ("core", 10),
-    "关于": ("core", 20),
-    "赛尔号查询": ("seer", 10),
-    "榜单": ("seer", 20),
-    "图片发送": ("seer", 30),
-    "活动结束提醒": ("message", 10),
-    "B站动态": ("message", 20),
-    "文本发送": ("message", 30),
-    "会议回复": ("message", 40),
-    "AI聊天": ("ai", 10),
-    "AI意图分析": ("ai", 20),
-    "战队推荐": ("seer", 40),
-    "战队资源订阅": ("seer", 50),
-    "战队审核入群提示": ("seer", 60),
-    "开服查询": ("seer", 70),
-    "数据库同步": ("admin", 20),
-    "自定义无头登录": ("admin", 30),
-}
-
-
 @dataclass(frozen=True, slots=True)
 class HelpEntry:
     key: str
     name: str
     description: str
     usage: str
+    group: str
+    order: int
 
 
 def get_help_config() -> HelpConfig:
@@ -91,10 +64,7 @@ def plugin_key(plugin: "Plugin") -> str:
 
 
 def ignored_plugin_names() -> set[str]:
-    return {
-        *DEFAULT_IGNORED_PLUGINS,
-        *get_help_config().ignored_plugins,
-    }
+    return set(get_help_config().ignored_plugins)
 
 
 def is_supported_adapter(bot: "Bot", metadata: PluginMetadata) -> bool:
@@ -112,22 +82,24 @@ def is_supported_type(metadata: PluginMetadata) -> bool:
 
 def entry_from_plugin(plugin: "Plugin") -> HelpEntry:
     metadata = cast("PluginMetadata", plugin.metadata)
+    group, order = help_layout_for_module(plugin_module_name(plugin))
     return HelpEntry(
         key=plugin_key(plugin),
         name=metadata.name,
         description=metadata.description,
         usage=metadata.usage or "暂无详细帮助。",
+        group=group,
+        order=order,
     )
 
 
 def entry_sort_key(entry: HelpEntry) -> tuple[int, int, str]:
-    group, order = HELP_ENTRY_ORDER.get(entry.name, ("other", 1000))
     group_index = (
-        HELP_GROUP_ORDER.index(group)
-        if group in HELP_GROUP_ORDER
+        HELP_GROUP_ORDER.index(entry.group)
+        if entry.group in HELP_GROUP_ORDER
         else len(HELP_GROUP_ORDER)
     )
-    return (group_index, order, entry.name)
+    return (group_index, entry.order, entry.name)
 
 
 def visible_help_entries(bot: "Bot", event: "Event") -> list[HelpEntry]:
@@ -170,7 +142,7 @@ def format_plugin_list(entries: list[HelpEntry]) -> str:
     current_items: list[str] = []
 
     for entry in entries:
-        group = HELP_ENTRY_ORDER.get(entry.name, ("other", 1000))[0]
+        group = entry.group
         if group != current_group:
             if current_items:
                 sections.append(
@@ -211,7 +183,6 @@ def format_plugin_detail(entry: HelpEntry, event: "Event") -> str:
 
 __all__ = [
     "HELP_ENTRIES_KEY",
-    "HELP_ENTRY_ORDER",
     "HELP_GROUP_TITLES",
     "HELP_PLUGIN_NAME",
     "HelpEntry",

@@ -7,39 +7,15 @@ from nonebot import get_driver
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
-from ironsbot.app.feature_modules import (
-    FEATURE_MODULE_REGISTRY,
-    FeatureModuleRegistry,
-    features_for_plugin_module,
-)
 from ironsbot.config.loader import get_app_config, load_secrets_config
+from ironsbot.plugin_catalog import (
+    features_for_plugin_module,
+    help_visibility_for_module,
+)
 from ironsbot.shared.features.service import is_superuser
 from ironsbot.shared.features.visibility import feature_visible_for_help
 
 VisibilityRule = Callable[[Event], bool]
-
-HIDDEN_MODULE_PREFIXES = (
-    "ironsbot.plugins.ai_mention_guard",
-    "ironsbot.plugins.scheduled_restart",
-    "ironsbot.plugins.startup_notice",
-    "ironsbot.plugins.admin_priority",
-    "ironsbot.plugins.db_sync",
-    "ironsbot.plugins.fire_manual_ad",
-    "ironsbot.plugins.headless_seer",
-    "ironsbot.plugins.http_client",
-    "ironsbot.plugins.seer_data",
-    "ironsbot.plugins.team_audit_welcome",
-)
-
-ALWAYS_VISIBLE_MODULE_PREFIXES = (
-    "ironsbot.plugins.about",
-    "ironsbot.plugins.help",
-)
-
-
-def _module_startswith(module_name: str, prefixes: tuple[str, ...]) -> bool:
-    return any(module_name.startswith(prefix) for prefix in prefixes)
-
 
 def _any_feature_visible(event: Event, features: tuple[str, ...]) -> bool:
     return any(feature_visible_for_help(event, feature) for feature in features)
@@ -133,10 +109,11 @@ def plugin_visible_for_event(
     module_name: str,
     event: Event,
 ) -> bool:
-    if _module_startswith(module_name, HIDDEN_MODULE_PREFIXES):
+    static_visibility = help_visibility_for_module(module_name)
+    if static_visibility == "hidden":
         return False
 
-    if _module_startswith(module_name, ALWAYS_VISIBLE_MODULE_PREFIXES):
+    if static_visibility == "always":
         return True
 
     if (visible := _visible_by_special_rule(module_name, event)) is not None:
@@ -149,8 +126,6 @@ def plugin_visible_for_event(
 
 
 __all__ = [
-    "FEATURE_MODULE_REGISTRY",
-    "FeatureModuleRegistry",
     "features_for_plugin_module",
     "plugin_visible_for_event",
 ]

@@ -59,18 +59,15 @@ import httpx
 import nonebot
 
 from ironsbot.app.plugin_manifest import (
-    CORE_PLUGINS,
-    EXTERNAL_PLUGINS,
-    FEATURE_PLUGINS,
-    INFRASTRUCTURE_PLUGINS,
     validate_plugin_manifest,
 )
+from ironsbot.plugin_catalog import plugin_modules_for_group
 
 os.chdir(sys.argv[1])
 nonebot.init()
 validate_plugin_manifest()
 
-for module in EXTERNAL_PLUGINS:
+for module in plugin_modules_for_group("external"):
     plugin = nonebot.load_plugin(module)
     if plugin is None:
         raise AssertionError(f"failed to load plugin: {module}")
@@ -95,10 +92,11 @@ asyncio.create_task = _forbidden_sync("async task creation")
 httpx.Client.request = _forbidden_sync("http request")
 httpx.AsyncClient.request = _forbidden_async_request
 
-for module in (*CORE_PLUGINS, *INFRASTRUCTURE_PLUGINS, *FEATURE_PLUGINS):
-    plugin = nonebot.load_plugin(module)
-    if plugin is None:
-        raise AssertionError(f"failed to load plugin: {module}")
+for group in ("core", "infrastructure", "feature"):
+    for module in plugin_modules_for_group(group):
+        plugin = nonebot.load_plugin(module)
+        if plugin is None:
+            raise AssertionError(f"failed to load plugin: {module}")
 
 from ironsbot.shared.plugin_system import plugin_registry
 

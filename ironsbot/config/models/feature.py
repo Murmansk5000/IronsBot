@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ironsbot.plugin_catalog import KNOWN_FEATURES
 from ironsbot.shared.config.parsing import json_object, string_list, unique_items
 
 if TYPE_CHECKING:
@@ -13,42 +14,6 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger("ironsbot.config")
 
-KNOWN_FEATURES = frozenset(
-    {
-        "seer",
-        "seer_player",
-        "seer_team",
-        "seer_pet",
-        "seer_mintmark",
-        "seer_equipment",
-        "seer_type",
-        "seer_peak",
-        "seer_autocard",
-        "seer_rank",
-        "seer_data",
-        "image",
-        "meeting",
-        "text",
-        "text_push",
-        "web_activity_link",
-        "web_activity_push",
-        "seerinfo",
-        "bili_query",
-        "bili_push",
-        "seer_activity_query",
-        "seer_activity_push",
-        "server_status_query",
-        "server_status_push",
-        "team_resource_subscription",
-        "ai_chat",
-        "ai_intent",
-        "ai_intent_team_recommend",
-        "ai_intent_fire_manual",
-        "fire_manual_ad",
-        "team_audit",
-        "admin_notice",
-    }
-)
 OBSOLETE_FEATURES = frozenset({"rank"})
 SEER_FEATURES = frozenset(
     {
