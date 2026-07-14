@@ -406,7 +406,7 @@ def test_unknown_bilibili_account_fails_with_exact_path(tmp_path: Path) -> None:
     config_path.write_text(
         """
 [bilibili.push.groups.main]
-accounts = ["old_bili"]
+accounts = ["missing_account"]
 """.strip(),
         encoding="utf-8",
     )
@@ -422,7 +422,7 @@ def test_unknown_seer_section_fails_with_exact_path(tmp_path: Path) -> None:
     config_path.write_text(
         """
 [seer.player]
-sections = ["basic", "legacy"]
+sections = ["basic", "unknown_section"]
 """.strip(),
         encoding="utf-8",
     )
@@ -431,7 +431,7 @@ sections = ["basic", "legacy"]
         load_app_config(config_path)
 
     assert "seer.player.sections" in str(exc_info.value)
-    assert "legacy" in str(exc_info.value)
+    assert "unknown_section" in str(exc_info.value)
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
