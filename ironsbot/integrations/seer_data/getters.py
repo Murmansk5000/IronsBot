@@ -151,10 +151,6 @@ ErrorCodeGetter = Getter(
 )
 
 
-def GetErrorCodeData() -> Any:
-    return Depends(ErrorCodeGetter)
-
-
 class TypeCombinationResolver:
     """将用户输入拆分为单属性名，再按 ID 组合查询 TypeCombinationORM。
 

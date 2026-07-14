@@ -2,9 +2,6 @@
 from typing import Any
 
 
-class ConnectError(Exception): ...
-
-
 class ClientNotInitializedError(Exception): ...
 
 

@@ -4,13 +4,6 @@ from enum import Enum
 
 
 @dataclass(slots=True)
-class PeakData:
-    current_score: int
-    current_highest_score: int
-    history_highest_score: int
-
-
-@dataclass(slots=True)
 class PeakItemData:
     id: int
     count: int
@@ -59,7 +52,6 @@ __all__ = [
     "PEAK_SUIT_KEY_MAP",
     "PEAK_TITLE_KEY_MAP",
     "PEAK_TYPE_NAME_MAP",
-    "PeakData",
     "PeakItemData",
     "PeakType",
 ]

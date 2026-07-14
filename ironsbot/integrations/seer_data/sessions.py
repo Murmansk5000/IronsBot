@@ -9,7 +9,6 @@ from sqlmodel import Session as SQLModelSession
 from ironsbot.integrations.db_registry import db_manager
 
 _SEERAPI_DB = "seerapi"
-_ALIAS_DB = "aliases"
 
 
 def _session_factory(
@@ -33,7 +32,6 @@ def _session_factory(
 
 
 SeerAPISession = Annotated[SQLModelSession, Depends(_session_factory(_SEERAPI_DB))]
-AliasSession = Annotated[SQLModelSession, Depends(_session_factory(_ALIAS_DB))]
 AllSessions = Annotated[
     dict[str, SQLModelSession], Depends(db_manager.get_all_sessions)
 ]

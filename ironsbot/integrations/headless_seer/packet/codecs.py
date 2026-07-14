@@ -27,15 +27,3 @@ class UTF8Codec:
     @classmethod
     def decode(cls, value: bytes) -> str:
         return value.decode("utf-8", errors="ignore").strip("\x00")
-
-
-class GBKCodec:
-    """使用 GBK 编码的字符串处理类。"""
-
-    @classmethod
-    def encode(cls, value: str) -> bytes:
-        return value.encode("gbk")
-
-    @classmethod
-    def decode(cls, value: bytes) -> str:
-        return value.decode("gbk").strip("\x00")

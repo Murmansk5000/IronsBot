@@ -39,7 +39,6 @@ PetHeadImageGetter = GetImage(
     fallback=_fallback_image,
     client_getter=get_http_cache_client,
 )
-PetHeadImage = Depends(PetHeadImageGetter)
 
 MintmarkBodyImageGetter = GetImage(
     "https://newseer.61.com/web/countermark/icon/{}.png",
@@ -56,47 +55,40 @@ ElementTypeImageGetter = GetImage(
     "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/refs/heads/main/newseer/assets/art/ui/assets/pettype/{}.png",
     client_getter=get_http_cache_client,
 )
-ElementTypeImage = Depends(ElementTypeImageGetter)
 
 PreviewImageGetter = GetImage(
     "https://cnb.cool/HurryWang/seer-unity-preview-img-dumper-cnb/-/git/raw/master/img/preview.png",
     client_getter=get_http_origin_client,
 )
-PreviewImage = Depends(PreviewImageGetter)
 
 
 AvatarHeadImageGetter = GetImage(
     "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/newseer/assets/art/ui/assets/avatar/head/{}.png",
     client_getter=get_http_cache_client,
 )
-AvatarHeadImage = Depends(AvatarHeadImageGetter)
 
 AvatarFrameImageGetter = GetImage(
     "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/newseer/assets/art/ui/assets/avatar/frame/{}.png",
     client_getter=get_http_cache_client,
 )
-AvatarFrameImage = Depends(AvatarFrameImageGetter)
 
 SuitImageGetter = GetImage(
     "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png",
     "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/refs/heads/main/newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png",
     client_getter=get_http_cache_client,
 )
-SuitImage = Depends(SuitImageGetter)
 
 EquipImageGetter = GetImage(
     "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/newseer/assets/art/ui/assets/item/cloth/prev/{}.png",
     "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/refs/heads/main/newseer/assets/art/ui/assets/item/cloth/prev/{}.png",
     client_getter=get_http_cache_client,
 )
-EquipImage = Depends(EquipImageGetter)
 
 TitleImageGetter = GetImage(
     "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/newseer/assets/art/ui/assets/achieve/title/{}.png",
     "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/refs/heads/main/newseer/assets/art/ui/assets/achieve/title/{}.png",
     client_getter=get_http_cache_client,
 )
-TitleImage = Depends(TitleImageGetter)
 
 
 BattleEffectImageGetter = GetImage(
@@ -104,11 +96,9 @@ BattleEffectImageGetter = GetImage(
     "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/refs/heads/main/newseer/assets/art/ui/assets/battleeffect/abnormal/{}.png",
     client_getter=get_http_cache_client,
 )
-BattleEffectImage = Depends(BattleEffectImageGetter)
 
 SoulmarkIconImageGetter = GetImage(
     "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png",
     "https://raw.githubusercontent.com/SeerAPI/seer-unity-assets/refs/heads/main/newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png",
     client_getter=get_http_cache_client,
 )
-SoulmarkIconImage = Depends(SoulmarkIconImageGetter)
