@@ -8,6 +8,7 @@ from tests.helpers.onebot_events import (
     group_admin_message_event,
     group_member_message_event,
     group_owner_message_event,
+    private_message_event,
 )
 
 if TYPE_CHECKING:
@@ -38,3 +39,27 @@ def test_can_manage_group_event_rejects_regular_member(
     monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
 
     assert not permissions.can_manage_group_event(group_member_message_event())
+
+
+def test_can_manage_conversation_event_allows_group_manager(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
+
+    assert permissions.can_manage_conversation_event(group_admin_message_event())
+
+
+def test_can_manage_conversation_event_allows_private_superuser(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: True)
+
+    assert permissions.can_manage_conversation_event(private_message_event())
+
+
+def test_can_manage_conversation_event_rejects_regular_private_user(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
+
+    assert not permissions.can_manage_conversation_event(private_message_event())

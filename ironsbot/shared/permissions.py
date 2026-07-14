@@ -28,8 +28,15 @@ def can_manage_group_event(event: object) -> bool:
     return is_superuser_event(event) or is_group_owner_or_admin_event(event)
 
 
+def can_manage_conversation_event(event: object) -> bool:
+    if getattr(event, "group_id", None) is not None:
+        return can_manage_group_event(event)
+    return is_superuser_event(event)
+
+
 __all__ = [
     "GROUP_MANAGER_ROLES",
+    "can_manage_conversation_event",
     "can_manage_group_event",
     "event_user_id",
     "is_group_owner_or_admin_event",
