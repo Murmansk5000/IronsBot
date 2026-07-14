@@ -11,7 +11,7 @@ from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
 from ironsbot.integrations.db_sync.models import SyncStatus
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging.text import normalize_command_text
+from ironsbot.shared.command_text import normalize_command_text
 from ironsbot.utils.rule import no_reply
 
 from .manual import ManualSyncContext, handle_manual_sync

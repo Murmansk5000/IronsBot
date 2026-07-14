@@ -14,10 +14,10 @@ from ironsbot.services.seer.local_rank_metrics import (
     LOCAL_METRICS,
     MetricValue,
     collect_metrics,
-    positive_int,
 )
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
+from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     import sqlite3
@@ -129,7 +129,7 @@ def _format_summary(
         if metric is None:
             continue
 
-        value = positive_int(metric.get("value"))
+        value = coerce_positive_int(metric.get("value"))
         season_sub_key = peak_sub_key if spec.season_limited else None
         result = _format_local_rank(
             conn=conn,

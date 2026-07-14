@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: TC001, TC002
-"""Upstream pet query matchers."""
+"""Pet query matchers."""
 
 from __future__ import annotations
 
@@ -16,13 +16,8 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 from ..depends import GetPetData, SeerAPISession
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ..prompt import PromptItem
-from ..upstream_commands import pet as upstream_pet
-from .upstream_query_common import (
-    UPSTREAM_QUERY_PLUGIN_NAME,
-    dispatch_plugin,
-    not_fixed_image_command,
-    not_rank_query,
-)
+from . import pet_actions, pet_handlers
+from .upstream_query_common import not_fixed_image_command, not_rank_query
 
 pet_image_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_pet")
@@ -43,18 +38,10 @@ async def _handle_pet_image(  # noqa: PLR0913
     event: Event,
     session: SeerAPISession,
     arg: str = Depends(parse_string_arg),
-    items: list[PromptItem[int]] = Depends(upstream_pet._create_prompt_items),
+    items: list[PromptItem[int]] = Depends(pet_actions.create_pet_prompt_items),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="pet_image",
-        session=session,
-        arg=arg,
-        items=items,
-    )
+    await pet_handlers.handle_pet_image(matcher, event, state, session, arg, items)
+
 
 pet_info_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_pet")
@@ -77,12 +64,4 @@ async def _handle_pet_info(
     arg: str = Depends(parse_string_arg),
     pets: tuple[PetORM, ...] = GetPetData(),
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="pet_info",
-        arg=arg,
-        pets=pets,
-    )
+    await pet_handlers.handle_pet_info(matcher, event, state, arg, pets)

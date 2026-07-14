@@ -33,7 +33,6 @@ if TYPE_CHECKING:
 async def handle_help(
     matcher: Matcher,
     event: MessageEvent,
-    _state: T_State,
 ) -> None:
     await finish_event_reply(matcher, event, build_rank_help_message())
 

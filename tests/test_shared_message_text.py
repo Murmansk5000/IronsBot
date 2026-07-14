@@ -1,10 +1,9 @@
-from ironsbot.shared.messaging.text import (
-    build_message,
+from ironsbot.shared.command_text import (
     command_text_matches,
     normalize_command_text,
-    render_text,
     strip_command_prefix,
 )
+from ironsbot.shared.messaging.text import build_message, render_text
 
 
 def test_normalize_command_text_removes_whitespace_and_lowercases() -> None:

@@ -133,7 +133,6 @@ async def handle_page_cache_status(
 async def handle_page_cache_overview(
     matcher: Matcher,
     event: MessageEvent,
-    _state: T_State,
 ) -> None:
     rank_config = get_rank_query_config()
     specs = configured_rank_specs()
@@ -190,7 +189,6 @@ async def handle_page_cache_refresh(
 async def handle_cache_status(
     matcher: Matcher,
     event: MessageEvent,
-    _state: T_State,
 ) -> None:
     stats = get_local_rank_cache_stats()
     query_config = get_seer_config()

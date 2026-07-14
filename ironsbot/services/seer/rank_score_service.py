@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.services.seer.rank_score_search_support import (
+from ironsbot.services.seer.rank_score_segments import (
     RankScoreSegmentDependencies,
 )
 
@@ -32,10 +32,6 @@ class RankScoreServiceDependencies:
     fetch_rank_score_segment_impl: Callable[..., Awaitable[RankScoreSearchResult]]
     cached_score_candidate_page_starts_impl: Callable[..., list[int]]
     cached_score_miss_boundary_impl: Callable[..., RankScoreMissProof | None]
-    find_last_existing_score_index: Callable[
-        ...,
-        Awaitable[tuple[int | None, int | None]],
-    ]
     fetch_rank_item: Callable[..., Awaitable[Any | None]]
     fetch_rank_page_result: Callable[..., Awaitable[Any]]
 
@@ -148,7 +144,6 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
         ),
         score_search_probe_limit=deps.score_search_probe_limit,
         score_search_tie_page_limit=deps.score_search_tie_page_limit,
-        find_last_existing_score_index=deps.find_last_existing_score_index,
         fetch_rank_item=deps.fetch_rank_item,
         fetch_rank_page_result=deps.fetch_rank_page_result,
         score_miss_proof_from_page=deps.score_miss_proof_from_page,
