@@ -11,8 +11,9 @@ from __future__ import annotations
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 
-from ironsbot.shared.plugin_system import dispatch_plugin
+from ironsbot.shared.messaging import finish_event_reply
 
+from .commands import handle_admin_status, handle_normal_status
 from .matchers import (
     admin_server_status_matcher,
     bot_restart_matcher,
@@ -20,57 +21,40 @@ from .matchers import (
     docker_update_matcher,
     normal_server_status_matcher,
 )
-from .metadata import SERVER_STATUS_PLUGIN_NAME
+from .metadata import __plugin_meta__
+from .restart_command import handle_restart_command
 
 
 @normal_server_status_matcher.handle()
 async def handle_normal_server_status(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=SERVER_STATUS_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="normal",
-    )
+    await handle_normal_status(matcher, event)
 
 
 @disabled_bare_admin_status_matcher.handle()
-async def handle_disabled_bare_admin_status(event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=SERVER_STATUS_PLUGIN_NAME,
-        event=event,
-        matcher=disabled_bare_admin_status_matcher,
-        action="disabled_bare_admin",
+async def handle_disabled_bare_admin_status(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await finish_event_reply(
+        matcher,
+        event,
+        str(__plugin_meta__.usage or "暂无详细帮助。"),
     )
 
 
 @admin_server_status_matcher.handle()
 async def handle_admin_server_status(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=SERVER_STATUS_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="admin",
-    )
+    await handle_admin_status(matcher, event)
 
 
 @bot_restart_matcher.handle()
 async def handle_bot_restart(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=SERVER_STATUS_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="restart",
-    )
+    await handle_restart_command(matcher, event)
 
 
 @docker_update_matcher.handle()
 async def handle_docker_update(matcher: Matcher, event: MessageEvent) -> None:
-    await dispatch_plugin(
-        plugin_name=SERVER_STATUS_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="docker_update",
-    )
+    await handle_restart_command(matcher, event)
 
 
 __all__ = [
