@@ -10,6 +10,8 @@ _PEAK_RANK_NAMES = {
     4: "圣皇",
     5: "宇宙圣皇",
 }
+_COSMIC_SAINT_RANK_VALUE = 4
+_COSMIC_SAINT_MIN_STAR = 100
 
 
 def format_percent(value: float) -> str:
@@ -20,6 +22,8 @@ def format_percent(value: float) -> str:
 def format_peak_rating_score(value: int) -> str:
     rank, star = divmod(value, 100000)
     name = _PEAK_RANK_NAMES.get(rank, f"段位{rank}")
+    if rank == _COSMIC_SAINT_RANK_VALUE and star >= _COSMIC_SAINT_MIN_STAR:
+        name = "宇宙圣皇"
     return f"{name}{star}星"
 
 

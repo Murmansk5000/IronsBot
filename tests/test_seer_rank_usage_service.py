@@ -1,4 +1,8 @@
-from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.services.seer.rank_usage import (
+    RANK_HELP_DETAIL_COMMANDS,
+    RANK_HELP_ENTRY_COMMANDS,
+    build_rank_help_message,
+)
 
 
 def test_rank_help_message_lists_core_rank_commands() -> None:
@@ -14,3 +18,8 @@ def test_rank_help_message_lists_core_rank_commands() -> None:
     assert "【本群管理】" in message
     assert "/榜单显示 20" in message
     assert "/缓存榜单 刻印榜 1-100" in message
+
+
+def test_rank_help_commands_are_centralized() -> None:
+    assert RANK_HELP_ENTRY_COMMANDS == ("榜单", "排行榜")
+    assert "榜单帮助" in RANK_HELP_DETAIL_COMMANDS
