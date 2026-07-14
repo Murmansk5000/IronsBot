@@ -9,6 +9,13 @@ from ironsbot.shared.selection_menu import (
     format_selection_menu,
 )
 
+from .admin_notice import (
+    ADMIN_NOTICE_FEATURE,
+    AdminNoticeTargets,
+    admin_notice_targets,
+    get_first_onebot_bot,
+    send_admin_notice,
+)
 from .conversations import (
     EventReplyCheck,
     command_reply_check,
@@ -37,7 +44,6 @@ from .replies import (
 from .senders import (
     MessageLimiter,
     OneBotMessageSender,
-    configure_sender_message_limiter,
     get_bot_or_none,
     send_broadcast_message,
     send_target_messages,
@@ -47,6 +53,7 @@ from .targets import (
     TargetSendSummary,
     broadcast_targets,
     group_targets,
+    message_event_target,
     private_targets,
 )
 from .text import (
@@ -59,10 +66,12 @@ from .text import (
 )
 
 __all__ = [
+    "ADMIN_NOTICE_FEATURE",
     "DEFAULT_COMMAND_PREFIXES",
     "DEFAULT_SELECTION_FOOTER",
     "HELP_SELECTION_FOOTER",
     "TOGGLE_SELECTION_FOOTER",
+    "AdminNoticeTargets",
     "BeforeReplySendHook",
     "EventReplyCheck",
     "InMemoryRateLimiter",
@@ -75,13 +84,13 @@ __all__ = [
     "SelectionMenuItem",
     "SelectionMenuSection",
     "TargetSendSummary",
+    "admin_notice_targets",
     "apply_reply_before_send",
     "broadcast_targets",
     "build_message",
     "command_reply_check",
     "command_text_matches",
     "configure_reply_delivery_policy",
-    "configure_sender_message_limiter",
     "enter_event_reply_conversation",
     "event_conversation_session_id",
     "event_sender_at_user_ids",
@@ -90,13 +99,16 @@ __all__ = [
     "finish_message_sequence",
     "format_selection_menu",
     "get_bot_or_none",
+    "get_first_onebot_bot",
     "group_targets",
+    "message_event_target",
     "normalize_command_text",
     "peek_user_rate_limit",
     "penalize_user_rate_limit",
     "private_targets",
     "rate_limiter",
     "render_text",
+    "send_admin_notice",
     "send_broadcast_message",
     "send_event_reply",
     "send_matcher_message",

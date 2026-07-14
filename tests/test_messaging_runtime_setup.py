@@ -53,6 +53,11 @@ class FakeMessageConfig:
     group_schedules: list[GroupScheduledMessageAction] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class FakeJob:
+    id: str
+
+
 def _private_schedule(
     message: str,
     *,
@@ -94,11 +99,8 @@ class FakeScheduler:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
-    def get_jobs(self) -> list[object]:
-        return [
-            type("FakeJob", (), {"id": str(job["id"])})()
-            for job in self.jobs
-        ]
+    def get_jobs(self) -> list[FakeJob]:
+        return [FakeJob(id=str(job["id"])) for job in self.jobs]
 
     def remove_job(self, job_id: str) -> None:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]

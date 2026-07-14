@@ -274,7 +274,3 @@ async def register_message_schedules(scheduler: Any) -> None:
             _register_group_schedule(registry, index, task)
 
     message_schedule_registry(scheduler).replace_all(register_jobs)
-
-
-def clear_message_schedule_jobs(scheduler: Any) -> None:
-    message_schedule_registry(scheduler).remove_by_prefix()
