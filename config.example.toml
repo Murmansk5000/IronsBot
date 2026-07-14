@@ -65,7 +65,6 @@ prompt = "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人
 # EN: Commands that reset chat history and memory.
 # ZH: 清空 AI 聊天上下文与记忆的口令。
 # Example: ["reset"]
-reset_commands = ["清空聊天", "重置聊天", "清空上下文"]
 
 # Default: 6
 # EN: Recent chat turns kept in context.
@@ -161,6 +160,9 @@ intent_actions_enabled = true
 # Omitted fields inherit built-in defaults for known actions.
 # ZH: AI 意图动作按 [ai.intent_actions.<id>] 配置；已知动作未写字段会继承内置默认值。
 
+# 内置动作 fire_manual_ad 需要 ai_intent_fire_manual；join_team 需要 ai_intent_team_recommend。
+# 通用 ai_intent 权限不能替代上述细粒度权限；动作仍受 AI 总开关和准入控制。
+# fire_manual_ad 作为推送 Feature 时，不等同于此处的同名动作 ID。
 [ai.intent_actions.join_team]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
@@ -174,7 +176,6 @@ enabled = true
 # EN: Default monitored Bilibili UIDs.
 # ZH: 默认监控的 B 站 UID。
 # Example: [1310714247, 375750254]
-uids = [1310714247]
 
 # Default: 300.0
 # EN: Cooldown for Bilibili login QR notices.
@@ -213,7 +214,6 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # EN: Default push mode, either full or link.
 # ZH: 默认推送模式，可选 full 或 link。
 # Example: "link"
-default_mode = "full"
 
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
@@ -289,41 +289,6 @@ private_commands = []
 # ZH: 私聊定时文本动作。
 # Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
 private_schedules = []
-
-[message.private_unsubscribe]
-# Default: true
-# EN: Enable private scheduled push unsubscribe menu.
-# ZH: 启用私聊定时推送退订菜单。
-enabled = true
-# Default: ["td", "退订"]
-# EN: Private commands that open the unsubscribe menu. Matching is case-insensitive.
-# ZH: 打开退订菜单的私聊口令；大小写不敏感，所以 TD 自动生效。
-commands = ["td", "退订"]
-# Default: ["订阅", "恢复订阅"]
-# EN: Private commands that restore unsubscribed scheduled pushes.
-# ZH: 恢复已退订私聊推送的私聊口令。
-restore_commands = ["订阅", "恢复订阅"]
-# Default: "data/messaging/private_push_unsubscriptions.sqlite"
-# EN: SQLite path for private push unsubscribe records.
-# ZH: 私聊推送退订记录 SQLite 路径。
-data_path = "data/messaging/private_push_unsubscriptions.sqlite"
-# Default: built-in hint.
-# EN: Hint appended to private scheduled pushes.
-# ZH: 追加到私聊定时推送末尾的退订提示。
-hint = "回复 TD 可管理私聊推送订阅。"
-
-# Default: []
-# EN: Group fixed command replies.
-# ZH: 群聊固定文本回复动作。
-# Example action fields: id, enabled, feature, message, commands, at_user_ids.
-group_commands = []
-
-# Default: []
-# EN: Group scheduled messages.
-# ZH: 群聊定时文本动作。
-# Example action fields: id, enabled, feature, message, hour, minute, day_of_week,
-# at_user_ids.
-group_schedules = []
 
 [message.outbound_rate_limit]
 # Default: true
@@ -624,7 +589,6 @@ cache_dir = "render_cache"
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
 # Default: true; EN: Clear render cache on startup. ZH: 启动时清理渲染缓存。
-clear_on_startup = true
 
 [runtime.data_sync]
 # Default: false; EN: Sync remote SQLite DBs on startup. ZH: 启动时同步远程 SQLite。
