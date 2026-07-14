@@ -44,11 +44,6 @@ from ironsbot.shared.messaging import (
     finish_event_reply,
 )
 from ironsbot.shared.messaging.query_guard import QueryGuard
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
 from ..config import (
@@ -58,9 +53,8 @@ from ..config import (
 )
 from ..group import matcher_group, seer_feature_rule
 from ._args import parse_numeric_id
-from .player_context import PLAYER_ID_KEY, PLAYER_PLUGIN_NAME
+from .player_context import PLAYER_ID_KEY
 from .player_detail_conversation import (
-    handle_player_detail_reply,
     send_player_info_with_detail_prompt,
 )
 from .player_detail_fetch import create_player_detail_task
@@ -111,213 +105,37 @@ def _log_player_extra_error(label: str, _error: Exception) -> None:
     logger.opt(exception=True).warning(f"米米号扩展字段获取失败：{label}")
 
 
-class PlayerQueryPlugin:
-    name = PLAYER_PLUGIN_NAME
-    feature = "seer_player"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        matcher = context.matcher
-        if matcher is None:
-            return
-
-        state = context.state if context.state is not None else {}
-        if context.action == "validate":
-            await self._validate_player_id(matcher, event, state)
-            return
-        if context.action == "detail_reply":
-            await self._handle_detail_reply(matcher, event, state)
-            return
-        if context.action == "query":
-            await self._handle_player(matcher, event, state)
-
-    async def _validate_player_id(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        player_id = await parse_numeric_id(
-            matcher,
-            state,
-            min_value=1,
-            max_value=2_000_000_000,
-            error_message="❌ 米米号无效，请输入纯数字米米号。",
-        )
-        state[PLAYER_ID_KEY] = player_id
-        in_progress_player_id = PLAYER_QUERY_GUARD.in_progress_subject(event.user_id)
-        if in_progress_player_id is not None:
-            await finish_event_reply(
-                matcher,
-                event,
-                player_query_in_progress_message(in_progress_player_id),
-                mention_sender=True,
-            )
-
-        remaining = PLAYER_QUERY_GUARD.remaining_seconds(event.user_id)
-        if remaining > 0:
-            await finish_event_reply(
-                matcher,
-                event,
-                player_query_wait_message(remaining),
-                mention_sender=True,
-            )
-        PLAYER_QUERY_GUARD.set_in_progress(event.user_id, player_id)
-
-    async def _handle_detail_reply(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        await handle_player_detail_reply(matcher, event, state)
-
-    async def _handle_player(
-        self,
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        ensure_extended_packets()
-        player_id: int = state[PLAYER_ID_KEY]
-        extra_errors: list[str] = []
-        player_config = get_player_query_config()
-        local_rank_config = get_local_rank_config()
-        section_plan = plan_player_query_sections(
-            player_config.sections,
-            local_rank_enabled=local_rank_config.enabled,
-        )
-        detail_task: asyncio.Task[PlayerDetailMessages] | None = None
-
-        try:
-            game = get_game_client()
-            user_info, more_info, online_info = await asyncio.wait_for(
-                asyncio.gather(
-                    game.get_user_info(player_id),
-                    game.get_more_user_info(player_id),
-                    optional_player_extra(
-                        "在线状态",
-                        section_plan.needs_online_info,
-                        lambda: game.get_user_online_info(player_id),
-                        None,
-                        extra_errors,
-                        on_error=_log_player_extra_error,
-                    ),
-                ),
-                timeout=player_config.timeout_seconds,
-            )
-            await mark_headless_available(
-                source="米米号查询",
-                user_id=int(game.user_id),
-            )
-
-            team_name = "无"
-            if getattr(user_info, "team_id", 0) > 0:
-                try:
-                    team_info = await asyncio.wait_for(
-                        game.get_team_info(user_info.team_id),
-                        timeout=min(
-                            5.0,
-                            get_team_query_config().timeout_seconds,
-                        ),
-                    )
-                    team_name = team_info.name
-                except Exception:  # noqa: BLE001
-                    team_name = str(user_info.team_id)
-
-            if section_plan.needs_detail_task:
-                detail_task = create_player_detail_task(
-                    player_id=player_id,
-                    user_info=user_info,
-                    more_info=more_info,
-                has_collection=section_plan.has_collection,
-                needs_peak_section=section_plan.needs_peak_section,
-                has_autocard_rank=section_plan.has_autocard_rank,
-                show_local_rank=section_plan.show_local_rank,
-            )
-
-            player_message = format_compact_player_info(
-                user_info,
-                more_info,
-                team_name=team_name,
-                online_info=online_info,
-                unity_peak=UnityPeakInfo(),
-                peak_rank_summary=PeakSeasonRankSummary.empty(),
-                local_summary=LocalRankSummary(),
-                has_collection=section_plan.has_collection,
-                has_peak=section_plan.needs_peak_section,
-                has_autocard=section_plan.has_autocard_rank,
-                show_peak=False,
-                extra_errors=extra_errors,
-            )
-
-        except FinishedException:
-            raise
-        except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
-            if isinstance(e, (NotLoggedInError, DisconnectedError)):
-                await mark_headless_unavailable(str(e), source="米米号查询")
-            PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-            PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
-            await finish_event_reply(
-                matcher,
-                event,
-                format_player_query_error(player_id, e),
-                mention_sender=True,
-            )
-            return
-        except TimeoutError:
-            PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-            PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
-            await finish_event_reply(
-                matcher,
-                event,
-                player_query_timeout_message(player_id),
-                mention_sender=True,
-            )
-            return
-        except Exception as e:  # noqa: BLE001
-            PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-            PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
-            await finish_event_reply(
-                matcher,
-                event,
-                player_query_failure_message(player_id, e),
-                mention_sender=True,
-            )
-            return
-
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_success(event.user_id)
-        await send_player_info_with_detail_prompt(
-            matcher,
-            event,
-            state,
-            player_message=player_message,
-            detail_task=detail_task,
-            has_collection=section_plan.has_collection,
-            has_peak=section_plan.needs_peak_section,
-            has_autocard=section_plan.has_autocard_rank,
-        )
-
-
-register_plugin(PlayerQueryPlugin())
-
-
 @player_matcher.handle()
 async def validate_player_id(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=PLAYER_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="validate",
+    player_id = await parse_numeric_id(
+        matcher,
+        state,
+        min_value=1,
+        max_value=2_000_000_000,
+        error_message="❌ 米米号无效，请输入纯数字米米号。",
     )
-
-
+    state[PLAYER_ID_KEY] = player_id
+    in_progress_player_id = PLAYER_QUERY_GUARD.in_progress_subject(event.user_id)
+    if in_progress_player_id is not None:
+        await finish_event_reply(
+            matcher,
+            event,
+            player_query_in_progress_message(in_progress_player_id),
+            mention_sender=True,
+        )
+    remaining = PLAYER_QUERY_GUARD.remaining_seconds(event.user_id)
+    if remaining > 0:
+        await finish_event_reply(
+            matcher,
+            event,
+            player_query_wait_message(remaining),
+            mention_sender=True,
+        )
+    PLAYER_QUERY_GUARD.set_in_progress(event.user_id, player_id)
 
 
 @player_matcher.handle()
@@ -326,10 +144,123 @@ async def handle_player(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=PLAYER_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
-        action="query",
+    ensure_extended_packets()
+    player_id: int = state[PLAYER_ID_KEY]
+    extra_errors: list[str] = []
+    player_config = get_player_query_config()
+    local_rank_config = get_local_rank_config()
+    section_plan = plan_player_query_sections(
+        player_config.sections,
+        local_rank_enabled=local_rank_config.enabled,
+    )
+    detail_task: asyncio.Task[PlayerDetailMessages] | None = None
+
+    try:
+        game = get_game_client()
+        user_info, more_info, online_info = await asyncio.wait_for(
+            asyncio.gather(
+                game.get_user_info(player_id),
+                game.get_more_user_info(player_id),
+                optional_player_extra(
+                    "在线状态",
+                    section_plan.needs_online_info,
+                    lambda: game.get_user_online_info(player_id),
+                    None,
+                    extra_errors,
+                    on_error=_log_player_extra_error,
+                ),
+            ),
+            timeout=player_config.timeout_seconds,
+        )
+        await mark_headless_available(
+            source="米米号查询",
+            user_id=int(game.user_id),
+        )
+
+        team_name = "无"
+        if getattr(user_info, "team_id", 0) > 0:
+            try:
+                team_info = await asyncio.wait_for(
+                    game.get_team_info(user_info.team_id),
+                    timeout=min(
+                        5.0,
+                        get_team_query_config().timeout_seconds,
+                    ),
+                )
+                team_name = team_info.name
+            except Exception:  # noqa: BLE001
+                team_name = str(user_info.team_id)
+
+        if section_plan.needs_detail_task:
+            detail_task = create_player_detail_task(
+                player_id=player_id,
+                user_info=user_info,
+                more_info=more_info,
+                has_collection=section_plan.has_collection,
+                needs_peak_section=section_plan.needs_peak_section,
+                has_autocard_rank=section_plan.has_autocard_rank,
+                show_local_rank=section_plan.show_local_rank,
+            )
+
+        player_message = format_compact_player_info(
+            user_info,
+            more_info,
+            team_name=team_name,
+            online_info=online_info,
+            unity_peak=UnityPeakInfo(),
+            peak_rank_summary=PeakSeasonRankSummary.empty(),
+            local_summary=LocalRankSummary(),
+            has_collection=section_plan.has_collection,
+            has_peak=section_plan.needs_peak_section,
+            has_autocard=section_plan.has_autocard_rank,
+            show_peak=False,
+            extra_errors=extra_errors,
+        )
+
+    except FinishedException:
+        raise
+    except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
+        if isinstance(e, (NotLoggedInError, DisconnectedError)):
+            await mark_headless_unavailable(str(e), source="米米号查询")
+        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+        await finish_event_reply(
+            matcher,
+            event,
+            format_player_query_error(player_id, e),
+            mention_sender=True,
+        )
+        return
+    except TimeoutError:
+        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+        await finish_event_reply(
+            matcher,
+            event,
+            player_query_timeout_message(player_id),
+            mention_sender=True,
+        )
+        return
+    except Exception as e:  # noqa: BLE001
+        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+        await finish_event_reply(
+            matcher,
+            event,
+            player_query_failure_message(player_id, e),
+            mention_sender=True,
+        )
+        return
+
+    PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
+    PLAYER_QUERY_GUARD.penalize_success(event.user_id)
+    await send_player_info_with_detail_prompt(
+        matcher,
+        event,
+        state,
+        player_message=player_message,
+        detail_task=detail_task,
+        has_collection=section_plan.has_collection,
+        has_peak=section_plan.needs_peak_section,
+        has_autocard=section_plan.has_autocard_rank,
     )
