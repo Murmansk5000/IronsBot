@@ -1,6 +1,8 @@
 import asyncio
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
+from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
 
@@ -214,4 +216,56 @@ def test_headless_state_notice_uses_admin_notice_delivery(
             "headless_seer_notice",
             "headless state notice",
         )
+    ]
+
+
+def test_headless_recovery_notice_includes_offline_duration(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    sent_messages: list[str] = []
+    offline_at = datetime(2026, 7, 15, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    online_at = offline_at + timedelta(hours=1, minutes=2, seconds=3)
+    timestamps = iter([offline_at, online_at])
+
+    monkeypatch.setattr(headless_notice_state, "_now", lambda: next(timestamps))
+    monkeypatch.setattr(
+        headless_notice_state,
+        "get_headless_notice_config",
+        HeadlessNoticeConfig,
+    )
+    monkeypatch.setattr(
+        headless_notice_service,
+        "headless_user_id_text",
+        lambda: "123456",
+    )
+
+    async def fake_send_admin_notice(message: object, **_kwargs: object) -> object:
+        sent_messages.append(str(message))
+        return object()
+
+    monkeypatch.setattr(
+        headless_notice_state,
+        "send_admin_notice",
+        fake_send_admin_notice,
+    )
+
+    headless_notice_state._state.connected = True
+    headless_notice_state._state.offline_since = None
+
+    asyncio.run(
+        headless_notice_state.mark_headless_unavailable(
+            "连接断开",
+            source="测试掉线",
+        )
+    )
+    asyncio.run(
+        headless_notice_state.mark_headless_available(
+            source="测试重连",
+            user_id=123456,
+        )
+    )
+
+    assert sent_messages == [
+        "无头米米号已掉线。\n米米号：123456\n状态：连接断开\n来源：测试掉线",
+        "无头米米号已恢复登录。\n米米号：123456\n离线时长：1小时2分钟\n来源：测试重连",
     ]
