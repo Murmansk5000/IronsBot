@@ -194,6 +194,28 @@ def test_safe_player_extra_returns_result() -> None:
     assert extra_errors == []
 
 
+def test_safe_player_extra_records_timeout_as_readable_error() -> None:
+    async def run() -> str:
+        await asyncio.sleep(0.05)
+        return "unused"
+
+    extra_errors: list[str] = []
+
+    assert (
+        asyncio.run(
+            safe_player_extra(
+                "群星牌排行",
+                run(),
+                "fallback",
+                extra_errors,
+                timeout_seconds=0.001,
+            )
+        )
+        == "fallback"
+    )
+    assert extra_errors == ["群星牌排行失败：查询超时"]
+
+
 def test_optional_player_extra_skips_disabled_factory() -> None:
     called = False
 

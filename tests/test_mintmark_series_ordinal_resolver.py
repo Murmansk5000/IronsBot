@@ -338,6 +338,33 @@ def test_mintmark_series_type_resolves_speed_hp_suffix() -> None:
     assert [item.id for item in resolver(sessions, "泳池双防体")] == [45029]
 
 
+def test_mintmark_series_type_allows_attack_speed_composite() -> None:
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=103, name="复合系列"))
+    _add_mintmark(
+        data_session,
+        46010,
+        "复合·攻速体",
+        103,
+        attrs=(60, 0, 0, 0, 45, 112),
+    )
+    _add_mintmark(
+        data_session,
+        46011,
+        "复合·普通速体",
+        103,
+        attrs=(32, 0, 0, 0, 45, 112),
+    )
+    data_session.commit()
+    alias_session.commit()
+
+    resolver = mintmark_series_resolvers.MintmarkSeriesTypeResolver()
+    sessions = {"seerapi": data_session, "aliases": alias_session}
+
+    assert [item.id for item in resolver(sessions, "复合物攻速体")] == [46010]
+
+
 def test_mintmark_series_type_tries_next_split_when_series_contains_type_word() -> None:
     data_session = _make_session()
     alias_session = _make_session()

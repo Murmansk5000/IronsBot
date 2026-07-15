@@ -311,8 +311,9 @@ Behavior settings belong in `/config/ironsbot.toml`. The current `.env` and
 Unraid template only contain deployment settings and secrets, so behavior
 upgrades do not require adding removed behavior fields to the container template.
 Before upgrading an existing config, follow the authoritative
-[strict TOML migration table](../README.md#配置迁移). Unknown or removed fields
-stop startup and report their exact TOML path instead of being ignored.
+[TOML migration table](../README.md#配置迁移). Unknown or removed fields are
+ignored with warning logs that include the exact TOML path; syntax errors and
+invalid values still stop startup.
 
 ## Team Resource Subscription
 

@@ -84,7 +84,7 @@ def _mintmark_type_description(mintmark: MintmarkORM) -> str:
     if (
         attr.atk >= _ATTACK_MARK_THRESHOLD
         or attr.sp_atk >= _ATTACK_MARK_THRESHOLD
-    ) and attr.spd < _SPEED_MARK_THRESHOLD:
+    ):
         strings.append("攻")
     if attr.spd >= _SPEED_MARK_THRESHOLD:
         strings.append("速")

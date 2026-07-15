@@ -306,7 +306,7 @@ def test_public_text_does_not_reference_stale_structures() -> None:
     assert stale_matches == []
 
 
-def test_readme_documents_strict_config_migration() -> None:
+def test_readme_documents_lenient_config_migration() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
     for field in CONFIG_MIGRATION_FIELDS:
@@ -365,7 +365,10 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_fail_with_exact_path(tmp_path: Path) -> None:
+def test_unknown_app_config_fields_are_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -379,13 +382,19 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+    config = load_app_config(config_path)
 
-    assert "message.group_commands.0.unknown_command_field" in str(exc_info.value)
+    assert config.message.group_commands[0].id == "hello"
+    assert (
+        "message.group_commands[0].unknown_command_field is not a recognized field"
+        in caplog.text
+    )
 
 
-def test_unregistered_feature_policy_fails_with_exact_path(tmp_path: Path) -> None:
+def test_unregistered_feature_policy_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -395,13 +404,16 @@ main = ["seer_player", "rank"]
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+    config = load_app_config(config_path)
 
-    assert "feature.group_policy.main[1]=rank" in str(exc_info.value)
+    assert config.feature.group_policy["main"] == ["seer_player"]
+    assert "feature.group_policy.main contains unknown feature 'rank'" in caplog.text
 
 
-def test_unknown_bilibili_account_fails_with_exact_path(tmp_path: Path) -> None:
+def test_unknown_bilibili_account_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -411,13 +423,19 @@ accounts = ["missing_account"]
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+    config = load_app_config(config_path)
 
-    assert "bilibili.push.groups.main.accounts[0]" in str(exc_info.value)
+    assert config.bilibili.push.groups["main"].accounts == []
+    assert (
+        "bilibili.push.groups.main.accounts[0] references unknown Bilibili account"
+        in caplog.text
+    )
 
 
-def test_unknown_seer_section_fails_with_exact_path(tmp_path: Path) -> None:
+def test_unknown_seer_section_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -427,11 +445,30 @@ sections = ["basic", "unknown_section"]
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+    config = load_app_config(config_path)
 
-    assert "seer.player.sections" in str(exc_info.value)
-    assert "unknown_section" in str(exc_info.value)
+    assert config.seer.player.sections == ["basic"]
+    assert "seer.player.sections contains unknown section(s)" in caplog.text
+
+
+def test_incomplete_unknown_ai_action_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[ai.intent_actions.custom_action]
+enabled = true
+message = "hello"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_app_config(config_path)
+
+    assert "custom_action" not in config.ai.intent_actions
+    assert "ai.intent_actions.custom_action is incomplete" in caplog.text
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
