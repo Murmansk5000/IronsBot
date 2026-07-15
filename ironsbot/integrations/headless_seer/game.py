@@ -4,10 +4,13 @@ import json
 import logging
 import random
 import time
-from typing import NamedTuple, overload
+from typing import NamedTuple, Protocol, overload
 
 import httpx
 
+from ironsbot.integrations.headless_seer.activity import (
+    format_recent_headless_operation,
+)
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.core import SeerConnect, SeerEncryptConnect
 from ironsbot.integrations.headless_seer.exception import ClientNotInitializedError
@@ -52,6 +55,17 @@ class Address(NamedTuple):
     port: int
 
 
+class HeadlessStateNotifier(Protocol):
+    async def __call__(
+        self,
+        *,
+        connected: bool,
+        reason: str,
+        source: str,
+        user_id: int | None,
+    ) -> None: ...
+
+
 def _merge_win_and_count_rank(
     win_body: DailyRankList,
     count_body: DailyRankList,
@@ -81,6 +95,7 @@ class SeerGame:
         reconnect_retries: int = 0,
         reconnect_delay: float = 5.0,
         reconnect_delay_max: float = 120.0,
+        state_notifier: HeadlessStateNotifier | None = None,
     ) -> None:
         self.user_id = user_id
         self._password: str = password
@@ -93,6 +108,7 @@ class SeerGame:
         self._reconnect_delay_max = reconnect_delay_max
         self._reconnect_task: asyncio.Task[None] | None = None
         self._login_server_url: str = login_server_url
+        self._state_notifier = state_notifier
 
     @property
     def is_logged_in(self) -> bool:
@@ -215,8 +231,36 @@ class SeerGame:
     async def _handle_disconnect(self) -> None:
         """连接断开回调，由传输层触发。"""
         self._is_logged_in = False
-        logger.warning(f"{self.user_id}：连接已断开")
+        operation = format_recent_headless_operation()
+        reason = "连接已断开"
+        if operation:
+            reason = f"{reason}\n疑似触发操作：{operation}"
+        logger.warning(
+            "%s：连接已断开%s",
+            self.user_id,
+            f" ({operation})" if operation else "",
+        )
+        await self._notify_state(connected=False, reason=reason, source="无头连接")
         self.schedule_reconnect()
+
+    async def _notify_state(
+        self,
+        *,
+        connected: bool,
+        reason: str,
+        source: str,
+    ) -> None:
+        if self._state_notifier is None:
+            return
+        try:
+            await self._state_notifier(
+                connected=connected,
+                reason=reason,
+                source=source,
+                user_id=int(self.user_id),
+            )
+        except Exception:
+            logger.warning("headless state notifier failed", exc_info=True)
 
     def schedule_reconnect(self) -> None:
         """触发自动重连。若重连任务已在运行或未启用重连则跳过。"""
@@ -261,6 +305,11 @@ class SeerGame:
                 )
             else:
                 logger.info(f"{self.user_id}：重连成功")
+                await self._notify_state(
+                    connected=True,
+                    reason="",
+                    source="无头自动重连",
+                )
                 return
 
             delay = min(delay * 2, self._reconnect_delay_max)

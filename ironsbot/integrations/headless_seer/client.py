@@ -7,7 +7,7 @@ from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.integrations.headless_seer.game import SeerGame
+from ironsbot.integrations.headless_seer.game import HeadlessStateNotifier, SeerGame
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class ClientManager:
         reconnect_retries: int = 0,
         reconnect_delay: float = 5.0,
         reconnect_delay_max: float = 120.0,
+        state_notifier: HeadlessStateNotifier | None = None,
     ) -> SeerGame:
         game = SeerGame(
             user_id,
@@ -51,6 +52,7 @@ class ClientManager:
             reconnect_retries=reconnect_retries,
             reconnect_delay=reconnect_delay,
             reconnect_delay_max=reconnect_delay_max,
+            state_notifier=state_notifier,
         )
         self._client = game
         try:

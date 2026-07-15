@@ -6,6 +6,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -115,10 +116,15 @@ async def handle_team(
     try:
         game = get_game_client()
         team_config = get_team_query_config()
-        team_info = await asyncio.wait_for(
-            game.get_team_info(team_id),
-            timeout=team_config.timeout_seconds,
-        )
+        with headless_operation(
+            "战队查询",
+            f"战队 {team_id}",
+            source="战队查询",
+        ):
+            team_info = await asyncio.wait_for(
+                game.get_team_info(team_id),
+                timeout=team_config.timeout_seconds,
+            )
         await mark_headless_available(source="战队查询", user_id=int(game.user_id))
         team_message = format_team_info(
             team_info,

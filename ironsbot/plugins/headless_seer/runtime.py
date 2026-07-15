@@ -10,6 +10,7 @@ from ironsbot.integrations.headless_seer.config import (
     get_headless_config,
     get_headless_credentials,
 )
+from ironsbot.services.headless_seer_notice.state import mark_headless_game_state
 
 _headless_seer_runtime_state = {"registered": False}
 
@@ -33,6 +34,7 @@ async def _login_headless_seer_on_startup() -> None:
             reconnect_retries=headless_config.reconnect_retries,
             reconnect_delay=headless_config.reconnect_delay,
             reconnect_delay_max=headless_config.reconnect_delay_max,
+            state_notifier=mark_headless_game_state,
         )
     except Exception:
         logger.opt(exception=True).error("无头客户端登录失败")

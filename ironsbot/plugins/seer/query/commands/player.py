@@ -9,6 +9,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -157,21 +158,26 @@ async def handle_player(
 
     try:
         game = get_game_client()
-        user_info, more_info, online_info = await asyncio.wait_for(
-            asyncio.gather(
-                game.get_user_info(player_id),
-                game.get_more_user_info(player_id),
-                optional_player_extra(
-                    "在线状态",
-                    section_plan.needs_online_info,
-                    lambda: game.get_user_online_info(player_id),
-                    None,
-                    extra_errors,
-                    on_error=_log_player_extra_error,
+        with headless_operation(
+            "米米号查询",
+            f"米米号 {player_id}",
+            source="米米号查询",
+        ):
+            user_info, more_info, online_info = await asyncio.wait_for(
+                asyncio.gather(
+                    game.get_user_info(player_id),
+                    game.get_more_user_info(player_id),
+                    optional_player_extra(
+                        "在线状态",
+                        section_plan.needs_online_info,
+                        lambda: game.get_user_online_info(player_id),
+                        None,
+                        extra_errors,
+                        on_error=_log_player_extra_error,
+                    ),
                 ),
-            ),
-            timeout=player_config.timeout_seconds,
-        )
+                timeout=player_config.timeout_seconds,
+            )
         await mark_headless_available(
             source="米米号查询",
             user_id=int(game.user_id),
