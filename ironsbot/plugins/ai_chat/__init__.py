@@ -1,6 +1,6 @@
 import httpx
 from nonebot import on_message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
@@ -20,8 +20,8 @@ from ironsbot.services.ai.client import (
     AI_CHAT_ERROR_ACTION_NAME,
     AI_CHAT_ERROR_SUBSCRIPTION_KEY,
     call_ai_chat,
-    get_ai_key,
 )
+from ironsbot.services.ai.config import get_ai_config, get_ai_key
 from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
@@ -37,8 +37,6 @@ from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
-
-from .config import get_ai_config
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)
@@ -89,6 +87,7 @@ async def _ai_chat_group_at_rule(event: GroupMessageEvent, state: T_State) -> bo
 
 async def _run_ai_chat(
     matcher: Matcher,
+    bot: Bot,
     event: MessageEvent,
     state: T_State,
 ) -> None:
@@ -102,7 +101,7 @@ async def _run_ai_chat(
         )
 
     key = get_ai_chat_key(event)
-    source_context = build_ai_notice_source_context(event, prompt)
+    source_context = await build_ai_notice_source_context(event, prompt, bot=bot)
 
     if not get_ai_key():
         await notify_superusers_once(
@@ -227,16 +226,18 @@ async def _finish_admin_notice_or_silent(
 @ai_chat_matcher.handle()
 async def handle_ai_chat(
     matcher: Matcher,
+    bot: Bot,
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await _run_ai_chat(matcher, event, state)
+    await _run_ai_chat(matcher, bot, event, state)
 
 
 @ai_chat_group_at_matcher.handle()
 async def handle_group_at_ai_chat(
     matcher: Matcher,
+    bot: Bot,
     event: GroupMessageEvent,
     state: T_State,
 ) -> None:
-    await _run_ai_chat(matcher, event, state)
+    await _run_ai_chat(matcher, bot, event, state)

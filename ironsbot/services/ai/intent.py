@@ -150,6 +150,17 @@ def is_action_allowed(event: MessageEvent, action: AiIntentAction) -> bool:
     return is_private_feature_allowed(event.user_id, action.feature)
 
 
+def is_ai_intent_allowed(event: MessageEvent) -> bool:
+    if isinstance(event, GroupMessageEvent):
+        return is_group_feature_allowed(
+            event.user_id,
+            event.group_id,
+            "ai_intent",
+        )
+
+    return is_private_feature_allowed(event.user_id, "ai_intent")
+
+
 def format_action_template(action: AiIntentAction, template: str, text: str) -> str:
     return template.format_map(
         TemplateContext(
