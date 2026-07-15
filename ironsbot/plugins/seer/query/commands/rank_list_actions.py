@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from nonebot import logger
 
+from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank_cache_queries import get_local_rank_entries
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start, timestamp_text
@@ -46,13 +47,21 @@ async def build_global_rank_message(
     if global_rank_spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
     game = get_game_client()
-    result = await fetch_daily_rank_page_result(
-        game,
-        key=spec.key,
-        sub_key=spec.sub_key,
-        start=batch_raw_start(spec, command.start_rank),
-        count=command.limit,
-    )
+    with headless_operation(
+        "榜单查询",
+        (
+            f"{spec.title} 第 "
+            f"{command.start_rank}-{command.start_rank + command.limit - 1}名"
+        ),
+        source="榜单查询",
+    ):
+        result = await fetch_daily_rank_page_result(
+            game,
+            key=spec.key,
+            sub_key=spec.sub_key,
+            start=batch_raw_start(spec, command.start_rank),
+            count=command.limit,
+        )
     return format_global_rank_message(
         spec,
         result.items,
@@ -72,16 +81,21 @@ async def build_global_rank_score_message(
     if global_rank_spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
     game = get_game_client()
-    result = await fetch_rank_score_segment(
-        game,
-        key=spec.key,
-        sub_key=spec.sub_key,
-        title=spec.title,
-        score_name=spec.unit,
-        target_score=command.score,
-        start_index=spec.start,
-        rank_offset=spec.rank_offset,
-    )
+    with headless_operation(
+        "榜单分数查询",
+        f"{spec.title} {command.score}{spec.unit}",
+        source="榜单分数查询",
+    ):
+        result = await fetch_rank_score_segment(
+            game,
+            key=spec.key,
+            sub_key=spec.sub_key,
+            title=spec.title,
+            score_name=spec.unit,
+            target_score=command.score,
+            start_index=spec.start,
+            rank_offset=spec.rank_offset,
+        )
     logger.info(
         "rank score lookup completed: title={} key={} sub_key={} score={} "
         "items={} boundary={} searched_limit={} truncated={}",
@@ -111,14 +125,19 @@ async def cache_global_rank_batch(
         return spec, 0, requested_count
     count = min(requested_count, get_local_rank_config().batch_limit)
     raw_start = batch_raw_start(spec, command.start_rank)
-    items = await fetch_daily_rank_page(
-        get_game_client(),
-        key=spec.key,
-        sub_key=spec.sub_key,
-        start=raw_start,
-        count=count,
-        use_cache=False,
-    )
+    with headless_operation(
+        "手动缓存榜单",
+        f"{spec.title} 第 {command.start_rank}-{command.end_rank}名",
+        source="手动缓存榜单",
+    ):
+        items = await fetch_daily_rank_page(
+            get_game_client(),
+            key=spec.key,
+            sub_key=spec.sub_key,
+            start=raw_start,
+            count=count,
+            use_cache=False,
+        )
     return spec, len(items), requested_count
 
 

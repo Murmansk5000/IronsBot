@@ -78,6 +78,22 @@ async def mark_headless_unavailable(
     )
 
 
+async def mark_headless_game_state(
+    *,
+    connected: bool,
+    reason: str,
+    source: str,
+    user_id: int | None,
+) -> None:
+    await _record_headless_state(
+        connected=connected,
+        reason=reason,
+        source=source,
+        user_id=user_id,
+        notify=True,
+    )
+
+
 async def _record_headless_state(
     *,
     connected: bool,
