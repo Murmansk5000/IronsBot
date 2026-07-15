@@ -1,12 +1,25 @@
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+
+from ironsbot.config.loader import get_app_config
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Bot
 
 AI_NOTICE_MESSAGE_MAX_CHARS = 300
 
 
-def build_ai_notice_source_context(event: MessageEvent, prompt: str) -> str:
+async def build_ai_notice_source_context(
+    event: MessageEvent,
+    prompt: str,
+    *,
+    bot: "Bot | None" = None,
+) -> str:
     lines: list[str] = []
     if isinstance(event, GroupMessageEvent):
-        lines.append(f"群：{event.group_id}")
+        group_label = await _group_display_label(event, bot)
+        lines.append(f"群：{group_label}")
     else:
         lines.append("会话：私聊")
 
@@ -42,6 +55,45 @@ def _get_sender_display_name(event: MessageEvent) -> str:
             value = str(getattr(sender, key, "") or "").strip()
         if value:
             return value
+    return ""
+
+
+async def _group_display_label(event: GroupMessageEvent, bot: "Bot | None") -> str:
+    group_id = int(event.group_id)
+    group_name = await _fetch_group_name(bot, group_id)
+    if group_name:
+        return f"{group_name}（{group_id}）"
+
+    group_alias = _configured_group_alias(group_id)
+    if group_alias:
+        return f"{group_alias}（{group_id}）"
+
+    return str(group_id)
+
+
+async def _fetch_group_name(bot: "Bot | None", group_id: int) -> str:
+    if bot is None:
+        return ""
+
+    try:
+        group_info = await bot.get_group_info(group_id=group_id, no_cache=False)
+    except Exception:  # noqa: BLE001
+        return ""
+
+    if isinstance(group_info, dict):
+        return str(group_info.get("group_name") or "").strip()
+    return str(getattr(group_info, "group_name", "") or "").strip()
+
+
+def _configured_group_alias(group_id: int) -> str:
+    try:
+        aliases = get_app_config().feature.group_aliases
+    except Exception:  # noqa: BLE001
+        return ""
+
+    for alias, alias_group_id in aliases.items():
+        if int(alias_group_id) == group_id:
+            return alias
     return ""
 
 

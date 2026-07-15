@@ -1,3 +1,5 @@
+import asyncio
+
 import nonebot
 import pytest
 from pytest import MonkeyPatch
@@ -17,6 +19,17 @@ service = pytest.importorskip("ironsbot.services.ai.chat")
 constants = pytest.importorskip("ironsbot.services.ai.constants")
 ai_client = pytest.importorskip("ironsbot.services.ai.client")
 source_context = pytest.importorskip("ironsbot.services.ai.source_context")
+
+
+class FakeBot:
+    async def get_group_info(
+        self,
+        *,
+        group_id: int,
+        no_cache: bool = False,
+    ) -> dict[str, object]:
+        assert no_cache is False
+        return {"group_id": group_id, "group_name": "示例群"}
 
 
 def test_can_show_admin_notice_for_superuser(monkeypatch: MonkeyPatch) -> None:
@@ -69,12 +82,42 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
         sender={"card": "群名片"},
     )
 
-    source = source_context.build_ai_notice_source_context(event, "你好")
+    source = asyncio.run(
+        source_context.build_ai_notice_source_context(event, "你好", bot=FakeBot())
+    )
 
-    assert f"群：{GROUP_ID}" in source
+    assert f"群：示例群（{GROUP_ID}）" in source
     assert f"用户：{USER_ID}（群名片）" in source
     assert "消息ID：33" in source
     assert "消息：你好" in source
+
+
+def test_ai_notice_source_context_falls_back_to_group_alias(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    event = group_message_event("hello", group_id=GROUP_ID)
+
+    async def fail_group_info(**_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("boom")
+
+    class FailingBot:
+        get_group_info = staticmethod(fail_group_info)
+
+    monkeypatch.setattr(
+        source_context,
+        "_configured_group_alias",
+        lambda group_id: "example" if group_id == GROUP_ID else "",
+    )
+
+    source = asyncio.run(
+        source_context.build_ai_notice_source_context(
+            event,
+            "你好",
+            bot=FailingBot(),
+        )
+    )
+
+    assert f"群：example（{GROUP_ID}）" in source
 
 
 def test_ai_client_notice_appends_source_context() -> None:
