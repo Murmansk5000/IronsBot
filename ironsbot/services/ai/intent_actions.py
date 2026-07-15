@@ -58,7 +58,7 @@ async def classify_ai_intent_action(event: MessageEvent) -> AiIntentAction | Non
             reply = await call_ai_chat(
                 build_intent_prompt(action, text),
                 [],
-                source_context=build_ai_notice_source_context(event, text),
+                source_context=await build_ai_notice_source_context(event, text),
             )
         except Exception as e:  # noqa: BLE001
             logger.warning(f"AI intent action failed to classify {action.id}: {e}")
@@ -86,7 +86,7 @@ async def run_ai_reply_action(
     reply = await call_ai_chat(
         prompt,
         [],
-        source_context=build_ai_notice_source_context(event, text),
+        source_context=await build_ai_notice_source_context(event, text),
     )
     if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
         return None

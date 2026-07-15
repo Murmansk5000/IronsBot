@@ -215,12 +215,14 @@ at_users = ["owner"]
 只控制主动推送末尾的火火手册链接；`ai_intent_fire_manual`
 控制用户明确索要手册链接时的 AI 意图动作。
 
-TOML 使用严格校验：未知字段、未注册 feature、未知 B站账号引用、未知 Seer
-展示区块和残缺 AI action 都会阻止启动，并在错误中给出配置路径。
+TOML 使用宽松加载：未知字段、未注册 feature、未知 B站账号引用、未知 Seer
+展示区块和残缺 AI action 会被忽略，并在日志中给出配置路径，方便先启动后迁移。
+TOML 语法错误、字段类型错误和越界值仍会阻止启动。
 
 ### 配置迁移
 
-升级后若启动时报 `extra_forbidden`，按错误路径直接迁移，不要把旧字段留空：
+升级后若日志提示忽略了旧字段，按提示路径迁移；旧字段可以先留在文件里，
+机器人会忽略它们并继续启动，但建议尽快删掉，避免以后维护时误判：
 
 | 旧写法 | 处理方式 | 当前写法 |
 | --- | --- | --- |
@@ -231,7 +233,7 @@ TOML 使用严格校验：未知字段、未注册 feature、未知 B站账号�
 | `bilibili.push.default_mode` | 改名 | `bilibili.push.mode` |
 | `message.private_unsubscribe` | 移动并统一 | `[message.push_unsubscribe]`，同时管理私聊和群聊推送。 |
 | `seer.render.clear_on_startup` | 删除，无替代 | 使用 `seer.render.cache_max_size_mb` 进行容量淘汰，不再在启动时清空缓存。 |
-| feature `rank` | 改名 | `seer_rank`；旧 feature 不会被忽略或兼容。 |
+| feature `rank` | 改名 | `seer_rank`；旧 feature 会被忽略并写 warning。 |
 
 帮助提示与未开启 AI 群的 @ 提示共用 `[runtime.help]` 的两项限流配置。
 行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥，

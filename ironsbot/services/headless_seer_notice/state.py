@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
@@ -15,11 +15,13 @@ DAILY_QUIET_END = time(hour=0, minute=5)
 FRIDAY_UPDATE_WEEKDAY = 4
 FRIDAY_QUIET_START = time(hour=9, minute=50)
 FRIDAY_QUIET_END = time(hour=15, minute=0)
+MAX_DURATION_PARTS = 2
 
 
 @dataclass(slots=True)
 class HeadlessState:
     connected: bool | None = None
+    offline_since: datetime | None = None
 
 
 _state = HeadlessState()
@@ -84,17 +86,23 @@ async def _record_headless_state(
     user_id: int | None,
     notify: bool,
 ) -> None:
+    now = _now()
     async with _state_lock:
         previous = _state.connected
         if previous == connected:
             return
 
+        offline_since = _state.offline_since
         _state.connected = connected
+        if connected:
+            _state.offline_since = None
+        else:
+            _state.offline_since = now
 
     if previous is None or not notify:
         return
 
-    if in_headless_notice_quiet_window():
+    if in_headless_notice_quiet_window(now):
         logger.info(
             "headless state notice suppressed by quiet window: {} -> {} ({})",
             previous,
@@ -113,6 +121,9 @@ async def _record_headless_state(
         reason=reason,
         source=source,
         user_id=user_id,
+        offline_duration=_format_offline_duration(
+            now - offline_since if connected and offline_since is not None else None
+        ),
     )
 
 
@@ -122,6 +133,7 @@ async def _send_headless_state_notice(
     reason: str,
     source: str,
     user_id: int | None,
+    offline_duration: str = "",
 ) -> None:
     from .service import headless_user_id_text
 
@@ -135,6 +147,7 @@ async def _send_headless_state_notice(
         user_id=user_id or headless_user_id_text(),
         reason=reason.strip() or "状态未知",
         source=source.strip() or "状态检测",
+        offline_duration=offline_duration or "未知",
     )
     await send_admin_notice(
         message,
@@ -142,3 +155,24 @@ async def _send_headless_state_notice(
         interval_seconds=1.2,
         subscription_key="headless_seer_notice",
     )
+
+
+def _format_offline_duration(delta: timedelta | None) -> str:
+    if delta is None:
+        return "未知"
+
+    total_seconds = max(0, int(delta.total_seconds()))
+    days, remainder = divmod(total_seconds, 24 * 60 * 60)
+    hours, remainder = divmod(remainder, 60 * 60)
+    minutes, seconds = divmod(remainder, 60)
+
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}天")
+    if hours:
+        parts.append(f"{hours}小时")
+    if minutes and len(parts) < MAX_DURATION_PARTS:
+        parts.append(f"{minutes}分钟")
+    if not parts or (not days and not hours):
+        parts.append(f"{seconds}秒")
+    return "".join(parts)

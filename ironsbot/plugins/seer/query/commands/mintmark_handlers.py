@@ -67,7 +67,7 @@ def _mark_type_description(attributes: SixAttributes | None) -> str:
     if (
         attributes.atk >= ATTACK_MARK_THRESHOLD
         or attributes.sp_atk >= ATTACK_MARK_THRESHOLD
-    ) and attributes.spd < SPEED_MARK_THRESHOLD:
+    ):
         strings.append("攻")
     if attributes.spd >= SPEED_MARK_THRESHOLD:
         strings.append("速")
