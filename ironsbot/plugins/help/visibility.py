@@ -29,7 +29,6 @@ HIDDEN_MODULE_PREFIXES = (
     "ironsbot.plugins.http_client",
     "ironsbot.plugins.seer_data",
     "ironsbot.plugins.team_audit_welcome",
-    "ironsbot.plugins.team_recommend",
 )
 
 ALWAYS_VISIBLE_MODULE_PREFIXES = (

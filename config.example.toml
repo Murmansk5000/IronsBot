@@ -160,14 +160,11 @@ intent_actions_enabled = true
 # Omitted fields inherit built-in defaults for known actions.
 # ZH: AI 意图动作按 [ai.intent_actions.<id>] 配置；已知动作未写字段会继承内置默认值。
 
-# 内置动作 fire_manual_ad 需要 ai_intent_fire_manual；join_team 需要 ai_intent_team_recommend。
-# 通用 ai_intent 权限不能替代上述细粒度权限；动作仍受 AI 总开关和准入控制。
-# fire_manual_ad 作为推送 Feature 时，不等同于此处的同名动作 ID。
-[ai.intent_actions.join_team]
+[ai.intent_actions.team_recommend]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
 
-[ai.intent_actions.fire_manual_ad]
+[ai.intent_actions.fire_manual]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
 enabled = true
 

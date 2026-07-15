@@ -41,7 +41,6 @@ FEATURE_PLUGINS: Final[tuple[str, ...]] = (
     "ironsbot.plugins.activity",
     "ironsbot.plugins.ai_mention_guard",
     "ironsbot.plugins.ai_intent",
-    "ironsbot.plugins.team_recommend",
     "ironsbot.plugins.bilibili",
     "ironsbot.plugins.bilibili.commands",
     "ironsbot.plugins.about",

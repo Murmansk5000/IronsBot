@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +24,7 @@ AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt
 UNKNOWN_AI_ACTION_ERROR = (
     "unknown AI intent action must configure a complete action definition"
 )
+_LOGGER = logging.getLogger("ironsbot.config")
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
@@ -110,8 +112,8 @@ class AiIntentAction(AiActionBase):
 
 def builtin_ai_actions() -> dict[str, AiIntentAction]:
     return {
-        "join_team": AiIntentAction(
-            id="join_team",
+        "team_recommend": AiIntentAction(
+            id="team_recommend",
             feature="ai_intent_team_recommend",
             keywords=["战队"],
             action="team_recommend",
@@ -128,8 +130,8 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             ),
             reply_prompt=DEFAULT_KEYWORD_INFO_PROMPT,
         ),
-        "fire_manual_ad": AiIntentAction(
-            id="fire_manual_ad",
+        "fire_manual": AiIntentAction(
+            id="fire_manual",
             feature=FIRE_MANUAL_INTENT_FEATURE,
             keywords=["手册"],
             action="message",
@@ -142,8 +144,8 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
 def default_ai_actions() -> dict[str, AiIntentAction]:
     actions = builtin_ai_actions()
     return {
-        "join_team": actions["join_team"],
-        "fire_manual_ad": actions["fire_manual_ad"],
+        "team_recommend": actions["team_recommend"],
+        "fire_manual": actions["fire_manual"],
     }
 
 
@@ -252,7 +254,16 @@ def _resolve_action_map(
 
         builtin_action = builtins.get(action_id)
         if builtin_action is None:
-            _validate_custom_action(action)
+            try:
+                _validate_custom_action(action)
+            except ValueError:
+                _LOGGER.warning(
+                    "Ignored unknown AI intent action '%s' because it does not "
+                    "define a complete custom action. Built-in action ids are: %s",
+                    action_id,
+                    ", ".join(sorted(builtins)),
+                )
+                continue
             resolved_action = action.model_copy(update={"id": action_id})
         else:
             resolved_action = AiIntentAction.model_validate(

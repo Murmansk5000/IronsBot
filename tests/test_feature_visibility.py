@@ -52,11 +52,9 @@ def test_help_visibility_maps_features_to_plugin_modules() -> None:
     )
     assert visibility.features_for_plugin_module("ironsbot.plugins.ai_intent") == (
         "ai_intent",
+        "ai_intent_team_recommend",
         "ai_intent_fire_manual",
     )
-    assert visibility.features_for_plugin_module(
-        "ironsbot.plugins.team_recommend"
-    ) == ("ai_intent_team_recommend",)
 
 
 def test_feature_module_visibility_uses_feature_service(
@@ -157,11 +155,6 @@ def test_ai_intent_visibility_requires_key_and_feature(
     assert visibility.plugin_visible_for_event(
         "AI意图分析",
         "ironsbot.plugins.ai_intent",
-        _group_event(),
-    )
-    assert not visibility.plugin_visible_for_event(
-        "战队推荐",
-        "ironsbot.plugins.team_recommend",
         _group_event(),
     )
     assert not visibility.plugin_visible_for_event(

@@ -1,48 +1,26 @@
-from typing import Any
-
 from nonebot import on_message
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.config.models.ai import AiIntentAction
 from ironsbot.config.models.app import AppConfig
-from ironsbot.services.ai.client import call_ai_chat, get_ai_key
-from ironsbot.services.ai.constants import (
-    EMPTY_REPLY,
-    REQUEST_FAILED_REPLY,
+from ironsbot.services.ai.intent_actions import (
+    classify_ai_intent_action,
+    is_team_action,
+    run_ai_reply_action,
 )
-from ironsbot.services.ai.intent import (
-    AiIntentAction,
-    build_intent_prompt,
-    contains_any_keyword,
-    excluded_by_command,
-    excluded_by_context,
-    format_action_template,
-    get_ai_intent_config,
-    get_configured_actions,
-    is_action_allowed,
-    passes_action_prefilter,
-    reply_is_yes,
-)
-from ironsbot.services.ai.source_context import build_ai_notice_source_context
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
 )
-from ironsbot.shared.plugin_system import (
-    PluginContext,
-    dispatch_plugin,
-    register_plugin,
-)
 from ironsbot.utils.rule import no_reply
 
+from .team_actions import run_team_action
+
 ACTION_KEY = "_ai_intent_action"
-AI_INTENT_PLUGIN_NAME = "ai_intent"
-TEAM_RECOMMEND_PLUGIN_NAME = "team_recommend"
-TEAM_ACTIONS = {"team_recommend", "team_resource"}
 
 
 __plugin_meta__ = PluginMetadata(
@@ -59,46 +37,12 @@ __plugin_meta__ = PluginMetadata(
 
 
 async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
-    if not get_ai_intent_config().intent_actions_enabled:
+    action = await classify_ai_intent_action(event)
+    if action is None:
         return False
 
-    text = event.get_plaintext().strip()
-    if not text or not get_ai_key():
-        return False
-
-    for action in get_configured_actions():
-        if (
-            not action.enabled
-            or not is_action_allowed(event, action)
-            or not contains_any_keyword(text, action.keywords)
-            or not passes_action_prefilter(text, action)
-            or excluded_by_command(text, action)
-            or excluded_by_context(text, action)
-        ):
-            continue
-
-        try:
-            reply = await call_ai_chat(
-                build_intent_prompt(action, text),
-                [],
-                source_context=build_ai_notice_source_context(event, text),
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"AI intent action failed to classify {action.id}: {e}")
-            return False
-
-        if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
-            return False
-
-        logger.info(
-            f"AI intent action {action.id or '<unnamed>'} classified "
-            f"{event.user_id}: {reply!r}"
-        )
-        if reply_is_yes(reply):
-            state[ACTION_KEY] = action
-            return True
-
-    return False
+    state[ACTION_KEY] = action
+    return True
 
 
 ai_intent_action_matcher = on_message(
@@ -110,23 +54,11 @@ ai_intent_action_matcher = on_message(
 
 async def _handle_ai_reply_action(
     action: AiIntentAction,
-    matcher: Any,
+    matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    prompt = format_action_template(
-        action,
-        action.reply_prompt,
-        event.get_plaintext().strip(),
-    )
-    reply = await call_ai_chat(
-        prompt,
-        [],
-        source_context=build_ai_notice_source_context(
-            event,
-            event.get_plaintext().strip(),
-        ),
-    )
-    if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
+    reply = await run_ai_reply_action(action, event)
+    if reply is None:
         return
 
     await finish_event_reply(
@@ -143,44 +75,18 @@ async def handle_ai_intent_action(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=AI_INTENT_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        state=state,
+    action = state[ACTION_KEY]
+    if is_team_action(action):
+        await run_team_action(matcher, event, action)
+        return
+
+    if action.action == "ai_reply":
+        await _handle_ai_reply_action(action, matcher, event)
+        return
+
+    await finish_event_reply(
+        matcher,
+        event,
+        action.message,
+        mention_sender=True,
     )
-
-
-class AiIntentPlugin:
-    name = AI_INTENT_PLUGIN_NAME
-    feature = "ai_intent"
-    enabled = True
-
-    async def handle(self, event: MessageEvent, context: PluginContext) -> None:
-        state = context.state if context.state is not None else {}
-        action = state[ACTION_KEY]
-        matcher = context.matcher or ai_intent_action_matcher
-
-        if action.action in TEAM_ACTIONS:
-            await dispatch_plugin(
-                plugin_name=TEAM_RECOMMEND_PLUGIN_NAME,
-                event=event,
-                matcher=matcher,
-                action=action.action,
-                ai_action=action,
-            )
-            return
-
-        if action.action == "ai_reply":
-            await _handle_ai_reply_action(action, matcher, event)
-            return
-
-        await finish_event_reply(
-            matcher,
-            event,
-            action.message,
-            mention_sender=True,
-        )
-
-
-register_plugin(AiIntentPlugin())
