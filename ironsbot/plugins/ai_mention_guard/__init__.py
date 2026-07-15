@@ -4,6 +4,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.services.ai.config import get_ai_config
 from ironsbot.services.ai.mention_guard import (
     GuardReplyLimiter,
     should_guard_non_ai_group_mention,
@@ -15,8 +16,6 @@ from ironsbot.shared.help_hints import (
 )
 from ironsbot.shared.matcher_priority import get_pre_command_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
-
-from .config import get_ai_config
 
 _guard_reply_limiter: GuardReplyLimiter | None = None
 AI_MENTION_GUARD_PRIORITY = get_pre_command_matcher_priority("ai_mention_guard")
