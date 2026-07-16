@@ -65,6 +65,11 @@ class RankPageResult:
 
 
 @dataclass(slots=True)
+class RankSummaryProgress:
+    current_title: str = ""
+
+
+@dataclass(slots=True)
 class BookBreakdownSummary:
     pet_kind_count: int = 0
     pet_kind: RankLookupResult | None = None
@@ -113,6 +118,7 @@ class PlayerRankSummary:
     book: RankLookupResult
     achieve: RankLookupResult
     breakdown: BookBreakdownSummary
+    errors: tuple[str, ...] = ()
 
     @classmethod
     def empty(cls) -> "PlayerRankSummary":
@@ -128,6 +134,7 @@ class PeakSeasonRankSummary:
     standard: RankLookupResult
     wild: RankLookupResult
     expert: RankLookupResult
+    errors: tuple[str, ...] = ()
 
     @classmethod
     def empty(cls) -> "PeakSeasonRankSummary":
@@ -148,5 +155,5 @@ __all__ = [
     "RankScoreMissProof",
     "RankScoreSearchItem",
     "RankScoreSearchResult",
+    "RankSummaryProgress",
 ]
-

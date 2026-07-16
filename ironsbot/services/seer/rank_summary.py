@@ -27,11 +27,32 @@ from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
     RankLookupResult,
+    RankSummaryProgress,
 )
 
 FindRank = Callable[..., Awaitable[RankLookupResult]]
 FindPetKindRank = Callable[..., Awaitable[RankLookupResult]]
 _LOGGER = logging.getLogger("ironsbot.seer.rank_summary")
+
+
+def _display_rank_title(title: str) -> str:
+    return title if title.endswith("榜") else f"{title}榜"
+
+
+def _record_rank_error(
+    errors: list[str] | None,
+    *,
+    title: str,
+    error: Exception,
+) -> None:
+    if errors is None:
+        return
+    display_title = _display_rank_title(title)
+    if isinstance(error, TimeoutError):
+        errors.append(f"{display_title}查询超时")
+        return
+    detail = str(error) or type(error).__name__
+    errors.append(f"{display_title}查询失败：{detail}")
 
 
 async def _safe_find_rank(  # noqa: PLR0913
@@ -42,8 +63,12 @@ async def _safe_find_rank(  # noqa: PLR0913
     title: str,
     score_name: str,
     score: int | None = None,
+    errors: list[str] | None = None,
+    progress: RankSummaryProgress | None = None,
     **kwargs: Any,
 ) -> RankLookupResult:
+    if progress is not None:
+        progress.current_title = _display_rank_title(title)
     try:
         return await find_rank(
             game,
@@ -51,19 +76,25 @@ async def _safe_find_rank(  # noqa: PLR0913
             score_name=score_name,
             **kwargs,
         )
-    except (TimeoutError, OSError):
+    except (TimeoutError, OSError) as error:
         _LOGGER.warning("failed to fetch player rank item: %s", label, exc_info=True)
+        _record_rank_error(errors, title=title, error=error)
         return RankLookupResult(title=title, score_name=score_name, score=score)
 
 
-async def _safe_find_pet_kind_rank(
+async def _safe_find_pet_kind_rank(  # noqa: PLR0913
     game: Any,
     *,
     user_id: int,
     pet_kind_count: int,
     search_limit: int,
     find_pet_kind_rank: FindPetKindRank,
+    errors: list[str] | None = None,
+    progress: RankSummaryProgress | None = None,
 ) -> RankLookupResult:
+    title = "精灵图鉴"
+    if progress is not None:
+        progress.current_title = _display_rank_title(title)
     try:
         return await find_pet_kind_rank(
             game,
@@ -71,10 +102,11 @@ async def _safe_find_pet_kind_rank(
             pet_kind_count=pet_kind_count,
             search_limit=search_limit,
         )
-    except (TimeoutError, OSError):
+    except (TimeoutError, OSError) as error:
         _LOGGER.warning("failed to fetch player rank item: pet_kind", exc_info=True)
+        _record_rank_error(errors, title=title, error=error)
         return RankLookupResult(
-            title="精灵图鉴",
+            title=title,
             score_name="精灵",
             score=pet_kind_count,
         )
@@ -89,6 +121,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
     limit: int,
     find_pet_kind_rank: FindPetKindRank,
     find_rank: FindRank,
+    errors: list[str] | None = None,
+    progress: RankSummaryProgress | None = None,
 ) -> BookBreakdownSummary:
     pet_kind = await _safe_find_pet_kind_rank(
         game,
@@ -96,6 +130,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         pet_kind_count=pet_kind_count,
         search_limit=limit,
         find_pet_kind_rank=find_pet_kind_rank,
+        errors=errors,
+        progress=progress,
     )
     skin = await _safe_find_rank(
         "skin",
@@ -109,6 +145,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         sub_key=SKIN_RANK_SUB_KEY,
         target_score=skin_score,
         search_limit=limit,
+        errors=errors,
+        progress=progress,
     )
     countermark = await _safe_find_rank(
         "countermark",
@@ -120,6 +158,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         key=COUNTERMARK_RANK_KEY,
         sub_key=COUNTERMARK_RANK_SUB_KEY,
         search_limit=limit,
+        errors=errors,
+        progress=progress,
     )
     outfit_suit = await _safe_find_rank(
         "outfit_suit",
@@ -131,6 +171,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         key=OUTFIT_RANK_KEY,
         sub_key=OUTFIT_SUIT_RANK_SUB_KEY,
         search_limit=limit,
+        errors=errors,
+        progress=progress,
     )
     outfit_part = await _safe_find_rank(
         "outfit_part",
@@ -142,6 +184,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         key=OUTFIT_RANK_KEY,
         sub_key=OUTFIT_PART_RANK_SUB_KEY,
         search_limit=limit,
+        errors=errors,
+        progress=progress,
     )
     mount = await _safe_find_rank(
         "mount",
@@ -153,6 +197,8 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         key=OUTFIT_RANK_KEY,
         sub_key=MOUNT_RANK_SUB_KEY,
         search_limit=limit,
+        errors=errors,
+        progress=progress,
     )
     return BookBreakdownSummary(
         pet_kind_count=pet_kind_count,
@@ -174,11 +220,13 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     expert_score: int | None = None,
     current_peak_sub_key: int | None,
     find_rank: FindRank,
+    progress: RankSummaryProgress | None = None,
 ) -> PeakSeasonRankSummary:
     if current_peak_sub_key is None:
         return PeakSeasonRankSummary.empty()
 
     summary = PeakSeasonRankSummary.empty()
+    errors: list[str] = []
     if standard_score is not None and standard_score > 0:
         summary.standard = await _safe_find_rank(
             "standard_peak",
@@ -191,6 +239,8 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
             key=STANDARD_PEAK_USER_RANK_KEY,
             sub_key=current_peak_sub_key,
             target_score=standard_score,
+            errors=errors,
+            progress=progress,
         )
     if wild_score is not None and wild_score > 0:
         summary.wild = await _safe_find_rank(
@@ -204,6 +254,8 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
             key=WILD_PEAK_USER_RANK_KEY,
             sub_key=current_peak_sub_key,
             target_score=wild_score,
+            errors=errors,
+            progress=progress,
         )
     if expert_score is not None and expert_score > 0:
         summary.expert = await _safe_find_rank(
@@ -217,7 +269,10 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
             key=EXPERT_PEAK_USER_RANK_KEY,
             sub_key=current_peak_sub_key,
             target_score=expert_score,
+            errors=errors,
+            progress=progress,
         )
+    summary.errors = tuple(errors)
     return summary
 
 
@@ -248,7 +303,9 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
     book_breakdown_limit: int,
     find_rank: FindRank,
     find_pet_kind_rank: FindPetKindRank,
+    progress: RankSummaryProgress | None = None,
 ) -> PlayerRankSummary:
+    errors: list[str] = []
     book = await _safe_find_rank(
         "book",
         find_rank,
@@ -260,6 +317,8 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         key=BOOK_RANK_KEY,
         sub_key=BOOK_RANK_SUB_KEY,
         target_score=book_score,
+        errors=errors,
+        progress=progress,
     )
     achieve = await _safe_find_rank(
         "achieve",
@@ -272,6 +331,8 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         key=ACHIEVE_RANK_KEY,
         sub_key=ACHIEVE_RANK_SUB_KEY,
         target_score=achieve_score,
+        errors=errors,
+        progress=progress,
     )
     breakdown = await fetch_book_breakdown_summary(
         game,
@@ -281,8 +342,15 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         limit=book_breakdown_limit,
         find_pet_kind_rank=find_pet_kind_rank,
         find_rank=find_rank,
+        errors=errors,
+        progress=progress,
     )
-    return PlayerRankSummary(book=book, achieve=achieve, breakdown=breakdown)
+    return PlayerRankSummary(
+        book=book,
+        achieve=achieve,
+        breakdown=breakdown,
+        errors=tuple(errors),
+    )
 
 
 __all__ = [

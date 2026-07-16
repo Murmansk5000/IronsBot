@@ -235,6 +235,32 @@ def test_safe_player_extra_records_timeout_as_readable_error() -> None:
     assert extra_errors == ["群星牌排行失败：查询超时"]
 
 
+def test_safe_player_extra_uses_dynamic_error_label() -> None:
+    async def run() -> str:
+        await asyncio.sleep(0.05)
+        return "unused"
+
+    extra_errors: list[str] = []
+    logged_labels: list[str] = []
+
+    assert (
+        asyncio.run(
+            safe_player_extra(
+                "全服排行",
+                run(),
+                "fallback",
+                extra_errors,
+                timeout_seconds=0.001,
+                error_label_factory=lambda: "刻印图鉴榜",
+                on_error=lambda label, _error: logged_labels.append(label),
+            )
+        )
+        == "fallback"
+    )
+    assert extra_errors == ["刻印图鉴榜失败：查询超时"]
+    assert logged_labels == ["刻印图鉴榜"]
+
+
 def test_optional_player_extra_skips_disabled_factory() -> None:
     called = False
 

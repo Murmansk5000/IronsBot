@@ -16,6 +16,7 @@ from ironsbot.services.seer.player_formatting_common import (
     format_vip,
     format_win_rate,
 )
+from ironsbot.services.seer.player_query import PlayerDetailErrors
 
 PLAYER_ID = 105023264
 TEAM_ID = 987654321
@@ -304,7 +305,11 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
         needs_peak_section=True,
         has_autocard_rank=True,
         show_local_rank=True,
-        extra_errors=["全服排行失败"],
+        extra_errors=PlayerDetailErrors(
+            collection=["全服排行失败"],
+            peak=["巅峰赛季榜失败"],
+            autocard=["群星牌排行失败"],
+        ),
     )
 
     assert "📚【收集与排行】" in messages.collection_message
@@ -319,8 +324,12 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     assert "全服第12" in messages.autocard_message
     assert "样本第1" in messages.autocard_message
     assert "全服排行失败" in messages.collection_message
-    assert "全服排行失败" in messages.peak_message
-    assert "全服排行失败" in messages.autocard_message
+    assert "全服排行失败" not in messages.peak_message
+    assert "全服排行失败" not in messages.autocard_message
+    assert "巅峰赛季榜失败" in messages.peak_message
+    assert "巅峰赛季榜失败" not in messages.collection_message
+    assert "群星牌排行失败" in messages.autocard_message
+    assert "群星牌排行失败" not in messages.collection_message
 
 
 def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
@@ -343,7 +352,7 @@ def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
         needs_peak_section=False,
         has_autocard_rank=False,
         show_local_rank=False,
-        extra_errors=[],
+        extra_errors=PlayerDetailErrors(),
     )
 
     assert "样本第1" not in messages.collection_message

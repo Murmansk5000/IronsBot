@@ -107,6 +107,7 @@ class SeerGame:
         self._reconnect_delay = reconnect_delay
         self._reconnect_delay_max = reconnect_delay_max
         self._reconnect_task: asyncio.Task[None] | None = None
+        self._shutdown_requested = False
         self._login_server_url: str = login_server_url
         self._state_notifier = state_notifier
 
@@ -152,8 +153,15 @@ class SeerGame:
 
     async def login(self) -> None:
         """完整的登录流程：登录服务器认证 -> 获取服务器列表 -> 连接游戏服务器。"""
-        session = await self._fetch_session_token(str(self.user_id), self._password)
         async with self._lock:
+            if self.is_logged_in:
+                return
+
+            self._shutdown_requested = False
+            session = await self._fetch_session_token(
+                str(self.user_id),
+                self._password,
+            )
             if self._impl is not None:
                 self._impl.disconnect()
                 self._impl = None
@@ -217,12 +225,17 @@ class SeerGame:
                 impl.disconnect()
                 raise
 
+            if self._shutdown_requested:
+                impl.disconnect()
+                raise RuntimeError("Headless Seer login cancelled by shutdown")
+
             # self._impl.key = decrypt.clac_encrypt_key(res, self.user_id)
             self._impl = impl
             self._is_logged_in = True
             logger.info("成功进入游戏服务器")
 
     def logout(self) -> None:
+        self._shutdown_requested = True
         self._stop_reconnect()
         if self._impl is not None:
             self._impl.disconnect()
@@ -231,6 +244,8 @@ class SeerGame:
     async def _handle_disconnect(self) -> None:
         """连接断开回调，由传输层触发。"""
         self._is_logged_in = False
+        if self._shutdown_requested:
+            return
         operation = format_recent_headless_operation()
         reason = "连接已断开"
         if operation:
@@ -241,7 +256,8 @@ class SeerGame:
             f" ({operation})" if operation else "",
         )
         await self._notify_state(connected=False, reason=reason, source="无头连接")
-        self.schedule_reconnect()
+        if not self._shutdown_requested:
+            self.schedule_reconnect()
 
     async def _notify_state(
         self,
@@ -264,7 +280,7 @@ class SeerGame:
 
     def schedule_reconnect(self) -> None:
         """触发自动重连。若重连任务已在运行或未启用重连则跳过。"""
-        if self._reconnect_retries == 0:
+        if self._shutdown_requested or self._reconnect_retries == 0:
             return
         if self._reconnect_task is not None and not self._reconnect_task.done():
             logger.debug(f"{self.user_id}：重连任务已在运行，跳过")

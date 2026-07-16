@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Final
@@ -24,6 +25,7 @@ class ClientManager:
 
     def __init__(self) -> None:
         self._client: SeerGame | None = None
+        self._login_lock = asyncio.Lock()
 
     def get_client(self) -> SeerGame:
         if self._client is None or self._client._impl is None:
@@ -44,31 +46,43 @@ class ClientManager:
         reconnect_delay_max: float = 120.0,
         state_notifier: HeadlessStateNotifier | None = None,
     ) -> SeerGame:
-        game = SeerGame(
-            user_id,
-            password,
-            login_server_url=login_server_url,
-            heartbeat_interval=heartbeat_interval,
-            reconnect_retries=reconnect_retries,
-            reconnect_delay=reconnect_delay,
-            reconnect_delay_max=reconnect_delay_max,
-            state_notifier=state_notifier,
-        )
-        self._client = game
-        try:
-            await game.login()
-            logger.info("Headless Seer client logged in: %s", user_id)
-        except Exception:
-            if reconnect_retries != 0:
-                logger.warning(
-                    "Headless Seer initial login failed; reconnect scheduled",
-                    exc_info=True,
-                )
-                game.schedule_reconnect()
-            else:
-                self._client = None
-                raise
-        return game
+        async with self._login_lock:
+            current = self._client
+            if current is not None:
+                if current.is_logged_in and int(current.user_id) == int(user_id):
+                    logger.info(
+                        "Headless Seer login reused existing client: %s",
+                        user_id,
+                    )
+                    return current
+                current.logout()
+
+            game = SeerGame(
+                user_id,
+                password,
+                login_server_url=login_server_url,
+                heartbeat_interval=heartbeat_interval,
+                reconnect_retries=reconnect_retries,
+                reconnect_delay=reconnect_delay,
+                reconnect_delay_max=reconnect_delay_max,
+                state_notifier=state_notifier,
+            )
+            self._client = game
+            try:
+                await game.login()
+                logger.info("Headless Seer client logged in: %s", user_id)
+            except Exception:
+                if reconnect_retries != 0:
+                    logger.warning(
+                        "Headless Seer initial login failed; reconnect scheduled",
+                        exc_info=True,
+                    )
+                    game.schedule_reconnect()
+                else:
+                    if self._client is game:
+                        self._client = None
+                    raise
+            return game
 
     def shutdown(self) -> None:
         if self._client is not None:
