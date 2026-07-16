@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ironsbot.services.seer.query_help import seer_query_help_message
 from ironsbot.shared.selection_menu import (
     SelectionMenuItem,
     format_selection_menu,
@@ -22,7 +21,6 @@ AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
 AUTOCARD_QUERY_SUFFIXES = ("群星牌",)
 
-_AUTOCARD_HELP_ARGS = {"", "帮助", "查询", "资料", "说明"}
 _AUTOCARD_NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
 _AUTOCARD_MISSING_TABLE_MESSAGE = "数据库缺少群星牌表，请先更新 IronsBot 数据库。"
 _AUTOCARD_EMPTY_DATA_MESSAGE = "数据库没有群星牌数据，请先更新 IronsBot 数据库。"
@@ -72,10 +70,6 @@ def extract_autocard_query_arg(arg: str) -> str:
     return query
 
 
-def is_autocard_help_query(query: str) -> bool:
-    return query in _AUTOCARD_HELP_ARGS
-
-
 def load_autocard_dataset(session: SeerAPISession) -> AutocardDataset:
     try:
         cards = _load_json_rows(session, "autocard_card")
@@ -95,14 +89,6 @@ def load_autocard_dataset(session: SeerAPISession) -> AutocardDataset:
         cards=cards,
         roles=roles,
         natures=natures,
-    )
-
-
-def format_autocard_public_info() -> str:
-    return (
-        f"{seer_query_help_message('autocard')}\n\n"
-        "当前查询公开配置：卡牌、属性、等级、费用、基础攻血、效果文本、赛尔角色技能。\n"
-        "个人积分、常用卡、历史对局暂不支持。"
     )
 
 
@@ -131,14 +117,11 @@ def search_autocard_items(
     query: str,
 ) -> list[tuple[str, dict[str, Any]]]:
     query = query.strip()
-    if query.isdigit():
-        item_id = int(query)
-        matches: list[tuple[str, dict[str, Any]]] = []
-        if card := find_autocard_card_by_id(dataset, item_id):
-            matches.append(("card", card))
-        if role := find_autocard_role_by_id(dataset, item_id):
-            matches.append(("role", role))
-        return matches
+    if not query or query.isdigit():
+        return []
+    if query.startswith("卡") and query[1:].isdigit():
+        card = find_autocard_card_by_id(dataset, int(query[1:]))
+        return [("card", card)] if card is not None else []
 
     normalized_query = _normalize_name(query)
     entries: list[tuple[str, dict[str, Any]]] = [

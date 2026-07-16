@@ -521,6 +521,12 @@ detail_timeout_seconds = 90.0
 # ZH: 玩家展示区块；可填 basic/collection/rank/autocard/local_rank/peak 等，all 表示全部。
 sections = ["all"]
 
+[seer.player.binding]
+# Default: "data/seer/player_bindings.sqlite"
+# EN: Stores each QQ user's default Seer player ID and first-query choice.
+# ZH: 保存每个 QQ 用户的默认米米号及首次查询选择。
+path = "data/seer/player_bindings.sqlite"
+
 [seer.team]
 # Default: 60; EN: Successful team-query cooldown seconds. ZH: 战队查询成功冷却秒数。
 rate_limit_seconds = 60
@@ -533,8 +539,8 @@ sections = ["basic", "resource"]
 
 [seer.mintmark]
 # Default: true
-# EN: Merge connected mintmarks by hiding connected child entries in query choices.
-# ZH: 查询刻印时合并显示连接刻印；设为 false 可显示被连接的子刻印。
+# EN: Merge connected mintmark records into one result and display every related ID.
+# ZH: 将关联刻印合并为一条并展示全部 ID；false 保留原记录并标注关联 ID，便于排查数据。
 merge_connected = true
 
 [seer.rank]

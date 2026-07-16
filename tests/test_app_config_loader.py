@@ -508,6 +508,23 @@ sections = ["basic", "unknown_section"]
     assert "seer.player.sections contains unknown section(s)" in caplog.text
 
 
+def test_player_binding_path_loads(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player.binding]
+path = "data/custom-player-bindings.sqlite"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_app_config(config_path)
+
+    assert config.seer.player.binding.path == Path(
+        "data/custom-player-bindings.sqlite"
+    )
+
+
 def test_incomplete_unknown_ai_action_is_ignored_with_exact_path(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,

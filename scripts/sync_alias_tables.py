@@ -19,6 +19,7 @@ SUPPORTED_ALIAS_TABLES = {
     "pet_aliases",
     "mintmark_aliases",
     "mintmark_class_aliases",
+    "mintmark_series_members",
 }
 UPSTREAM_PET_ALIASES_URL = (
     "https://raw.githubusercontent.com/Nattsu39/IronsBot/main/"

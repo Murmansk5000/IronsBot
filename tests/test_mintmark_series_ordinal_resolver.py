@@ -12,7 +12,10 @@ except ValueError:
 
 from ironsbot.config.models.seer import MintmarkQueryConfig
 from ironsbot.integrations.seer_data import getters, mintmark_series_resolvers
-from ironsbot.integrations.seer_data.orm import MintmarkClassAliasORM
+from ironsbot.integrations.seer_data.orm import (
+    MintmarkClassAliasORM,
+    MintmarkSeriesMemberORM,
+)
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY
 from tests.helpers.config import stub_app_config
 
@@ -92,6 +95,52 @@ def test_mintmark_series_ordinal_resolves_class_alias(
     result = resolver({"seerapi": data_session, "aliases": alias_session}, "九霄05")
 
     assert [item.id for item in result] == [41290]
+
+
+def test_custom_mintmark_series_resolves_exact_ordinal_and_type() -> None:
+    data_session = _make_session()
+    alias_session = _make_session()
+    data_session.add(MintmarkClassCategoryORM(id=100, name="十周年系列"))
+    for offset, attrs in enumerate(
+        (
+            (32, 0, 0, 0, 45, 0),
+            (0, 0, 32, 0, 45, 0),
+            (60, 0, 0, 0, 0, 0),
+        )
+    ):
+        mintmark_id = 45001 + offset
+        _add_mintmark(
+            data_session,
+            mintmark_id,
+            f"十年{offset + 1}",
+            100,
+            attrs=attrs,
+        )
+        alias_session.add(
+            MintmarkSeriesMemberORM(name="十年", target_id=mintmark_id)
+        )
+    data_session.commit()
+    alias_session.commit()
+    sessions = {"seerapi": data_session, "aliases": alias_session}
+
+    assert [
+        item.id
+        for item in mintmark_series_resolvers.resolve_custom_mintmark_series(
+            sessions, "十年"
+        )
+    ] == [45001, 45002, 45003]
+    assert [
+        item.id
+        for item in mintmark_series_resolvers.resolve_custom_mintmark_series(
+            sessions, "十年02"
+        )
+    ] == [45002]
+    assert [
+        item.id
+        for item in mintmark_series_resolvers.resolve_custom_mintmark_series(
+            sessions, "十年物速"
+        )
+    ] == [45001]
 
 
 def test_mintmark_series_ordinal_uses_merged_connected_order(

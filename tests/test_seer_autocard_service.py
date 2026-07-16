@@ -6,8 +6,6 @@ from ironsbot.services.seer.autocard import (
     build_autocard_prompt_values,
     extract_autocard_query_arg,
     format_autocard_entry,
-    format_autocard_public_info,
-    is_autocard_help_query,
     search_autocard_items,
 )
 
@@ -59,12 +57,6 @@ def test_extract_autocard_query_arg_strips_known_prefixes_and_suffixes() -> None
     assert extract_autocard_query_arg("卡牌 破界者") == "破界者"
 
 
-def test_help_query_recognizes_empty_and_help_terms() -> None:
-    assert is_autocard_help_query("")
-    assert is_autocard_help_query("帮助")
-    assert not is_autocard_help_query("布布种子")
-
-
 def test_search_autocard_items_supports_exact_partial_and_id_queries() -> None:
     dataset = _dataset()
 
@@ -74,9 +66,11 @@ def test_search_autocard_items_supports_exact_partial_and_id_queries() -> None:
     assert search_autocard_items(dataset, "破界") == [
         ("role", dataset.roles[0]),
     ]
-    assert search_autocard_items(dataset, str(CARD_ID)) == [
+    assert search_autocard_items(dataset, str(CARD_ID)) == []
+    assert search_autocard_items(dataset, f"卡{CARD_ID}") == [
         ("card", dataset.cards[0]),
     ]
+    assert search_autocard_items(dataset, "") == []
 
 
 def test_format_autocard_entry_renders_card_public_fields() -> None:
@@ -138,10 +132,3 @@ def test_prompt_helpers_keep_item_ids_and_descriptions() -> None:
     assert "1. 布布种子（精灵牌 101 普通 Lv2 草）" in text
     assert "2. 破界者（角色 201 火）" in text
     assert "输入 0 退出" in text
-
-
-def test_format_autocard_public_info_includes_query_examples() -> None:
-    text = format_autocard_public_info()
-
-    assert "群星牌布布种子" in text
-    assert "群星牌金币卡" in text
