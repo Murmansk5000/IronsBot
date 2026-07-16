@@ -9,7 +9,10 @@ from ironsbot.services.seer.player_collection_formatting import (
 )
 from ironsbot.services.seer.player_formatting_common import format_player_identity
 from ironsbot.services.seer.player_peak_formatting import format_compact_peak_section
-from ironsbot.services.seer.player_query import PlayerDetailMessages
+from ironsbot.services.seer.player_query import (
+    PlayerDetailErrors,
+    PlayerDetailMessages,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank_models import LocalRankSummary
@@ -39,7 +42,7 @@ def format_player_detail_messages(  # noqa: PLR0913
     needs_peak_section: bool,
     has_autocard_rank: bool,
     show_local_rank: bool,
-    extra_errors: list[str],
+    extra_errors: PlayerDetailErrors,
 ) -> PlayerDetailMessages:
     visible_local_rank_summary = (
         local_rank_summary if show_local_rank else empty_local_rank_summary
@@ -76,13 +79,22 @@ def format_player_detail_messages(  # noqa: PLR0913
         else ""
     )
     return PlayerDetailMessages(
-        collection_message=append_extra_errors(collection_message, extra_errors)
+        collection_message=append_extra_errors(
+            collection_message,
+            [*extra_errors.collection, *extra_errors.shared],
+        )
         if collection_message
         else "",
-        peak_message=append_extra_errors(peak_message, extra_errors)
+        peak_message=append_extra_errors(
+            peak_message,
+            [*extra_errors.peak, *extra_errors.shared],
+        )
         if peak_message
         else "",
-        autocard_message=append_extra_errors(autocard_message, extra_errors)
+        autocard_message=append_extra_errors(
+            autocard_message,
+            [*extra_errors.autocard, *extra_errors.shared],
+        )
         if autocard_message
         else "",
     )

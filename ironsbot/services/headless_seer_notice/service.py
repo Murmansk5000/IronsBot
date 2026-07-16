@@ -41,7 +41,7 @@ async def login_headless_client() -> int:
         if game.is_logged_in:
             return int(game.user_id)
     except (DisconnectedError, NotLoggedInError):
-        client_manager.shutdown()
+        pass
 
     credentials = get_headless_credentials()
     user_id = credentials.headless_seer_user_id

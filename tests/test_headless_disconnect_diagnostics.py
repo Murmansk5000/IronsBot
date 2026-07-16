@@ -80,6 +80,36 @@ def test_headless_disconnect_notice_includes_recent_operation() -> None:
     asyncio.run(run())
 
 
+def test_intentional_logout_does_not_notify_or_reconnect() -> None:
+    async def run() -> None:
+        notices: list[tuple[bool, str, str, int | None]] = []
+
+        async def notifier(
+            *,
+            connected: bool,
+            reason: str,
+            source: str,
+            user_id: int | None,
+        ) -> None:
+            notices.append((connected, reason, source, user_id))
+
+        game = SeerGame(
+            123456,
+            "password",
+            login_server_url="https://example.invalid/unity-ip.txt",
+            reconnect_retries=-1,
+            state_notifier=notifier,
+        )
+
+        game.logout()
+        await game._handle_disconnect()
+
+        assert notices == []
+        assert game._reconnect_task is None
+
+    asyncio.run(run())
+
+
 def test_rank_page_refresh_enters_backoff_after_connection_failure(
     monkeypatch: MonkeyPatch,
 ) -> None:

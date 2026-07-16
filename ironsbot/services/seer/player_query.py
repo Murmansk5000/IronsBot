@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,6 +24,14 @@ class PlayerDetailMessages:
     collection_message: str = ""
     peak_message: str = ""
     autocard_message: str = ""
+
+
+@dataclass(slots=True)
+class PlayerDetailErrors:
+    collection: list[str] = field(default_factory=list)
+    peak: list[str] = field(default_factory=list)
+    autocard: list[str] = field(default_factory=list)
+    shared: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,15 +127,19 @@ async def safe_player_extra(  # noqa: PLR0913
     *,
     on_error: Callable[[str, Exception], None] | None = None,
     timeout_seconds: float | None = None,
+    error_label_factory: Callable[[], str] | None = None,
 ) -> Any:
     try:
         if timeout_seconds is None:
             return await awaitable
         return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
     except Exception as error:  # noqa: BLE001
+        error_label = error_label_factory() if error_label_factory else label
         if on_error is not None:
-            on_error(label, error)
-        extra_errors.append(f"{label}失败：{_format_player_extra_error(error)}")
+            on_error(error_label, error)
+        extra_errors.append(
+            f"{error_label}失败：{_format_player_extra_error(error)}"
+        )
         return default
 
 
@@ -140,6 +152,7 @@ async def optional_player_extra(  # noqa: PLR0913
     *,
     on_error: Callable[[str, Exception], None] | None = None,
     timeout_seconds: float | None = None,
+    error_label_factory: Callable[[], str] | None = None,
 ) -> Any:
     if not enabled:
         return default
@@ -151,6 +164,7 @@ async def optional_player_extra(  # noqa: PLR0913
         extra_errors,
         on_error=on_error,
         timeout_seconds=timeout_seconds,
+        error_label_factory=error_label_factory,
     )
 
 

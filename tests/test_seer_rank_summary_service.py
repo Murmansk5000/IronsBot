@@ -6,7 +6,7 @@ from ironsbot.services.seer.rank_constants import (
     SKIN_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
 )
-from ironsbot.services.seer.rank_models import RankLookupResult
+from ironsbot.services.seer.rank_models import RankLookupResult, RankSummaryProgress
 from ironsbot.services.seer.rank_summary import (
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
@@ -76,6 +76,10 @@ async def test_player_rank_summary_keeps_other_items_when_one_rank_times_out() -
     assert not summary.breakdown.skin.queried
     assert summary.breakdown.skin.score == SKIN_SCORE
     assert summary.breakdown.countermark.queried
+    assert summary.errors == (
+        "成就点数榜查询超时",
+        "皮肤图鉴榜查询超时",
+    )
 
 
 @pytest.mark.asyncio
@@ -101,6 +105,7 @@ async def test_peak_rank_summary_keeps_other_modes_when_one_rank_times_out() -> 
     assert summary.wild.score == PEAK_SCORE
     assert summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
+    assert summary.errors == ("狂野赛季榜查询超时",)
 
 
 @pytest.mark.asyncio
@@ -122,3 +127,21 @@ async def test_peak_rank_summary_keeps_expert_score_when_expert_times_out() -> N
 
     assert not summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
+    assert summary.errors == ("专家赛季榜查询超时",)
+
+
+@pytest.mark.asyncio
+async def test_player_rank_summary_tracks_current_rank_title() -> None:
+    progress = RankSummaryProgress()
+
+    await fetch_player_rank_summary(
+        object(),
+        USER_ID,
+        pet_kind_count=PET_KIND_COUNT,
+        book_breakdown_limit=2000,
+        find_rank=_rank_success,
+        find_pet_kind_rank=_pet_kind_success,
+        progress=progress,
+    )
+
+    assert progress.current_title == "座驾图鉴榜"
