@@ -95,15 +95,17 @@ async def build_global_rank_score_message(
             target_score=command.score,
             start_index=spec.start,
             rank_offset=spec.rank_offset,
+            sample_limit=display_limit,
         )
     logger.info(
         "rank score lookup completed: title={} key={} sub_key={} score={} "
-        "items={} boundary={} searched_limit={} truncated={}",
+        "items={} total={} boundary={} searched_limit={} truncated={}",
         spec.title,
         spec.key,
         spec.sub_key,
         command.score,
         len(result.items),
+        result.total_count,
         result.boundary_score,
         result.searched_limit,
         result.truncated,

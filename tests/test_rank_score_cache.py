@@ -5,7 +5,10 @@ from ironsbot.services.seer.rank_score_cache import (
     cached_score_candidate_page_starts,
     cached_score_miss_boundary,
 )
-from ironsbot.services.seer.rank_score_helpers import score_miss_proof_from_page
+from ironsbot.services.seer.rank_score_helpers import (
+    score_miss_proof_from_page,
+    score_segment_sample_indexes,
+)
 
 FETCHED_AT = 1234.0
 LOWER_SCORE = 99
@@ -42,6 +45,30 @@ class CachedPageResult:
 
 def _rank_page_start(index: int) -> int:
     return index // 10 * 10
+
+
+def test_score_segment_sample_indexes_uses_equal_head_and_tail_halves() -> None:
+    assert score_segment_sample_indexes(100, 200, 9) == {
+        100,
+        101,
+        102,
+        103,
+        196,
+        197,
+        198,
+        199,
+    }
+    assert score_segment_sample_indexes(100, 109, 9) is None
+    assert score_segment_sample_indexes(100, 110, 9) == {
+        100,
+        101,
+        102,
+        103,
+        106,
+        107,
+        108,
+        109,
+    }
 
 
 def test_cached_score_candidate_page_starts_uses_facts_and_score_bounds() -> None:

@@ -61,8 +61,9 @@ def format_global_rank_score_message(
         format_global_rank_line(item, index=item.rank_index, spec=spec)
         for item in shown
     )
-    if len(result.items) > len(shown):
-        lines.append(f"...另 {len(result.items) - len(shown)} 人未展示")
+    hidden_count = max(result.total_count - len(shown), len(result.items) - len(shown))
+    if hidden_count > 0:
+        lines.append(f"...另 {hidden_count} 人未展示")
     if result.truncated:
         lines.append("同分段过长，已按安全上限停止继续翻页。")
     return "\n".join(lines)

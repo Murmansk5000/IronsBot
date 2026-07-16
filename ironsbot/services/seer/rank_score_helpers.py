@@ -17,6 +17,25 @@ def rank_score_search_item(item: Any, rank_index: int) -> RankScoreSearchItem:
     )
 
 
+def score_segment_sample_indexes(
+    start_index: int,
+    end_index: int,
+    display_limit: int | None,
+) -> set[int] | None:
+    """Return bounded head/tail indexes, or ``None`` when all items are needed."""
+    total_count = max(0, end_index - start_index)
+    if display_limit is None or total_count <= max(1, display_limit):
+        return None
+    if display_limit <= 1:
+        return {start_index}
+
+    side_count = display_limit // 2
+    return {
+        *range(start_index, start_index + side_count),
+        *range(end_index - side_count, end_index),
+    }
+
+
 def score_gap_from_page(
     *,
     items: list[Any],
@@ -94,5 +113,5 @@ __all__ = [
     "rank_score_search_item",
     "score_gap_from_page",
     "score_miss_proof_from_page",
+    "score_segment_sample_indexes",
 ]
-

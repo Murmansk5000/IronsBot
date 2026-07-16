@@ -9,6 +9,7 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
+from ironsbot.services.seer.rank_score_helpers import score_segment_sample_indexes
 
 
 def cached_score_candidate_page_starts(  # noqa: PLR0913
@@ -121,6 +122,7 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
     rank_offset: int,
     result: RankScoreSearchResult,
     candidate_starts: list[int],
+    sample_limit: int | None,
     rank_page_size: Callable[[], int],
     rank_page_start: Callable[[int], int],
     score_search_tie_page_limit: Callable[[], int],
@@ -131,9 +133,12 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
 
     page_size = rank_page_size()
     max_pages = score_search_tie_page_limit()
+    if len(candidate_starts) > max_pages:
+        return None
+
     fetched_pages: dict[int, RankPageResult] = {}
     fetched_times: list[float] = []
-    truncated = len(candidate_starts) > max_pages
+    truncated = False
 
     async def fetch_page(page_start: int) -> RankPageResult | None:
         page_start = rank_page_start(page_start)
@@ -209,14 +214,25 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
 
     if not matching_indexes:
         return None
+    if truncated:
+        return None
 
-    matching_set = set(matching_indexes)
     first_index = matching_indexes[0]
     last_index = matching_indexes[-1]
+    sample_indexes = score_segment_sample_indexes(
+        first_index,
+        last_index + 1,
+        sample_limit,
+    )
+    matching_set = (
+        set(matching_indexes)
+        if sample_indexes is None
+        else set(matching_indexes).intersection(sample_indexes)
+    )
     result.start_rank = first_index + 1 + rank_offset
     result.end_rank = last_index + 1 + rank_offset
     result.total_count = len(matching_indexes)
-    result.truncated = truncated
+    result.truncated = False
 
     for page_start in sorted(fetched_pages):
         page_result = fetched_pages[page_start]
