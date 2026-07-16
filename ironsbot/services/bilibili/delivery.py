@@ -3,7 +3,10 @@ from typing import Any, Protocol
 
 from nonebot.adapters.onebot.v11 import Message
 
+from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.parser import parse_single_item
+from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
+from ironsbot.shared.messaging.push_subscriptions import append_text_hint
 from ironsbot.shared.promotions import (
     append_fire_manual_ad_message,
     split_fire_manual_ad_group_ids,
@@ -12,9 +15,9 @@ from ironsbot.shared.promotions import (
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
-    "\n\n群主/管理员可发送："
-    "B站账号 / B站推送模式 <账号别名> <内容|链接|默认>"
+    "群主/管理员可发送：B站账号 / B站推送模式 <账号别名> <内容|链接|默认>"
 )
+BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 
 
 class HasDynamicPushTargets(Protocol):
@@ -86,9 +89,7 @@ def _build_delivery_variants(
     if ad_group_ids:
         deliveries.append(
             DynamicPushDelivery(
-                message=_append_admin_hint(
-                    append_fire_manual_ad_message(message.copy())
-                ),
+                message=append_fire_manual_ad_message(message.copy()),
                 group_ids=ad_group_ids,
                 private_user_ids=[],
                 action_name=action_name,
@@ -108,7 +109,7 @@ def _build_delivery_variants(
     if plain_group_ids:
         deliveries.append(
             DynamicPushDelivery(
-                message=_append_admin_hint(message.copy()),
+                message=message.copy(),
                 group_ids=plain_group_ids,
                 private_user_ids=[],
                 action_name=action_name,
@@ -118,6 +119,16 @@ def _build_delivery_variants(
     return deliveries
 
 
-def _append_admin_hint(message: Message) -> Message:
-    message += BILI_PUSH_ADMIN_HINT
-    return message
+def append_bili_admin_hint_for_group(
+    message: str | Message,
+    group_id: int | None,
+) -> str | Message:
+    if group_id is None:
+        return message
+
+    config = get_app_config().message.push_unsubscribe
+    store = PushUnsubscribeStore(config.data_path)
+    if not store.mark_daily_hint_sent("group", group_id, BILI_PUSH_ADMIN_HINT_KEY):
+        return message.rstrip() if isinstance(message, str) else message
+
+    return append_text_hint(message, BILI_PUSH_ADMIN_HINT)
