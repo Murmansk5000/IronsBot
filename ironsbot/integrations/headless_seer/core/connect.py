@@ -38,15 +38,13 @@ def _serialize_binary(data: AS3ByteArray, *args: Any) -> None:
         if isinstance(i, Deserializable):
             data.write_bytes(i.pack())
         elif isinstance(i, str):
-            data.writeUTFBytes(i)
+            data.write_bytes(i.encode("utf-8"))
         elif isinstance(i, Buffer):
             data.write_bytes(i)
-        elif isinstance(i, AS3ByteArray):
-            data.writeBytes(i)
         elif isinstance(i, Iterable):
             _serialize_binary(data, *i)
         else:
-            data.writeUnsignedInt(i)
+            data.write_uint32(i)
 
 
 class ClientReaderProtocol(StreamReaderProtocol):
@@ -369,7 +367,7 @@ class SeerConnect(AbstractSocketConnect[CommandID, HeadInfo, SocketRecvPacketBod
         body_bytes = head.pack() + body_bytes
         length = len(body_bytes) + 4
         length_bytes = AS3ByteArray()
-        length_bytes.writeUnsignedInt(length)
+        length_bytes.write_uint32(length)
         return length_bytes + body_bytes
 
     def unpack(self, data: bytes) -> tuple[HeadInfo, SocketRecvPacketBody]:
@@ -458,7 +456,7 @@ class SeerEncryptConnect(SeerConnect):
         body_bytes = head.pack() + body_bytes
         length = len(body_bytes) + 4
         length_bytes = AS3ByteArray()
-        length_bytes.writeUnsignedInt(length)
+        length_bytes.write_uint32(length)
         logger.debug(f"pack: head={head!r}, length={length}")
         return length_bytes + body_bytes
 

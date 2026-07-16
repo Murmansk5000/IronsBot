@@ -2,10 +2,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
+import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.headless_seer.client import get_game_client
+from ironsbot.integrations.headless_seer.exception import (
+    DisconnectedError,
+    NotLoggedInError,
+    SocketRecvError,
+)
 from ironsbot.services.seer.rank_page_refresh_models import (
     RankPageRefreshFailure,
     RankPageRefreshResult,
@@ -22,6 +30,42 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import RankPageRefreshConfig
 
 
+logger = logging.getLogger(__name__)
+
+RANK_PAGE_REFRESH_BACKOFF_SECONDS = 300.0
+
+_rank_page_refresh_lock = asyncio.Lock()
+
+@dataclass(slots=True)
+class _RankPageRefreshRuntimeState:
+    backoff_until: float = 0.0
+
+_rank_page_refresh_state = _RankPageRefreshRuntimeState()
+
+def _is_rank_page_refresh_connection_error(error: Exception) -> bool:
+    return isinstance(
+        error,
+        (
+            asyncio.TimeoutError,
+            BrokenPipeError,
+            ConnectionError,
+            DisconnectedError,
+            NotLoggedInError,
+            OSError,
+            SocketRecvError,
+            TimeoutError,
+        ),
+    )
+
+def _set_rank_page_refresh_backoff() -> None:
+    _rank_page_refresh_state.backoff_until = (
+        time.monotonic() + RANK_PAGE_REFRESH_BACKOFF_SECONDS
+    )
+
+def _rank_page_refresh_backoff_remaining() -> float:
+    return max(_rank_page_refresh_state.backoff_until - time.monotonic(), 0.0)
+
+
 async def _sleep_between_rank_page_requests(config: RankPageRefreshConfig) -> None:
     delay = config.request_interval_seconds
     if config.request_jitter_seconds > 0:
@@ -31,6 +75,25 @@ async def _sleep_between_rank_page_requests(config: RankPageRefreshConfig) -> No
 
 
 async def refresh_rank_page_cache(
+    rank_keys: Sequence[str] | None = None,
+) -> RankPageRefreshResult:
+    if _rank_page_refresh_lock.locked():
+        logger.info("rank page cache auto refresh skipped: previous run still active")
+        return RankPageRefreshResult(targets=[])
+
+    backoff_remaining = _rank_page_refresh_backoff_remaining()
+    if backoff_remaining > 0:
+        logger.info(
+            "rank page cache auto refresh skipped: backoff %.0fs remaining",
+            backoff_remaining,
+        )
+        return RankPageRefreshResult(targets=[])
+
+    async with _rank_page_refresh_lock:
+        return await _refresh_rank_page_cache_unlocked(rank_keys)
+
+
+async def _refresh_rank_page_cache_unlocked(
     rank_keys: Sequence[str] | None = None,
 ) -> RankPageRefreshResult:
     refresh_config = get_rank_page_refresh_config()
@@ -64,6 +127,13 @@ async def refresh_rank_page_cache(
             result.failures.append(
                 RankPageRefreshFailure(target=target, reason=str(e) or type(e).__name__)
             )
+            if _is_rank_page_refresh_connection_error(e):
+                _set_rank_page_refresh_backoff()
+                logger.warning(
+                    "rank page cache auto refresh enters backoff after failure: %s",
+                    e or type(e).__name__,
+                )
+                break
             continue
         result.refreshed.append(target)
     return result
