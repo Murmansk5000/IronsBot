@@ -42,9 +42,9 @@ def test_bili_push_mode_manager_allows_private_superuser(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        account_commands,
-        "is_superuser_event",
-        lambda event: event.user_id == SUPERUSER_ID,
+        permissions,
+        "is_superuser",
+        lambda user_id: user_id == SUPERUSER_ID,
     )
 
     assert account_commands._is_bili_push_mode_manager(

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Literal, cast
 
@@ -31,6 +32,7 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
+_LOGGER = logging.getLogger("ironsbot.config")
 
 
 def _normalize_mode(value: object) -> BiliPushMode | None:
@@ -284,16 +286,22 @@ class BiliConfig(BaseModel):
             for account, nickname in self.account_nicknames.items()
             if account in accounts and nickname
         }
-        for account in self.push.accounts:
-            _validate_account_ref("bilibili.push.accounts", account, accounts)
-        for account in self.push.modes:
-            _validate_account_ref("bilibili.push.modes", account, accounts)
-        _validate_target_account_refs(
+        self.push.accounts = _filter_account_refs(
+            "bilibili.push.accounts",
+            self.push.accounts,
+            accounts,
+        )
+        self.push.modes = _filter_mode_refs(
+            "bilibili.push.modes",
+            self.push.modes,
+            accounts,
+        )
+        _filter_target_account_refs(
             "bilibili.push.groups",
             self.push.groups,
             accounts,
         )
-        _validate_target_account_refs(
+        _filter_target_account_refs(
             "bilibili.push.users",
             self.push.users,
             accounts,
@@ -305,23 +313,58 @@ class BilibiliConfig(BiliConfig):
     pass
 
 
-def _validate_account_ref(location: str, account: str, aliases: set[str]) -> None:
-    if account in aliases:
-        return
-    msg = f"Unknown Bilibili account alias in {location}: {account}"
-    raise ValueError(msg)
+def _log_unknown_account_ref(location: str, account: str) -> None:
+    _LOGGER.warning(
+        "Ignored unknown Bilibili account alias in %s: %s",
+        location,
+        account,
+    )
 
 
-def _validate_target_account_refs(
+def _filter_account_refs(
+    location: str,
+    account_refs: list[str],
+    accounts: set[str],
+) -> list[str]:
+    filtered: list[str] = []
+    for account in account_refs:
+        if account in accounts:
+            filtered.append(account)
+        else:
+            _log_unknown_account_ref(location, account)
+    return filtered
+
+
+def _filter_mode_refs(
+    location: str,
+    mode_refs: dict[str, BiliPushMode],
+    accounts: set[str],
+) -> dict[str, BiliPushMode]:
+    filtered: dict[str, BiliPushMode] = {}
+    for account, mode in mode_refs.items():
+        if account in accounts:
+            filtered[account] = mode
+        else:
+            _log_unknown_account_ref(location, account)
+    return filtered
+
+
+def _filter_target_account_refs(
     location: str,
     targets: dict[str, BiliPushTargetConfig],
     accounts: set[str],
 ) -> None:
     for ref, target in targets.items():
-        for account in target.accounts:
-            _validate_account_ref(f"{location}.{ref}.accounts", account, accounts)
-        for account in target.modes:
-            _validate_account_ref(f"{location}.{ref}.modes", account, accounts)
+        target.accounts = _filter_account_refs(
+            f"{location}.{ref}.accounts",
+            target.accounts,
+            accounts,
+        )
+        target.modes = _filter_mode_refs(
+            f"{location}.{ref}.modes",
+            target.modes,
+            accounts,
+        )
 
 
 __all__ = [

@@ -376,13 +376,13 @@ unknown_bili_field = true
 seer = 1310714247
 
 [bilibili.push]
-accounts = ["seer", "seer"]
-modes = { seer = "link" }
+accounts = ["seer", "old_bili"]
+modes = { old_bili = "link" }
 unknown_push_field = true
 
 [bilibili.push.groups.main]
-accounts = ["seer"]
-modes = { seer = "full" }
+accounts = ["old_bili"]
+modes = { old_bili = "full" }
 
 [[message.group_commands]]
 id = "hello"
@@ -404,16 +404,16 @@ unknown_command_field = true
         "old_feature",
     ]
     assert config.bilibili.push.accounts == ["seer"]
-    assert config.bilibili.push.modes == {"seer": "link"}
-    assert config.bilibili.push.groups["main"].accounts == ["seer"]
-    assert config.bilibili.push.groups["main"].modes == {"seer": "full"}
+    assert config.bilibili.push.modes == {}
+    assert config.bilibili.push.groups["main"].accounts == []
+    assert config.bilibili.push.groups["main"].modes == {}
     assert config.message.group_commands[0].id == "hello"
     assert "unknown_root" in caplog.text
     assert "ai.unknown_ai" in caplog.text
     assert "Ignored unknown AI intent action 'fire_manual_ad'" in caplog.text
     assert "bilibili.unknown_bili_field" in caplog.text
     assert "bilibili.push.unknown_push_field" in caplog.text
-    assert "Ignored unknown Bilibili account alias" not in caplog.text
+    assert "Ignored unknown Bilibili account alias" in caplog.text
     assert "feature.unknown_feature" in caplog.text
     assert "Obsolete feature policy key(s) ignored" in caplog.text
     assert "old_feature" in caplog.text
@@ -737,11 +737,10 @@ def test_native_default_matcher_priorities_remain_covered() -> None:
     _assert_default_matcher_priorities(MatcherPriorityConfig())
 
 
-def test_native_bilibili_rejects_unknown_target_aliases() -> None:
-    valid = AppConfig.model_validate(
-        {"bilibili": {"accounts": {"known": 1}, "push": {"accounts": ["known"]}}},
-    )
-    assert valid.bilibili.push.accounts == ["known"]
+def test_native_bilibili_unknown_aliases_never_become_targets() -> None:
+    baseline_accounts = AppConfig.model_validate(
+        {"bilibili": {"accounts": {"known": 1}}},
+    ).bilibili.accounts
     for malformed in (
         {"accounts": ["missing"]},
         {"modes": {"missing": "full"}},
@@ -750,11 +749,13 @@ def test_native_bilibili_rejects_unknown_target_aliases() -> None:
         {"users": {"target": {"accounts": ["missing"]}}},
         {"users": {"target": {"modes": {"missing": "full"}}}},
     ):
-        with pytest.raises(ValidationError) as caught:
-            AppConfig.model_validate(
-                {"bilibili": {"accounts": {"known": 1}, "push": malformed}},
-            )
-        assert any(
-            error["loc"] == ("bilibili",) and error["type"] == "value_error"
-            for error in caught.value.errors(include_input=False, include_context=False)
+        config = AppConfig.model_validate(
+            {"bilibili": {"accounts": {"known": 1}, "push": malformed}},
         )
+        push = config.bilibili.push
+        assert "missing" not in push.accounts
+        assert "missing" not in push.modes
+        for target in (*push.groups.values(), *push.users.values()):
+            assert "missing" not in target.accounts
+            assert "missing" not in target.modes
+        assert config.bilibili.accounts == baseline_accounts

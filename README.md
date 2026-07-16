@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 登录通知与每日提示
+
+B站登录通知未指定接收列表时，使用共享管理通知目标；显式非空列表仅向指定用户私聊，显式空列表不发送。
+管理群内的通知对群成员可见，不是管理员私密收件箱。TD 退订提示和B站群管理提示使用独立的逐目标、逐本地日期标记，标记准备尝试而非成功送达。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：

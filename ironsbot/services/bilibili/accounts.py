@@ -36,13 +36,6 @@ def resolve_account_reference(
     return None
 
 
-def account_for_uid(uid: int, config: BiliConfig | None = None) -> str | None:
-    for account, account_uid_value in bili_accounts(config).items():
-        if account_uid_value == int(uid):
-            return account
-    return None
-
-
 def account_nickname(account: str, config: BiliConfig | None = None) -> str | None:
     normalized = account.strip().lower()
     nickname = (config or get_bili_config()).account_nicknames.get(normalized)
@@ -63,8 +56,3 @@ def account_display_label(
     if nickname:
         return f"{nickname}\uff08{int(resolved_uid)}\uff09"
     return f"{normalized}\uff08{int(resolved_uid)}\uff09"
-
-
-def account_label(uid: int, config: BiliConfig | None = None) -> str:
-    account = account_for_uid(uid, config)
-    return account_display_label(account, config) if account else str(int(uid))
