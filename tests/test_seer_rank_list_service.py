@@ -448,6 +448,42 @@ def test_format_global_rank_score_message() -> None:
     )
 
 
+def test_format_global_rank_score_message_reports_hidden_middle_segment() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = ScoreResult(
+        queried=True,
+        target_score=0,
+        searched_limit=50000,
+        boundary_score=0,
+        start_rank=1001,
+        end_rank=2000,
+        total_count=1000,
+        truncated=False,
+        items=[
+            *[
+                RankItem(id=rank, nick=f"Head{rank}", score=0, rank_index=rank - 1)
+                for rank in range(1001, 1006)
+            ],
+            *[
+                RankItem(id=rank, nick=f"Tail{rank}", score=0, rank_index=rank - 1)
+                for rank in range(1996, 2001)
+            ],
+        ],
+    )
+
+    message = format_global_rank_score_message(
+        spec,
+        result,
+        display_limit=10,
+        timestamp="2026-07-16 12:00:00",
+    )
+
+    assert "第 1001-2000 名，共 1000 人" in message
+    assert "1001. Head1001" in message
+    assert "2000. Tail2000" in message
+    assert "...另 990 人未展示" in message
+
+
 def test_format_global_rank_score_message_shows_cached_hit_without_boundary() -> None:
     spec = GlobalRankSpec("图鉴积分榜", key=156, sub_key=1, unit="分")
     result = ScoreResult(
