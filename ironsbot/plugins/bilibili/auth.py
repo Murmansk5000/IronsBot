@@ -26,17 +26,13 @@ from ironsbot.services.bilibili.auth import (
     store_bili_login_qr_request,
 )
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
-from ironsbot.services.bilibili.permissions import get_bili_superuser_uids
+from ironsbot.shared.messaging.admin_notice import send_admin_notice
+from ironsbot.shared.messaging.admin_notice import get_first_onebot_bot
 
-from .bot_access import get_first_bot
 from .config import get_bili_config
 
 _login_state = BiliLoginRuntimeState()
 _login_poll_task: asyncio.Task[None] | None = None
-
-
-def is_bili_login_required() -> bool:
-    return _login_state.required
 
 
 def _set_bili_login_required(required: bool) -> None:
@@ -48,18 +44,26 @@ async def _send_private_to_superusers(
     bot: Bot | None = None,
     user_ids: list[int] | None = None,
 ) -> None:
-    from ironsbot.shared.messaging import send_broadcast_message
+    if user_ids is None:
+        await send_admin_notice(
+            message,
+            bot=bot,
+            action_name="Bilibili login notice",
+            interval_seconds=1.2,
+            subscription_key="bili_login_notice",
+        )
+        return
 
-    target_user_ids = user_ids or get_bili_superuser_uids()
-
-    if not target_user_ids:
+    if not user_ids:
         logger.warning("Bilibili monitor has no superusers for login notice")
         return
 
+    from ironsbot.shared.messaging import send_broadcast_message
+
     await send_broadcast_message(
         message,
-        private_user_ids=target_user_ids,
-        bot=bot or get_first_bot(),
+        private_user_ids=user_ids,
+        bot=bot,
         action_name="Bilibili login notice",
         interval_seconds=1.2,
         subscription_key="bili_login_notice",
@@ -69,15 +73,15 @@ async def _send_private_to_superusers(
 def _build_login_qrcode_message(qr_url: str) -> Message:
     parts = build_bili_login_qrcode_message_parts(qr_url)
     if parts.image_base64:
-        return Message([
-            MessageSegment.image(f"base64://{parts.image_base64}"),
-            MessageSegment.text("\n" + parts.tip_text),
-        ])
+        return Message(
+            [
+                MessageSegment.image(f"base64://{parts.image_base64}"),
+                MessageSegment.text("\n" + parts.tip_text),
+            ]
+        )
 
     if parts.image_error:
-        logger.warning(
-            f"failed to build Bilibili login QR image: {parts.image_error}"
-        )
+        logger.warning(f"failed to build Bilibili login QR image: {parts.image_error}")
     return Message(parts.tip_text)
 
 
@@ -88,9 +92,7 @@ async def request_bili_login_qrcode(
     global _login_poll_task
 
     now = time.time()
-    poll_task_running = bool(
-        _login_poll_task and not _login_poll_task.done()
-    )
+    poll_task_running = bool(_login_poll_task and not _login_poll_task.done())
     if is_bili_login_qr_reusable(
         _login_state,
         now=now,
@@ -107,8 +109,7 @@ async def request_bili_login_qrcode(
         follow_redirects=True,
     ) as client:
         response = await client.get(
-            "https://passport.bilibili.com/"
-            "x/passport-login/web/qrcode/generate"
+            "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
         )
 
     qr_request = parse_bili_login_qrcode_response(response.json())
@@ -143,7 +144,7 @@ async def send_bili_login_qrcode_to_superusers(
     ):
         return
 
-    bot = get_first_bot()
+    bot = get_first_onebot_bot()
     if not bot:
         logger.warning("no bot online, cannot send Bilibili login QR")
         return
@@ -156,16 +157,16 @@ async def send_bili_login_qrcode_to_superusers(
         mark_bili_login_notice_sent(_login_state, now=now)
         await _send_private_to_superusers(
             build_bili_login_qrcode_request_failed_text(reason),
-            bot=bot,
         )
         return
 
     await _send_private_to_superusers(
-        Message([
-            MessageSegment.text(build_bili_login_notice_text(reason)),
-            *qr_message,
-        ]),
-        bot=bot,
+        Message(
+            [
+                MessageSegment.text(build_bili_login_notice_text(reason)),
+                *qr_message,
+            ]
+        ),
     )
 
 
@@ -186,14 +187,11 @@ async def _poll_bili_login(
                 await asyncio.sleep(5)
 
                 poll_res = await client.get(
-                    "https://passport.bilibili.com/"
-                    "x/passport-login/web/qrcode/poll",
+                    "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
                     params={"qrcode_key": qrcode_key},
                 )
                 poll_data = poll_res.json().get("data", {})
-                poll_status = classify_bili_login_poll_code(
-                    poll_data.get("code")
-                )
+                poll_status = classify_bili_login_poll_code(poll_data.get("code"))
 
                 if poll_status == "confirmed":
                     new_cookie = extract_bili_login_cookie(
@@ -204,7 +202,7 @@ async def _poll_bili_login(
                     if not has_complete_bili_login_cookie(new_cookie):
                         await _send_private_to_superusers(
                             build_bili_login_cookie_incomplete_text(),
-                            bot=bot,
+                            bot=bot if requester_id else None,
                             user_ids=[requester_id] if requester_id else None,
                         )
                         return
@@ -214,7 +212,7 @@ async def _poll_bili_login(
                     logger.info("Bilibili cookie refreshed")
                     await _send_private_to_superusers(
                         build_bili_login_success_text(),
-                        bot=bot,
+                        bot=bot if requester_id else None,
                     )
                     return
 
@@ -230,7 +228,7 @@ async def _poll_bili_login(
         logger.error(f"Bilibili QR polling failed: {e}")
         await _send_private_to_superusers(
             build_bili_login_poll_error_text(),
-            bot=bot,
+            bot=bot if requester_id else None,
             user_ids=[requester_id] if requester_id else None,
         )
     finally:
