@@ -5,7 +5,12 @@ from pytest import MonkeyPatch
 from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.runtime import HelpConfig
 from ironsbot.services import help_hint
-from ironsbot.services.help_hint import get_group_poke_reply, is_poke_at_bot
+from ironsbot.services.help_hint import (
+    get_group_poke_reply,
+    get_poke_reply,
+    get_user_poke_reply,
+    is_poke_at_bot,
+)
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
@@ -62,6 +67,43 @@ def test_group_poke_reply_accepts_numeric_group_id(
     monkeypatch.setattr(help_hint, "get_app_config", lambda: config)
 
     assert get_group_poke_reply(987654321) == "数字群号回复"
+
+
+def test_user_poke_reply_accepts_chinese_user_alias(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    config = stub_app_config(
+        feature_config=FeatureConfig(user_aliases={"示例昵称": 1234567890}),
+        help_config=HelpConfig(
+            poke_user_replies={"示例昵称": "用户专属回复"},
+        ),
+    )
+    monkeypatch.setattr(help_hint, "get_app_config", lambda: config)
+
+    assert get_user_poke_reply(1234567890) == "用户专属回复"
+    assert get_user_poke_reply(9876543210) is None
+
+
+def test_user_poke_reply_takes_priority_over_group_reply(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    config = stub_app_config(
+        feature_config=FeatureConfig(
+            group_aliases={"example": 987654321},
+            user_aliases={"example_user": 1234567890},
+        ),
+        help_config=HelpConfig(
+            poke_replies={"example": "群专属回复"},
+            poke_user_replies={"example_user": "用户专属回复"},
+        ),
+    )
+    monkeypatch.setattr(help_hint, "get_app_config", lambda: config)
+
+    assert (
+        get_poke_reply(group_id=987654321, user_id=1234567890)
+        == "用户专属回复"
+    )
+    assert get_poke_reply(group_id=987654321, user_id=2345678901) == "群专属回复"
 
 
 def test_help_hint_limiter_allows_three_group_hints_per_minute(

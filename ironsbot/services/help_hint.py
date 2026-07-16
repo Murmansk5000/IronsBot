@@ -18,19 +18,44 @@ def is_poke_at_bot(event: PokeLikeEvent) -> bool:
     return event.target_id == event.self_id
 
 
-def get_group_poke_reply(group_id: int | None) -> str | None:
-    if group_id is None:
+def _get_poke_reply(
+    target_id: int | None,
+    *,
+    aliases: dict[str, int],
+    replies: dict[str, str],
+) -> str | None:
+    if target_id is None:
         return None
 
-    config = get_app_config()
-    aliases = config.feature.group_aliases
-    for raw_group, message in config.runtime.help.poke_replies.items():
-        resolved_group = aliases.get(raw_group)
-        if resolved_group is None and raw_group.isdigit():
-            resolved_group = int(raw_group)
-        if resolved_group == group_id:
+    for raw_target, message in replies.items():
+        resolved_target = aliases.get(raw_target)
+        if resolved_target is None and raw_target.isdigit():
+            resolved_target = int(raw_target)
+        if resolved_target == target_id:
             return message
     return None
+
+
+def get_group_poke_reply(group_id: int | None) -> str | None:
+    config = get_app_config()
+    return _get_poke_reply(
+        group_id,
+        aliases=config.feature.group_aliases,
+        replies=config.runtime.help.poke_replies,
+    )
+
+
+def get_user_poke_reply(user_id: int) -> str | None:
+    config = get_app_config()
+    return _get_poke_reply(
+        user_id,
+        aliases=config.feature.user_aliases,
+        replies=config.runtime.help.poke_user_replies,
+    )
+
+
+def get_poke_reply(*, group_id: int | None, user_id: int) -> str | None:
+    return get_user_poke_reply(user_id) or get_group_poke_reply(group_id)
 
 
 def can_send_group_help_hint(
@@ -58,5 +83,7 @@ __all__ = [
     "HELP_HINT_RATE_LIMIT_NAMESPACE",
     "can_send_group_help_hint",
     "get_group_poke_reply",
+    "get_poke_reply",
+    "get_user_poke_reply",
     "is_poke_at_bot",
 ]

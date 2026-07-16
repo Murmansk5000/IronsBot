@@ -8,7 +8,7 @@ from nonebot.rule import Rule
 
 from ironsbot.services.help_hint import (
     can_send_group_help_hint,
-    get_group_poke_reply,
+    get_poke_reply,
     is_poke_at_bot,
 )
 from ironsbot.shared.help_hints import POKE_HELP_HINT_TEXT
@@ -33,10 +33,13 @@ async def handle_poke_help(matcher: Matcher, event: PokeNotifyEvent) -> None:
     if not can_send_group_help_hint(event.group_id):
         await matcher.finish()
 
+    reply = (
+        get_poke_reply(group_id=event.group_id, user_id=event.user_id)
+        or POKE_HELP_HINT_TEXT
+    )
     if event.group_id is None:
-        await matcher.finish(POKE_HELP_HINT_TEXT)
+        await matcher.finish(reply)
 
-    reply = get_group_poke_reply(event.group_id) or POKE_HELP_HINT_TEXT
     await matcher.finish(
         MessageSegment.at(event.user_id)
         + MessageSegment.text(f" {reply}")

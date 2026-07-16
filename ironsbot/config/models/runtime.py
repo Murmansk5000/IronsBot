@@ -238,6 +238,7 @@ class HelpConfig(BaseModel):
 
     ignored_plugins: list[str] = Field(default_factory=list)
     poke_replies: dict[str, str] = Field(default_factory=dict)
+    poke_user_replies: dict[str, str] = Field(default_factory=dict)
     hint_window_seconds: float = Field(default=60.0, gt=0)
     hint_max_per_window: int = Field(default=3, ge=1)
 
@@ -246,7 +247,7 @@ class HelpConfig(BaseModel):
     def normalize_ignored_plugins(cls, value: object) -> object:
         return string_list(value)
 
-    @field_validator("poke_replies")
+    @field_validator("poke_replies", "poke_user_replies")
     @classmethod
     def normalize_poke_replies(cls, value: dict[str, str]) -> dict[str, str]:
         replies: dict[str, str] = {}
