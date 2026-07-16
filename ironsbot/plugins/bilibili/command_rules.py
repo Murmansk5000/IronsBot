@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
@@ -15,15 +16,12 @@ from .account_commands import (
     BILI_PUSH_MODE_RAW_KEY,
 )
 
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.typing import T_State
-
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
 DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
 BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
 BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
+
 
 async def is_dynamic_menu_command(event: MessageEvent) -> bool:
     if not is_dynamic_query_allowed(event):
@@ -51,8 +49,7 @@ async def is_update_dynamic_command(event: MessageEvent) -> bool:
 
 async def is_bili_account_command(event: MessageEvent) -> bool:
     if not (
-        is_dynamic_query_allowed(event)
-        or is_event_feature_allowed(event, "bili_push")
+        is_dynamic_query_allowed(event) or is_event_feature_allowed(event, "bili_push")
     ):
         return False
 
