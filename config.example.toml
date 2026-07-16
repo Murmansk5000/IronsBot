@@ -39,15 +39,15 @@ superuser_bypass = true
 # Default: empty table
 # EN: Named QQ group IDs used by policies.
 # ZH: 群别名，把易读名称映射到 QQ 群号。
-# Example:
-# main = 987654321
+group_a = 987654321
+group_b = 876543210
 
 [feature.user_aliases]
 # Default: empty table
 # EN: Named QQ user IDs used by policies.
 # ZH: 用户别名，把易读名称映射到 QQ 号。
-# Example:
-# owner = 1234567890
+owner = 1234567890
+user_a = 2345678901
 
 [feature.group_policy]
 # Default: empty table
@@ -737,6 +737,32 @@ resource_message = "出来买资源，别逼我求你😡"
 cache_dir = "render_cache"
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
+
+# EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
+# Incoming command replies use the receiving bot; proactive pushes use these routes.
+# ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
+# 普通查询由收到事件的机器人回复；主动推送按下面的群/用户路由选择机器人。
+# enabled=false 时保持单机器人行为。开启前请把示例 QQ 和目标别名换成真实配置。
+[runtime.bot_routing]
+enabled = false
+default_bot = "main_bot"
+
+# EN: Bot alias -> OneBot self_id. ZH: 机器人别名 -> OneBot self_id（机器人 QQ）。
+[runtime.bot_routing.bot_aliases]
+main_bot = 111111111
+backup_bot = 222222222
+
+# EN: Keys may be group aliases or numeric group IDs.
+# ZH: 群别名来自 [feature.group_aliases]，也可直接把 key 写成群号。
+[runtime.bot_routing.groups]
+group_a = "main_bot"
+group_b = "backup_bot"
+
+# EN: Keys may be user aliases or numeric QQ user IDs.
+# ZH: 用户别名来自 [feature.user_aliases]，也可直接把 key 写成 QQ 号。
+[runtime.bot_routing.users]
+owner = "main_bot"
+user_a = "backup_bot"
 
 [runtime.data_sync]
 # 数据同步分两层：

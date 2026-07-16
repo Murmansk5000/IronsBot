@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from nonebot import get_driver
-from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
 from ironsbot.shared.features import get_superuser_ids, groups_for_feature
 
 from .senders import OneBotMessageSender, send_broadcast_message
 from .targets import TargetSendSummary
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Message
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
 
@@ -32,19 +34,6 @@ def admin_notice_targets() -> AdminNoticeTargets:
     )
 
 
-def get_first_onebot_bot() -> Bot | None:
-    try:
-        bots = get_driver().bots
-    except ValueError:
-        return None
-
-    if not bots:
-        return None
-
-    bot = next(iter(bots.values()))
-    return bot if isinstance(bot, Bot) else None
-
-
 async def send_admin_notice(
     message: str | Message,
     *,
@@ -62,7 +51,7 @@ async def send_admin_notice(
         message,
         private_user_ids=targets.private_user_ids,
         group_ids=targets.group_ids,
-        bot=bot or get_first_onebot_bot(),
+        bot=bot,
         action_name=action_name,
         interval_seconds=interval_seconds,
         subscription_key=subscription_key,
@@ -73,6 +62,5 @@ __all__ = [
     "ADMIN_NOTICE_FEATURE",
     "AdminNoticeTargets",
     "admin_notice_targets",
-    "get_first_onebot_bot",
     "send_admin_notice",
 ]

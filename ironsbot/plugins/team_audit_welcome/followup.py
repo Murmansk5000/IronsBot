@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.log import logger
 
@@ -17,8 +16,10 @@ from ironsbot.services.team_audit_welcome import (
     record_team_audit_pending_reminder,
 )
 from ironsbot.shared.features import is_group_feature_allowed
-from ironsbot.shared.messaging.outbound_rate_limit import (
-    check_group_outbound_rate_limit,
+from ironsbot.shared.messaging import (
+    MessageTarget,
+    get_bot_for_group,
+    send_target_messages,
 )
 from ironsbot.shared.runtime.jobs import JobRegistry
 
@@ -34,14 +35,11 @@ from .settings import (
 
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from nonebot.adapters.onebot.v11 import Bot
 
 
 def _followup_job_suffix(group_id: int, user_id: int) -> str:
     return f"{group_id}_{user_id}"
-
-
-def _followup_scan_job_suffix(bot: Bot) -> str:
-    return f"scan_{bot.self_id}"
 
 
 def _followup_job_registry(scheduler: AsyncIOScheduler) -> JobRegistry:
@@ -65,9 +63,20 @@ async def _is_member_still_in_group(
     return True
 
 
+async def _bot_can_access_group(bot: Bot, *, group_id: int) -> bool:
+    try:
+        await bot.get_group_info(group_id=group_id, no_cache=True)
+    except ActionFailed as e:
+        logger.warning(
+            "team audit followup bot cannot access target group: "
+            f"group={group_id} bot_self_id={bot.self_id} error={e}"
+        )
+        return False
+    return True
+
+
 def schedule_team_audit_followup(
     scheduler: AsyncIOScheduler,
-    bot: Bot,
     reminder: TeamAuditPendingReminder,
     *,
     now: datetime | None = None,
@@ -85,14 +94,13 @@ def schedule_team_audit_followup(
         send_team_audit_followup,
         "date",
         run_date=run_at,
-        args=[bot, reminder.group_id, reminder.user_id],
+        args=[reminder.group_id, reminder.user_id],
         job_id=_followup_job_suffix(reminder.group_id, reminder.user_id),
         misfire_grace_time=3600,
     )
 
 
 async def schedule_pending_team_audit_followups(
-    bot: Bot,
     scheduler: AsyncIOScheduler,
 ) -> None:
     config = get_app_config().message.team_audit_welcome
@@ -100,19 +108,18 @@ async def schedule_pending_team_audit_followups(
         return
 
     for reminder in list_team_audit_pending_reminders(followup_cache_path()):
-        schedule_team_audit_followup(scheduler, bot, reminder)
+        schedule_team_audit_followup(scheduler, reminder)
 
 
 def register_team_audit_followup_scan(
     scheduler: AsyncIOScheduler,
-    bot: Bot,
 ) -> None:
     _followup_job_registry(scheduler).add(
         schedule_pending_team_audit_followups,
         "interval",
         minutes=FOLLOWUP_SCAN_INTERVAL_MINUTES,
-        args=[bot, scheduler],
-        job_id=_followup_scan_job_suffix(bot),
+        args=[scheduler],
+        job_id="scan",
     )
 
 
@@ -137,7 +144,6 @@ def _load_pending_reminder(
 
 
 def _schedule_final_followup(
-    bot: Bot,
     reminder: TeamAuditPendingReminder,
 ) -> None:
     config = get_app_config().message.team_audit_welcome
@@ -155,22 +161,20 @@ def _schedule_final_followup(
         logger.warning("team audit final followup scheduler is unavailable")
         return
 
-    schedule_team_audit_followup(scheduler, bot, final_reminder)
+    schedule_team_audit_followup(scheduler, final_reminder)
 
 
 def _finish_sent_followup(
-    bot: Bot,
     reminder: TeamAuditPendingReminder,
 ) -> None:
     config = get_app_config().message.team_audit_welcome
     if reminder.step < FINAL_FOLLOWUP_STEP and config.final_followup_enabled:
-        _schedule_final_followup(bot, reminder)
+        _schedule_final_followup(reminder)
         return
     _clear_pending_reminder(group_id=reminder.group_id, user_id=reminder.user_id)
 
 
 async def send_team_audit_followup(  # noqa: PLR0911
-    bot: Bot,
     group_id: int,
     user_id: int,
 ) -> None:
@@ -192,29 +196,38 @@ async def send_team_audit_followup(  # noqa: PLR0911
     if not is_group_feature_allowed(user_id, group_id, config.feature):
         return
 
-    if not await _is_member_still_in_group(bot, group_id=group_id, user_id=user_id):
-        _clear_pending_reminder(group_id=group_id, user_id=user_id)
-        return
-
-    rate_limit = check_group_outbound_rate_limit(group_id)
-    if not rate_limit.allowed:
-        logger.info(
-            "team audit followup skipped by outbound rate limit: "
+    bot = get_bot_for_group(group_id)
+    if bot is None:
+        logger.warning(
+            "team audit followup skipped: no connected bot for "
             f"group={group_id} user={user_id}"
         )
         return
 
-    await bot.send_group_msg(
-        group_id=group_id,
-        message=followup_message(user_id, group_id=group_id, reminder=reminder),
-    )
-    if rate_limit.cooldown_message is not None:
-        await bot.send_group_msg(
-            group_id=group_id,
-            message=Message(rate_limit.cooldown_message),
-        )
+    if not await _bot_can_access_group(bot, group_id=group_id):
+        return
 
-    _finish_sent_followup(bot, reminder)
+    if not await _is_member_still_in_group(bot, group_id=group_id, user_id=user_id):
+        _clear_pending_reminder(group_id=group_id, user_id=user_id)
+        return
+
+    summary = await send_target_messages(
+        [MessageTarget("group", group_id)],
+        followup_message(user_id, group_id=group_id, reminder=reminder),
+        bot=bot,
+        action_name="team audit followup",
+        interval_seconds=0,
+    )
+    if not summary.succeeded:
+        logger.warning(
+            "team audit followup send failed: group={} user={} bot_self_id={}",
+            group_id,
+            user_id,
+            bot.self_id,
+        )
+        return
+
+    _finish_sent_followup(reminder)
 
 
 __all__ = [

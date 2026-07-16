@@ -180,6 +180,36 @@ ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 
 The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 
+Multiple NapCat / OneBot v11 clients may connect to the same IronsBot WebSocket
+endpoint. Configure `[runtime.bot_routing]` in `ironsbot.toml` when proactive
+messages should use different bot accounts for different groups or users:
+
+```toml
+[runtime.bot_routing]
+enabled = true
+default_bot = "main_bot"
+
+[runtime.bot_routing.bot_aliases]
+main_bot = 111111111
+backup_bot = 222222222
+
+[runtime.bot_routing.groups]
+group_a = "main_bot"
+group_b = "backup_bot"
+
+[runtime.bot_routing.users]
+owner = "main_bot"
+user_a = "backup_bot"
+```
+
+Group and user aliases come from `[feature.group_aliases]` and
+`[feature.user_aliases]`; numeric IDs are also accepted. Replies to incoming
+commands keep using the bot that received the event. Bilibili, activity,
+scheduled-message, server-status, startup, and other proactive deliveries use
+the configured route. Routing does not filter incoming events, so avoid placing
+multiple responding bots in the same group unless you separately control which
+events each OneBot client forwards.
+
 ## Configuration
 
 Behavior config is file-based:

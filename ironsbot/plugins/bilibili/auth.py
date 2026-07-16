@@ -27,8 +27,8 @@ from ironsbot.services.bilibili.auth import (
 )
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
 from ironsbot.shared.messaging.admin_notice import send_admin_notice
+from ironsbot.shared.messaging.bot_router import get_default_bot
 
-from .bot_access import get_first_bot
 from .config import get_bili_config
 
 _login_state = BiliLoginRuntimeState()
@@ -47,7 +47,7 @@ async def _send_private_to_superusers(
     if user_ids is None:
         await send_admin_notice(
             message,
-            bot=bot or get_first_bot(),
+            bot=bot,
             action_name="Bilibili login notice",
             interval_seconds=1.2,
             subscription_key="bili_login_notice",
@@ -63,7 +63,7 @@ async def _send_private_to_superusers(
     await send_broadcast_message(
         message,
         private_user_ids=user_ids,
-        bot=bot or get_first_bot(),
+        bot=bot,
         action_name="Bilibili login notice",
         interval_seconds=1.2,
         subscription_key="bili_login_notice",
@@ -144,7 +144,7 @@ async def send_bili_login_qrcode_to_superusers(
     ):
         return
 
-    bot = get_first_bot()
+    bot = get_default_bot()
     if not bot:
         logger.warning("no bot online, cannot send Bilibili login QR")
         return
@@ -157,7 +157,6 @@ async def send_bili_login_qrcode_to_superusers(
         mark_bili_login_notice_sent(_login_state, now=now)
         await _send_private_to_superusers(
             build_bili_login_qrcode_request_failed_text(reason),
-            bot=bot,
         )
         return
 
@@ -168,7 +167,6 @@ async def send_bili_login_qrcode_to_superusers(
                 *qr_message,
             ]
         ),
-        bot=bot,
     )
 
 
@@ -204,7 +202,7 @@ async def _poll_bili_login(
                     if not has_complete_bili_login_cookie(new_cookie):
                         await _send_private_to_superusers(
                             build_bili_login_cookie_incomplete_text(),
-                            bot=bot,
+                            bot=bot if requester_id else None,
                             user_ids=[requester_id] if requester_id else None,
                         )
                         return
@@ -214,7 +212,7 @@ async def _poll_bili_login(
                     logger.info("Bilibili cookie refreshed")
                     await _send_private_to_superusers(
                         build_bili_login_success_text(),
-                        bot=bot,
+                        bot=bot if requester_id else None,
                     )
                     return
 
@@ -230,7 +228,7 @@ async def _poll_bili_login(
         logger.error(f"Bilibili QR polling failed: {e}")
         await _send_private_to_superusers(
             build_bili_login_poll_error_text(),
-            bot=bot,
+            bot=bot if requester_id else None,
             user_ids=[requester_id] if requester_id else None,
         )
     finally:

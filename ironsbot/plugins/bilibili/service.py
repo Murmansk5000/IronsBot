@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.services.bilibili.checkpoints import (
@@ -45,7 +44,6 @@ from ironsbot.services.bilibili.targets import (
 )
 
 from .auth import send_bili_login_qrcode_to_superusers
-from .bot_access import get_first_bot
 from .config import get_bili_config
 
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
@@ -76,7 +74,6 @@ async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) ->
 
 
 async def _send_dynamic_push(
-    bot: Bot,
     item: dict[str, Any],
     pub_ts: int,
     author_mid: int,
@@ -89,7 +86,6 @@ async def _send_dynamic_push(
             delivery.message,
             group_ids=delivery.group_ids,
             private_user_ids=delivery.private_user_ids,
-            bot=bot,
             action_name=delivery.action_name,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=append_bili_admin_hint_for_group,
@@ -120,7 +116,6 @@ async def _push_new_dynamics(
     checkpoints: dict[int, int],
 ) -> bool:
     checkpoint_changed = False
-    bot: Bot | None = None
     for pub_ts, item in valid_dynamics:
         snapshot = build_dynamic_history_snapshot_for_item(
             item,
@@ -157,12 +152,7 @@ async def _push_new_dynamics(
         if targets is None:
             targets = push_targets_for_uid(author_mid)
 
-        bot = bot or get_first_bot()
-        if not bot:
-            logger.warning("no bot online for Bilibili dynamic push")
-            return checkpoint_changed
-
-        await _send_dynamic_push(bot, item, pub_ts, author_mid, targets)
+        await _send_dynamic_push(item, pub_ts, author_mid, targets)
         save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
         checkpoint_changed = (
             mark_checkpoint(checkpoints, author_mid, pub_ts)
