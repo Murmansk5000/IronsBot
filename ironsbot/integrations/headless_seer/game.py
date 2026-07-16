@@ -4,15 +4,17 @@ import json
 import logging
 import random
 import time
-from typing import NamedTuple, overload
+from typing import NamedTuple, Protocol, overload
 
 import httpx
 
+from ironsbot.integrations.headless_seer.activity import (
+    format_recent_headless_operation,
+)
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.core import SeerConnect, SeerEncryptConnect
 from ironsbot.integrations.headless_seer.exception import ClientNotInitializedError
 from ironsbot.integrations.headless_seer.packets import (
-    DailyRankInfo,
     DailyRankList,
     DailyRankParam,
     HeadInfo,
@@ -27,8 +29,6 @@ from ironsbot.integrations.headless_seer.peak import (
     PEAK_SUIT_KEY_MAP,
     PEAK_TITLE_KEY_MAP,
     PEAK_TYPE_NAME_MAP,
-    PEAK_USER_KEY_MAP,
-    PeakData,
     PeakItemData,
     PeakType,
 )
@@ -43,8 +43,6 @@ __all__ = [
     "PEAK_SUIT_KEY_MAP",
     "PEAK_TITLE_KEY_MAP",
     "PEAK_TYPE_NAME_MAP",
-    "PEAK_USER_KEY_MAP",
-    "PeakData",
     "PeakItemData",
     "PeakType",
     "SeerGame",
@@ -55,6 +53,17 @@ logger = logging.getLogger(__name__)
 class Address(NamedTuple):
     host: str
     port: int
+
+
+class HeadlessStateNotifier(Protocol):
+    async def __call__(
+        self,
+        *,
+        connected: bool,
+        reason: str,
+        source: str,
+        user_id: int | None,
+    ) -> None: ...
 
 
 def _merge_win_and_count_rank(
@@ -86,6 +95,7 @@ class SeerGame:
         reconnect_retries: int = 0,
         reconnect_delay: float = 5.0,
         reconnect_delay_max: float = 120.0,
+        state_notifier: HeadlessStateNotifier | None = None,
     ) -> None:
         self.user_id = user_id
         self._password: str = password
@@ -97,7 +107,9 @@ class SeerGame:
         self._reconnect_delay = reconnect_delay
         self._reconnect_delay_max = reconnect_delay_max
         self._reconnect_task: asyncio.Task[None] | None = None
+        self._shutdown_requested = False
         self._login_server_url: str = login_server_url
+        self._state_notifier = state_notifier
 
     @property
     def is_logged_in(self) -> bool:
@@ -141,8 +153,15 @@ class SeerGame:
 
     async def login(self) -> None:
         """完整的登录流程：登录服务器认证 -> 获取服务器列表 -> 连接游戏服务器。"""
-        session = await self._fetch_session_token(str(self.user_id), self._password)
         async with self._lock:
+            if self.is_logged_in:
+                return
+
+            self._shutdown_requested = False
+            session = await self._fetch_session_token(
+                str(self.user_id),
+                self._password,
+            )
             if self._impl is not None:
                 self._impl.disconnect()
                 self._impl = None
@@ -206,12 +225,17 @@ class SeerGame:
                 impl.disconnect()
                 raise
 
+            if self._shutdown_requested:
+                impl.disconnect()
+                raise RuntimeError("Headless Seer login cancelled by shutdown")
+
             # self._impl.key = decrypt.clac_encrypt_key(res, self.user_id)
             self._impl = impl
             self._is_logged_in = True
             logger.info("成功进入游戏服务器")
 
     def logout(self) -> None:
+        self._shutdown_requested = True
         self._stop_reconnect()
         if self._impl is not None:
             self._impl.disconnect()
@@ -220,12 +244,43 @@ class SeerGame:
     async def _handle_disconnect(self) -> None:
         """连接断开回调，由传输层触发。"""
         self._is_logged_in = False
-        logger.warning(f"{self.user_id}：连接已断开")
-        self.schedule_reconnect()
+        if self._shutdown_requested:
+            return
+        operation = format_recent_headless_operation()
+        reason = "连接已断开"
+        if operation:
+            reason = f"{reason}\n疑似触发操作：{operation}"
+        logger.warning(
+            "%s：连接已断开%s",
+            self.user_id,
+            f" ({operation})" if operation else "",
+        )
+        await self._notify_state(connected=False, reason=reason, source="无头连接")
+        if not self._shutdown_requested:
+            self.schedule_reconnect()
+
+    async def _notify_state(
+        self,
+        *,
+        connected: bool,
+        reason: str,
+        source: str,
+    ) -> None:
+        if self._state_notifier is None:
+            return
+        try:
+            await self._state_notifier(
+                connected=connected,
+                reason=reason,
+                source=source,
+                user_id=int(self.user_id),
+            )
+        except Exception:
+            logger.warning("headless state notifier failed", exc_info=True)
 
     def schedule_reconnect(self) -> None:
         """触发自动重连。若重连任务已在运行或未启用重连则跳过。"""
-        if self._reconnect_retries == 0:
+        if self._shutdown_requested or self._reconnect_retries == 0:
             return
         if self._reconnect_task is not None and not self._reconnect_task.done():
             logger.debug(f"{self.user_id}：重连任务已在运行，跳过")
@@ -266,6 +321,11 @@ class SeerGame:
                 )
             else:
                 logger.info(f"{self.user_id}：重连成功")
+                await self._notify_state(
+                    connected=True,
+                    reason="",
+                    source="无头自动重连",
+                )
                 return
 
             delay = min(delay * 2, self._reconnect_delay_max)
@@ -363,52 +423,6 @@ class SeerGame:
         return (
             _merge_win_and_count_rank(win_body[1], count_body[1], length=20),
             ban_body[1],
-        )
-
-    async def get_peak_user_rank(
-        self, sub_key: int, peak_type: PeakType
-    ) -> list[DailyRankInfo]:
-        key = PEAK_USER_KEY_MAP[peak_type]
-        result: tuple[HeadInfo, DailyRankList] = await self.send_and_wait(
-            COMMAND_ID.GET_DAILY_RANK_INFO,
-            DailyRankParam(key=key, sub_key=sub_key, start=0, end=19),
-        )
-        return result[1].rank_list
-
-    async def get_user_peak_expert_data(self, user_id: int) -> PeakData:
-        result = await asyncio.gather(
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 129441),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 129442),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 129443),
-        )
-        return PeakData(
-            current_score=result[0][1].value,
-            current_highest_score=result[1][1].value,
-            history_highest_score=result[2][1].value,
-        )
-
-    async def get_user_peak_data(self, user_id: int) -> PeakData:
-        result = await asyncio.gather(
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124801),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124802),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124800),
-        )
-        return PeakData(
-            current_score=result[0][1].value,
-            history_highest_score=result[1][1].value,
-            current_highest_score=result[2][1].value,
-        )
-
-    async def get_user_peak_wild_data(self, user_id: int) -> PeakData:
-        result = await asyncio.gather(
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124790),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124791),
-            self.send_and_wait(COMMAND_ID.USER_FOREVER_VALUE, user_id, 124792),
-        )
-        return PeakData(
-            current_highest_score=result[0][1].value,
-            current_score=result[1][1].value,
-            history_highest_score=result[2][1].value,
         )
 
     async def get_user_online_info(self, user_id: int) -> OnLineInfo | None:

@@ -2,11 +2,8 @@
 from nonebot import get_driver
 
 from ironsbot.config.loader import get_app_config, load_credentials_config
-from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.runtime import HeadlessConfig
 from ironsbot.config.models.secrets import CredentialsConfig
-
-Config = AppConfig
 
 
 def get_headless_config() -> HeadlessConfig:
@@ -37,7 +34,6 @@ def get_headless_credentials() -> CredentialsConfig:
     return CredentialsConfig.model_validate(data)
 
 __all__ = [
-    "Config",
     "CredentialsConfig",
     "HeadlessConfig",
     "get_headless_config",

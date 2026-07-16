@@ -208,6 +208,7 @@ class HeadlessNoticeConfig(BaseModel):
     state_online_message: str = (
         "无头米米号已恢复登录。\n"
         "米米号：{user_id}\n"
+        "离线时长：{offline_duration}\n"
         "来源：{source}"
     )
     reconnect_check_times: str = "00:01,00:02"
