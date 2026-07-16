@@ -2,6 +2,7 @@ import asyncio
 import os
 from pathlib import Path
 
+import httpx
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,8 @@ from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
     create_watchtower_container,
+    ensure_watchtower_image,
+    pull_docker_image,
     resolve_docker_container_name,
     split_docker_image,
 )
@@ -172,6 +175,56 @@ def test_create_watchtower_container_sets_docker_api_version() -> None:
     assert container_id == "watchtower-container-id"
     assert client.request_json is not None
     assert client.request_json["Env"] == ["DOCKER_API_VERSION=1.40"]
+
+
+def test_watchtower_pull_failure_uses_cached_local_image() -> None:
+    image = "containrrr/watchtower:latest"
+
+    class FakeClient:
+        async def post(self, _url: str, **_kwargs: object) -> httpx.Response:
+            return httpx.Response(
+                500,
+                json={"message": "registry temporarily unavailable"},
+                request=httpx.Request("POST", "http://docker/images/create"),
+            )
+
+        async def get(self, _url: str) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "Id": "sha256:cached-watchtower",
+                    "Created": "2026-07-01T00:00:00Z",
+                    "Config": {"Labels": {}},
+                },
+                request=httpx.Request("GET", "http://docker/images/watchtower/json"),
+            )
+
+    result = asyncio.run(
+        ensure_watchtower_image(FakeClient(), image)  # type: ignore[arg-type]
+    )
+
+    assert result.image_id == "sha256:cached-watchtower"
+
+
+def test_target_image_pull_failure_includes_docker_error_detail() -> None:
+    class FakeClient:
+        async def post(self, _url: str, **_kwargs: object) -> httpx.Response:
+            return httpx.Response(
+                500,
+                json={"message": "denied: registry authentication required"},
+                request=httpx.Request("POST", "http://docker/images/create"),
+            )
+
+    with pytest.raises(
+        RuntimeError,
+        match="denied: registry authentication required",
+    ):
+        asyncio.run(
+            pull_docker_image(
+                FakeClient(),  # type: ignore[arg-type]
+                "murmansk5000/ironsbot:latest",
+            )
+        )
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
