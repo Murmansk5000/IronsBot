@@ -19,6 +19,9 @@ INVALID_RECONNECT_TIME_ERROR = (
     "daily HH:MM times, "
     'for example "00:01,00:02" or ["00:01","00:02"]'
 )
+POKE_REPLY_REQUIRED_ERROR = (
+    "runtime.help.poke_replies requires non-empty group refs and messages"
+)
 DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
@@ -234,6 +237,7 @@ class HelpConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ignored_plugins: list[str] = Field(default_factory=list)
+    poke_replies: dict[str, str] = Field(default_factory=dict)
     hint_window_seconds: float = Field(default=60.0, gt=0)
     hint_max_per_window: int = Field(default=3, ge=1)
 
@@ -241,6 +245,18 @@ class HelpConfig(BaseModel):
     @classmethod
     def normalize_ignored_plugins(cls, value: object) -> object:
         return string_list(value)
+
+    @field_validator("poke_replies")
+    @classmethod
+    def normalize_poke_replies(cls, value: dict[str, str]) -> dict[str, str]:
+        replies: dict[str, str] = {}
+        for raw_group, raw_message in value.items():
+            group = raw_group.strip()
+            message = raw_message.strip()
+            if not group or not message:
+                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
+            replies[group] = message
+        return replies
 
 
 class SuperuserPriorityConfig(BaseModel):

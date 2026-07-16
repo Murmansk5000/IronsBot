@@ -2,8 +2,10 @@ from dataclasses import dataclass
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.feature import FeatureConfig
+from ironsbot.config.models.runtime import HelpConfig
 from ironsbot.services import help_hint
-from ironsbot.services.help_hint import is_poke_at_bot
+from ironsbot.services.help_hint import get_group_poke_reply, is_poke_at_bot
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
@@ -36,6 +38,30 @@ def test_shared_help_hint_text_mentions_help_command() -> None:
 def test_is_poke_at_bot_checks_poke_target() -> None:
     assert is_poke_at_bot(FakePokeEvent(self_id=100, target_id=100))
     assert not is_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
+
+
+def test_group_poke_reply_prefers_configured_group_alias(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    config = stub_app_config(
+        feature_config=FeatureConfig(group_aliases={"example": 987654321}),
+        help_config=HelpConfig(poke_replies={"example": "自定义戳一戳回复"}),
+    )
+    monkeypatch.setattr(help_hint, "get_app_config", lambda: config)
+
+    assert get_group_poke_reply(987654321) == "自定义戳一戳回复"
+    assert get_group_poke_reply(876543210) is None
+
+
+def test_group_poke_reply_accepts_numeric_group_id(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    config = stub_app_config(
+        help_config=HelpConfig(poke_replies={"987654321": "数字群号回复"}),
+    )
+    monkeypatch.setattr(help_hint, "get_app_config", lambda: config)
+
+    assert get_group_poke_reply(987654321) == "数字群号回复"
 
 
 def test_help_hint_limiter_allows_three_group_hints_per_minute(

@@ -916,6 +916,12 @@ hint_window_seconds = 60.0
 # ZH: 每个群在一个窗口内最多发送的共享提示次数。
 hint_max_per_window = 3
 
+# EN: Optional per-group poke replies. Keys may be group aliases or numeric group IDs.
+# Configured text replaces the default help hint when someone pokes the bot in that group.
+# ZH: 可选的群聊戳一戳回复。key 可写群别名或群号；命中后覆盖默认帮助提示。
+# [runtime.help.poke_replies]
+# example = "你戳了戳机器人。"
+
 [runtime.priority]
 # Default: true; EN: Enable superuser priority gate. ZH: 启用超级管理员优先级。
 enabled = true

@@ -18,6 +18,21 @@ def is_poke_at_bot(event: PokeLikeEvent) -> bool:
     return event.target_id == event.self_id
 
 
+def get_group_poke_reply(group_id: int | None) -> str | None:
+    if group_id is None:
+        return None
+
+    config = get_app_config()
+    aliases = config.feature.group_aliases
+    for raw_group, message in config.runtime.help.poke_replies.items():
+        resolved_group = aliases.get(raw_group)
+        if resolved_group is None and raw_group.isdigit():
+            resolved_group = int(raw_group)
+        if resolved_group == group_id:
+            return message
+    return None
+
+
 def can_send_group_help_hint(
     group_id: int | None,
     *,
@@ -42,5 +57,6 @@ def can_send_group_help_hint(
 __all__ = [
     "HELP_HINT_RATE_LIMIT_NAMESPACE",
     "can_send_group_help_hint",
+    "get_group_poke_reply",
     "is_poke_at_bot",
 ]

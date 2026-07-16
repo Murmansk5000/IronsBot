@@ -92,6 +92,7 @@ def stub_app_config(  # noqa: PLR0913
     ai_intent_enabled: bool = True,
     bot_routing_config: BotRoutingConfig | None = None,
     feature_config: FeatureConfig | None = None,
+    help_config: HelpConfig | None = None,
     logging_config: LoggingConfig | None = None,
     mintmark_config: MintmarkQueryConfig | None = None,
     outbound_rate_limit_config: OutboundRateLimitConfig | None = None,
@@ -119,6 +120,7 @@ def stub_app_config(  # noqa: PLR0913
         ),
         runtime=StubRuntimeConfig(
             bot_routing=bot_routing_config or BotRoutingConfig(),
+            help=help_config or HelpConfig(),
             logging=logging_config or LoggingConfig(),
         ),
         seer=StubSeerConfig(
