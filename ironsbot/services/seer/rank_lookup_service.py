@@ -97,10 +97,14 @@ async def find_pet_kind_rank(
     *,
     user_id: int,
     pet_kind_count: int,
-    search_limit: int,
+    search_limit: int | None,
     deps: RankLookupDependencies,
 ) -> RankLookupResult:
-    real_search_limit = deps.online_search_limit(search_limit)
+    real_search_limit = (
+        deps.score_search_limit(search_limit)
+        if pet_kind_count > 0
+        else deps.online_search_limit(search_limit)
+    )
     raw_search_limit = real_search_limit + PET_KIND_RANK_ANOMALY_COUNT
     result = RankLookupResult(
         title="精灵图鉴",
@@ -135,15 +139,27 @@ async def find_pet_kind_rank(
     if real_search_limit <= 0:
         return result
 
-    raw_result = await deps.find_rank_by_linear_scan(
-        game,
-        user_id=user_id,
-        key=PET_KIND_RANK_KEY,
-        sub_key=PET_KIND_RANK_SUB_KEY,
-        limit=raw_search_limit,
-        page_size=deps.page_size(),
-        result=result,
-    )
+    if pet_kind_count > 0:
+        raw_result = await deps.find_rank_by_score(
+            game,
+            user_id=user_id,
+            key=PET_KIND_RANK_KEY,
+            sub_key=PET_KIND_RANK_SUB_KEY,
+            target_score=pet_kind_count,
+            limit=raw_search_limit,
+            page_size=deps.page_size(),
+            result=result,
+        )
+    else:
+        raw_result = await deps.find_rank_by_linear_scan(
+            game,
+            user_id=user_id,
+            key=PET_KIND_RANK_KEY,
+            sub_key=PET_KIND_RANK_SUB_KEY,
+            limit=raw_search_limit,
+            page_size=deps.page_size(),
+            result=result,
+        )
     raw_result.searched_limit = real_search_limit
     if raw_result.rank is not None:
         raw_result.rank = max(0, raw_result.rank - PET_KIND_RANK_ANOMALY_COUNT)

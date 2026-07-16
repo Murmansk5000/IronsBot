@@ -14,7 +14,7 @@ from sqlmodel import select
 from ironsbot.config.loader import get_app_config
 
 from .normalization import normalize_key
-from .orm import MintmarkClassAliasORM
+from .orm import MintmarkClassAliasORM, MintmarkSeriesMemberORM
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -250,6 +250,72 @@ def _mintmark_type_part_matches(description: str, char: str) -> bool:
     if char == "特":
         return "特" in description or "双攻" in description
     return char in description
+
+
+def resolve_custom_mintmark_series(
+    sessions: dict[str, SQLModelSession],
+    arg: str,
+) -> tuple[MintmarkORM, ...]:
+    alias_session = sessions.get(_ALIAS_DB)
+    data_session = sessions.get(_SEERAPI_DB)
+    if alias_session is None or data_session is None:
+        return ()
+
+    try:
+        members = list(alias_session.exec(select(MintmarkSeriesMemberORM)).all())
+    except OperationalError:
+        return ()
+    if not members:
+        return ()
+
+    ids: list[int] = []
+    type_query = ""
+    normalized_arg = normalize_key(arg)
+    exact_members = [
+        member for member in members if normalize_key(member.name) == normalized_arg
+    ]
+    if exact_members:
+        ids = sorted({member.target_id for member in exact_members})
+    elif (parsed := _parse_series_ordinal_arg(arg)) is not None:
+        raw_prefix, ordinal = parsed
+        series_ids = sorted(
+            {
+                member.target_id
+                for member in members
+                if normalize_key(member.name) == normalize_key(raw_prefix)
+            }
+        )
+        if 0 < ordinal <= len(series_ids):
+            ids = [series_ids[ordinal - 1]]
+    else:
+        for raw_prefix, candidate_type_query in _iter_series_type_splits(arg):
+            series_ids = sorted(
+                {
+                    member.target_id
+                    for member in members
+                    if normalize_key(member.name) == normalize_key(raw_prefix)
+                }
+            )
+            if series_ids:
+                ids = series_ids
+                type_query = candidate_type_query
+                break
+
+    result = tuple(
+        mintmark
+        for target_id in ids
+        if (mintmark := data_session.get(MintmarkORM, target_id)) is not None
+    )
+    if not type_query:
+        return result
+    return tuple(
+        mintmark
+        for mintmark in result
+        if _mintmark_type_matches(
+            _mintmark_type_description(mintmark),
+            type_query,
+        )
+    )
 
 
 class MintmarkSeriesOrdinalResolver:

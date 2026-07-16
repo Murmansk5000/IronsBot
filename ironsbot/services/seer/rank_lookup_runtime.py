@@ -187,7 +187,7 @@ async def find_pet_kind_rank(
     *,
     user_id: int,
     pet_kind_count: int,
-    search_limit: int,
+    search_limit: int | None,
 ) -> RankLookupResult:
     return await find_pet_kind_rank_with_deps(
         game,

@@ -10,6 +10,7 @@ _COMMAND_MODULES = [
     "peak_queries",
     "pet_queries",
     "player",
+    "player_shortcuts",
     "rank_list",
     "team",
     "type_queries",

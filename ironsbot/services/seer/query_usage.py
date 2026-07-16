@@ -22,7 +22,9 @@ SEER_QUERY_USAGE_SECTIONS = (
         lines=(
             "【玩家】feature: seer_player",
             "米米号123456 / 查询玩家信息123456",
-            "查到基础信息后，发送“收集”“巅峰”或“群星牌”查看详情。",
+            "首次成功查询可设置默认米米号；之后直接发送米米号 / 收集 / 巅峰 / 群星牌。",
+            "也可直接发送：收集123456 / 巅峰123456 / 群星牌123456。",
+            "绑定米米号123456 / 更改米米号123456 / 解绑米米号",
         ),
     ),
     SeerQueryUsageSection(
@@ -77,7 +79,7 @@ SEER_QUERY_USAGE_SECTIONS = (
         lines=(
             "【群星牌】feature: seer_autocard",
             "群星牌布布种子 / 布布种子群星牌",
-            "群星牌榜 / 米米号查询后回复“群星牌”",
+            "群星牌卡98（按卡牌 ID） / 群星牌榜",
         ),
     ),
     SeerQueryUsageSection(
@@ -86,6 +88,8 @@ SEER_QUERY_USAGE_SECTIONS = (
             "【榜单入口】feature: seer_rank",
             "榜单 / 榜单帮助 / 榜单情况 / 样本情况",
             "图鉴榜 / 群星牌榜 / 竞技段位榜 / 专家段位榜",
+            "纯数字查米米号；名次带“名”，分数带“分/点”。",
+            "示例：成就榜123456 / 成就榜200名 / 成就榜5000点",
         ),
     ),
     SeerQueryUsageSection(

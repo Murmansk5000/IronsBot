@@ -25,6 +25,7 @@ from ironsbot.services.seer.rank_pages import (
     fetch_daily_rank_page,
     fetch_daily_rank_page_result,
 )
+from ironsbot.services.seer.rank_player_query import fetch_rank_player_message
 from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 
 from ..config import get_local_rank_config
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
         LocalRankSpec,
         RankCacheBatchCommand,
         RankListCommand,
+        RankPlayerCommand,
         RankScoreCommand,
     )
 
@@ -118,6 +120,21 @@ async def build_global_rank_score_message(
     )
 
 
+async def build_global_rank_player_message(command: RankPlayerCommand) -> str:
+    spec = get_global_rank_spec(command.rank_key)
+    game = get_game_client()
+    with headless_operation(
+        "榜单玩家查询",
+        f"{spec.title} 米米号 {command.player_id}",
+        source="榜单玩家查询",
+    ):
+        return await fetch_rank_player_message(
+            game,
+            command=command,
+            local_rank_enabled=get_local_rank_config().enabled,
+        )
+
+
 async def cache_global_rank_batch(
     command: RankCacheBatchCommand,
 ) -> tuple[GlobalRankSpec, int, int]:
@@ -164,6 +181,7 @@ def build_local_rank_message(spec: LocalRankSpec, command: RankListCommand) -> s
 
 __all__ = [
     "build_global_rank_message",
+    "build_global_rank_player_message",
     "build_global_rank_score_message",
     "build_local_rank_message",
     "cache_global_rank_batch",

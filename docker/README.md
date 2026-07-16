@@ -35,7 +35,7 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 
 ## Included Plugins
 
-- `seer.query`: Seer player, pet, mintmark, Seer ranks, Autocard, activity, and data tools.
+- `seer.query`: bound-player shortcuts, Seer player/pet/mintmark queries, ranks, Autocard, activity, and data tools.
 - `help`: show only features enabled for the current group or private user.
 - `about`: show current IronsBot project information.
 - `sendpic`: reply with fixed local images by command keywords.

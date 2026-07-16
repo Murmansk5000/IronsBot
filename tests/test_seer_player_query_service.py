@@ -37,6 +37,7 @@ from ironsbot.services.seer.player_query import (
     safe_player_extra,
     store_player_detail_messages,
 )
+from ironsbot.services.seer.player_shortcuts import parse_player_shortcut_command
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +61,24 @@ def test_extract_player_query_arg_reads_known_prefixes() -> None:
 def test_extract_player_query_arg_ignores_unrelated_text() -> None:
     assert extract_player_query_arg("查询战队 123") is None
     assert extract_player_query_arg("105023264") is None
+
+
+def test_parse_player_shortcuts_supports_bound_and_explicit_queries() -> None:
+    collection = parse_player_shortcut_command("收集")
+    peak = parse_player_shortcut_command("巅峰 105023264")
+    autocard = parse_player_shortcut_command("群星牌105023264")
+
+    assert collection is not None
+    assert (collection.kind, collection.player_id) == ("collection", None)
+    assert peak is not None
+    assert (peak.kind, peak.player_id) == ("peak", 105023264)
+    assert autocard is not None
+    assert (autocard.kind, autocard.player_id) == ("autocard", 105023264)
+
+
+def test_parse_player_shortcuts_does_not_take_named_autocard_queries() -> None:
+    assert parse_player_shortcut_command("群星牌地葬") is None
+    assert parse_player_shortcut_command("群星牌卡98") is None
 
 
 def test_player_query_messages_explain_slow_sections() -> None:
