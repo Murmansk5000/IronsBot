@@ -1,12 +1,13 @@
 from ironsbot.integrations.headless_seer.client import client_manager
+from ironsbot.integrations.headless_seer.config import (
+    get_headless_config,
+    get_headless_credentials,
+)
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.plugins.headless_seer.config import (
-    get_headless_config,
-    get_headless_credentials,
-)
+from ironsbot.services.headless_seer_notice.state import mark_headless_game_state
 
 HEADLESS_CONFIG_MISSING_MESSAGE = (
     "未配置 HEADLESS_SEER_USER_ID 或 HEADLESS_SEER_PASSWORD"
@@ -40,7 +41,7 @@ async def login_headless_client() -> int:
         if game.is_logged_in:
             return int(game.user_id)
     except (DisconnectedError, NotLoggedInError):
-        client_manager.shutdown()
+        pass
 
     credentials = get_headless_credentials()
     user_id = credentials.headless_seer_user_id
@@ -57,6 +58,7 @@ async def login_headless_client() -> int:
         reconnect_retries=headless_config.reconnect_retries,
         reconnect_delay=headless_config.reconnect_delay,
         reconnect_delay_max=headless_config.reconnect_delay_max,
+        state_notifier=mark_headless_game_state,
     )
     if not game.is_logged_in:
         raise RuntimeError("登录未完成，已进入自动重连")

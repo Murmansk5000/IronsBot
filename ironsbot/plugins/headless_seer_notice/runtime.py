@@ -7,20 +7,25 @@ from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
+from ironsbot.services.headless_seer_notice.config import (
+    INVALID_RECONNECT_TIME_ERROR,
+    get_headless_notice_config,
+)
+from ironsbot.services.headless_seer_notice.state import (
+    mark_headless_available,
+    mark_headless_unavailable,
+)
 from ironsbot.shared.config.time import daily_time_parts
-from ironsbot.shared.features import get_superuser_ids
+from ironsbot.shared.messaging.admin_notice import send_admin_notice
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.runtime.jobs import JobRegistry
-
-from .config import INVALID_RECONNECT_TIME_ERROR, get_headless_notice_config
-from .state import mark_headless_available, mark_headless_unavailable
 
 RECONNECT_JOB_PREFIX = "headless_reconnect_check:"
 _headless_notice_runtime_state = {"registered": False}
 
 
 def _build_startup_notice_message(reason: str) -> Message:
-    from .service import headless_user_id_text
+    from ironsbot.services.headless_seer_notice.service import headless_user_id_text
 
     notice_config = get_headless_notice_config()
     return Message(
@@ -31,10 +36,11 @@ def _build_startup_notice_message(reason: str) -> Message:
     )
 
 
-async def _startup_check(bot: Bot) -> None:
-    from ironsbot.shared.messaging import send_broadcast_message
-
-    from .service import headless_is_configured, headless_login_failure_reason
+async def _startup_check(_bot: Bot) -> None:
+    from ironsbot.services.headless_seer_notice.service import (
+        headless_is_configured,
+        headless_login_failure_reason,
+    )
 
     if not headless_is_configured():
         return
@@ -55,15 +61,8 @@ async def _startup_check(bot: Bot) -> None:
     if not get_headless_notice_config().login_notice:
         return
 
-    target_users = sorted(get_superuser_ids())
-    if not target_users:
-        logger.warning("headless seer failure notice has no superusers")
-        return
-
-    await send_broadcast_message(
+    await send_admin_notice(
         _build_startup_notice_message(reason),
-        private_user_ids=target_users,
-        bot=bot,
         action_name="headless seer failure notice",
         interval_seconds=1.2,
         subscription_key="headless_seer_notice",
@@ -71,7 +70,7 @@ async def _startup_check(bot: Bot) -> None:
 
 
 async def _daily_reconnect_check(scheduled_time: str) -> None:
-    from .service import (
+    from ironsbot.services.headless_seer_notice.service import (
         headless_is_configured,
         headless_login_failure_reason,
         login_headless_client,

@@ -26,6 +26,7 @@ OBSOLETE_FOUNDATION_MODULES = (
     "ironsbot.plugins.headless_seer.as3bytearray",
     "ironsbot.plugins.headless_seer.client",
     "ironsbot.plugins.headless_seer.command_id",
+    "ironsbot.plugins.headless_seer.config",
     "ironsbot.plugins.headless_seer.core",
     "ironsbot.plugins.headless_seer.decrypt",
     "ironsbot.plugins.headless_seer.exception",

@@ -36,16 +36,6 @@ class Listener(Protocol[Unpack[T_Args]]):
     def __call__(self, *args: Unpack[T_Args]) -> None: ...
 
 
-def lenient_issubclass(
-    cls: Any, class_or_tuple: type[Any] | tuple[type[Any], ...]
-) -> bool:
-    """检查 cls 是否是 class_or_tuple 中的一个类型子类并忽略类型错误。"""
-    try:
-        return isinstance(cls, type) and issubclass(cls, class_or_tuple)
-    except TypeError:
-        return False
-
-
 def is_literal_type(type_: type[Any]) -> bool:
     return get_origin(type_) is Literal
 
@@ -70,13 +60,6 @@ def all_literal_values(type_: type[Any]) -> tuple[Any, ...]:
 
 def is_annotated(type_: Any) -> bool:
     return get_origin(type_) is Annotated
-
-
-def get_annotated_real_type(type_: Annotated) -> Any:
-    if not is_annotated(type_):
-        return type_
-
-    return get_args(type_)[0]
 
 
 def flatten_annotated(type_: Annotated) -> tuple[Any, ...]:
