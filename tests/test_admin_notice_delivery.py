@@ -30,8 +30,6 @@ async def test_send_admin_notice_uses_admin_notice_targets(
     sent: dict[str, object] = {}
     monkeypatch.setattr(admin_notice, "get_superuser_ids", lambda: {1001})
     monkeypatch.setattr(admin_notice, "groups_for_feature", lambda _feature: [3003])
-    monkeypatch.setattr(admin_notice, "get_first_onebot_bot", lambda: None)
-
     async def fake_send_broadcast_message(
         message: str,
         *,

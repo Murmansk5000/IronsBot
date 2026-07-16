@@ -36,7 +36,7 @@ def _build_startup_notice_message(reason: str) -> Message:
     )
 
 
-async def _startup_check(bot: Bot) -> None:
+async def _startup_check(_bot: Bot) -> None:
     from ironsbot.services.headless_seer_notice.service import (
         headless_is_configured,
         headless_login_failure_reason,
@@ -63,7 +63,6 @@ async def _startup_check(bot: Bot) -> None:
 
     await send_admin_notice(
         _build_startup_notice_message(reason),
-        bot=bot,
         action_name="headless seer failure notice",
         interval_seconds=1.2,
         subscription_key="headless_seer_notice",

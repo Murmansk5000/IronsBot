@@ -61,6 +61,33 @@ ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 ws://ironsbot:8080/onebot/v11/ws
 ```
 
+多个 QQ 机器人可以分别运行 NapCat，并把每个 NapCat 的 OneBot v11 反向
+WebSocket 都连接到同一个 IronsBot 地址。普通查询由收到事件的机器人回复；
+B站、活动、定时消息、开服与管理通知等主动推送可以按群或用户选择发送机器人：
+
+```toml
+[runtime.bot_routing]
+enabled = true
+default_bot = "main_bot"
+
+[runtime.bot_routing.bot_aliases]
+main_bot = 111111111
+backup_bot = 222222222
+
+[runtime.bot_routing.groups]
+group_a = "main_bot"
+group_b = "backup_bot"
+
+[runtime.bot_routing.users]
+owner = "main_bot"
+user_a = "backup_bot"
+```
+
+`group_a/group_b` 和 `owner/user_a` 分别引用 `[feature.group_aliases]`、
+`[feature.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会先回退
+到 `default_bot`，再回退到任意在线 OneBot 机器人，并记录 warning。第一版只控制
+主动发送，不过滤接收事件；同一个群放入多个机器人时，它们仍可能同时收到并响应。
+
 ### Docker Compose
 
 ```yaml

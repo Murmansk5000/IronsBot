@@ -1,7 +1,7 @@
 import asyncio
 
 from nonebot import on_message
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
@@ -25,7 +25,11 @@ from ironsbot.services.team_resource_adapter import (
 from ironsbot.shared.command_text import command_text_matches
 from ironsbot.shared.features import group_has_feature, is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging import finish_message_sequence
+from ironsbot.shared.messaging import (
+    MessageTarget,
+    finish_message_sequence,
+    send_target_messages,
+)
 from ironsbot.shared.messaging.text import build_message
 from ironsbot.utils.rule import no_reply
 
@@ -157,7 +161,6 @@ async def _fetch_team_result_for_scan(team_id: int) -> TeamResourceResult | None
 
 
 async def _scan_subscription(
-    bot: Bot,
     group_id: int,
     subscription: TeamResourceSubscriptionConfig,
 ) -> None:
@@ -166,13 +169,15 @@ async def _scan_subscription(
         if result is None or result.resource >= subscription.threshold:
             continue
 
-        await bot.send_group_msg(
-            group_id=group_id,
-            message=_format_resource_notice(result, subscription),
+        await send_target_messages(
+            [MessageTarget("group", group_id)],
+            _format_resource_notice(result, subscription),
+            action_name="team resource subscription notice",
+            interval_seconds=0,
         )
 
 
-async def scan_team_resource_subscriptions(bot: Bot) -> None:
+async def scan_team_resource_subscriptions() -> None:
     config = get_team_resource_config()
     if not config.enabled:
         return
@@ -186,7 +191,7 @@ async def scan_team_resource_subscriptions(bot: Bot) -> None:
             )
             continue
         if group_has_feature(group_id, TEAM_RESOURCE_FEATURE):
-            await _scan_subscription(bot, group_id, subscription)
+            await _scan_subscription(group_id, subscription)
 
 
 @team_resource_matcher.handle()

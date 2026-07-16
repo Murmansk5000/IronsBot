@@ -24,6 +24,7 @@ SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/downloa
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 VALID_LOG_LEVELS = {"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"}
 WorkflowInputValue = str | int | float | bool
+BotReference = str | int
 
 
 class RemoteBuildStepConfig(BaseModel):
@@ -335,10 +336,60 @@ class HeadlessConfig(BaseModel):
     reconnect_delay_max: float = 120.0
 
 
+class BotRoutingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    default_bot: BotReference | None = None
+    bot_aliases: dict[str, int] = Field(default_factory=dict)
+    groups: dict[str, BotReference] = Field(default_factory=dict)
+    users: dict[str, BotReference] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_references(self) -> Self:
+        invalid_aliases = [
+            alias
+            for alias, bot_id in self.bot_aliases.items()
+            if not alias.strip() or bot_id <= 0
+        ]
+        if invalid_aliases:
+            msg = "runtime.bot_routing.bot_aliases contains invalid entries"
+            raise ValueError(msg)
+
+        invalid_targets = [
+            f"runtime.bot_routing.{mapping_name}.{target}"
+            for mapping_name, mapping in (
+                ("groups", self.groups),
+                ("users", self.users),
+            )
+            for target, bot_ref in mapping.items()
+            if not target.strip() or self.resolve_bot_reference(bot_ref) is None
+        ]
+        if self.default_bot is not None and self.resolve_bot_reference(
+            self.default_bot
+        ) is None:
+            invalid_targets.append("runtime.bot_routing.default_bot")
+        if invalid_targets:
+            msg = "unknown or invalid bot reference(s): " + ", ".join(invalid_targets)
+            raise ValueError(msg)
+        return self
+
+    def resolve_bot_reference(self, reference: BotReference) -> int | None:
+        if isinstance(reference, int):
+            return reference if reference > 0 else None
+        normalized = reference.strip()
+        if normalized in self.bot_aliases:
+            return self.bot_aliases[normalized]
+        if normalized.isdigit() and int(normalized) > 0:
+            return int(normalized)
+        return None
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_sync: DataSyncConfig = Field(default_factory=DataSyncConfig)
+    bot_routing: BotRoutingConfig = Field(default_factory=BotRoutingConfig)
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
@@ -359,6 +410,8 @@ __all__ = [
     "INVALID_RESTART_TIME_ERROR",
     "IRONSBOT_RELEASE",
     "SEERAPI_DATA_RELEASE",
+    "BotReference",
+    "BotRoutingConfig",
     "DataSourceConfig",
     "DataSyncConfig",
     "DockerUpdateConfig",
