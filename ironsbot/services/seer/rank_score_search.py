@@ -42,8 +42,12 @@ class _ScoreProbe:
         probe_count: int,
     ) -> None:
         self._fetch_score = fetch_score
-        self._remaining = max(0, probe_count)
+        self._probe_count = max(0, probe_count)
+        self._remaining = self._probe_count
         self._cache: dict[int, int | None] = {}
+
+    def reset_budget(self) -> None:
+        self._remaining = self._probe_count
 
     async def score_at(self, index: int) -> int | None:
         if index in self._cache:
@@ -125,7 +129,7 @@ async def _locate_matches(
     *,
     search_range: range,
     target_score: int,
-    score_at: Callable[[int], Awaitable[int | None]],
+    probe: _ScoreProbe,
     tie_fallback_size: int,
 ) -> DescendingScoreRange:
     try:
@@ -133,23 +137,24 @@ async def _locate_matches(
             search_range.start,
             search_range.stop,
             target_score,
-            score_at,
+            probe.score_at,
         )
         if insertion_index >= search_range.stop:
             return replace(base_result, insertion_index=insertion_index)
-        first_score = await score_at(insertion_index)
+        first_score = await probe.score_at(insertion_index)
     except _ProbeBudgetExhaustedError:
         return replace(base_result, budget_exhausted=True)
 
     if first_score != target_score:
         return replace(base_result, insertion_index=insertion_index)
 
+    probe.reset_budget()
     try:
         match_end = await _find_first_below(
             insertion_index,
             search_range.stop,
             target_score,
-            score_at,
+            probe.score_at,
         )
     except _ProbeBudgetExhaustedError:
         return replace(
@@ -206,11 +211,12 @@ async def locate_descending_score_range(
     if boundary_score is None or target_score < boundary_score:
         return base_result
 
+    probe.reset_budget()
     return await _locate_matches(
         base_result,
         search_range=range(start_index, search_end),
         target_score=target_score,
-        score_at=probe.score_at,
+        probe=probe,
         tie_fallback_size=limits.tie_fallback_size,
     )
 

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
 RANK_LIST_COMMAND_KEY = "_rank_list_command"
+RANK_PLAYER_COMMAND_KEY = "_rank_player_command"
 RANK_SCORE_COMMAND_KEY = "_rank_score_command"
 RANK_CACHE_BATCH_COMMAND_KEY = "_rank_cache_batch_command"
 RANK_PAGE_CACHE_STATUS_COMMAND_KEY = "_rank_page_cache_status_command"
