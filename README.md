@@ -84,11 +84,6 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 明细查询与同分榜单
-
-可选明细按各自启用项发起，采用主查询与该明细期限的较小值，失败可保留其他成功分项。客户端获取、回调与整条后台工作不因此共用一个总期限。
-大同分段仅展示有界的首尾样本，仍保留完整排名区间和总人数；展示样本数不等于实际同分人数。
-
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
@@ -107,7 +102,7 @@ services:
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent` | AI 意图分析；战队推荐/审核群信息及资源动作由 `ai_intent/team_actions.py` 承接。 |
+| `ai_intent` | AI 意图分析与动作分发；战队推荐和审核群信息由其战队动作处理。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。

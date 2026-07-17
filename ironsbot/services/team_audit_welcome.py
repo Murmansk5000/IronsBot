@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import ensure_sqlite_column, open_sqlite_schema
+from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -143,11 +143,10 @@ def _connect_pending_reminders(
 
 
 def _ensure_step_column(conn: sqlite3.Connection) -> None:
-    ensure_sqlite_column(
+    ensure_sqlite_columns(
         conn,
         table_name="pending_team_audit_reminders",
-        column_name="step",
-        column_definition="step INTEGER NOT NULL DEFAULT 1",
+        columns={"step": "step INTEGER NOT NULL DEFAULT 1"},
     )
 
 
