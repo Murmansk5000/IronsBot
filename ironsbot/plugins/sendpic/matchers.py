@@ -11,6 +11,7 @@ from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
 from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.messaging import register_command_matcher
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
@@ -70,6 +71,7 @@ def create_image_command(
         aliases=set(config.aliases),
         rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
     )
+    register_command_matcher(matcher, f"sendpic.{config.id}")
     template = config.message_template
 
     async def _handler(

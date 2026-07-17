@@ -11,7 +11,7 @@ from ironsbot.services.sendpic_fixed_image import (
 )
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging import finish_event_reply
+from ironsbot.shared.messaging import finish_event_reply, register_command_matcher
 from ironsbot.utils.rule import no_reply
 
 for command, filename in FIXED_IMAGE_COMMANDS.items():
@@ -21,6 +21,7 @@ for command, filename in FIXED_IMAGE_COMMANDS.items():
         priority=get_matcher_priority("sendpic", 1),
         block=True,
     )
+    register_command_matcher(matcher, f"sendpic_fixed.{command}")
 
     @matcher.handle()
     async def _handle(

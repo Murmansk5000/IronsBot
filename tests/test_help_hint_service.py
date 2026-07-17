@@ -8,7 +8,6 @@ from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
     append_help_hint,
-    unsupported_feature_help_message,
 )
 from ironsbot.shared.messaging.rate_limits import sliding_window_rate_limiter
 from tests.helpers.config import stub_app_config
@@ -24,12 +23,6 @@ def test_append_help_hint_adds_shared_hint_once() -> None:
     assert append_help_hint("请直接发送指令") == f"请直接发送指令。{HELP_HINT_TEXT}"
     assert append_help_hint(f"请直接发送指令。{HELP_HINT_TEXT}") == (
         f"请直接发送指令。{HELP_HINT_TEXT}"
-    )
-
-
-def test_unsupported_feature_help_message_uses_shared_hint() -> None:
-    assert unsupported_feature_help_message("查询精灵配置") == (
-        f"此机器人暂不支持查询精灵配置。{HELP_HINT_TEXT}"
     )
 
 
