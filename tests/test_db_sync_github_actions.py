@@ -74,7 +74,7 @@ class FlakyDispatchGitHubClient(FakeGitHubClient):
 def _config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
-        repository="Murmansk5000/seerapi",
+        repository="Murmansk-Seer/seerapi",
         workflow_id="build-ironsbot-data-db.yml",
         ref="main",
         timeout_seconds=30,
@@ -85,7 +85,7 @@ def _config() -> RemoteBuildConfig:
 def _config_with_inputs() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
-        repository="Murmansk5000/seer-data",
+        repository="Murmansk-Seer/api-data",
         workflow_id="main.yml",
         ref="main",
         timeout_seconds=30,
@@ -100,7 +100,7 @@ def _run_payload(*, status: str, conclusion: str | None) -> dict[str, Any]:
         "event": "workflow_dispatch",
         "head_branch": "main",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "html_url": "https://github.com/Murmansk5000/seerapi/actions/runs/123",
+        "html_url": "https://github.com/Murmansk-Seer/seerapi/actions/runs/123",
         "status": status,
         "conclusion": conclusion,
     }
@@ -122,7 +122,7 @@ def test_trigger_and_wait_workflow_returns_success() -> None:
         ok=True,
         status="completed",
         conclusion="success",
-        html_url="https://github.com/Murmansk5000/seerapi/actions/runs/123",
+        html_url="https://github.com/Murmansk-Seer/seerapi/actions/runs/123",
         message="GitHub workflow completed successfully",
     )
     assert client.posts[0]["json"] == {"ref": "main"}

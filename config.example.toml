@@ -785,9 +785,9 @@ interval_enabled = true
 
 [runtime.data_sync.sources.seerapi]
 # Default: IronsBot data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
-url = "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
+url = "https://github.com/Murmansk-Seer/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
 # Default: IronsBot data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
-fingerprint_url = "https://github.com/Murmansk5000/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
+fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
 # Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
 interval_minutes = 60
 # Default: "data/ironsbot-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
@@ -797,11 +797,28 @@ local_path = "data/ironsbot-data.sqlite"
 # Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
 enabled = true
 
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "refresh_official_sources"
+repository = "Murmansk-Seer/data-update-workflows"
+workflow_id = "update.yml"
+ref = "main"
+timeout_seconds = 3600
+poll_interval_seconds = 10
+inputs = { force-update-assets = false, force-update-config = false, dispatch-api-data = false }
+
+[[runtime.data_sync.sources.seerapi.remote_build.steps]]
+name = "refresh_unity_config"
+repository = "Murmansk-Seer/seer-unity-config-parser"
+workflow_id = "schedule.yml"
+ref = "main"
+timeout_seconds = 1800
+poll_interval_seconds = 10
+
 # EN: Ordered GitHub Actions pipeline executed before downloading this database.
 # ZH: 下载该数据库前顺序执行的 GitHub Actions 流水线；各 workflow 会先检查输入是否变化。
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
 name = "sync_config_sources"
-repository = "Murmansk5000/config-sources"
+repository = "Murmansk-Seer/config-sources"
 workflow_id = "sync-upstream.yml"
 ref = "main"
 timeout_seconds = 600
@@ -809,8 +826,8 @@ poll_interval_seconds = 10
 inputs = { force = false }
 
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
-name = "build_seer_data"
-repository = "Murmansk5000/seer-data"
+name = "build_api_data"
+repository = "Murmansk-Seer/api-data"
 workflow_id = "main.yml"
 ref = "main"
 timeout_seconds = 1800
@@ -819,7 +836,7 @@ inputs = { debug_enabled = false, force = false }
 
 [[runtime.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
-repository = "Murmansk5000/seerapi"
+repository = "Murmansk-Seer/seerapi"
 workflow_id = "build-ironsbot-data-db.yml"
 ref = "main"
 timeout_seconds = 1800
