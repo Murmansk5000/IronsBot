@@ -71,6 +71,8 @@ _LIST_ACTION = "list"
 TEAM_RESOURCE_MANAGE_ACTION_KEY = "_team_resource_manage_action"
 TEAM_RESOURCE_MANAGE_TEAM_ID_KEY = "_team_resource_manage_team_id"
 TEAM_RESOURCE_MANAGE_THRESHOLD_KEY = "_team_resource_manage_threshold"
+_YES_REPLIES = frozenset(("是", "yes", "y", "确认", "确定"))
+_NO_REPLIES = frozenset(("否", "no", "n", "取消"))
 
 __plugin_meta__ = PluginMetadata(
     name="战队资源订阅",
@@ -239,6 +241,40 @@ team_resource_matcher = on_message(
 )
 
 
+def parse_team_resource_prompt_choice(text: str) -> bool | None:
+    normalized = text.strip().casefold()
+    if normalized in _YES_REPLIES:
+        return True
+    if normalized in _NO_REPLIES:
+        return False
+    return None
+
+
+async def _is_team_resource_prompt_choice(event: MessageEvent) -> bool:
+    if not isinstance(event, GroupMessageEvent):
+        return False
+    if not get_team_resource_config().enabled:
+        return False
+    if parse_team_resource_prompt_choice(event.get_plaintext()) is None:
+        return False
+    if not can_manage_group_event(event):
+        return False
+    if not is_group_feature_allowed(
+        event.user_id,
+        event.group_id,
+        TEAM_RESOURCE_FEATURE,
+    ):
+        return False
+    return get_team_resource_store().get_pending_prompt(event.group_id) is not None
+
+
+team_resource_prompt_matcher = on_message(
+    rule=Rule(_is_team_resource_prompt_choice) & no_reply(),
+    priority=get_matcher_priority("team_resource_subscription", 0),
+    block=True,
+)
+
+
 async def _fetch_team_result_for_scan(team_id: int) -> TeamResourceResult | None:
     try:
         return await asyncio.wait_for(
@@ -363,6 +399,54 @@ async def parse_team_resource_manage(
     )
 
 
+@team_resource_prompt_matcher.handle()
+async def handle_team_resource_prompt_choice(
+    matcher: Matcher,
+    event: GroupMessageEvent,
+) -> None:
+    choice = parse_team_resource_prompt_choice(event.get_plaintext())
+    prompt = get_team_resource_store().get_pending_prompt(event.group_id)
+    if choice is None or prompt is None:
+        await matcher.finish()
+
+    get_team_resource_store().mark_prompt_handled(
+        group_id=event.group_id,
+        handled_by=event.user_id,
+        accepted=choice,
+    )
+    if not choice:
+        await finish_event_reply(
+            matcher,
+            event,
+            "已跳过本群战队订阅提示。以后需要时，群主/管理员仍可发送“订阅战队123456”添加。",
+        )
+        return
+
+    threshold = get_team_resource_config().default_threshold
+    at_user_ids = default_at_user_ids()
+    get_team_resource_store().upsert(
+        TeamResourceSubscriptionUpdate(
+            group_id=event.group_id,
+            team_id=prompt.team_id,
+            team_name=prompt.team_name,
+            threshold=threshold,
+            at_user_ids=tuple(at_user_ids),
+            operator_id=event.user_id,
+        )
+    )
+    await finish_event_reply(
+        matcher,
+        event,
+        (
+            "已订阅本群战队："
+            f"{prompt.team_name or prompt.team_id}（{prompt.team_id}）。\n"
+            f"资源阈值：{threshold}\n"
+            f"提醒对象：{_format_at_users(at_user_ids)}\n"
+            "还可以继续发送“订阅战队123456”添加更多战队。"
+        ),
+    )
+
+
 @team_resource_matcher.handle()
 async def handle_team_resource(
     matcher: Matcher,
@@ -434,5 +518,6 @@ def _format_at_users(user_ids: tuple[int, ...]) -> str:
 
 
 __all__ = [
+    "parse_team_resource_prompt_choice",
     "scan_team_resource_subscriptions",
 ]

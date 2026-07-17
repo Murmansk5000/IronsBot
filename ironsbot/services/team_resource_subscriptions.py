@@ -29,6 +29,18 @@ SCHEMA = (
     CREATE INDEX IF NOT EXISTS idx_team_resource_subscriptions_group
     ON team_resource_subscriptions (group_id, team_id)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS team_resource_subscription_prompts (
+        group_id INTEGER PRIMARY KEY,
+        team_id INTEGER NOT NULL,
+        team_name TEXT NOT NULL DEFAULT '',
+        prompted_by INTEGER NOT NULL,
+        prompted_at TEXT NOT NULL,
+        handled_by INTEGER,
+        handled_at TEXT,
+        accepted INTEGER
+    )
+    """,
 )
 
 
@@ -53,6 +65,22 @@ class TeamResourceSubscriptionUpdate:
     threshold: int
     at_user_ids: tuple[int, ...]
     operator_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class TeamResourceSubscriptionPrompt:
+    group_id: int
+    team_id: int
+    team_name: str
+    prompted_by: int
+    prompted_at: str
+    handled_by: int | None = None
+    handled_at: str | None = None
+    accepted: bool | None = None
+
+    @property
+    def is_pending(self) -> bool:
+        return self.handled_at is None
 
 
 class TeamResourceSubscriptionStore:
@@ -116,6 +144,71 @@ class TeamResourceSubscriptionStore:
                 ),
             )
 
+    def has_prompted_group(self, group_id: int) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM team_resource_subscription_prompts
+                WHERE group_id = ?
+                """,
+                (group_id,),
+            ).fetchone()
+        return row is not None
+
+    def get_pending_prompt(
+        self,
+        group_id: int,
+    ) -> TeamResourceSubscriptionPrompt | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT group_id, team_id, team_name, prompted_by, prompted_at,
+                       handled_by, handled_at, accepted
+                FROM team_resource_subscription_prompts
+                WHERE group_id = ? AND handled_at IS NULL
+                """,
+                (group_id,),
+            ).fetchone()
+        return _row_to_prompt(row) if row is not None else None
+
+    def mark_group_prompted(
+        self,
+        *,
+        group_id: int,
+        team_id: int,
+        team_name: str,
+        prompted_by: int,
+    ) -> None:
+        now = _now_text()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO team_resource_subscription_prompts (
+                    group_id, team_id, team_name, prompted_by, prompted_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (group_id, team_id, team_name.strip(), prompted_by, now),
+            )
+
+    def mark_prompt_handled(
+        self,
+        *,
+        group_id: int,
+        handled_by: int,
+        accepted: bool,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE team_resource_subscription_prompts
+                SET handled_by = ?, handled_at = ?, accepted = ?
+                WHERE group_id = ? AND handled_at IS NULL
+                """,
+                (handled_by, _now_text(), int(accepted), group_id),
+            )
+
     def update_team_name(
         self,
         *,
@@ -164,6 +257,19 @@ def _row_to_subscription(row: tuple[object, ...]) -> TeamResourceSubscription:
     )
 
 
+def _row_to_prompt(row: tuple[object, ...]) -> TeamResourceSubscriptionPrompt:
+    return TeamResourceSubscriptionPrompt(
+        group_id=int(row[0]),
+        team_id=int(row[1]),
+        team_name=str(row[2] or ""),
+        prompted_by=int(row[3]),
+        prompted_at=str(row[4]),
+        handled_by=None if row[5] is None else int(row[5]),
+        handled_at=None if row[6] is None else str(row[6]),
+        accepted=None if row[7] is None else bool(row[7]),
+    )
+
+
 def _encode_user_ids(user_ids: tuple[int, ...]) -> str:
     return ",".join(str(user_id) for user_id in dict.fromkeys(user_ids))
 
@@ -183,6 +289,7 @@ def _now_text() -> str:
 
 __all__ = [
     "TeamResourceSubscription",
+    "TeamResourceSubscriptionPrompt",
     "TeamResourceSubscriptionStore",
     "TeamResourceSubscriptionUpdate",
 ]

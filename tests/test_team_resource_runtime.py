@@ -100,6 +100,21 @@ def test_parse_team_resource_manage_commands() -> None:
     assert list_command.action == "list"
 
 
+@pytest.mark.parametrize("text", ["是", "yes", "YES", " y ", "确认", "确定"])
+def test_parse_team_resource_prompt_choice_accepts_yes(text: str) -> None:
+    assert team_resource_subscription.parse_team_resource_prompt_choice(text) is True
+
+
+@pytest.mark.parametrize("text", ["否", "no", "NO", " n ", "取消"])
+def test_parse_team_resource_prompt_choice_accepts_no(text: str) -> None:
+    assert team_resource_subscription.parse_team_resource_prompt_choice(text) is False
+
+
+@pytest.mark.parametrize("text", ["", "订阅", "yes please", "不订阅"])
+def test_parse_team_resource_prompt_choice_ignores_other_text(text: str) -> None:
+    assert team_resource_subscription.parse_team_resource_prompt_choice(text) is None
+
+
 @pytest.mark.asyncio
 async def test_team_resource_notice_leaves_bot_selection_to_router(
     monkeypatch: MonkeyPatch,
