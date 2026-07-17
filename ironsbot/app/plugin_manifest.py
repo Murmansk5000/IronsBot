@@ -11,6 +11,8 @@ from ironsbot.plugin_catalog import (
 )
 
 RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
+    "ironsbot.app.command_cooldown_manifest:"
+    "setup_command_cooldown_manifest_runtime",
     "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime",
     "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime",
     "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",

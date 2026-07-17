@@ -11,6 +11,11 @@ from typing_extensions import Self
 from ironsbot.shared.config.parsing import int_list, string_list
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
+COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
+COMMAND_ID_FORMAT_ERROR = (
+    "command message action id may only contain letters, numbers, dots, "
+    "underscores, and hyphens"
+)
 DEFAULT_SENDPIC_MESSAGE_TEMPLATE = "{image}"
 TEAM_AUDIT_WELCOME_MESSAGE_REQUIRED_ERROR = (
     "team_audit_welcome.message must not be empty"
@@ -80,6 +85,10 @@ class CommandMessageAction(BaseMessageAction):
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
+        if not self.id:
+            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
+        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
+            raise ValueError(COMMAND_ID_FORMAT_ERROR)
         if self.enabled and not self.commands:
             raise ValueError(ENABLED_COMMANDS_REQUIRED_ERROR)
         return self
@@ -125,6 +134,10 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
     @classmethod
     def normalize_at_user_ids(cls, value: object) -> object:
         return int_list(value)
+
+
+
+
 
 
 class OutboundRateLimitConfig(BaseModel):

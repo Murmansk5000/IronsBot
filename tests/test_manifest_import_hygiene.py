@@ -61,6 +61,9 @@ import nonebot
 from ironsbot.app.plugin_manifest import (
     validate_plugin_manifest,
 )
+from ironsbot.app.command_cooldown_manifest import (
+    setup_command_cooldown_manifest_runtime,
+)
 from ironsbot.plugin_catalog import plugin_modules_for_group
 
 os.chdir(sys.argv[1])
@@ -97,6 +100,9 @@ for group in ("core", "infrastructure", "feature"):
         plugin = nonebot.load_plugin(module)
         if plugin is None:
             raise AssertionError(f"failed to load plugin: {module}")
+
+setup_command_cooldown_manifest_runtime()
+setup_command_cooldown_manifest_runtime()
 
 runtime_paths = [
     pathlib.Path("data"),
