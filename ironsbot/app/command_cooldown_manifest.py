@@ -135,6 +135,10 @@ _COMMAND_MATCHERS: tuple[tuple[str, CommandIdSource], ...] = (
         "team_resource_query",
     ),
     (
+        "ironsbot.plugins.team_resource_subscription:team_resource_manage_matcher",
+        "team_resource_manage",
+    ),
+    (
         "ironsbot.plugins.seer.query.commands.autocard:autocard_matcher",
         "seer_autocard_query",
     ),
@@ -298,10 +302,6 @@ _EXEMPT_MESSAGE_MATCHERS: tuple[tuple[str, str], ...] = (
     (
         "ironsbot.plugins.red_packet_notice:red_packet_notice_matcher",
         "passive red packet event detection",
-    ),
-    (
-        "ironsbot.plugins.team_resource_subscription:team_resource_manage_matcher",
-        "group subscription management",
     ),
     (
         "ironsbot.plugins.team_resource_subscription:team_resource_prompt_matcher",

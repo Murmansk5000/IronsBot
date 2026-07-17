@@ -239,7 +239,7 @@ async def _is_team_resource_manage(event: MessageEvent) -> bool:
 
 
 team_resource_manage_matcher = on_message(
-    rule=Rule(_is_team_resource_manage) & no_reply(),
+    rule=Rule(_is_team_resource_manage) & no_reply(allow_at=True),
     priority=get_matcher_priority("team_resource_subscription", 1),
     block=True,
 )

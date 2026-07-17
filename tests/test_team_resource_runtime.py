@@ -1,12 +1,17 @@
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Message
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
+from ironsbot.app.command_cooldown_manifest import (
+    _COMMAND_MATCHERS,
+    _EXEMPT_MESSAGE_MATCHERS,
+)
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.services.team_resource_adapter import TeamResourceResult
 from ironsbot.services.team_resource_subscriptions import TeamResourceSubscription
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
+from tests.helpers.onebot_events import group_message_event
 
 try:
     nonebot.get_driver()
@@ -18,6 +23,9 @@ from ironsbot.plugins.team_resource_subscription import runtime
 
 TEAM_ID = 1234567
 TEAM_THRESHOLD = 2000
+TEAM_RESOURCE_MANAGE_MATCHER_REF = (
+    "ironsbot.plugins.team_resource_subscription:team_resource_manage_matcher"
+)
 
 
 class FakeScheduler:
@@ -111,6 +119,56 @@ def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold(
     assert command.threshold is None
     assert team_resource_subscription._has_manual_qq_mention(
         f"订阅战队{TEAM_ID} @2315721708"
+    )
+
+
+def test_team_resource_manage_uses_command_cooldown() -> None:
+    assert (TEAM_RESOURCE_MANAGE_MATCHER_REF, "team_resource_manage") in (
+        _COMMAND_MATCHERS
+    )
+    assert all(
+        matcher_ref != TEAM_RESOURCE_MANAGE_MATCHER_REF
+        for matcher_ref, _reason in _EXEMPT_MESSAGE_MATCHERS
+    )
+
+
+@pytest.mark.asyncio
+async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        team_resource_subscription,
+        "get_team_resource_config",
+        lambda: TeamResourceConfig(enabled=True),
+    )
+    monkeypatch.setattr(
+        team_resource_subscription,
+        "is_group_feature_allowed",
+        lambda *_args: True,
+    )
+    message = Message(
+        [
+            MessageSegment.text(f"订阅战队{TEAM_ID} {TEAM_THRESHOLD} "),
+            MessageSegment.at(234),
+        ]
+    )
+    event = group_message_event(message=message, sender={"role": "admin"})
+    replied_event = group_message_event(
+        message=message,
+        sender={"role": "admin"},
+        reply_sender_user_id=345,
+    )
+
+    assert team_resource_subscription._at_user_ids_from_event(event) == (234,)
+    assert await team_resource_subscription.team_resource_manage_matcher.rule(
+        None,
+        event,
+        {},
+    )
+    assert not await team_resource_subscription.team_resource_manage_matcher.rule(
+        None,
+        replied_event,
+        {},
     )
 
 
