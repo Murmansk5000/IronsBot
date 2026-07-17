@@ -2,7 +2,7 @@ import asyncio
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
 
-from ironsbot.utils.rule import NoAt
+from ironsbot.utils.rule import NoAt, no_reply
 from tests.helpers.onebot_events import group_message_event
 
 
@@ -44,3 +44,24 @@ def test_no_at_blocks_onebot_at_segments() -> None:
     event = group_message_event(message=Message("[CQ:at,qq=2947993138] 帮助"))
 
     assert not _matches_no_at(event)
+
+
+def test_no_reply_can_allow_mentions_but_blocks_reply_messages() -> None:
+    mentioned_event = group_message_event(
+        message=Message(
+            [
+                MessageSegment.text("订阅战队1234567 1000 "),
+                MessageSegment.at(123),
+            ]
+        )
+    )
+    replied_event = group_message_event(
+        message=mentioned_event.message,
+        reply_sender_user_id=456,
+    )
+
+    assert not asyncio.run(no_reply()(None, mentioned_event, {}))
+
+    rule = no_reply(allow_at=True)
+    assert asyncio.run(rule(None, mentioned_event, {}))
+    assert not asyncio.run(rule(None, replied_event, {}))
