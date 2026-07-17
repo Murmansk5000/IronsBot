@@ -10,6 +10,18 @@ from ironsbot.shared.sqlite import open_sqlite_schema
 if TYPE_CHECKING:
     from pathlib import Path
 
+TeamResourceSubscriptionRow = tuple[int, int, str, int, str, int, int, str, str]
+TeamResourceSubscriptionPromptRow = tuple[
+    int,
+    int,
+    str,
+    int,
+    str,
+    int | None,
+    str | None,
+    int | None,
+]
+
 SCHEMA = (
     """
     CREATE TABLE IF NOT EXISTS team_resource_subscriptions (
@@ -243,7 +255,9 @@ class TeamResourceSubscriptionStore:
         return open_sqlite_schema(self.path, SCHEMA)
 
 
-def _row_to_subscription(row: tuple[object, ...]) -> TeamResourceSubscription:
+def _row_to_subscription(
+    row: TeamResourceSubscriptionRow,
+) -> TeamResourceSubscription:
     return TeamResourceSubscription(
         group_id=int(row[0]),
         team_id=int(row[1]),
@@ -257,7 +271,9 @@ def _row_to_subscription(row: tuple[object, ...]) -> TeamResourceSubscription:
     )
 
 
-def _row_to_prompt(row: tuple[object, ...]) -> TeamResourceSubscriptionPrompt:
+def _row_to_prompt(
+    row: TeamResourceSubscriptionPromptRow,
+) -> TeamResourceSubscriptionPrompt:
     return TeamResourceSubscriptionPrompt(
         group_id=int(row[0]),
         team_id=int(row[1]),
