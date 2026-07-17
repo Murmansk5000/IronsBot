@@ -97,4 +97,4 @@ async def handle_team_audit_welcome(
         logger.warning("team audit followup scheduler is unavailable")
         return
 
-    schedule_team_audit_followup(scheduler, bot, reminder)
+    schedule_team_audit_followup(scheduler, reminder)

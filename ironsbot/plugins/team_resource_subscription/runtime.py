@@ -3,9 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot import get_bots, get_driver, require
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.log import logger
+from nonebot import get_driver, require
 
 from ironsbot.shared.runtime.jobs import JobRegistry
 
@@ -16,18 +14,8 @@ _team_resource_runtime_state = {"registered": False}
 TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
 
 
-async def _scan_team_resources_with_bot() -> None:
-    bots = list(get_bots().values())
-    if not bots:
-        logger.warning("team resource scan skipped: no connected bot")
-        return
-
-    bot = bots[0]
-    if not isinstance(bot, Bot):
-        logger.warning("team resource scan skipped: first bot is not OneBot V11")
-        return
-
-    await scan_team_resource_subscriptions(bot)
+async def _scan_team_resources() -> None:
+    await scan_team_resource_subscriptions()
 
 
 def _register_team_resource_jobs(scheduler: Any) -> None:
@@ -39,7 +27,7 @@ def _register_team_resource_jobs(scheduler: Any) -> None:
     for time_text in config.times:
         hour_text, minute_text = time_text.split(":", maxsplit=1)
         registry.add(
-            _scan_team_resources_with_bot,
+            _scan_team_resources,
             "cron",
             hour=int(hour_text),
             minute=int(minute_text),
