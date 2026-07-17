@@ -107,6 +107,12 @@ class _VoteRank(TypedDict):
     pets: "list[PetORM]"
 
 
+def _as_peak_vote_time(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=time.TZ_CN)
+    return value.astimezone(time.TZ_CN)
+
+
 def sort_peak_pool_vote_by_time(
     pool_list: Iterable[PeakPoolVoteORM],
 ) -> list[PeakPoolVoteORM]:
@@ -117,7 +123,7 @@ def sort_peak_pool_vote_by_time(
     now = time.now(tz=time.TZ_CN)
 
     def time_distance(obj: PeakPoolVoteORM) -> float:
-        return abs((obj.start_time - now).total_seconds())
+        return abs((_as_peak_vote_time(obj.start_time) - now).total_seconds())
 
     return sorted(pool_list, key=time_distance)
 
@@ -131,14 +137,16 @@ async def handle_peak_vote(
     now = time.now(tz=time.TZ_CN)
     for orm in sort_peak_pool_vote_by_time(session.exec(select(PeakPoolVoteORM)).all()):
         title = f"限{orm.count}池票选"
-        if orm.start_time > now:
+        start_time = _as_peak_vote_time(orm.start_time)
+        end_time = _as_peak_vote_time(orm.end_time)
+        if start_time > now:
             title += " / 票选未开始"
-        elif orm.end_time < now:
+        elif end_time < now:
             title += " / 票选已结束"
         else:
-            start_time = orm.start_time.strftime("%Y-%m-%d")
-            end_time = orm.end_time.strftime("%Y-%m-%d")
-            title += f"<br>票选时间：{start_time} ~ {end_time}"
+            start_date = start_time.strftime("%Y-%m-%d")
+            end_date = end_time.strftime("%Y-%m-%d")
+            title += f"<br>票选时间：{start_date} ~ {end_date}"
 
         if orm.count == LIMIT_POOL_VOTE_COUNT:
             pool = await game.get_limit_pool_vote(sub_key=orm.subkey)

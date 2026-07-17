@@ -84,11 +84,6 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 主动投递路由与稳定订阅
-
-启用多机器人路由后，目标指定的机器人离线时仍会尝试配置默认机器人，再回退任一在线机器人；指定路由不等于离线即拒绝投递。
-群聊和私聊定时推送的 `id` 必须全局唯一且稳定，调整列表顺序不应更换订阅身份。启动清理按当前有效推送目录处理旧偏好，不承诺自动恢复已清理记录。
-
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
@@ -238,15 +233,3 @@ uv run python bot.py
 
 - 包含 GPL 插件/代码的完整仓库和 Docker 镜像整体按 GPL-3.0-or-later 分发。
 - 可独立复用的自定义插件与工具代码按各文件 SPDX 声明执行。
-
-## 配置字段迁移
-
-现行示例不再使用以下退休配置字段；请迁移到本版本的正式配置结构，不要依赖旧字段控制权限、通知或启动行为：
-
-- `ai.reset_commands`
-- `ai.mention_guard_reply_window_seconds`
-- `ai.mention_guard_reply_max_per_window`
-- `bilibili.push.default_mode`
-- `bilibili.uids`
-- `message.private_unsubscribe`
-- `seer.render.clear_on_startup`

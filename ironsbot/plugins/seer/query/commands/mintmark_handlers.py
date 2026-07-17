@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
 from nonebot.adapters import Event
 from nonebot.exception import FinishedException
@@ -30,6 +32,16 @@ ATTACK_MARK_THRESHOLD = 54
 SPEED_MARK_THRESHOLD = 40
 DEFENSE_MARK_THRESHOLD = 40
 HP_MARK_THRESHOLD = 100
+
+
+@dataclass(frozen=True, slots=True)
+class MintmarkQueryView:
+    mintmark: MintmarkORM
+    related_ids: tuple[int, ...] = ()
+
+    @property
+    def ids(self) -> tuple[int, ...]:
+        return (self.mintmark.id, *self.related_ids)
 
 
 class UnknownMintmarkTypeError(TypeError):
@@ -82,20 +94,80 @@ def _mark_type_description(attributes: SixAttributes | None) -> str:
     return "".join(strings)
 
 
-def _deduplicate_and_filter(
+def _connected_mintmarks(mintmark: MintmarkORM) -> dict[int, MintmarkORM]:
+    result: dict[int, MintmarkORM] = {}
+    pending = [mintmark]
+    while pending:
+        current = pending.pop()
+        if current.id in result:
+            continue
+        result[current.id] = current
+
+        part = current.universal_part
+        connected = getattr(part, "connect", None) if part is not None else None
+        if isinstance(connected, MintmarkORM):
+            pending.append(connected)
+        for connected_part in current.connected_universal_parts:
+            child = getattr(connected_part, "mintmark", None)
+            if isinstance(child, MintmarkORM):
+                pending.append(child)
+    return result
+
+
+def _preferred_connected_mintmark(
+    mintmarks: dict[int, MintmarkORM],
+) -> MintmarkORM:
+    connected_children = [
+        mintmark
+        for mintmark in mintmarks.values()
+        if mintmark.universal_part is not None
+        and mintmark.universal_part.connect_id is not None
+    ]
+    return max(connected_children or list(mintmarks.values()), key=lambda item: item.id)
+
+
+def _build_mintmark_views(
     mintmarks: Iterable[MintmarkORM],
-) -> tuple[MintmarkORM, ...]:
-    merge_connected = get_mintmark_query_config().merge_connected
-    seen_ids = set()
-    result = []
-    for mintmark in mintmarks:
+) -> tuple[MintmarkQueryView, ...]:
+    unique = {mintmark.id: mintmark for mintmark in mintmarks}
+    if not unique:
+        return ()
+
+    if not get_mintmark_query_config().merge_connected:
+        return tuple(
+            MintmarkQueryView(
+                mintmark=mintmark,
+                related_ids=tuple(
+                    sorted(
+                        related_id
+                        for related_id in _connected_mintmarks(mintmark)
+                        if related_id != mintmark.id
+                    )
+                ),
+            )
+            for mintmark in unique.values()
+        )
+
+    result: list[MintmarkQueryView] = []
+    seen_ids: set[int] = set()
+    for mintmark in unique.values():
         if mintmark.id in seen_ids:
             continue
-        if merge_connected and mintmark.connected_universal_parts:
-            continue
-        result.append(mintmark)
-        seen_ids.add(mintmark.id)
-
+        connected = _connected_mintmarks(mintmark)
+        seen_ids.update(connected)
+        preferred = _preferred_connected_mintmark(connected)
+        result.append(
+            MintmarkQueryView(
+                mintmark=preferred,
+                related_ids=tuple(
+                    sorted(
+                        related_id
+                        for related_id in connected
+                        if related_id != preferred.id
+                    )
+                ),
+            )
+        )
     return tuple(result)
 
 
@@ -110,11 +182,19 @@ def _build_pet_bind(pet: PetORM) -> str:
     return f"{pet.name}（{pet.id}）"
 
 
-async def build_mintmark_message(mintmark: MintmarkORM) -> MessageFactory:
+async def build_mintmark_message(
+    item: MintmarkQueryView | MintmarkORM,
+) -> MessageFactory:
+    view = item if isinstance(item, MintmarkQueryView) else MintmarkQueryView(item)
+    mintmark = view.mintmark
     msg = MessageFactory()
     msg += f"💮【{mintmark.name}】\n"
     msg += await MintmarkBodyImageGetter.get(str(mintmark.id))
-    msg += f"🆔：{mintmark.id}\n"
+    id_text = "、".join(str(mintmark_id) for mintmark_id in view.ids)
+    if not get_mintmark_query_config().merge_connected and view.related_ids:
+        related_text = "、".join(str(mintmark_id) for mintmark_id in view.related_ids)
+        id_text = f"{mintmark.id}（关联{related_text}）"
+    msg += f"🆔：{id_text}\n"
     if mintmark.pet:
         if len(mintmark.pet) > 1:
             msg += "绑定精灵：\n"
@@ -150,12 +230,40 @@ async def build_mintmark_message(mintmark: MintmarkORM) -> MessageFactory:
     return msg
 
 
-def _item_desc_fmt(mintmark: MintmarkORM) -> str:
+def _item_desc_fmt(item: MintmarkQueryView) -> str:
+    mintmark = item.mintmark
     attr = _mark_attributes(mintmark)
-    if attr is None or not (desc := _mark_type_description(attr)):
-        return f"{mintmark.id}"
+    desc = _mark_type_description(attr) if attr is not None else ""
+    if get_mintmark_query_config().merge_connected:
+        id_text = "、".join(str(mintmark_id) for mintmark_id in item.ids)
+        return " ".join(part for part in (id_text, desc) if part)
 
-    return f"{mintmark.id} {desc}"
+    related_text = "、".join(str(mintmark_id) for mintmark_id in item.related_ids)
+    parts = [str(mintmark.id)]
+    if related_text:
+        parts.append(f"关联{related_text}")
+    if desc:
+        parts.append(desc)
+    return "，".join(parts)
+
+
+async def _resolve_mintmark_prompt(
+    item: PromptItem[int],
+    matcher: Matcher,
+    session: Any,
+) -> None:
+    mintmark = MintmarkDataGetter.get(session, item.value)
+    if mintmark is None:
+        await matcher.finish(
+            f"❌未找到刻印 {item.value}（这是一个bug，请反馈给开发者）"
+        )
+    views = _build_mintmark_views((mintmark,))
+    if not views:
+        await matcher.finish(
+            f"❌未找到刻印 {item.value}（这是一个bug，请反馈给开发者）"
+        )
+    msg = await build_mintmark_message(views[0])
+    await msg.send()
 
 
 async def handle_mintmark(
@@ -167,26 +275,26 @@ async def handle_mintmark(
 ) -> None:
 
     mintmarks = mintmarks + tuple(part.mintmark for c in classes for part in c.mintmark)
-    mintmarks = _deduplicate_and_filter(mintmarks)
+    views = _build_mintmark_views(mintmarks)
 
-    if not mintmarks:
+    if not views:
         raise FinishedException
 
-    if len(mintmarks) == 1:
-        msg = await build_mintmark_message(mintmarks[0])
+    if len(views) == 1:
+        msg = await build_mintmark_message(views[0])
         await msg.finish()
 
-    elif len(mintmarks) > PROMPT_MAX_ITEMS:
+    elif len(views) > PROMPT_MAX_ITEMS:
         await matcher.finish(f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！")
     prompt = Prompt(
         title="请问你想查询的刻印是……",
         items=[
             PromptItem(
-                name=mintmark.name,
-                desc=_item_desc_fmt(mintmark),
-                value=mintmark.id,
+                name=view.mintmark.name,
+                desc=_item_desc_fmt(view),
+                value=view.mintmark.id,
             )
-            for mintmark in mintmarks
+            for view in views
         ],
     )
     await enter_prompt(
@@ -194,7 +302,7 @@ async def handle_mintmark(
         event,
         state,
         prompt,
-        simple_prompt_resolver(MintmarkDataGetter, build_mintmark_message, "刻印"),
+        _resolve_mintmark_prompt,
     )
 
 

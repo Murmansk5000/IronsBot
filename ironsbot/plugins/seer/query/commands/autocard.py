@@ -21,8 +21,6 @@ from ironsbot.services.seer.autocard import (
     find_autocard_card_by_id,
     find_autocard_role_by_id,
     format_autocard_entry,
-    format_autocard_public_info,
-    is_autocard_help_query,
     load_autocard_dataset,
     search_autocard_items,
 )
@@ -214,9 +212,6 @@ async def handle_autocard_query(
     _invalidate_autocard_prompt(event)
 
     query = extract_autocard_query_arg(arg)
-    if is_autocard_help_query(query):
-        await finish_event_reply(matcher, event, format_autocard_public_info())
-
     try:
         dataset = load_autocard_dataset(session)
     except Exception as e:  # noqa: BLE001

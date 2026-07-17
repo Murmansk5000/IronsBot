@@ -8,7 +8,6 @@ from nonebot.exception import FinishedException
 from ..depends import PetDataGetter
 from ..prompt import Prompt, PromptItem, enter_prompt, simple_prompt_resolver
 from . import pet_actions
-from .help_replies import finish_query_help
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -28,8 +27,7 @@ async def handle_pet_image(  # noqa: PLR0913
     items: list[PromptItem[int]],
 ) -> None:
     if not arg.strip():
-        await finish_query_help(matcher, event, "skin")
-
+        raise FinishedException
     if not items:
         raise FinishedException
 
@@ -66,8 +64,7 @@ async def handle_pet_info(
     pets: tuple[PetORM, ...],
 ) -> None:
     if not arg.strip():
-        await finish_query_help(matcher, event, "pet")
-
+        raise FinishedException
     if not pets:
         raise FinishedException
 
