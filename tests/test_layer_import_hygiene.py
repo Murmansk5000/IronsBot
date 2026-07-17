@@ -175,6 +175,12 @@ def test_production_code_does_not_use_star_imports() -> None:
     assert _star_import_offenders() == []
 
 
+def test_production_module_names_do_not_use_historical_prefixes() -> None:
+    assert [
+        path.relative_to(ROOT).as_posix()
+        for path in _python_files(PACKAGE_ROOT)
+        if path.stem.startswith(DISALLOWED_MODULE_NAME_PREFIXES)
+    ] == []
 
 
 def _call_name(node: ast.Call) -> str | None:

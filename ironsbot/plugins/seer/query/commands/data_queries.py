@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: TC001, TC002
-"""Upstream data query matchers."""
+"""Seer data query matchers."""
 
 from __future__ import annotations
 

@@ -1,19 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: TC001, TC002
-"""Upstream type query matchers."""
+"""Element type and battle effect query matchers."""
 
 from __future__ import annotations
 
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
+from seerapi_models import BattleEffectORM
+from seerapi_models.element_type import TypeCombinationORM
 
+from ironsbot.integrations.seer_data.getters import (
+    GetBattleEffectData,
+    GetTypeCombinationData,
+)
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import SeerAPISession
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from ..upstream_commands import effect as upstream_effect
-from ..upstream_commands import type as upstream_type
+from . import battle_effect_handlers, type_handlers
 
 type_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_type")
@@ -30,11 +35,11 @@ async def _handle_type(
     event: Event,
     session: SeerAPISession,
     type_combinations: tuple[
-        upstream_type.TypeCombinationORM,
+        TypeCombinationORM,
         ...,
-    ] = upstream_type.GetTypeCombinationData(),
+    ] = GetTypeCombinationData(),
 ) -> None:
-    await upstream_type.handle_type(
+    await type_handlers.handle_type(
         matcher=matcher,
         state=state,
         event=event,
@@ -59,11 +64,11 @@ async def _handle_battle_effect(
     event: Event,
     state: T_State,
     battle_effects: tuple[
-        upstream_effect.BattleEffectORM,
+        BattleEffectORM,
         ...,
-    ] = upstream_effect.GetBattleEffectData(),
+    ] = GetBattleEffectData(),
 ) -> None:
-    await upstream_effect.handle_battle_effect(
+    await battle_effect_handlers.handle_battle_effect(
         matcher=matcher,
         state=state,
         event=event,
