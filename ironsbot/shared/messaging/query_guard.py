@@ -13,10 +13,8 @@ CooldownGetter = Callable[[], float]
 
 @dataclass(slots=True)
 class QueryGuard:
-    success_namespace: str
-    failure_namespace: str
-    success_cooldown: CooldownGetter
-    failure_cooldown: CooldownGetter
+    namespace: str
+    cooldown: CooldownGetter
     _in_progress: dict[int, int] = field(default_factory=dict)
 
     def in_progress_subject(self, user_id: int) -> int | None:
@@ -33,33 +31,18 @@ class QueryGuard:
         self._in_progress.pop(user_id, None)
 
     def remaining_seconds(self, user_id: int) -> int:
-        exempt = is_superuser(user_id)
-        success_remaining = peek_user_rate_limit(
-            self.success_namespace,
+        return peek_user_rate_limit(
+            self.namespace,
             user_id,
-            self.success_cooldown(),
-            exempt=exempt,
-        )
-        failure_remaining = peek_user_rate_limit(
-            self.failure_namespace,
-            user_id,
-            self.failure_cooldown(),
-            exempt=exempt,
-        )
-        return max(success_remaining, failure_remaining)
-
-    def penalize_success(self, user_id: int) -> None:
-        penalize_user_rate_limit(
-            self.success_namespace,
-            user_id,
-            self.success_cooldown(),
+            self.cooldown(),
             exempt=is_superuser(user_id),
         )
 
-    def penalize_failure(self, user_id: int) -> None:
+    def finish(self, user_id: int) -> None:
+        self.clear_in_progress(user_id)
         penalize_user_rate_limit(
-            self.failure_namespace,
+            self.namespace,
             user_id,
-            self.failure_cooldown(),
+            self.cooldown(),
             exempt=is_superuser(user_id),
         )
