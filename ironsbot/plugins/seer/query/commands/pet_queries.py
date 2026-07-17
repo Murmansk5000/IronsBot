@@ -17,7 +17,7 @@ from ..depends import GetPetData, SeerAPISession
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ..prompt import PromptItem
 from . import pet_actions, pet_handlers
-from .upstream_query_common import not_fixed_image_command, not_rank_query
+from .query_rules import not_fixed_image_command, not_rank_query
 
 pet_image_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_pet")

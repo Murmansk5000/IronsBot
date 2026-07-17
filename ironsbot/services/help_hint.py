@@ -1,15 +1,12 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import time
-from collections import defaultdict, deque
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from ironsbot.config.loader import get_app_config
+from ironsbot.shared.messaging.rate_limits import hit_sliding_window_rate_limit
 
-HELP_HINT_GROUP_WINDOW_SECONDS = 60.0
-HELP_HINT_GROUP_MAX_PER_WINDOW = 3
+HELP_HINT_RATE_LIMIT_NAMESPACE = "help_hint"
 
 
 class PokeLikeEvent(Protocol):
@@ -17,49 +14,33 @@ class PokeLikeEvent(Protocol):
     target_id: int
 
 
-class HelpHintLimiter:
-    def __init__(
-        self,
-        *,
-        window_seconds: float = HELP_HINT_GROUP_WINDOW_SECONDS,
-        max_per_window: int = HELP_HINT_GROUP_MAX_PER_WINDOW,
-        clock: Callable[[], float] = time.monotonic,
-    ) -> None:
-        self.window_seconds = window_seconds
-        self.max_per_window = max_per_window
-        self._clock = clock
-        self._timestamps: defaultdict[int, deque[float]] = defaultdict(deque)
-
-    def can_send(self, group_id: int) -> bool:
-        now = self._clock()
-        timestamps = self._timestamps[group_id]
-        while timestamps and now - timestamps[0] >= self.window_seconds:
-            timestamps.popleft()
-
-        if len(timestamps) >= self.max_per_window:
-            return False
-
-        timestamps.append(now)
-        return True
-
-
-_help_hint_limiter = HelpHintLimiter()
-
-
 def is_poke_at_bot(event: PokeLikeEvent) -> bool:
     return event.target_id == event.self_id
 
 
-def can_send_group_help_hint(group_id: int | None) -> bool:
+def can_send_group_help_hint(
+    group_id: int | None,
+    *,
+    now: float | None = None,
+) -> bool:
     if group_id is None:
         return True
-    return _help_hint_limiter.can_send(group_id)
+
+    config = get_app_config().runtime.help
+    return (
+        hit_sliding_window_rate_limit(
+            HELP_HINT_RATE_LIMIT_NAMESPACE,
+            group_id,
+            window_seconds=config.hint_window_seconds,
+            max_events=config.hint_max_per_window,
+            now=now,
+        )
+        >= 0
+    )
 
 
 __all__ = [
-    "HELP_HINT_GROUP_MAX_PER_WINDOW",
-    "HELP_HINT_GROUP_WINDOW_SECONDS",
-    "HelpHintLimiter",
+    "HELP_HINT_RATE_LIMIT_NAMESPACE",
     "can_send_group_help_hint",
     "is_poke_at_bot",
 ]

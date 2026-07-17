@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Literal, cast
 
@@ -32,7 +31,6 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
-_LOGGER = logging.getLogger("ironsbot.config")
 
 
 def _normalize_mode(value: object) -> BiliPushMode | None:
@@ -281,27 +279,30 @@ class BiliConfig(BaseModel):
     @model_validator(mode="after")
     def validate_account_references(self) -> BiliConfig:
         accounts = set(self.accounts)
-        self.account_nicknames = {
-            account: nickname
-            for account, nickname in self.account_nicknames.items()
-            if account in accounts and nickname
-        }
-        self.push.accounts = _filter_account_refs(
-            "bilibili.push.accounts",
-            self.push.accounts,
-            accounts,
-        )
-        self.push.modes = _filter_mode_refs(
-            "bilibili.push.modes",
-            self.push.modes,
-            accounts,
-        )
-        _filter_target_account_refs(
+        for account in self.account_nicknames:
+            _validate_account_ref(
+                f"bilibili.account_nicknames.{account}",
+                account,
+                accounts,
+            )
+        for index, account in enumerate(self.push.accounts):
+            _validate_account_ref(
+                f"bilibili.push.accounts[{index}]",
+                account,
+                accounts,
+            )
+        for account in self.push.modes:
+            _validate_account_ref(
+                f"bilibili.push.modes.{account}",
+                account,
+                accounts,
+            )
+        _validate_target_account_refs(
             "bilibili.push.groups",
             self.push.groups,
             accounts,
         )
-        _filter_target_account_refs(
+        _validate_target_account_refs(
             "bilibili.push.users",
             self.push.users,
             accounts,
@@ -313,58 +314,35 @@ class BilibiliConfig(BiliConfig):
     pass
 
 
-def _log_unknown_account_ref(location: str, account: str) -> None:
-    _LOGGER.warning(
-        "Ignored unknown Bilibili account alias in %s: %s",
-        location,
-        account,
-    )
-
-
-def _filter_account_refs(
+def _validate_account_ref(
     location: str,
-    account_refs: list[str],
+    account: str,
     accounts: set[str],
-) -> list[str]:
-    filtered: list[str] = []
-    for account in account_refs:
-        if account in accounts:
-            filtered.append(account)
-        else:
-            _log_unknown_account_ref(location, account)
-    return filtered
+) -> None:
+    if account not in accounts:
+        raise ValueError(  # noqa: TRY003
+            f"unknown Bilibili account reference at {location}: {account}"
+        )
 
 
-def _filter_mode_refs(
-    location: str,
-    mode_refs: dict[str, BiliPushMode],
-    accounts: set[str],
-) -> dict[str, BiliPushMode]:
-    filtered: dict[str, BiliPushMode] = {}
-    for account, mode in mode_refs.items():
-        if account in accounts:
-            filtered[account] = mode
-        else:
-            _log_unknown_account_ref(location, account)
-    return filtered
-
-
-def _filter_target_account_refs(
+def _validate_target_account_refs(
     location: str,
     targets: dict[str, BiliPushTargetConfig],
     accounts: set[str],
 ) -> None:
     for ref, target in targets.items():
-        target.accounts = _filter_account_refs(
-            f"{location}.{ref}.accounts",
-            target.accounts,
-            accounts,
-        )
-        target.modes = _filter_mode_refs(
-            f"{location}.{ref}.modes",
-            target.modes,
-            accounts,
-        )
+        for index, account in enumerate(target.accounts):
+            _validate_account_ref(
+                f"{location}.{ref}.accounts[{index}]",
+                account,
+                accounts,
+            )
+        for account in target.modes:
+            _validate_account_ref(
+                f"{location}.{ref}.modes.{account}",
+                account,
+                accounts,
+            )
 
 
 __all__ = [

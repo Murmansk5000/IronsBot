@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any, Literal
 
@@ -24,13 +23,10 @@ AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt
 UNKNOWN_AI_ACTION_ERROR = (
     "unknown AI intent action must configure a complete action definition"
 )
-_LOGGER = logging.getLogger("ironsbot.config")
 DEFAULT_AI_PROMPT = (
     "你是 IronsBot，一个接入 QQ 群的赛尔号信息查询机器人。"
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
 )
-DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS = 60.0
-DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW = 10
 DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS = 600.0
 DEFAULT_JOIN_TEAM_INTENT = (
     "Judge whether the QQ group message means the sender wants to join, apply for, "
@@ -166,14 +162,6 @@ class AiConfig(BaseModel):
     thinking: bool = False
     waiting_notice: bool = False
     max_reply_chars: int = Field(default=1500, gt=0)
-    mention_guard_reply_window_seconds: float = Field(
-        default=DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS,
-        gt=0,
-    )
-    mention_guard_reply_max_per_window: int = Field(
-        default=DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW,
-        ge=1,
-    )
     admin_notice_cooldown_seconds: float = Field(
         default=DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
         ge=0,
@@ -223,22 +211,30 @@ def _validate_resolved_action(action: AiIntentAction) -> None:
         return
 
     if not action.keywords:
-        raise ValueError(KEYWORDS_REQUIRED_ERROR)
+        raise ValueError(  # noqa: TRY003
+            f"ai.intent_actions.{action.id}: {KEYWORDS_REQUIRED_ERROR}"
+        )
 
     if action.action == "message" and not action.message.strip():
-        raise ValueError(MESSAGE_REQUIRED_ERROR)
+        raise ValueError(  # noqa: TRY003
+            f"ai.intent_actions.{action.id}: {MESSAGE_REQUIRED_ERROR}"
+        )
 
     if action.action == "ai_reply" and not action.reply_prompt.strip():
-        raise ValueError(AI_REPLY_PROMPT_REQUIRED_ERROR)
+        raise ValueError(  # noqa: TRY003
+            f"ai.intent_actions.{action.id}: {AI_REPLY_PROMPT_REQUIRED_ERROR}"
+        )
 
 
-def _validate_custom_action(action: AiIntentAction) -> None:
+def _validate_custom_action(action_id: str, action: AiIntentAction) -> None:
     if not action.enabled:
         return
 
     fields_set = action.model_fields_set
     if "keywords" not in fields_set or "action" not in fields_set:
-        raise ValueError(UNKNOWN_AI_ACTION_ERROR)
+        raise ValueError(  # noqa: TRY003
+            f"ai.intent_actions.{action_id}: {UNKNOWN_AI_ACTION_ERROR}"
+        )
 
 
 def _resolve_action_map(
@@ -254,16 +250,7 @@ def _resolve_action_map(
 
         builtin_action = builtins.get(action_id)
         if builtin_action is None:
-            try:
-                _validate_custom_action(action)
-            except ValueError:
-                _LOGGER.warning(
-                    "Ignored unknown AI intent action '%s' because it does not "
-                    "define a complete custom action. Built-in action ids are: %s",
-                    action_id,
-                    ", ".join(sorted(builtins)),
-                )
-                continue
+            _validate_custom_action(action_id, action)
             resolved_action = action.model_copy(update={"id": action_id})
         else:
             resolved_action = AiIntentAction.model_validate(
@@ -283,8 +270,6 @@ def resolve_configured_actions(config: AiConfig) -> list[AiIntentAction]:
 __all__ = [
     "AI_REPLY_PROMPT_REQUIRED_ERROR",
     "DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS",
-    "DEFAULT_AI_MENTION_GUARD_REPLY_MAX_PER_WINDOW",
-    "DEFAULT_AI_MENTION_GUARD_REPLY_WINDOW_SECONDS",
     "DEFAULT_AI_PROMPT",
     "DEFAULT_CLASSIFIER_PROMPT",
     "DEFAULT_FIRE_MANUAL_INTENT",

@@ -6,7 +6,6 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from pytest import MonkeyPatch
 
 from ironsbot.services.ai import mention_guard
-from ironsbot.services.ai.mention_guard import GuardReplyLimiter
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
@@ -23,38 +22,6 @@ def _load_build_guard_message(
     )
     module = import_module("ironsbot.plugins.ai_mention_guard")
     return module._build_guard_message
-
-
-def test_guard_reply_limiter_caps_messages_per_window() -> None:
-    now = 100.0
-    limiter = GuardReplyLimiter(
-        window_seconds=60.0,
-        max_per_window=2,
-        clock=lambda: now,
-    )
-
-    assert limiter.can_send(123)
-    assert limiter.can_send(123)
-    assert not limiter.can_send(123)
-
-
-def test_guard_reply_limiter_expires_old_messages() -> None:
-    current_time = 100.0
-
-    def clock() -> float:
-        return current_time
-
-    limiter = GuardReplyLimiter(
-        window_seconds=60.0,
-        max_per_window=1,
-        clock=clock,
-    )
-
-    assert limiter.can_send(123)
-    assert not limiter.can_send(123)
-
-    current_time = 160.0
-    assert limiter.can_send(123)
 
 
 def test_guard_message_uses_shared_hint(monkeypatch: MonkeyPatch) -> None:

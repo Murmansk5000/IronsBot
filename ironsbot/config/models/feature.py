@@ -1,55 +1,16 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ironsbot.plugin_catalog import KNOWN_FEATURES
 from ironsbot.shared.config.parsing import json_object, string_list, unique_items
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-_LOGGER = logging.getLogger("ironsbot.config")
-
-KNOWN_FEATURES = frozenset(
-    {
-        "seer",
-        "seer_player",
-        "seer_team",
-        "seer_pet",
-        "seer_mintmark",
-        "seer_equipment",
-        "seer_type",
-        "seer_peak",
-        "seer_autocard",
-        "seer_rank",
-        "seer_data",
-        "image",
-        "meeting",
-        "text",
-        "text_push",
-        "web_activity_link",
-        "web_activity_push",
-        "seerinfo",
-        "bili_query",
-        "bili_push",
-        "seer_activity_query",
-        "seer_activity_push",
-        "server_status_query",
-        "server_status_push",
-        "team_resource_subscription",
-        "ai_chat",
-        "ai_intent",
-        "ai_intent_team_recommend",
-        "ai_intent_fire_manual",
-        "fire_manual_ad",
-        "team_audit",
-        "admin_notice",
-    }
-)
-OBSOLETE_FEATURES = frozenset({"rank"})
 SEER_FEATURES = frozenset(
     {
         "seer_player",
@@ -97,9 +58,7 @@ FEATURE_ALIASES: dict[str, frozenset[str]] = {
     ),
 }
 
-REGISTERED_FEATURE_KEYS = (
-    KNOWN_FEATURES | frozenset(FEATURE_ALIASES) | OBSOLETE_FEATURES
-)
+REGISTERED_FEATURE_KEYS = KNOWN_FEATURES | frozenset(FEATURE_ALIASES)
 
 
 def _coerce_int_mapping(value: object) -> dict[str, int]:
@@ -141,8 +100,9 @@ class FeatureConfig(BaseModel):
     def normalize_policy(cls, value: object) -> object:
         return _coerce_policy_mapping(value)
 
-    def warn_unregistered_policy_features(self) -> None:
-        warnings: list[str] = []
+    @model_validator(mode="after")
+    def validate_registered_policy_features(self) -> FeatureConfig:
+        invalid: list[str] = []
         for policy_name, policy in (
             ("feature.group_policy", self.group_policy),
             ("feature.user_policy", self.user_policy),
@@ -152,32 +112,13 @@ class FeatureConfig(BaseModel):
                     feature = raw_feature.strip()
                     if not feature or feature in REGISTERED_FEATURE_KEYS:
                         continue
-                    warnings.append(f"{policy_name}.{target}[{index}]={feature}")
+                    invalid.append(f"{policy_name}.{target}[{index}]={feature}")
 
-        if warnings:
-            _LOGGER.warning(
-                "Unregistered feature policy key(s) detected; bot will still start "
-                "and exact custom feature keys may still work, but old or misspelled "
-                "built-in features will have no effect: "
-                + ", ".join(warnings)
+        if invalid:
+            raise ValueError(
+                "unregistered feature policy key(s): " + ", ".join(invalid)
             )
-
-    def warn_obsolete_policy_features(self) -> None:
-        warnings: list[str] = []
-        for policy_name, policy in (
-            ("feature.group_policy", self.group_policy),
-            ("feature.user_policy", self.user_policy),
-        ):
-            for target, features in policy.items():
-                for index, raw_feature in enumerate(features):
-                    feature = raw_feature.strip()
-                    if feature in OBSOLETE_FEATURES:
-                        warnings.append(f"{policy_name}.{target}[{index}]={feature}")
-
-        if warnings:
-            _LOGGER.warning(
-                "Obsolete feature policy key(s) ignored: " + ", ".join(warnings)
-            )
+        return self
 
 
 def unique_ints(values: Iterable[int]) -> list[int]:
@@ -187,7 +128,6 @@ def unique_ints(values: Iterable[int]) -> list[int]:
 __all__ = [
     "FEATURE_ALIASES",
     "KNOWN_FEATURES",
-    "OBSOLETE_FEATURES",
     "REGISTERED_FEATURE_KEYS",
     "SEER_FEATURES",
     "FeatureConfig",

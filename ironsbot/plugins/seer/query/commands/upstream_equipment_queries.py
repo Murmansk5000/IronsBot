@@ -12,7 +12,7 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from ..upstream_commands import cloth as upstream_cloth
-from .upstream_query_common import not_rank_query
+from .query_rules import not_rank_query
 
 suit_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_equipment")

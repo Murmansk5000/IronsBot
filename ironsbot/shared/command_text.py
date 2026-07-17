@@ -1,10 +1,10 @@
+# SPDX-License-Identifier: MIT
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
 
 DEFAULT_COMMAND_PREFIXES = ("/",)
 
@@ -30,6 +30,7 @@ def command_text_matches(text: str, commands: Iterable[str]) -> bool:
         normalize_command_text(command)
         for command in commands
     }
+
 
 __all__ = [
     "DEFAULT_COMMAND_PREFIXES",

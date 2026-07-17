@@ -5,7 +5,6 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
-from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.integrations.seer_data.sessions import SeerAPISession
@@ -27,7 +26,6 @@ from ironsbot.services.seer.autocard import (
     load_autocard_dataset,
     search_autocard_items,
 )
-from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
@@ -39,13 +37,10 @@ from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from .query_rules import not_rank_query
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
-
-
-async def _is_not_rank_query(event: MessageEvent) -> bool:
-    return not is_rank_query_text(event.get_plaintext())
 
 
 autocard_matcher = matcher_group.on_message(
@@ -54,7 +49,7 @@ autocard_matcher = matcher_group.on_message(
         prefixes=AUTOCARD_QUERY_PREFIXES,
         suffixes=AUTOCARD_QUERY_SUFFIXES,
     )
-    & Rule(_is_not_rank_query)
+    & not_rank_query
     & no_reply(),
     priority=seer_feature_priority("seer_autocard"),
 )
