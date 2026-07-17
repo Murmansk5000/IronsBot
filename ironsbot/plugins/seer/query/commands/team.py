@@ -44,7 +44,6 @@ TEAM_ID_MIN = 100_000
 TEAM_ID_MAX = 2_000_000_000
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 
-
 def _parse_team_ids(text: str) -> list[int]:
     team_ids: list[int] = []
     for item in re.findall(r"\d+", text):

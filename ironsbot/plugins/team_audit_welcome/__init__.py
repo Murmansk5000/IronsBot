@@ -5,7 +5,6 @@ from nonebot import on_notice
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupIncreaseNoticeEvent,
-    Message,
     NoticeEvent,
 )
 from nonebot.log import logger
@@ -16,9 +15,6 @@ from ironsbot.config.loader import get_app_config
 from ironsbot.services.team_audit_welcome import record_team_audit_pending_reminder
 from ironsbot.shared.features import is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging.outbound_rate_limit import (
-    check_group_outbound_rate_limit,
-)
 
 from .followup import schedule_team_audit_followup
 from .settings import (
@@ -65,19 +61,10 @@ async def handle_team_audit_welcome(
     if not should_send:
         return
 
-    rate_limit = check_group_outbound_rate_limit(event.group_id)
-    if not rate_limit.allowed:
-        return
-
     await bot.send_group_msg(
         group_id=event.group_id,
         message=welcome_message(event.user_id),
     )
-    if rate_limit.cooldown_message is not None:
-        await bot.send_group_msg(
-            group_id=event.group_id,
-            message=Message(rate_limit.cooldown_message),
-        )
 
     if not config.followup_enabled:
         return

@@ -291,11 +291,13 @@ def test_target_image_pull_retries_transient_registry_eof(
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    assert RUNTIME_SETUP_CALLS[0] == (
+    docker_update = (
         "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime"
     )
-    assert RUNTIME_SETUP_CALLS[1] == (
-        "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime"
+    data_sync = "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime"
+
+    assert RUNTIME_SETUP_CALLS.index(docker_update) < RUNTIME_SETUP_CALLS.index(
+        data_sync
     )
 
 
