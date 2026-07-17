@@ -13,8 +13,14 @@ from .admin_notice import (
     ADMIN_NOTICE_FEATURE,
     AdminNoticeTargets,
     admin_notice_targets,
-    get_first_onebot_bot,
     send_admin_notice,
+)
+from .bot_router import (
+    get_bot_for_group,
+    get_bot_for_target,
+    get_bot_for_user,
+    get_default_bot,
+    resolve_bot_id,
 )
 from .conversations import (
     EventReplyCheck,
@@ -92,8 +98,11 @@ __all__ = [
     "finish_matcher_message",
     "finish_message_sequence",
     "format_selection_menu",
+    "get_bot_for_group",
+    "get_bot_for_target",
+    "get_bot_for_user",
     "get_bot_or_none",
-    "get_first_onebot_bot",
+    "get_default_bot",
     "group_targets",
     "message_event_target",
     "peek_user_rate_limit",
@@ -101,6 +110,7 @@ __all__ = [
     "private_targets",
     "rate_limiter",
     "render_text",
+    "resolve_bot_id",
     "send_admin_notice",
     "send_broadcast_message",
     "send_event_reply",

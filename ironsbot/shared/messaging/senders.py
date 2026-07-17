@@ -5,12 +5,12 @@ import asyncio
 from collections.abc import Callable, Iterable
 from typing import Protocol
 
-from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import Bot, Message
+from nonebot.adapters.onebot.v11 import Message
 from nonebot.log import logger
 
 from ironsbot.config.loader import get_app_config
 
+from .bot_router import get_bot_for_target, get_default_bot
 from .outbound_rate_limit import check_group_outbound_rate_limit
 from .push_subscription_store import PushUnsubscribeStore
 from .push_subscriptions import append_push_unsubscribe_hint
@@ -31,12 +31,7 @@ class OneBotMessageSender(Protocol):
 
 
 def get_bot_or_none() -> OneBotMessageSender | None:
-    try:
-        bot = get_bot()
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"message action failed to get bot: {e}")
-        return None
-    return bot if isinstance(bot, Bot) else None
+    return get_default_bot()
 
 
 async def send_target_messages(  # noqa: PLR0913
@@ -53,14 +48,19 @@ async def send_target_messages(  # noqa: PLR0913
     if subscription_key:
         deduped_targets = _filter_subscribed_targets(deduped_targets, subscription_key)
 
-    bot = bot or get_bot_or_none()
-    if not bot:
-        return TargetSendSummary([], deduped_targets)
-
     succeeded: list[MessageTarget] = []
     failed: list[MessageTarget] = []
 
     for target in deduped_targets:
+        target_bot = bot or get_bot_for_target(target)
+        if target_bot is None:
+            logger.warning(
+                f"{action_name} has no connected bot for "
+                f"{target.target_type} {target.target_id}"
+            )
+            failed.append(target)
+            continue
+
         group_id = target.target_id if target.target_type == "group" else None
         rate_limit = check_group_outbound_rate_limit(group_id)
         if not rate_limit.allowed:
@@ -91,23 +91,24 @@ async def send_target_messages(  # noqa: PLR0913
 
         try:
             if target.target_type == "private":
-                await bot.send_private_msg(
+                await target_bot.send_private_msg(
                     user_id=target.target_id,
                     message=rendered_message,
                 )
             else:
-                await bot.send_group_msg(
+                await target_bot.send_group_msg(
                     group_id=target.target_id,
                     message=rendered_message,
                 )
                 if rate_limit.cooldown_message is not None:
-                    await bot.send_group_msg(
+                    await target_bot.send_group_msg(
                         group_id=target.target_id,
                         message=build_message(rate_limit.cooldown_message),
                     )
 
             logger.info(
-                f"{action_name} sent to {target.target_type} {target.target_id}"
+                f"{action_name} sent to {target.target_type} {target.target_id} "
+                f"via bot {getattr(target_bot, 'self_id', 'explicit')}"
             )
             succeeded.append(target)
             await asyncio.sleep(interval_seconds)
@@ -115,7 +116,8 @@ async def send_target_messages(  # noqa: PLR0913
             failed.append(target)
             logger.warning(
                 f"{action_name} failed to send to {target.target_type} "
-                f"{target.target_id}: {e}"
+                f"{target.target_id} via bot "
+                f"{getattr(target_bot, 'self_id', 'explicit')}: {e}"
             )
 
     return TargetSendSummary(succeeded, failed)

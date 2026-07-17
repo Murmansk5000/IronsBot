@@ -20,12 +20,19 @@ from ironsbot.config.loader import (
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.deployment import DeploymentConfig
-from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.message import (
+    GroupScheduledMessageAction,
+    MessageConfig,
+    PrivateScheduledMessageAction,
+    PushUnsubscribeConfig,
+)
 from ironsbot.config.models.runtime import (
+    BotRoutingConfig,
     DockerUpdateConfig,
     MatcherPriorityConfig,
     RemoteBuildStepConfig,
 )
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
 from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
@@ -57,6 +64,7 @@ DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
+MAIN_BOT_ID = 111111111
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
@@ -142,6 +150,20 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
 
 
+def _assert_example_bot_routing(config: AppConfig) -> None:
+    routing = config.runtime.bot_routing
+    expected_routing = type(routing).model_validate(
+        parse_toml_file(ROOT / "config.example.toml")["runtime"].get(
+            "bot_routing", {},
+        ),
+    )
+    assert not routing.enabled
+    assert routing.default_bot == expected_routing.default_bot
+    assert routing.bot_aliases == expected_routing.bot_aliases
+    assert routing.groups == expected_routing.groups
+    assert routing.users == expected_routing.users
+
+
 def _assert_default_team_audit_welcome(config: AppConfig) -> None:
     team_audit = config.message.team_audit_welcome
     assert not team_audit.enabled
@@ -213,6 +235,12 @@ def test_example_config_parses() -> None:
     config = load_app_config(ROOT / "config.example.toml")
 
     assert config.feature.superuser_bypass
+    assert config.feature.group_aliases == (
+        _example_feature(config.feature).group_aliases
+    )
+    assert config.feature.user_aliases == (
+        _example_feature(config.feature).user_aliases
+    )
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
     assert "fire_manual_intent" not in config.ai.intent_actions
@@ -245,6 +273,7 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
     assert not config.runtime.data_sync.on_startup
+    _assert_example_bot_routing(config)
     assert not config.runtime.data_sync.startup_trigger_remote_build
     assert config.runtime.data_sync.sources["seerapi"].local_path
     assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
@@ -292,6 +321,66 @@ def test_example_config_parses() -> None:
 
 def test_example_config_has_no_unknown_fields() -> None:
     AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
+
+
+def test_scheduled_push_requires_stable_id() -> None:
+    with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
+        PrivateScheduledMessageAction(
+            message="私聊定时推送",
+            hour=23,
+        )
+
+    with pytest.raises(ValidationError, match="只能包含英文字母"):
+        PrivateScheduledMessageAction(
+            id="每日 提醒",
+            message="私聊定时推送",
+            hour=23,
+        )
+
+
+def test_scheduled_push_ids_are_globally_unique() -> None:
+    with pytest.raises(ValidationError, match="定时推送 id 必须全局唯一: daily"):
+        MessageConfig(
+            private_schedules=[
+                PrivateScheduledMessageAction(
+                    id="daily",
+                    message="私聊定时推送",
+                    hour=23,
+                )
+            ],
+            group_schedules=[
+                GroupScheduledMessageAction(
+                    id="daily",
+                    message="群聊定时推送",
+                    hour=23,
+                )
+            ],
+        )
+
+
+def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
+    config = BotRoutingConfig(
+        enabled=True,
+        default_bot="main_bot",
+        bot_aliases={"main_bot": MAIN_BOT_ID},
+        groups={"group_a": "main_bot", "987654321": MAIN_BOT_ID},
+        users={"owner": "111111111"},
+    )
+
+    assert config.resolve_bot_reference("main_bot") == MAIN_BOT_ID
+    assert config.resolve_bot_reference(str(MAIN_BOT_ID)) == MAIN_BOT_ID
+
+
+def test_bot_routing_config_rejects_unknown_bot_alias() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"runtime\.bot_routing\.groups\.group_a",
+    ):
+        BotRoutingConfig(
+            enabled=True,
+            bot_aliases={"main_bot": MAIN_BOT_ID},
+            groups={"group_a": "missing_bot"},
+        )
 
 
 def test_active_config_surfaces_do_not_reference_stale_fields() -> None:
@@ -803,3 +892,10 @@ def _example_workflow(
             "data_sync"
         ]["sources"]["seerapi"]["remote_build"]["steps"]
     ]
+
+
+
+def _example_feature(feature: FeatureConfig) -> FeatureConfig:
+    return type(feature).model_validate(
+        parse_toml_file(ROOT / "config.example.toml").get("feature", {}),
+    )

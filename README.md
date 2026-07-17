@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 主动投递路由与稳定订阅
+
+启用多机器人路由后，目标指定的机器人离线时仍会尝试配置默认机器人，再回退任一在线机器人；指定路由不等于离线即拒绝投递。
+群聊和私聊定时推送的 `id` 必须全局唯一且稳定，调整列表顺序不应更换订阅身份。启动清理按当前有效推送目录处理旧偏好，不承诺自动恢复已清理记录。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：

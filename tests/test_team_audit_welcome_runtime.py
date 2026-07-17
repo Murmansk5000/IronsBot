@@ -161,7 +161,7 @@ def test_team_audit_followup_uses_group_routed_bot(
     monkeypatch.setattr(followup, "target_groups", lambda: {987654321})
     monkeypatch.setattr(followup, "is_group_feature_allowed", lambda *_args: True)
     monkeypatch.setattr(followup, "_load_pending_reminder", lambda **_kwargs: reminder)
-    monkeypatch.setattr(followup, "get_bot_or_none", lambda : bot)
+    monkeypatch.setattr(followup, "get_bot_for_group", lambda _group_id: bot)
     monkeypatch.setattr(followup, "_bot_can_access_group", _async_true)
     monkeypatch.setattr(followup, "_is_member_still_in_group", _async_true)
     monkeypatch.setattr(followup, "send_target_messages", fake_send_target_messages)
@@ -196,7 +196,7 @@ def test_team_audit_followup_keeps_pending_when_bot_cannot_access_group(
     monkeypatch.setattr(followup, "target_groups", lambda: {987654321})
     monkeypatch.setattr(followup, "is_group_feature_allowed", lambda *_args: True)
     monkeypatch.setattr(followup, "_load_pending_reminder", lambda **_kwargs: reminder)
-    monkeypatch.setattr(followup, "get_bot_or_none", lambda : bot)
+    monkeypatch.setattr(followup, "get_bot_for_group", lambda _group_id: bot)
     monkeypatch.setattr(followup, "_bot_can_access_group", inaccessible)
     monkeypatch.setattr(followup, "_clear_pending_reminder", clear_pending)
 

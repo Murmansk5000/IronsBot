@@ -23,7 +23,6 @@ _startup_notice_runtime_state = {"registered": False}
 
 async def _send_notice_part(
     *,
-    bot: Bot,
     message_text: str,
     subscription_key: str,
     action_name: str,
@@ -35,7 +34,6 @@ async def _send_notice_part(
         Message(message_text),
         private_user_ids=targets.private_user_ids,
         group_ids=targets.group_ids,
-        bot=bot,
         action_name=action_name,
         interval_seconds=1.2,
         subscription_key=subscription_key,
@@ -63,7 +61,6 @@ async def send_startup_notice(bot: Bot) -> None:
         summaries: list[TargetSendSummary] = []
         summaries.append(
             await _send_notice_part(
-                bot=bot,
                 message_text=config.message,
                 subscription_key="startup_notice",
                 action_name="startup notice",
@@ -73,7 +70,6 @@ async def send_startup_notice(bot: Bot) -> None:
         summaries.extend(
             [
                 await _send_notice_part(
-                    bot=bot,
                     message_text=part.message,
                     subscription_key=part.subscription_key,
                     action_name=part.action_name,
