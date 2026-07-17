@@ -36,8 +36,16 @@ from ironsbot.services.seer.player_query import (
     resolve_player_detail_reply,
     safe_player_extra,
     store_player_detail_messages,
+    validate_player_peak_season,
 )
 from ironsbot.services.seer.player_shortcuts import parse_player_shortcut_command
+from ironsbot.services.seer.rank_models import (
+    PeakSeasonRankSummary,
+    RankLookupResult,
+)
+from ironsbot.services.seer.sequ_extra import UnityPeakInfo
+
+EXPERT_MATCH_COUNT = 113
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +206,64 @@ def test_calculate_player_peak_scores_uses_only_played_modes() -> None:
 
 def test_calculate_player_peak_scores_defaults_missing_fields_to_empty_scores() -> None:
     assert calculate_player_peak_scores(object()) == PlayerPeakScores()
+
+
+def test_validate_player_peak_season_replaces_stale_scores_and_stats() -> None:
+    unity_peak = UnityPeakInfo(
+        current_j_rank=4,
+        current_j_star=0,
+        current_j_win=82,
+        current_j_all=124,
+        current_k_rank=3,
+        current_k_star=100,
+        current_k_win=724,
+        current_k_all=1623,
+        current_z_score=1045,
+        current_z_win=50,
+        current_z_all=EXPERT_MATCH_COUNT,
+    )
+    candidate_scores = calculate_player_peak_scores(unity_peak)
+    rank_summary = PeakSeasonRankSummary(
+        standard=RankLookupResult(
+            title="竞技赛季榜",
+            score_name="段位分",
+            rank=1,
+            score=300033,
+            queried=True,
+        ),
+        wild=RankLookupResult(
+            title="狂野赛季榜",
+            score_name="段位分",
+            searched_limit=2000,
+            queried=True,
+        ),
+        expert=RankLookupResult(
+            title="专家赛季榜",
+            score_name="专家积分",
+            rank=2,
+            score=1045,
+            queried=True,
+        ),
+    )
+
+    validated = validate_player_peak_season(
+        unity_peak,
+        candidate_scores,
+        rank_summary,
+    )
+
+    assert validated.scores == PlayerPeakScores(
+        standard=300033,
+        wild=None,
+        expert=1045,
+    )
+    assert validated.unity_peak.current_j_all == 0
+    assert validated.unity_peak.current_k_all == 0
+    assert validated.unity_peak.current_z_all == EXPERT_MATCH_COUNT
+    assert "peak_standard" not in validated.clear_metric_keys
+    assert "peak_standard_matches" in validated.clear_metric_keys
+    assert "peak_wild" in validated.clear_metric_keys
+    assert "peak_total_matches" in validated.clear_metric_keys
 
 
 def test_safe_player_extra_returns_result() -> None:

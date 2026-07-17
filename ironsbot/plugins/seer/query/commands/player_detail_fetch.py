@@ -19,6 +19,7 @@ from ironsbot.services.seer.player_query import (
     calculate_player_peak_scores,
     optional_player_extra,
     plan_player_detail_fetches,
+    validate_player_peak_season,
 )
 from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_models import (
@@ -184,6 +185,11 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         )
         extra_errors.collection.extend(rank_summary.errors)
         extra_errors.peak.extend(peak_rank_summary.errors)
+        validated_peak = validate_player_peak_season(
+            unity_peak,
+            peak_scores,
+            peak_rank_summary,
+        )
         local_rank_summary = await optional_player_extra(
             "机器人查询排行",
             fetch_plan.needs_local_rank,
@@ -192,13 +198,14 @@ async def _build_player_detail_messages(  # noqa: PLR0913
                 nick=user_info.nick,
                 more_info=more_info,
                 unity_part_one=unity_part_one,
-                unity_peak=unity_peak,
+                unity_peak=validated_peak.unity_peak,
                 rank_summary=rank_summary,
                 autocard_rank_summary=autocard_rank_summary,
                 peak_sub_key=peak_sub_key,
-                peak_standard_score=peak_scores.standard,
-                peak_wild_score=peak_scores.wild,
-                peak_expert_score=peak_scores.expert,
+                peak_standard_score=validated_peak.scores.standard,
+                peak_wild_score=validated_peak.scores.wild,
+                peak_expert_score=validated_peak.scores.expert,
+                clear_metric_keys=validated_peak.clear_metric_keys,
             ),
             LocalRankSummary(),
             extra_errors.shared,

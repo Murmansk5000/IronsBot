@@ -19,6 +19,10 @@ SKIN_SCORE = 10
 ACHIEVE_SCORE = 56
 PEAK_SCORE = 400100
 EXPERT_SCORE = 2500
+CURRENT_PEAK_SCORE = 300033
+CURRENT_PEAK_RANK = 33
+CURRENT_PEAK_LINEAR_RANK = 12
+PEAK_MODE_COUNT = 3
 
 
 def _int_kwarg(kwargs: dict[str, object], name: str, default: int = 0) -> int:
@@ -128,6 +132,84 @@ async def test_peak_rank_summary_keeps_expert_score_when_expert_times_out() -> N
     assert not summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
     assert summary.errors == ("专家赛季榜查询超时",)
+
+
+@pytest.mark.asyncio
+async def test_peak_rank_summary_retries_current_season_when_candidate_is_stale(
+) -> None:
+    calls: list[tuple[int, int | None]] = []
+
+    async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
+        key = _int_kwarg(kwargs, "key")
+        target_score = kwargs.get("target_score")
+        calls.append(
+            (key, target_score if isinstance(target_score, int) else None)
+        )
+        if key == WILD_PEAK_USER_RANK_KEY:
+            if target_score is None:
+                return RankLookupResult(
+                    title=str(kwargs["title"]),
+                    score_name=str(kwargs["score_name"]),
+                    rank=CURRENT_PEAK_RANK,
+                    score=CURRENT_PEAK_SCORE,
+                    searched_limit=2000,
+                    queried=True,
+                )
+            return RankLookupResult(
+                title=str(kwargs["title"]),
+                score_name=str(kwargs["score_name"]),
+                rank=None,
+                score=PEAK_SCORE if target_score is not None else None,
+                searched_limit=2000,
+                queried=True,
+            )
+        return await _rank_success(_game, **kwargs)
+
+    summary = await fetch_peak_season_rank_summary(
+        object(),
+        USER_ID,
+        standard_score=PEAK_SCORE,
+        wild_score=PEAK_SCORE,
+        expert_score=EXPERT_SCORE,
+        current_peak_sub_key=20260717,
+        find_rank=find_rank,
+    )
+
+    assert calls.count((WILD_PEAK_USER_RANK_KEY, PEAK_SCORE)) == 1
+    assert calls.count((WILD_PEAK_USER_RANK_KEY, None)) == 1
+    assert summary.wild.queried
+    assert summary.wild.rank == CURRENT_PEAK_RANK
+    assert summary.wild.score == CURRENT_PEAK_SCORE
+
+
+@pytest.mark.asyncio
+async def test_peak_rank_summary_queries_current_season_without_candidate_score(
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
+        calls.append(kwargs)
+        return RankLookupResult(
+            title=str(kwargs["title"]),
+            score_name=str(kwargs["score_name"]),
+            rank=CURRENT_PEAK_LINEAR_RANK,
+            score=CURRENT_PEAK_SCORE,
+            searched_limit=2000,
+            queried=True,
+        )
+
+    summary = await fetch_peak_season_rank_summary(
+        object(),
+        USER_ID,
+        current_peak_sub_key=20260717,
+        find_rank=find_rank,
+    )
+
+    assert len(calls) == PEAK_MODE_COUNT
+    assert all("target_score" not in call for call in calls)
+    assert all(call["search_limit"] == 0 for call in calls)
+    assert summary.standard.rank == CURRENT_PEAK_LINEAR_RANK
+    assert summary.standard.score == CURRENT_PEAK_SCORE
 
 
 @pytest.mark.asyncio

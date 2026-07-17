@@ -590,8 +590,11 @@ display_limits = {}
 # EN: Runtime group overrides set by group owners/admins.
 # ZH: 群主/管理员在群内修改榜单默认显示条数后的持久化 SQLite。
 display_limit_path = "data/seer/rank_display_limits.sqlite"
-# Default: omitted/null; EN: Override peak subkey. ZH: 覆盖巅峰 subkey。
-# peak_subkey = 123
+# Default: omitted/null.
+# EN: Leave unset to follow the official peak season automatically.
+#     Set only as a temporary diagnostic override.
+# ZH: 留空时自动跟随官方巅峰赛季；仅在临时排查时手动覆盖。
+# peak_subkey = 20260717
 
 [seer.rank.page_refresh]
 # 后台刷榜只用于预热缓存，加快后续查询；不会把玩家计入“样本”。

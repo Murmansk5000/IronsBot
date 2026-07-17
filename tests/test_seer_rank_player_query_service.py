@@ -10,6 +10,7 @@ from ironsbot.services.seer.rank_models import RankLookupResult
 
 PLAYER_ID = 123456
 ACHIEVEMENT_SCORE = 5000
+CURRENT_PEAK_SCORE = 300033
 
 
 class FakeGame:
@@ -114,3 +115,75 @@ async def test_rank_player_query_uses_unknown_score_cache_lookup(
 
     assert captured["target_score"] is None
     assert "群星之巅：2465分｜全服第3149" in message
+
+
+@pytest.mark.asyncio
+async def test_peak_rank_player_query_retries_without_stale_forever_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int | None] = []
+    stored: dict[str, Any] = {}
+
+    async def fake_fetch_unity_peak(
+        _game: object,
+        _player_id: int,
+    ) -> object:
+        return SimpleNamespace(
+            current_j_rank=4,
+            current_j_star=0,
+            current_j_all=124,
+            current_k_rank=0,
+            current_k_star=0,
+            current_k_all=0,
+            current_z_score=0,
+            current_z_all=0,
+        )
+
+    async def fake_find_rank(_game: object, **kwargs: Any) -> RankLookupResult:
+        target_score = kwargs.get("target_score")
+        calls.append(target_score)
+        if target_score is not None:
+            return RankLookupResult(
+                title="竞技段位",
+                score_name="",
+                score=int(target_score),
+                searched_limit=50000,
+                queried=True,
+            )
+        return RankLookupResult(
+            title="竞技段位",
+            score_name="",
+            rank=9,
+            score=CURRENT_PEAK_SCORE,
+            searched_limit=2000,
+            queried=True,
+        )
+
+    async def fake_upsert(**kwargs: Any) -> LocalRankSummary:
+        stored.update(kwargs)
+        return LocalRankSummary()
+
+    monkeypatch.setattr(rank_player_query, "fetch_unity_peak", fake_fetch_unity_peak)
+    monkeypatch.setattr(rank_player_query, "find_rank", fake_find_rank)
+    monkeypatch.setattr(rank_player_query, "upsert_local_rank_metrics", fake_upsert)
+    monkeypatch.setattr(
+        rank_player_query,
+        "get_global_rank_spec",
+        lambda _key: SimpleNamespace(
+            key=20,
+            sub_key=20260717,
+            title="竞技段位榜",
+            unit="",
+            peak_season_sub_key=True,
+        ),
+    )
+
+    message = await rank_player_query.fetch_rank_player_message(
+        FakeGame(),
+        command=RankPlayerCommand(rank_key="竞技段位", player_id=PLAYER_ID),
+        local_rank_enabled=True,
+    )
+
+    assert calls == [400000, None]
+    assert "竞技段位：王者33星｜全服第9" in message
+    assert stored["current_metrics"]["peak_standard"]["value"] == CURRENT_PEAK_SCORE

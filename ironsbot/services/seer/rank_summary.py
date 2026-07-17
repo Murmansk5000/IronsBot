@@ -112,6 +112,54 @@ async def _safe_find_pet_kind_rank(  # noqa: PLR0913
         )
 
 
+async def _find_current_peak_rank(  # noqa: PLR0913
+    label: str,
+    find_rank: FindRank,
+    game: Any,
+    *,
+    user_id: int,
+    title: str,
+    score_name: str,
+    key: int,
+    sub_key: int,
+    candidate_score: int | None,
+    errors: list[str],
+    progress: RankSummaryProgress | None,
+) -> RankLookupResult:
+    has_candidate_score = candidate_score is not None and candidate_score > 0
+    if has_candidate_score:
+        result = await _safe_find_rank(
+            label,
+            find_rank,
+            game,
+            user_id=user_id,
+            title=title,
+            score_name=score_name,
+            score=candidate_score,
+            key=key,
+            sub_key=sub_key,
+            target_score=candidate_score,
+            errors=errors,
+            progress=progress,
+        )
+        if result.rank is not None or not result.queried:
+            return result
+
+    return await _safe_find_rank(
+        f"{label}_current_season",
+        find_rank,
+        game,
+        user_id=user_id,
+        title=title,
+        score_name=score_name,
+        key=key,
+        sub_key=sub_key,
+        search_limit=None if has_candidate_score else 0,
+        errors=errors,
+        progress=progress,
+    )
+
+
 async def fetch_book_breakdown_summary(  # noqa: PLR0913
     game: Any,
     user_id: int,
@@ -227,51 +275,45 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
 
     summary = PeakSeasonRankSummary.empty()
     errors: list[str] = []
-    if standard_score is not None and standard_score > 0:
-        summary.standard = await _safe_find_rank(
-            "standard_peak",
-            find_rank,
-            game,
-            user_id=user_id,
-            title="竞技赛季榜",
-            score_name="段位分",
-            score=standard_score,
-            key=STANDARD_PEAK_USER_RANK_KEY,
-            sub_key=current_peak_sub_key,
-            target_score=standard_score,
-            errors=errors,
-            progress=progress,
-        )
-    if wild_score is not None and wild_score > 0:
-        summary.wild = await _safe_find_rank(
-            "wild_peak",
-            find_rank,
-            game,
-            user_id=user_id,
-            title="狂野赛季榜",
-            score_name="段位分",
-            score=wild_score,
-            key=WILD_PEAK_USER_RANK_KEY,
-            sub_key=current_peak_sub_key,
-            target_score=wild_score,
-            errors=errors,
-            progress=progress,
-        )
-    if expert_score is not None and expert_score > 0:
-        summary.expert = await _safe_find_rank(
-            "expert_peak",
-            find_rank,
-            game,
-            user_id=user_id,
-            title="专家赛季榜",
-            score_name="专家积分",
-            score=expert_score,
-            key=EXPERT_PEAK_USER_RANK_KEY,
-            sub_key=current_peak_sub_key,
-            target_score=expert_score,
-            errors=errors,
-            progress=progress,
-        )
+    summary.standard = await _find_current_peak_rank(
+        "standard_peak",
+        find_rank,
+        game,
+        user_id=user_id,
+        title="竞技赛季榜",
+        score_name="段位分",
+        key=STANDARD_PEAK_USER_RANK_KEY,
+        sub_key=current_peak_sub_key,
+        candidate_score=standard_score,
+        errors=errors,
+        progress=progress,
+    )
+    summary.wild = await _find_current_peak_rank(
+        "wild_peak",
+        find_rank,
+        game,
+        user_id=user_id,
+        title="狂野赛季榜",
+        score_name="段位分",
+        key=WILD_PEAK_USER_RANK_KEY,
+        sub_key=current_peak_sub_key,
+        candidate_score=wild_score,
+        errors=errors,
+        progress=progress,
+    )
+    summary.expert = await _find_current_peak_rank(
+        "expert_peak",
+        find_rank,
+        game,
+        user_id=user_id,
+        title="专家赛季榜",
+        score_name="专家积分",
+        key=EXPERT_PEAK_USER_RANK_KEY,
+        sub_key=current_peak_sub_key,
+        candidate_score=expert_score,
+        errors=errors,
+        progress=progress,
+    )
     summary.errors = tuple(errors)
     return summary
 
