@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 命令冷却与群发送队列
+
+命令冷却与群消息出站额度独立。群推送按窗口预占并进入有界 FIFO 队列，各目标可并发投递，汇总仍按输入顺序返回。
+普通发送异常和抑制结果会回退预占；任务取消不属于普通 `Exception` 分支，不能据此前提保证取消也已回退。消息发起、发送成功和额度结算是不同阶段。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
