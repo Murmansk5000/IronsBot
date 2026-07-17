@@ -84,11 +84,6 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 无头状态与刷新边界
-
-离线时长来自进程内记录及墙上时钟；重复状态不重置计时，静默、关闭通知或不发送通知时仍更新内部状态。这不是持久化、按账号隔离的故障监控。
-榜单页刷新使用进程内防重入和连接错误退避；客户端获取、请求间等待及通知链路不因此获得端到端期限，也不保证远端在线。
-
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
@@ -239,3 +234,15 @@ uv run python bot.py
 
 - 包含 GPL 插件/代码的完整仓库和 Docker 镜像整体按 GPL-3.0-or-later 分发。
 - 可独立复用的自定义插件与工具代码按各文件 SPDX 声明执行。
+
+## 配置字段迁移
+
+现行示例不再使用以下退休配置字段；请迁移到本版本的正式配置结构，不要依赖旧字段控制权限、通知或启动行为：
+
+- `ai.reset_commands`
+- `ai.mention_guard_reply_window_seconds`
+- `ai.mention_guard_reply_max_per_window`
+- `bilibili.push.default_mode`
+- `bilibili.uids`
+- `message.private_unsubscribe`
+- `seer.render.clear_on_startup`

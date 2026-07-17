@@ -11,7 +11,7 @@ from ironsbot.utils.rule import no_reply
 
 from ..depends import SeerAPISession
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from .upstream_query_common import UPSTREAM_QUERY_PLUGIN_NAME, dispatch_plugin
+from . import data_tools
 
 preview_matcher = matcher_group.on_fullmatch(
     "下周预告",
@@ -22,17 +22,9 @@ preview_matcher = matcher_group.on_fullmatch(
 
 @preview_matcher.handle()
 async def _handle_preview(
-    matcher: Matcher,
-    event: Event,
     session: SeerAPISession,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
-        matcher=matcher,
-        action="preview",
-        session=session,
-    )
+    await data_tools.handle_preview(session=session)
 
 data_version_matcher = matcher_group.on_fullmatch(
     "数据版本",
@@ -44,14 +36,10 @@ data_version_matcher = matcher_group.on_fullmatch(
 @data_version_matcher.handle()
 async def _handle_data_version(
     matcher: Matcher,
-    event: Event,
     session: SeerAPISession,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await data_tools.handle_data_version(
         matcher=matcher,
-        action="data_version",
         session=session,
     )
 
@@ -69,10 +57,8 @@ async def _handle_season_countdown(
     event: Event,
     session: SeerAPISession,
 ) -> None:
-    await dispatch_plugin(
-        plugin_name=UPSTREAM_QUERY_PLUGIN_NAME,
-        event=event,
+    await data_tools.handle_season_countdown(
         matcher=matcher,
-        action="season_countdown",
+        event=event,
         session=session,
     )

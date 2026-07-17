@@ -97,10 +97,6 @@ GemDataGetter = Getter(
 )
 
 
-def GetGemData() -> Any:
-    return Depends(GemDataGetter)
-
-
 GemCategoryDataGetter = Getter(
     GemCategoryORM,
     # IdResolver(GemCategoryORM),
@@ -149,10 +145,6 @@ ErrorCodeGetter = Getter(
     ErrorCodeORM,
     IdResolver(ErrorCodeORM),
 )
-
-
-def GetErrorCodeData() -> Any:
-    return Depends(ErrorCodeGetter)
 
 
 class TypeCombinationResolver:
