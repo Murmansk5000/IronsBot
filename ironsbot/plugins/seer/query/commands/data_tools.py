@@ -5,7 +5,7 @@ from datetime import timedelta, timezone
 from typing import TYPE_CHECKING
 
 from httpx import HTTPStatusError, RequestError
-from nonebot_plugin_saa import Image, MessageFactory, MessageSegmentFactory, Text
+from nonebot_plugin_saa import Image, MessageFactory, MessageSegmentFactory
 from seerapi_models import ApiMetadataORM
 from sqlmodel import select
 
@@ -33,10 +33,9 @@ async def fetch_weekly_preview_image(image_url: str) -> MessageSegmentFactory:
 
 
 async def handle_preview(*, session: SeerAPISession) -> None:
-    image_url, source_url = load_weekly_preview_links(session)
+    image_url, _source_url = load_weekly_preview_links(session)
     msg = MessageFactory()
     msg += await fetch_weekly_preview_image(image_url)
-    msg += Text(f"\n预告图来自 {source_url}")
     await msg.finish()
 
 

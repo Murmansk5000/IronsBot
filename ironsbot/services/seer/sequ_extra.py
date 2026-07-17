@@ -9,8 +9,6 @@ from ironsbot.services.seer.binary import BufferReader
 UNITY_INFO_CMD = 41298
 USER_FOREVER_VALUE_CMD = 40002
 PEAK_QUERY_DELAY_SECONDS = 0.005
-DISPLAY_PET_COUNT = 4
-DISPLAY_PET_BLOCK_PADDING = 132
 PEAK_PARAMS: tuple[int, ...] = (
     124801,
     124802,
@@ -36,14 +34,6 @@ class UnityPartOneInfo:
     title2: int = 0
     title3: int = 0
     title4: int = 0
-
-
-@dataclass(slots=True)
-class UnityPartTwoInfo:
-    show_pet1: int = 0
-    show_pet2: int = 0
-    show_pet3: int = 0
-    show_pet4: int = 0
 
 
 @dataclass(slots=True)
@@ -83,25 +73,6 @@ def parse_unity_part_one(data: bytes | bytearray | memoryview) -> UnityPartOneIn
         title3=_read_uint32_or_zero(reader),
         title4=_read_uint32_or_zero(reader),
     )
-
-
-def parse_unity_part_two(data: bytes | bytearray | memoryview) -> UnityPartTwoInfo:
-    reader = BufferReader(data)
-    if reader.has_remaining(12):
-        reader.skip(12)
-
-    pet_ids: list[int] = []
-    for index in range(DISPLAY_PET_COUNT):
-        if not reader.has_remaining(4):
-            break
-        pet_ids.append(reader.read_uint32())
-        if index < DISPLAY_PET_COUNT - 1 and reader.has_remaining(
-            DISPLAY_PET_BLOCK_PADDING
-        ):
-            reader.skip(DISPLAY_PET_BLOCK_PADDING)
-
-    pet_ids.extend([0] * (DISPLAY_PET_COUNT - len(pet_ids)))
-    return UnityPartTwoInfo(*pet_ids[:DISPLAY_PET_COUNT])
 
 
 def parse_unity_peak(data: bytes | bytearray | memoryview) -> UnityPeakInfo:
