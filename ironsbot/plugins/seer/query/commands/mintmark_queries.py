@@ -1,22 +1,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: TC002
+# ruff: noqa: TC001, TC002
 """Mintmark and gem query matchers."""
 
 from __future__ import annotations
 
 from nonebot.adapters import Event
+from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.params import Depends
 from nonebot.typing import T_State
 from seerapi_models import GemCategoryORM, MintmarkClassCategoryORM, MintmarkORM
 
+from ironsbot.integrations.seer_data.mintmark_series_resolvers import (
+    resolve_custom_mintmark_series,
+)
+from ironsbot.integrations.seer_data.sessions import AllSessions
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import GetGemCategoryData, GetMintmarkClassData, GetMintmarkData
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from . import mintmark_handlers
-from .help_replies import finish_query_help
 from .query_rules import not_rank_query
 
 mintmark_matcher = matcher_group.on_message(
@@ -33,6 +37,7 @@ async def _handle_mintmark(  # noqa: PLR0913
     matcher: Matcher,
     state: T_State,
     event: Event,
+    sessions: AllSessions,
     arg: str = Depends(parse_string_arg),
     mintmarks: tuple[
         MintmarkORM,
@@ -44,7 +49,11 @@ async def _handle_mintmark(  # noqa: PLR0913
     ] = GetMintmarkClassData(),
 ) -> None:
     if not arg.strip():
-        await finish_query_help(matcher, event, "mintmark")
+        raise FinishedException
+    custom_series = resolve_custom_mintmark_series(sessions, arg)
+    if custom_series:
+        mintmarks = custom_series
+        classes = ()
 
     await mintmark_handlers.handle_mintmark(
         matcher=matcher,
@@ -75,8 +84,7 @@ async def _handle_gem(
     ] = GetGemCategoryData(),
 ) -> None:
     if not arg.strip():
-        await finish_query_help(matcher, event, "gem")
-
+        raise FinishedException
     await mintmark_handlers.handle_gem(
         matcher=matcher,
         state=state,

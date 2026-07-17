@@ -6,10 +6,6 @@ MIN_UNIX_DATETIME = 946684800
 PEAK_RATING_NAMES = ("学徒", "猛将", "天骄", "王者", "圣皇", "宇宙圣皇")
 
 
-def yes_no(value: object) -> str:
-    return "是" if bool(value) else "否"
-
-
 def format_datetime(timestamp: int) -> str:
     if timestamp <= 0:
         return "未知"
