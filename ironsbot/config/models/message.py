@@ -27,6 +27,12 @@ TEAM_AUDIT_FINAL_FOLLOWUP_AFTER_HOURS_ERROR = (
 OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR = (
     "outbound_rate_limit.cooldown_message must not be empty"
 )
+OUTBOUND_RATE_LIMIT_WINDOWS_REQUIRED_ERROR = (
+    "outbound_rate_limit.windows must not be empty"
+)
+OUTBOUND_RATE_LIMIT_WINDOWS_DUPLICATE_ERROR = (
+    "outbound_rate_limit.windows contains duplicate window_seconds"
+)
 PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
@@ -136,18 +142,31 @@ class GroupScheduledMessageAction(ScheduledMessageAction):
         return int_list(value)
 
 
+class OutboundRateLimitWindowConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    window_seconds: float = Field(gt=0)
+    max_messages: int = Field(ge=1)
 
 
+def _default_outbound_rate_limit_windows() -> list[OutboundRateLimitWindowConfig]:
+    return [
+        OutboundRateLimitWindowConfig(window_seconds=60.0, max_messages=10),
+        OutboundRateLimitWindowConfig(window_seconds=600.0, max_messages=30),
+    ]
 
 
 class OutboundRateLimitConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    window_seconds: float = Field(default=60.0, gt=0)
-    max_messages: int = Field(default=10, ge=1)
+    windows: list[OutboundRateLimitWindowConfig] = Field(
+        default_factory=_default_outbound_rate_limit_windows
+    )
+    push_queue_max_wait_seconds: float = Field(default=15.0, ge=0)
+    push_queue_max_messages: int = Field(default=10, ge=0)
     cooldown_message: str = (
-        "本群消息发送过于频繁，机器人进入冷却时间，请稍后再试。"
+        "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
     )
 
     @field_validator("cooldown_message")
@@ -157,6 +176,21 @@ class OutboundRateLimitConfig(BaseModel):
         if not message:
             raise ValueError(OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR)
         return message
+
+    @field_validator("windows")
+    @classmethod
+    def validate_windows(
+        cls,
+        value: list[OutboundRateLimitWindowConfig],
+    ) -> list[OutboundRateLimitWindowConfig]:
+        if not value:
+            raise ValueError(OUTBOUND_RATE_LIMIT_WINDOWS_REQUIRED_ERROR)
+        seen: set[float] = set()
+        for window in value:
+            if window.window_seconds in seen:
+                raise ValueError(OUTBOUND_RATE_LIMIT_WINDOWS_DUPLICATE_ERROR)
+            seen.add(window.window_seconds)
+        return sorted(value, key=lambda item: item.window_seconds)
 
 
 class PushUnsubscribeConfig(BaseModel):
@@ -361,6 +395,8 @@ class MessageConfig(BaseModel):
 
 __all__ = [
     "MessageConfig",
+    "OutboundRateLimitConfig",
+    "OutboundRateLimitWindowConfig",
     "PushUnsubscribeConfig",
     "RedPacketNoticeConfig",
     "SendpicBehaviorConfig",
