@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal, TypeAlias
 
@@ -24,7 +25,20 @@ OUTBOUND_RATE_LIMIT_MESSAGE_REQUIRED_ERROR = (
 PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
+SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
+SCHEDULE_ID_FORMAT_ERROR = (
+    "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
+)
+SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
+_SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 SendpicBackendType: TypeAlias = Literal["cnb", "local"]
+
+
+class DuplicateScheduleIdError(ValueError):
+    @classmethod
+    def from_ids(cls, schedule_ids: set[str]) -> DuplicateScheduleIdError:
+        duplicate_text = ", ".join(sorted(schedule_ids))
+        return cls(f"{SCHEDULE_ID_DUPLICATE_ERROR}: {duplicate_text}")
 
 
 class BaseMessageAction(BaseModel):
@@ -75,6 +89,15 @@ class ScheduledMessageAction(BaseMessageAction):
     hour: int = Field(ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
     day_of_week: str | None = None
+
+    @model_validator(mode="after")
+    def validate_schedule_id(self) -> Self:
+        schedule_id = self.id.strip()
+        if not schedule_id:
+            raise ValueError(SCHEDULE_ID_REQUIRED_ERROR)
+        if not _SCHEDULE_ID_PATTERN.fullmatch(schedule_id):
+            raise ValueError(SCHEDULE_ID_FORMAT_ERROR)
+        return self
 
 
 class PrivateCommandMessageAction(CommandMessageAction):
@@ -309,6 +332,18 @@ class MessageConfig(BaseModel):
         default_factory=TeamAuditWelcomeConfig
     )
     sendpic: SendpicBehaviorConfig = Field(default_factory=SendpicBehaviorConfig)
+
+    @model_validator(mode="after")
+    def validate_unique_schedule_ids(self) -> Self:
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for task in (*self.private_schedules, *self.group_schedules):
+            if task.id in seen:
+                duplicates.add(task.id)
+            seen.add(task.id)
+        if duplicates:
+            raise DuplicateScheduleIdError.from_ids(duplicates)
+        return self
 
 
 __all__ = [

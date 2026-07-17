@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
 from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
@@ -22,6 +23,10 @@ from ironsbot.shared.messaging.push_subscriptions import (
     private_schedule_label,
 )
 
+EXPECTED_PRUNED_UNSUBSCRIPTIONS = 2
+EXPECTED_PRUNED_TIME_PREFERENCES = 2
+EXPECTED_PRUNED_TOTAL = 4
+
 
 @dataclass(frozen=True, slots=True)
 class FakePrivateSchedule:
@@ -35,15 +40,13 @@ class FakePrivateSchedule:
     enabled: bool = True
 
 
-def test_private_schedule_key_prefers_id_and_falls_back_to_job_id() -> None:
+def test_private_schedule_key_requires_stable_id() -> None:
     assert (
         private_schedule_key(2, FakePrivateSchedule(id="daily", feature="push"))
         == "daily"
     )
-    assert (
+    with pytest.raises(ValueError, match="requires a stable id"):
         private_schedule_key(2, FakePrivateSchedule(id="", feature="push"))
-        == "message_action_private_schedule_task_2"
-    )
 
 
 def test_schedule_label_uses_configured_name_before_internal_id() -> None:
@@ -211,6 +214,84 @@ def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:
     assert (
         store.get_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
         is None
+    )
+
+
+def test_store_prunes_invalid_push_preferences_atomically(tmp_path: Path) -> None:
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+    store.unsubscribe_target("group", 2001, "daily", "text_push")
+    store.unsubscribe_target("group", 2001, "removed", "text_push")
+    store.unsubscribe_target("private", 1001, "orphaned", "text_push")
+    store.set_time_preference(
+        "group",
+        2001,
+        "daily",
+        CRON_TIME_PREFERENCE,
+        "22:30",
+    )
+    store.set_time_preference(
+        "group",
+        2001,
+        "removed",
+        CRON_TIME_PREFERENCE,
+        "21:30",
+    )
+    store.set_time_preference(
+        "private",
+        1001,
+        "orphaned",
+        CRON_TIME_PREFERENCE,
+        "20:30",
+    )
+    assert store.mark_daily_hint_sent(
+        "group",
+        2001,
+        "push_subscription_hint",
+        today="2026-07-17",
+    )
+
+    assert store.preference_targets() == {
+        ("group", 2001),
+        ("private", 1001),
+    }
+
+    result = store.prune_invalid_preferences(
+        valid_unsubscription_keys={
+            ("group", 2001): {"daily"},
+        },
+        valid_time_preferences={
+            ("group", 2001): {("daily", CRON_TIME_PREFERENCE)},
+        },
+    )
+
+    assert result.unsubscriptions_deleted == EXPECTED_PRUNED_UNSUBSCRIPTIONS
+    assert result.time_preferences_deleted == EXPECTED_PRUNED_TIME_PREFERENCES
+    assert result.total_deleted == EXPECTED_PRUNED_TOTAL
+    assert store.target_unsubscribed_keys("group", 2001) == {"daily"}
+    assert store.target_unsubscribed_keys("private", 1001) == set()
+    assert (
+        store.get_time_preference(
+            "group",
+            2001,
+            "daily",
+            CRON_TIME_PREFERENCE,
+        )
+        == "22:30"
+    )
+    assert (
+        store.get_time_preference(
+            "group",
+            2001,
+            "removed",
+            CRON_TIME_PREFERENCE,
+        )
+        is None
+    )
+    assert not store.mark_daily_hint_sent(
+        "group",
+        2001,
+        "push_subscription_hint",
+        today="2026-07-17",
     )
 
 
