@@ -125,12 +125,24 @@ def _validate_sqlite_path(value: Path) -> Path:
     return value
 
 
+class PlayerBindingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: Path = Path("data/seer/player_bindings.sqlite")
+
+    @field_validator("path")
+    @classmethod
+    def validate_sqlite_path(cls, value: Path) -> Path:
+        return _validate_sqlite_path(value)
+
+
 class PlayerQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timeout_seconds: float = Field(default=30, gt=0)
     detail_timeout_seconds: float = Field(default=90, gt=0)
     sections: list[str] = Field(default_factory=lambda: list(PLAYER_SECTION_KEYS))
+    binding: PlayerBindingConfig = Field(default_factory=PlayerBindingConfig)
 
     @field_validator("sections", mode="before")
     @classmethod
@@ -441,6 +453,7 @@ __all__ = [
     "TEAM_SECTION_KEYS",
     "LocalRankConfig",
     "MintmarkQueryConfig",
+    "PlayerBindingConfig",
     "PlayerQueryConfig",
     "RankPageRefreshConfig",
     "RankQueryConfig",

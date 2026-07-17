@@ -9,14 +9,20 @@ from ironsbot.services.seer.player_detail_formatting import (
     format_player_detail_messages,
 )
 from ironsbot.services.seer.player_formatting_common import (
-    format_id_name,
-    format_id_name_list,
     format_login_timeline_lines,
     format_online_text,
     format_player_identity,
     format_team_text,
     format_vip,
     format_win_rate,
+)
+from ironsbot.services.seer.player_peak_formatting import (
+    format_compact_peak_section,
+)
+from ironsbot.services.seer.player_query import PlayerDetailErrors
+from ironsbot.services.seer.rank_models import (
+    PeakSeasonRankSummary,
+    RankLookupResult,
 )
 
 PLAYER_ID = 105023264
@@ -191,32 +197,16 @@ def _unity_peak() -> UnityPeak:
     return UnityPeak()
 
 
-def test_format_id_name_helpers_render_missing_ids_and_known_names() -> None:
-    names = {1: "称号A", 2: "称号B"}
-
-    assert format_id_name(0, names) == "无"
-    assert format_id_name(1, names) == "称号A（1）"
-    assert format_id_name(9, names) == "9"
-    assert format_id_name_list((0, 1, 2), names) == "称号A（1）、称号B（2）"
-
-
 def test_format_player_identity_team_vip_and_online_text() -> None:
     user_info = UserInfo(team_id=TEAM_ID, team_is_show=False, vip=1, vip_level=6)
     online_info = OnlineInfo(server_id=1, map_type=2, map_id=3)
 
+    assert format_player_identity(PLAYER_ID, "赛小息") == "米米号：105023264（赛小息）"
     assert (
-        format_player_identity(PLAYER_ID, "赛小息")
-        == "米米号：105023264（赛小息）"
-    )
-    assert (
-        format_team_text(user_info, "测试战队")
-        == "测试战队（战队ID：987654321，隐藏）"
+        format_team_text(user_info, "测试战队") == "测试战队（战队ID：987654321，隐藏）"
     )
     assert format_vip(user_info) == "是（等级：6）"
-    assert (
-        format_online_text(online_info)
-        == "在线（服务器：1，地图类型：2）"
-    )
+    assert format_online_text(online_info) == "在线（服务器：1，地图类型：2）"
     assert format_online_text(None) == "离线"
 
 
@@ -264,6 +254,47 @@ def test_format_login_timeline_keeps_online_info_as_source_of_truth() -> None:
 def test_format_win_rate_handles_empty_and_non_empty_records() -> None:
     assert format_win_rate(0, 0) == "当前赛季未参赛"
     assert format_win_rate(2, 3) == "2/3=66.667%"
+
+
+def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -> None:
+    peak = UnityPeak(
+        current_j_rank=4,
+        current_j_star=0,
+        current_j_win=82,
+        current_j_all=124,
+    )
+    summary = PeakSeasonRankSummary(
+        standard=RankLookupResult(
+            title="竞技赛季榜",
+            score_name="段位分",
+            rank=1,
+            score=300033,
+            queried=True,
+        ),
+        wild=RankLookupResult(
+            title="狂野赛季榜",
+            score_name="段位分",
+            searched_limit=2000,
+            queried=True,
+        ),
+        expert=RankLookupResult(
+            title="专家赛季榜",
+            score_name="专家积分",
+            searched_limit=2000,
+            queried=True,
+        ),
+    )
+
+    message = format_compact_peak_section(
+        _as_any(peak),
+        summary,
+        _as_any(_LocalSummary()),
+    )
+
+    assert "竞技：王者33星" in message
+    assert "竞技：圣皇0星" not in message
+    assert "场次124" not in message
+    assert "狂野：当前赛季前2000名未确认" in message
 
 
 def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
@@ -322,7 +353,11 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
         needs_peak_section=True,
         has_autocard_rank=True,
         show_local_rank=True,
-        extra_errors=["全服排行失败"],
+        extra_errors=PlayerDetailErrors(
+            collection=["全服排行失败"],
+            peak=["巅峰赛季榜失败"],
+            autocard=["群星牌排行失败"],
+        ),
     )
 
     assert "📚【收集与排行】" in messages.collection_message
@@ -337,8 +372,12 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     assert "全服第12" in messages.autocard_message
     assert "样本第1" in messages.autocard_message
     assert "全服排行失败" in messages.collection_message
-    assert "全服排行失败" in messages.peak_message
-    assert "全服排行失败" in messages.autocard_message
+    assert "全服排行失败" not in messages.peak_message
+    assert "全服排行失败" not in messages.autocard_message
+    assert "巅峰赛季榜失败" in messages.peak_message
+    assert "巅峰赛季榜失败" not in messages.collection_message
+    assert "群星牌排行失败" in messages.autocard_message
+    assert "群星牌排行失败" not in messages.collection_message
 
 
 def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
@@ -361,7 +400,7 @@ def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
         needs_peak_section=False,
         has_autocard_rank=False,
         show_local_rank=False,
-        extra_errors=[],
+        extra_errors=PlayerDetailErrors(),
     )
 
     assert "样本第1" not in messages.collection_message

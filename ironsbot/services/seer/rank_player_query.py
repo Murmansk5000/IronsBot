@@ -52,8 +52,26 @@ async def fetch_rank_player_message(
         title=spec.title,
         unit=spec.unit,
     )
-    score = result.score if result.score is not None else target.value
-    if result.score is None and score is not None:
+    if command.rank_key in _PEAK_KEYS and result.rank is None and result.queried:
+        result = await find_rank(
+            game,
+            user_id=command.player_id,
+            title=spec.title.removesuffix("榜"),
+            score_name=spec.unit,
+            key=spec.key,
+            sub_key=spec.sub_key,
+        )
+
+    score = (
+        result.score
+        if command.rank_key in _PEAK_KEYS
+        else result.score if result.score is not None else target.value
+    )
+    if (
+        command.rank_key not in _PEAK_KEYS
+        and result.score is None
+        and score is not None
+    ):
         result.score = score
 
     metric_key = LOCAL_RANKS[command.rank_key].metric_key
@@ -66,6 +84,7 @@ async def fetch_rank_player_message(
         score=score,
         display=display,
         season_sub_key=spec.sub_key if command.rank_key in _PEAK_KEYS else None,
+        clear_when_missing=command.rank_key in _PEAK_KEYS,
     )
     metric_text = join_metric_parts(
         display or "暂无数据",
@@ -156,20 +175,33 @@ async def _update_sample_metric(  # noqa: PLR0913
     score: int | None,
     display: str,
     season_sub_key: int | None,
+    clear_when_missing: bool = False,
 ) -> LocalRankSummary:
-    if not enabled or score is None:
+    if not enabled:
+        return LocalRankSummary()
+    clear_metric_keys = (
+        frozenset((metric_key,))
+        if clear_when_missing and score is None
+        else frozenset()
+    )
+    if score is None and not clear_metric_keys:
         return LocalRankSummary()
     return await upsert_local_rank_metrics(
         player_id=player_id,
         nick=nick,
-        current_metrics={
-            metric_key: {
-                "value": score,
-                "season_sub_key": season_sub_key,
-                "display": display or None,
+        current_metrics=(
+            {
+                metric_key: {
+                    "value": score,
+                    "season_sub_key": season_sub_key,
+                    "display": display or None,
+                }
             }
-        },
+            if score is not None
+            else {}
+        ),
         peak_sub_key=season_sub_key,
+        clear_metric_keys=clear_metric_keys,
     )
 
 
