@@ -14,6 +14,11 @@ TIE_PAGE_LIMIT = 5
 MISSING_BOUNDARY_INDEX = 5
 LAST_INDEX = 2
 BOUNDARY_SCORE = 80
+LARGE_LIMIT = 50_000
+LIMITED_PROBE_COUNT = 16
+LARGE_SEGMENT_START = 856
+LARGE_SEGMENT_END = 1156
+LARGE_SEGMENT_SCORE = 200050
 
 
 def test_score_search_limits_respect_config_bounds() -> None:
@@ -75,3 +80,33 @@ async def test_score_range_search_returns_missing_score_insertion_index() -> Non
     assert result.match_start is None
     assert result.match_end is None
     assert result.insertion_index == 1
+
+
+@pytest.mark.asyncio
+async def test_score_range_search_gives_each_binary_boundary_its_own_budget() -> None:
+    probes: list[int] = []
+
+    async def score_at(index: int) -> int:
+        probes.append(index)
+        if index < LARGE_SEGMENT_START:
+            return LARGE_SEGMENT_SCORE + 1
+        if index < LARGE_SEGMENT_END:
+            return LARGE_SEGMENT_SCORE
+        return LARGE_SEGMENT_SCORE - 1
+
+    result = await locate_descending_score_range(
+        0,
+        LARGE_LIMIT,
+        LARGE_SEGMENT_SCORE,
+        score_at,
+        limits=DescendingScoreSearchLimits(
+            probe_count=LIMITED_PROBE_COUNT,
+            tie_fallback_size=300,
+        ),
+    )
+
+    assert result.match_start == LARGE_SEGMENT_START
+    assert result.match_end == LARGE_SEGMENT_END
+    assert not result.truncated
+    assert not result.budget_exhausted
+    assert len(probes) <= LIMITED_PROBE_COUNT * 3

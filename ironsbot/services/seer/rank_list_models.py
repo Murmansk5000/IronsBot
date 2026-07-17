@@ -80,6 +80,12 @@ class RankScoreCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class RankPlayerCommand:
+    rank_key: str
+    player_id: int
+
+
+@dataclass(frozen=True, slots=True)
 class RankCacheBatchCommand:
     rank_key: str
     start_rank: int
@@ -205,5 +211,6 @@ __all__ = [
     "RankListCommand",
     "RankPageCacheRefreshCommand",
     "RankPageCacheStatusCommand",
+    "RankPlayerCommand",
     "RankScoreCommand",
 ]

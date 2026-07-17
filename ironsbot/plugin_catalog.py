@@ -192,6 +192,7 @@ PLUGIN_SPECS: Final[tuple[PluginSpec, ...]] = (
         features=("image",),
         help_group="seer",
         help_order=30,
+        help_visibility="hidden",
     ),
     PluginSpec(
         "ironsbot.plugins.meeting",

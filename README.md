@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 明细查询与同分榜单
+
+可选明细按各自启用项发起，采用主查询与该明细期限的较小值，失败可保留其他成功分项。客户端获取、回调与整条后台工作不因此共用一个总期限。
+大同分段仅展示有界的首尾样本，仍保留完整排名区间和总人数；展示样本数不等于实际同分人数。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：

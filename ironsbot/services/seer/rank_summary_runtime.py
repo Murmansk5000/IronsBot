@@ -24,18 +24,20 @@ if TYPE_CHECKING:
         PeakSeasonRankSummary,
         PlayerRankSummary,
         RankLookupResult,
+        RankSummaryProgress,
     )
 
 BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 
 
-async def fetch_peak_season_rank_summary(
+async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     game: Any,
     user_id: int,
     *,
     standard_score: int | None = None,
     wild_score: int | None = None,
     expert_score: int | None = None,
+    progress: RankSummaryProgress | None = None,
 ) -> PeakSeasonRankSummary:
     return await fetch_peak_season_rank_summary_with_deps(
         game,
@@ -45,6 +47,7 @@ async def fetch_peak_season_rank_summary(
         expert_score=expert_score,
         current_peak_sub_key=get_current_peak_sub_key(),
         find_rank=find_rank,
+        progress=progress,
     )
 
 
@@ -67,6 +70,7 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
     achieve_score: int | None = None,
     pet_kind_count: int = 0,
     skin_score: int | None = None,
+    progress: RankSummaryProgress | None = None,
 ) -> PlayerRankSummary:
     limit = min(
         max(0, get_app_config().seer.rank.limit),
@@ -82,4 +86,5 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         book_breakdown_limit=limit,
         find_rank=find_rank,
         find_pet_kind_rank=find_pet_kind_rank,
+        progress=progress,
     )

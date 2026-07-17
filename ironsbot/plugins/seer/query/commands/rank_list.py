@@ -15,6 +15,7 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    parse_rank_player_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
@@ -33,6 +34,7 @@ from .rank_list_context import (
     RANK_LIST_COMMAND_KEY,
     RANK_PAGE_CACHE_REFRESH_COMMAND_KEY,
     RANK_PAGE_CACHE_STATUS_COMMAND_KEY,
+    RANK_PLAYER_COMMAND_KEY,
     RANK_SCORE_COMMAND_KEY,
     event_group_id,
 )
@@ -56,6 +58,15 @@ async def _is_rank_score_command(event: Event, state: T_State) -> bool:
         return False
 
     state[RANK_SCORE_COMMAND_KEY] = command
+    return True
+
+
+async def _is_rank_player_command(event: Event, state: T_State) -> bool:
+    command = parse_rank_player_command(event.get_plaintext())
+    if command is None:
+        return False
+
+    state[RANK_PLAYER_COMMAND_KEY] = command
     return True
 
 
@@ -102,6 +113,10 @@ rank_help_matcher = matcher_group.on_fullmatch(
 )
 rank_list_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_rank") & Rule(_is_rank_list_command) & no_reply(),
+    priority=seer_feature_priority("seer_rank"),
+)
+rank_player_matcher = matcher_group.on_message(
+    rule=seer_feature_rule("seer_rank") & Rule(_is_rank_player_command) & no_reply(),
     priority=seer_feature_priority("seer_rank"),
 )
 rank_score_matcher = matcher_group.on_message(
@@ -185,6 +200,15 @@ async def handle_rank_score(
     state: T_State,
 ) -> None:
     await rank_list_query_handlers.handle_score(matcher, event, state)
+
+
+@rank_player_matcher.handle()
+async def handle_rank_player(
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    await rank_list_query_handlers.handle_player(matcher, event, state)
 
 
 @rank_cache_batch_matcher.handle()

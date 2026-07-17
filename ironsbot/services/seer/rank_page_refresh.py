@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -31,16 +32,17 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
 RANK_PAGE_REFRESH_BACKOFF_SECONDS = 300.0
-
 _rank_page_refresh_lock = asyncio.Lock()
+
 
 @dataclass(slots=True)
 class _RankPageRefreshRuntimeState:
     backoff_until: float = 0.0
 
+
 _rank_page_refresh_state = _RankPageRefreshRuntimeState()
+
 
 def _is_rank_page_refresh_connection_error(error: Exception) -> bool:
     return isinstance(
@@ -57,10 +59,12 @@ def _is_rank_page_refresh_connection_error(error: Exception) -> bool:
         ),
     )
 
+
 def _set_rank_page_refresh_backoff() -> None:
     _rank_page_refresh_state.backoff_until = (
         time.monotonic() + RANK_PAGE_REFRESH_BACKOFF_SECONDS
     )
+
 
 def _rank_page_refresh_backoff_remaining() -> float:
     return max(_rank_page_refresh_state.backoff_until - time.monotonic(), 0.0)
@@ -115,14 +119,23 @@ async def _refresh_rank_page_cache_unlocked(
         if index > 0:
             await _sleep_between_rank_page_requests(refresh_config)
         try:
-            await fetch_daily_rank_page(
-                game,
-                key=target.spec.key,
-                sub_key=target.spec.sub_key,
-                start=target.raw_start,
-                count=target.raw_end - target.raw_start + 1,
-                use_cache=False,
-            )
+            with headless_operation(
+                "后台刷榜缓存",
+                (
+                    f"{target.rank_key} {target.start_rank}-{target.end_rank}名"
+                    f"（{target.reason}）"
+                ),
+                source="后台刷榜缓存",
+                background=True,
+            ):
+                await fetch_daily_rank_page(
+                    game,
+                    key=target.spec.key,
+                    sub_key=target.spec.sub_key,
+                    start=target.raw_start,
+                    count=target.raw_end - target.raw_start + 1,
+                    use_cache=False,
+                )
         except Exception as e:  # noqa: BLE001
             result.failures.append(
                 RankPageRefreshFailure(target=target, reason=str(e) or type(e).__name__)
