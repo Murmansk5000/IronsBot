@@ -235,12 +235,14 @@ mode = "link"
 
 [seer.team_resource]
 times = ["23:00"]
+default_threshold = 1000
+default_at_users = ["owner"]
 
-[[seer.team_resource.subscriptions]]
-group = "example"
-team_ids = [1234567]
-threshold = 1000
-at_users = ["owner"]
+# 群主/管理员在启用 feature 的群里发送：
+# 订阅战队123456
+# 订阅战队123456 1000 @提醒人
+# 战队订阅
+# 取消订阅战队123456
 ```
 
 配置字段、默认值、中英文说明和示例集中维护在

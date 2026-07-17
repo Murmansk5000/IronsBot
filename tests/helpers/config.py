@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.feature import FeatureConfig
@@ -16,10 +15,8 @@ from ironsbot.config.models.seer import (
     MintmarkQueryConfig,
     RankQueryConfig,
     SeasonCountdownConfig,
+    TeamResourceConfig,
 )
-
-if TYPE_CHECKING:
-    from ironsbot.config.models.seer import TeamResourceConfig
 
 
 @dataclass(frozen=True)
@@ -55,18 +52,11 @@ class StubMessageConfig:
 
 
 @dataclass(frozen=True)
-class StubTeamResourceConfig:
-    subscriptions: list[object] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
 class StubSeerConfig:
     mintmark: MintmarkQueryConfig = field(default_factory=MintmarkQueryConfig)
     rank: RankQueryConfig = field(default_factory=RankQueryConfig)
     season: SeasonCountdownConfig = field(default_factory=SeasonCountdownConfig)
-    team_resource: TeamResourceConfig | StubTeamResourceConfig = field(
-        default_factory=StubTeamResourceConfig
-    )
+    team_resource: TeamResourceConfig = field(default_factory=TeamResourceConfig)
 
 
 @dataclass(frozen=True)
@@ -101,7 +91,6 @@ def stub_app_config(  # noqa: PLR0913
     season_config: SeasonCountdownConfig | None = None,
     team_audit_welcome_config: TeamAuditWelcomeConfig | None = None,
     team_resource_config: TeamResourceConfig | None = None,
-    team_subscriptions: list[object] | None = None,
     group_actions: list[StubMessageAction] | None = None,
 ) -> StubAppConfig:
     return StubAppConfig(
@@ -127,10 +116,7 @@ def stub_app_config(  # noqa: PLR0913
             mintmark=mintmark_config or MintmarkQueryConfig(),
             rank=rank_config or RankQueryConfig(),
             season=season_config or SeasonCountdownConfig(),
-            team_resource=(
-                team_resource_config
-                or StubTeamResourceConfig(subscriptions=team_subscriptions or [])
-            )
+            team_resource=team_resource_config or TeamResourceConfig(),
         ),
     )
 

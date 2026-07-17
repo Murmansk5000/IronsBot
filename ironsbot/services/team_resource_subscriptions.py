@@ -1,0 +1,188 @@
+# SPDX-License-Identifier: MIT
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+from ironsbot.shared.sqlite import open_sqlite_schema
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS team_resource_subscriptions (
+        group_id INTEGER NOT NULL,
+        team_id INTEGER NOT NULL,
+        team_name TEXT NOT NULL DEFAULT '',
+        threshold INTEGER NOT NULL,
+        at_user_ids TEXT NOT NULL DEFAULT '',
+        created_by INTEGER NOT NULL,
+        updated_by INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (group_id, team_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_team_resource_subscriptions_group
+    ON team_resource_subscriptions (group_id, team_id)
+    """,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TeamResourceSubscription:
+    group_id: int
+    team_id: int
+    team_name: str
+    threshold: int
+    at_user_ids: tuple[int, ...]
+    created_by: int
+    updated_by: int
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class TeamResourceSubscriptionUpdate:
+    group_id: int
+    team_id: int
+    team_name: str
+    threshold: int
+    at_user_ids: tuple[int, ...]
+    operator_id: int
+
+
+class TeamResourceSubscriptionStore:
+    def __init__(self, path: str | Path) -> None:
+        self.path = path
+
+    def list_all(self) -> list[TeamResourceSubscription]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT group_id, team_id, team_name, threshold, at_user_ids,
+                       created_by, updated_by, created_at, updated_at
+                FROM team_resource_subscriptions
+                ORDER BY group_id, team_id
+                """
+            ).fetchall()
+        return [_row_to_subscription(row) for row in rows]
+
+    def list_group(self, group_id: int) -> list[TeamResourceSubscription]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT group_id, team_id, team_name, threshold, at_user_ids,
+                       created_by, updated_by, created_at, updated_at
+                FROM team_resource_subscriptions
+                WHERE group_id = ?
+                ORDER BY team_id
+                """,
+                (group_id,),
+            ).fetchall()
+        return [_row_to_subscription(row) for row in rows]
+
+    def upsert(self, update: TeamResourceSubscriptionUpdate) -> None:
+        now = _now_text()
+        at_text = _encode_user_ids(update.at_user_ids)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO team_resource_subscriptions (
+                    group_id, team_id, team_name, threshold, at_user_ids,
+                    created_by, updated_by, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(group_id, team_id) DO UPDATE SET
+                    team_name = excluded.team_name,
+                    threshold = excluded.threshold,
+                    at_user_ids = excluded.at_user_ids,
+                    updated_by = excluded.updated_by,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    update.group_id,
+                    update.team_id,
+                    update.team_name.strip(),
+                    update.threshold,
+                    at_text,
+                    update.operator_id,
+                    update.operator_id,
+                    now,
+                    now,
+                ),
+            )
+
+    def update_team_name(
+        self,
+        *,
+        group_id: int,
+        team_id: int,
+        team_name: str,
+    ) -> None:
+        if not team_name.strip():
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE team_resource_subscriptions
+                SET team_name = ?, updated_at = ?
+                WHERE group_id = ? AND team_id = ?
+                """,
+                (team_name.strip(), _now_text(), group_id, team_id),
+            )
+
+    def delete(self, *, group_id: int, team_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM team_resource_subscriptions
+                WHERE group_id = ? AND team_id = ?
+                """,
+                (group_id, team_id),
+            )
+            return cursor.rowcount > 0
+
+    def _connect(self):
+        return open_sqlite_schema(self.path, SCHEMA)
+
+
+def _row_to_subscription(row: tuple[object, ...]) -> TeamResourceSubscription:
+    return TeamResourceSubscription(
+        group_id=int(row[0]),
+        team_id=int(row[1]),
+        team_name=str(row[2] or ""),
+        threshold=int(row[3]),
+        at_user_ids=_decode_user_ids(str(row[4] or "")),
+        created_by=int(row[5]),
+        updated_by=int(row[6]),
+        created_at=str(row[7]),
+        updated_at=str(row[8]),
+    )
+
+
+def _encode_user_ids(user_ids: tuple[int, ...]) -> str:
+    return ",".join(str(user_id) for user_id in dict.fromkeys(user_ids))
+
+
+def _decode_user_ids(value: str) -> tuple[int, ...]:
+    user_ids: list[int] = []
+    for item in value.split(","):
+        raw = item.strip()
+        if raw.isdigit():
+            user_ids.append(int(raw))
+    return tuple(dict.fromkeys(user_ids))
+
+
+def _now_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+__all__ = [
+    "TeamResourceSubscription",
+    "TeamResourceSubscriptionStore",
+    "TeamResourceSubscriptionUpdate",
+]

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ironsbot.shared.config.parsing import int_list, string_list
+from ironsbot.shared.config.parsing import string_list
 from ironsbot.shared.config.time import normalized_daily_times
 
 if TYPE_CHECKING:
@@ -373,44 +373,20 @@ class LocalRankConfig(BaseModel):
         return _validate_sqlite_path(value)
 
 
-class TeamResourceSubscriptionConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    group: str | int = ""
-    team_ids: list[int] = Field(default_factory=list)
-    threshold: int = Field(default=1000, ge=0)
-    at_users: list[str] = Field(default_factory=list)
-
-    @field_validator("group", mode="before")
-    @classmethod
-    def normalize_group(cls, value: object) -> str | int:
-        if isinstance(value, int):
-            return value
-        return "" if value is None else str(value).strip()
-
-    @field_validator("team_ids", mode="before")
-    @classmethod
-    def normalize_team_ids(cls, value: object) -> object:
-        return int_list(value)
-
-    @field_validator("at_users", mode="before")
-    @classmethod
-    def normalize_at_users(cls, value: object) -> object:
-        return string_list(value)
-
-
 class TeamResourceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
     times: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=lambda: ["战队"])
+    subscription_path: Path = Path("data/seer/team_resource_subscriptions.sqlite")
+    default_threshold: int = Field(default=1000, ge=0)
+    default_at_users: list[str] = Field(default_factory=list)
     query_timeout_seconds: int = Field(default=20, gt=0)
     resource_line: str = (
         "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
     )
     resource_message: str = "出来买资源，别逼我求你😡"
-    subscriptions: list[TeamResourceSubscriptionConfig] = Field(default_factory=list)
 
     @field_validator("times", mode="before")
     @classmethod
@@ -420,6 +396,16 @@ class TeamResourceConfig(BaseModel):
     @field_validator("commands", mode="before")
     @classmethod
     def normalize_commands(cls, value: object) -> object:
+        return string_list(value)
+
+    @field_validator("subscription_path")
+    @classmethod
+    def validate_subscription_path(cls, value: Path) -> Path:
+        return _validate_sqlite_path(value)
+
+    @field_validator("default_at_users", mode="before")
+    @classmethod
+    def normalize_default_at_users(cls, value: object) -> object:
         return string_list(value)
 
 
@@ -480,5 +466,4 @@ __all__ = [
     "SeerConfig",
     "TeamQueryConfig",
     "TeamResourceConfig",
-    "TeamResourceSubscriptionConfig",
 ]

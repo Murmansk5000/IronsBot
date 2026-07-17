@@ -723,6 +723,16 @@ enabled = true
 times = []
 # Default: ["战队"]; EN: Subscribed team query commands. ZH: 本群订阅战队查询口令。
 commands = ["战队"]
+# Default: "data/seer/team_resource_subscriptions.sqlite"
+# EN: Runtime subscription database. Group owners/admins manage team IDs in QQ.
+# ZH: 运行时订阅数据库；群主/管理员在 QQ 群里添加或取消订阅，不再写 TOML。
+subscription_path = "data/seer/team_resource_subscriptions.sqlite"
+# Default: 1000; EN: Default low-resource threshold for new QQ-managed subscriptions.
+# ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。
+default_threshold = 1000
+# Default: []; EN: Default users to mention when the subscription command has no @.
+# ZH: 订阅命令没有 @ 用户时默认提醒的人；可填 user_aliases 或 QQ 号。
+default_at_users = []
 # Default: 20; EN: Team subscription query timeout seconds. ZH: 战队订阅查询超时秒数。
 query_timeout_seconds = 20
 # Default: built-in line; EN: Resource notice status line. ZH: 战队资源提醒状态行。
@@ -730,13 +740,13 @@ resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}�
 # Default: built-in message; EN: Resource notice extra message. ZH: 战队资源提醒附加文案。
 resource_message = "出来买资源，别逼我求你😡"
 
-# EN: Add one subscription per group/threshold/mention target set.
-# ZH: 每个群、阈值、提醒对象组合写一条订阅；同一条订阅可包含多个战队号。
-# [[seer.team_resource.subscriptions]]
-# group = "example"
-# team_ids = [1234567, 2345678]
-# threshold = 1000
-# at_users = ["owner"]
+# EN: QQ commands in enabled groups:
+#   战队                 -> query all subscribed teams in this group.
+#   战队订阅             -> list current group subscriptions.
+#   订阅战队123456       -> subscribe a team with default threshold.
+#   订阅战队123456 1000 @user -> subscribe with threshold and mention target.
+#   取消订阅战队123456   -> remove a subscription.
+# ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
 
 [seer.render]
 # Default: "render_cache"; EN: Render cache directory. ZH: 渲染缓存目录。
