@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from datetime import timedelta, timezone
 from typing import TYPE_CHECKING
 
 from httpx import HTTPStatusError, RequestError
 from nonebot_plugin_saa import Image, MessageFactory, MessageSegmentFactory, Text
+from seerapi_models import ApiMetadataORM
+from sqlmodel import select
 
 from ironsbot.integrations.http_client import get_http_origin_client
 from ironsbot.integrations.seer_data.image import PreviewImageGetter
 from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 
-from ..upstream_commands import other as upstream_other
 from .query_replies import finish_query_reply
 
 if TYPE_CHECKING:
@@ -43,10 +45,18 @@ async def handle_data_version(
     matcher: Matcher,
     session: SeerAPISession,
 ) -> None:
-    await upstream_other.handle_data_version(
-        matcher=matcher,
-        session=session,
-    )
+    metadata = session.exec(select(ApiMetadataORM)).first()
+    if metadata is None:
+        await matcher.finish("❌暂无数据版本信息(这是一个bug，请反馈给开发者)")
+
+    generated_at = metadata.generate_time
+    if (
+        generated_at.tzinfo is None
+        or generated_at.tzinfo.utcoffset(generated_at) is None
+    ):
+        generated_at = generated_at.replace(tzinfo=timezone.utc)
+    local_time = generated_at.astimezone(timezone(timedelta(hours=8)))
+    await matcher.finish(f"数据更新时间：{local_time:%Y-%m-%d %H:%M:%S}")
 
 
 async def handle_season_countdown(

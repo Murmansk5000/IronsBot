@@ -1,17 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ruff: noqa: TC002
-"""Upstream equipment query matchers."""
+"""Equipment query matchers."""
 
 from __future__ import annotations
 
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
+from seerapi_models import EquipORM, SuitORM, TitlePartORM
 
+from ironsbot.integrations.seer_data.getters import (
+    GetEquipData,
+    GetSuitData,
+    GetTitleData,
+)
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from ..upstream_commands import cloth as upstream_cloth
+from . import equipment_handlers
 from .query_rules import not_rank_query
 
 suit_matcher = matcher_group.on_message(
@@ -32,11 +38,11 @@ async def _handle_suit(
     state: T_State,
     event: Event,
     suits: tuple[
-        upstream_cloth.SuitORM,
+        SuitORM,
         ...,
-    ] = upstream_cloth.GetSuitData(),
+    ] = GetSuitData(),
 ) -> None:
-    await upstream_cloth.handle_suit(
+    await equipment_handlers.handle_suit(
         matcher=matcher,
         state=state,
         event=event,
@@ -61,11 +67,11 @@ async def _handle_equip(
     state: T_State,
     event: Event,
     equips: tuple[
-        upstream_cloth.EquipORM,
+        EquipORM,
         ...,
-    ] = upstream_cloth.GetEquipData(),
+    ] = GetEquipData(),
 ) -> None:
-    await upstream_cloth.handle_equip(
+    await equipment_handlers.handle_equip(
         matcher=matcher,
         state=state,
         event=event,
@@ -90,11 +96,11 @@ async def _handle_title(
     state: T_State,
     event: Event,
     titles: tuple[
-        upstream_cloth.TitlePartORM,
+        TitlePartORM,
         ...,
-    ] = upstream_cloth.GetTitleData(),
+    ] = GetTitleData(),
 ) -> None:
-    await upstream_cloth.handle_title(
+    await equipment_handlers.handle_title(
         matcher=matcher,
         state=state,
         event=event,

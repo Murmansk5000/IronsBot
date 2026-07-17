@@ -45,10 +45,6 @@ class UnityPartTwoInfo:
     show_pet3: int = 0
     show_pet4: int = 0
 
-    @property
-    def show_pets(self) -> tuple[int, int, int, int]:
-        return (self.show_pet1, self.show_pet2, self.show_pet3, self.show_pet4)
-
 
 @dataclass(slots=True)
 class UnityPeakInfo:
@@ -137,10 +133,6 @@ async def _fetch_unity_part(game: Any, part: int, player_id: int) -> bytes:
 
 async def fetch_unity_part_one(game: Any, player_id: int) -> UnityPartOneInfo:
     return parse_unity_part_one(await _fetch_unity_part(game, 1, player_id))
-
-
-async def fetch_unity_part_two(game: Any, player_id: int) -> UnityPartTwoInfo:
-    return parse_unity_part_two(await _fetch_unity_part(game, 5, player_id))
 
 
 async def fetch_unity_peak(game: Any, player_id: int) -> UnityPeakInfo:

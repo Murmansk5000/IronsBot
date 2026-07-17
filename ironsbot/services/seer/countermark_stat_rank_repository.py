@@ -10,6 +10,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
+from .value_coercion import coerce_positive_int
+
 if TYPE_CHECKING:
     from ironsbot.integrations.seer_data.sessions import SeerAPISession
 
@@ -17,6 +19,7 @@ MINTMARK_QUALITY_QUERY = text("SELECT mintmark_id, quality FROM mintmark_quality
 MISSING_MINTMARK_QUALITY_MESSAGE = (
     "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。"
 )
+
 
 def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
     try:
@@ -28,11 +31,11 @@ def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
     for row in rows:
         mapping = row._mapping if hasattr(row, "_mapping") else None
         if mapping is not None:
-            mintmark_id = _coerce_quality(mapping["mintmark_id"])
-            quality = _coerce_quality(mapping["quality"])
+            mintmark_id = coerce_positive_int(mapping["mintmark_id"])
+            quality = coerce_positive_int(mapping["quality"])
         else:
-            mintmark_id = _coerce_quality(row[0])
-            quality = _coerce_quality(row[1])
+            mintmark_id = coerce_positive_int(row[0])
+            quality = coerce_positive_int(row[1])
         if mintmark_id is not None and quality is not None:
             quality_map[mintmark_id] = quality
     return quality_map
@@ -58,11 +61,3 @@ def load_mintmarks(session: SeerAPISession) -> list[MintmarkORM]:
         ),
     )
     return list(session.exec(statement).all())
-
-def _coerce_quality(value: object) -> int | None:
-    try:
-        quality = int(cast("Any", value))
-    except (TypeError, ValueError):
-        return None
-
-    return quality if quality > 0 else None
