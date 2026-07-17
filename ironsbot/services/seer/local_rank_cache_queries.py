@@ -106,19 +106,6 @@ def get_local_rank_entries(
         return entries[start_index : start_index + requested_limit], sample_count
 
 
-def get_cached_player_ids() -> list[int]:
-    with connect_local_rank_cache() as conn:
-        rows = conn.execute(
-            """
-            SELECT user_id
-            FROM players
-            WHERE sample_enabled = 1
-            ORDER BY user_id
-            """
-        ).fetchall()
-    return [int(row["user_id"]) for row in rows]
-
-
 def get_refresh_candidate_player_ids(
     *,
     limit: int,
@@ -205,7 +192,6 @@ def can_cache_player_id(player_id: int) -> bool:
 __all__ = [
     "can_cache_player_id",
     "count_metric_rows",
-    "get_cached_player_ids",
     "get_local_rank_cache_stats",
     "get_local_rank_entries",
     "get_refresh_candidate_player_ids",

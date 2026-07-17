@@ -92,6 +92,7 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: PLR0913
     rank_offset: int,
     result: RankScoreSearchResult,
     candidate_starts: list[int],
+    sample_limit: int | None,
     deps: RankScoreServiceDependencies,
 ) -> RankScoreSearchResult | None:
     return await deps.fetch_cached_candidates_impl(
@@ -104,6 +105,7 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: PLR0913
         rank_offset=rank_offset,
         result=result,
         candidate_starts=candidate_starts,
+        sample_limit=sample_limit,
         rank_page_size=deps.rank_page_size,
         rank_page_start=deps.rank_page_start,
         score_search_tie_page_limit=deps.score_search_tie_page_limit,
@@ -122,6 +124,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
     search_limit: int | None = None,
     start_index: int = 0,
     rank_offset: int = 0,
+    sample_limit: int | None = None,
     deps: RankScoreServiceDependencies,
 ) -> RankScoreSearchResult:
     segment_deps = RankScoreSegmentDependencies(
@@ -158,6 +161,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
         search_limit=search_limit,
         start_index=start_index,
         rank_offset=rank_offset,
+        sample_limit=sample_limit,
         deps=segment_deps,
     )
 

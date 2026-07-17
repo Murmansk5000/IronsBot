@@ -162,6 +162,7 @@ async def upsert_local_rank_metrics(
     nick: str,
     current_metrics: dict[str, MetricValue],
     peak_sub_key: int | None,
+    clear_metric_keys: frozenset[str] = frozenset(),
 ) -> LocalRankSummary:
     async with _CACHE_LOCK:
         with connect_local_rank_cache() as conn:
@@ -188,6 +189,11 @@ async def upsert_local_rank_metrics(
                     include_current_record=True,
                 )
 
+            if clear_metric_keys:
+                conn.executemany(
+                    "DELETE FROM metrics WHERE user_id = ? AND metric_key = ?",
+                    ((player_id, key) for key in clear_metric_keys),
+                )
             write_player_metrics(
                 conn,
                 player_id=player_id,
@@ -215,6 +221,7 @@ async def update_local_rank_cache(  # noqa: PLR0913
     peak_standard_score: int | None,
     peak_wild_score: int | None,
     peak_expert_score: int | None,
+    clear_metric_keys: frozenset[str] = frozenset(),
 ) -> LocalRankSummary:
     current_metrics = collect_metrics(
         more_info=more_info,
@@ -227,10 +234,13 @@ async def update_local_rank_cache(  # noqa: PLR0913
         peak_wild_score=peak_wild_score,
         peak_expert_score=peak_expert_score,
     )
+    for metric_key in clear_metric_keys:
+        current_metrics.pop(metric_key, None)
 
     return await upsert_local_rank_metrics(
         player_id=player_id,
         nick=nick,
         current_metrics=current_metrics,
         peak_sub_key=peak_sub_key,
+        clear_metric_keys=clear_metric_keys,
     )

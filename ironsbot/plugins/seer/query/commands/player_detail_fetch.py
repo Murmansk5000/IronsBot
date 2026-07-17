@@ -53,17 +53,14 @@ def create_player_detail_task(  # noqa: PLR0913
     show_local_rank: bool,
 ) -> asyncio.Task[PlayerDetailMessages]:
     task = asyncio.create_task(
-        asyncio.wait_for(
-            _build_player_detail_messages(
-                player_id=player_id,
-                user_info=user_info,
-                more_info=more_info,
-                has_collection=has_collection,
-                needs_peak_section=needs_peak_section,
-                has_autocard_rank=has_autocard_rank,
-                show_local_rank=show_local_rank,
-            ),
-            timeout=get_player_query_config().detail_timeout_seconds,
+        _build_player_detail_messages(
+            player_id=player_id,
+            user_info=user_info,
+            more_info=more_info,
+            has_collection=has_collection,
+            needs_peak_section=needs_peak_section,
+            has_autocard_rank=has_autocard_rank,
+            show_local_rank=show_local_rank,
         )
     )
     task.add_done_callback(_log_unrequested_player_detail_task_error)
@@ -98,6 +95,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
 ) -> PlayerDetailMessages:
     game = get_game_client()
     extra_errors: list[str] = []
+    extra_timeout_seconds = _player_extra_timeout_seconds()
     fetch_plan = plan_player_detail_fetches(
         has_collection=has_collection,
         needs_peak_section=needs_peak_section,
@@ -113,6 +111,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             UnityPartOneInfo(),
             extra_errors,
             on_error=_log_player_extra_error,
+            timeout_seconds=extra_timeout_seconds,
         ),
         optional_player_extra(
             "巅峰数据",
@@ -121,45 +120,51 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             UnityPeakInfo(),
             extra_errors,
             on_error=_log_player_extra_error,
+            timeout_seconds=extra_timeout_seconds,
         ),
-    )
-    rank_summary = await optional_player_extra(
-        "全服排行",
-        fetch_plan.needs_rank_summary,
-        lambda: fetch_player_rank_summary(
-            game,
-            player_id,
-            achieve_score=getattr(more_info, "total_achieve", None),
-            pet_kind_count=unity_part_one.pet_kind_num,
-            skin_score=unity_part_one.skin_num,
-        ),
-        PlayerRankSummary.empty(),
-        extra_errors,
-        on_error=_log_player_extra_error,
     )
     peak_sub_key = get_current_peak_sub_key()
     peak_scores = calculate_player_peak_scores(unity_peak)
-    peak_rank_summary = await optional_player_extra(
-        "巅峰赛季榜",
-        needs_peak_section,
-        lambda: fetch_peak_season_rank_summary(
-            game,
-            player_id,
-            standard_score=peak_scores.standard,
-            wild_score=peak_scores.wild,
-            expert_score=peak_scores.expert,
+    rank_summary, peak_rank_summary, autocard_rank_summary = await asyncio.gather(
+        optional_player_extra(
+            "全服排行",
+            fetch_plan.needs_rank_summary,
+            lambda: fetch_player_rank_summary(
+                game,
+                player_id,
+                achieve_score=getattr(more_info, "total_achieve", None),
+                pet_kind_count=unity_part_one.pet_kind_num,
+                skin_score=unity_part_one.skin_num,
+            ),
+            PlayerRankSummary.empty(),
+            extra_errors,
+            on_error=_log_player_extra_error,
+            timeout_seconds=extra_timeout_seconds,
         ),
-        PeakSeasonRankSummary.empty(),
-        extra_errors,
-        on_error=_log_player_extra_error,
-    )
-    autocard_rank_summary = await optional_player_extra(
-        "群星牌排行",
-        fetch_plan.needs_autocard_rank,
-        lambda: fetch_autocard_rank_summary(game, player_id),
-        RankLookupResult(title="群星之巅榜", score_name="分"),
-        extra_errors,
-        on_error=_log_player_extra_error,
+        optional_player_extra(
+            "巅峰赛季榜",
+            needs_peak_section,
+            lambda: fetch_peak_season_rank_summary(
+                game,
+                player_id,
+                standard_score=peak_scores.standard,
+                wild_score=peak_scores.wild,
+                expert_score=peak_scores.expert,
+            ),
+            PeakSeasonRankSummary.empty(),
+            extra_errors,
+            on_error=_log_player_extra_error,
+            timeout_seconds=extra_timeout_seconds,
+        ),
+        optional_player_extra(
+            "群星牌排行",
+            fetch_plan.needs_autocard_rank,
+            lambda: fetch_autocard_rank_summary(game, player_id),
+            RankLookupResult(title="群星之巅榜", score_name="分"),
+            extra_errors,
+            on_error=_log_player_extra_error,
+            timeout_seconds=extra_timeout_seconds,
+        ),
     )
     local_rank_summary = await optional_player_extra(
         "机器人查询排行",
@@ -180,6 +185,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_player_extra_error,
+        timeout_seconds=extra_timeout_seconds,
     )
     return format_player_detail_messages(
         player_id=player_id,
@@ -197,4 +203,12 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         has_autocard_rank=has_autocard_rank,
         show_local_rank=show_local_rank,
         extra_errors=extra_errors,
+    )
+
+
+def _player_extra_timeout_seconds() -> float:
+    player_config = get_player_query_config()
+    return min(
+        float(player_config.timeout_seconds),
+        float(player_config.detail_timeout_seconds),
     )

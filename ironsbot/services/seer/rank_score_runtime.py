@@ -85,6 +85,7 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
     search_limit: int | None = None,
     start_index: int = 0,
     rank_offset: int = 0,
+    sample_limit: int | None = None,
 ) -> RankScoreSearchResult:
     return await fetch_rank_score_segment_with_deps(
         game,
@@ -96,5 +97,6 @@ async def fetch_rank_score_segment(  # noqa: PLR0913
         search_limit=search_limit,
         start_index=start_index,
         rank_offset=rank_offset,
+        sample_limit=sample_limit,
         deps=rank_score_service_dependencies(),
     )
