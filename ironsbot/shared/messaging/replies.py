@@ -12,7 +12,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 
-from .outbound_rate_limit import check_group_outbound_rate_limit
 from .text import build_message
 
 ReplyMessage = str | Message | MessageSegment
@@ -61,13 +60,7 @@ async def send_matcher_message(
     event: MessageEvent | None = None,
 ) -> None:
     await apply_reply_before_send(event)
-    group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
-    rate_limit = check_group_outbound_rate_limit(group_id)
-    if not rate_limit.allowed:
-        return
     await matcher.send(build_message(message, at_user_ids=at_user_ids))
-    if rate_limit.cooldown_message is not None:
-        await matcher.send(rate_limit.cooldown_message)
 
 
 async def finish_matcher_message(
@@ -78,15 +71,7 @@ async def finish_matcher_message(
     event: MessageEvent | None = None,
 ) -> None:
     await apply_reply_before_send(event)
-    group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
-    rate_limit = check_group_outbound_rate_limit(group_id)
-    if not rate_limit.allowed:
-        await matcher.finish()
-    if rate_limit.cooldown_message is None:
-        await matcher.finish(build_message(message, at_user_ids=at_user_ids))
-
-    await matcher.send(build_message(message, at_user_ids=at_user_ids))
-    await matcher.finish(rate_limit.cooldown_message)
+    await matcher.finish(build_message(message, at_user_ids=at_user_ids))
 
 
 async def send_event_reply(

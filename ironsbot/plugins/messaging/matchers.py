@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from nonebot import on_message
+from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves at runtime
+    GroupMessageEvent,
+    PrivateMessageEvent,
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
@@ -22,11 +26,6 @@ from .matcher_rules import (
 )
 from .push_management_handlers import register_push_management_handlers
 from .runtime import refresh_push_time_jobs
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
 
 
 def _message_subscription_priority() -> int:

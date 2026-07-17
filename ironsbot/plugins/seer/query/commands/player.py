@@ -43,9 +43,7 @@ from ironsbot.services.seer.player_query import (
     optional_player_extra,
     plan_player_query_sections,
     player_query_failure_message,
-    player_query_in_progress_message,
     player_query_timeout_message,
-    player_query_wait_message,
 )
 from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
 from ironsbot.services.seer.sequ_extra import (
@@ -56,7 +54,6 @@ from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
 )
-from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
 from ..config import (
@@ -77,11 +74,6 @@ from .player_detail_conversation import (
     send_player_info_with_detail_prompt,
 )
 from .player_detail_fetch import create_player_detail_task
-
-PLAYER_QUERY_GUARD = QueryGuard(
-    namespace="seer.player_query",
-    cooldown=lambda: get_player_query_config().rate_limit_seconds,
-)
 
 _MAX_PLAYER_ID = 2_000_000_000
 
@@ -192,23 +184,6 @@ async def validate_player_id(
         if player_id is None:
             return
     state[PLAYER_ID_KEY] = player_id
-    in_progress_player_id = PLAYER_QUERY_GUARD.in_progress_subject(event.user_id)
-    if in_progress_player_id is not None:
-        await finish_event_reply(
-            matcher,
-            event,
-            player_query_in_progress_message(in_progress_player_id),
-            mention_sender=True,
-        )
-    remaining = PLAYER_QUERY_GUARD.remaining_seconds(event.user_id)
-    if remaining > 0:
-        await finish_event_reply(
-            matcher,
-            event,
-            player_query_wait_message(remaining),
-            mention_sender=True,
-        )
-    PLAYER_QUERY_GUARD.set_in_progress(event.user_id, player_id)
 
 
 @player_matcher.handle()
@@ -231,7 +206,6 @@ async def handle_player(
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
         if isinstance(e, (NotLoggedInError, DisconnectedError)):
             await mark_headless_unavailable(str(e), source="米米号查询")
-        PLAYER_QUERY_GUARD.finish(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -240,7 +214,6 @@ async def handle_player(
         )
         return
     except TimeoutError:
-        PLAYER_QUERY_GUARD.finish(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -249,7 +222,6 @@ async def handle_player(
         )
         return
     except Exception as e:  # noqa: BLE001
-        PLAYER_QUERY_GUARD.finish(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -258,7 +230,6 @@ async def handle_player(
         )
         return
 
-    PLAYER_QUERY_GUARD.finish(event.user_id)
     binding = get_player_binding(player_config.binding.path, event.user_id)
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True) and not binding.choice_completed:
         state[PLAYER_BINDING_PENDING_KEY] = pending

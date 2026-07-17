@@ -19,6 +19,26 @@ class FakeSendError(RuntimeError):
 
 
 @dataclass
+class FakeOutboundService:
+    decisions: list[OutboundRateLimitDecision] = field(default_factory=list)
+    rollbacks: list[object] = field(default_factory=list)
+
+    async def acquire_push(
+        self,
+        _group_id: int | None,
+        *,
+        source: str,
+    ) -> OutboundRateLimitDecision:
+        del source
+        if self.decisions:
+            return self.decisions.pop(0)
+        return OutboundRateLimitDecision(allowed=True)
+
+    def rollback(self, permit: object) -> None:
+        self.rollbacks.append(permit)
+
+
+@dataclass
 class FakeBot:
     self_id: int = 0
     failed_group_ids: set[int] = field(default_factory=set)
@@ -31,12 +51,24 @@ class FakeBot:
     async def send_group_msg(self, *, group_id: int, message: Message) -> None:
         if group_id in self.failed_group_ids:
             raise FakeSendError
-
         self.group_messages.append((group_id, message))
 
 
-def test_send_target_messages_dedupes_and_limits_by_group() -> None:
+def _allow_pushes(monkeypatch: MonkeyPatch) -> FakeOutboundService:
+    service = FakeOutboundService()
+    monkeypatch.setattr(
+        senders,
+        "group_outbound_rate_limit_service",
+        service,
+    )
+    return service
+
+
+def test_send_target_messages_dedupes_and_limits_by_group(
+    monkeypatch: MonkeyPatch,
+) -> None:
     bot = FakeBot()
+    _allow_pushes(monkeypatch)
     limiter_calls: list[int | None] = []
 
     def _limit(message: str | Message, group_id: int | None) -> str | Message:
@@ -75,8 +107,11 @@ def test_send_target_messages_dedupes_and_limits_by_group() -> None:
     assert private_message[-1].data["text"] == "hello:group=None"
 
 
-def test_send_target_messages_reports_failed_targets() -> None:
+def test_send_target_messages_reports_failed_targets(
+    monkeypatch: MonkeyPatch,
+) -> None:
     bot = FakeBot(failed_group_ids={GROUP_ID})
+    outbound = _allow_pushes(monkeypatch)
 
     summary = asyncio.run(
         send_target_messages(
@@ -92,6 +127,7 @@ def test_send_target_messages_reports_failed_targets() -> None:
 
     assert summary.succeeded == [MessageTarget("private", PRIVATE_USER_ID)]
     assert summary.failed == [MessageTarget("group", GROUP_ID)]
+    assert outbound.rollbacks == [None]
 
 
 def test_send_target_messages_routes_each_target_without_explicit_bot(
@@ -99,6 +135,7 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
 ) -> None:
     group_bot = FakeBot(self_id=111111111)
     private_bot = FakeBot(self_id=222222222)
+    _allow_pushes(monkeypatch)
 
     monkeypatch.setattr(
         senders,
@@ -124,19 +161,22 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
     assert not private_bot.group_messages
 
 
-def test_send_target_messages_appends_outbound_cooldown_notice(
+def test_send_target_messages_reports_push_queue_suppression(
     monkeypatch: MonkeyPatch,
 ) -> None:
     bot = FakeBot()
-    decisions = [
-        OutboundRateLimitDecision(allowed=True, cooldown_message="进入冷却"),
-        OutboundRateLimitDecision(allowed=False),
-    ]
-
     monkeypatch.setattr(
         senders,
-        "check_group_outbound_rate_limit",
-        lambda _group_id: decisions.pop(0),
+        "group_outbound_rate_limit_service",
+        FakeOutboundService(
+            decisions=[
+                OutboundRateLimitDecision(allowed=True),
+                OutboundRateLimitDecision(
+                    allowed=False,
+                    reason="queue_full",
+                ),
+            ]
+        ),
     )
 
     summary = asyncio.run(
@@ -153,7 +193,4 @@ def test_send_target_messages_appends_outbound_cooldown_notice(
 
     assert summary.succeeded == [MessageTarget("group", GROUP_ID)]
     assert summary.failed == [MessageTarget("group", GROUP_ID + 1)]
-    assert [message[-1].data["text"] for _group_id, message in bot.group_messages] == [
-        "hello",
-        "进入冷却",
-    ]
+    assert [str(message) for _group_id, message in bot.group_messages] == ["hello"]

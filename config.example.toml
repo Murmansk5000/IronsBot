@@ -395,21 +395,27 @@ cooldown_seconds = 60.0
 
 [message.outbound_rate_limit]
 # Default: true
-# EN: Limit outgoing bot messages in non-admin groups.
-# ZH: 限制非管理群中的机器人出站消息频率。
+# EN: Limit outgoing bot messages in each non-admin group.
+# ZH: 分别限制每个非管理群中的机器人出站消息频率。
 enabled = true
-# Default: 60.0
-# EN: Sliding window seconds.
-# ZH: 限流滑动窗口秒数。
-window_seconds = 60.0
+# EN: Exact sliding windows checked atomically; any full window blocks the send.
+# ZH: 同时检查的精确滑动窗口；任一窗口已满都会阻止发送。
+windows = [
+  { window_seconds = 60.0, max_messages = 10 },
+  { window_seconds = 600.0, max_messages = 30 },
+]
+# Default: 15.0
+# EN: Maximum time a proactive push may wait for group capacity.
+# ZH: 主动推送等待本群发送额度的最长秒数。
+push_queue_max_wait_seconds = 15.0
 # Default: 10
-# EN: Max outgoing messages per window in non-admin groups.
-# ZH: 非管理群每个窗口最多发送多少条机器人消息。
-max_messages = 10
+# EN: Maximum queued proactive pushes per group; user replies never queue.
+# ZH: 每个群最多积压的主动推送数；用户触发的回复不会排队。
+push_queue_max_messages = 10
 # Default: built-in cooldown notice.
-# EN: Notice sent after the last allowed message enters cooldown.
-# ZH: 发送最后一条允许消息后追加的冷却提示。
-cooldown_message = "本群消息发送过于频繁，机器人进入冷却时间，请稍后再试。"
+# EN: Appended to the last allowed message when a window reaches its limit.
+# ZH: 某个窗口达到上限时，附加在最后一条允许消息末尾的提示。
+cooldown_message = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
 [message.meeting]
 # Default: ""
@@ -513,10 +519,6 @@ configs = []
 enabled_ids = []
 
 [seer.player]
-# Default: 60
-# EN: Per-QQ player-query cooldown seconds, applied after every result.
-# ZH: 每个 QQ 的玩家查询冷却秒数；成功、失败或超时后均生效。
-rate_limit_seconds = 60
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
 timeout_seconds = 30.0
 # Default: 90.0; EN: Player detail timeout seconds. ZH: 玩家详情查询超时秒数。
@@ -532,10 +534,6 @@ sections = ["all"]
 path = "data/seer/player_bindings.sqlite"
 
 [seer.team]
-# Default: 60
-# EN: Per-QQ team-query cooldown seconds, applied after every result.
-# ZH: 每个 QQ 的战队查询冷却秒数；成功、失败或超时后均生效。
-rate_limit_seconds = 60
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
 # Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。
@@ -966,6 +964,29 @@ hint_max_per_window = 3
 # User replies take priority over group replies. Quote Chinese aliases in TOML.
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
+
+[runtime.command_cooldown]
+# Default: true
+# EN: Share cooldowns by QQ user and semantic command across groups and bots.
+# ZH: 按 QQ 用户和语义命令跨群、跨机器人共享冷却。
+enabled = true
+# Default: 60.0
+# EN: Default cooldown after a command finishes, regardless of its outcome.
+# ZH: 命令结束后的默认冷却秒数，不区分成功、失败、超时或异常。
+default_seconds = 60.0
+cooldown_message = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
+in_progress_message = "该命令正在处理中，请等待当前操作完成。"
+
+[runtime.command_cooldown.commands]
+# EN: Optional semantic-command overrides; set a value to 0 to disable it.
+# ZH: 可按语义命令覆盖冷却秒数；设为 0 可关闭该命令的冷却。
+# ai_chat = 30.0
+# server_status_query = 20.0
+# seer_player = 60.0
+# seer_player_collection = 60.0
+# seer_player_peak = 60.0
+# seer_player_autocard = 60.0
+# seer_rank_score = 0.0
 
 [runtime.priority]
 # Default: true; EN: Enable superuser priority gate. ZH: 启用超级管理员优先级。

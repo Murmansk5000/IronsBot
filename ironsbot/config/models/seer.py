@@ -139,7 +139,6 @@ class PlayerBindingConfig(BaseModel):
 class PlayerQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    rate_limit_seconds: int = Field(default=60, ge=0)
     timeout_seconds: float = Field(default=30, gt=0)
     detail_timeout_seconds: float = Field(default=90, gt=0)
     sections: list[str] = Field(default_factory=lambda: list(PLAYER_SECTION_KEYS))
@@ -163,7 +162,6 @@ class PlayerQueryConfig(BaseModel):
 class TeamQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    rate_limit_seconds: int = Field(default=60, ge=0)
     timeout_seconds: float = Field(default=20, gt=0)
     sections: list[str] = Field(default_factory=lambda: ["basic", "resource"])
 

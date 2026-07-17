@@ -30,6 +30,20 @@ class FakeBot:
         self.group_messages.append((group_id, str(message)))
 
 
+class FakeOutboundService:
+    async def acquire_push(
+        self,
+        _group_id: int | None,
+        *,
+        source: str,
+    ) -> OutboundRateLimitDecision:
+        del source
+        return OutboundRateLimitDecision(allowed=True)
+
+    def rollback(self, _permit: object) -> None:
+        return
+
+
 def test_send_target_messages_filters_unsubscribed_push_targets(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -51,8 +65,8 @@ def test_send_target_messages_filters_unsubscribed_push_targets(
     )
     monkeypatch.setattr(
         senders,
-        "check_group_outbound_rate_limit",
-        lambda _group_id: OutboundRateLimitDecision(allowed=True),
+        "group_outbound_rate_limit_service",
+        FakeOutboundService(),
     )
 
     summary = asyncio.run(
@@ -92,8 +106,8 @@ def test_send_target_messages_does_not_share_mutated_message_between_targets(
     )
     monkeypatch.setattr(
         senders,
-        "check_group_outbound_rate_limit",
-        lambda _group_id: OutboundRateLimitDecision(allowed=True),
+        "group_outbound_rate_limit_service",
+        FakeOutboundService(),
     )
 
     asyncio.run(
@@ -134,8 +148,8 @@ def test_send_target_messages_appends_subscription_hint_once_per_day(
     )
     monkeypatch.setattr(
         senders,
-        "check_group_outbound_rate_limit",
-        lambda _group_id: OutboundRateLimitDecision(allowed=True),
+        "group_outbound_rate_limit_service",
+        FakeOutboundService(),
     )
 
     asyncio.run(

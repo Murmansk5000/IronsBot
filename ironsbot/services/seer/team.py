@@ -2,20 +2,6 @@
 from typing import Any
 
 
-def team_query_in_progress_message(team_id: int) -> str:
-    return (
-        f"⏳ 正在查询战队 {team_id}，请等当前查询完成。\n"
-        "战队查询需要连接赛尔号游戏服务器；服务器维护、开服波动或多人同时查询时会比较慢。"
-    )
-
-
-def team_query_wait_message(remaining: int) -> str:
-    return (
-        f"⏳ 刚刚已经发起过战队查询，请 {remaining} 秒后再试。\n"
-        "战队查询需要连接游戏服务器，短时间连续查询容易排队或超时。"
-    )
-
-
 def format_team_unavailable_message(team_id: int) -> str:
     return (
         f"❌ 战队 {team_id} 暂时查不了："

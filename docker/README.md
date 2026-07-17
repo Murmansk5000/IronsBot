@@ -166,6 +166,15 @@ reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
 
+User command cooldowns are configured under `[runtime.command_cooldown]`.
+The key is the QQ user plus a stable semantic command ID, so aliases and
+different parameters of the same operation share one cooldown while unrelated
+operations remain independent. Group output limits are configured under
+`[message.outbound_rate_limit]` as multiple sliding windows. Normal replies are
+suppressed immediately after the quota is reached; proactive pushes may wait in
+a short per-group FIFO queue. Private messages and groups enabled for
+`admin_notice` are not counted.
+
 The bot needs a OneBot v11 client such as NapCat. If NapCat and IronsBot are in the same Compose network, configure NapCat reverse WebSocket to:
 
 ```text
