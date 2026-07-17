@@ -135,7 +135,6 @@ async def _send_red_packet_notice(
     )
     await send_admin_notice(
         notice,
-        bot=bot,
         action_name="red packet notice",
         subscription_key=RED_PACKET_NOTICE_SUBSCRIPTION_KEY,
     )

@@ -27,6 +27,12 @@ READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可
 PUSH_SUBSCRIPTION_HINT_KEY = "push_subscription_hint"
 
 
+class ScheduledPushKeyError(ValueError):
+    @classmethod
+    def missing_id(cls, prefix: str, index: int) -> ScheduledPushKeyError:
+        return cls(f"{prefix} task {index} requires a stable id")
+
+
 def private_schedule_key(index: int, task: ScheduledPushTask) -> str:
     return schedule_key("private_schedule", index, task)
 
@@ -37,15 +43,9 @@ def group_schedule_key(index: int, task: ScheduledPushTask) -> str:
 
 def schedule_key(prefix: str, index: int, task: ScheduledPushTask) -> str:
     raw_id = task.id.strip()
-    if raw_id:
-        return raw_id
-    return build_subscription_job_id(prefix, index, "")
-
-
-def build_subscription_job_id(prefix: str, index: int, raw_id: str) -> str:
-    safe_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", raw_id or f"task_{index}")
-    safe_id = safe_id.strip("_") or str(index)
-    return f"message_action_{prefix}_{safe_id}"
+    if not raw_id:
+        raise ScheduledPushKeyError.missing_id(prefix, index)
+    return raw_id
 
 
 def private_schedule_label(index: int, task: ScheduledPushTask) -> str:

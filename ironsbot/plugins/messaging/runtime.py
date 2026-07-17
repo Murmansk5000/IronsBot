@@ -1,6 +1,6 @@
 from typing import Any
 
-from nonebot import get_driver, require
+from nonebot import get_driver, logger, require
 
 from ironsbot.services.activity.runtime_keys import ACTIVITY_REMINDER_REFRESH_KEY
 from ironsbot.shared.messaging.push_subscription_models import (
@@ -9,6 +9,7 @@ from ironsbot.shared.messaging.push_subscription_models import (
 from ironsbot.shared.runtime.refresh import refresh_runtime
 
 from . import schedules as message_schedules
+from .preference_cleanup import prune_stale_push_preferences
 from .push_time import (
     PushTimeOption,
 )
@@ -44,6 +45,17 @@ def _setup_messaging_runtime(driver: Any, scheduler: Any) -> None:
 
     @driver.on_startup
     async def _register_message_schedules_on_startup() -> None:
+        try:
+            prune_result = prune_stale_push_preferences()
+        except Exception:  # noqa: BLE001 - cleanup must never block bot startup
+            logger.exception("startup push preference cleanup failed")
+        else:
+            logger.info(
+                "startup push preference cleanup complete: "
+                "unsubscriptions_deleted={}, time_preferences_deleted={}",
+                prune_result.unsubscriptions_deleted,
+                prune_result.time_preferences_deleted,
+            )
         await register_message_schedules(scheduler)
 
     _messaging_runtime_state["registered"] = True
