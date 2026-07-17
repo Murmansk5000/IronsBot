@@ -16,10 +16,6 @@ def register_startup_check(name: str, check: StartupCheck) -> None:
     _ready_events.setdefault(name, asyncio.Event())
 
 
-def mark_startup_ready(name: str) -> None:
-    _ready_events.setdefault(name, asyncio.Event()).set()
-
-
 async def _run_checks(bot: Bot) -> None:
     for name, check in list(_checks.items()):
         event = _ready_events.setdefault(name, asyncio.Event())
@@ -44,14 +40,6 @@ async def ensure_startup_ready(bot: Bot) -> None:
         _startup_task_state["task"] = startup_task
 
     await startup_task
-
-
-async def wait_startup_ready() -> None:
-    events = list(_ready_events.values())
-    if not events:
-        return
-
-    await asyncio.gather(*(event.wait() for event in events))
 
 
 async def run_registered_startup_checks(bot: Bot) -> None:
