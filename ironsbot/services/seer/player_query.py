@@ -403,28 +403,12 @@ def plan_player_detail_prompt(
     )
 
 
-def player_query_in_progress_message(player_id: int) -> str:
-    return (
-        f"⏳ 正在查询米米号 {player_id}，请等当前查询完成。\n"
-        "米米号查询需要连接游戏服务器；收集、巅峰和全服排行数据会更慢，"
-        "排名越靠后可能查得越久，多人同时查询时也可能需要排队。"
-    )
-
-
 def player_query_timeout_message(player_id: int) -> str:
     return f"❌ 米米号 {player_id} 查询超时，请稍后再试。"
 
 
 def player_query_failure_message(player_id: int, error: object) -> str:
     return f"❌ 米米号 {player_id} 查询失败：{error}"
-
-
-def player_query_wait_message(remaining: int) -> str:
-    return (
-        f"⏳ 刚刚已经发起过米米号查询，请 {remaining} 秒后再试。\n"
-        "收集、巅峰和全服排行数据会更慢，排名越靠后可能查得越久，"
-        "多人同时查询时也可能需要排队。"
-    )
 
 
 def player_detail_timeout_message(label: str) -> str:

@@ -28,13 +28,10 @@ from ironsbot.services.seer.team import (
     format_team_socket_error_message,
     format_team_timeout_message,
     format_team_unavailable_message,
-    team_query_in_progress_message,
-    team_query_wait_message,
 )
 from ironsbot.services.team_resource_subscriptions import TeamResourceSubscriptionStore
 from ironsbot.shared.features import is_group_feature_allowed
 from ironsbot.shared.messaging import finish_event_reply
-from ironsbot.shared.messaging.query_guard import QueryGuard
 from ironsbot.shared.permissions import can_manage_group_event
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
@@ -46,11 +43,6 @@ TEAM_IDS_KEY = "team_ids"
 TEAM_ID_MIN = 100_000
 TEAM_ID_MAX = 2_000_000_000
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
-TEAM_QUERY_GUARD = QueryGuard(
-    namespace="seer.team_query",
-    cooldown=lambda: get_team_query_config().rate_limit_seconds,
-)
-
 
 def _parse_team_ids(text: str) -> list[int]:
     team_ids: list[int] = []
@@ -81,7 +73,6 @@ async def _finish_team_query_failure(
     event: MessageEvent,
     message: str,
 ) -> None:
-    TEAM_QUERY_GUARD.finish(event.user_id)
     await finish_event_reply(
         matcher,
         event,
@@ -106,27 +97,6 @@ async def validate_team_id(
         )
         return
     state[TEAM_IDS_KEY] = team_ids
-    team_id = team_ids[0]
-
-    in_progress_team_id = TEAM_QUERY_GUARD.in_progress_subject(event.user_id)
-    if in_progress_team_id is not None:
-        await finish_event_reply(
-            matcher,
-            event,
-            team_query_in_progress_message(in_progress_team_id),
-            mention_sender=True,
-        )
-
-    remaining = TEAM_QUERY_GUARD.remaining_seconds(event.user_id)
-    if remaining > 0:
-        await finish_event_reply(
-            matcher,
-            event,
-            team_query_wait_message(remaining),
-            mention_sender=True,
-        )
-
-    TEAM_QUERY_GUARD.set_in_progress(event.user_id, team_id)
 
 
 def _team_resource_store() -> TeamResourceSubscriptionStore:
@@ -254,8 +224,6 @@ async def handle_team(
             format_team_unavailable_message(team_ids[0]),
         )
         return
-
-    TEAM_QUERY_GUARD.finish(event.user_id)
 
     if prompt is not None:
         messages.append(prompt)

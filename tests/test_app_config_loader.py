@@ -23,11 +23,15 @@ from ironsbot.config.models.deployment import DeploymentConfig
 from ironsbot.config.models.message import (
     GroupScheduledMessageAction,
     MessageConfig,
+    OutboundRateLimitConfig,
+    OutboundRateLimitWindowConfig,
+    PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.runtime import (
     BotRoutingConfig,
+    CommandCooldownConfig,
     DockerUpdateConfig,
     MatcherPriorityConfig,
 )
@@ -110,7 +114,11 @@ CONFIG_MIGRATION_FIELDS = (
     "bilibili.uids",
     "message.private_unsubscribe",
     "seer.player.failure_rate_limit_seconds",
+    "seer.player.rate_limit_seconds",
     "seer.team.failure_rate_limit_seconds",
+    "seer.team.rate_limit_seconds",
+    "message.outbound_rate_limit.window_seconds",
+    "message.outbound_rate_limit.max_messages",
     "seer.render.clear_on_startup",
 )
 
@@ -359,6 +367,53 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
                 )
             ],
         )
+
+
+def test_dynamic_message_commands_require_stable_ids() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="command message action requires a non-empty id",
+    ):
+        PrivateCommandMessageAction(
+            commands=["hello"],
+            message="world",
+        )
+
+    with pytest.raises(
+        ValidationError,
+        match="command message action id may only contain",
+    ):
+        PrivateCommandMessageAction(
+            id="daily reminder",
+            commands=["hello"],
+            message="world",
+        )
+
+
+def test_outbound_rate_limit_requires_distinct_nonempty_windows() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"outbound_rate_limit\.windows must not be empty",
+    ):
+        OutboundRateLimitConfig(windows=[])
+
+    window = OutboundRateLimitWindowConfig(
+        window_seconds=60,
+        max_messages=10,
+    )
+    with pytest.raises(
+        ValidationError,
+        match=r"contains duplicate window_seconds",
+    ):
+        OutboundRateLimitConfig(windows=[window, window])
+
+
+def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"only supports \{remaining_seconds\}",
+    ):
+        CommandCooldownConfig(cooldown_message="{unknown}")
 
 
 def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
@@ -749,7 +804,9 @@ def test_small_plugin_config_accessors_read_app_config(
         )
         assert headless_notice_config.get_headless_notice_config().login_notice
         assert (
-            message_config.get_message_config().outbound_rate_limit.max_messages
+            message_config.get_message_config()
+            .outbound_rate_limit.windows[0]
+            .max_messages
             == DEFAULT_OUTBOUND_MAX_MESSAGES
         )
         assert message_config.get_message_config().meeting.commands == [

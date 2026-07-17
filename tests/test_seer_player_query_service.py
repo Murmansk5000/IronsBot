@@ -30,9 +30,7 @@ from ironsbot.services.seer.player_query import (
     player_detail_pending_message,
     player_detail_timeout_message,
     player_query_failure_message,
-    player_query_in_progress_message,
     player_query_timeout_message,
-    player_query_wait_message,
     resolve_player_detail_reply,
     safe_player_extra,
     store_player_detail_messages,
@@ -89,13 +87,7 @@ def test_parse_player_shortcuts_does_not_take_named_autocard_queries() -> None:
     assert parse_player_shortcut_command("群星牌卡98") is None
 
 
-def test_player_query_messages_explain_slow_sections() -> None:
-    in_progress = player_query_in_progress_message(105023264)
-    wait = player_query_wait_message(30)
-
-    assert "正在查询米米号 105023264" in in_progress
-    assert "请 30 秒后再试" in wait
-    assert "收集、巅峰和全服排行数据会更慢" in wait
+def test_player_query_error_messages_include_player_id() -> None:
     assert player_query_timeout_message(105023264) == (
         "❌ 米米号 105023264 查询超时，请稍后再试。"
     )
