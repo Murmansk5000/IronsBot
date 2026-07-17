@@ -84,11 +84,6 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 入口冷却与提示
-
-命令入口冷却按用户及稳定的语义命令身份处理，不能用群消息发送限制代替；管理员豁免及配置门控仍按原规则执行。
-戳一戳的用户回复优先于群回复，提示仍共享原限流。这些接线不表示其他查询或取消边界已被修复。
-
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
