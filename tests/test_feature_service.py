@@ -1,9 +1,10 @@
+import pytest
+from pydantic import ValidationError
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.feature import (
     FEATURE_ALIASES,
     KNOWN_FEATURES,
-    OBSOLETE_FEATURES,
     SEER_FEATURES,
     FeatureConfig,
 )
@@ -85,29 +86,15 @@ def test_seer_alias_enables_all_seer_subfeatures(
         assert feature_service.is_group_feature_allowed(999, 123, feature)
 
 
-def test_rank_feature_alias_is_removed(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    assert frozenset({"rank"}) == OBSOLETE_FEATURES
+def test_rank_feature_alias_is_rejected() -> None:
     assert "rank" not in KNOWN_FEATURES
     assert "rank" not in FEATURE_ALIASES
 
-    feature_config = FeatureConfig(
-        group_aliases={"main": 123},
-        group_policy={"main": ["rank"]},
-        superuser_bypass=False,
-    )
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: stub_app_config(feature_config=feature_config),
-    )
-
-    feature_service = service.FeatureService()
-
-    assert not feature_service.is_group_feature_allowed(999, 123, "rank")
-    assert not feature_service.is_group_feature_allowed(999, 123, "seer_rank")
-    assert not feature_service.is_group_feature_allowed(999, 123, "seer_pet")
+    with pytest.raises(
+        ValidationError,
+        match=r"feature.group_policy.main\[0\]=rank",
+    ):
+        FeatureConfig(group_policy={"main": ["rank"]})
 
 
 def test_all_feature_alias_does_not_include_admin_notice(

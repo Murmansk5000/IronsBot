@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from ironsbot.shared.command_text import normalize_command_text
+
 from .countermark_stat_rank_models import (
     CountermarkStatRankCommand,
     StatSpec,
@@ -83,12 +85,8 @@ COMBINABLE_STAT_ALIASES: tuple[tuple[str, StatSpec], ...] = tuple(
 )
 
 
-def _normalize_command_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
 _NON_STAT_COUNTERMARK_RANK_COMMANDS = {
-    _normalize_command_text(command)
+    normalize_command_text(command)
     for command in (
         "刻印榜",
         "刻印图鉴榜",
@@ -102,7 +100,7 @@ _NON_STAT_COUNTERMARK_RANK_COMMANDS = {
 def parse_countermark_stat_rank_command(
     text: str,
 ) -> CountermarkStatRankCommand | None:
-    normalized = _normalize_command_text(text)
+    normalized = normalize_command_text(text)
     has_angle_marker = any(marker in normalized for marker in ANGLE_MARKERS)
     has_countermark_marker = "刻印" in normalized
     if not normalized.endswith("榜") or (

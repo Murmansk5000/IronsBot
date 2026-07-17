@@ -4,11 +4,7 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.services.ai.config import get_ai_config
-from ironsbot.services.ai.mention_guard import (
-    GuardReplyLimiter,
-    should_guard_non_ai_group_mention,
-)
+from ironsbot.services.ai.mention_guard import should_guard_non_ai_group_mention
 from ironsbot.services.help_hint import can_send_group_help_hint
 from ironsbot.shared.help_hints import (
     DIRECT_COMMAND_HELP_HINT_TEXT,
@@ -17,7 +13,6 @@ from ironsbot.shared.help_hints import (
 from ironsbot.shared.matcher_priority import get_pre_command_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 
-_guard_reply_limiter: GuardReplyLimiter | None = None
 AI_MENTION_GUARD_PRIORITY = get_pre_command_matcher_priority("ai_mention_guard")
 
 __plugin_meta__ = PluginMetadata(
@@ -32,24 +27,6 @@ __plugin_meta__ = PluginMetadata(
 
 async def _is_non_ai_group_at_guarded_user(event: MessageEvent) -> bool:
     return await should_guard_non_ai_group_mention(event)
-
-
-def _get_guard_reply_limiter() -> GuardReplyLimiter:
-    global _guard_reply_limiter  # noqa: PLW0603
-
-    config = get_ai_config()
-    if (
-        _guard_reply_limiter is None
-        or _guard_reply_limiter.window_seconds
-        != config.mention_guard_reply_window_seconds
-        or _guard_reply_limiter.max_per_window
-        != config.mention_guard_reply_max_per_window
-    ):
-        _guard_reply_limiter = GuardReplyLimiter(
-            window_seconds=config.mention_guard_reply_window_seconds,
-            max_per_window=config.mention_guard_reply_max_per_window,
-        )
-    return _guard_reply_limiter
 
 
 def _build_guard_message(event: MessageEvent) -> str:
@@ -71,9 +48,7 @@ async def handle_non_ai_group_at_bot(
     matcher: Matcher,
     event: GroupMessageEvent,
 ) -> None:
-    if not can_send_group_help_hint(
-        event.group_id
-    ) or not _get_guard_reply_limiter().can_send(event.group_id):
+    if not can_send_group_help_hint(event.group_id):
         return
 
     await finish_event_reply(

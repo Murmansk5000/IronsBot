@@ -22,10 +22,11 @@ from ironsbot.services.team_resource_adapter import (
     TeamResourceResult,
     fetch_team_resource_result,
 )
+from ironsbot.shared.command_text import command_text_matches
 from ironsbot.shared.features import group_has_feature, is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_message_sequence
-from ironsbot.shared.messaging.text import build_message, command_text_matches
+from ironsbot.shared.messaging.text import build_message
 from ironsbot.utils.rule import no_reply
 
 from .config import (

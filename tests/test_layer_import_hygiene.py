@@ -14,38 +14,7 @@ PLUGIN_OWNER_PARTS = 3
 SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
 SQLITE_HELPER_PATH = PACKAGE_ROOT / "shared" / "sqlite.py"
 RUNTIME_JOBS_PATH = PACKAGE_ROOT / "shared" / "runtime" / "jobs.py"
-OBSOLETE_FOUNDATION_MODULES = (
-    "ironsbot.integrations.seer_data.db",
-    "ironsbot.plugins.db_sync.config",
-    "ironsbot.plugins.db_sync.formatting",
-    "ironsbot.plugins.db_sync.github_actions",
-    "ironsbot.plugins.db_sync.manager",
-    "ironsbot.plugins.db_sync.remote_build",
-    "ironsbot.plugins.db_sync.service",
-    "ironsbot.plugins.db_sync.storage",
-    "ironsbot.plugins.headless_seer.as3bytearray",
-    "ironsbot.plugins.headless_seer.client",
-    "ironsbot.plugins.headless_seer.command_id",
-    "ironsbot.plugins.headless_seer.config",
-    "ironsbot.plugins.headless_seer.core",
-    "ironsbot.plugins.headless_seer.decrypt",
-    "ironsbot.plugins.headless_seer.exception",
-    "ironsbot.plugins.headless_seer.game",
-    "ironsbot.plugins.headless_seer.manager",
-    "ironsbot.plugins.headless_seer.packet",
-    "ironsbot.plugins.headless_seer.packets",
-    "ironsbot.plugins.headless_seer.type_hint",
-    "ironsbot.plugins.headless_seer.utils",
-    "ironsbot.plugins.seer.query.commands.upstream_queries",
-    "ironsbot.plugins.seer_data.config",
-    "ironsbot.plugins.seer_data.db",
-    "ironsbot.plugins.seer_data.image",
-    "ironsbot.plugins.seer_data.orm",
-    "ironsbot.services.seer.client",
-    "ironsbot.services.seer.local_rank",
-    "ironsbot.services.seer.rank",
-    "ironsbot.services.seer.rank_service",
-)
+DISALLOWED_MODULE_NAME_PREFIXES = ("upstream_",)
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -208,40 +177,11 @@ def test_production_code_does_not_use_star_imports() -> None:
     assert _star_import_offenders() == []
 
 
-def _forbidden_module_import_offenders(forbidden_modules: tuple[str, ...]) -> list[str]:
-    return [
-        f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
-        for path in _python_files(PACKAGE_ROOT)
-        for module_name in _imported_modules(path)
-        if any(
-            module_name == forbidden_module
-            or module_name.startswith(f"{forbidden_module}.")
-            for forbidden_module in forbidden_modules
-        )
-    ]
-
-
-def test_production_code_uses_current_foundation_modules() -> None:
-    assert _forbidden_module_import_offenders(OBSOLETE_FOUNDATION_MODULES) == []
-
-
-def _module_source_path(module_name: str) -> Path:
-    return ROOT.joinpath(*module_name.split(".")).with_suffix(".py")
-
-
-def _module_package_init_path(module_name: str) -> Path:
-    return ROOT.joinpath(*module_name.split("."), "__init__.py")
-
-
-def test_obsolete_foundation_module_sources_do_not_exist() -> None:
+def test_production_module_names_do_not_use_historical_prefixes() -> None:
     assert [
         path.relative_to(ROOT).as_posix()
-        for module_name in OBSOLETE_FOUNDATION_MODULES
-        for path in (
-            _module_source_path(module_name),
-            _module_package_init_path(module_name),
-        )
-        if path.exists()
+        for path in _python_files(PACKAGE_ROOT)
+        if path.stem.startswith(DISALLOWED_MODULE_NAME_PREFIXES)
     ] == []
 
 

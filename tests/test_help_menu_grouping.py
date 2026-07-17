@@ -4,14 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
-from ironsbot.plugins.help.menu import HELP_ENTRY_ORDER, HELP_GROUP_TITLES
+from ironsbot.plugin_catalog import help_layout_for_module
+from ironsbot.plugins.help.menu import HELP_GROUP_TITLES
 
 
 def test_team_entries_are_grouped_with_seer_queries() -> None:
     assert HELP_GROUP_TITLES["ai"] == "AI"
-    assert HELP_ENTRY_ORDER["AI聊天"][0] == "ai"
-    assert HELP_ENTRY_ORDER["AI意图分析"][0] == "ai"
-    assert HELP_ENTRY_ORDER["战队推荐"][0] == "seer"
-    assert HELP_ENTRY_ORDER["战队资源订阅"][0] == "seer"
-    assert HELP_ENTRY_ORDER["战队审核入群提示"][0] == "seer"
-    assert HELP_ENTRY_ORDER["开服查询"][0] == "seer"
+    assert help_layout_for_module("ironsbot.plugins.ai_chat")[0] == "ai"
+    assert help_layout_for_module("ironsbot.plugins.ai_intent")[0] == "ai"
+    assert (
+        help_layout_for_module("ironsbot.plugins.team_resource_subscription")[0]
+        == "seer"
+    )
+    assert help_layout_for_module("ironsbot.plugins.team_audit_welcome")[0] == "seer"
+    assert help_layout_for_module("ironsbot.plugins.server_status")[0] == "seer"
