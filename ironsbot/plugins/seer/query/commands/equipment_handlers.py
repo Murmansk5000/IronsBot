@@ -8,9 +8,6 @@ from seerapi_models import EquipORM, SuitORM, TitlePartORM
 
 from ironsbot.integrations.seer_data.getters import (
     EquipDataGetter,
-    GetEquipData,
-    GetSuitData,
-    GetTitleData,
     SuitDataGetter,
     TitleDataGetter,
 )
@@ -20,7 +17,6 @@ from ironsbot.integrations.seer_data.image import (
     TitleImageGetter,
 )
 from ironsbot.utils import build_sub_line
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..prompt import (
     Prompt,
@@ -28,12 +24,6 @@ from ..prompt import (
     enter_prompt,
     simple_prompt_resolver,
 )
-from ..upstream_noop_group import matcher_group
-
-suit_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(("套装", "查询套装信息"), suffixes="套装") & no_reply()
-)
-
 
 EQUIP_PART_TYPE_MAP = {
     0: "头部",
@@ -68,12 +58,11 @@ async def _build_suit_message(suit: SuitORM) -> MessageFactory:
 PROMPT_MAX_ITEMS = 20
 
 
-@suit_matcher.handle()
 async def handle_suit(
     matcher: Matcher,
     state: T_State,
     event: Event,
-    suits: tuple[SuitORM, ...] = GetSuitData(),
+    suits: tuple[SuitORM, ...],
 ) -> None:
     if not suits:
         raise FinishedException
@@ -101,11 +90,6 @@ async def handle_suit(
     )
 
 
-equip_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(("部件", "查询部件信息"), suffixes="部件") & no_reply()
-)
-
-
 async def _build_equip_message(equip: EquipORM) -> MessageFactory:
     msg = MessageFactory()
     msg += await EquipImageGetter.get(str(equip.id))
@@ -119,12 +103,11 @@ async def _build_equip_message(equip: EquipORM) -> MessageFactory:
     return msg
 
 
-@equip_matcher.handle()
 async def handle_equip(
     matcher: Matcher,
     state: T_State,
     event: Event,
-    equips: tuple[EquipORM, ...] = GetEquipData(),
+    equips: tuple[EquipORM, ...],
 ) -> None:
     if not equips:
         raise FinishedException
@@ -152,11 +135,6 @@ async def handle_equip(
     )
 
 
-title_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(("称号", "查询称号信息"), suffixes="称号") & no_reply()
-)
-
-
 async def _build_title_message(title: TitlePartORM) -> MessageFactory:
     msg = MessageFactory()
     msg += await TitleImageGetter.get(str(title.id))
@@ -167,12 +145,11 @@ async def _build_title_message(title: TitlePartORM) -> MessageFactory:
     return msg
 
 
-@title_matcher.handle()
 async def handle_title(
     matcher: Matcher,
     state: T_State,
     event: Event,
-    titles: tuple[TitlePartORM, ...] = GetTitleData(),
+    titles: tuple[TitlePartORM, ...],
 ) -> None:
     if not titles:
         raise FinishedException

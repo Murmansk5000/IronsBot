@@ -11,7 +11,6 @@ from seerapi_models.element_type import TypeCombinationORM
 from sqlmodel import select
 
 from ironsbot.integrations.seer_data.getters import (
-    GetTypeCombinationData,
     TypeCombinationDataGetter,
 )
 from ironsbot.integrations.seer_data.sessions import SQLModelSession
@@ -22,7 +21,6 @@ from ironsbot.services.seer.type_calc import (
     calc_type_multiplier,
 )
 from ironsbot.utils.parse_arg import parse_string_arg
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import SeerAPISession
 from ..prompt import (
@@ -30,7 +28,6 @@ from ..prompt import (
     PromptItem,
     enter_prompt,
 )
-from ..upstream_noop_group import matcher_group
 
 __all__ = [
     "calc_attack_table",
@@ -52,11 +49,6 @@ _CUSTOM_SEPARATOR_TRANSLATION = str.maketrans(
     }
 )
 _CUSTOM_TYPE_SPLIT_PATTERN = re.compile(r"[+,/|\s]+")
-
-type_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith("属性") & no_reply()
-)
-
 
 async def _build_type_message(
     type_combination: TypeCombinationORM,
@@ -163,13 +155,12 @@ async def _type_prompt_resolver(
     await msg.send()
 
 
-@type_matcher.handle()
 async def handle_type(
     matcher: Matcher,
     state: T_State,
     event: Event,
     session: SeerAPISession,
-    type_combinations: tuple[TypeCombinationORM, ...] = GetTypeCombinationData(),
+    type_combinations: tuple[TypeCombinationORM, ...],
 ) -> None:
     if not type_combinations:
         parsed = _parse_custom_type_combination(session, parse_string_arg(state))

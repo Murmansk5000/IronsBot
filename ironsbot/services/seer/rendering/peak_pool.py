@@ -13,13 +13,13 @@ from ironsbot.integrations.seer_data.image import (
 )
 from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
-    UPSTREAM_PEAK_POOL_TEMPLATE_PATH,
-    UPSTREAM_SHARED_TEMPLATE_PATH,
+    PEAK_POOL_TEMPLATE_PATH,
+    SHARED_TEMPLATE_PATH,
 )
 from ironsbot.utils.image import to_data_uri
 
-TEMPLATE_PATH = UPSTREAM_PEAK_POOL_TEMPLATE_PATH
-SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
+TEMPLATE_PATH = PEAK_POOL_TEMPLATE_PATH
+SHARED_PATH = SHARED_TEMPLATE_PATH
 
 CELL_WIDTH = 100 + 2 * 2  # pet-cell width + border
 CELL_GAP = 10

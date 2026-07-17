@@ -19,13 +19,13 @@ from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
-    UPSTREAM_SHARED_TEMPLATE_PATH,
+    SHARED_TEMPLATE_PATH,
 )
 from ironsbot.utils.analyze_parser import AnalyzeDescParser
 from ironsbot.utils.image import to_data_uri
 
 TEMPLATE_PATH = CUSTOM_PET_INFO_TEMPLATE_PATH
-SHARED_PATH = UPSTREAM_SHARED_TEMPLATE_PATH
+SHARED_PATH = SHARED_TEMPLATE_PATH
 GENDER_ICON_PATH = PET_INFO_IMAGES_PATH
 
 STAT_BAR_MAX_WIDTH = 120

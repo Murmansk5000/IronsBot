@@ -8,7 +8,7 @@ from nonebot.exception import FinishedException
 from ..depends import PetDataGetter
 from ..prompt import Prompt, PromptItem, enter_prompt, simple_prompt_resolver
 from . import pet_actions
-from .upstream_help import finish_query_help
+from .help_replies import finish_query_help
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -89,8 +89,7 @@ async def handle_pet_info(
     prompt = Prompt(
         title="请问你想查询的精灵是……",
         items=[
-            PromptItem(name=pet.name, desc=str(pet.id), value=pet.id)
-            for pet in pets
+            PromptItem(name=pet.name, desc=str(pet.id), value=pet.id) for pet in pets
         ],
     )
     await enter_prompt(
