@@ -70,6 +70,18 @@ def _run_url(repository: str, run_id: int) -> str:
     return f"{GITHUB_API_BASE_URL}/repos/{repository}/actions/runs/{run_id}"
 
 
+def _github_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text.strip()
+    if isinstance(payload, dict):
+        detail = payload.get("message")
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+    return response.text.strip()
+
+
 def _match_workflow_run(
     runs: list[dict[str, Any]],
     *,
@@ -109,6 +121,8 @@ async def _dispatch_workflow(
     )
     if response.status_code != HTTP_NO_CONTENT:
         msg = f"GitHub workflow dispatch failed: HTTP {response.status_code}"
+        if detail := _github_error_detail(response):
+            msg = f"{msg}: {detail}"
         raise GitHubActionsClientError(msg)
 
 

@@ -293,7 +293,7 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
 def _remote_build_config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
-        repository="Murmansk5000/seerapi",
+        repository="Murmansk-Seer/seerapi",
         workflow_id="build-ironsbot-data-db.yml",
         ref="main",
         timeout_seconds=1200,
@@ -306,18 +306,33 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
         enabled=True,
         steps=[
             RemoteBuildStepConfig(
+                name="refresh_official_sources",
+                repository="Murmansk-Seer/data-update-workflows",
+                workflow_id="update.yml",
+                inputs={
+                    "force-update-assets": False,
+                    "force-update-config": False,
+                    "dispatch-api-data": False,
+                },
+            ),
+            RemoteBuildStepConfig(
+                name="refresh_unity_config",
+                repository="Murmansk-Seer/seer-unity-config-parser",
+                workflow_id="schedule.yml",
+            ),
+            RemoteBuildStepConfig(
                 name="sync_config_sources",
-                repository="Murmansk5000/config-sources",
+                repository="Murmansk-Seer/config-sources",
                 workflow_id="sync-upstream.yml",
             ),
             RemoteBuildStepConfig(
-                name="build_seer_data",
-                repository="Murmansk5000/seer-data",
+                name="build_api_data",
+                repository="Murmansk-Seer/api-data",
                 workflow_id="main.yml",
             ),
             RemoteBuildStepConfig(
                 name="build_ironsbot_data",
-                repository="Murmansk5000/seerapi",
+                repository="Murmansk-Seer/seerapi",
                 workflow_id="build-ironsbot-data-db.yml",
             ),
         ],
@@ -360,7 +375,7 @@ def test_manual_sync_triggers_remote_build_before_download(
             ok=True,
             status="completed",
             conclusion="success",
-            html_url="https://github.com/Murmansk5000/seerapi/actions/runs/1",
+            html_url="https://github.com/Murmansk-Seer/seerapi/actions/runs/1",
             message="ok",
         )
 
@@ -375,7 +390,7 @@ def test_manual_sync_triggers_remote_build_before_download(
 
     assert results == {"seerapi": True, "aliases": True}
     assert calls == [
-        "build:Murmansk5000/seerapi:token",
+        "build:Murmansk-Seer/seerapi:token",
         "sync:seerapi",
         "sync:aliases",
     ]
@@ -425,9 +440,11 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
 
     assert results == {"seerapi": True}
     assert calls == [
-        "build:sync_config_sources:Murmansk5000/config-sources:token",
-        "build:build_seer_data:Murmansk5000/seer-data:token",
-        "build:build_ironsbot_data:Murmansk5000/seerapi:token",
+        "build:refresh_official_sources:Murmansk-Seer/data-update-workflows:token",
+        "build:refresh_unity_config:Murmansk-Seer/seer-unity-config-parser:token",
+        "build:sync_config_sources:Murmansk-Seer/config-sources:token",
+        "build:build_api_data:Murmansk-Seer/api-data:token",
+        "build:build_ironsbot_data:Murmansk-Seer/seerapi:token",
         "sync:seerapi",
     ]
 
@@ -481,8 +498,14 @@ def test_force_remote_build_adds_force_input_to_supported_steps(
 
     assert results == {"seerapi": True}
     assert inputs_seen == {
+        "refresh_official_sources": {
+            "force-update-assets": True,
+            "force-update-config": True,
+            "dispatch-api-data": False,
+        },
+        "refresh_unity_config": {},
         "sync_config_sources": {"force": True},
-        "build_seer_data": {"force": True},
+        "build_api_data": {"force": True},
         "build_ironsbot_data": {"force": True},
     }
 
@@ -522,7 +545,7 @@ def test_remote_build_failure_skips_old_release_download(
             ok=False,
             status="completed",
             conclusion="failure",
-            html_url="https://github.com/Murmansk5000/seerapi/actions/runs/1",
+            html_url="https://github.com/Murmansk-Seer/seerapi/actions/runs/1",
             message=f"{config.workflow_id} failed with {token}",
         )
 

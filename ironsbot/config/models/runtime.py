@@ -20,7 +20,7 @@ INVALID_RECONNECT_TIME_ERROR = (
     'for example "00:01,00:02" or ["00:01","00:02"]'
 )
 DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
-SEERAPI_DATA_RELEASE = "https://github.com/Murmansk5000/seerapi/releases/download"
+SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 VALID_LOG_LEVELS = {"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"}
 WorkflowInputValue = str | int | float | bool

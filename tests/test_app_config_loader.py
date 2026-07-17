@@ -61,18 +61,19 @@ DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
 )
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
-PUBLIC_CONFIG_DOC_PATHS = (
+ACTIVE_CONFIG_SURFACE_PATHS = (
+    ROOT / ".env.example",
     ROOT / "config.example.toml",
-    ROOT / "README.md",
-    ROOT / "docker" / "README.md",
     ROOT / "templates" / "ironsbot.xml",
     ROOT / "docker-compose.yml",
 )
 PUBLIC_TEXT_PATHS = (
-    *PUBLIC_CONFIG_DOC_PATHS,
+    *ACTIVE_CONFIG_SURFACE_PATHS,
+    ROOT / "README.md",
+    ROOT / "docker" / "README.md",
     ROOT / "ironsbot" / "plugins" / "seer_data" / "__init__.py",
 )
-STALE_PUBLIC_CONFIG_PATTERNS = (
+STALE_ACTIVE_CONFIG_PATTERNS = (
     r"\buid_modes\b",
     r"\bdefault_mode\b",
     r"\bdefault_accounts\b",
@@ -89,10 +90,18 @@ STALE_PUBLIC_CONFIG_PATTERNS = (
     r"\bfire_manual_intent\b",
 )
 STALE_PUBLIC_TEXT_PATTERNS = (
-    *STALE_PUBLIC_CONFIG_PATTERNS,
     r"旧榜单",
     r"db\s*(?:与|和)\s*image\s*模块",
     r"seer_rank`\s*/\s*`rank",
+)
+CONFIG_MIGRATION_FIELDS = (
+    "ai.reset_commands",
+    "ai.mention_guard_reply_window_seconds",
+    "ai.mention_guard_reply_max_per_window",
+    "bilibili.push.default_mode",
+    "bilibili.uids",
+    "message.private_unsubscribe",
+    "seer.render.clear_on_startup",
 )
 
 
@@ -244,6 +253,11 @@ def test_example_config_parses() -> None:
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
+    declared_final_step = type(remote_build_steps[0]).model_validate(
+        parse_toml_file(ROOT / "config.example.toml")["runtime"]["data_sync"][
+            "sources"
+        ]["seerapi"]["remote_build"]["steps"][-1],
+    )
     assert [step.name for step in remote_build_steps] == [
         "update_unity_config",
         "sync_config_sources",
@@ -252,11 +266,11 @@ def test_example_config_parses() -> None:
     ]
     assert (
         remote_build_steps[-1].repository
-        == "Murmansk5000/seerapi"
+        == declared_final_step.repository
     )
     assert (
         remote_build_steps[-1].workflow_id
-        == "build-ironsbot-data-db.yml"
+        == declared_final_step.workflow_id
     )
     assert remote_build_steps[1].inputs == {
     }
@@ -272,13 +286,34 @@ def test_example_config_parses() -> None:
     assert remote_build_steps[0] == type(remote_build_steps[0]).model_validate(
         declared_step,
     )
+    declared_steps = parse_toml_file(ROOT / "config.example.toml")["runtime"][
+        "data_sync"
+    ]["sources"]["seerapi"]["remote_build"]["steps"]
+    assert [step.model_dump() for step in remote_build_steps] == [
+        type(remote_build_steps[0]).model_validate(step).model_dump()
+        for step in declared_steps
+    ]
 
 
 def test_example_config_has_no_unknown_fields() -> None:
     AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
 
 
-def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
+def test_active_config_surfaces_do_not_reference_stale_fields() -> None:
+    stale_matches: list[str] = []
+
+    for path in ACTIVE_CONFIG_SURFACE_PATHS:
+        text = path.read_text(encoding="utf-8")
+        stale_matches.extend(
+            f"{path.relative_to(ROOT)}: {pattern}"
+            for pattern in STALE_ACTIVE_CONFIG_PATTERNS
+            if re.search(pattern, text)
+        )
+
+    assert stale_matches == []
+
+
+def test_public_text_does_not_reference_stale_structures() -> None:
     stale_matches: list[str] = []
 
     for path in PUBLIC_TEXT_PATHS:
@@ -290,6 +325,13 @@ def test_public_text_does_not_reference_stale_fields_or_structures() -> None:
         )
 
     assert stale_matches == []
+
+
+def test_readme_documents_strict_config_migration() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for field in CONFIG_MIGRATION_FIELDS:
+        assert f"`{field}`" in text
 
 
 def test_rank_page_refresh_interval_offset_must_be_smaller_than_interval() -> None:
