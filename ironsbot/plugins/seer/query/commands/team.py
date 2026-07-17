@@ -47,10 +47,8 @@ TEAM_ID_MIN = 100_000
 TEAM_ID_MAX = 2_000_000_000
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 TEAM_QUERY_GUARD = QueryGuard(
-    success_namespace="seer.team_query.success",
-    failure_namespace="seer.team_query.failure",
-    success_cooldown=lambda: get_team_query_config().rate_limit_seconds,
-    failure_cooldown=lambda: get_team_query_config().failure_rate_limit_seconds,
+    namespace="seer.team_query",
+    cooldown=lambda: get_team_query_config().rate_limit_seconds,
 )
 
 
@@ -83,8 +81,7 @@ async def _finish_team_query_failure(
     event: MessageEvent,
     message: str,
 ) -> None:
-    TEAM_QUERY_GUARD.clear_in_progress(event.user_id)
-    TEAM_QUERY_GUARD.penalize_failure(event.user_id)
+    TEAM_QUERY_GUARD.finish(event.user_id)
     await finish_event_reply(
         matcher,
         event,
@@ -203,10 +200,9 @@ async def _query_team_info(team_id: int) -> tuple[str, object]:
 async def _collect_team_query_messages(
     team_ids: list[int],
     event: MessageEvent,
-) -> tuple[list[str], str | None, int]:
+) -> tuple[list[str], str | None]:
     messages: list[str] = []
     prompt: str | None = None
-    success_count = 0
 
     for team_id in team_ids:
         try:
@@ -229,11 +225,10 @@ async def _collect_team_query_messages(
             continue
 
         messages.append(team_message)
-        success_count += 1
         if prompt is None:
             prompt = _team_subscription_prompt(event, team_info)
 
-    return messages, prompt, success_count
+    return messages, prompt
 
 
 @team_matcher.handle()
@@ -245,7 +240,7 @@ async def handle_team(
     team_ids: list[int] = state[TEAM_IDS_KEY]
 
     try:
-        messages, prompt, success_count = await _collect_team_query_messages(
+        messages, prompt = await _collect_team_query_messages(
             team_ids,
             event,
         )
@@ -260,11 +255,7 @@ async def handle_team(
         )
         return
 
-    TEAM_QUERY_GUARD.clear_in_progress(event.user_id)
-    if success_count:
-        TEAM_QUERY_GUARD.penalize_success(event.user_id)
-    else:
-        TEAM_QUERY_GUARD.penalize_failure(event.user_id)
+    TEAM_QUERY_GUARD.finish(event.user_id)
 
     if prompt is not None:
         messages.append(prompt)

@@ -271,6 +271,8 @@ TOML 语法错误、字段类型错误和越界值仍会阻止启动。
 | `bilibili.uids` | 改为命名账号 | 在 `[bilibili.accounts]` 中定义账号，再由 `bilibili.push.accounts` 或目标的 `accounts` 引用账号名。 |
 | `bilibili.push.default_mode` | 改名 | `bilibili.push.mode` |
 | `message.private_unsubscribe` | 移动并统一 | `[message.push_unsubscribe]`，同时管理私聊和群聊推送。 |
+| `seer.player.failure_rate_limit_seconds` | 删除并统一 | 使用 `seer.player.rate_limit_seconds`；玩家查询成功、失败或超时后使用同一冷却。 |
+| `seer.team.failure_rate_limit_seconds` | 删除并统一 | 使用 `seer.team.rate_limit_seconds`；战队查询成功、失败或超时后使用同一冷却。 |
 | `seer.render.clear_on_startup` | 删除，无替代 | 使用 `seer.render.cache_max_size_mb` 进行容量淘汰，不再在启动时清空缓存。 |
 | feature `rank` | 改名 | `seer_rank`；旧 feature 会被忽略并写 warning。 |
 

@@ -79,10 +79,8 @@ from .player_detail_conversation import (
 from .player_detail_fetch import create_player_detail_task
 
 PLAYER_QUERY_GUARD = QueryGuard(
-    success_namespace="seer.player_query.success",
-    failure_namespace="seer.player_query.failure",
-    success_cooldown=lambda: get_player_query_config().rate_limit_seconds,
-    failure_cooldown=lambda: get_player_query_config().failure_rate_limit_seconds,
+    namespace="seer.player_query",
+    cooldown=lambda: get_player_query_config().rate_limit_seconds,
 )
 
 _MAX_PLAYER_ID = 2_000_000_000
@@ -233,8 +231,7 @@ async def handle_player(
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
         if isinstance(e, (NotLoggedInError, DisconnectedError)):
             await mark_headless_unavailable(str(e), source="米米号查询")
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+        PLAYER_QUERY_GUARD.finish(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -243,8 +240,7 @@ async def handle_player(
         )
         return
     except TimeoutError:
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+        PLAYER_QUERY_GUARD.finish(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -253,8 +249,7 @@ async def handle_player(
         )
         return
     except Exception as e:  # noqa: BLE001
-        PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-        PLAYER_QUERY_GUARD.penalize_failure(event.user_id)
+        PLAYER_QUERY_GUARD.finish(event.user_id)
         await finish_event_reply(
             matcher,
             event,
@@ -263,8 +258,7 @@ async def handle_player(
         )
         return
 
-    PLAYER_QUERY_GUARD.clear_in_progress(event.user_id)
-    PLAYER_QUERY_GUARD.penalize_success(event.user_id)
+    PLAYER_QUERY_GUARD.finish(event.user_id)
     binding = get_player_binding(player_config.binding.path, event.user_id)
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True) and not binding.choice_completed:
         state[PLAYER_BINDING_PENDING_KEY] = pending

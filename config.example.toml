@@ -514,11 +514,9 @@ enabled_ids = []
 
 [seer.player]
 # Default: 60
-# EN: Successful player-query cooldown seconds.
-# ZH: 玩家查询成功后的冷却秒数。
+# EN: Per-QQ player-query cooldown seconds, applied after every result.
+# ZH: 每个 QQ 的玩家查询冷却秒数；成功、失败或超时后均生效。
 rate_limit_seconds = 60
-# Default: 10; EN: Failed player-query cooldown seconds. ZH: 玩家查询失败冷却秒数。
-failure_rate_limit_seconds = 10
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
 timeout_seconds = 30.0
 # Default: 90.0; EN: Player detail timeout seconds. ZH: 玩家详情查询超时秒数。
@@ -534,10 +532,10 @@ sections = ["all"]
 path = "data/seer/player_bindings.sqlite"
 
 [seer.team]
-# Default: 60; EN: Successful team-query cooldown seconds. ZH: 战队查询成功冷却秒数。
+# Default: 60
+# EN: Per-QQ team-query cooldown seconds, applied after every result.
+# ZH: 每个 QQ 的战队查询冷却秒数；成功、失败或超时后均生效。
 rate_limit_seconds = 60
-# Default: 10; EN: Failed team-query cooldown seconds. ZH: 战队查询失败冷却秒数。
-failure_rate_limit_seconds = 10
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
 # Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。

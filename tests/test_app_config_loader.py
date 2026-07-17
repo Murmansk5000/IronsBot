@@ -109,6 +109,8 @@ CONFIG_MIGRATION_FIELDS = (
     "bilibili.push.default_mode",
     "bilibili.uids",
     "message.private_unsubscribe",
+    "seer.player.failure_rate_limit_seconds",
+    "seer.team.failure_rate_limit_seconds",
     "seer.render.clear_on_startup",
 )
 
