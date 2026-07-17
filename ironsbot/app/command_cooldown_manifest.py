@@ -131,12 +131,12 @@ _COMMAND_MATCHERS: tuple[tuple[str, CommandIdSource], ...] = (
         "bot_restart",
     ),
     (
-        "ironsbot.plugins.team_resource_subscription:team_resource_manage_matcher",
-        "team_resource_manage",
-    ),
-    (
         "ironsbot.plugins.team_resource_subscription:team_resource_matcher",
         "team_resource_query",
+    ),
+    (
+        "ironsbot.plugins.team_resource_subscription:team_resource_manage_matcher",
+        "team_resource_manage",
     ),
     (
         "ironsbot.plugins.seer.query.commands.autocard:autocard_matcher",
