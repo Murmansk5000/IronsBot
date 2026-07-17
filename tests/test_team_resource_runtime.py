@@ -100,6 +100,20 @@ def test_parse_team_resource_manage_commands() -> None:
     assert list_command.action == "list"
 
 
+def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold(
+) -> None:
+    command = team_resource_subscription._parse_team_resource_manage_command(
+        f"订阅战队{TEAM_ID} @2315721708"
+    )
+
+    assert command is not None
+    assert command.team_id == TEAM_ID
+    assert command.threshold is None
+    assert team_resource_subscription._has_manual_qq_mention(
+        f"订阅战队{TEAM_ID} @2315721708"
+    )
+
+
 @pytest.mark.parametrize("text", ["是", "yes", "YES", " y ", "确认", "确定"])
 def test_parse_team_resource_prompt_choice_accepts_yes(text: str) -> None:
     assert team_resource_subscription.parse_team_resource_prompt_choice(text) is True

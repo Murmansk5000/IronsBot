@@ -59,7 +59,6 @@ if TYPE_CHECKING:
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 TEAM_ID_MIN = 100_000
 TEAM_ID_MAX = 2_000_000_000
-THRESHOLD_NUMBER_INDEX = 1
 
 _ADD_PREFIXES = ("订阅战队", "添加战队", "战队订阅")
 _REMOVE_PREFIXES = ("取消订阅战队", "删除订阅战队", "战队取消订阅")
@@ -194,20 +193,31 @@ def _parse_prefixed_team_command(
     if not rest:
         return TeamResourceManageCommand(_LIST_ACTION)
 
-    numbers = [int(item) for item in re.findall(r"\d+", rest)]
-    if not numbers:
+    team_id_match = re.match(r"\d+", rest)
+    if team_id_match is None:
         return TeamResourceManageCommand(_LIST_ACTION)
 
-    team_id = numbers[0]
+    team_id = int(team_id_match.group())
     if not _is_valid_team_id(team_id):
         return TeamResourceManageCommand(_LIST_ACTION)
 
-    threshold = (
-        numbers[THRESHOLD_NUMBER_INDEX]
-        if len(numbers) > THRESHOLD_NUMBER_INDEX
-        else None
-    )
+    threshold = _parse_subscription_threshold(rest[team_id_match.end() :])
     return TeamResourceManageCommand(_ADD_ACTION, team_id, threshold)
+
+
+def _parse_subscription_threshold(text: str) -> int | None:
+    """Read only a standalone numeric argument after the team ID.
+
+    QQ mentions may appear as text such as ``@123456`` in malformed/manual
+    input. They must never be mistaken for the resource threshold.
+    """
+
+    match = re.search(r"(?<!\S)(\d+)(?!\S)", text)
+    return int(match.group(1)) if match is not None else None
+
+
+def _has_manual_qq_mention(text: str) -> bool:
+    return re.search(r"@\d{5,}", text) is not None
 
 
 def _is_valid_team_id(team_id: int) -> bool:
@@ -368,6 +378,17 @@ async def parse_team_resource_manage(
             else f"本群没有订阅战队：{command.team_id}。"
         )
         await finish_event_reply(matcher, event, message)
+        return
+
+    if (
+        _has_manual_qq_mention(event.get_plaintext())
+        and not _at_user_ids_from_event(event)
+    ):
+        await finish_event_reply(
+            matcher,
+            event,
+            "提醒对象请用 QQ 的 @ 选人功能添加；手动输入 @QQ号 不会保存为提醒对象。",
+        )
         return
 
     result = await _fetch_team_result_for_manual(command.team_id)
