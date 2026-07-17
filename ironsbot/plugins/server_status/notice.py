@@ -198,13 +198,6 @@ def _minute_group(
     return _int_group(match, colon_name, _int_group(match, chinese_name, 0))
 
 
-def _is_default_update_window(now: datetime) -> bool:
-    return (
-        now.weekday() == DEFAULT_UPDATE_WEEKDAY
-        and DEFAULT_START_TIME <= now.time() < DEFAULT_END_TIME
-    )
-
-
 def _clean_notice_text(text: str) -> str:
     cleaned = HTML_TAG_PATTERN.sub("", text)
     return cleaned.replace("\\n", "\n").strip()
