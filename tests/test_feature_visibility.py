@@ -6,6 +6,7 @@ from pytest import MonkeyPatch
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
+from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.plugins.help import visibility
 from tests.helpers.config import StubMessageAction, stub_app_config
 from tests.helpers.onebot_events import group_message_event
@@ -22,12 +23,12 @@ def _group_event(text: str = "帮助"):
 def _config(
     *,
     ai_intent_enabled: bool = True,
-    team_subscriptions: list[object] | None = None,
+    team_resource_enabled: bool = True,
     group_actions: list[StubMessageAction] | None = None,
 ):
     return stub_app_config(
         ai_intent_enabled=ai_intent_enabled,
-        team_subscriptions=team_subscriptions,
+        team_resource_config=TeamResourceConfig(enabled=team_resource_enabled),
         group_actions=group_actions,
     )
 
@@ -170,7 +171,7 @@ def test_team_resource_visibility_reads_app_config(
     monkeypatch.setattr(
         visibility,
         "get_app_config",
-        lambda: _config(team_subscriptions=[object()]),
+        lambda: _config(team_resource_enabled=True),
     )
     monkeypatch.setattr(
         visibility,
@@ -179,6 +180,17 @@ def test_team_resource_visibility_reads_app_config(
     )
 
     assert visibility.plugin_visible_for_event(
+        "战队资源订阅",
+        "ironsbot.plugins.team_resource_subscription",
+        _group_event(),
+    )
+
+    monkeypatch.setattr(
+        visibility,
+        "get_app_config",
+        lambda: _config(team_resource_enabled=False),
+    )
+    assert not visibility.plugin_visible_for_event(
         "战队资源订阅",
         "ironsbot.plugins.team_resource_subscription",
         _group_event(),
