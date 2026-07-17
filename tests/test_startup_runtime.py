@@ -95,6 +95,7 @@ def test_startup_notice_appends_db_sync_notice(
         message: object,
         **kwargs: object,
     ) -> TargetSendSummary:
+        assert "bot" not in kwargs
         sent_messages.append((str(message), kwargs.get("subscription_key")))
         return TargetSendSummary([MessageTarget("private", 1)], [])
 

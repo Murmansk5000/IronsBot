@@ -20,6 +20,7 @@ class FakeSendError(RuntimeError):
 
 @dataclass
 class FakeBot:
+    self_id: int = 0
     failed_group_ids: set[int] = field(default_factory=set)
     private_messages: list[tuple[int, Message]] = field(default_factory=list)
     group_messages: list[tuple[int, Message]] = field(default_factory=list)
@@ -91,6 +92,36 @@ def test_send_target_messages_reports_failed_targets() -> None:
 
     assert summary.succeeded == [MessageTarget("private", PRIVATE_USER_ID)]
     assert summary.failed == [MessageTarget("group", GROUP_ID)]
+
+
+def test_send_target_messages_routes_each_target_without_explicit_bot(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    group_bot = FakeBot(self_id=111111111)
+    private_bot = FakeBot(self_id=222222222)
+
+    monkeypatch.setattr(
+        senders,
+        "get_bot_for_target",
+        lambda target: group_bot if target.target_type == "group" else private_bot,
+    )
+
+    summary = asyncio.run(
+        send_target_messages(
+            [
+                MessageTarget("group", GROUP_ID),
+                MessageTarget("private", PRIVATE_USER_ID),
+            ],
+            "hello",
+            interval_seconds=0,
+        )
+    )
+
+    assert summary.failed == []
+    assert group_bot.group_messages[0][0] == GROUP_ID
+    assert private_bot.private_messages[0][0] == PRIVATE_USER_ID
+    assert not group_bot.private_messages
+    assert not private_bot.group_messages
 
 
 def test_send_target_messages_appends_outbound_cooldown_notice(

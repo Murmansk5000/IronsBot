@@ -161,5 +161,5 @@ def test_red_packet_notice_uses_admin_notice_delivery(
     assert len(calls) == 1
     assert calls[0]["subscription_key"] == "red_packet_notice"
     assert calls[0]["action_name"] == "red packet notice"
-    assert calls[0]["bot"] is bot
+    assert calls[0]["bot"] is None
     assert "示例群（987654321）" in str(calls[0]["message"])

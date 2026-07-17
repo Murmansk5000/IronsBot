@@ -27,7 +27,7 @@ from ironsbot.services.bilibili.auth import (
 )
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
 from ironsbot.shared.messaging.admin_notice import send_admin_notice
-from ironsbot.shared.messaging.admin_notice import get_first_onebot_bot
+from ironsbot.shared.messaging.bot_router import get_default_bot
 
 from .config import get_bili_config
 
@@ -144,7 +144,7 @@ async def send_bili_login_qrcode_to_superusers(
     ):
         return
 
-    bot = get_first_onebot_bot()
+    bot = get_default_bot()
     if not bot:
         logger.warning("no bot online, cannot send Bilibili login QR")
         return

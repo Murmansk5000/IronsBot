@@ -10,7 +10,7 @@ from ironsbot.config.models.message import (
     PushUnsubscribeConfig,
     TeamAuditWelcomeConfig,
 )
-from ironsbot.config.models.runtime import HelpConfig, LoggingConfig
+from ironsbot.config.models.runtime import BotRoutingConfig, HelpConfig, LoggingConfig
 from ironsbot.config.models.seer import (
     MintmarkQueryConfig,
     RankQueryConfig,
@@ -61,6 +61,7 @@ class StubSeerConfig:
 
 @dataclass(frozen=True)
 class StubRuntimeConfig:
+    bot_routing: BotRoutingConfig = field(default_factory=BotRoutingConfig)
     help: HelpConfig = field(default_factory=HelpConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
@@ -79,6 +80,7 @@ def stub_app_config(  # noqa: PLR0913
     *,
     activity_config: ActivityConfig | None = None,
     ai_intent_enabled: bool = True,
+    bot_routing_config: BotRoutingConfig | None = None,
     feature_config: FeatureConfig | None = None,
     logging_config: LoggingConfig | None = None,
     mintmark_config: MintmarkQueryConfig | None = None,
@@ -104,7 +106,10 @@ def stub_app_config(  # noqa: PLR0913
             ),
             group_commands=group_actions or [],
         ),
-        runtime=StubRuntimeConfig(logging=logging_config or LoggingConfig()),
+        runtime=StubRuntimeConfig(
+            bot_routing=bot_routing_config or BotRoutingConfig(),
+            logging=logging_config or LoggingConfig(),
+        ),
         seer=StubSeerConfig(
             mintmark=mintmark_config or MintmarkQueryConfig(),
             rank=rank_config or RankQueryConfig(),
