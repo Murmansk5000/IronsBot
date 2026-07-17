@@ -18,6 +18,7 @@ from .docker_update_models import (
 
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 
+
 def resolve_docker_container_name(configured_name: str) -> str:
     return os.getenv("HOST_CONTAINERNAME", "").strip() or configured_name
 
@@ -28,6 +29,35 @@ def split_docker_image(image: str) -> tuple[str, str]:
         return image, "latest"
     repository, tag = image.rsplit(":", maxsplit=1)
     return repository, tag
+
+
+def _docker_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text.strip()
+    if isinstance(payload, dict):
+        for key in ("message", "error", "errorDetail"):
+            detail = payload.get(key)
+            if isinstance(detail, str) and detail.strip():
+                return detail.strip()
+            if isinstance(detail, dict):
+                message = detail.get("message")
+                if isinstance(message, str) and message.strip():
+                    return message.strip()
+    return response.text.strip()
+
+
+def _raise_for_docker_status(response: httpx.Response) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = _docker_error_detail(response)
+        if not detail:
+            raise
+        msg = f"Docker API returned HTTP {response.status_code}: {detail}"
+        raise RuntimeError(msg) from exc
+
 
 async def restart_docker_container(
     *,
@@ -50,7 +80,7 @@ async def restart_docker_container(
             f"/containers/{quote(container_name, safe='')}/restart",
             params={"t": RESTART_CONTAINER_STOP_TIMEOUT_SECONDS},
         )
-        response.raise_for_status()
+        _raise_for_docker_status(response)
 
 
 async def start_watchtower_update(
@@ -107,7 +137,7 @@ async def start_watchtower_update(
                     target_image_commit=target_commit,
                 )
 
-            await pull_docker_image(client, watchtower.image)
+            await ensure_watchtower_image(client, watchtower.image)
             updater_id = await create_watchtower_container(
                 client,
                 container_name=container_name,
@@ -115,7 +145,7 @@ async def start_watchtower_update(
                 watchtower=watchtower,
             )
             response = await client.post(f"/containers/{updater_id}/start")
-            response.raise_for_status()
+            _raise_for_docker_status(response)
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("docker self update failed")
         return DockerUpdateResult(ok=False, message=str(e))
@@ -137,7 +167,7 @@ async def inspect_container_image_id(
     container_name: str,
 ) -> str:
     response = await client.get(f"/containers/{quote(container_name, safe='')}/json")
-    response.raise_for_status()
+    _raise_for_docker_status(response)
     data = response.json()
     image_id = data.get("Image")
     if not isinstance(image_id, str) or not image_id:
@@ -155,13 +185,34 @@ async def pull_docker_image(
         "/images/create",
         params={"fromImage": repository, "tag": tag},
     )
-    response.raise_for_status()
+    _raise_for_docker_status(response)
     return await inspect_image_info(client, image)
+
+
+async def ensure_watchtower_image(
+    client: httpx.AsyncClient,
+    image: str,
+) -> DockerImageInfo:
+    try:
+        return await pull_docker_image(client, image)
+    except Exception as pull_error:  # noqa: BLE001
+        try:
+            cached = await inspect_image_info(client, image)
+        except Exception as cache_error:
+            raise pull_error from cache_error
+        logger.warning(
+            "watchtower image pull failed; using cached local image: image={}, "
+            "image_id={}, error={}",
+            image,
+            cached.image_id[:19],
+            pull_error,
+        )
+        return cached
 
 
 async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerImageInfo:
     response = await client.get(f"/images/{quote(image, safe='')}/json")
-    response.raise_for_status()
+    _raise_for_docker_status(response)
     data = response.json()
     image_id = data.get("Id")
     if not isinstance(image_id, str) or not image_id:
@@ -205,7 +256,7 @@ async def create_watchtower_container(
             },
         },
     )
-    response.raise_for_status()
+    _raise_for_docker_status(response)
     data = response.json()
     container_id = data.get("Id")
     if not isinstance(container_id, str) or not container_id:
