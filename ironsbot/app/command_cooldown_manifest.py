@@ -212,8 +212,21 @@ _COMMAND_MATCHERS: tuple[tuple[str, CommandIdSource], ...] = (
         "seer_pet_info",
     ),
     (
+        "ironsbot.plugins.seer.query.commands.player:player_binding_matcher",
+        "seer_player_binding",
+    ),
+    (
+        "ironsbot.plugins.seer.query.commands.player:player_unbind_matcher",
+        "seer_player_binding",
+    ),
+    (
         "ironsbot.plugins.seer.query.commands.player:player_matcher",
         "seer_player",
+    ),
+    (
+        "ironsbot.plugins.seer.query.commands.player_shortcuts:"
+        "player_shortcut_matcher",
+        _player_shortcut_resolver,
     ),
     (
         "ironsbot.plugins.seer.query.commands.rank_list:rank_help_matcher",
