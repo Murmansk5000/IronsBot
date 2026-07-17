@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -110,20 +111,23 @@ def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
     )
 
 
-async def safe_player_extra(
+async def safe_player_extra(  # noqa: PLR0913
     label: str,
     awaitable: Awaitable[Any],
     default: Any,
     extra_errors: list[str],
     *,
     on_error: Callable[[str, Exception], None] | None = None,
+    timeout_seconds: float | None = None,
 ) -> Any:
     try:
-        return await awaitable
+        if timeout_seconds is None:
+            return await awaitable
+        return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
     except Exception as error:  # noqa: BLE001
         if on_error is not None:
             on_error(label, error)
-        extra_errors.append(f"{label}失败：{error}")
+        extra_errors.append(f"{label}失败：{_format_player_extra_error(error)}")
         return default
 
 
@@ -135,6 +139,7 @@ async def optional_player_extra(  # noqa: PLR0913
     extra_errors: list[str],
     *,
     on_error: Callable[[str, Exception], None] | None = None,
+    timeout_seconds: float | None = None,
 ) -> Any:
     if not enabled:
         return default
@@ -145,7 +150,14 @@ async def optional_player_extra(  # noqa: PLR0913
         default,
         extra_errors,
         on_error=on_error,
+        timeout_seconds=timeout_seconds,
     )
+
+
+def _format_player_extra_error(error: Exception) -> str:
+    if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
+        return "查询超时"
+    return str(error) or type(error).__name__
 
 
 def build_peak_rating_score(rank: int, star: int) -> int | None:

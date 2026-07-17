@@ -17,6 +17,7 @@ def test_seer_query_usage_message_only_lists_allowed_sections(
 
     assert "【玩家】" in message
     assert "【榜单入口】" in message
+    assert "成就榜123456" in message
     assert "【精灵、技能、魂印、立绘、皮肤】" not in message
     assert "皮肤雷伊" not in message
     assert "【刻印、宝石、刻印榜】" not in message

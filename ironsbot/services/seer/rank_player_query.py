@@ -1,0 +1,176 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from ironsbot.services.seer.local_rank_formatting import format_metric_display
+from ironsbot.services.seer.local_rank_models import LocalRankSummary
+from ironsbot.services.seer.local_rank_update import upsert_local_rank_metrics
+from ironsbot.services.seer.player_formatting_common import (
+    format_player_identity,
+    join_metric_parts,
+)
+from ironsbot.services.seer.player_query import calculate_player_peak_scores
+from ironsbot.services.seer.rank_formatting import format_rank_position_text
+from ironsbot.services.seer.rank_list_models import LOCAL_RANKS, RankPlayerCommand
+from ironsbot.services.seer.rank_list_spec_resolution import (
+    get_global_rank_spec,
+    global_rank_spec_needs_sub_key,
+)
+from ironsbot.services.seer.rank_lookup_runtime import find_pet_kind_rank, find_rank
+from ironsbot.services.seer.rank_models import RankLookupResult
+from ironsbot.services.seer.sequ_extra import fetch_unity_part_one, fetch_unity_peak
+
+_PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
+
+
+@dataclass(frozen=True, slots=True)
+class RankPlayerScore:
+    known: bool
+    value: int | None
+
+
+async def fetch_rank_player_message(
+    game: Any,
+    *,
+    command: RankPlayerCommand,
+    local_rank_enabled: bool,
+) -> str:
+    spec = get_global_rank_spec(command.rank_key)
+    if global_rank_spec_needs_sub_key(spec):
+        return "❌找不到当前巅峰赛季数据。"
+
+    user_info = await game.get_user_info(command.player_id)
+    target = await _fetch_player_score(game, command)
+    result = await _find_player_rank(
+        game,
+        command=command,
+        target=target,
+        key=spec.key,
+        sub_key=spec.sub_key,
+        title=spec.title,
+        unit=spec.unit,
+    )
+    score = result.score if result.score is not None else target.value
+    if result.score is None and score is not None:
+        result.score = score
+
+    metric_key = LOCAL_RANKS[command.rank_key].metric_key
+    display = _format_score(metric_key, score, spec.unit)
+    local_summary = await _update_sample_metric(
+        enabled=local_rank_enabled,
+        player_id=command.player_id,
+        nick=str(user_info.nick),
+        metric_key=metric_key,
+        score=score,
+        display=display,
+        season_sub_key=spec.sub_key if command.rank_key in _PEAK_KEYS else None,
+    )
+    metric_text = join_metric_parts(
+        display or "暂无数据",
+        format_rank_position_text(result),
+        local_summary.sample_rank(metric_key),
+    )
+    title = spec.title.removesuffix("榜")
+    return "\n".join(
+        (
+            f"📊【{spec.title}玩家查询】",
+            format_player_identity(command.player_id, str(user_info.nick)),
+            f"{title}：{metric_text}",
+        )
+    )
+
+
+async def _fetch_player_score(
+    game: Any,
+    command: RankPlayerCommand,
+) -> RankPlayerScore:
+    rank_key = command.rank_key
+    if rank_key == "成就点数":
+        info = await game.get_more_user_info(command.player_id)
+        return RankPlayerScore(
+            known=True,
+            value=int(getattr(info, "total_achieve", 0)) or None,
+        )
+    if rank_key in {"精灵图鉴", "皮肤图鉴"}:
+        info = await fetch_unity_part_one(game, command.player_id)
+        value = info.pet_kind_num if rank_key == "精灵图鉴" else info.skin_num
+        return RankPlayerScore(known=True, value=int(value) or None)
+    if rank_key in _PEAK_KEYS:
+        info = await fetch_unity_peak(game, command.player_id)
+        scores = calculate_player_peak_scores(info)
+        values = {
+            "竞技段位": scores.standard,
+            "狂野段位": scores.wild,
+            "专家段位": scores.expert,
+        }
+        return RankPlayerScore(known=True, value=values[rank_key])
+    return RankPlayerScore(known=False, value=None)
+
+
+async def _find_player_rank(  # noqa: PLR0913
+    game: Any,
+    *,
+    command: RankPlayerCommand,
+    target: RankPlayerScore,
+    key: int,
+    sub_key: int,
+    title: str,
+    unit: str,
+) -> RankLookupResult:
+    if target.known and target.value is None:
+        return RankLookupResult(title=title, score_name=unit)
+    if command.rank_key == "精灵图鉴" and target.value is not None:
+        return await find_pet_kind_rank(
+            game,
+            user_id=command.player_id,
+            pet_kind_count=target.value,
+            search_limit=None,
+        )
+    return await find_rank(
+        game,
+        user_id=command.player_id,
+        title=title.removesuffix("榜"),
+        score_name=unit,
+        key=key,
+        sub_key=sub_key,
+        target_score=target.value,
+    )
+
+
+def _format_score(metric_key: str, score: int | None, unit: str) -> str:
+    if score is None:
+        return ""
+    if metric_key in {"peak_standard", "peak_wild", "peak_expert"}:
+        return format_metric_display(metric_key, score)
+    return f"{score}{unit}"
+
+
+async def _update_sample_metric(  # noqa: PLR0913
+    *,
+    enabled: bool,
+    player_id: int,
+    nick: str,
+    metric_key: str,
+    score: int | None,
+    display: str,
+    season_sub_key: int | None,
+) -> LocalRankSummary:
+    if not enabled or score is None:
+        return LocalRankSummary()
+    return await upsert_local_rank_metrics(
+        player_id=player_id,
+        nick=nick,
+        current_metrics={
+            metric_key: {
+                "value": score,
+                "season_sub_key": season_sub_key,
+                "display": display or None,
+            }
+        },
+        peak_sub_key=season_sub_key,
+    )
+
+
+__all__ = ["RankPlayerScore", "fetch_rank_player_message"]

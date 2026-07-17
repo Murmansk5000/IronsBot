@@ -16,16 +16,20 @@ from ironsbot.services.seer.rank_list_models import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
+    RankPlayerCommand,
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
 from ironsbot.shared.command_text import normalize_command_text, strip_command_prefix
+
+MAX_PLAYER_ID = 2_000_000_000
 
 __all__ = [
     "parse_rank_cache_batch_command",
     "parse_rank_list_command",
     "parse_rank_page_cache_refresh_command",
     "parse_rank_page_cache_status_command",
+    "parse_rank_player_command",
     "parse_rank_score_command",
     "with_admin_prefix",
 ]
@@ -88,6 +92,22 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
     if score <= 0:
         return None
     return RankScoreCommand(rank_key=rank_key, score=score)
+
+
+def parse_rank_player_command(text: str) -> RankPlayerCommand | None:
+    command = normalize_command_text(text)
+    parsed = _match_rank_list_command(command)
+    if parsed is None:
+        return None
+
+    kind, rank_key, suffix = parsed
+    if kind != "global" or re.fullmatch(r"\d+", suffix) is None:
+        return None
+
+    player_id = int(suffix)
+    if not 0 < player_id <= MAX_PLAYER_ID:
+        return None
+    return RankPlayerCommand(rank_key=rank_key, player_id=player_id)
 
 
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
@@ -313,7 +333,7 @@ def _parse_rank_window(  # noqa: PLR0911
             return None
         return start_rank, min(end_rank - start_rank + 1, max_limit)
 
-    single_match = re.fullmatch(r"第?(\d+)名?", suffix)
+    single_match = re.fullmatch(r"第?(\d+)名", suffix)
     if single_match is not None:
         start_rank = int(single_match.group(1))
         if start_rank <= 0:

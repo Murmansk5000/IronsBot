@@ -9,6 +9,7 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
+from ironsbot.services.seer.rank_score_helpers import score_segment_sample_indexes
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
@@ -87,7 +88,7 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
     result.lower_gap = proof.lower_gap
 
 
-async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0913, PLR0915
+async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
     game: Any,
     *,
     key: int,
@@ -98,6 +99,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0913, PLR0915
     search_limit: int | None = None,
     start_index: int = 0,
     rank_offset: int = 0,
+    sample_limit: int | None = None,
     deps: RankScoreSegmentDependencies,
 ) -> RankScoreSearchResult:
     limit = deps.score_search_limit(search_limit)
@@ -138,6 +140,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0913, PLR0915
         end_index=end_index,
         rank_offset=rank_offset,
         result=result,
+        sample_limit=sample_limit,
         candidate_starts=deps.cached_score_candidate_page_starts(
             key=key,
             sub_key=sub_key,
@@ -197,14 +200,26 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0913, PLR0915
     result.end_rank = tie_end + rank_offset
     result.total_count = max(0, tie_end - first_same_or_lower)
 
-    first_page_start = deps.rank_page_start(first_same_or_lower)
-    last_page_start = deps.rank_page_start(max(first_same_or_lower, tie_end - 1))
+    sample_indexes = score_segment_sample_indexes(
+        first_same_or_lower,
+        tie_end,
+        sample_limit,
+    )
+    if sample_indexes is None:
+        first_page_start = deps.rank_page_start(first_same_or_lower)
+        last_page_start = deps.rank_page_start(max(first_same_or_lower, tie_end - 1))
+        page_starts = range(first_page_start, last_page_start + 1, page_size)
+    else:
+        page_starts = sorted(
+            {deps.rank_page_start(index) for index in sample_indexes}
+        )
+
     max_pages = deps.score_search_tie_page_limit()
     fetched_pages = 0
     fetched_times: list[float] = []
 
-    for page_start in range(first_page_start, last_page_start + 1, page_size):
-        if fetched_pages >= max_pages:
+    for page_start in page_starts:
+        if sample_indexes is None and fetched_pages >= max_pages:
             result.truncated = True
             break
 
@@ -222,6 +237,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0913, PLR0915
         for offset, item in enumerate(page_result.items):
             rank_index = page_start + offset
             if rank_index < first_same_or_lower or rank_index >= tie_end:
+                continue
+            if sample_indexes is not None and rank_index not in sample_indexes:
                 continue
             if int(item.score) != target_score:
                 continue

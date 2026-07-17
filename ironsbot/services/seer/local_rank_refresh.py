@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
+from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank_cache_queries import (
     can_cache_player_id,
@@ -79,14 +80,20 @@ async def refresh_local_rank_cache(
             continue
 
         try:
-            await asyncio.wait_for(
-                _refresh_one_player(
-                    game=game,
-                    peak_sub_key=peak_sub_key,
-                    player_id=player_id,
-                ),
-                timeout=player_config.detail_timeout_seconds,
-            )
+            with headless_operation(
+                "本地样本刷新",
+                f"米米号 {player_id}",
+                source="本地样本刷新",
+                background=True,
+            ):
+                await asyncio.wait_for(
+                    _refresh_one_player(
+                        game=game,
+                        peak_sub_key=peak_sub_key,
+                        player_id=player_id,
+                    ),
+                    timeout=player_config.detail_timeout_seconds,
+                )
         except asyncio.TimeoutError:
             result.failures.append(
                 LocalRankRefreshFailure(

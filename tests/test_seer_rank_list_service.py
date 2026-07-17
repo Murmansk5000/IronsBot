@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+import pytest
+
 from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
@@ -28,6 +30,7 @@ from ironsbot.services.seer.rank_list_models import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
+    RankPlayerCommand,
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_list_parsing import (
@@ -35,6 +38,7 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
+    parse_rank_player_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
@@ -255,6 +259,62 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
     assert parse_rank_score_command("群星牌榜第3149名") is None
 
 
+def test_parse_rank_player_command_treats_plain_digits_as_player_id() -> None:
+    assert parse_rank_player_command("成就榜123456") == RankPlayerCommand(
+        rank_key="成就点数",
+        player_id=123456,
+    )
+    assert parse_rank_player_command("群星之巅榜148758762") == RankPlayerCommand(
+        rank_key="群星牌",
+        player_id=148758762,
+    )
+    assert parse_rank_player_command("竞技榜123456") == RankPlayerCommand(
+        rank_key="竞技段位",
+        player_id=123456,
+    )
+    assert parse_rank_player_command("样本成就榜123456") is None
+    assert parse_rank_player_command("成就榜第123456名") is None
+    assert parse_rank_player_command("成就榜5000点") is None
+
+
+@pytest.mark.parametrize(
+    ("alias", "rank_key"),
+    [
+        ("图鉴榜", "图鉴积分"),
+        ("成就榜", "成就点数"),
+        ("精灵榜", "精灵图鉴"),
+        ("皮肤榜", "皮肤图鉴"),
+        ("套装榜", "套装图鉴"),
+        ("部件榜", "部件图鉴"),
+        ("座驾榜", "座驾图鉴"),
+        ("刻印榜", "刻印图鉴"),
+        ("群星榜", "群星牌"),
+        ("竞技榜", "竞技段位"),
+        ("狂野榜", "狂野段位"),
+        ("专家榜", "专家段位"),
+    ],
+)
+def test_all_global_rank_families_treat_plain_number_as_player_id(
+    alias: str,
+    rank_key: str,
+) -> None:
+    assert parse_rank_player_command(f"{alias}123456") == RankPlayerCommand(
+        rank_key=rank_key,
+        player_id=123456,
+    )
+    assert parse_rank_list_command(f"{alias}123456") is None
+
+
+def test_parse_rank_list_command_requires_rank_suffix_for_single_position() -> None:
+    assert parse_rank_list_command("成就榜123456") is None
+    assert parse_rank_list_command("成就榜123456名") == RankListCommand(
+        kind="global",
+        rank_key="成就点数",
+        start_rank=123456,
+        limit=1,
+    )
+
+
 def test_parse_rank_list_command_uses_configured_default_limit() -> None:
     assert parse_rank_list_command("皮肤榜", default_limit=30) == RankListCommand(
         kind="global",
@@ -446,6 +506,42 @@ def test_format_global_rank_score_message() -> None:
         "22. Bob（102） 3149分\n"
         "...另 1 人未展示"
     )
+
+
+def test_format_global_rank_score_message_reports_hidden_middle_segment() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    result = ScoreResult(
+        queried=True,
+        target_score=0,
+        searched_limit=50000,
+        boundary_score=0,
+        start_rank=1001,
+        end_rank=2000,
+        total_count=1000,
+        truncated=False,
+        items=[
+            *[
+                RankItem(id=rank, nick=f"Head{rank}", score=0, rank_index=rank - 1)
+                for rank in range(1001, 1006)
+            ],
+            *[
+                RankItem(id=rank, nick=f"Tail{rank}", score=0, rank_index=rank - 1)
+                for rank in range(1996, 2001)
+            ],
+        ],
+    )
+
+    message = format_global_rank_score_message(
+        spec,
+        result,
+        display_limit=10,
+        timestamp="2026-07-16 12:00:00",
+    )
+
+    assert "第 1001-2000 名，共 1000 人" in message
+    assert "1001. Head1001" in message
+    assert "2000. Tail2000" in message
+    assert "...另 990 人未展示" in message
 
 
 def test_format_global_rank_score_message_shows_cached_hit_without_boundary() -> None:

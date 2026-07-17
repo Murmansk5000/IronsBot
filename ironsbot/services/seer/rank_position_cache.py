@@ -1,35 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ironsbot.services.seer.rank_models import RankLookupResult
-
-
-async def refresh_cached_rank_window(  # noqa: PLR0913
-    game: Any,
-    *,
-    key: int,
-    sub_key: int,
-    center_index: int,
-    page_size: int,
-    rank_window_page_starts: Callable[..., list[int]],
-    fetch_rank_page: Callable[..., Awaitable[list[Any]]],
-    refresh_interval_seconds: float,
-) -> None:
-    for start in rank_window_page_starts(
-        center_index=center_index,
-        page_size=page_size,
-    ):
-        await fetch_rank_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=start + page_size - 1,
-            use_cache=False,
-        )
-        await asyncio.sleep(min(refresh_interval_seconds, 0.5))
 
 
 async def find_rank_by_cached_position(  # noqa: PLR0913
@@ -75,5 +48,4 @@ async def find_rank_by_cached_position(  # noqa: PLR0913
 
 __all__ = [
     "find_rank_by_cached_position",
-    "refresh_cached_rank_window",
 ]
