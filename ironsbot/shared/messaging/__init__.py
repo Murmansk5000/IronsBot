@@ -22,18 +22,20 @@ from .bot_router import (
     get_default_bot,
     resolve_bot_id,
 )
+from .command_cooldown import (
+    CommandCooldownDecision,
+    CommandCooldownService,
+    CommandCooldownToken,
+    command_matcher_registration,
+    mark_command_matcher_exempt,
+    register_command_matcher,
+    reset_command_cooldown_state,
+)
 from .conversations import (
     EventReplyCheck,
     command_reply_check,
     enter_event_reply_conversation,
     event_conversation_session_id,
-)
-from .query_guard import QueryGuard
-from .rate_limits import (
-    InMemoryRateLimiter,
-    peek_user_rate_limit,
-    penalize_user_rate_limit,
-    rate_limiter,
 )
 from .replies import (
     BeforeReplySendHook,
@@ -74,12 +76,13 @@ __all__ = [
     "TOGGLE_SELECTION_FOOTER",
     "AdminNoticeTargets",
     "BeforeReplySendHook",
+    "CommandCooldownDecision",
+    "CommandCooldownService",
+    "CommandCooldownToken",
     "EventReplyCheck",
-    "InMemoryRateLimiter",
     "MessageLimiter",
     "MessageTarget",
     "OneBotMessageSender",
-    "QueryGuard",
     "ReplyMessage",
     "SelectionMenu",
     "SelectionMenuItem",
@@ -89,6 +92,7 @@ __all__ = [
     "apply_reply_before_send",
     "broadcast_targets",
     "build_message",
+    "command_matcher_registration",
     "command_reply_check",
     "configure_reply_delivery_policy",
     "enter_event_reply_conversation",
@@ -104,12 +108,12 @@ __all__ = [
     "get_bot_or_none",
     "get_default_bot",
     "group_targets",
+    "mark_command_matcher_exempt",
     "message_event_target",
-    "peek_user_rate_limit",
-    "penalize_user_rate_limit",
     "private_targets",
-    "rate_limiter",
+    "register_command_matcher",
     "render_text",
+    "reset_command_cooldown_state",
     "resolve_bot_id",
     "send_admin_notice",
     "send_broadcast_message",
