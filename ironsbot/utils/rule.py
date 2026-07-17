@@ -130,8 +130,16 @@ class NoReply:
         return reply is None
 
 
-def no_reply() -> Rule:
-    return Rule(NoReply()) & Rule(NoAt())
+def no_reply(*, allow_at: bool = False) -> Rule:
+    """Ignore QQ reply messages and, by default, messages containing ``@``.
+
+    Commands which intentionally parse mention segments must opt in with
+    ``allow_at=True``. This keeps ordinary commands from being triggered by
+    text addressed to another user.
+    """
+
+    rule = Rule(NoReply())
+    return rule if allow_at else rule & Rule(NoAt())
 
 
 class NoAt:
