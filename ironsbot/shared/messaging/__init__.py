@@ -56,7 +56,10 @@ from .targets import (
     message_event_target,
     private_targets,
 )
-from .text import build_message, render_text
+from .text import (
+    build_message,
+    render_text,
+)
 
 __all__ = [
     "ADMIN_NOTICE_FEATURE",

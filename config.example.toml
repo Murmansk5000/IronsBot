@@ -136,13 +136,11 @@ max_reply_chars = 1500
 # EN: Mention-guard rate limit window in seconds.
 # ZH: 未开启 AI 群 @ 提示的限流窗口秒数。
 # Example: 60.0
-mention_guard_reply_window_seconds = 60.0
 
 # Default: 10
 # EN: Max mention-guard replies per window.
 # ZH: 每个窗口最多发送多少次 @ 提示。
 # Example: 5
-mention_guard_reply_max_per_window = 10
 
 # Default: 600.0
 # EN: Admin notice cooldown for AI failures.

@@ -1,12 +1,17 @@
 from dataclasses import dataclass
 
-from ironsbot.services.help_hint import HelpHintLimiter, is_poke_at_bot
+from pytest import MonkeyPatch
+
+from ironsbot.services import help_hint
+from ironsbot.services.help_hint import is_poke_at_bot
 from ironsbot.shared.help_hints import (
     HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
     append_help_hint,
     unsupported_feature_help_message,
 )
+from ironsbot.shared.messaging.rate_limits import sliding_window_rate_limiter
+from tests.helpers.config import stub_app_config
 
 
 @dataclass(slots=True)
@@ -40,24 +45,30 @@ def test_is_poke_at_bot_checks_poke_target() -> None:
     assert not is_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
 
 
-def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
+def test_help_hint_limiter_allows_three_group_hints_per_minute(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(help_hint, "get_app_config", stub_app_config)
+    sliding_window_rate_limiter.clear(help_hint.HELP_HINT_RATE_LIMIT_NAMESPACE)
     now = 100.0
-    limiter = HelpHintLimiter(clock=lambda: now)
 
-    assert limiter.can_send(987654321)
-    assert limiter.can_send(987654321)
-    assert limiter.can_send(987654321)
-    assert not limiter.can_send(987654321)
+    assert help_hint.can_send_group_help_hint(987654321, now=now)
+    assert help_hint.can_send_group_help_hint(987654321, now=now)
+    assert help_hint.can_send_group_help_hint(987654321, now=now)
+    assert not help_hint.can_send_group_help_hint(987654321, now=now)
 
     now = 160.0
-    assert limiter.can_send(987654321)
+    assert help_hint.can_send_group_help_hint(987654321, now=now)
 
 
-def test_help_hint_limiter_counts_groups_independently() -> None:
-    limiter = HelpHintLimiter(clock=lambda: 100.0)
+def test_help_hint_limiter_counts_groups_independently(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(help_hint, "get_app_config", stub_app_config)
+    sliding_window_rate_limiter.clear(help_hint.HELP_HINT_RATE_LIMIT_NAMESPACE)
 
-    assert limiter.can_send(1)
-    assert limiter.can_send(1)
-    assert limiter.can_send(1)
-    assert not limiter.can_send(1)
-    assert limiter.can_send(2)
+    assert help_hint.can_send_group_help_hint(1, now=100.0)
+    assert help_hint.can_send_group_help_hint(1, now=100.0)
+    assert help_hint.can_send_group_help_hint(1, now=100.0)
+    assert not help_hint.can_send_group_help_hint(1, now=100.0)
+    assert help_hint.can_send_group_help_hint(2, now=100.0)

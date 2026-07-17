@@ -1,4 +1,3 @@
-import logging
 import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
@@ -23,7 +22,11 @@ from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.deployment import DeploymentConfig
 from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.config.models.runtime import DockerUpdateConfig, MatcherPriorityConfig
+from ironsbot.config.models.runtime import (
+    DockerUpdateConfig,
+    MatcherPriorityConfig,
+    RemoteBuildStepConfig,
+)
 from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
 from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
@@ -37,7 +40,7 @@ HEADLESS_USER_ID = 12345678
 DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
-DEFAULT_MENTION_GUARD_MAX_PER_WINDOW = 10
+DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -253,46 +256,37 @@ def test_example_config_parses() -> None:
     remote_build_steps = config.runtime.data_sync.sources[
         "seerapi"
     ].remote_build.steps
-    declared_final_step = type(remote_build_steps[0]).model_validate(
-        parse_toml_file(ROOT / "config.example.toml")["runtime"]["data_sync"][
-            "sources"
-        ]["seerapi"]["remote_build"]["steps"][-1],
+    assert [step.name for step in remote_build_steps] == (
+        [step.name for step in _example_workflow(remote_build_steps)]
     )
-    assert [step.name for step in remote_build_steps] == [
-        "update_unity_config",
-        "sync_config_sources",
-        "build_seer_data",
-        "build_ironsbot_data",
-    ]
     assert (
         remote_build_steps[-1].repository
-        == declared_final_step.repository
+        == (
+        _example_workflow(remote_build_steps)[-1].repository
+    )
     )
     assert (
         remote_build_steps[-1].workflow_id
-        == declared_final_step.workflow_id
+        == (
+        _example_workflow(remote_build_steps)[-1].workflow_id
     )
-    assert remote_build_steps[1].inputs == {
-    }
-    assert remote_build_steps[2].inputs == {
-        "debug_enabled": False,
-    }
-    assert remote_build_steps[3].inputs == {
-    }
+    )
+    assert remote_build_steps[0].inputs == (
+        _example_workflow(remote_build_steps)[0].inputs
+    )
+    assert remote_build_steps[1].inputs == (
+        _example_workflow(remote_build_steps)[1].inputs
+    )
+    assert remote_build_steps[2].inputs == (
+        _example_workflow(remote_build_steps)[2].inputs
+    )
+    assert remote_build_steps[3].inputs == (
+        _example_workflow(remote_build_steps)[3].inputs
+    )
     assert config.runtime.help.ignored_plugins == []
-    declared_step = parse_toml_file(ROOT / "config.example.toml")["runtime"][
-        "data_sync"
-    ]["sources"]["seerapi"]["remote_build"]["steps"][0]
-    assert remote_build_steps[0] == type(remote_build_steps[0]).model_validate(
-        declared_step,
+    assert [step.model_dump() for step in remote_build_steps] == (
+        [step.model_dump() for step in _example_workflow(remote_build_steps)]
     )
-    declared_steps = parse_toml_file(ROOT / "config.example.toml")["runtime"][
-        "data_sync"
-    ]["sources"]["seerapi"]["remote_build"]["steps"]
-    assert [step.model_dump() for step in remote_build_steps] == [
-        type(remote_build_steps[0]).model_validate(step).model_dump()
-        for step in declared_steps
-    ]
 
 
 def test_example_config_has_no_unknown_fields() -> None:
@@ -327,7 +321,7 @@ def test_public_text_does_not_reference_stale_structures() -> None:
     assert stale_matches == []
 
 
-def test_readme_documents_strict_config_migration() -> None:
+def test_readme_documents_lenient_config_migration() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
     for field in CONFIG_MIGRATION_FIELDS:
@@ -386,46 +380,13 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_are_ignored_with_warning(
+def test_unknown_app_config_fields_are_ignored_with_exact_path(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-unknown_root = true
-
-[feature]
-superuser_bypass = false
-unknown_feature = "old value"
-
-[feature.group_aliases]
-main = 123456789
-
-[feature.group_policy]
-main = ["seer_player", "rank", "old_feature"]
-
-[ai]
-unknown_ai = "old value"
-
-[ai.intent_actions.fire_manual_ad]
-enabled = true
-
-[bilibili]
-unknown_bili_field = true
-
-[bilibili.accounts]
-seer = 1310714247
-
-[bilibili.push]
-accounts = ["seer", "old_bili"]
-modes = { old_bili = "link" }
-unknown_push_field = true
-
-[bilibili.push.groups.main]
-accounts = ["old_bili"]
-modes = { old_bili = "full" }
-
 [[message.group_commands]]
 id = "hello"
 commands = ["hello"]
@@ -436,30 +397,93 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    with caplog.at_level(logging.WARNING, logger="ironsbot.config"):
-        config = load_app_config(config_path)
+    config = load_app_config(config_path)
 
-    assert not config.feature.superuser_bypass
-    assert config.feature.group_policy["main"] == [
-        "seer_player",
-        "rank",
-        "old_feature",
-    ]
-    assert config.bilibili.push.accounts == ["seer"]
-    assert config.bilibili.push.modes == {}
-    assert config.bilibili.push.groups["main"].accounts == []
-    assert config.bilibili.push.groups["main"].modes == {}
     assert config.message.group_commands[0].id == "hello"
-    assert "unknown_root" in caplog.text
-    assert "ai.unknown_ai" in caplog.text
-    assert "Ignored unknown AI intent action 'fire_manual_ad'" in caplog.text
-    assert "bilibili.unknown_bili_field" in caplog.text
-    assert "bilibili.push.unknown_push_field" in caplog.text
-    assert "Ignored unknown Bilibili account alias" in caplog.text
-    assert "feature.unknown_feature" in caplog.text
-    assert "Obsolete feature policy key(s) ignored" in caplog.text
-    assert "old_feature" in caplog.text
-    assert "message.group_commands[0].unknown_command_field" in caplog.text
+    assert (
+        "message.group_commands[0].unknown_command_field is not a recognized field"
+        in caplog.text
+    )
+
+
+def test_unregistered_feature_policy_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[feature.group_policy]
+main = ["seer_player", "rank"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_app_config(config_path)
+
+    assert config.feature.group_policy["main"] == ["seer_player"]
+    assert "feature.group_policy.main contains unknown feature 'rank'" in caplog.text
+
+
+def test_unknown_bilibili_account_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bilibili.push.groups.main]
+accounts = ["missing_account"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_app_config(config_path)
+
+    assert config.bilibili.push.groups["main"].accounts == []
+    assert (
+        "bilibili.push.groups.main.accounts[0] references unknown Bilibili account"
+        in caplog.text
+    )
+
+
+def test_unknown_seer_section_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player]
+sections = ["basic", "unknown_section"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_app_config(config_path)
+
+    assert config.seer.player.sections == ["basic"]
+    assert "seer.player.sections contains unknown section(s)" in caplog.text
+
+
+def test_incomplete_unknown_ai_action_is_ignored_with_exact_path(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[ai.intent_actions.custom_action]
+enabled = true
+message = "hello"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_app_config(config_path)
+
+    assert "custom_action" not in config.ai.intent_actions
+    assert "ai.intent_actions.custom_action is incomplete" in caplog.text
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:
@@ -608,8 +632,8 @@ def test_small_plugin_config_accessors_read_app_config(
         assert ai_intent_service.get_configured_actions()
         assert ai_intent_service.get_team_resource_config().commands == ["战队"]
         assert (
-            ai_config.get_ai_config().mention_guard_reply_max_per_window
-            == DEFAULT_MENTION_GUARD_MAX_PER_WINDOW
+            app_config.runtime.help.hint_max_per_window
+            == DEFAULT_HELP_HINT_MAX_PER_WINDOW
         )
         assert activity_config.get_activity_config().lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
@@ -692,6 +716,33 @@ def test_rank_page_refresh_native_default_catalog_keeps_added_domains() -> None:
     _assert_native_default_rank_catalog(RankPageRefreshConfig())
 
 
+def _assert_example_matcher_priorities(
+    matcher_priority: MatcherPriorityConfig,
+) -> None:
+    expected = MatcherPriorityConfig.model_validate(
+        parse_toml_file(ROOT / "config.example.toml")["runtime"][
+            "matcher_priority"
+        ],
+    )
+    assert matcher_priority.model_dump() == expected.model_dump()
+    assert matcher_priority.seer_query < matcher_priority.ai_chat
+    assert matcher_priority.ai_group_at < 0
+    assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_chat == expected.ai_chat
+    assert matcher_priority.seer_player == expected.seer_player
+    assert matcher_priority.sendpic < matcher_priority.seer_pet
+    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
+    assert matcher_priority.seer_pet > matcher_priority.seer_rank
+    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
+    priorities = matcher_priority.model_dump()
+    non_negative_priorities = [value for value in priorities.values() if value >= 0]
+    assert len(non_negative_priorities) == len(set(non_negative_priorities))
+
+
+def test_native_default_matcher_priorities_remain_covered() -> None:
+    _assert_default_matcher_priorities(MatcherPriorityConfig())
+
+
 def _active_public_text(path: Path, text: str) -> str:
     """Separate a declared local historical document from active instructions."""
     if path.suffix != ".md":
@@ -752,52 +803,13 @@ def test_archived_document_links_are_not_active_configuration_entries() -> None:
     )
 
 
-def _assert_example_matcher_priorities(
-    matcher_priority: MatcherPriorityConfig,
-) -> None:
-    expected = MatcherPriorityConfig.model_validate(
-        parse_toml_file(ROOT / "config.example.toml")["runtime"][
-            "matcher_priority"
-        ],
-    )
-    assert matcher_priority.model_dump() == expected.model_dump()
-    assert matcher_priority.seer_query < matcher_priority.ai_chat
-    assert matcher_priority.ai_group_at < 0
-    assert matcher_priority.ai_mention_guard < 0
-    assert matcher_priority.ai_chat == expected.ai_chat
-    assert matcher_priority.seer_player == expected.seer_player
-    assert matcher_priority.sendpic < matcher_priority.seer_pet
-    assert matcher_priority.sendpic < matcher_priority.seer_mintmark
-    assert matcher_priority.seer_pet > matcher_priority.seer_rank
-    assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
-    priorities = matcher_priority.model_dump()
-    non_negative_priorities = [value for value in priorities.values() if value >= 0]
-    assert len(non_negative_priorities) == len(set(non_negative_priorities))
 
-
-def test_native_default_matcher_priorities_remain_covered() -> None:
-    _assert_default_matcher_priorities(MatcherPriorityConfig())
-
-
-def test_native_bilibili_unknown_aliases_never_become_targets() -> None:
-    baseline_accounts = AppConfig.model_validate(
-        {"bilibili": {"accounts": {"known": 1}}},
-    ).bilibili.accounts
-    for malformed in (
-        {"accounts": ["missing"]},
-        {"modes": {"missing": "full"}},
-        {"groups": {"target": {"accounts": ["missing"]}}},
-        {"groups": {"target": {"modes": {"missing": "full"}}}},
-        {"users": {"target": {"accounts": ["missing"]}}},
-        {"users": {"target": {"modes": {"missing": "full"}}}},
-    ):
-        config = AppConfig.model_validate(
-            {"bilibili": {"accounts": {"known": 1}, "push": malformed}},
-        )
-        push = config.bilibili.push
-        assert "missing" not in push.accounts
-        assert "missing" not in push.modes
-        for target in (*push.groups.values(), *push.users.values()):
-            assert "missing" not in target.accounts
-            assert "missing" not in target.modes
-        assert config.bilibili.accounts == baseline_accounts
+def _example_workflow(
+    steps: list[RemoteBuildStepConfig],
+) -> list[RemoteBuildStepConfig]:
+    return [
+        type(steps[0]).model_validate(step)
+        for step in parse_toml_file(ROOT / "config.example.toml")["runtime"][
+            "data_sync"
+        ]["sources"]["seerapi"]["remote_build"]["steps"]
+    ]

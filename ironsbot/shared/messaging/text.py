@@ -8,7 +8,6 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-
 def render_text(text: str) -> str:
     return text.replace("\\n", "\n")
 

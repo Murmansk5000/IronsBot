@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import sys
+from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +16,7 @@ from pydantic import ValidationError
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.deployment import DeploymentConfig
 from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
+from ironsbot.shared.config.parsing import string_list
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -39,7 +42,14 @@ DEFAULT_ENV_EXAMPLE_PATHS = (
     Path("/app/.env.example"),
 )
 _LOGGER = logging.getLogger("ironsbot.config")
-_EXTRA_FORBIDDEN_ERROR = "extra_forbidden"
+_MAX_LENIENT_VALIDATION_PASSES = 20
+_FEATURE_POLICY_ERROR_RE = re.compile(
+    r"feature\.(group_policy|user_policy)\.([^\[]+)\[(\d+)\]=([^,]+)"
+)
+_BILI_ACCOUNT_ERROR_RE = re.compile(
+    r"unknown Bilibili account reference at ([^:]+):\s*(\S+)"
+)
+_AI_ACTION_ERROR_RE = re.compile(r"ai\.intent_actions\.([^:]+):")
 
 
 def parse_toml_file(path: str | Path) -> dict[str, Any]:
@@ -50,84 +60,6 @@ def parse_toml_file(path: str | Path) -> dict[str, Any]:
         msg = f"config file must contain a TOML table: {config_path}"
         raise TypeError(msg)
     return data
-
-
-def _format_config_path(location: tuple[object, ...]) -> str:
-    parts: list[str] = []
-    for item in location:
-        if isinstance(item, int):
-            if parts:
-                parts[-1] = f"{parts[-1]}[{item}]"
-            else:
-                parts.append(f"[{item}]")
-            continue
-        parts.append(str(item))
-    return ".".join(parts)
-
-
-def _remove_extra_config_value(data: Any, location: tuple[object, ...]) -> bool:
-    if not location:
-        return False
-
-    current = data
-    for item in location[:-1]:
-        if isinstance(item, int):
-            if not isinstance(current, list) or item >= len(current):
-                return False
-            current = current[item]
-            continue
-        if not isinstance(current, dict) or item not in current:
-            return False
-        current = current[item]
-
-    final_key = location[-1]
-    if not isinstance(final_key, str) or not isinstance(current, dict):
-        return False
-    if final_key not in current:
-        return False
-
-    del current[final_key]
-    return True
-
-
-def _validate_app_config_or_extra_errors(
-    data: dict[str, Any],
-) -> AppConfig | list[Any]:
-    try:
-        return AppConfig.model_validate(data)
-    except ValidationError as exc:
-        errors = exc.errors()
-        if not errors or any(
-            error.get("type") != _EXTRA_FORBIDDEN_ERROR
-            for error in errors
-        ):
-            raise
-        return errors
-
-
-def _load_app_config_ignoring_extra_fields(data: dict[str, Any]) -> AppConfig:
-    ignored_fields: set[str] = set()
-    while True:
-        validation_result = _validate_app_config_or_extra_errors(data)
-        if isinstance(validation_result, AppConfig):
-            validation_result.feature.warn_obsolete_policy_features()
-            validation_result.feature.warn_unregistered_policy_features()
-            return validation_result
-
-        removed_any = False
-        for error in validation_result:
-            location = tuple(error.get("loc", ()))
-            if _remove_extra_config_value(data, location):
-                ignored_fields.add(_format_config_path(location))
-                removed_any = True
-
-        if not removed_any:
-            AppConfig.model_validate(data)
-
-        _LOGGER.warning(
-            "Ignored unknown app config field(s): "
-            + ", ".join(sorted(ignored_fields))
-        )
 
 
 def resolve_app_config_path(
@@ -258,7 +190,281 @@ def load_app_config(
 ) -> AppConfig:
     resolved_path = Path(path) if path is not None else resolve_app_config_path(env)
     ensure_app_config_file(resolved_path, env)
-    return _load_app_config_ignoring_extra_fields(parse_toml_file(resolved_path))
+    return _validate_app_config_lenient(
+        parse_toml_file(resolved_path),
+        source_path=resolved_path,
+    )
+
+
+def _validate_app_config_lenient(
+    data: dict[str, Any],
+    *,
+    source_path: Path,
+) -> AppConfig:
+    candidate = deepcopy(data)
+
+    for _ in range(_MAX_LENIENT_VALIDATION_PASSES):
+        config, exc = _try_validate_app_config(candidate)
+        if config is not None:
+            return config
+        if exc is None:
+            break
+
+        warnings: list[str] = []
+        if not _apply_lenient_config_fixes(candidate, exc, warnings):
+            raise exc
+
+        for warning in warnings:
+            _LOGGER.warning(
+                "Ignoring unrecognized app config entry in %s: %s",
+                source_path,
+                warning,
+            )
+
+    msg = (
+        f"app config could not be validated after "
+        f"{_MAX_LENIENT_VALIDATION_PASSES} lenient cleanup passes: {source_path}"
+    )
+    raise RuntimeError(msg)
+
+
+def _try_validate_app_config(
+    data: dict[str, Any],
+) -> tuple[AppConfig | None, ValidationError | None]:
+    try:
+        return AppConfig.model_validate(data), None
+    except ValidationError as exc:
+        return None, exc
+
+
+def _apply_lenient_config_fixes(
+    data: dict[str, Any],
+    exc: ValidationError,
+    warnings: list[str],
+) -> bool:
+    changed = False
+    for error in exc.errors():
+        error_type = str(error.get("type", ""))
+        message = str(error.get("msg", ""))
+        loc = tuple(error.get("loc", ()))
+
+        if error_type == "extra_forbidden":
+            changed |= _remove_config_path(data, loc, warnings)
+            continue
+
+        if "unregistered feature policy key(s)" in message:
+            changed |= _remove_unknown_feature_policy_entries(data, message, warnings)
+            continue
+
+        if "unknown Bilibili account reference" in message:
+            changed |= _remove_unknown_bilibili_account_refs(data, message, warnings)
+            continue
+
+        if "unknown AI intent action must configure" in message:
+            changed |= _remove_unknown_ai_action(data, message, warnings)
+            continue
+
+        if "contains unknown section(s)" in message:
+            changed |= _remove_unknown_sections(data, loc, message, warnings)
+            continue
+
+    return changed
+
+
+def _format_config_path(loc: tuple[Any, ...]) -> str:
+    parts: list[str] = []
+    for part in loc:
+        if isinstance(part, int):
+            if parts:
+                parts[-1] = f"{parts[-1]}[{part}]"
+            else:
+                parts.append(f"[{part}]")
+        else:
+            parts.append(str(part))
+    return ".".join(parts)
+
+
+def _parse_config_path(path: str) -> tuple[Any, ...]:
+    parts: list[Any] = []
+    for segment in path.split("."):
+        name = segment
+        while "[" in name and name.endswith("]"):
+            before, _, after = name.partition("[")
+            if before:
+                parts.append(before)
+            index_text = after[:-1]
+            parts.append(int(index_text))
+            name = ""
+        if name:
+            parts.append(name)
+    return tuple(parts)
+
+
+def _resolve_parent(container: Any, loc: tuple[Any, ...]) -> Any:
+    current = container
+    for part in loc:
+        if isinstance(part, int):
+            if not isinstance(current, list) or part >= len(current):
+                return None
+            current = current[part]
+            continue
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _remove_config_path(
+    data: dict[str, Any],
+    loc: tuple[Any, ...],
+    warnings: list[str],
+) -> bool:
+    if not loc:
+        return False
+
+    parent = _resolve_parent(data, loc[:-1])
+    key = loc[-1]
+    path = _format_config_path(loc)
+
+    if isinstance(parent, dict) and isinstance(key, str) and key in parent:
+        parent.pop(key, None)
+        warnings.append(f"{path} is not a recognized field")
+        return True
+
+    if isinstance(parent, list) and isinstance(key, int) and 0 <= key < len(parent):
+        parent.pop(key)
+        warnings.append(f"{path} is not a recognized list item")
+        return True
+
+    return False
+
+
+def _remove_unknown_feature_policy_entries(
+    data: dict[str, Any],
+    message: str,
+    warnings: list[str],
+) -> bool:
+    feature_config = data.get("feature")
+    if not isinstance(feature_config, dict):
+        return False
+
+    removals: list[tuple[str, str, int, str]] = [
+        (policy_name, target, int(index), feature.strip())
+        for policy_name, target, index, feature in _FEATURE_POLICY_ERROR_RE.findall(
+            message
+        )
+    ]
+    changed = False
+    for policy_name, target, index, feature in sorted(
+        removals,
+        key=lambda item: (item[0], item[1], item[2]),
+        reverse=True,
+    ):
+        policy = feature_config.get(policy_name)
+        if not isinstance(policy, dict):
+            continue
+        values = policy.get(target)
+        if not isinstance(values, list):
+            continue
+
+        entry_changed = False
+        if 0 <= index < len(values) and str(values[index]).strip() == feature:
+            values.pop(index)
+            entry_changed = True
+        else:
+            original_len = len(values)
+            values[:] = [item for item in values if str(item).strip() != feature]
+            entry_changed = len(values) != original_len
+
+        if entry_changed:
+            changed = True
+            warnings.append(
+                f"feature.{policy_name}.{target} contains unknown feature "
+                f"{feature!r}"
+            )
+    return changed
+
+
+def _remove_unknown_bilibili_account_refs(
+    data: dict[str, Any],
+    message: str,
+    warnings: list[str],
+) -> bool:
+    changed = False
+    for path, account in _BILI_ACCOUNT_ERROR_RE.findall(message):
+        loc = _parse_config_path(path)
+        if _remove_config_path(data, loc, warnings):
+            warnings[-1] = f"{path} references unknown Bilibili account {account!r}"
+            changed = True
+    return changed
+
+
+def _remove_unknown_ai_action(
+    data: dict[str, Any],
+    message: str,
+    warnings: list[str],
+) -> bool:
+    ai_config = data.get("ai")
+    if not isinstance(ai_config, dict):
+        return False
+    actions = ai_config.get("intent_actions")
+    if not isinstance(actions, dict):
+        return False
+
+    changed = False
+    for action_id in _AI_ACTION_ERROR_RE.findall(message):
+        if action_id in actions:
+            actions.pop(action_id, None)
+            warnings.append(
+                f"ai.intent_actions.{action_id} is incomplete and was ignored"
+            )
+            changed = True
+    return changed
+
+
+def _remove_unknown_sections(
+    data: dict[str, Any],
+    loc: tuple[Any, ...],
+    message: str,
+    warnings: list[str],
+) -> bool:
+    if not loc:
+        return False
+
+    _, _, raw_unknown = message.partition("section(s):")
+    unknown_sections = {
+        section.strip().lower()
+        for section in raw_unknown.split(",")
+        if section.strip()
+    }
+    if not unknown_sections:
+        return False
+
+    parent = _resolve_parent(data, loc[:-1])
+    key = loc[-1]
+    if not isinstance(parent, dict) or not isinstance(key, str) or key not in parent:
+        return False
+
+    current_value = parent[key]
+    current_sections = string_list(current_value)
+    filtered = [
+        section
+        for section in current_sections
+        if str(section).strip().lower() not in unknown_sections
+    ]
+    if len(filtered) == len(current_sections):
+        return False
+
+    path = _format_config_path(loc)
+    if filtered:
+        parent[key] = filtered
+    else:
+        parent.pop(key, None)
+    warnings.append(
+        f"{path} contains unknown section(s) "
+        f"{', '.join(sorted(unknown_sections))}"
+    )
+    return True
 
 
 @lru_cache(maxsize=1)
