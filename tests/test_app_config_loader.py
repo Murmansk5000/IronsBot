@@ -23,11 +23,13 @@ from ironsbot.config.models.deployment import DeploymentConfig
 from ironsbot.config.models.message import (
     GroupScheduledMessageAction,
     MessageConfig,
+    PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.runtime import (
     BotRoutingConfig,
+    CommandCooldownConfig,
     DockerUpdateConfig,
     MatcherPriorityConfig,
 )
@@ -109,6 +111,10 @@ CONFIG_MIGRATION_FIELDS = (
     "bilibili.push.default_mode",
     "bilibili.uids",
     "message.private_unsubscribe",
+    "seer.player.failure_rate_limit_seconds",
+    "seer.player.rate_limit_seconds",
+    "seer.team.failure_rate_limit_seconds",
+    "seer.team.rate_limit_seconds",
     "seer.render.clear_on_startup",
 )
 
@@ -357,6 +363,37 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
                 )
             ],
         )
+
+
+def test_dynamic_message_commands_require_stable_ids() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="command message action requires a non-empty id",
+    ):
+        PrivateCommandMessageAction(
+            commands=["hello"],
+            message="world",
+        )
+
+    with pytest.raises(
+        ValidationError,
+        match="command message action id may only contain",
+    ):
+        PrivateCommandMessageAction(
+            id="daily reminder",
+            commands=["hello"],
+            message="world",
+        )
+
+
+
+
+def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"only supports \{remaining_seconds\}",
+    ):
+        CommandCooldownConfig(cooldown_message="{unknown}")
 
 
 def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
