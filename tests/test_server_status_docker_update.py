@@ -227,6 +227,69 @@ def test_target_image_pull_failure_includes_docker_error_detail() -> None:
         )
 
 
+def test_target_image_pull_retries_transient_registry_eof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_attempts = 2
+    sleep_delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr(
+        "ironsbot.plugins.server_status.docker_update_client.asyncio.sleep",
+        fake_sleep,
+    )
+
+    class FakeClient:
+        post_count = 0
+
+        async def post(self, _url: str, **_kwargs: object) -> httpx.Response:
+            self.post_count += 1
+            if self.post_count == 1:
+                return httpx.Response(
+                    500,
+                    json={
+                        "message": (
+                            'Get "https://registry-1.docker.io/v2/": EOF'
+                        )
+                    },
+                    request=httpx.Request(
+                        "POST",
+                        "http://docker/images/create",
+                    ),
+                )
+            return httpx.Response(
+                200,
+                json={},
+                request=httpx.Request("POST", "http://docker/images/create"),
+            )
+
+        async def get(self, _url: str) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "Id": "sha256:target-image",
+                    "Created": "2026-07-01T00:00:00Z",
+                    "Config": {"Labels": {}},
+                },
+                request=httpx.Request("GET", "http://docker/images/json"),
+            )
+
+    client = FakeClient()
+
+    result = asyncio.run(
+        pull_docker_image(
+            client,  # type: ignore[arg-type]
+            "murmansk5000/ironsbot:latest",
+        )
+    )
+
+    assert result.image_id == "sha256:target-image"
+    assert client.post_count == expected_attempts
+    assert sleep_delays == [2.0]
+
+
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
     assert RUNTIME_SETUP_CALLS[0] == (
         "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime"

@@ -16,7 +16,14 @@ from ironsbot.services.seer.player_formatting_common import (
     format_vip,
     format_win_rate,
 )
+from ironsbot.services.seer.player_peak_formatting import (
+    format_compact_peak_section,
+)
 from ironsbot.services.seer.player_query import PlayerDetailErrors
+from ironsbot.services.seer.rank_models import (
+    PeakSeasonRankSummary,
+    RankLookupResult,
+)
 
 PLAYER_ID = 105023264
 TEAM_ID = 987654321
@@ -247,6 +254,47 @@ def test_format_login_timeline_keeps_online_info_as_source_of_truth() -> None:
 def test_format_win_rate_handles_empty_and_non_empty_records() -> None:
     assert format_win_rate(0, 0) == "当前赛季未参赛"
     assert format_win_rate(2, 3) == "2/3=66.667%"
+
+
+def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -> None:
+    peak = UnityPeak(
+        current_j_rank=4,
+        current_j_star=0,
+        current_j_win=82,
+        current_j_all=124,
+    )
+    summary = PeakSeasonRankSummary(
+        standard=RankLookupResult(
+            title="竞技赛季榜",
+            score_name="段位分",
+            rank=1,
+            score=300033,
+            queried=True,
+        ),
+        wild=RankLookupResult(
+            title="狂野赛季榜",
+            score_name="段位分",
+            searched_limit=2000,
+            queried=True,
+        ),
+        expert=RankLookupResult(
+            title="专家赛季榜",
+            score_name="专家积分",
+            searched_limit=2000,
+            queried=True,
+        ),
+    )
+
+    message = format_compact_peak_section(
+        _as_any(peak),
+        summary,
+        _as_any(_LocalSummary()),
+    )
+
+    assert "竞技：王者33星" in message
+    assert "竞技：圣皇0星" not in message
+    assert "场次124" not in message
+    assert "狂野：当前赛季前2000名未确认" in message
 
 
 def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:

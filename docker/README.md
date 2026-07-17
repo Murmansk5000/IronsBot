@@ -358,7 +358,7 @@ Bot replies: team info for each configured team ID
 
 This is the same kind of output as the built-in `战队<team_id>` query, but the group member does not need to remember the team IDs.
 
-Configure it in `ironsbot.toml`:
+Enable the feature and default reminder settings in `ironsbot.toml`:
 
 ```toml
 [feature]
@@ -375,18 +375,24 @@ example = ["team_resource_subscription"]
 [seer.team_resource]
 times = ["23:00"]
 commands = ["战队"]
+subscription_path = "data/seer/team_resource_subscriptions.sqlite"
+default_threshold = 1000
+default_at_users = ["owner"]
 query_timeout_seconds = 20
 resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
 resource_message = "出来买资源，别逼我求你😡"
-
-[[seer.team_resource.subscriptions]]
-group = "example"
-team_ids = [1234567, 7654321]
-threshold = 1000
-at_users = ["owner"]
 ```
 
-Keep real QQ group IDs and team IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Do not commit them to GitHub.
+Then group owners/admins manage subscriptions in QQ:
+
+```text
+订阅战队123456
+订阅战队123456 1000 @提醒人
+战队订阅
+取消订阅战队123456
+```
+
+Keep real QQ group IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Runtime team subscriptions are stored in `subscription_path`; do not commit that database to GitHub.
 
 ## Unraid
 

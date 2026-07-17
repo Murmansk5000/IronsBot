@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import os
 from urllib.parse import quote
 from uuid import uuid4
@@ -17,6 +18,16 @@ from .docker_update_models import (
 )
 
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
+IMAGE_PULL_RETRY_ATTEMPTS = 3
+IMAGE_PULL_RETRY_BASE_DELAY_SECONDS = 2.0
+TRANSIENT_DOCKER_PULL_ERRORS = (
+    "eof",
+    "timeout",
+    "connection reset",
+    "connection refused",
+    "temporarily unavailable",
+    "tls handshake timeout",
+)
 
 
 def resolve_docker_container_name(configured_name: str) -> str:
@@ -57,6 +68,11 @@ def _raise_for_docker_status(response: httpx.Response) -> None:
             raise
         msg = f"Docker API returned HTTP {response.status_code}: {detail}"
         raise RuntimeError(msg) from exc
+
+
+def _is_transient_docker_pull_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return any(marker in text for marker in TRANSIENT_DOCKER_PULL_ERRORS)
 
 
 async def restart_docker_container(
@@ -181,11 +197,29 @@ async def pull_docker_image(
     image: str,
 ) -> DockerImageInfo:
     repository, tag = split_docker_image(image)
-    response = await client.post(
-        "/images/create",
-        params={"fromImage": repository, "tag": tag},
-    )
-    _raise_for_docker_status(response)
+    for attempt in range(1, IMAGE_PULL_RETRY_ATTEMPTS + 1):
+        try:
+            response = await client.post(
+                "/images/create",
+                params={"fromImage": repository, "tag": tag},
+            )
+            _raise_for_docker_status(response)
+            break
+        except Exception as e:
+            if (
+                attempt >= IMAGE_PULL_RETRY_ATTEMPTS
+                or not _is_transient_docker_pull_error(e)
+            ):
+                raise
+            logger.warning(
+                "docker image pull transient failure; retrying: image={}, "
+                "attempt={}/{}, error={}",
+                image,
+                attempt,
+                IMAGE_PULL_RETRY_ATTEMPTS,
+                e,
+            )
+            await asyncio.sleep(IMAGE_PULL_RETRY_BASE_DELAY_SECONDS * attempt)
     return await inspect_image_info(client, image)
 
 

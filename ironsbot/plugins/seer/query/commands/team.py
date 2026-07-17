@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import re
+from typing import Any, cast
 
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
@@ -27,15 +31,21 @@ from ironsbot.services.seer.team import (
     team_query_in_progress_message,
     team_query_wait_message,
 )
+from ironsbot.services.team_resource_subscriptions import TeamResourceSubscriptionStore
+from ironsbot.shared.features import is_group_feature_allowed
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.messaging.query_guard import QueryGuard
+from ironsbot.shared.permissions import can_manage_group_event
+from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import get_team_query_config
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from ._args import has_numeric_arg, parse_numeric_id
 
-TEAM_ID_KEY = "team_id"
+TEAM_IDS_KEY = "team_ids"
+TEAM_ID_MIN = 100_000
+TEAM_ID_MAX = 2_000_000_000
+TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 TEAM_QUERY_GUARD = QueryGuard(
     success_namespace="seer.team_query.success",
     failure_namespace="seer.team_query.failure",
@@ -43,11 +53,25 @@ TEAM_QUERY_GUARD = QueryGuard(
     failure_cooldown=lambda: get_team_query_config().failure_rate_limit_seconds,
 )
 
+
+def _parse_team_ids(text: str) -> list[int]:
+    team_ids: list[int] = []
+    for item in re.findall(r"\d+", text):
+        team_id = int(item)
+        if TEAM_ID_MIN <= team_id <= TEAM_ID_MAX:
+            team_ids.append(team_id)
+    return list(dict.fromkeys(team_ids))
+
+
+async def _has_team_id_args(state: T_State) -> bool:
+    return bool(_parse_team_ids(parse_string_arg(state)))
+
+
 team_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_team")
     & (
         startswith_or_endswith(prefixes=("战队", "查询战队信息"), suffixes=())
-        & has_numeric_arg
+        & Rule(_has_team_id_args)
         & no_reply()
     ),
     priority=seer_feature_priority("seer_team"),
@@ -75,14 +99,17 @@ async def validate_team_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    state[TEAM_ID_KEY] = await parse_numeric_id(
-        matcher=matcher,
-        state=state,
-        min_value=100000,
-        max_value=2_000_000_000,
-        error_message="❌ 战队ID范围必须在 100000~2000000000 之间！",
-    )
-    team_id: int = state[TEAM_ID_KEY]
+    team_ids = _parse_team_ids(parse_string_arg(state))
+    if not team_ids:
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 战队ID范围必须在 100000~2000000000 之间！",
+            mention_sender=True,
+        )
+        return
+    state[TEAM_IDS_KEY] = team_ids
+    team_id = team_ids[0]
 
     in_progress_team_id = TEAM_QUERY_GUARD.in_progress_subject(event.user_id)
     if in_progress_team_id is not None:
@@ -105,30 +132,122 @@ async def validate_team_id(
     TEAM_QUERY_GUARD.set_in_progress(event.user_id, team_id)
 
 
+def _team_resource_store() -> TeamResourceSubscriptionStore:
+    return TeamResourceSubscriptionStore(
+        get_app_config().seer.team_resource.subscription_path
+    )
+
+
+def _team_subscription_prompt(
+    event: MessageEvent,
+    team_info: object,
+) -> str | None:
+    if not isinstance(event, GroupMessageEvent):
+        return None
+    if not can_manage_group_event(event):
+        return None
+
+    config = get_app_config().seer.team_resource
+    if not config.enabled:
+        return None
+    if not is_group_feature_allowed(
+        event.user_id,
+        event.group_id,
+        TEAM_RESOURCE_FEATURE,
+    ):
+        return None
+
+    store = _team_resource_store()
+    if store.has_prompted_group(event.group_id):
+        return None
+
+    typed_team_info = cast("Any", team_info)
+    team_id = int(typed_team_info.team_id)
+    team_name = str(typed_team_info.name or "")
+    store.mark_group_prompted(
+        group_id=event.group_id,
+        team_id=team_id,
+        team_name=team_name,
+        prompted_by=event.user_id,
+    )
+    label = f"{team_name}（{team_id}）" if team_name else str(team_id)
+    return (
+        f"本群可以订阅战队 {label} 的资源提醒。\n"
+        "是否订阅这个战队？回复“是”或“y”订阅，回复“否”或“n”跳过。\n"
+        "本群只提示一次；之后群主/管理员仍可发送“订阅战队123456”添加更多战队。"
+    )
+
+
+async def _query_team_info(team_id: int) -> tuple[str, object]:
+    game = get_game_client()
+    team_config = get_team_query_config()
+    with headless_operation(
+        "战队查询",
+        f"战队 {team_id}",
+        source="战队查询",
+    ):
+        team_info = await asyncio.wait_for(
+            game.get_team_info(team_id),
+            timeout=team_config.timeout_seconds,
+        )
+    await mark_headless_available(source="战队查询", user_id=int(game.user_id))
+    return (
+        format_team_info(
+            team_info,
+            set(team_config.sections),
+        ),
+        team_info,
+    )
+
+
+async def _collect_team_query_messages(
+    team_ids: list[int],
+    event: MessageEvent,
+) -> tuple[list[str], str | None, int]:
+    messages: list[str] = []
+    prompt: str | None = None
+    success_count = 0
+
+    for team_id in team_ids:
+        try:
+            team_message, team_info = await _query_team_info(team_id)
+        except (NotLoggedInError, DisconnectedError):
+            raise
+        except TimeoutError:
+            messages.append(format_team_timeout_message(team_id))
+            continue
+        except SocketRecvError as e:
+            messages.append(
+                format_team_socket_error_message(
+                    team_id,
+                    format_socket_recv_error(e),
+                )
+            )
+            continue
+        except Exception as e:  # noqa: BLE001
+            messages.append(format_team_generic_error_message(team_id, e))
+            continue
+
+        messages.append(team_message)
+        success_count += 1
+        if prompt is None:
+            prompt = _team_subscription_prompt(event, team_info)
+
+    return messages, prompt, success_count
+
+
 @team_matcher.handle()
 async def handle_team(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    team_id: int = state[TEAM_ID_KEY]
+    team_ids: list[int] = state[TEAM_IDS_KEY]
 
     try:
-        game = get_game_client()
-        team_config = get_team_query_config()
-        with headless_operation(
-            "战队查询",
-            f"战队 {team_id}",
-            source="战队查询",
-        ):
-            team_info = await asyncio.wait_for(
-                game.get_team_info(team_id),
-                timeout=team_config.timeout_seconds,
-            )
-        await mark_headless_available(source="战队查询", user_id=int(game.user_id))
-        team_message = format_team_info(
-            team_info,
-            set(team_config.sections),
+        messages, prompt, success_count = await _collect_team_query_messages(
+            team_ids,
+            event,
         )
     except FinishedException:
         raise
@@ -137,36 +256,22 @@ async def handle_team(
         await _finish_team_query_failure(
             matcher,
             event,
-            format_team_unavailable_message(team_id),
-        )
-        return
-    except TimeoutError:
-        await _finish_team_query_failure(
-            matcher,
-            event,
-            format_team_timeout_message(team_id),
-        )
-        return
-    except SocketRecvError as e:
-        await _finish_team_query_failure(
-            matcher,
-            event,
-            format_team_socket_error_message(team_id, format_socket_recv_error(e)),
-        )
-        return
-    except Exception as e:  # noqa: BLE001
-        await _finish_team_query_failure(
-            matcher,
-            event,
-            format_team_generic_error_message(team_id, e),
+            format_team_unavailable_message(team_ids[0]),
         )
         return
 
     TEAM_QUERY_GUARD.clear_in_progress(event.user_id)
-    TEAM_QUERY_GUARD.penalize_success(event.user_id)
+    if success_count:
+        TEAM_QUERY_GUARD.penalize_success(event.user_id)
+    else:
+        TEAM_QUERY_GUARD.penalize_failure(event.user_id)
+
+    if prompt is not None:
+        messages.append(prompt)
+
     await finish_event_reply(
         matcher,
         event,
-        team_message,
+        "\n\n".join(messages),
         mention_sender=True,
     )

@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, MutableMapping
     from typing import Any
+
+    from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
+    from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_COLLECTION_KEY = "_player_collection_message"
@@ -81,6 +84,13 @@ class PlayerPeakScores:
     expert: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ValidatedPlayerPeak:
+    unity_peak: UnityPeakInfo
+    scores: PlayerPeakScores
+    clear_metric_keys: frozenset[str] = frozenset()
+
+
 def extract_player_query_arg(text_value: str) -> str | None:
     stripped = text_value.strip()
     folded = stripped.casefold()
@@ -116,6 +126,86 @@ def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
         standard=standard_score,
         wild=wild_score,
         expert=expert_score,
+    )
+
+
+def validate_player_peak_season(
+    unity_peak: UnityPeakInfo,
+    candidate_scores: PlayerPeakScores,
+    rank_summary: PeakSeasonRankSummary,
+) -> ValidatedPlayerPeak:
+    scores: dict[str, int | None] = {}
+    peak_updates: dict[str, int] = {}
+    clear_metric_keys: set[str] = set()
+    invalidates_total_matches = False
+    mode_specs = (
+        (
+            "standard",
+            candidate_scores.standard,
+            rank_summary.standard,
+            "current_j_win",
+            "current_j_all",
+            (
+                "peak_standard",
+                "peak_standard_win_rate",
+                "peak_standard_matches",
+            ),
+        ),
+        (
+            "wild",
+            candidate_scores.wild,
+            rank_summary.wild,
+            "current_k_win",
+            "current_k_all",
+            ("peak_wild", "peak_wild_win_rate", "peak_wild_matches"),
+        ),
+        (
+            "expert",
+            candidate_scores.expert,
+            rank_summary.expert,
+            "current_z_win",
+            "current_z_all",
+            ("peak_expert", "peak_expert_win_rate", "peak_expert_matches"),
+        ),
+    )
+    for (
+        mode,
+        candidate_score,
+        result,
+        win_field,
+        total_field,
+        metric_keys,
+    ) in mode_specs:
+        confirmed_score = (
+            int(result.score)
+            if result.rank is not None and result.score is not None
+            else None
+        )
+        scores[mode] = confirmed_score
+        if confirmed_score is not None and confirmed_score == candidate_score:
+            continue
+
+        peak_updates[win_field] = 0
+        peak_updates[total_field] = 0
+        invalidates_total_matches = (
+            invalidates_total_matches or int(getattr(unity_peak, total_field)) > 0
+        )
+        if confirmed_score is None:
+            clear_metric_keys.update(metric_keys)
+        else:
+            clear_metric_keys.update(metric_keys[1:])
+
+    if invalidates_total_matches:
+        clear_metric_keys.add("peak_total_matches")
+
+    return ValidatedPlayerPeak(
+        unity_peak=replace(unity_peak, **peak_updates),
+        scores=PlayerPeakScores(
+            standard=scores["standard"],
+            wild=scores["wild"],
+            expert=scores["expert"],
+        ),
+        clear_metric_keys=frozenset(clear_metric_keys),
     )
 
 

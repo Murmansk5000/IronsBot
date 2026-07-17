@@ -16,7 +16,10 @@ from ironsbot.services.seer.player_collection_formatting import (
 )
 from ironsbot.services.seer.player_formatting_common import format_player_identity
 from ironsbot.services.seer.player_peak_formatting import format_compact_peak_section
-from ironsbot.services.seer.player_query import calculate_player_peak_scores
+from ironsbot.services.seer.player_query import (
+    calculate_player_peak_scores,
+    validate_player_peak_season,
+)
 from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_models import PlayerRankSummary
 from ironsbot.services.seer.rank_summary_runtime import (
@@ -54,6 +57,20 @@ _COLLECTION_METRIC_KEYS = frozenset(
         "mount_count",
         "skin_count",
         "unlocked_book_entries",
+    )
+)
+_PEAK_METRIC_KEYS = frozenset(
+    (
+        "peak_standard",
+        "peak_standard_win_rate",
+        "peak_standard_matches",
+        "peak_wild",
+        "peak_wild_win_rate",
+        "peak_wild_matches",
+        "peak_expert",
+        "peak_expert_win_rate",
+        "peak_expert_matches",
+        "peak_total_matches",
     )
 )
 
@@ -167,24 +184,32 @@ async def _fetch_peak_message(
         wild_score=scores.wild,
         expert_score=scores.expert,
     )
+    validated_peak = validate_player_peak_season(
+        unity_peak,
+        scores,
+        rank_summary,
+    )
     metrics = collect_metrics(
         more_info=SimpleNamespace(total_achieve=0, pet_all_num=0),
         unity_part_one=UnityPartOneInfo(),
-        unity_peak=unity_peak,
+        unity_peak=validated_peak.unity_peak,
         rank_summary=PlayerRankSummary.empty(),
         autocard_rank_summary=None,
         peak_sub_key=peak_sub_key,
-        peak_standard_score=scores.standard,
-        peak_wild_score=scores.wild,
-        peak_expert_score=scores.expert,
+        peak_standard_score=validated_peak.scores.standard,
+        peak_wild_score=validated_peak.scores.wild,
+        peak_expert_score=validated_peak.scores.expert,
     )
+    for metric_key in validated_peak.clear_metric_keys:
+        metrics.pop(metric_key, None)
     local_summary = await _update_selected_metrics(
         enabled=local_rank_enabled,
         player_id=player_id,
         nick=str(user_info.nick),
         metrics=metrics,
-        allowed_keys=frozenset(key for key in metrics if key.startswith("peak_")),
+        allowed_keys=_PEAK_METRIC_KEYS,
         peak_sub_key=peak_sub_key,
+        clear_metric_keys=validated_peak.clear_metric_keys,
     )
     return format_compact_peak_section(
         unity_peak,
@@ -235,19 +260,21 @@ async def _update_selected_metrics(  # noqa: PLR0913
     metrics: dict[str, MetricValue],
     allowed_keys: frozenset[str],
     peak_sub_key: int | None,
+    clear_metric_keys: frozenset[str] = frozenset(),
 ) -> LocalRankSummary:
     selected = {
         key: value
         for key, value in metrics.items()
         if key in allowed_keys and value.get("value") is not None
     }
-    if not enabled or not selected:
+    if not enabled or (not selected and not clear_metric_keys):
         return LocalRankSummary()
     return await upsert_local_rank_metrics(
         player_id=player_id,
         nick=nick,
         current_metrics=selected,
         peak_sub_key=peak_sub_key,
+        clear_metric_keys=clear_metric_keys & allowed_keys,
     )
 
 

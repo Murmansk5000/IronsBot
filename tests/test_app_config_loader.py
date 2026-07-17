@@ -3,7 +3,6 @@ import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
-from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -31,7 +30,6 @@ from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
 from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
     TeamResourceConfig,
-    TeamResourceSubscriptionConfig,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -260,8 +258,11 @@ def test_example_config_parses() -> None:
         == DEFAULT_RED_PACKET_NOTICE_COOLDOWN
     )
     _assert_default_team_audit_welcome(config)
-    assert config.seer.team_resource.subscriptions == []
     assert config.seer.team_resource.commands == ["战队"]
+    assert (
+        config.seer.team_resource.subscription_path.as_posix()
+        == "data/seer/team_resource_subscriptions.sqlite"
+    )
     assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
@@ -577,27 +578,16 @@ def test_dev_and_prod_configs_parse() -> None:
     )
 
 
-def test_team_resource_config_accepts_subscription_shapes() -> None:
+def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
     config = TeamResourceConfig(
-        times=cast("list[str]", "08:30,23:00"),
-        subscriptions=cast(
-            "list[TeamResourceSubscriptionConfig]",
-            [
-                {
-                    "group": "anjie",
-                    "team_ids": "1234567,2345678",
-                    "threshold": TEAM_RESOURCE_THRESHOLD,
-                    "at_users": "owner,1234567890",
-                }
-            ],
-        ),
+        times="08:30,23:00",  # type: ignore[arg-type]
+        default_threshold=TEAM_RESOURCE_THRESHOLD,
+        default_at_users="owner,1234567890",  # type: ignore[arg-type]
     )
 
     assert config.times == ["08:30", "23:00"]
-    assert config.subscriptions[0].group == "anjie"
-    assert config.subscriptions[0].team_ids == [1234567, 2345678]
-    assert config.subscriptions[0].threshold == TEAM_RESOURCE_THRESHOLD
-    assert config.subscriptions[0].at_users == ["owner", "1234567890"]
+    assert config.default_threshold == TEAM_RESOURCE_THRESHOLD
+    assert config.default_at_users == ["owner", "1234567890"]
 
 
 def test_env_secrets_credentials_and_deployment_are_separate() -> None:
