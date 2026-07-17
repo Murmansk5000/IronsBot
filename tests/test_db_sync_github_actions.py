@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import pytest
 
 from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.integrations.db_sync.github_actions import (
+    GitHubActionsClientError,
     WorkflowRunResult,
     trigger_and_wait_workflow,
 )
@@ -69,6 +71,25 @@ class FlakyDispatchGitHubClient(FakeGitHubClient):
             self.failed_once = True
             raise httpx.ConnectTimeout("connect timeout")  # noqa: TRY003
         return await super().post(url, headers=headers, json=json)
+
+
+class DeniedDispatchGitHubClient(FakeGitHubClient):
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, object],
+    ) -> httpx.Response:
+        self.posts.append({"url": url, "headers": headers, "json": json})
+        return _response(
+            status_code=403,
+            payload={
+                "message": (
+                    "Resource not accessible by personal access token"
+                )
+            },
+        )
 
 
 def _config() -> RemoteBuildConfig:
@@ -183,3 +204,15 @@ def test_trigger_and_wait_workflow_retries_transient_dispatch_timeout() -> None:
     assert result.ok
     assert client.failed_once
     assert len(client.posts) == 1
+
+
+def test_trigger_and_wait_workflow_reports_dispatch_error_detail() -> None:
+    client = DeniedDispatchGitHubClient([])
+
+    with pytest.raises(
+        GitHubActionsClientError,
+        match="Resource not accessible by personal access token",
+    ):
+        asyncio.run(
+            trigger_and_wait_workflow(_config(), token="token", client=client)
+        )
