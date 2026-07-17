@@ -31,7 +31,7 @@ _CARD_TYPE_NAMES = {
     4: "特殊牌",
 }
 _AUTOCARD_ASSET_BASE_URL = (
-    "https://cnb.cool/SeerAPI/seer-unity-assets/-/git/raw/main/"
+    "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
     "newseer/assets/art/autocard/texture"
 )
 _AUTOCARD_NON_PET_CARD_ID_START = 20000

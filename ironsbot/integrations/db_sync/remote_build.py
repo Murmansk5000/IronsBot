@@ -8,10 +8,14 @@ from nonebot.log import logger
 from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 
-FORCE_INPUT_WORKFLOWS = {
-    ("Murmansk5000/config-sources", "sync-upstream.yml"),
-    ("Murmansk5000/seer-data", "main.yml"),
-    ("Murmansk5000/seerapi", "build-ironsbot-data-db.yml"),
+FORCE_INPUT_OVERRIDES = {
+    ("Murmansk-Seer/data-update-workflows", "update.yml"): {
+        "force-update-assets": True,
+        "force-update-config": True,
+    },
+    ("Murmansk-Seer/config-sources", "sync-upstream.yml"): {"force": True},
+    ("Murmansk-Seer/api-data", "main.yml"): {"force": True},
+    ("Murmansk-Seer/seerapi", "build-ironsbot-data-db.yml"): {"force": True},
 }
 
 TriggerWorkflowFn = Callable[
@@ -64,8 +68,12 @@ def configured_remote_build_steps(
     forced_steps: list[RemoteBuildStepConfig] = []
     for step in steps:
         inputs = dict(step.inputs)
-        if (step.repository, step.workflow_id) in FORCE_INPUT_WORKFLOWS:
-            inputs["force"] = True
+        inputs.update(
+            FORCE_INPUT_OVERRIDES.get(
+                (step.repository, step.workflow_id),
+                {},
+            )
+        )
         forced_steps.append(step.model_copy(update={"inputs": inputs}))
     return forced_steps
 

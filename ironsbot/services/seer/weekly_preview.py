@@ -5,11 +5,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 DEFAULT_WEEKLY_PREVIEW_IMAGE_URL = (
-    "https://cnb.cool/HurryWang/seer-unity-preview-img-dumper-cnb/-/git/raw/"
-    "master/img/preview.png"
+    "https://raw.githubusercontent.com/Murmansk-Seer/"
+    "seer-unity-preview-img-dumper/main/img/preview.png"
 )
 DEFAULT_WEEKLY_PREVIEW_SOURCE_URL = (
-    "https://github.com/WhY15w/seer-unity-preview-img-dumper"
+    "https://github.com/Murmansk-Seer/seer-unity-preview-img-dumper"
 )
 
 

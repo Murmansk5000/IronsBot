@@ -333,10 +333,11 @@ TOML 语法错误、字段类型错误和越界值仍会阻止启动。
 `[runtime.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
 GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
 
-1. `Murmansk5000/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出 JSON。
-2. `Murmansk5000/config-sources`：同步上游配置源。
-3. `Murmansk5000/seer-data`：构建 SeerAPI 基础 SQLite。
-4. `Murmansk5000/seerapi`：合并基础库、官方 ConfigPackage 补充表和自定义表，发布 IronsBot 运行库。
+1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
+2. `Murmansk-Seer/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出补充 JSON。
+3. `Murmansk-Seer/config-sources`：同步上游配置源并检查官方版本。
+4. `Murmansk-Seer/api-data`：用 Solaris 构建 SeerAPI 基础 SQLite。
+5. `Murmansk-Seer/seerapi`：合并基础库、官方 ConfigPackage 补充表和自定义表，发布 IronsBot 运行库。
 
 启用远程构建时，环境变量需要填写 `GITHUB_WORKFLOW_TOKEN`。默认情况下，启动同步和定时同步只下载
 已有 release，不触发 Actions，避免容器启动过慢或频繁消耗 GitHub Actions。启动同步默认开启；
@@ -465,7 +466,7 @@ uv run python scripts/check_repo.py --static
 - 上游项目：[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
 - SeerAPI：[SeerAPI](https://github.com/SeerAPI)
 - 无头登录参考：[oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)
-- Unity 配置解析源：[Murmansk5000/seer-unity-config-parser](https://github.com/Murmansk5000/seer-unity-config-parser)，感谢原项目 [WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
+- Unity 配置解析源：[Murmansk-Seer/seer-unity-config-parser](https://github.com/Murmansk-Seer/seer-unity-config-parser)，感谢原项目 [WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
 - 感谢赛尔号玩家社区的资料整理与测试反馈。
 
 ## 许可证

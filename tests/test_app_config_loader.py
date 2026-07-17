@@ -285,24 +285,32 @@ def test_example_config_parses() -> None:
         "seerapi"
     ].remote_build.steps
     assert [step.name for step in remote_build_steps] == [
+        "refresh_official_sources",
+        "refresh_unity_config",
         "sync_config_sources",
-        "build_seer_data",
+        "build_api_data",
         "build_ironsbot_data",
     ]
     assert (
         remote_build_steps[-1].repository
-        == "Murmansk5000/seerapi"
+        == "Murmansk-Seer/seerapi"
     )
     assert (
         remote_build_steps[-1].workflow_id
         == "build-ironsbot-data-db.yml"
     )
-    assert remote_build_steps[0].inputs == {"force": False}
-    assert remote_build_steps[1].inputs == {
+    assert remote_build_steps[0].inputs == {
+        "force-update-assets": False,
+        "force-update-config": False,
+        "dispatch-api-data": False,
+    }
+    assert remote_build_steps[1].inputs == {}
+    assert remote_build_steps[2].inputs == {"force": False}
+    assert remote_build_steps[3].inputs == {
         "debug_enabled": False,
         "force": False,
     }
-    assert remote_build_steps[2].inputs == {"force": False}
+    assert remote_build_steps[4].inputs == {"force": False}
     assert config.runtime.help.ignored_plugins == []
 
 
