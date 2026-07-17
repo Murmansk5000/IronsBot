@@ -58,7 +58,7 @@ def _messaging_visible(event: Event) -> bool:
 
 def _team_resource_visible(event: Event) -> bool:
     return (
-        bool(get_app_config().seer.team_resource.subscriptions)
+        get_app_config().seer.team_resource.enabled
         and isinstance(event, GroupMessageEvent)
         and feature_visible_for_help(event, "team_resource_subscription")
     )

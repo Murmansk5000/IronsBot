@@ -20,8 +20,9 @@ def _setup_team_audit_welcome_runtime(driver: Any, scheduler: Any) -> None:
 
     @driver.on_bot_connect
     async def _schedule_team_audit_followups_on_connect(bot: Bot) -> None:
-        await schedule_pending_team_audit_followups(bot, scheduler)
-        register_team_audit_followup_scan(scheduler, bot)
+        del bot
+        await schedule_pending_team_audit_followups(scheduler)
+        register_team_audit_followup_scan(scheduler)
 
     _team_audit_welcome_runtime_state["registered"] = True
 
