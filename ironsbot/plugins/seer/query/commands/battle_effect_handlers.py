@@ -8,21 +8,14 @@ from seerapi_models import BattleEffectORM
 
 from ironsbot.integrations.seer_data.getters import (
     BattleEffectDataGetter,
-    GetBattleEffectData,
 )
 from ironsbot.integrations.seer_data.image import BattleEffectImageGetter
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..prompt import (
     Prompt,
     PromptItem,
     enter_prompt,
     simple_prompt_resolver,
-)
-from ..upstream_noop_group import matcher_group
-
-battle_effect_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith(("异常", "查询异常状态"), suffixes="异常") & no_reply()
 )
 
 
@@ -44,12 +37,11 @@ async def _build_battle_effect_message(
 PROMPT_MAX_ITEMS = 20
 
 
-@battle_effect_matcher.handle()
 async def handle_battle_effect(
     matcher: Matcher,
     event: Event,
     state: T_State,
-    battle_effects: tuple[BattleEffectORM, ...] = GetBattleEffectData(),
+    battle_effects: tuple[BattleEffectORM, ...],
 ) -> None:
     if not battle_effects:
         raise FinishedException

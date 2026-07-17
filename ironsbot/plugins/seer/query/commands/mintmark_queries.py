@@ -16,8 +16,8 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 from ..depends import GetGemCategoryData, GetMintmarkClassData, GetMintmarkData
 from ..group import matcher_group, seer_feature_priority, seer_feature_rule
 from . import mintmark_handlers
+from .help_replies import finish_query_help
 from .query_rules import not_rank_query
-from .upstream_help import finish_query_help
 
 mintmark_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_mintmark")
@@ -53,6 +53,7 @@ async def _handle_mintmark(  # noqa: PLR0913
         mintmarks=mintmarks,
         classes=classes,
     )
+
 
 gem_matcher = matcher_group.on_message(
     rule=seer_feature_rule("seer_mintmark")
