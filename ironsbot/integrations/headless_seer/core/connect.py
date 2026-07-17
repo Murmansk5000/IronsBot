@@ -153,8 +153,8 @@ class AbstractSocketConnect(
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
+        _exc_value: BaseException | None,
+        _traceback: TracebackType | None,
     ) -> bool | None:
         self.disconnect()
         return not (

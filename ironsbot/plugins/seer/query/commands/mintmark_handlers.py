@@ -10,17 +10,11 @@ from seerapi_models import GemCategoryORM, MintmarkClassCategoryORM, MintmarkORM
 from seerapi_models.common import SixAttributes
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
 
-from ironsbot.integrations.seer_data.getters import (
-    GemCategoryDataGetter,
-    GetGemCategoryData,
-)
+from ironsbot.integrations.seer_data.getters import GemCategoryDataGetter
 from ironsbot.utils import build_sub_line
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import get_mintmark_query_config
 from ..depends import (
-    GetMintmarkClassData,
-    GetMintmarkData,
     MintmarkBodyImageGetter,
     MintmarkDataGetter,
 )
@@ -30,12 +24,6 @@ from ..prompt import (
     enter_prompt,
     simple_prompt_resolver,
 )
-from ..upstream_noop_group import matcher_group
-
-mintmark_matcher = matcher_group.on_message(
-    rule=startswith_or_endswith("刻印") & no_reply()
-)
-
 
 PROMPT_MAX_ITEMS = 30
 ATTACK_MARK_THRESHOLD = 54
@@ -170,13 +158,12 @@ def _item_desc_fmt(mintmark: MintmarkORM) -> str:
     return f"{mintmark.id} {desc}"
 
 
-@mintmark_matcher.handle()
 async def handle_mintmark(
     matcher: Matcher,
     state: T_State,
     event: Event,
-    mintmarks: tuple[MintmarkORM, ...] = GetMintmarkData(),
-    classes: tuple[MintmarkClassCategoryORM, ...] = GetMintmarkClassData(),
+    mintmarks: tuple[MintmarkORM, ...],
+    classes: tuple[MintmarkClassCategoryORM, ...],
 ) -> None:
 
     mintmarks = mintmarks + tuple(part.mintmark for c in classes for part in c.mintmark)
@@ -211,15 +198,11 @@ async def handle_mintmark(
     )
 
 
-gem_matcher = matcher_group.on_message(rule=startswith_or_endswith("宝石") & no_reply())
-
-
-@gem_matcher.handle()
 async def handle_gem(
     matcher: Matcher,
     state: T_State,
     event: Event,
-    categories: tuple[GemCategoryORM, ...] = GetGemCategoryData(),
+    categories: tuple[GemCategoryORM, ...],
 ) -> None:
     if not categories:
         raise FinishedException

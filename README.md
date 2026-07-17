@@ -102,8 +102,7 @@ services:
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent` | AI 意图分析，并把命中的意图分发给对应功能。 |
-| `team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
+| `ai_intent` | AI 意图分析；战队推荐/审核群信息及资源动作由 `ai_intent/team_actions.py` 承接。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
