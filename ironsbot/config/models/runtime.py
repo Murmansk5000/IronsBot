@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from string import Formatter
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
@@ -19,12 +21,88 @@ INVALID_RECONNECT_TIME_ERROR = (
     "daily HH:MM times, "
     'for example "00:01,00:02" or ["00:01","00:02"]'
 )
+POKE_REPLY_REQUIRED_ERROR = (
+    "runtime.help.poke_replies requires non-empty group refs and messages"
+)
 DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 VALID_LOG_LEVELS = {"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"}
 WorkflowInputValue = str | int | float | bool
 BotReference = str | int
+COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR = (
+    "runtime.command_cooldown.cooldown_message must not be empty"
+)
+COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR = (
+    "runtime.command_cooldown.cooldown_message only supports {remaining_seconds}"
+)
+COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR = (
+    "runtime.command_cooldown.in_progress_message must not be empty"
+)
+COMMAND_COOLDOWN_EMPTY_ID_ERROR = (
+    "runtime.command_cooldown.commands contains an empty command id"
+)
+COMMAND_COOLDOWN_NEGATIVE_SECONDS_ERROR = (
+    "runtime.command_cooldown.commands values must be non-negative"
+)
+
+
+class CommandCooldownConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    default_seconds: float = Field(default=60.0, ge=0)
+    cooldown_message: str = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
+    in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
+    commands: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("cooldown_message")
+    @classmethod
+    def validate_cooldown_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR)
+        try:
+            fields = {
+                field_name
+                for _literal, field_name, _format_spec, _conversion in (
+                    Formatter().parse(message)
+                )
+                if field_name is not None
+            }
+        except ValueError as exc:
+            raise ValueError(COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR) from exc
+        if fields - {"remaining_seconds"}:
+            raise ValueError(COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR)
+        try:
+            message.format(remaining_seconds=1)
+        except (KeyError, ValueError, AttributeError, IndexError) as exc:
+            raise ValueError(COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR) from exc
+        return message
+
+    @field_validator("in_progress_message")
+    @classmethod
+    def validate_in_progress_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR)
+        return message
+
+    @field_validator("commands")
+    @classmethod
+    def normalize_commands(cls, value: dict[str, float]) -> dict[str, float]:
+        normalized: dict[str, float] = {}
+        for raw_key, seconds in value.items():
+            key = raw_key.strip()
+            if not key:
+                raise ValueError(COMMAND_COOLDOWN_EMPTY_ID_ERROR)
+            if seconds < 0:
+                raise ValueError(COMMAND_COOLDOWN_NEGATIVE_SECONDS_ERROR)
+            normalized[key] = float(seconds)
+        return normalized
+
+    def seconds_for(self, command_id: str) -> float:
+        return self.commands.get(command_id, self.default_seconds)
 
 
 class RemoteBuildStepConfig(BaseModel):
@@ -234,6 +312,8 @@ class HelpConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ignored_plugins: list[str] = Field(default_factory=list)
+    poke_replies: dict[str, str] = Field(default_factory=dict)
+    poke_user_replies: dict[str, str] = Field(default_factory=dict)
     hint_window_seconds: float = Field(default=60.0, gt=0)
     hint_max_per_window: int = Field(default=3, ge=1)
 
@@ -241,6 +321,18 @@ class HelpConfig(BaseModel):
     @classmethod
     def normalize_ignored_plugins(cls, value: object) -> object:
         return string_list(value)
+
+    @field_validator("poke_replies", "poke_user_replies")
+    @classmethod
+    def normalize_poke_replies(cls, value: dict[str, str]) -> dict[str, str]:
+        replies: dict[str, str] = {}
+        for raw_group, raw_message in value.items():
+            group = raw_group.strip()
+            message = raw_message.strip()
+            if not group or not message:
+                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
+            replies[group] = message
+        return replies
 
 
 class SuperuserPriorityConfig(BaseModel):
@@ -388,6 +480,9 @@ class BotRoutingConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    command_cooldown: CommandCooldownConfig = Field(
+        default_factory=CommandCooldownConfig
+    )
     data_sync: DataSyncConfig = Field(default_factory=DataSyncConfig)
     bot_routing: BotRoutingConfig = Field(default_factory=BotRoutingConfig)
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
@@ -412,6 +507,7 @@ __all__ = [
     "SEERAPI_DATA_RELEASE",
     "BotReference",
     "BotRoutingConfig",
+    "CommandCooldownConfig",
     "DataSourceConfig",
     "DataSyncConfig",
     "DockerUpdateConfig",

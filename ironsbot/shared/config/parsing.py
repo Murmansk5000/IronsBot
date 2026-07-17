@@ -13,11 +13,7 @@ def unique_items(values: Iterable[T]) -> list[T]:
 
 
 def csv_items(text: str) -> list[str]:
-    return [
-        item.strip()
-        for item in text.split(",")
-        if item.strip()
-    ]
+    return [item.strip() for item in text.split(",") if item.strip()]
 
 
 def json_object(value: object, *, name: str = "config") -> dict[str, Any]:
@@ -35,21 +31,6 @@ def json_object(value: object, *, name: str = "config") -> dict[str, Any]:
 
     msg = f"{name} must be a JSON object"
     raise TypeError(msg)
-
-
-def nested_json_config(
-    value: object,
-    model_type: type[T],
-    *,
-    name: str,
-) -> object:
-    if value is None or value == "":
-        return model_type()
-
-    if isinstance(value, str):
-        return json_object(value, name=name)
-
-    return value
 
 
 def json_array(value: object, *, name: str = "config") -> list[Any]:
@@ -88,9 +69,7 @@ def string_list(value: object) -> list[str]:
         return []
 
     return unique_items(
-        item
-        for raw_item in raw_items
-        if (item := str(raw_item).strip())
+        item for raw_item in raw_items if (item := str(raw_item).strip())
     )
 
 
@@ -119,8 +98,4 @@ def int_list(value: object) -> list[int]:
 
 
 def positive_int_list(value: object) -> list[int]:
-    return [
-        item
-        for item in int_list(value)
-        if item > 0
-    ]
+    return [item for item in int_list(value) if item > 0]

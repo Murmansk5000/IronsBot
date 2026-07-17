@@ -10,7 +10,12 @@ from ironsbot.config.models.message import (
     PushUnsubscribeConfig,
     TeamAuditWelcomeConfig,
 )
-from ironsbot.config.models.runtime import BotRoutingConfig, HelpConfig, LoggingConfig
+from ironsbot.config.models.runtime import (
+    BotRoutingConfig,
+    CommandCooldownConfig,
+    HelpConfig,
+    LoggingConfig,
+)
 from ironsbot.config.models.seer import (
     MintmarkQueryConfig,
     RankQueryConfig,
@@ -62,6 +67,9 @@ class StubSeerConfig:
 @dataclass(frozen=True)
 class StubRuntimeConfig:
     bot_routing: BotRoutingConfig = field(default_factory=BotRoutingConfig)
+    command_cooldown: CommandCooldownConfig = field(
+        default_factory=CommandCooldownConfig
+    )
     help: HelpConfig = field(default_factory=HelpConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
@@ -81,7 +89,9 @@ def stub_app_config(  # noqa: PLR0913
     activity_config: ActivityConfig | None = None,
     ai_intent_enabled: bool = True,
     bot_routing_config: BotRoutingConfig | None = None,
+    command_cooldown_config: CommandCooldownConfig | None = None,
     feature_config: FeatureConfig | None = None,
+    help_config: HelpConfig | None = None,
     logging_config: LoggingConfig | None = None,
     mintmark_config: MintmarkQueryConfig | None = None,
     outbound_rate_limit_config: OutboundRateLimitConfig | None = None,
@@ -108,6 +118,8 @@ def stub_app_config(  # noqa: PLR0913
         ),
         runtime=StubRuntimeConfig(
             bot_routing=bot_routing_config or BotRoutingConfig(),
+            command_cooldown=command_cooldown_config or CommandCooldownConfig(),
+            help=help_config or HelpConfig(),
             logging=logging_config or LoggingConfig(),
         ),
         seer=StubSeerConfig(
