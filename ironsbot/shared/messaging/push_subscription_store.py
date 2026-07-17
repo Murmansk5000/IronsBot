@@ -1,6 +1,7 @@
 ﻿# SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -14,8 +15,23 @@ from ironsbot.shared.sqlite import open_sqlite_schema
 
 if TYPE_CHECKING:
     import sqlite3
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
+    from collections.abc import Set as AbstractSet
     from contextlib import AbstractContextManager
+
+PushPreferenceTarget = tuple[PushTargetType, int]
+PushTimePreferenceIdentity = tuple[str, PushPreferenceType]
+
+
+@dataclass(frozen=True, slots=True)
+class PushPreferencePruneResult:
+    unsubscriptions_deleted: int = 0
+    time_preferences_deleted: int = 0
+
+    @property
+    def total_deleted(self) -> int:
+        return self.unsubscriptions_deleted + self.time_preferences_deleted
+
 
 PUSH_SUBSCRIPTION_SCHEMA = (
     "CREATE TABLE IF NOT EXISTS push_unsubscriptions ("
@@ -296,6 +312,117 @@ class PushUnsubscribeStore:
             if target_type_row in {"private", "group"}
             and preference_type_row in {"cron_time", "activity_lead_hours"}
         ]
+
+    def preference_targets(self) -> set[PushPreferenceTarget]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT target_type, target_id FROM push_unsubscriptions "
+                "UNION "
+                "SELECT target_type, target_id FROM push_time_preferences"
+            ).fetchall()
+        return {
+            (cast("PushTargetType", target_type), int(target_id))
+            for target_type, target_id in rows
+            if target_type in {"private", "group"}
+        }
+
+    def prune_invalid_preferences(
+        self,
+        *,
+        valid_unsubscription_keys: Mapping[
+            PushPreferenceTarget,
+            AbstractSet[str],
+        ],
+        valid_time_preferences: Mapping[
+            PushPreferenceTarget,
+            AbstractSet[PushTimePreferenceIdentity],
+        ],
+    ) -> PushPreferencePruneResult:
+        deleted_unsubscriptions = 0
+        deleted_time_preferences = 0
+
+        with self._connect() as con:
+            unsubscribe_rows = con.execute(
+                "SELECT target_type, target_id, subscription_key "
+                "FROM push_unsubscriptions"
+            ).fetchall()
+            for target_type_raw, target_id_raw, subscription_key_raw in (
+                unsubscribe_rows
+            ):
+                target_type = str(target_type_raw)
+                target_id = int(target_id_raw)
+                subscription_key = str(subscription_key_raw)
+                target = (
+                    (
+                        cast("PushTargetType", target_type),
+                        target_id,
+                    )
+                    if target_type in {"private", "group"}
+                    else None
+                )
+                if (
+                    target is not None
+                    and subscription_key
+                    in valid_unsubscription_keys.get(target, set())
+                ):
+                    continue
+                con.execute(
+                    "DELETE FROM push_unsubscriptions "
+                    "WHERE target_type = ? AND target_id = ? "
+                    "AND subscription_key = ?",
+                    (target_type, target_id, subscription_key),
+                )
+                deleted_unsubscriptions += 1
+
+            time_rows = con.execute(
+                "SELECT target_type, target_id, subscription_key, preference_type "
+                "FROM push_time_preferences"
+            ).fetchall()
+            for (
+                target_type_raw,
+                target_id_raw,
+                subscription_key_raw,
+                preference_type_raw,
+            ) in time_rows:
+                target_type = str(target_type_raw)
+                target_id = int(target_id_raw)
+                subscription_key = str(subscription_key_raw)
+                preference_type = str(preference_type_raw)
+                target = (
+                    (
+                        cast("PushTargetType", target_type),
+                        target_id,
+                    )
+                    if target_type in {"private", "group"}
+                    else None
+                )
+                identity = (
+                    subscription_key,
+                    cast("PushPreferenceType", preference_type),
+                )
+                if (
+                    target is not None
+                    and preference_type in {"cron_time", "activity_lead_hours"}
+                    and identity in valid_time_preferences.get(target, set())
+                ):
+                    continue
+                con.execute(
+                    "DELETE FROM push_time_preferences "
+                    "WHERE target_type = ? AND target_id = ? "
+                    "AND subscription_key = ? AND preference_type = ?",
+                    (
+                        target_type,
+                        target_id,
+                        subscription_key,
+                        preference_type,
+                    ),
+                )
+                deleted_time_preferences += 1
+
+        return PushPreferencePruneResult(
+            unsubscriptions_deleted=deleted_unsubscriptions,
+            time_preferences_deleted=deleted_time_preferences,
+        )
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
         return open_sqlite_schema(self.path, PUSH_SUBSCRIPTION_SCHEMA)

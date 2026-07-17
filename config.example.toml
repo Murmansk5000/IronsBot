@@ -331,6 +331,10 @@ private_commands = []
 # EN: Private scheduled messages.
 # ZH: 私聊定时文本动作。
 # Example action fields: id, name, enabled, feature, message, hour, minute, day_of_week.
+# `id` is required, must stay stable, and must be unique across all private/group
+# schedules. Renaming it resets TD and push-time preferences for that schedule.
+# `id` 必填，必须保持稳定，并且在所有私聊/群聊定时推送中全局唯一；
+# 修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
 private_schedules = []
 
@@ -345,6 +349,8 @@ group_commands = []
 # ZH: 群聊定时文本动作。
 # Example action fields: id, name, enabled, feature, message, hour, minute,
 # day_of_week, at_user_ids.
+# `id` follows the same required, stable, globally unique rule described above.
+# `id` 同样必须遵守上面的必填、稳定、全局唯一规则。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
 group_schedules = []
 

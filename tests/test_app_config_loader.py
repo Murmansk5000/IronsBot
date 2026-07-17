@@ -20,7 +20,12 @@ from ironsbot.config.loader import (
 from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
 from ironsbot.config.models.deployment import DeploymentConfig
-from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.message import (
+    GroupScheduledMessageAction,
+    MessageConfig,
+    PrivateScheduledMessageAction,
+    PushUnsubscribeConfig,
+)
 from ironsbot.config.models.runtime import (
     BotRoutingConfig,
     DockerUpdateConfig,
@@ -317,6 +322,41 @@ def test_example_config_parses() -> None:
 
 def test_example_config_has_no_unknown_fields() -> None:
     AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
+
+
+def test_scheduled_push_requires_stable_id() -> None:
+    with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
+        PrivateScheduledMessageAction(
+            message="私聊定时推送",
+            hour=23,
+        )
+
+    with pytest.raises(ValidationError, match="只能包含英文字母"):
+        PrivateScheduledMessageAction(
+            id="每日 提醒",
+            message="私聊定时推送",
+            hour=23,
+        )
+
+
+def test_scheduled_push_ids_are_globally_unique() -> None:
+    with pytest.raises(ValidationError, match="定时推送 id 必须全局唯一: daily"):
+        MessageConfig(
+            private_schedules=[
+                PrivateScheduledMessageAction(
+                    id="daily",
+                    message="私聊定时推送",
+                    hour=23,
+                )
+            ],
+            group_schedules=[
+                GroupScheduledMessageAction(
+                    id="daily",
+                    message="群聊定时推送",
+                    hour=23,
+                )
+            ],
+        )
 
 
 def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:

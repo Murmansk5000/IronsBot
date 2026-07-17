@@ -1,6 +1,6 @@
 import asyncio
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,6 +27,7 @@ from ironsbot.shared.messaging.push_subscription_models import (
     PushSubscriptionOption,
 )
 from ironsbot.shared.messaging.push_subscription_store import (
+    PushPreferencePruneResult,
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
@@ -35,13 +36,17 @@ from tests.helpers.onebot_events import GroupMemberRole, group_member_message_ev
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
+StartupHandler = Callable[[], Coroutine[object, object, object]]
 
 
 class FakeDriver:
     def __init__(self) -> None:
-        self.startup_handlers: list[Callable[[], object]] = []
+        self.startup_handlers: list[StartupHandler] = []
 
-    def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
+    def on_startup(
+        self,
+        handler: StartupHandler,
+    ) -> StartupHandler:
         self.startup_handlers.append(handler)
         return handler
 
@@ -136,6 +141,65 @@ def test_messaging_runtime_setup_registers_startup_once(
     runtime._setup_messaging_runtime(driver, scheduler)
 
     assert len(driver.startup_handlers) == 1
+
+
+def test_messaging_startup_prunes_preferences_before_registering_jobs(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    registered_state = False
+    monkeypatch.setitem(
+        runtime._messaging_runtime_state,
+        "registered",
+        registered_state,
+    )
+    calls: list[str] = []
+    driver = FakeDriver()
+
+    def fake_prune() -> PushPreferencePruneResult:
+        calls.append("prune")
+        return PushPreferencePruneResult(
+            unsubscriptions_deleted=2,
+            time_preferences_deleted=1,
+        )
+
+    async def fake_register(_scheduler: object) -> None:
+        calls.append("register")
+
+    monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
+    monkeypatch.setattr(runtime, "register_message_schedules", fake_register)
+
+    runtime._setup_messaging_runtime(driver, object())
+    asyncio.run(driver.startup_handlers[0]())
+
+    assert calls == ["prune", "register"]
+
+
+def test_messaging_startup_continues_when_preference_cleanup_fails(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    registered_state = False
+    monkeypatch.setitem(
+        runtime._messaging_runtime_state,
+        "registered",
+        registered_state,
+    )
+    calls: list[str] = []
+    driver = FakeDriver()
+
+    def fake_prune() -> PushPreferencePruneResult:
+        calls.append("prune")
+        raise RuntimeError
+
+    async def fake_register(_scheduler: object) -> None:
+        calls.append("register")
+
+    monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
+    monkeypatch.setattr(runtime, "register_message_schedules", fake_register)
+
+    runtime._setup_messaging_runtime(driver, object())
+    asyncio.run(driver.startup_handlers[0]())
+
+    assert calls == ["prune", "register"]
 
 
 def test_push_subscription_menu_prompt_marks_current_state() -> None:
