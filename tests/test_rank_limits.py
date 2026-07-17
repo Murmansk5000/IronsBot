@@ -44,6 +44,12 @@ ONLINE_GAP_LOWER_START_RANK = 21
 ONLINE_GAP_LOWER_END_RANK = 30
 FETCHED_AT = 1_781_234_567.0
 LOOKUP_INDEX = 14
+LARGE_SEGMENT_LIMIT = 50_000
+LARGE_SEGMENT_PROBE_LIMIT = 16
+LARGE_SEGMENT_PAGE_SIZE = 100
+LARGE_SEGMENT_START_INDEX = 856
+LARGE_SEGMENT_END_INDEX = 1156
+LARGE_SEGMENT_SAMPLE_LIMIT = 50
 
 try:
     nonebot.get_driver()
@@ -553,6 +559,88 @@ def test_fetch_rank_score_segment_samples_only_tie_range_head_and_tail(
         *range(segment_end - sample_limit // 2, segment_end),
     ]
     assert requested_pages == [(10, 19), (80, 89)]
+
+
+def test_fetch_large_rank_score_segment_samples_real_head_and_tail(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_rank_config(
+        monkeypatch,
+        online_limit=ONLINE_LIMIT,
+        rank_limit=LARGE_SEGMENT_LIMIT,
+        page_size=LARGE_SEGMENT_PAGE_SIZE,
+        score_search_probe_limit=LARGE_SEGMENT_PROBE_LIMIT,
+        score_search_tie_page_limit=TIED_PAGE_LIMIT,
+    )
+    requested_pages: list[tuple[int, int]] = []
+
+    def score_at(index: int) -> int:
+        if index < LARGE_SEGMENT_START_INDEX:
+            return SEGMENT_SCORE + 1
+        if index < LARGE_SEGMENT_END_INDEX:
+            return SEGMENT_SCORE
+        return SEGMENT_SCORE - 1
+
+    async def fake_fetch_rank_item(
+        *_args: object,
+        index: int,
+        **_kwargs: object,
+    ) -> RankItem:
+        return RankItem(id=index, nick=f"Player{index}", score=score_at(index))
+
+    async def fake_fetch_rank_page_result(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> RankPageResult:
+        requested_pages.append((start, end))
+        return RankPageResult(
+            items=[
+                RankItem(
+                    id=index,
+                    nick=f"Player{index}",
+                    score=score_at(index),
+                )
+                for index in range(start, end + 1)
+            ],
+            fetched_at=FETCHED_AT,
+        )
+
+    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(
+        rank_pages,
+        "fetch_rank_page_result",
+        fake_fetch_rank_page_result,
+    )
+
+    result = asyncio.run(
+        _rank_score.fetch_rank_score_segment(
+            object(),
+            title="standard peak",
+            score_name="score",
+            key=17,
+            sub_key=0,
+            target_score=SEGMENT_SCORE,
+            sample_limit=LARGE_SEGMENT_SAMPLE_LIMIT,
+        )
+    )
+
+    side_count = LARGE_SEGMENT_SAMPLE_LIMIT // 2
+    assert result.start_rank == LARGE_SEGMENT_START_INDEX + 1
+    assert result.end_rank == LARGE_SEGMENT_END_INDEX
+    assert result.total_count == (
+        LARGE_SEGMENT_END_INDEX - LARGE_SEGMENT_START_INDEX
+    )
+    assert not result.truncated
+    assert [item.id for item in result.items] == [
+        *range(
+            LARGE_SEGMENT_START_INDEX,
+            LARGE_SEGMENT_START_INDEX + side_count,
+        ),
+        *range(LARGE_SEGMENT_END_INDEX - side_count, LARGE_SEGMENT_END_INDEX),
+    ]
+    assert requested_pages == [(800, 899), (1100, 1199)]
 
 
 def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
