@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Protocol
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.log import logger
 
-from .bot_router import get_bot_for_target
 from .outbound_rate_limit import (
     GroupOutboundRateLimitService,
     is_outbound_suppressed_result,
@@ -22,6 +21,8 @@ from .text import build_message
 
 if TYPE_CHECKING:
     from ironsbot.config.models.message import PushUnsubscribeConfig
+
+    from .bot_router import BotRouter
 
 MessageLimiter = Callable[[str | Message, int | None], str | Message]
 
@@ -40,6 +41,7 @@ class OneBotMessageSender(Protocol):
 class DeliveryResources:
     outbound: GroupOutboundRateLimitService
     push_unsubscribe: PushUnsubscribeConfig
+    bot_router: BotRouter
 
 
 async def _send_target_message(  # noqa: PLR0913
@@ -57,7 +59,7 @@ async def _send_target_message(  # noqa: PLR0913
     if index > 0 and interval_seconds > 0:
         await asyncio.sleep(index * interval_seconds)
 
-    target_bot = bot or get_bot_for_target(target)
+    target_bot = bot or delivery.bot_router.for_target(target)
     if target_bot is None:
         logger.warning(
             f"{action_name} has no connected bot for "

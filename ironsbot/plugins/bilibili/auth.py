@@ -28,7 +28,6 @@ from ironsbot.services.bilibili.auth import (
 )
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
 from ironsbot.shared.messaging.admin_notice import AdminNoticeService
-from ironsbot.shared.messaging.bot_router import get_default_bot
 
 _login_state = BiliLoginRuntimeState()
 _login_poll_task: asyncio.Task[None] | None = None
@@ -148,7 +147,7 @@ async def send_bili_login_qrcode_to_superusers(
     ):
         return
 
-    bot = get_default_bot()
+    bot = admin_notices.delivery.bot_router.default_bot()
     if not bot:
         logger.warning("no bot online, cannot send Bilibili login QR")
         return

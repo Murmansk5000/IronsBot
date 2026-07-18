@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import TeamAuditWelcomeConfig
 from ironsbot.services.team_audit_welcome import TeamAuditPendingReminder
+from ironsbot.shared.messaging.bot_router import BotRouter
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from tests.helpers.runtime import build_test_runtime
 
@@ -148,7 +149,11 @@ def test_team_audit_followup_uses_group_routed_bot(
         "get_team_audit_pending_reminder",
         lambda _path, **_kwargs: reminder,
     )
-    monkeypatch.setattr(followup, "get_bot_for_group", lambda _group_id: bot)
+    monkeypatch.setattr(
+        BotRouter,
+        "for_target",
+        lambda _router, _target: bot,
+    )
     monkeypatch.setattr(followup, "_bot_can_access_group", _async_true)
     monkeypatch.setattr(followup, "_is_member_still_in_group", _async_true)
     monkeypatch.setattr(followup, "send_target_messages", fake_send_target_messages)
@@ -199,7 +204,11 @@ def test_team_audit_followup_keeps_pending_when_bot_cannot_access_group(
         "get_team_audit_pending_reminder",
         lambda _path, **_kwargs: reminder,
     )
-    monkeypatch.setattr(followup, "get_bot_for_group", lambda _group_id: bot)
+    monkeypatch.setattr(
+        BotRouter,
+        "for_target",
+        lambda _router, _target: bot,
+    )
     monkeypatch.setattr(followup, "_bot_can_access_group", inaccessible)
     monkeypatch.setattr(
         followup,

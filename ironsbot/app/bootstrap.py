@@ -24,6 +24,7 @@ from ironsbot.config.loader import (
 from ironsbot.runtime.matchers import MatcherRegistry
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+from ironsbot.shared.messaging.bot_router import BotRouter
 from ironsbot.shared.messaging.command_cooldown import CommandCooldownService
 from ironsbot.shared.messaging.outbound_rate_limit import (
     GroupOutboundRateLimitService,
@@ -71,7 +72,15 @@ def bootstrap() -> BootstrapState:
         config.message.outbound_rate_limit,
         features,
     )
-    delivery = DeliveryResources(outbound, config.message.push_unsubscribe)
+    delivery = DeliveryResources(
+        outbound,
+        config.message.push_unsubscribe,
+        BotRouter(
+            config.runtime.bot_routing,
+            config.feature.group_aliases,
+            config.feature.user_aliases,
+        ),
+    )
     admin_notices = AdminNoticeService(features, delivery)
     install_outbound_rate_limit_hooks(outbound)
 

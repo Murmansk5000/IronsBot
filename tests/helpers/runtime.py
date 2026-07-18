@@ -8,6 +8,7 @@ from ironsbot.config.models.message import (
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.runtime import (
+    BotRoutingConfig,
     CommandCooldownConfig,
     SuperuserPriorityConfig,
 )
@@ -15,6 +16,7 @@ from ironsbot.runtime.matchers import MatcherRegistry
 from ironsbot.services.admin_priority import AdminPriorityService
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+from ironsbot.shared.messaging.bot_router import BotRouter
 from ironsbot.shared.messaging.command_cooldown import CommandCooldownService
 from ironsbot.shared.messaging.outbound_rate_limit import (
     GroupOutboundRateLimitService,
@@ -43,8 +45,9 @@ def build_test_runtime(  # noqa: PLR0913
     priority_config: SuperuserPriorityConfig | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
 ) -> TestRuntime:
+    resolved_feature_config = feature_config or FeatureConfig()
     features = FeatureService(
-        feature_config or FeatureConfig(),
+        resolved_feature_config,
         frozenset(superuser_ids),
     )
     delivery = DeliveryResources(
@@ -53,6 +56,11 @@ def build_test_runtime(  # noqa: PLR0913
             features,
         ),
         push_unsubscribe or PushUnsubscribeConfig(),
+        BotRouter(
+            BotRoutingConfig(),
+            resolved_feature_config.group_aliases,
+            resolved_feature_config.user_aliases,
+        ),
     )
     return TestRuntime(
         features=features,

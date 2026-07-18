@@ -17,7 +17,6 @@ from ironsbot.services.team_audit_welcome import (
 )
 from ironsbot.shared.messaging import (
     MessageTarget,
-    get_bot_for_group,
     send_target_messages,
 )
 from ironsbot.shared.messaging.text import build_message, render_text
@@ -259,7 +258,7 @@ async def send_team_audit_followup(  # noqa: PLR0911, PLR0913
     if not features.is_group_feature_allowed(user_id, group_id, config.feature):
         return
 
-    bot = get_bot_for_group(group_id)
+    bot = delivery.bot_router.for_target(MessageTarget("group", group_id))
     if bot is None:
         logger.warning(
             "team audit followup skipped: no connected bot for "

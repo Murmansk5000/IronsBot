@@ -10,13 +10,7 @@ from ironsbot.shared.selection_menu import (
 )
 
 from .admin_notice import AdminNoticeService
-from .bot_router import (
-    get_bot_for_group,
-    get_bot_for_target,
-    get_bot_for_user,
-    get_default_bot,
-    resolve_bot_id,
-)
+from .bot_router import BotRouter
 from .command_cooldown import (
     CommandCooldownDecision,
     CommandCooldownService,
@@ -66,6 +60,7 @@ __all__ = [
     "TOGGLE_SELECTION_FOOTER",
     "AdminNoticeService",
     "BeforeReplySendHook",
+    "BotRouter",
     "CommandCooldownDecision",
     "CommandCooldownService",
     "CommandCooldownToken",
@@ -91,15 +86,10 @@ __all__ = [
     "finish_matcher_message",
     "finish_message_sequence",
     "format_selection_menu",
-    "get_bot_for_group",
-    "get_bot_for_target",
-    "get_bot_for_user",
-    "get_default_bot",
     "group_targets",
     "message_event_target",
     "private_targets",
     "render_text",
-    "resolve_bot_id",
     "send_broadcast_message",
     "send_event_reply",
     "send_matcher_message",

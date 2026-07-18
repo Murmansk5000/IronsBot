@@ -6,7 +6,8 @@ from nonebot.adapters.onebot.v11 import Message
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.shared.messaging import senders
+from ironsbot.config.models.runtime import BotRoutingConfig
+from ironsbot.shared.messaging.bot_router import BotRouter
 from ironsbot.shared.messaging.outbound_rate_limit import (
     GroupOutboundRateLimitService,
     OutboundPermit,
@@ -70,6 +71,7 @@ def _delivery(
     return DeliveryResources(
         outbound or FakeOutboundService(),
         PushUnsubscribeConfig(),
+        BotRouter(BotRoutingConfig(), {}, {}),
     )
 
 
@@ -143,9 +145,11 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
     private_bot = FakeBot(self_id=222222222)
 
     monkeypatch.setattr(
-        senders,
-        "get_bot_for_target",
-        lambda target: group_bot if target.target_type == "group" else private_bot,
+        BotRouter,
+        "for_target",
+        lambda _router, target: (
+            group_bot if target.target_type == "group" else private_bot
+        ),
     )
 
     summary = asyncio.run(
