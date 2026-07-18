@@ -8,6 +8,8 @@ imports must stay available at runtime.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
@@ -17,6 +19,7 @@ from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
+from .broadcast import OpenBroadcast
 from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
@@ -28,9 +31,11 @@ from .command_text import (
 from .commands import handle_admin_status, handle_normal_status
 from .restart_command import handle_restart_command
 
-
-async def handle_normal_server_status(matcher: Matcher, event: MessageEvent) -> None:
-    await handle_normal_status(matcher, event)
+if TYPE_CHECKING:
+    from ironsbot.config.models.runtime import (
+        DockerUpdateConfig,
+        ServerStatusConfig,
+    )
 
 
 async def handle_disabled_bare_admin_status(
@@ -44,19 +49,36 @@ async def handle_disabled_bare_admin_status(
     )
 
 
-async def handle_admin_server_status(matcher: Matcher, event: MessageEvent) -> None:
-    await handle_admin_status(matcher, event)
+def install(
+    registry: MatcherRegistry,
+    server_status_config: ServerStatusConfig,
+    docker_update_config: DockerUpdateConfig,
+) -> None:
+    broadcast = OpenBroadcast(server_status_config)
 
+    async def handle_normal_server_status(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await handle_normal_status(
+            matcher,
+            event,
+            broadcast,
+        )
 
-async def handle_bot_restart(matcher: Matcher, event: MessageEvent) -> None:
-    await handle_restart_command(matcher, event)
+    async def handle_admin_server_status(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await handle_admin_status(
+            matcher,
+            event,
+            broadcast,
+        )
 
+    async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
+        await handle_restart_command(matcher, event, docker_update_config)
 
-async def handle_docker_update(matcher: Matcher, event: MessageEvent) -> None:
-    await handle_restart_command(matcher, event)
-
-
-def install(registry: MatcherRegistry) -> None:
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
         policy=CommandPolicy.command("server_status_query"),
@@ -93,7 +115,7 @@ def install(registry: MatcherRegistry) -> None:
         priority=get_matcher_priority("server_status_admin", 1),
         block=True,
     )
-    restart_matcher.append_handler(handle_bot_restart)
+    restart_matcher.append_handler(handle_restart)
 
     update_matcher = registry.on_fullmatch(
         DOCKER_UPDATE_COMMANDS,
@@ -103,13 +125,4 @@ def install(registry: MatcherRegistry) -> None:
         priority=get_matcher_priority("server_status_admin", 1),
         block=True,
     )
-    update_matcher.append_handler(handle_docker_update)
-
-
-__all__ = [
-    "handle_admin_server_status",
-    "handle_bot_restart",
-    "handle_disabled_bare_admin_status",
-    "handle_docker_update",
-    "handle_normal_server_status",
-]
+    update_matcher.append_handler(handle_restart)

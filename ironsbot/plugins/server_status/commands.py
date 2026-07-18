@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
@@ -16,7 +18,6 @@ from ironsbot.services.headless_seer_notice.state import (
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.messaging import finish_event_reply
 
-from .broadcast import broadcast_opened
 from .notice import (
     _build_fetch_failed_reply,
     _build_no_notice_reply,
@@ -28,8 +29,14 @@ from .notice import (
 from .status import HeadlessStatus
 from .status import get_headless_status as _get_headless_status
 
+if TYPE_CHECKING:
+    from .broadcast import OpenBroadcast
 
-async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
+async def handle_normal_status(
+    matcher: Matcher,
+    event: MessageEvent,
+    broadcast: OpenBroadcast,
+) -> None:
     if not is_event_feature_allowed(event, "server_status_query"):
         logger.info(
             "normal server status command ignored: "
@@ -49,7 +56,7 @@ async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("开服公告读取失败")
         if headless_status.connected:
-            await broadcast_opened(event, now=now)
+            await broadcast.send(event, now=now)
         await finish_event_reply(
             matcher,
             event,
@@ -59,7 +66,7 @@ async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
         return
 
     if headless_status.connected:
-        await broadcast_opened(event, now=now)
+        await broadcast.send(event, now=now)
         await finish_event_reply(
             matcher,
             event,
@@ -84,7 +91,11 @@ async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
         mention_sender=True,
     )
 
-async def handle_admin_status(matcher: Matcher, event: MessageEvent) -> None:
+async def handle_admin_status(
+    matcher: Matcher,
+    event: MessageEvent,
+    broadcast: OpenBroadcast,
+) -> None:
     now = _now()
     lines = ["🛠【管理员开服查询】"]
     headless_status = _get_headless_status()
@@ -111,7 +122,7 @@ async def handle_admin_status(matcher: Matcher, event: MessageEvent) -> None:
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("管理员开服查询读取公告失败")
         if headless_status.connected:
-            await broadcast_opened(event, now=now)
+            await broadcast.send(event, now=now)
         lines.extend(
             (
                 "",
@@ -121,7 +132,7 @@ async def handle_admin_status(matcher: Matcher, event: MessageEvent) -> None:
     else:
         lines.append("")
         if headless_status.connected:
-            await broadcast_opened(event, now=now)
+            await broadcast.send(event, now=now)
             lines.append(_build_open_reply(now, notice_text=notice_text))
         elif notice_text:
             lines.append(_build_notice_reply(notice_text))

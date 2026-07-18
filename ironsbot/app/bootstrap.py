@@ -55,10 +55,9 @@ def bootstrap() -> BootstrapState:
         push_subscription_path=config.message.push_unsubscribe.data_path,
     )
     plugins = build_plugin_registry(
+        config=config,
         activity_service=activity.service,
-        restart_config=config.runtime.restart,
         shutdown_activity=activity.close,
-        startup_config=config.runtime.startup_notice,
     )
     matchers = MatcherRegistry()
     for plugin in plugins:

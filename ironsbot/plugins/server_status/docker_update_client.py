@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -28,10 +27,6 @@ TRANSIENT_DOCKER_PULL_ERRORS = (
     "temporarily unavailable",
     "tls handshake timeout",
 )
-
-
-def resolve_docker_container_name(configured_name: str) -> str:
-    return os.getenv("HOST_CONTAINERNAME", "").strip() or configured_name
 
 
 def split_docker_image(image: str) -> tuple[str, str]:

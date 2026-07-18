@@ -739,10 +739,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "messaging_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
     )
-    server_status_config = _load_module_from_path(
-        "server_status_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "server_status" / "config.py",
-    )
     team_resource_config = _load_module_from_path(
         "team_resource_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
@@ -783,11 +779,6 @@ def test_small_plugin_config_accessors_read_app_config(
             "会议",
         ]
         assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
-        assert not server_status_config.get_server_status_config().broadcast
-        assert (
-            server_status_config.get_docker_update_config().image
-            == "murmansk5000/ironsbot:latest"
-        )
         assert "aliases" in app_config.runtime.data_sync.sources
         assert app_config.runtime.priority.enabled
         assert team_resource_config.get_team_resource_config().commands == ["战队"]

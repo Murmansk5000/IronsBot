@@ -23,7 +23,13 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot
 
-    from ironsbot.config.models.runtime import RestartConfig, StartupConfig
+    from ironsbot.config.models.app import AppConfig
+    from ironsbot.config.models.runtime import (
+        DockerUpdateConfig,
+        RestartConfig,
+        ServerStatusConfig,
+        StartupConfig,
+    )
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
     from ironsbot.runtime.matchers import MatcherRegistry
@@ -61,10 +67,14 @@ def _install_admin_priority(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_server_status(registry: MatcherRegistry) -> None:
+def _install_server_status(
+    registry: MatcherRegistry,
+    server_status_config: ServerStatusConfig,
+    docker_update_config: DockerUpdateConfig,
+) -> None:
     from ironsbot.plugins.server_status.handlers import install
 
-    install(registry)
+    install(registry, server_status_config, docker_update_config)
 
 
 def _install_db_sync(registry: MatcherRegistry) -> None:
@@ -203,12 +213,6 @@ async def _shutdown_http_clients() -> None:
     await shutdown_http_clients()
 
 
-async def _start_docker_update() -> None:
-    from ironsbot.plugins.server_status.runtime import start_docker_update
-
-    await start_docker_update()
-
-
 async def _start_db_sync() -> None:
     from ironsbot.plugins.db_sync.runtime import start_db_sync
 
@@ -295,9 +299,9 @@ async def _send_startup_notice(
     bot: Bot,
     service: StartupNoticeService,
     config: StartupConfig,
+    docker_update_notice: Callable[[], str | None],
 ) -> None:
     from ironsbot.plugins.db_sync import runtime as db_sync_runtime
-    from ironsbot.plugins.server_status import runtime as server_status_runtime
     from ironsbot.plugins.startup_notice.runtime import send_startup_notice
     from ironsbot.services.startup_notice import StartupNoticeProvider
 
@@ -307,7 +311,7 @@ async def _send_startup_notice(
             StartupNoticeProvider(
                 subscription_key="startup_docker_update",
                 action_name="startup docker update notice",
-                get_message=server_status_runtime.get_startup_docker_update_notice,
+                get_message=docker_update_notice,
             ),
             StartupNoticeProvider(
                 subscription_key="startup_data_sync",
@@ -341,17 +345,29 @@ async def _team_audit_on_connect(bot: Bot) -> None:
 
 def build_plugin_registry(
     *,
+    config: AppConfig,
     activity_service: ActivityService,
-    restart_config: RestartConfig,
     shutdown_activity: AsyncHook,
-    startup_config: StartupConfig,
 ) -> tuple[PluginDefinition, ...]:
     definitions: tuple[PluginDefinition, ...] = ()
+    runtime_config = config.runtime
     push_time_refresher = partial(
         _refresh_push_time_jobs,
         activity_service=activity_service,
     )
     startup_notice_service = StartupNoticeService()
+    docker_update_notice: str | None = None
+
+    async def start_docker_update() -> None:
+        nonlocal docker_update_notice
+        from ironsbot.plugins.server_status.runtime import (
+            start_docker_update as run_update,
+        )
+
+        docker_update_notice = await run_update(runtime_config.docker_update)
+
+    def get_docker_update_notice() -> str | None:
+        return docker_update_notice
 
     def install_help(registry: MatcherRegistry) -> None:
         from ironsbot.plugins import help as help_plugin
@@ -413,9 +429,13 @@ def build_plugin_registry(
                 group="seer",
                 order=70,
             ),
-            install=_install_server_status,
+            install=partial(
+                _install_server_status,
+                server_status_config=runtime_config.server_status,
+                docker_update_config=runtime_config.docker_update,
+            ),
             hooks=PluginHooks(
-                startup=(("docker_update", _start_docker_update),),
+                startup=(("docker_update", start_docker_update),),
             ),
         ),
         PluginDefinition(
@@ -511,7 +531,7 @@ def build_plugin_registry(
                 startup=(
                     (
                         "scheduled_restart_jobs",
-                        partial(_register_restart_jobs, restart_config),
+                        partial(_register_restart_jobs, runtime_config.restart),
                     ),
                 ),
             ),
@@ -597,7 +617,8 @@ def build_plugin_registry(
                         partial(
                             _send_startup_notice,
                             service=startup_notice_service,
-                            config=startup_config,
+                            config=runtime_config.startup_notice,
+                            docker_update_notice=get_docker_update_notice,
                         ),
                     ),
                 ),
