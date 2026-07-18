@@ -16,6 +16,13 @@ class StartupNoticeConfig(Protocol):
     enabled: bool
 
 
+@dataclass(frozen=True, slots=True)
+class StartupNoticeProvider:
+    subscription_key: str
+    action_name: str
+    get_message: Callable[[], str | None]
+
+
 @dataclass(slots=True)
 class StartupNoticeState:
     sent: bool = False

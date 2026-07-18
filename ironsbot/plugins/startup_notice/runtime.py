@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.shared.runtime.startup_notice import startup_notice_parts
-
 from .config import get_startup_config
-from .service import StartupNoticeService
+from .service import StartupNoticeProvider, StartupNoticeService
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ironsbot.shared.messaging import TargetSendSummary
 
 startup_notice_service = StartupNoticeService()
@@ -37,7 +37,10 @@ async def _send_notice_part(
     )
 
 
-async def send_startup_notice(_bot: Bot) -> None:
+async def send_startup_notice(
+    _bot: Bot,
+    providers: Sequence[StartupNoticeProvider],
+) -> None:
     config = get_startup_config()
     if not startup_notice_service.should_send(config):
         return
@@ -65,11 +68,12 @@ async def send_startup_notice(_bot: Bot) -> None:
         summaries.extend(
             [
                 await _send_notice_part(
-                    message_text=part.message,
-                    subscription_key=part.subscription_key,
-                    action_name=part.action_name,
+                    message_text=message,
+                    subscription_key=provider.subscription_key,
+                    action_name=provider.action_name,
                 )
-                for part in startup_notice_parts()
+                for provider in providers
+                if (message := provider.get_message())
             ]
         )
         succeeded = [

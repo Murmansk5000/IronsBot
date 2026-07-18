@@ -57,10 +57,6 @@ def test_registry_is_the_lifecycle_order_authority() -> None:
         DEFINITIONS,
     )
 
-    assert [name for name, _hook in lifecycle.installers] == [
-        "docker_update_notice",
-        "db_sync_notice",
-    ]
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "http_client",
         "docker_update",

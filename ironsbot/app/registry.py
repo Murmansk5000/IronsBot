@@ -189,34 +189,6 @@ async def _refresh_push_time_jobs(
     )
 
 
-def _install_docker_notice() -> None:
-    from ironsbot.plugins.server_status import runtime
-    from ironsbot.shared.runtime.startup_notice import (
-        register_startup_notice_provider,
-    )
-
-    register_startup_notice_provider(
-        "docker_update",
-        subscription_key="startup_docker_update",
-        action_name="startup docker update notice",
-        get_message=runtime.get_startup_docker_update_notice,
-    )
-
-
-def _install_db_sync_notice() -> None:
-    from ironsbot.plugins.db_sync import runtime
-    from ironsbot.shared.runtime.startup_notice import (
-        register_startup_notice_provider,
-    )
-
-    register_startup_notice_provider(
-        "db_sync",
-        subscription_key="startup_data_sync",
-        action_name="startup data sync notice",
-        get_message=runtime.get_startup_sync_notice,
-    )
-
-
 async def _initialize_http_clients() -> None:
     from ironsbot.plugins.http_client.runtime import initialize_http_clients
 
@@ -318,9 +290,26 @@ async def _check_bilibili(bot: Bot) -> None:
 
 
 async def _send_startup_notice(bot: Bot) -> None:
+    from ironsbot.plugins.db_sync import runtime as db_sync_runtime
+    from ironsbot.plugins.server_status import runtime as server_status_runtime
     from ironsbot.plugins.startup_notice.runtime import send_startup_notice
+    from ironsbot.plugins.startup_notice.service import StartupNoticeProvider
 
-    await send_startup_notice(bot)
+    await send_startup_notice(
+        bot,
+        (
+            StartupNoticeProvider(
+                subscription_key="startup_docker_update",
+                action_name="startup docker update notice",
+                get_message=server_status_runtime.get_startup_docker_update_notice,
+            ),
+            StartupNoticeProvider(
+                subscription_key="startup_data_sync",
+                action_name="startup data sync notice",
+                get_message=db_sync_runtime.get_startup_sync_notice,
+            ),
+        ),
+    )
 
 
 async def _report_render_crash(_bot: Bot) -> None:
@@ -415,7 +404,6 @@ def build_plugin_registry(
             ),
             install=_install_server_status,
             hooks=PluginHooks(
-                installers=(("docker_update_notice", _install_docker_notice),),
                 startup=(("docker_update", _start_docker_update),),
             ),
         ),
@@ -425,7 +413,6 @@ def build_plugin_registry(
             help=None,
             install=_install_db_sync,
             hooks=PluginHooks(
-                installers=(("db_sync_notice", _install_db_sync_notice),),
                 startup=(("db_sync", _start_db_sync),),
             ),
         ),

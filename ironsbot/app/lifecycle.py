@@ -13,17 +13,14 @@ if TYPE_CHECKING:
     from ironsbot.runtime.plugins import (
         AsyncHook,
         BotHook,
-        Installer,
         NamedAsyncHook,
         NamedBotHook,
-        NamedInstaller,
     )
 
 
 @dataclass(slots=True)
 class ApplicationLifecycle:
     driver: Driver
-    installers: tuple[NamedInstaller, ...] = ()
     startup_hooks: tuple[NamedAsyncHook, ...] = ()
     shutdown_hooks: tuple[NamedAsyncHook, ...] = ()
     first_bot_connect_hooks: tuple[NamedBotHook, ...] = ()
@@ -36,9 +33,6 @@ class ApplicationLifecycle:
     def install(self) -> None:
         if self._installed:
             return
-
-        for name, installer in self.installers:
-            self._run_installer(name, installer)
 
         self.driver.on_startup(self.startup)
         self.driver.on_shutdown(self.shutdown)
@@ -92,17 +86,6 @@ class ApplicationLifecycle:
     ) -> None:
         for name, hook in hooks:
             await ApplicationLifecycle._run_bot_hook(phase, name, hook, bot)
-
-    @staticmethod
-    def _run_installer(name: str, installer: Installer) -> None:
-        try:
-            installer()
-        except Exception:
-            logger.opt(exception=True).error(
-                "lifecycle installer failed: {}",
-                name,
-            )
-            raise
 
     @staticmethod
     async def _run_async_hook(

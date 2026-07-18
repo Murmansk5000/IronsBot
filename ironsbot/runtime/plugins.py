@@ -13,10 +13,8 @@ if TYPE_CHECKING:
 
 AsyncHook: TypeAlias = Callable[[], Awaitable[None]]
 BotHook: TypeAlias = Callable[["Bot"], Awaitable[None]]
-Installer: TypeAlias = Callable[[], None]
 NamedAsyncHook: TypeAlias = tuple[str, AsyncHook]
 NamedBotHook: TypeAlias = tuple[str, BotHook]
-NamedInstaller: TypeAlias = tuple[str, Installer]
 HelpVisibility = Literal["default", "always", "hidden"]
 PluginInstall: TypeAlias = Callable[["MatcherRegistry"], None]
 
@@ -33,7 +31,6 @@ class HelpEntry:
 
 @dataclass(frozen=True, slots=True)
 class PluginHooks:
-    installers: tuple[NamedInstaller, ...] = ()
     startup: tuple[NamedAsyncHook, ...] = ()
     shutdown: tuple[NamedAsyncHook, ...] = ()
     first_bot_connect: tuple[NamedBotHook, ...] = ()
@@ -55,10 +52,8 @@ __all__ = [
     "BotHook",
     "HelpEntry",
     "HelpVisibility",
-    "Installer",
     "NamedAsyncHook",
     "NamedBotHook",
-    "NamedInstaller",
     "PluginDefinition",
     "PluginHooks",
     "PluginInstall",

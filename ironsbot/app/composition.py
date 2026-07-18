@@ -164,11 +164,6 @@ def build_application_lifecycle(
 ) -> ApplicationLifecycle:
     return ApplicationLifecycle(
         driver=driver,
-        installers=tuple(
-            installer
-            for definition in definitions
-            for installer in definition.hooks.installers
-        ),
         startup_hooks=tuple(
             hook
             for definition in definitions
