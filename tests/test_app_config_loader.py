@@ -702,7 +702,6 @@ def test_small_plugin_config_accessors_read_app_config(
     clear_app_config_cache()
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
     monkeypatch.setenv("AI_KEY", "sk-test")
-    monkeypatch.setenv("SENDPIC_CNB_TOKEN", "cnb-token")
 
     ai_config = _load_module_from_path(
         "ai_config_for_app_config_test",
@@ -715,10 +714,6 @@ def test_small_plugin_config_accessors_read_app_config(
     bili_config = _load_module_from_path(
         "bilibili_monitor_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "bilibili" / "config.py",
-    )
-    sendpic_config = _load_module_from_path(
-        "sendpic_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
     )
     message_config = _load_module_from_path(
         "messaging_config_for_app_config_test",
@@ -741,8 +736,6 @@ def test_small_plugin_config_accessors_read_app_config(
         )
         assert app_config.activity.lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
-        assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
-        assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"
         assert "seerapi" in app_config.runtime.data_sync.sources
         assert (
             message_config.get_message_config()

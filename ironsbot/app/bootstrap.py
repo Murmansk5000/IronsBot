@@ -61,13 +61,13 @@ def bootstrap() -> BootstrapState:
         config.activity,
         push_subscription_path=config.message.push_unsubscribe.data_path,
     )
-    github_token = load_secrets_config().github_workflow_token
+    secrets = load_secrets_config()
     headless = build_headless_service(config.runtime, load_credentials_config())
     plugins = build_plugin_registry(
         config=config,
         activity_service=activity.service,
         headless=headless,
-        github_token=github_token,
+        secrets=secrets,
         shutdown_activity=activity.close,
     )
     matchers = MatcherRegistry()

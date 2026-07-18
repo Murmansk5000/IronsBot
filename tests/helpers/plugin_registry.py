@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.app import AppConfig
-from ironsbot.config.models.secrets import CredentialsConfig
+from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.services.operations.headless import HeadlessService
 
@@ -28,6 +28,6 @@ def build_test_plugin_registry() -> tuple[PluginDefinition, ...]:
             config.runtime.headless,
             config.runtime.headless_notice,
         ),
-        github_token="",
+        secrets=SecretsConfig(),
         shutdown_activity=_noop_shutdown,
     )

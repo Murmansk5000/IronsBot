@@ -24,13 +24,18 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.config.models.app import AppConfig
-    from ironsbot.config.models.message import MeetingConfig, RedPacketNoticeConfig
+    from ironsbot.config.models.message import (
+        MeetingConfig,
+        RedPacketNoticeConfig,
+        SendpicBehaviorConfig,
+    )
     from ironsbot.config.models.runtime import (
         DockerUpdateConfig,
         RestartConfig,
         ServerStatusConfig,
         StartupConfig,
     )
+    from ironsbot.config.models.secrets import SecretsConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
     from ironsbot.runtime.matchers import MatcherRegistry
@@ -189,10 +194,14 @@ def _install_help_hint(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_sendpic(registry: MatcherRegistry) -> None:
+def _install_sendpic(
+    registry: MatcherRegistry,
+    config: SendpicBehaviorConfig,
+    cnb_token: str | None,
+) -> None:
     from ironsbot.plugins.sendpic import install
 
-    install(registry)
+    install(registry, config, cnb_token)
 
 
 def _install_meeting(registry: MatcherRegistry, config: MeetingConfig) -> None:
@@ -347,7 +356,7 @@ def build_plugin_registry(
     config: AppConfig,
     activity_service: ActivityService,
     headless: HeadlessService,
-    github_token: str,
+    secrets: SecretsConfig,
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
     definitions: tuple[PluginDefinition, ...] = ()
@@ -376,9 +385,9 @@ def build_plugin_registry(
             "startup_data_sync",
             "startup data sync notice",
             await start_db_sync(
-                _scheduler(),
-                runtime_config.data_sync,
-                github_token,
+            _scheduler(),
+            runtime_config.data_sync,
+            secrets.github_workflow_token,
             ),
         )
 
@@ -458,7 +467,7 @@ def build_plugin_registry(
             help=None,
             install=partial(
                 _install_db_sync,
-                github_token=github_token,
+                github_token=secrets.github_workflow_token,
             ),
             hooks=PluginHooks(
                 startup=(("db_sync", start_data_sync),),
@@ -779,7 +788,11 @@ def build_plugin_registry(
             id="sendpic",
             features=frozenset({Feature.IMAGE}),
             help=None,
-            install=_install_sendpic,
+            install=partial(
+                _install_sendpic,
+                config=config.message.sendpic,
+                cnb_token=secrets.sendpic_cnb_token,
+            ),
         ),
         PluginDefinition(
             id="meeting",
