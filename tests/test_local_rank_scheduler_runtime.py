@@ -28,8 +28,9 @@ from ironsbot.config.models.seer import (
     PlayerQueryConfig,
     RankPageRefreshConfig,
 )
+from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.plugins.seer.query import runtime as seer_runtime
-from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
+from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from tests.helpers.runtime import build_test_runtime
 
@@ -51,10 +52,20 @@ class FakeScheduler:
 
 
 def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
+    tmp_path: Path,
 ) -> None:
     scheduler = FakeScheduler()
-    config = LocalRankConfig(refresh_hour=3, refresh_minute=30)
-    service = LocalRankRefreshService(config, PlayerQueryConfig(), None)
+    config = LocalRankConfig(
+        path=tmp_path / "local-rank.sqlite",
+        refresh_hour=3,
+        refresh_minute=30,
+    )
+    service = LocalRankService(
+        SqliteLocalRankRepository(config.path, config.max_players),
+        config,
+        PlayerQueryConfig(),
+        None,
+    )
 
     seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS, service)
 

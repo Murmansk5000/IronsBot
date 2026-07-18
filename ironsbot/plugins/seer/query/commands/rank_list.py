@@ -151,7 +151,10 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_rank"),
     )
     list_matcher.append_handler(
-        _with_game(group, rank_list_query_handlers.handle_list)
+        _with_game(
+            group,
+            partial(rank_list_query_handlers.handle_list, group.resources),
+        )
     )
 
     player_matcher = group.on_message(
@@ -164,7 +167,7 @@ def install(group: SeerMatcherGroup) -> None:
     player_matcher.append_handler(
         _with_game(
             group,
-            partial(rank_list_query_handlers.handle_player, group.resources.config),
+            partial(rank_list_query_handlers.handle_player, group.resources),
         )
     )
 

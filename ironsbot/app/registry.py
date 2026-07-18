@@ -8,6 +8,7 @@ import nonebot
 
 from ironsbot.app import plugin_runtime as runtime
 from ironsbot.core.features import Feature
+from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.plugins.server_status.command_text import SERVER_STATUS_USAGE
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -15,7 +16,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
 )
 from ironsbot.services.help_hint import HelpHintService
-from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
+from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
@@ -123,7 +124,11 @@ def build_plugin_registry(  # noqa: PLR0913
     )
     seer_resources = SeerQueryResources(
         config.seer,
-        LocalRankRefreshService(
+        LocalRankService(
+            SqliteLocalRankRepository(
+                config.seer.local_rank.path,
+                config.seer.local_rank.max_players,
+            ),
             config.seer.local_rank,
             config.seer.player,
             config.seer.rank.peak_subkey,
@@ -551,7 +556,7 @@ def build_plugin_registry(  # noqa: PLR0913
                         partial(
                             runtime.register_local_rank_jobs,
                             headless,
-                            seer_resources.local_rank_refresh,
+                            seer_resources.local_rank,
                         ),
                     ),
                     (

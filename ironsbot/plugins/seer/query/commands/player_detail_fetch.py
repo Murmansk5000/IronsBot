@@ -8,7 +8,6 @@ from nonebot import logger
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
-from ironsbot.services.seer.local_rank_update import update_local_rank_cache
 from ironsbot.services.seer.player_detail_formatting import (
     format_player_detail_messages,
 )
@@ -20,7 +19,6 @@ from ironsbot.services.seer.player_query import (
     plan_player_detail_fetches,
     validate_player_peak_season,
 )
-from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
@@ -44,9 +42,11 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.seer.local_rank import LocalRankService
 
 
 def create_player_detail_task(  # noqa: PLR0913
+    local_rank: LocalRankService,
     game: SeerGame,
     *,
     player_id: int,
@@ -69,6 +69,7 @@ def create_player_detail_task(  # noqa: PLR0913
             has_autocard_rank=has_autocard_rank,
             show_local_rank=show_local_rank,
             config=config,
+            local_rank=local_rank,
         )
     )
     task.add_done_callback(_log_unrequested_player_detail_task_error)
@@ -102,6 +103,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     has_autocard_rank: bool,
     show_local_rank: bool,
     config: SeerConfig,
+    local_rank: LocalRankService,
 ) -> PlayerDetailMessages:
     extra_errors = PlayerDetailErrors()
     extra_timeout_seconds = min(
@@ -140,7 +142,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
                 timeout_seconds=extra_timeout_seconds,
             ),
         )
-        peak_sub_key = get_current_peak_sub_key()
+        peak_sub_key = local_rank.current_peak_sub_key()
         peak_scores = calculate_player_peak_scores(unity_peak)
         rank_progress = RankSummaryProgress()
         peak_rank_progress = RankSummaryProgress()
@@ -201,7 +203,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         local_rank_summary = await optional_player_extra(
             "机器人查询排行",
             fetch_plan.needs_local_rank,
-            lambda: update_local_rank_cache(
+            lambda: local_rank.update_cache(
                 player_id=player_id,
                 nick=user_info.nick,
                 more_info=more_info,

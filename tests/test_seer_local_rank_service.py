@@ -1,13 +1,19 @@
-import asyncio
-import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 
-from ironsbot.services.seer import local_rank_update
+from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
+from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
+from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.local_rank_formatting import format_metric_display
 from ironsbot.services.seer.value_coercion import coerce_positive_int
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ironsbot.services.seer.local_rank_metrics import MetricValue
 
 EXPECTED_POSITIVE_INT = 12
 
@@ -31,57 +37,47 @@ def test_format_metric_display_keeps_cached_display_text() -> None:
     assert format_metric_display("book_score", 12345) == "12345"
 
 
-def test_upsert_local_rank_metrics_clears_unconfirmed_peak_metrics(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.asyncio
+async def test_upsert_local_rank_metrics_clears_unconfirmed_peak_metrics(
+    tmp_path: Path,
 ) -> None:
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.executescript(
-        """
-        CREATE TABLE players (
-            user_id INTEGER PRIMARY KEY,
-            nick TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            sample_enabled INTEGER NOT NULL DEFAULT 1,
-            sampled_at TEXT
-        );
-        CREATE TABLE metrics (
-            user_id INTEGER NOT NULL,
-            metric_key TEXT NOT NULL,
-            value INTEGER NOT NULL,
-            season_sub_key INTEGER,
-            display TEXT,
-            PRIMARY KEY (user_id, metric_key)
-        );
-        INSERT INTO players(user_id, nick, updated_at)
-        VALUES (123456, '旧玩家', '2026-07-17T00:00:00+00:00');
-        INSERT INTO metrics(user_id, metric_key, value, season_sub_key)
-        VALUES
-            (123456, 'peak_wild', 400100, 20260717),
-            (123456, 'achievement_score', 5000, NULL);
-        """
+    path = tmp_path / "local-rank.sqlite"
+    config = LocalRankConfig(path=path)
+    service = LocalRankService(
+        SqliteLocalRankRepository(path, config.max_players),
+        config,
+        PlayerQueryConfig(),
+        None,
     )
-
-    @contextmanager
-    def fake_connect() -> Iterator[sqlite3.Connection]:
-        yield conn
-
-    monkeypatch.setattr(local_rank_update, "connect_local_rank_cache", fake_connect)
-
-    asyncio.run(
-        local_rank_update.upsert_local_rank_metrics(
-            player_id=123456,
-            nick="当前玩家",
-            current_metrics={},
-            peak_sub_key=20260717,
-            clear_metric_keys=frozenset(("peak_wild",)),
-        )
-    )
-
-    remaining = {
-        row["metric_key"]
-        for row in conn.execute(
-            "SELECT metric_key FROM metrics WHERE user_id = 123456"
-        )
+    metrics: dict[str, MetricValue] = {
+        "peak_wild": {"value": 400100, "season_sub_key": 20260717},
+        "achievement_score": {"value": 5000},
     }
-    assert remaining == {"achievement_score"}
+    await service.upsert_metrics(
+        player_id=123456,
+        nick="旧玩家",
+        current_metrics=metrics,
+        peak_sub_key=20260717,
+    )
+    await service.upsert_metrics(
+        player_id=123456,
+        nick="当前玩家",
+        current_metrics={},
+        peak_sub_key=20260717,
+        clear_metric_keys=frozenset(("peak_wild",)),
+    )
+
+    peak_entries, _ = service.entries(
+        "peak_wild",
+        limit=10,
+        start_rank=1,
+        season_sub_key=20260717,
+    )
+    achievement_entries, _ = service.entries(
+        "achievement_score",
+        limit=10,
+        start_rank=1,
+        season_sub_key=None,
+    )
+    assert peak_entries == []
+    assert [entry.user_id for entry in achievement_entries] == [123456]

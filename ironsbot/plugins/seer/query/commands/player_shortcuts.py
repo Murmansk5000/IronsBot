@@ -84,10 +84,10 @@ async def handle_player_shortcut(
         ):
             message = await asyncio.wait_for(
                 fetch_player_shortcut_message(
+                    resources.local_rank,
                     game,
                     command=command,
                     player_id=player_id,
-                    local_rank_enabled=config.local_rank.enabled,
                 ),
                 timeout=config.player.detail_timeout_seconds,
             )

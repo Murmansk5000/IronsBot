@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.bilibili.resources import BilibiliResources
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
+    from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.startup_notice import StartupNoticeService
@@ -146,7 +146,7 @@ async def register_team_resource_jobs(
 
 async def register_local_rank_jobs(
     headless: HeadlessService,
-    service: LocalRankRefreshService,
+    service: LocalRankService,
 ) -> None:
     from ironsbot.plugins.seer.query.runtime import register_local_rank_refresh_job
 

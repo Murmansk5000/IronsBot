@@ -10,7 +10,7 @@ from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
+    from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 SEER_QUERY_JOB_PREFIX = "seer_"
@@ -36,7 +36,7 @@ def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) 
 
 async def _scheduled_local_rank_refresh(
     headless: HeadlessService,
-    service: LocalRankRefreshService,
+    service: LocalRankService,
 ) -> None:
     config = service.config
     if not config.auto_refresh:
@@ -55,7 +55,7 @@ async def _scheduled_local_rank_refresh(
 def register_local_rank_refresh_job(
     scheduler: Any,
     headless: HeadlessService,
-    service: LocalRankRefreshService,
+    service: LocalRankService,
 ) -> None:
     config = service.config
     JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
@@ -118,9 +118,3 @@ def register_rank_page_refresh_jobs(
             jitter=config.schedule_jitter_seconds,
             job_id=f"rank_page_refresh_{hour_text}{minute_text}",
         )
-
-
-__all__ = [
-    "register_local_rank_refresh_job",
-    "register_rank_page_refresh_jobs",
-]

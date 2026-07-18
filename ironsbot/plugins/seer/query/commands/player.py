@@ -214,14 +214,14 @@ async def handle_player(
             matcher,
             event,
             namespace=PLAYER_BINDING_NAMESPACE,
-            handlers=[partial(handle_player_binding_choice, config)],
+            handlers=[partial(handle_player_binding_choice, resources)],
             reply_check=lambda reply: parse_binding_choice(reply.get_plaintext())
             is not None,
             prompt=player_binding_offer_message(player_id, pending.user_info.nick),
             mention_sender=True,
         )
 
-    await _send_pending_player_query(config, matcher, event, state, pending)
+    await _send_pending_player_query(resources, matcher, event, state, pending)
 
 
 async def _fetch_pending_player_query(
@@ -292,7 +292,7 @@ async def _fetch_pending_player_query(
 
 
 async def handle_player_binding_choice(
-    config: SeerConfig,
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -309,7 +309,7 @@ async def handle_player_binding_choice(
     try:
         if choice:
             bind_player(
-                config.player.binding.path,
+                resources.config.player.binding.path,
                 qq_user_id=event.user_id,
                 player_id=pending.player_id,
                 player_nick=str(pending.user_info.nick),
@@ -317,7 +317,7 @@ async def handle_player_binding_choice(
             status_message = f"已设置默认米米号：{pending.player_id}。"
         else:
             decline_player_binding(
-                config.player.binding.path,
+                resources.config.player.binding.path,
                 qq_user_id=event.user_id,
             )
             status_message = "已跳过默认米米号设置。"
@@ -326,11 +326,11 @@ async def handle_player_binding_choice(
         status_message = f"⚠️ 默认米米号设置保存失败：{error}"
 
     pending.player_message = f"{status_message}\n\n{pending.player_message}"
-    await _send_pending_player_query(config, matcher, event, state, pending)
+    await _send_pending_player_query(resources, matcher, event, state, pending)
 
 
 async def _send_pending_player_query(
-    config: SeerConfig,
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -339,6 +339,7 @@ async def _send_pending_player_query(
     section_plan = pending.section_plan
     detail_task = (
         create_player_detail_task(
+            resources.local_rank,
             pending.game,
             player_id=pending.player_id,
             user_info=pending.user_info,
@@ -347,7 +348,7 @@ async def _send_pending_player_query(
             needs_peak_section=section_plan.needs_peak_section,
             has_autocard_rank=section_plan.has_autocard_rank,
             show_local_rank=section_plan.show_local_rank,
-            config=config,
+            config=resources.config,
         )
         if section_plan.needs_detail_task
         else None
@@ -435,7 +436,7 @@ async def handle_player_binding_command(
 
     pending.player_message = f"{status_message}\n\n{pending.player_message}"
     await _send_pending_player_query(
-        config,
+        resources,
         matcher,
         event,
         state,

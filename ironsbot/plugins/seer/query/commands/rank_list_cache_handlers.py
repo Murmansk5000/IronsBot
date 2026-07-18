@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.local_rank_cache_queries import get_local_rank_cache_stats
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
@@ -197,7 +196,7 @@ async def handle_cache_status(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    stats = get_local_rank_cache_stats()
+    stats = resources.local_rank.stats()
     await finish_event_reply(
         matcher,
         event,
@@ -220,7 +219,7 @@ async def handle_cache_refresh(
     game: SeerGame,
 ) -> None:
     ensure_extended_packets()
-    before = get_local_rank_cache_stats()
+    before = resources.local_rank.stats()
     if before.player_count <= 0:
         await finish_event_reply(
             matcher,
@@ -239,8 +238,8 @@ async def handle_cache_refresh(
         ),
     )
     await resources.priority.release(state)
-    result = await resources.local_rank_refresh.refresh(game)
-    after = get_local_rank_cache_stats()
+    result = await resources.local_rank.refresh(game)
+    after = resources.local_rank.stats()
 
     await finish_event_reply(
         matcher,

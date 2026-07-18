@@ -2,11 +2,11 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
-from ironsbot.services.seer.local_rank_refresh import (
+from ironsbot.services.seer.local_rank import (
     LocalRankRefreshFailure,
     LocalRankRefreshResult,
 )
+from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
 from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,

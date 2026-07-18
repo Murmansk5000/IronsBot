@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 from ironsbot.services.seer.rank_list_models import RANK_LIST_SIZE, GlobalRankSpec
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.local_rank import LocalRankRefreshResult
     from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
-    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshResult
     from ironsbot.services.seer.rank_list_models import RankCacheBatchCommand
 
 _FAILURE_PREVIEW_LIMIT = 5
