@@ -15,7 +15,7 @@ from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import GetPetData, SeerAPISession
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from ..prompt import PromptItem
 from . import pet_actions, pet_handlers
 from .query_rules import not_fixed_image_command, not_rank_query
@@ -52,7 +52,7 @@ def install(group: SeerMatcherGroup) -> None:
         & not_rank_query
         & not_fixed_image_command
         & no_reply(),
-        priority=seer_feature_priority("seer_pet"),
+        priority=group.matcher_priority("seer_pet"),
     )
     image_matcher.append_handler(_handle_pet_image)
 
@@ -66,6 +66,6 @@ def install(group: SeerMatcherGroup) -> None:
         & not_rank_query
         & not_fixed_image_command
         & no_reply(),
-        priority=seer_feature_priority("seer_pet"),
+        priority=group.matcher_priority("seer_pet"),
     )
     info_matcher.append_handler(_handle_pet_info)

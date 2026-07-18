@@ -1,12 +1,10 @@
 import asyncio
-from collections.abc import Callable
-from importlib import import_module
 
-from nonebot.adapters.onebot.v11 import MessageEvent
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.feature import FeatureConfig
+from ironsbot.plugins.ai_mention_guard import _build_guard_message
 from ironsbot.services.ai import mention_guard
 from ironsbot.services.ai.resources import AiResources
 from ironsbot.shared.help_hints import (
@@ -35,26 +33,11 @@ def _resources(*, ai_allowed: bool) -> AiResources:
     )
 
 
-def _load_build_guard_message(
-    monkeypatch: MonkeyPatch,
-) -> Callable[[MessageEvent], str]:
-    monkeypatch.setattr(
-        "ironsbot.shared.matcher_priority.get_pre_command_matcher_priority",
-        lambda _name: -1,
-    )
-    module = import_module("ironsbot.plugins.ai_mention_guard")
-    return module._build_guard_message
-
-
-def test_guard_message_uses_shared_hint(monkeypatch: MonkeyPatch) -> None:
-    _build_guard_message = _load_build_guard_message(monkeypatch)
-
+def test_guard_message_uses_shared_hint() -> None:
     assert _build_guard_message(group_message_event("@bot 怎么用")) == HELP_HINT_TEXT
 
 
-def test_guard_message_appends_config_notice(monkeypatch: MonkeyPatch) -> None:
-    _build_guard_message = _load_build_guard_message(monkeypatch)
-
+def test_guard_message_appends_config_notice() -> None:
     assert _build_guard_message(group_message_event("@bot 谱尼配置")) == (
         f"{HELP_HINT_TEXT}\n{PET_CONFIG_UNAVAILABLE_TEXT}"
     )

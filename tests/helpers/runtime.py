@@ -10,6 +10,7 @@ from ironsbot.config.models.message import (
 from ironsbot.config.models.runtime import (
     BotRoutingConfig,
     CommandCooldownConfig,
+    MatcherPriorityConfig,
     SuperuserPriorityConfig,
 )
 from ironsbot.runtime.matchers import MatcherRegistry
@@ -31,9 +32,10 @@ class TestRuntime:
     admin_notices: AdminNoticeService
     priority: AdminPriorityService
     cooldown: CommandCooldownService
+    matcher_priorities: MatcherPriorityConfig
 
     def matcher_registry(self) -> MatcherRegistry:
-        return MatcherRegistry(self.cooldown)
+        return MatcherRegistry(self.cooldown, self.matcher_priorities)
 
 
 def build_test_runtime(  # noqa: PLR0913
@@ -44,6 +46,7 @@ def build_test_runtime(  # noqa: PLR0913
     push_unsubscribe: PushUnsubscribeConfig | None = None,
     priority_config: SuperuserPriorityConfig | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
+    matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
     resolved_feature_config = feature_config or FeatureConfig()
     features = FeatureService(
@@ -74,4 +77,5 @@ def build_test_runtime(  # noqa: PLR0913
             cooldown_config or CommandCooldownConfig(),
             features,
         ),
+        matcher_priorities=matcher_priority_config or MatcherPriorityConfig(),
     )

@@ -7,7 +7,6 @@ from ironsbot.config.models.message import MeetingConfig
 from ironsbot.core.commands import command_text_matches
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.shared.features import FeatureService
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -50,7 +49,7 @@ def install(
     matcher = registry.on_message(
         policy=CommandPolicy.command("meeting"),
         rule=Rule(is_meeting_command) & no_reply(),
-        priority=get_matcher_priority("meeting", 5),
+        priority=registry.priority("meeting", 5),
         block=True,
     )
     matcher.append_handler(handle_meeting_reply)

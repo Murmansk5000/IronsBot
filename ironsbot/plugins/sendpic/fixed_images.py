@@ -11,7 +11,6 @@ from ironsbot.services.sendpic_fixed_image import (
 )
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.features.visibility import event_has_feature
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -23,7 +22,7 @@ def install(registry: MatcherRegistry, features: FeatureService) -> None:
             policy=CommandPolicy.command(f"sendpic_fixed.{command}"),
             rule=Rule(lambda event: event_has_feature(features, event, "image"))
             & no_reply(),
-            priority=get_matcher_priority("sendpic", 1),
+            priority=registry.priority("sendpic", 1),
             block=True,
         )
 

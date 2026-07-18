@@ -108,7 +108,8 @@ def bootstrap() -> BootstrapState:
         shutdown_activity=activity.close,
     )
     matchers = MatcherRegistry(
-        CommandCooldownService(config.runtime.command_cooldown, features)
+        CommandCooldownService(config.runtime.command_cooldown, features),
+        config.runtime.matcher_priority,
     )
     for plugin in plugins:
         plugin.install(matchers)

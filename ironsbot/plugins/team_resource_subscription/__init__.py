@@ -29,7 +29,6 @@ from ironsbot.services.team_resource_subscriptions import (
     TeamResourceService,
     TeamResourceSubscriptionUpdate,
 )
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     MessageTarget,
     finish_event_reply,
@@ -497,7 +496,7 @@ def install(
     manage_matcher = registry.on_message(
         policy=CommandPolicy.command("team_resource_manage"),
         rule=Rule(is_manage) & no_reply(allow_at=True),
-        priority=get_matcher_priority("team_resource_subscription", 1),
+        priority=registry.priority("team_resource_subscription", 1),
         block=True,
     )
     manage_matcher.append_handler(
@@ -513,7 +512,7 @@ def install(
             "second-level team subscription confirmation"
         ),
         rule=Rule(is_prompt_choice) & no_reply(),
-        priority=get_matcher_priority("team_resource_subscription", 0),
+        priority=registry.priority("team_resource_subscription", 0),
         block=True,
     )
     prompt_matcher.append_handler(
@@ -523,7 +522,7 @@ def install(
     query_matcher = registry.on_message(
         policy=CommandPolicy.command("team_resource_query"),
         rule=Rule(is_query) & no_reply(),
-        priority=get_matcher_priority("team_resource_subscription", 2),
+        priority=registry.priority("team_resource_subscription", 2),
         block=True,
     )
     query_matcher.append_handler(

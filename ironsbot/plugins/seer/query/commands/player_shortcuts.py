@@ -24,7 +24,6 @@ from ironsbot.services.seer.player_shortcuts import (
     fetch_player_shortcut_message,
     parse_player_shortcut_command,
 )
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -126,7 +125,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_shortcut)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
     matcher.append_handler(handle_shortcut)

@@ -9,7 +9,6 @@ from ironsbot.services.seer.rank_usage import (
 )
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.features.visibility import event_has_feature
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.utils.rule import no_reply
 
 
@@ -23,7 +22,7 @@ def install(registry: MatcherRegistry, features: FeatureService) -> None:
         policy=CommandPolicy.command("seer_rank_help"),
         rule=Rule(lambda event: event_has_feature(features, event, "seer_rank"))
         & no_reply(),
-        priority=get_matcher_priority("seer_rank_help", 2),
+        priority=registry.priority("seer_rank_help", 2),
         block=True,
     )
     matcher.append_handler(handle_rank_help_entry)

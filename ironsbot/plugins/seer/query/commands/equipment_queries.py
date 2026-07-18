@@ -17,7 +17,7 @@ from ironsbot.integrations.seer_data.getters import (
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from . import equipment_handlers
 from .query_rules import not_rank_query
 
@@ -74,7 +74,7 @@ def install(group: SeerMatcherGroup) -> None:
         )
         & not_rank_query
         & no_reply(),
-        priority=seer_feature_priority("seer_equipment"),
+        priority=group.matcher_priority("seer_equipment"),
     )
     suit_matcher.append_handler(_handle_suit)
 
@@ -87,7 +87,7 @@ def install(group: SeerMatcherGroup) -> None:
         )
         & not_rank_query
         & no_reply(),
-        priority=seer_feature_priority("seer_equipment"),
+        priority=group.matcher_priority("seer_equipment"),
     )
     equip_matcher.append_handler(_handle_equip)
 
@@ -100,6 +100,6 @@ def install(group: SeerMatcherGroup) -> None:
         )
         & not_rank_query
         & no_reply(),
-        priority=seer_feature_priority("seer_equipment"),
+        priority=group.matcher_priority("seer_equipment"),
     )
     title_matcher.append_handler(_handle_title)

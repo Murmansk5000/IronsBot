@@ -10,10 +10,8 @@ from ironsbot.shared.help_hints import (
     DIRECT_COMMAND_HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
 )
-from ironsbot.shared.matcher_priority import get_pre_command_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 
-AI_MENTION_GUARD_PRIORITY = get_pre_command_matcher_priority("ai_mention_guard")
 
 def _build_guard_message(event: MessageEvent) -> str:
     message = DIRECT_COMMAND_HELP_HINT_TEXT
@@ -46,7 +44,7 @@ def install(
         rule=Rule(
             lambda event: should_guard_non_ai_group_mention(resources, event)
         ),
-        priority=AI_MENTION_GUARD_PRIORITY,
+        priority=registry.pre_command_priority("ai_mention_guard"),
         block=True,
     )
     matcher.append_handler(handle_non_ai_group_at_bot)

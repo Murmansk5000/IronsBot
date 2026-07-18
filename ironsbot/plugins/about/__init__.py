@@ -4,7 +4,6 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -45,7 +44,7 @@ def install(registry: MatcherRegistry) -> None:
         "关于",
         policy=CommandPolicy.command("about"),
         rule=no_reply(),
-        priority=get_matcher_priority("about", 0),
+        priority=registry.priority("about", 0),
         block=True,
     )
     matcher.append_handler(handle_about)

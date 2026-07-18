@@ -24,19 +24,12 @@ from ironsbot.services.ai.source_context import (
     append_ai_notice_source_context,
     build_notice_source,
 )
-from ironsbot.shared.matcher_priority import (
-    get_matcher_priority,
-    get_pre_command_matcher_priority,
-)
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
-AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)
-AI_GROUP_AT_CHAT_PRIORITY = get_pre_command_matcher_priority("ai_group_at")
-
 async def _ai_chat_rule(
     event: MessageEvent,
     state: T_State,
@@ -203,7 +196,7 @@ def install(registry: MatcherRegistry, resources: AiResources) -> None:
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
         rule=Rule(partial(_ai_chat_rule, resources=resources)),
-        priority=AI_CHAT_PRIORITY,
+        priority=registry.priority("ai_chat", 99),
         block=True,
     )
     direct_matcher.append_handler(partial(_run_ai_chat, resources=resources))
@@ -211,7 +204,7 @@ def install(registry: MatcherRegistry, resources: AiResources) -> None:
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
         rule=Rule(partial(_ai_chat_group_at_rule, resources=resources)),
-        priority=AI_GROUP_AT_CHAT_PRIORITY,
+        priority=registry.pre_command_priority("ai_group_at"),
         block=True,
     )
     group_at_matcher.append_handler(partial(_run_ai_chat, resources=resources))

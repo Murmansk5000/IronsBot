@@ -20,7 +20,6 @@ from ironsbot.services.red_packet_notice import (
     is_red_packet_payload,
     summarize_red_packet_message,
 )
-from ironsbot.shared.matcher_priority import get_matcher_priority
 
 RED_PACKET_NOTICE_SUBSCRIPTION_KEY = "red_packet_notice"
 
@@ -114,14 +113,14 @@ def install(
     message_matcher = registry.on_message(
         policy=CommandPolicy.exempt("passive red packet event detection"),
         rule=Rule(is_message),
-        priority=get_matcher_priority("red_packet_notice", 1),
+        priority=registry.priority("red_packet_notice", 1),
         block=False,
     )
     message_matcher.append_handler(handle_message)
 
     notice_matcher = registry.on_notice(
         rule=Rule(is_payload),
-        priority=get_matcher_priority("red_packet_notice", 1),
+        priority=registry.priority("red_packet_notice", 1),
         block=False,
     )
     notice_matcher.append_handler(handle_payload)

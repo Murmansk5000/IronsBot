@@ -10,7 +10,6 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
@@ -147,7 +146,7 @@ def install(
         "帮助",
         policy=CommandPolicy.command("help"),
         rule=no_reply(),
-        priority=get_matcher_priority("help", 0),
+        priority=registry.priority("help", 0),
         block=True,
     )
 

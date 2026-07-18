@@ -16,7 +16,7 @@ from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.rule import no_reply
 
 from ..depends import SeerAPISession, game_client_dependency
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from . import peak_handlers
 
 
@@ -104,7 +104,7 @@ def install(group: SeerMatcherGroup) -> None:
         )
 
     rule = seer_feature_rule(group.features, "seer_peak") & no_reply()
-    priority = seer_feature_priority("seer_peak")
+    priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(
         ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),

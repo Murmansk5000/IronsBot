@@ -13,7 +13,6 @@ from ironsbot.services.activity.commands import (
     is_soon_ending_seer_activity_text,
 )
 from ironsbot.shared.features.visibility import event_has_feature
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -66,7 +65,7 @@ def install(
         policy=CommandPolicy.command("seer_activity_current"),
         rule=Rule(_is_current_seer_activity_command) & no_reply(),
         permission=SUPERUSER,
-        priority=get_matcher_priority("activity", 5),
+        priority=registry.priority("activity", 5),
         block=True,
     )
     current_matcher.append_handler(handle_current)
@@ -82,7 +81,7 @@ def install(
             & Rule(_is_soon_ending_seer_activity_command)
             & no_reply()
         ),
-        priority=get_matcher_priority("activity", 5),
+        priority=registry.priority("activity", 5),
         block=True,
     )
     ending_matcher.append_handler(handle_soon_ending)

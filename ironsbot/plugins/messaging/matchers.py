@@ -12,7 +12,6 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -35,8 +34,8 @@ if TYPE_CHECKING:
     from .runtime_service import MessagingResources
 
 
-def _message_subscription_priority() -> int:
-    return max(get_matcher_priority("message_commands", 4) - 1, 0)
+def _message_subscription_priority(registry: MatcherRegistry) -> int:
+    return max(registry.priority("message_commands", 4) - 1, 0)
 
 
 async def handle_private_command(
@@ -99,7 +98,7 @@ def install(
             )
         )
         & no_reply(),
-        priority=get_matcher_priority("message_commands", 4),
+        priority=registry.priority("message_commands", 4),
         block=True,
     )
     private_matcher.append_handler(handle_private_command)
@@ -115,13 +114,13 @@ def install(
             )
         )
         & no_reply(),
-        priority=_message_subscription_priority(),
+        priority=_message_subscription_priority(registry),
         block=True,
     )
     push_time_matcher = registry.on_message(
         policy=CommandPolicy.exempt("second-level push time conversation"),
         rule=Rule(partial(match_push_time_command, messaging=messaging)) & no_reply(),
-        priority=_message_subscription_priority(),
+        priority=_message_subscription_priority(registry),
         block=True,
     )
     subscription_matcher.handle()(
@@ -149,7 +148,7 @@ def install(
             )
         )
         & no_reply(),
-        priority=get_matcher_priority("message_commands", 4),
+        priority=registry.priority("message_commands", 4),
         block=True,
     )
     group_matcher.append_handler(handle_group_command)

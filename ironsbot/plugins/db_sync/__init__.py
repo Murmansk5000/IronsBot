@@ -11,7 +11,6 @@ from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
 from ironsbot.integrations.db_sync.models import SyncStatus
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -121,7 +120,7 @@ def install(registry: MatcherRegistry, github_token: str) -> None:
         policy=CommandPolicy.command("data_sync"),
         rule=Rule(_is_manual_sync_command) & no_reply(),
         permission=SUPERUSER,
-        priority=get_matcher_priority("db_sync", 5),
+        priority=registry.priority("db_sync", 5),
         block=True,
     )
     matcher.append_handler(handle_sync)

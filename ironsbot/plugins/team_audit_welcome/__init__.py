@@ -13,7 +13,6 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.rule import Rule
 
 from ironsbot.services.team_audit_welcome import record_team_audit_pending_reminder
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.text import build_message, render_text
 
 from .followup import (
@@ -93,7 +92,7 @@ def install(
 ) -> None:
     matcher = registry.on_notice(
         rule=Rule(_is_group_increase),
-        priority=get_matcher_priority("team_audit", 5),
+        priority=registry.priority("team_audit", 5),
         block=False,
     )
     matcher.append_handler(

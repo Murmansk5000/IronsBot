@@ -35,7 +35,7 @@ from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import get_team_query_config
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 
 TEAM_IDS_KEY = "team_ids"
 TEAM_ID_MIN = 100_000
@@ -256,7 +256,7 @@ def install(group: SeerMatcherGroup) -> None:
             & Rule(_has_team_id_args)
             & no_reply()
         ),
-        priority=seer_feature_priority("seer_team"),
+        priority=group.matcher_priority("seer_team"),
     )
     matcher.append_handler(validate_team_id)
     matcher.append_handler(handle_query)

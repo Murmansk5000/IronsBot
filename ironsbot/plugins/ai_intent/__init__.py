@@ -12,7 +12,6 @@ from ironsbot.services.ai.intent_actions import (
 )
 from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.operations.headless import HeadlessService
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
 )
@@ -90,7 +89,7 @@ def install(
     matcher = registry.on_message(
         policy=CommandPolicy.command(_resolve_action_command_id),
         rule=Rule(match_action) & no_reply(),
-        priority=get_matcher_priority("ai_intent", 4),
+        priority=registry.priority("ai_intent", 4),
         block=True,
     )
     matcher.append_handler(handle_action)

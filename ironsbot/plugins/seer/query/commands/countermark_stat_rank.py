@@ -29,7 +29,7 @@ from ironsbot.services.seer.countermark_stat_rank_repository import (
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
@@ -74,6 +74,6 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & Rule(_is_countermark_stat_rank_command)
         & no_reply(),
-        priority=seer_feature_priority("seer_mintmark"),
+        priority=group.matcher_priority("seer_mintmark"),
     )
     matcher.append_handler(handle_countermark_stat_rank)

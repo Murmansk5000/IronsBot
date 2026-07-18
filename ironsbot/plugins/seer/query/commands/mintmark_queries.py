@@ -20,7 +20,7 @@ from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import GetGemCategoryData, GetMintmarkClassData, GetMintmarkData
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from . import mintmark_handlers
 from .query_rules import not_rank_query
 
@@ -74,7 +74,7 @@ def install(group: SeerMatcherGroup) -> None:
         & startswith_or_endswith("刻印")
         & not_rank_query
         & no_reply(),
-        priority=seer_feature_priority("seer_mintmark"),
+        priority=group.matcher_priority("seer_mintmark"),
     )
     mintmark_matcher.append_handler(_handle_mintmark)
 
@@ -83,6 +83,6 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("宝石")
         & no_reply(),
-        priority=seer_feature_priority("seer_mintmark"),
+        priority=group.matcher_priority("seer_mintmark"),
     )
     gem_matcher.append_handler(_handle_gem)

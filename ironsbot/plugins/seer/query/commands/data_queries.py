@@ -11,7 +11,7 @@ from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.rule import no_reply
 
 from ..depends import SeerAPISession
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from . import data_tools
 
 
@@ -48,7 +48,7 @@ def install(group: SeerMatcherGroup) -> None:
         "下周预告",
         policy=CommandPolicy.command("seer_data_preview"),
         rule=seer_feature_rule(group.features, "seer_data") & no_reply(),
-        priority=seer_feature_priority("seer_data"),
+        priority=group.matcher_priority("seer_data"),
     )
     preview_matcher.append_handler(_handle_preview)
 
@@ -56,7 +56,7 @@ def install(group: SeerMatcherGroup) -> None:
         "数据版本",
         policy=CommandPolicy.command("seer_data_version"),
         rule=seer_feature_rule(group.features, "seer_data") & no_reply(),
-        priority=seer_feature_priority("seer_data"),
+        priority=group.matcher_priority("seer_data"),
     )
     data_version_matcher.append_handler(_handle_data_version)
 
@@ -64,6 +64,6 @@ def install(group: SeerMatcherGroup) -> None:
         ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
         policy=CommandPolicy.command("seer_season_countdown"),
         rule=seer_feature_rule(group.features, "seer_data") & no_reply(),
-        priority=seer_feature_priority("seer_data"),
+        priority=group.matcher_priority("seer_data"),
     )
     season_matcher.append_handler(_handle_season_countdown)

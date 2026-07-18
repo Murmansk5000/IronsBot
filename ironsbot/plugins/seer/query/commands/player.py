@@ -48,7 +48,6 @@ from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
 from ironsbot.services.seer.sequ_extra import (
     UnityPeakInfo,
 )
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
@@ -460,7 +459,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
     binding_matcher.append_handler(handle_binding)
@@ -469,7 +468,7 @@ def install(group: SeerMatcherGroup) -> None:
         ("解绑米米号",),
         policy=CommandPolicy.command("seer_player_binding"),
         rule=seer_feature_rule(group.features, "seer_player") & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
     unbind_matcher.append_handler(handle_player_unbind)
@@ -479,7 +478,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_invalid_player_text_query)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
     invalid_matcher.append_handler(block_invalid_player_text_query)
@@ -489,7 +488,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_id_query)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
     query_matcher.append_handler(validate_player_id)

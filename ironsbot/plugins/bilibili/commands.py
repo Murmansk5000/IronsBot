@@ -3,7 +3,6 @@ from functools import partial
 from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 from ironsbot.utils.rule import no_reply
 
@@ -29,7 +28,7 @@ def install(
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query"),
         rule=Rule(partial(is_dynamic_menu_command, features)) & no_reply(),
-        priority=get_matcher_priority("bilibili", 1),
+        priority=registry.priority("bilibili", 1),
         block=True,
     )
     dynamic_menu.append_handler(
@@ -42,7 +41,7 @@ def install(
     update_dynamic = registry.on_message(
         policy=CommandPolicy.command("bili_refresh"),
         rule=Rule(partial(is_update_dynamic_command, features)) & no_reply(),
-        priority=get_matcher_priority("bilibili", 1),
+        priority=registry.priority("bilibili", 1),
         block=True,
     )
     update_dynamic.append_handler(
@@ -55,7 +54,7 @@ def install(
     bili_account = registry.on_message(
         policy=CommandPolicy.command("bili_accounts"),
         rule=Rule(partial(is_bili_account_command, features)) & no_reply(),
-        priority=get_matcher_priority("bilibili", 1),
+        priority=registry.priority("bilibili", 1),
         block=True,
     )
     bili_account.append_handler(
@@ -65,7 +64,7 @@ def install(
     push_mode = registry.on_message(
         policy=CommandPolicy.command("bili_push_mode"),
         rule=Rule(is_bili_push_mode_command) & no_reply(),
-        priority=get_matcher_priority("bilibili", 1),
+        priority=registry.priority("bilibili", 1),
         block=True,
     )
     push_mode.append_handler(

@@ -15,7 +15,6 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
@@ -91,7 +90,7 @@ def install(  # noqa: PLR0913
         NORMAL_SERVER_STATUS_COMMAND,
         policy=CommandPolicy.command("server_status_query"),
         rule=no_reply(),
-        priority=get_matcher_priority("server_status", 0),
+        priority=registry.priority("server_status", 0),
         block=True,
     )
     normal_matcher.append_handler(handle_normal_server_status)
@@ -100,7 +99,7 @@ def install(  # noqa: PLR0913
         DISABLED_BARE_ADMIN_COMMAND,
         policy=CommandPolicy.command("server_status_query"),
         rule=no_reply(),
-        priority=get_matcher_priority("server_status", 0),
+        priority=registry.priority("server_status", 0),
         block=True,
     )
     disabled_matcher.append_handler(handle_disabled_bare_admin_status)
@@ -110,7 +109,7 @@ def install(  # noqa: PLR0913
         policy=CommandPolicy.command("server_status_admin"),
         rule=no_reply(),
         permission=SUPERUSER,
-        priority=get_matcher_priority("server_status_admin", 1),
+        priority=registry.priority("server_status_admin", 1),
         block=True,
     )
     admin_matcher.append_handler(handle_admin_server_status)
@@ -120,7 +119,7 @@ def install(  # noqa: PLR0913
         policy=CommandPolicy.command("bot_restart"),
         rule=no_reply(),
         permission=SUPERUSER,
-        priority=get_matcher_priority("server_status_admin", 1),
+        priority=registry.priority("server_status_admin", 1),
         block=True,
     )
     restart_matcher.append_handler(handle_restart)
@@ -130,7 +129,7 @@ def install(  # noqa: PLR0913
         policy=CommandPolicy.command("bot_restart"),
         rule=no_reply(),
         permission=SUPERUSER,
-        priority=get_matcher_priority("server_status_admin", 1),
+        priority=registry.priority("server_status_admin", 1),
         block=True,
     )
     update_matcher.append_handler(handle_restart)

@@ -11,9 +11,6 @@ from ironsbot.services.admin_priority import AdminPriorityService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.features.visibility import event_has_feature
-from ironsbot.shared.matcher_priority import get_matcher_priority
-
-SEER_QUERY_PRIORITY = get_matcher_priority("seer_query", 2)
 
 
 def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
@@ -21,12 +18,6 @@ def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
         return event_has_feature(features, event, feature)
 
     return Rule(_is_feature_allowed)
-
-
-def seer_feature_priority(feature: str, fallback: int | None = None) -> int:
-    if fallback is None:
-        fallback = get_matcher_priority("seer_query", 90)
-    return get_matcher_priority(feature, fallback)
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,9 +51,16 @@ class SeerMatcherGroup:
             **self._with_defaults(kwargs),
         )
 
-    @staticmethod
-    def _with_defaults(kwargs: dict[str, Any]) -> dict[str, Any]:
+    def matcher_priority(self, feature: str, fallback: int | None = None) -> int:
+        return self.registry.priority(
+            feature,
+            fallback
+            if fallback is not None
+            else self.registry.priority("seer_query", 90),
+        )
+
+    def _with_defaults(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         options = dict(kwargs)
         options.setdefault("block", True)
-        options.setdefault("priority", SEER_QUERY_PRIORITY)
+        options.setdefault("priority", self.registry.priority("seer_query", 2))
         return options

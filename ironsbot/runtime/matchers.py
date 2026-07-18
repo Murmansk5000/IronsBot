@@ -9,6 +9,7 @@ from nonebot.plugin import on_command, on_fullmatch, on_message, on_notice
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
+    from ironsbot.config.models.runtime import MatcherPriorityConfig
     from ironsbot.shared.messaging.command_cooldown import (
         CommandCooldownService,
         CommandIdSource,
@@ -48,6 +49,7 @@ class CommandPolicy:
 @dataclass(slots=True)
 class MatcherRegistry:
     cooldown: CommandCooldownService
+    priorities: MatcherPriorityConfig
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
     _notice_matchers: list[type[Matcher]] = field(default_factory=list)
 
@@ -84,6 +86,12 @@ class MatcherRegistry:
 
     def install_postprocessor(self) -> None:
         self.cooldown.install_postprocessor()
+
+    def priority(self, name: str, fallback: int) -> int:
+        return int(getattr(self.priorities, name, fallback))
+
+    def pre_command_priority(self, name: str, fallback: int = -1) -> int:
+        return min(self.priority(name, fallback), -1)
 
     @property
     def message_matchers(self) -> tuple[type[Matcher], ...]:
