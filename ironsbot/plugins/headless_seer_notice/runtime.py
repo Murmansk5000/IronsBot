@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
@@ -17,11 +16,9 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_unavailable,
 )
 from ironsbot.shared.messaging.admin_notice import send_admin_notice
-from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.runtime.jobs import JobRegistry
 
 RECONNECT_JOB_PREFIX = "headless_reconnect_check:"
-_headless_notice_runtime_state = {"registered": False}
 
 
 def _build_startup_notice_message(reason: str) -> Message:
@@ -36,7 +33,7 @@ def _build_startup_notice_message(reason: str) -> Message:
     )
 
 
-async def _startup_check(_bot: Bot) -> None:
+async def check_headless_on_connect(_bot: Bot) -> None:
     from ironsbot.services.headless_seer_notice.service import (
         headless_is_configured,
         headless_login_failure_reason,
@@ -114,7 +111,7 @@ async def _daily_reconnect_check(scheduled_time: str) -> None:
     )
 
 
-def _register_reconnect_checks(scheduler: Any) -> None:
+def register_reconnect_checks(scheduler: Any) -> None:
     reconnect_times = get_headless_notice_config().parsed_reconnect_check_times
     registry = JobRegistry(scheduler, prefix=RECONNECT_JOB_PREFIX)
     for scheduled_time in reconnect_times:
@@ -140,24 +137,4 @@ def _register_reconnect_checks(scheduler: Any) -> None:
         )
 
 
-def _setup_headless_notice_runtime(driver: Any, scheduler: Any) -> None:
-    if _headless_notice_runtime_state["registered"]:
-        return
-
-    register_startup_check("headless_seer_login", _startup_check)
-
-    @driver.on_startup
-    async def register_reconnect_checks() -> None:
-        _register_reconnect_checks(scheduler)
-
-    _headless_notice_runtime_state["registered"] = True
-
-
-def setup_headless_notice_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    _setup_headless_notice_runtime(get_driver(), scheduler)
-
-
-__all__ = ["setup_headless_notice_runtime"]
+__all__ = ["check_headless_on_connect", "register_reconnect_checks"]

@@ -51,7 +51,7 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields(
         ),
     )
 
-    runtime._register_team_resource_jobs(scheduler)
+    runtime.register_team_resource_jobs(scheduler)
 
     assert scheduler.jobs == [
         {
@@ -83,7 +83,7 @@ def test_register_team_resource_jobs_skips_when_disabled(
         lambda: TeamResourceConfig(enabled=False, times=["23:00"]),
     )
 
-    runtime._register_team_resource_jobs(scheduler)
+    runtime.register_team_resource_jobs(scheduler)
 
     assert scheduler.jobs == []
 

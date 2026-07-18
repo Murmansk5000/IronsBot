@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from typing import Any
-
-from nonebot import get_driver, logger
+from nonebot import logger
 
 from ironsbot.integrations.headless_seer.client import client_manager
 from ironsbot.integrations.headless_seer.config import (
@@ -12,10 +10,8 @@ from ironsbot.integrations.headless_seer.config import (
 )
 from ironsbot.services.headless_seer_notice.state import mark_headless_game_state
 
-_headless_seer_runtime_state = {"registered": False}
 
-
-async def _login_headless_seer_on_startup() -> None:
+async def login_headless_seer() -> None:
     credentials = get_headless_credentials()
     if (
         credentials.headless_seer_user_id is None
@@ -40,21 +36,8 @@ async def _login_headless_seer_on_startup() -> None:
         logger.opt(exception=True).error("无头客户端登录失败")
 
 
-async def _shutdown_headless_seer() -> None:
+async def shutdown_headless_seer() -> None:
     client_manager.shutdown()
 
 
-def _setup_headless_seer_runtime(driver: Any) -> None:
-    if _headless_seer_runtime_state["registered"]:
-        return
-
-    driver.on_startup(_login_headless_seer_on_startup)
-    driver.on_shutdown(_shutdown_headless_seer)
-    _headless_seer_runtime_state["registered"] = True
-
-
-def setup_headless_seer_runtime() -> None:
-    _setup_headless_seer_runtime(get_driver())
-
-
-__all__ = ["setup_headless_seer_runtime"]
+__all__ = ["login_headless_seer", "shutdown_headless_seer"]

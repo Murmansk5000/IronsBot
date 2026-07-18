@@ -170,7 +170,6 @@ class CommandCooldownService:
 command_cooldown_service = CommandCooldownService()
 _registered_matchers: dict[type[Matcher], str] = {}
 _exempt_matchers: dict[type[Matcher], str] = {}
-_runtime_registered = False
 
 
 def _resolve_static_command_id(command_id: str) -> CommandIdResolver:
@@ -291,21 +290,14 @@ async def finalize_command_cooldown_state(state: T_State) -> None:
         command_cooldown_service.finish(token)
 
 
-def setup_command_cooldown_runtime(
+def install_command_cooldown_postprocessor(
     matcher_filter: MatcherFilter | None = None,
 ) -> None:
-    global _runtime_registered  # noqa: PLW0603
-
-    if _runtime_registered:
-        return
     validate_command_matcher_coverage(matcher_filter)
 
     @run_postprocessor
     async def _finish_command_cooldown(state: T_State) -> None:
         await finalize_command_cooldown_state(state)
-
-    _runtime_registered = True
-
 
 __all__ = [
     "CommandCooldownDecision",
@@ -317,9 +309,9 @@ __all__ = [
     "command_matcher_registration",
     "finalize_command_cooldown_state",
     "find_unregistered_message_matchers",
+    "install_command_cooldown_postprocessor",
     "mark_command_matcher_exempt",
     "register_command_matcher",
     "reset_command_cooldown_state",
-    "setup_command_cooldown_runtime",
     "validate_command_matcher_coverage",
 ]

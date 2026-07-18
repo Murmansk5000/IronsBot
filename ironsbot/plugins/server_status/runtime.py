@@ -1,18 +1,12 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Any
-
-from nonebot import get_driver
 from nonebot.log import logger
-
-from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
 
 from .config import get_docker_update_config
 from .docker_update_formatting import format_docker_update_reply
 from .restart import DockerSelfUpdateService
 
-_docker_update_runtime_state = {"registered": False}
 _startup_docker_update_state: dict[str, str | None] = {"notice": None}
 
 
@@ -20,7 +14,7 @@ def get_startup_docker_update_notice() -> str | None:
     return _startup_docker_update_state["notice"]
 
 
-async def _start_docker_update_runtime() -> None:
+async def start_docker_update() -> None:
     _startup_docker_update_state["notice"] = None
     config = get_docker_update_config()
     if not config.check_on_startup:
@@ -42,28 +36,7 @@ async def _start_docker_update_runtime() -> None:
     )
 
 
-def _setup_docker_update_runtime(driver: Any) -> None:
-    if _docker_update_runtime_state["registered"]:
-        return
-
-    @driver.on_startup
-    async def _start_docker_update_on_startup() -> None:
-        await _start_docker_update_runtime()
-
-    _docker_update_runtime_state["registered"] = True
-
-
-def setup_docker_update_runtime() -> None:
-    register_startup_notice_provider(
-        "docker_update",
-        subscription_key="startup_docker_update",
-        action_name="startup docker update notice",
-        get_message=get_startup_docker_update_notice,
-    )
-    _setup_docker_update_runtime(get_driver())
-
-
 __all__ = [
     "get_startup_docker_update_notice",
-    "setup_docker_update_runtime",
+    "start_docker_update",
 ]

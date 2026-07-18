@@ -1,5 +1,4 @@
 import asyncio
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from zoneinfo import ZoneInfo
@@ -17,48 +16,12 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
 
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[Callable[[], object]] = []
-
-    def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
-        self.startup_handlers.append(handler)
-        return handler
-
-
 class FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, object]] = []
 
     def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
-
-
-def test_headless_notice_runtime_setup_registers_startup_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    registered_checks: list[tuple[str, object]] = []
-    monkeypatch.setitem(
-        headless_notice_runtime._headless_notice_runtime_state,
-        "registered",
-        registered_state,
-    )
-    monkeypatch.setattr(
-        headless_notice_runtime,
-        "register_startup_check",
-        lambda name, check: registered_checks.append((name, check)),
-    )
-    driver = FakeDriver()
-    scheduler = object()
-
-    headless_notice_runtime._setup_headless_notice_runtime(driver, scheduler)
-    headless_notice_runtime._setup_headless_notice_runtime(driver, scheduler)
-
-    assert len(driver.startup_handlers) == 1
-    assert registered_checks == [
-        ("headless_seer_login", headless_notice_runtime._startup_check)
-    ]
 
 
 def test_register_reconnect_checks_uses_standard_scheduler_fields(
@@ -71,7 +34,7 @@ def test_register_reconnect_checks_uses_standard_scheduler_fields(
         lambda: HeadlessNoticeConfig(reconnect_check_times="00:01,00:02"),
     )
 
-    headless_notice_runtime._register_reconnect_checks(scheduler)
+    headless_notice_runtime.register_reconnect_checks(scheduler)
 
     assert scheduler.jobs == [
         {
@@ -155,7 +118,9 @@ def test_startup_check_sends_failure_through_admin_notice(
         fake_send_admin_notice,
     )
 
-    asyncio.run(headless_notice_runtime._startup_check(cast("Bot", object())))
+    asyncio.run(
+        headless_notice_runtime.check_headless_on_connect(cast("Bot", object()))
+    )
 
     assert unavailable == [("登录失败", "启动检查", False)]
     assert sent_messages == [

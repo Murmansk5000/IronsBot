@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import os
 import sqlite3
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -75,39 +74,12 @@ def _secrets_config(*, github_workflow_token: str) -> SecretsConfig:
     return SecretsConfig(github_workflow_token=github_workflow_token)
 
 
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[Callable[[], object]] = []
-
-    def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
-        self.startup_handlers.append(handler)
-        return handler
-
-
 class FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, object]] = []
 
     def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
-
-
-def test_db_sync_runtime_setup_registers_startup_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        db_sync_runtime._db_sync_runtime_state,
-        "registered",
-        registered_state,
-    )
-    driver = FakeDriver()
-    scheduler = FakeScheduler()
-
-    db_sync_runtime._setup_db_sync_runtime(driver, scheduler)
-    db_sync_runtime._setup_db_sync_runtime(driver, scheduler)
-
-    assert len(driver.startup_handlers) == 1
 
 
 def test_register_database_defers_engine_and_scheduler_setup(
@@ -163,7 +135,7 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
         ),
     )
 
-    asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
+    asyncio.run(db_sync_runtime.start_db_sync(scheduler))
 
     assert registered_engines == ["unit"]
     assert scheduler.jobs == [
@@ -226,7 +198,7 @@ def test_db_sync_startup_can_trigger_remote_build(
         lambda results, *, title_prefix: f"{title_prefix}:{results}",
     )
 
-    asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
+    asyncio.run(db_sync_runtime.start_db_sync(scheduler))
 
     assert calls == [True]
     assert db_sync_runtime.get_startup_sync_notice() == (
@@ -282,7 +254,7 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
         lambda results, *, title_prefix: f"{title_prefix}:{results}",
     )
 
-    asyncio.run(db_sync_runtime._start_db_sync_runtime(scheduler))
+    asyncio.run(db_sync_runtime.start_db_sync(scheduler))
 
     assert loaded == ["unit"]
     assert db_sync_runtime.get_startup_sync_notice() == (

@@ -3,16 +3,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot import get_driver, require
 from nonebot.log import logger
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
 from ironsbot.shared.runtime.jobs import JobRegistry
-from ironsbot.shared.runtime.startup_notice import register_startup_notice_provider
 
-_db_sync_runtime_state = {"registered": False}
 _startup_sync_state: dict[str, str | None] = {"notice": None}
 DB_SYNC_JOB_PREFIX = "db_sync_"
 
@@ -41,7 +38,7 @@ def _register_interval_jobs(scheduler: Any) -> None:
         )
 
 
-async def _start_db_sync_runtime(scheduler: Any) -> None:
+async def start_db_sync(scheduler: Any) -> None:
     _startup_sync_state["notice"] = None
     if (
         not db_sync_state.registered_syncs
@@ -91,28 +88,4 @@ async def _start_db_sync_runtime(scheduler: Any) -> None:
     )
 
 
-def _setup_db_sync_runtime(driver: Any, scheduler: Any) -> None:
-    if _db_sync_runtime_state["registered"]:
-        return
-
-    @driver.on_startup
-    async def _start_db_sync_on_startup() -> None:
-        await _start_db_sync_runtime(scheduler)
-
-    _db_sync_runtime_state["registered"] = True
-
-
-def setup_db_sync_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    register_startup_notice_provider(
-        "db_sync",
-        subscription_key="startup_data_sync",
-        action_name="startup data sync notice",
-        get_message=get_startup_sync_notice,
-    )
-    _setup_db_sync_runtime(get_driver(), scheduler)
-
-
-__all__ = ["get_startup_sync_notice", "setup_db_sync_runtime"]
+__all__ = ["get_startup_sync_notice", "start_db_sync"]

@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.shared.messaging.command_cooldown import (
     CommandIdResolver,
     CommandIdSource,
+    install_command_cooldown_postprocessor,
     mark_command_matcher_exempt,
     register_command_matcher,
-    setup_command_cooldown_runtime,
 )
 
 if TYPE_CHECKING:
@@ -313,23 +313,15 @@ _EXEMPT_MESSAGE_MATCHERS: tuple[tuple[str, str], ...] = (
     ),
 )
 
-_manifest_registered = False
-
-
-def setup_command_cooldown_manifest_runtime() -> None:
-    global _manifest_registered  # noqa: PLW0603
-
-    if _manifest_registered:
-        return
+def install_command_cooldown_policy() -> None:
     for matcher_ref, command_id in _COMMAND_MATCHERS:
         register_command_matcher(_load_matcher(matcher_ref), command_id)
     for matcher_ref, reason in _EXEMPT_MESSAGE_MATCHERS:
         mark_command_matcher_exempt(_load_matcher(matcher_ref), reason)
-    setup_command_cooldown_runtime(_is_ironsbot_plugin_matcher)
-    _manifest_registered = True
+    install_command_cooldown_postprocessor(_is_ironsbot_plugin_matcher)
 
 
 __all__ = [
     "CommandCooldownManifestError",
-    "setup_command_cooldown_manifest_runtime",
+    "install_command_cooldown_policy",
 ]

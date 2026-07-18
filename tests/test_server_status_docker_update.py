@@ -1,16 +1,20 @@
 import asyncio
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import httpx
 import pytest
 
+if TYPE_CHECKING:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from nonebot.internal.driver import Driver
+
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
-from ironsbot.app.plugin_manifest import runtime_setup_callbacks
+from ironsbot.app.composition import build_application_lifecycle
 from ironsbot.config.models.runtime import DockerUpdateConfig
-from ironsbot.plugins.db_sync import runtime as db_sync_runtime
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
     create_watchtower_container,
@@ -292,13 +296,13 @@ def test_target_image_pull_retries_transient_registry_eof(
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    callbacks = runtime_setup_callbacks()
-
-    assert callbacks.index(
-        docker_update_runtime.setup_docker_update_runtime
-    ) < callbacks.index(
-        db_sync_runtime.setup_db_sync_runtime
+    lifecycle = build_application_lifecycle(
+        cast("Driver", object()),
+        cast("AsyncIOScheduler", object()),
     )
+    names = [name for name, _hook in lifecycle.startup_hooks]
+
+    assert names.index("docker_update") < names.index("db_sync")
 
 
 def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -308,7 +312,7 @@ def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None
         lambda: DockerUpdateConfig(check_on_startup=False),
     )
 
-    asyncio.run(docker_update_runtime._start_docker_update_runtime())
+    asyncio.run(docker_update_runtime.start_docker_update())
 
     assert docker_update_runtime.get_startup_docker_update_notice() is None
 
@@ -337,7 +341,7 @@ def test_startup_docker_update_records_notice(
     )
     monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
 
-    asyncio.run(docker_update_runtime._start_docker_update_runtime())
+    asyncio.run(docker_update_runtime.start_docker_update())
 
     notice = docker_update_runtime.get_startup_docker_update_notice()
     assert notice is not None

@@ -1,5 +1,4 @@
 import os
-from collections.abc import Callable
 from pathlib import Path
 
 import nonebot
@@ -29,45 +28,12 @@ from ironsbot.shared.messaging.push_subscription_store import (
 from tests.helpers.config import stub_app_config
 
 
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[Callable[[], object]] = []
-
-    def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
-        self.startup_handlers.append(handler)
-        return handler
-
-
 class FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, object]] = []
 
     def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
-
-
-def test_activity_reminder_runtime_setup_registers_startup_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        activity_runtime._activity_reminder_runtime_state,
-        "registered",
-        registered_state,
-    )
-    monkeypatch.setitem(
-        activity_runtime._activity_reminder_runtime_state,
-        "scheduler",
-        None,
-    )
-    driver = FakeDriver()
-    scheduler = object()
-
-    activity_runtime._setup_activity_reminder_runtime(driver, scheduler)
-    activity_runtime._setup_activity_reminder_runtime(driver, scheduler)
-
-    assert len(driver.startup_handlers) == 1
-    assert activity_runtime._activity_reminder_runtime_state["scheduler"] is scheduler
 
 
 def test_register_activity_reminder_jobs_installs_startup_and_daily_scans(

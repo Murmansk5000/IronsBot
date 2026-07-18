@@ -2,23 +2,14 @@ from pathlib import Path
 
 import tomli
 
-from ironsbot.app.bootstrap import load_manifest_plugins, run_runtime_setups
+from ironsbot.app.bootstrap import load_manifest_plugins
 from ironsbot.app.plugin_manifest import (
     iter_plugin_modules,
-    runtime_setup_callbacks,
     validate_plugin_manifest,
 )
 from ironsbot.plugin_catalog import iter_feature_module_prefixes
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-class RuntimeModule:
-    def __init__(self, calls: list[str]) -> None:
-        self._calls = calls
-
-    def setup(self) -> None:
-        self._calls.append("setup")
 
 
 def test_plugin_manifest_validates() -> None:
@@ -69,21 +60,3 @@ def test_pyproject_does_not_define_plugin_loading_lists() -> None:
     assert nonebot_config.get("plugin_dirs") == []
     assert nonebot_config.get("builtin_plugins") == []
     assert "plugins" not in nonebot_config
-
-
-def test_runtime_setups_run_callbacks() -> None:
-    called: list[str] = []
-
-    setup = RuntimeModule(called).setup
-
-    assert run_runtime_setups((setup,)) == (
-        f"{setup.__module__}.{setup.__qualname__}",
-    )
-    assert called == ["setup"]
-
-
-def test_runtime_setup_registry_contains_unique_callables() -> None:
-    callbacks = runtime_setup_callbacks()
-
-    assert callbacks
-    assert len(callbacks) == len(set(callbacks))

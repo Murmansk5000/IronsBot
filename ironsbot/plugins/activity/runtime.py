@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from nonebot import get_driver, require
 from nonebot.log import logger
 
 from ironsbot.core.commands import positive_int_list
@@ -13,7 +13,6 @@ from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
     build_reminder_delivery,
 )
-from ironsbot.services.activity.runtime_keys import ACTIVITY_REMINDER_REFRESH_KEY
 from ironsbot.services.activity.scheduler import (
     register_scan_jobs,
     replace_reminder_jobs,
@@ -30,7 +29,6 @@ from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
-from ironsbot.shared.runtime.refresh import register_runtime_refresh
 
 from . import _now, _seer_activity_source
 
@@ -39,12 +37,6 @@ if TYPE_CHECKING:
 
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 ACTIVITY_PUSH_SUBSCRIPTION_KEY = "seer_activity_push"
-
-_activity_reminder_runtime_state: dict[str, Any] = {
-    "registered": False,
-    "scheduler": None,
-}
-
 
 async def send_activity_reminder(
     *,
@@ -89,12 +81,7 @@ async def send_activity_reminder(
         mark_sent(reminders)
 
 
-async def schedule_activity_reminders() -> None:
-    scheduler = _activity_reminder_runtime_state["scheduler"]
-    if scheduler is None:
-        logger.warning("activity reminder scheduler is not configured")
-        return
-
+async def schedule_activity_reminders(scheduler: Any) -> None:
     config = get_activity_config()
     if not config.enabled:
         return
@@ -181,36 +168,14 @@ def _activity_reminder_targets_for_lead(lead_hours: int):
 def register_activity_reminder_jobs(scheduler: Any) -> None:
     register_scan_jobs(
         scheduler,
-        schedule_activity_reminders,
+        partial(schedule_activity_reminders, scheduler),
         enabled=get_activity_config().enabled,
         now=_now(),
     )
-
-
-def _setup_activity_reminder_runtime(driver: Any, scheduler: Any) -> None:
-    if _activity_reminder_runtime_state["registered"]:
-        return
-
-    _activity_reminder_runtime_state["scheduler"] = scheduler
-    register_runtime_refresh(ACTIVITY_REMINDER_REFRESH_KEY, schedule_activity_reminders)
-
-    @driver.on_startup
-    async def _register_activity_reminder_jobs_on_startup() -> None:
-        register_activity_reminder_jobs(scheduler)
-
-    _activity_reminder_runtime_state["registered"] = True
-
-
-def setup_activity_reminder_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    _setup_activity_reminder_runtime(get_driver(), scheduler)
 
 
 __all__ = [
     "register_activity_reminder_jobs",
     "schedule_activity_reminders",
     "send_activity_reminder",
-    "setup_activity_reminder_runtime",
 ]

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot  # noqa: TC002
 
 from .followup import (
@@ -11,27 +10,15 @@ from .followup import (
     schedule_pending_team_audit_followups,
 )
 
-_team_audit_welcome_runtime_state = {"registered": False}
+
+async def schedule_team_audit_followups_on_connect(
+    bot: Bot,
+    *,
+    scheduler: Any,
+) -> None:
+    del bot
+    await schedule_pending_team_audit_followups(scheduler)
+    register_team_audit_followup_scan(scheduler)
 
 
-def _setup_team_audit_welcome_runtime(driver: Any, scheduler: Any) -> None:
-    if _team_audit_welcome_runtime_state["registered"]:
-        return
-
-    @driver.on_bot_connect
-    async def _schedule_team_audit_followups_on_connect(bot: Bot) -> None:
-        del bot
-        await schedule_pending_team_audit_followups(scheduler)
-        register_team_audit_followup_scan(scheduler)
-
-    _team_audit_welcome_runtime_state["registered"] = True
-
-
-def setup_team_audit_welcome_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    _setup_team_audit_welcome_runtime(get_driver(), scheduler)
-
-
-__all__ = ["setup_team_audit_welcome_runtime"]
+__all__ = ["schedule_team_audit_followups_on_connect"]

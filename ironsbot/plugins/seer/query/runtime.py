@@ -4,14 +4,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from nonebot import get_driver, logger, require
+from nonebot import logger
 
 from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .config import get_local_rank_config, get_rank_query_config
 
-_local_rank_scheduler_runtime_state = {"registered": False}
-_render_crash_report_runtime_state = {"registered": False}
 SEER_QUERY_JOB_PREFIX = "seer_"
 
 
@@ -107,42 +105,7 @@ def register_rank_page_refresh_jobs(scheduler: Any) -> None:
         )
 
 
-def _setup_local_rank_scheduler_runtime(driver: Any, scheduler: Any) -> None:
-    if _local_rank_scheduler_runtime_state["registered"]:
-        return
-
-    @driver.on_startup
-    async def _register_local_rank_refresh_job_on_startup() -> None:
-        register_local_rank_refresh_job(scheduler)
-        register_rank_page_refresh_jobs(scheduler)
-
-    _local_rank_scheduler_runtime_state["registered"] = True
-
-
-def setup_local_rank_scheduler_runtime() -> None:
-    require("nonebot_plugin_apscheduler")
-    from nonebot_plugin_apscheduler import scheduler
-
-    _setup_local_rank_scheduler_runtime(get_driver(), scheduler)
-
-
-def _setup_render_crash_report_runtime(driver: Any) -> None:
-    if _render_crash_report_runtime_state["registered"]:
-        return
-
-    from ironsbot.services.seer.render_crash_report import (
-        report_previous_render_crash,
-    )
-
-    driver.on_bot_connect(report_previous_render_crash)
-    _render_crash_report_runtime_state["registered"] = True
-
-
-def setup_render_crash_report_runtime() -> None:
-    _setup_render_crash_report_runtime(get_driver())
-
-
 __all__ = [
-    "setup_local_rank_scheduler_runtime",
-    "setup_render_crash_report_runtime",
+    "register_local_rank_refresh_job",
+    "register_rank_page_refresh_jobs",
 ]

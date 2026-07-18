@@ -8,23 +8,27 @@ from typing import TYPE_CHECKING, Any
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
+from ironsbot.app.composition import build_application_lifecycle
 from ironsbot.app.file_logging import configure_file_logging
 from ironsbot.app.plugin_manifest import (
     iter_plugin_modules,
-    runtime_setup_callbacks,
     validate_plugin_manifest,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from nonebot.internal.driver import Driver
+
+    from ironsbot.app.lifecycle import ApplicationLifecycle
+
 
 @dataclass(frozen=True, slots=True)
 class BootstrapState:
-    driver: Any
+    driver: Driver
     app: Any
     loaded_plugins: tuple[str, ...]
-    runtime_setups: tuple[str, ...]
+    lifecycle: ApplicationLifecycle
 
 
 def configure_third_party_logging() -> None:
@@ -45,18 +49,6 @@ def load_manifest_plugins(
     return modules
 
 
-def run_runtime_setups(
-    setups: tuple[Callable[[], object], ...] | None = None,
-) -> tuple[str, ...]:
-    validate_plugin_manifest()
-    callbacks = runtime_setup_callbacks() if setups is None else setups
-
-    for setup in callbacks:
-        setup()
-
-    return tuple(f"{setup.__module__}.{setup.__qualname__}" for setup in callbacks)
-
-
 def bootstrap() -> BootstrapState:
     configure_third_party_logging()
     nonebot.init()
@@ -67,12 +59,15 @@ def bootstrap() -> BootstrapState:
 
     app = nonebot.get_asgi()
     loaded_plugins = load_manifest_plugins()
-    runtime_setups = run_runtime_setups()
+    from nonebot_plugin_apscheduler import scheduler
+
+    lifecycle = build_application_lifecycle(driver, scheduler)
+    lifecycle.install()
     return BootstrapState(
         driver=driver,
         app=app,
         loaded_plugins=loaded_plugins,
-        runtime_setups=runtime_setups,
+        lifecycle=lifecycle,
     )
 
 
@@ -80,5 +75,4 @@ __all__ = [
     "BootstrapState",
     "bootstrap",
     "load_manifest_plugins",
-    "run_runtime_setups",
 ]

@@ -62,7 +62,7 @@ from ironsbot.app.plugin_manifest import (
     validate_plugin_manifest,
 )
 from ironsbot.app.command_cooldown_manifest import (
-    setup_command_cooldown_manifest_runtime,
+    install_command_cooldown_policy,
 )
 from ironsbot.plugin_catalog import plugin_modules_for_group
 
@@ -101,8 +101,7 @@ for group in ("core", "infrastructure", "feature"):
         if plugin is None:
             raise AssertionError(f"failed to load plugin: {module}")
 
-setup_command_cooldown_manifest_runtime()
-setup_command_cooldown_manifest_runtime()
+install_command_cooldown_policy()
 
 runtime_paths = [
     pathlib.Path("data"),
