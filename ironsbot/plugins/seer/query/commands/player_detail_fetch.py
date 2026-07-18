@@ -25,11 +25,6 @@ from ironsbot.services.seer.rank_models import (
     RankLookupResult,
     RankSummaryProgress,
 )
-from ironsbot.services.seer.rank_summary_runtime import (
-    fetch_autocard_rank_summary,
-    fetch_peak_season_rank_summary,
-    fetch_player_rank_summary,
-)
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,
     UnityPeakInfo,
@@ -43,9 +38,11 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
     from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.rank import RankService
 
 
 def create_player_detail_task(  # noqa: PLR0913
+    rank: RankService,
     local_rank: LocalRankService,
     game: SeerGame,
     *,
@@ -69,6 +66,7 @@ def create_player_detail_task(  # noqa: PLR0913
             has_autocard_rank=has_autocard_rank,
             show_local_rank=show_local_rank,
             config=config,
+            rank=rank,
             local_rank=local_rank,
         )
     )
@@ -103,6 +101,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     has_autocard_rank: bool,
     show_local_rank: bool,
     config: SeerConfig,
+    rank: RankService,
     local_rank: LocalRankService,
 ) -> PlayerDetailMessages:
     extra_errors = PlayerDetailErrors()
@@ -142,7 +141,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
                 timeout_seconds=extra_timeout_seconds,
             ),
         )
-        peak_sub_key = local_rank.current_peak_sub_key()
+        peak_sub_key = rank.current_peak_sub_key()
         peak_scores = calculate_player_peak_scores(unity_peak)
         rank_progress = RankSummaryProgress()
         peak_rank_progress = RankSummaryProgress()
@@ -150,7 +149,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             optional_player_extra(
                 "全服排行",
                 fetch_plan.needs_rank_summary,
-                lambda: fetch_player_rank_summary(
+                lambda: rank.fetch_player_summary(
                     game,
                     player_id,
                     achieve_score=getattr(more_info, "total_achieve", None),
@@ -168,7 +167,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             optional_player_extra(
                 "巅峰赛季榜",
                 needs_peak_section,
-                lambda: fetch_peak_season_rank_summary(
+                lambda: rank.fetch_peak_summary(
                     game,
                     player_id,
                     standard_score=peak_scores.standard,
@@ -186,7 +185,7 @@ async def _build_player_detail_messages(  # noqa: PLR0913
             optional_player_extra(
                 "群星牌排行",
                 fetch_plan.needs_autocard_rank,
-                lambda: fetch_autocard_rank_summary(game, player_id),
+                lambda: rank.fetch_autocard_summary(game, player_id),
                 RankLookupResult(title="群星之巅榜", score_name="分"),
                 extra_errors.autocard,
                 on_error=_log_player_extra_error,

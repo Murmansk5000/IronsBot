@@ -20,11 +20,6 @@ from ironsbot.services.seer.player_query import (
     validate_player_peak_season,
 )
 from ironsbot.services.seer.rank_models import PlayerRankSummary
-from ironsbot.services.seer.rank_summary_runtime import (
-    fetch_autocard_rank_summary,
-    fetch_peak_season_rank_summary,
-    fetch_player_rank_summary,
-)
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,
     UnityPeakInfo,
@@ -35,6 +30,7 @@ from ironsbot.services.seer.sequ_extra import (
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
+    from ironsbot.services.seer.rank import RankService
 
 PlayerShortcutKind = Literal["collection", "peak", "autocard"]
 _SHORTCUT_RE = re.compile(r"^(收集|巅峰|群星牌)(\d*)$")
@@ -93,6 +89,7 @@ def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
 
 
 async def fetch_player_shortcut_message(
+    rank: RankService,
     local_rank: LocalRankService,
     game: Any,
     *,
@@ -101,17 +98,20 @@ async def fetch_player_shortcut_message(
 ) -> str:
     if command.kind == "collection":
         return await _fetch_collection_message(
+            rank,
             local_rank,
             game,
             player_id=player_id,
         )
     if command.kind == "peak":
         return await _fetch_peak_message(
+            rank,
             local_rank,
             game,
             player_id=player_id,
         )
     return await _fetch_autocard_message(
+        rank,
         local_rank,
         game,
         player_id=player_id,
@@ -119,6 +119,7 @@ async def fetch_player_shortcut_message(
 
 
 async def _fetch_collection_message(
+    rank: RankService,
     local_rank: LocalRankService,
     game: Any,
     *,
@@ -129,7 +130,7 @@ async def _fetch_collection_message(
         game.get_more_user_info(player_id),
         fetch_unity_part_one(game, player_id),
     )
-    rank_summary = await fetch_player_rank_summary(
+    rank_summary = await rank.fetch_player_summary(
         game,
         player_id,
         achieve_score=getattr(more_info, "total_achieve", None),
@@ -165,6 +166,7 @@ async def _fetch_collection_message(
 
 
 async def _fetch_peak_message(
+    rank: RankService,
     local_rank: LocalRankService,
     game: Any,
     *,
@@ -174,9 +176,9 @@ async def _fetch_peak_message(
         game.get_user_info(player_id),
         fetch_unity_peak(game, player_id),
     )
-    peak_sub_key = local_rank.current_peak_sub_key()
+    peak_sub_key = rank.current_peak_sub_key()
     scores = calculate_player_peak_scores(unity_peak)
-    rank_summary = await fetch_peak_season_rank_summary(
+    rank_summary = await rank.fetch_peak_summary(
         game,
         player_id,
         standard_score=scores.standard,
@@ -220,6 +222,7 @@ async def _fetch_peak_message(
 
 
 async def _fetch_autocard_message(
+    rank: RankService,
     local_rank: LocalRankService,
     game: Any,
     *,
@@ -227,7 +230,7 @@ async def _fetch_autocard_message(
 ) -> str:
     user_info, result = await asyncio.gather(
         game.get_user_info(player_id),
-        fetch_autocard_rank_summary(game, player_id),
+        rank.fetch_autocard_summary(game, player_id),
     )
     metrics = {
         "autocard_score": {

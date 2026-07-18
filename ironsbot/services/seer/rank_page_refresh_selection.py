@@ -8,19 +8,13 @@ from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
-from ironsbot.services.seer.rank_list_spec_resolution import (
-    global_rank_spec_needs_sub_key,
-    resolve_global_rank_spec,
-)
-from ironsbot.services.seer.rank_page_cache_queries import (
-    get_rank_page_cache_summary,
-)
 from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
+    from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_page_cache_models import CachedRankPageSummary
 
 
@@ -59,6 +53,7 @@ def rank_refresh_target_label(config: RankPageRefreshConfig, rank_key: str) -> s
 
 def configured_rank_specs(
     config: RankPageRefreshConfig,
+    rank: RankService,
     rank_keys: Sequence[str] | None = None,
 ) -> list[tuple[str, GlobalRankSpec]]:
     keys = list(rank_keys) if rank_keys is not None else config.rank_keys
@@ -71,8 +66,8 @@ def configured_rank_specs(
         if spec is None:
             continue
         seen.add(key)
-        resolved_spec = resolve_global_rank_spec(spec)
-        if global_rank_spec_needs_sub_key(resolved_spec):
+        resolved_spec = rank.resolve_spec(spec)
+        if rank.spec_needs_sub_key(resolved_spec):
             continue
         specs.append((key, resolved_spec))
     return specs
@@ -312,11 +307,12 @@ def filter_standard_rank_page_summaries(
 
 def preview_rank_page_refresh_targets(
     config: RankPageRefreshConfig,
+    rank: RankService,
     rank_keys: Sequence[str] | None = None,
 ) -> list[RankPageRefreshTarget]:
-    rank_specs = configured_rank_specs(config, rank_keys)
+    rank_specs = configured_rank_specs(config, rank, rank_keys)
     summaries = {
-        rank_key: get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
+        rank_key: rank.cache.summary(key=spec.key, sub_key=spec.sub_key)
         for rank_key, spec in rank_specs
     }
     return select_rank_page_refresh_targets(rank_specs, summaries, config=config)

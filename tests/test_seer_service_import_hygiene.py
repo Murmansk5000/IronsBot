@@ -38,8 +38,7 @@ for forbidden in (
     "nonebot",
     "nonebot.log",
     "ironsbot.services.seer.local_rank",
-    "ironsbot.services.seer.rank_service",
-    "ironsbot.services.seer.rank_page_cache_queries",
+    "ironsbot.services.seer.rank",
 ):
     if forbidden in sys.modules:
         raise SystemExit(f"{module_name} imported {forbidden}")

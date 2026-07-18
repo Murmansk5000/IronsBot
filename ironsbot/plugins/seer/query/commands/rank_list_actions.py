@@ -14,20 +14,12 @@ from ironsbot.services.seer.rank_list_messages import format_local_rank_message
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
 )
-from ironsbot.services.seer.rank_list_spec_resolution import (
-    get_global_rank_spec,
-    global_rank_spec_needs_sub_key,
-)
-from ironsbot.services.seer.rank_pages import (
-    fetch_daily_rank_page,
-    fetch_daily_rank_page_result,
-)
 from ironsbot.services.seer.rank_player_query import fetch_rank_player_message
-from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 
 if TYPE_CHECKING:
     from ironsbot.integrations.headless_seer.game import SeerGame
     from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_list_models import (
         GlobalRankSpec,
         LocalRankSpec,
@@ -39,12 +31,12 @@ if TYPE_CHECKING:
 
 
 async def build_global_rank_message(
+    rank: RankService,
     game: SeerGame,
-    spec: GlobalRankSpec,
     command: RankListCommand,
 ) -> str:
-    spec = get_global_rank_spec(command.rank_key)
-    if global_rank_spec_needs_sub_key(spec):
+    spec = rank.get_spec(command.rank_key)
+    if rank.spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
     with headless_operation(
         "榜单查询",
@@ -54,7 +46,7 @@ async def build_global_rank_message(
         ),
         source="榜单查询",
     ):
-        result = await fetch_daily_rank_page_result(
+        result = await rank.fetch_range_result(
             game,
             key=spec.key,
             sub_key=spec.sub_key,
@@ -71,21 +63,21 @@ async def build_global_rank_message(
 
 
 async def build_global_rank_score_message(
+    rank: RankService,
     game: SeerGame,
-    spec: GlobalRankSpec,
     command: RankScoreCommand,
     *,
     display_limit: int,
 ) -> str:
-    spec = get_global_rank_spec(command.rank_key)
-    if global_rank_spec_needs_sub_key(spec):
+    spec = rank.get_spec(command.rank_key)
+    if rank.spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
     with headless_operation(
         "榜单分数查询",
         f"{spec.title} {command.score}{spec.unit}",
         source="榜单分数查询",
     ):
-        result = await fetch_rank_score_segment(
+        result = await rank.fetch_score_segment(
             game,
             key=spec.key,
             sub_key=spec.sub_key,
@@ -118,17 +110,19 @@ async def build_global_rank_score_message(
 
 
 async def build_global_rank_player_message(
+    rank: RankService,
     local_rank: LocalRankService,
     game: SeerGame,
     command: RankPlayerCommand,
 ) -> str:
-    spec = get_global_rank_spec(command.rank_key)
+    spec = rank.get_spec(command.rank_key)
     with headless_operation(
         "榜单玩家查询",
         f"{spec.title} 米米号 {command.player_id}",
         source="榜单玩家查询",
     ):
         return await fetch_rank_player_message(
+            rank,
             local_rank,
             game,
             command=command,
@@ -136,14 +130,15 @@ async def build_global_rank_player_message(
 
 
 async def cache_global_rank_batch(
+    rank: RankService,
     game: SeerGame,
     command: RankCacheBatchCommand,
     *,
     batch_limit: int,
 ) -> tuple[GlobalRankSpec, int, int]:
-    spec = get_global_rank_spec(command.rank_key)
+    spec = rank.get_spec(command.rank_key)
     requested_count = command.end_rank - command.start_rank + 1
-    if global_rank_spec_needs_sub_key(spec):
+    if rank.spec_needs_sub_key(spec):
         return spec, 0, requested_count
     count = min(requested_count, batch_limit)
     raw_start = batch_raw_start(spec, command.start_rank)
@@ -152,7 +147,7 @@ async def cache_global_rank_batch(
         f"{spec.title} 第 {command.start_rank}-{command.end_rank}名",
         source="手动缓存榜单",
     ):
-        items = await fetch_daily_rank_page(
+        items = await rank.fetch_range(
             game,
             key=spec.key,
             sub_key=spec.sub_key,
@@ -164,13 +159,12 @@ async def cache_global_rank_batch(
 
 
 def build_local_rank_message(
+    rank: RankService,
     local_rank: LocalRankService,
     spec: LocalRankSpec,
     command: RankListCommand,
 ) -> str:
-    season_sub_key = (
-        local_rank.current_peak_sub_key() if spec.season_limited else None
-    )
+    season_sub_key = rank.current_peak_sub_key() if spec.season_limited else None
     season_sub_key_text = str(season_sub_key) if season_sub_key is not None else None
     entries, sample_count = local_rank.entries(
         spec.metric_key,
@@ -186,12 +180,3 @@ def build_local_rank_message(
         start_rank=command.start_rank,
         requested_count=command.limit,
     )
-
-
-__all__ = [
-    "build_global_rank_message",
-    "build_global_rank_player_message",
-    "build_global_rank_score_message",
-    "build_local_rank_message",
-    "cache_global_rank_batch",
-]

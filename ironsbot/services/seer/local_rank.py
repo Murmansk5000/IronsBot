@@ -20,9 +20,7 @@ from ironsbot.services.seer.local_rank_models import (
 from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
 from ironsbot.services.seer.rank_peak import (
     build_peak_rating_score,
-    get_current_peak_sub_key,
 )
-from ironsbot.services.seer.rank_summary_runtime import fetch_player_rank_summary
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,
     UnityPeakInfo,
@@ -37,6 +35,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
     from ironsbot.services.seer.local_rank_metrics import MetricSpec
+    from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
 
 LocalRankRecord = tuple[int, int, str, int, str]
@@ -101,7 +100,7 @@ class LocalRankService:
     repository: LocalRankRepository
     config: LocalRankConfig
     player_config: PlayerQueryConfig
-    peak_subkey: int | None
+    rank: RankService
     _write_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
     def entries(
@@ -138,9 +137,6 @@ class LocalRankService:
 
     def stats(self) -> LocalRankCacheStats:
         return self.repository.stats(LOCAL_METRICS)
-
-    def current_peak_sub_key(self) -> int | None:
-        return get_current_peak_sub_key(self.peak_subkey)
 
     def can_cache(self, player_id: int) -> bool:
         return not is_pet_kind_rank_anomaly_user(
@@ -236,7 +232,7 @@ class LocalRankService:
         if not player_ids:
             return result
 
-        peak_sub_key = self.current_peak_sub_key()
+        peak_sub_key = self.rank.current_peak_sub_key()
         for player_id in player_ids:
             if not self.can_cache(player_id):
                 result.skipped_full += 1
@@ -303,7 +299,7 @@ class LocalRankService:
         peak_expert_score = (
             unity_peak.current_z_score if unity_peak.current_z_all > 0 else None
         )
-        rank_summary = await fetch_player_rank_summary(
+        rank_summary = await self.rank.fetch_player_summary(
             game,
             player_id,
             achieve_score=getattr(more_info, "total_achieve", None),

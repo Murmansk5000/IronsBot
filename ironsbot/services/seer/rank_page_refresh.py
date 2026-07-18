@@ -21,13 +21,13 @@ from ironsbot.services.seer.rank_page_refresh_models import (
 from ironsbot.services.seer.rank_page_refresh_selection import (
     preview_rank_page_refresh_targets,
 )
-from ironsbot.services.seer.rank_pages import fetch_daily_rank_page
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
 
 
@@ -54,6 +54,7 @@ def _is_rank_page_refresh_connection_error(error: Exception) -> bool:
 @dataclass(slots=True)
 class RankPageRefreshService:
     config: RankPageRefreshConfig
+    rank: RankService
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
     _backoff_until: float = field(default=0.0, init=False)
 
@@ -61,7 +62,7 @@ class RankPageRefreshService:
         self,
         rank_keys: Sequence[str] | None = None,
     ) -> list[RankPageRefreshTarget]:
-        return preview_rank_page_refresh_targets(self.config, rank_keys)
+        return preview_rank_page_refresh_targets(self.config, self.rank, rank_keys)
 
     def backoff_remaining(self) -> float:
         return max(self._backoff_until - time.monotonic(), 0.0)
@@ -115,7 +116,7 @@ class RankPageRefreshService:
                     source="后台刷榜缓存",
                     background=True,
                 ):
-                    await fetch_daily_rank_page(
+                    await self.rank.fetch_range(
                         game,
                         key=target.spec.key,
                         sub_key=target.spec.sub_key,

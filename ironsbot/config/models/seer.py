@@ -300,7 +300,6 @@ class RankQueryConfig(BaseModel):
     page_cache: bool = True
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
-    refresh_stale_cache: bool = True
     score_search_probe_limit: int = Field(default=32, ge=1)
     score_search_tie_page_limit: int = Field(default=5, ge=1)
     page_cache_path: Path = Path("data/seer/rank_page_cache.sqlite")
