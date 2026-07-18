@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
+    from ironsbot.integrations.headless_seer.game import SeerGame
+
 
 async def handle_help(
     matcher: Matcher,
@@ -52,6 +54,7 @@ async def handle_list(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    game: SeerGame,
 ) -> None:
     command: RankListCommand = state[RANK_LIST_COMMAND_KEY]
 
@@ -60,6 +63,7 @@ async def handle_list(
             matcher,
             event,
             await build_global_rank_message(
+                game,
                 GLOBAL_RANKS[command.rank_key],
                 command,
             ),
@@ -76,12 +80,14 @@ async def handle_score(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    game: SeerGame,
 ) -> None:
     command: RankScoreCommand = state[RANK_SCORE_COMMAND_KEY]
     await finish_event_reply(
         matcher,
         event,
         await build_global_rank_score_message(
+            game,
             GLOBAL_RANKS[command.rank_key],
             command,
             display_limit=rank_display_limit_for_group(event_group_id(event)),
@@ -93,12 +99,13 @@ async def handle_player(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    game: SeerGame,
 ) -> None:
     command: RankPlayerCommand = state[RANK_PLAYER_COMMAND_KEY]
     spec = GLOBAL_RANKS[command.rank_key]
     try:
         message = await asyncio.wait_for(
-            build_global_rank_player_message(command),
+            build_global_rank_player_message(game, command),
             timeout=get_player_query_config().detail_timeout_seconds,
         )
     except TimeoutError:

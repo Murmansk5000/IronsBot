@@ -165,14 +165,10 @@ def build_headless_service(
     config: RuntimeConfig,
     credentials: CredentialsConfig,
 ) -> HeadlessService:
-    from ironsbot.integrations.headless_seer.client import (
-        ClientManager,
-        register_game_client_getter,
-    )
+    from ironsbot.integrations.headless_seer.client import ClientManager
     from ironsbot.services.operations.headless import HeadlessService
 
     client = ClientManager()
-    register_game_client_getter(client.get_client)
     return HeadlessService(
         client,
         credentials,

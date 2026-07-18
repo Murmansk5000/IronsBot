@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -29,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
+    from ironsbot.integrations.headless_seer.game import SeerGame
 
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ async def _sleep_between_rank_page_requests(config: RankPageRefreshConfig) -> No
 
 
 async def refresh_rank_page_cache(
+    game: SeerGame,
     rank_keys: Sequence[str] | None = None,
 ) -> RankPageRefreshResult:
     if _rank_page_refresh_lock.locked():
@@ -94,10 +95,11 @@ async def refresh_rank_page_cache(
         return RankPageRefreshResult(targets=[])
 
     async with _rank_page_refresh_lock:
-        return await _refresh_rank_page_cache_unlocked(rank_keys)
+        return await _refresh_rank_page_cache_unlocked(game, rank_keys)
 
 
 async def _refresh_rank_page_cache_unlocked(
+    game: SeerGame,
     rank_keys: Sequence[str] | None = None,
 ) -> RankPageRefreshResult:
     refresh_config = get_rank_page_refresh_config()
@@ -114,7 +116,6 @@ async def _refresh_rank_page_cache_unlocked(
     if not targets:
         return result
 
-    game = get_game_client()
     for index, target in enumerate(targets):
         if index > 0:
             await _sleep_between_rank_page_requests(refresh_config)

@@ -15,7 +15,7 @@ from ironsbot.integrations.seer_data.sessions import AllSessions
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.rule import no_reply
 
-from ..depends import GameClient, SeerAPISession
+from ..depends import SeerAPISession, game_client_dependency
 from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
 from . import peak_handlers
 
@@ -34,77 +34,75 @@ async def _handle_peak_expert_pool(
     await peak_handlers.handle_peak_expert_pool(matcher=matcher, pools=pools)
 
 
-async def _handle_peak_vote(
-    matcher: Matcher,
-    session: SeerAPISession,
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_peak_vote(
-        matcher=matcher,
-        session=session,
-        game=game,
-    )
-
-
-async def _handle_peak_suit(
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    sessions: AllSessions,
-    type_selection: peak_handlers.PeakTypeSelection = Depends(
-        peak_handlers.get_peak_type
-    ),
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_peak_suit(
-        matcher=matcher,
-        seerapi_session=seerapi_session,
-        sessions=sessions,
-        type_selection=type_selection,
-        game=game,
-    )
-
-
-async def _handle_peak_title(
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    sessions: AllSessions,
-    type_selection: peak_handlers.PeakTypeSelection = Depends(
-        peak_handlers.get_peak_type
-    ),
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_title(
-        matcher=matcher,
-        seerapi_session=seerapi_session,
-        sessions=sessions,
-        type_selection=type_selection,
-        game=game,
-    )
-
-
-async def _handle_peak_pet(  # noqa: PLR0913
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    command: Annotated[str, Fullmatch()],
-    type_selection: peak_handlers.PeakTypeSelection = Depends(
-        peak_handlers.get_peak_type
-    ),
-    expert_pools: list[PeakExpertPoolORM] = Depends(
-        peak_handlers.get_expert_ban_pool
-    ),
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_peak_pet(
-        matcher=matcher,
-        seerapi_session=seerapi_session,
-        command=command,
-        type_selection=type_selection,
-        expert_pools=expert_pools,
-        game=game,
-    )
-
-
 def install(group: SeerMatcherGroup) -> None:
+    game_client = game_client_dependency(group.headless)
+
+    async def handle_peak_vote(
+        matcher: Matcher,
+        session: SeerAPISession,
+        game: SeerGame = game_client,
+    ) -> None:
+        await peak_handlers.handle_peak_vote(
+            matcher=matcher,
+            session=session,
+            game=game,
+        )
+
+    async def handle_peak_suit(
+        matcher: Matcher,
+        seerapi_session: SeerAPISession,
+        sessions: AllSessions,
+        type_selection: peak_handlers.PeakTypeSelection = Depends(
+            peak_handlers.get_peak_type
+        ),
+        game: SeerGame = game_client,
+    ) -> None:
+        await peak_handlers.handle_peak_suit(
+            matcher=matcher,
+            seerapi_session=seerapi_session,
+            sessions=sessions,
+            type_selection=type_selection,
+            game=game,
+        )
+
+    async def handle_peak_title(
+        matcher: Matcher,
+        seerapi_session: SeerAPISession,
+        sessions: AllSessions,
+        type_selection: peak_handlers.PeakTypeSelection = Depends(
+            peak_handlers.get_peak_type
+        ),
+        game: SeerGame = game_client,
+    ) -> None:
+        await peak_handlers.handle_title(
+            matcher=matcher,
+            seerapi_session=seerapi_session,
+            sessions=sessions,
+            type_selection=type_selection,
+            game=game,
+        )
+
+    async def handle_peak_pet(  # noqa: PLR0913
+        matcher: Matcher,
+        seerapi_session: SeerAPISession,
+        command: Annotated[str, Fullmatch()],
+        type_selection: peak_handlers.PeakTypeSelection = Depends(
+            peak_handlers.get_peak_type
+        ),
+        expert_pools: list[PeakExpertPoolORM] = Depends(
+            peak_handlers.get_expert_ban_pool
+        ),
+        game: SeerGame = game_client,
+    ) -> None:
+        await peak_handlers.handle_peak_pet(
+            matcher=matcher,
+            seerapi_session=seerapi_session,
+            command=command,
+            type_selection=type_selection,
+            expert_pools=expert_pools,
+            game=game,
+        )
+
     rule = seer_feature_rule("seer_peak") & no_reply()
     priority = seer_feature_priority("seer_peak")
 
@@ -130,7 +128,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    vote.append_handler(_handle_peak_vote)
+    vote.append_handler(handle_peak_vote)
 
     suit = group.on_fullmatch(
         ("竞技套装榜", "狂野套装榜", "专家套装榜"),
@@ -138,7 +136,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    suit.append_handler(_handle_peak_suit)
+    suit.append_handler(handle_peak_suit)
 
     title = group.on_fullmatch(
         ("竞技称号榜", "狂野称号榜", "专家称号榜"),
@@ -146,7 +144,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    title.append_handler(_handle_peak_title)
+    title.append_handler(handle_peak_title)
 
     pet = group.on_fullmatch(
         (
@@ -161,7 +159,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pet.append_handler(_handle_peak_pet)
+    pet.append_handler(handle_peak_pet)
 
 
 __all__ = ["install"]

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from nonebot.rule import Rule
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -76,7 +75,7 @@ async def handle_player_shortcut(
         return
 
     try:
-        game = get_game_client()
+        game = headless.get_game()
         with headless_operation(
             "米米号快捷详情查询",
             f"米米号 {player_id}",

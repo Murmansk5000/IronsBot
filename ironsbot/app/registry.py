@@ -161,10 +161,13 @@ def _install_ai_mention_guard(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_ai_intent(registry: MatcherRegistry) -> None:
+def _install_ai_intent(
+    registry: MatcherRegistry,
+    headless: HeadlessService,
+) -> None:
     from ironsbot.plugins.ai_intent import install
 
-    install(registry)
+    install(registry, headless)
 
 
 def _install_about(registry: MatcherRegistry) -> None:
@@ -284,16 +287,16 @@ async def _register_team_resource_jobs(
     register_team_resource_jobs(_scheduler(), headless)
 
 
-async def _register_local_rank_jobs() -> None:
+async def _register_local_rank_jobs(headless: HeadlessService) -> None:
     from ironsbot.plugins.seer.query.runtime import register_local_rank_refresh_job
 
-    register_local_rank_refresh_job(_scheduler())
+    register_local_rank_refresh_job(_scheduler(), headless)
 
 
-async def _register_rank_page_jobs() -> None:
+async def _register_rank_page_jobs(headless: HeadlessService) -> None:
     from ironsbot.plugins.seer.query.runtime import register_rank_page_refresh_jobs
 
-    register_rank_page_refresh_jobs(_scheduler())
+    register_rank_page_refresh_jobs(_scheduler(), headless)
 
 
 async def _check_headless_seer(
@@ -678,8 +681,8 @@ def build_plugin_registry(
             install=partial(_install_seer_query, headless=headless),
             hooks=PluginHooks(
                 startup=(
-                    ("local_rank_jobs", _register_local_rank_jobs),
-                    ("rank_page_jobs", _register_rank_page_jobs),
+                    ("local_rank_jobs", partial(_register_local_rank_jobs, headless)),
+                    ("rank_page_jobs", partial(_register_rank_page_jobs, headless)),
                 ),
                 first_bot_connect=(
                     ("render_crash_report", _report_render_crash),
@@ -744,7 +747,7 @@ def build_plugin_registry(
                 group="ai",
                 order=20,
             ),
-            install=_install_ai_intent,
+            install=partial(_install_ai_intent, headless=headless),
         ),
         PluginDefinition(
             id="about",

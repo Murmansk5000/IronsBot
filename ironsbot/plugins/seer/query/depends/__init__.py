@@ -22,10 +22,9 @@ from ironsbot.integrations.seer_data.sessions import (
     SeerAPISession,
 )
 
-from .headless import GameClient
+from .headless import game_client_dependency
 
 __all__ = [
-    "GameClient",
     "GemCategoryDataGetter",
     "GemDataGetter",
     "GetGemCategoryData",
@@ -42,4 +41,5 @@ __all__ = [
     "PetDataGetter",
     "PetSkinDataGetter",
     "SeerAPISession",
+    "game_client_dependency",
 ]

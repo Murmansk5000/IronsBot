@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.runtime import HeadlessConfig, HeadlessNoticeConfig
     from ironsbot.config.models.secrets import CredentialsConfig
     from ironsbot.integrations.headless_seer.client import ClientManager
+    from ironsbot.integrations.headless_seer.game import SeerGame
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 DAILY_QUIET_START = time(hour=23, minute=55)
@@ -110,6 +111,9 @@ class HeadlessService:
         except Exception as error:  # noqa: BLE001
             return str(error)
         return None
+
+    def get_game(self) -> SeerGame:
+        return self._client.get_client()
 
     async def login(self) -> int:
         try:

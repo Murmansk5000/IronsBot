@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
     from ironsbot.config.models.ai import AiIntentAction
+    from ironsbot.integrations.headless_seer.game import SeerGame
 
 async def _handle_team_recommend_action(
     matcher: Matcher,
@@ -38,6 +39,7 @@ async def _handle_team_resource_action(
     matcher: Matcher,
     action: AiIntentAction,
     event: MessageEvent,
+    game: SeerGame,
 ) -> None:
     team_ids = action.team_ids
     if not team_ids:
@@ -52,7 +54,7 @@ async def _handle_team_resource_action(
     for team_id in team_ids:
         try:
             result = await asyncio.wait_for(
-                fetch_team_resource_result(team_id),
+                fetch_team_resource_result(game, team_id),
                 timeout=get_team_resource_config().query_timeout_seconds,
             )
         except FinishedException:
@@ -76,9 +78,10 @@ async def run_team_action(
     matcher: Matcher,
     event: MessageEvent,
     action: AiIntentAction,
+    game: SeerGame,
 ) -> None:
     if action.action == "team_resource":
-        await _handle_team_resource_action(matcher, action, event)
+        await _handle_team_resource_action(matcher, action, event, game)
         return
 
     await _handle_team_recommend_action(matcher, action, event)

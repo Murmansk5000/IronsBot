@@ -21,8 +21,7 @@ from .notice import (
     _now,
     fetch_server_notice_text,
 )
-from .status import HeadlessStatus
-from .status import get_headless_status as _get_headless_status
+from .status import HeadlessStatus, get_headless_status
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
@@ -44,7 +43,7 @@ async def handle_normal_status(
         return
 
     now = _now()
-    headless_status = _get_headless_status()
+    headless_status = get_headless_status(headless)
     if headless_status.connected:
         await headless.mark_available(source="开服了吗")
     else:
@@ -98,7 +97,7 @@ async def handle_admin_status(
 ) -> None:
     now = _now()
     lines = ["🛠【管理员开服查询】"]
-    headless_status = _get_headless_status()
+    headless_status = get_headless_status(headless)
     if headless_status.connected:
         await headless.mark_available(source="/开服查询")
         lines.append("无头状态：已登录游戏服务器。")

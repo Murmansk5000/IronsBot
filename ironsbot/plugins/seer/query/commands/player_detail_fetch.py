@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from nonebot import logger
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.local_rank_update import update_local_rank_cache
 from ironsbot.services.seer.player_detail_formatting import (
@@ -45,8 +44,11 @@ from ..config import get_local_rank_config, get_player_query_config
 if TYPE_CHECKING:
     from typing import Any
 
+    from ironsbot.integrations.headless_seer.game import SeerGame
+
 
 def create_player_detail_task(  # noqa: PLR0913
+    game: SeerGame,
     *,
     player_id: int,
     user_info: Any,
@@ -58,6 +60,7 @@ def create_player_detail_task(  # noqa: PLR0913
 ) -> asyncio.Task[PlayerDetailMessages]:
     task = asyncio.create_task(
         _build_player_detail_messages(
+            game=game,
             player_id=player_id,
             user_info=user_info,
             more_info=more_info,
@@ -89,6 +92,7 @@ def _log_unrequested_player_detail_task_error(
 
 async def _build_player_detail_messages(  # noqa: PLR0913
     *,
+    game: SeerGame,
     player_id: int,
     user_info: Any,
     more_info: Any,
@@ -97,7 +101,6 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     has_autocard_rank: bool,
     show_local_rank: bool,
 ) -> PlayerDetailMessages:
-    game = get_game_client()
     extra_errors = PlayerDetailErrors()
     extra_timeout_seconds = _player_extra_timeout_seconds()
     fetch_plan = plan_player_detail_fetches(

@@ -12,7 +12,6 @@ from nonebot.typing import T_State
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -136,7 +135,7 @@ async def _query_team_info(
     team_id: int,
     headless: HeadlessService,
 ) -> tuple[str, object]:
-    game = get_game_client()
+    game = headless.get_game()
     team_config = get_team_query_config()
     with headless_operation(
         "战队查询",

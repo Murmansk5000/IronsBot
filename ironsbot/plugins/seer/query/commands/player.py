@@ -13,12 +13,12 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.errors import format_player_query_error
@@ -80,6 +80,7 @@ _MAX_PLAYER_ID = 2_000_000_000
 @dataclass(slots=True)
 class PendingPlayerQuery:
     player_id: int
+    game: SeerGame
     user_info: Any
     more_info: Any
     player_message: str
@@ -165,10 +166,13 @@ async def handle_player(
     player_id: int = state[PLAYER_ID_KEY]
     player_config = get_player_query_config()
     try:
-        pending, game_user_id = await _fetch_pending_player_query(player_id)
+        pending = await _fetch_pending_player_query(
+            player_id,
+            headless.get_game(),
+        )
         await headless.mark_available(
             source="米米号查询",
-            user_id=game_user_id,
+            user_id=int(pending.game.user_id),
         )
     except FinishedException:
         raise
@@ -216,14 +220,16 @@ async def handle_player(
     await _send_pending_player_query(matcher, event, state, pending)
 
 
-async def _fetch_pending_player_query(player_id: int) -> tuple[PendingPlayerQuery, int]:
+async def _fetch_pending_player_query(
+    player_id: int,
+    game: SeerGame,
+) -> PendingPlayerQuery:
     extra_errors: list[str] = []
     player_config = get_player_query_config()
     section_plan = plan_player_query_sections(
         player_config.sections,
         local_rank_enabled=get_local_rank_config().enabled,
     )
-    game = get_game_client()
     with headless_operation(
         "米米号查询",
         f"米米号 {player_id}",
@@ -270,15 +276,13 @@ async def _fetch_pending_player_query(player_id: int) -> tuple[PendingPlayerQuer
         show_peak=False,
         extra_errors=extra_errors,
     )
-    return (
-        PendingPlayerQuery(
-            player_id=player_id,
-            user_info=user_info,
-            more_info=more_info,
-            player_message=player_message,
-            section_plan=section_plan,
-        ),
-        int(game.user_id),
+    return PendingPlayerQuery(
+        player_id=player_id,
+        game=game,
+        user_info=user_info,
+        more_info=more_info,
+        player_message=player_message,
+        section_plan=section_plan,
     )
 
 
@@ -328,6 +332,7 @@ async def _send_pending_player_query(
     section_plan = pending.section_plan
     detail_task = (
         create_player_detail_task(
+            pending.game,
             player_id=pending.player_id,
             user_info=pending.user_info,
             more_info=pending.more_info,
@@ -367,10 +372,13 @@ async def handle_player_binding_command(
         )
     ensure_extended_packets()
     try:
-        pending, game_user_id = await _fetch_pending_player_query(player_id)
+        pending = await _fetch_pending_player_query(
+            player_id,
+            headless.get_game(),
+        )
         await headless.mark_available(
             source="米米号绑定",
-            user_id=game_user_id,
+            user_id=int(pending.game.user_id),
         )
     except FinishedException:
         raise

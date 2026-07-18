@@ -99,7 +99,7 @@ async def _fetch_team_result(
     source: str,
     headless: HeadlessService,
 ) -> TeamResourceResult:
-    result = await fetch_team_resource_result(team_id)
+    result = await fetch_team_resource_result(headless.get_game(), team_id)
     await headless.mark_available(source=source)
     return result
 

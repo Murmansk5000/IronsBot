@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from collections.abc import Awaitable, Callable
+
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
@@ -6,6 +8,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.seer.rank_display import (
     parse_rank_display_limit_command,
@@ -39,6 +42,11 @@ from .rank_list_context import (
     RANK_SCORE_COMMAND_KEY,
     event_group_id,
 )
+
+GameHandler = Callable[
+    [Matcher, MessageEvent, T_State, SeerGame],
+    Awaitable[None],
+]
 
 
 async def _is_rank_list_command(event: Event, state: T_State) -> bool:
@@ -107,86 +115,18 @@ async def _is_rank_page_cache_refresh_command(event: Event, state: T_State) -> b
     return True
 
 
-async def handle_rank_help(matcher: Matcher, event: MessageEvent) -> None:
-    await rank_list_query_handlers.handle_help(matcher, event)
+def _with_game(
+    group: SeerMatcherGroup,
+    handler: GameHandler,
+) -> Callable[[Matcher, MessageEvent, T_State], Awaitable[None]]:
+    async def bound_handler(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        await handler(matcher, event, state, group.headless.get_game())
 
-
-async def handle_rank_list(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_query_handlers.handle_list(matcher, event, state)
-
-
-async def handle_rank_score(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_query_handlers.handle_score(matcher, event, state)
-
-
-async def handle_rank_player(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_query_handlers.handle_player(matcher, event, state)
-
-
-async def handle_rank_cache_batch(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_cache_handlers.handle_cache_batch(matcher, event, state)
-
-
-async def handle_rank_page_cache_status(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_cache_handlers.handle_page_cache_status(matcher, event, state)
-
-
-async def handle_rank_page_cache_overview(
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    await rank_list_cache_handlers.handle_page_cache_overview(matcher, event)
-
-
-async def handle_rank_page_cache_refresh(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_cache_handlers.handle_page_cache_refresh(matcher, event, state)
-
-
-async def handle_rank_cache_status(
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    await rank_list_cache_handlers.handle_cache_status(matcher, event)
-
-
-async def handle_rank_cache_refresh(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_cache_handlers.handle_cache_refresh(matcher, event, state)
-
-
-async def handle_rank_display_limit(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await rank_list_display_handlers.handle_display_limit(matcher, event, state)
+    return bound_handler
 
 
 def install(group: SeerMatcherGroup) -> None:
@@ -196,7 +136,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule("seer_rank") & no_reply(),
         priority=seer_feature_priority("seer_rank_help"),
     )
-    help_matcher.append_handler(handle_rank_help)
+    help_matcher.append_handler(rank_list_query_handlers.handle_help)
 
     list_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_list"),
@@ -205,7 +145,9 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=seer_feature_priority("seer_rank"),
     )
-    list_matcher.append_handler(handle_rank_list)
+    list_matcher.append_handler(
+        _with_game(group, rank_list_query_handlers.handle_list)
+    )
 
     player_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_player"),
@@ -214,7 +156,9 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=seer_feature_priority("seer_rank"),
     )
-    player_matcher.append_handler(handle_rank_player)
+    player_matcher.append_handler(
+        _with_game(group, rank_list_query_handlers.handle_player)
+    )
 
     score_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_score"),
@@ -223,7 +167,9 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=seer_feature_priority("seer_rank"),
     )
-    score_matcher.append_handler(handle_rank_score)
+    score_matcher.append_handler(
+        _with_game(group, rank_list_query_handlers.handle_score)
+    )
 
     cache_status_matcher = group.on_fullmatch(
         with_admin_prefix(("样本情况", "样本状态")),
@@ -232,7 +178,9 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=seer_feature_priority("seer_rank"),
     )
-    cache_status_matcher.append_handler(handle_rank_cache_status)
+    cache_status_matcher.append_handler(
+        rank_list_cache_handlers.handle_cache_status
+    )
 
     cache_refresh_matcher = group.on_fullmatch(
         with_admin_prefix(("刷新样本",)),
@@ -241,7 +189,9 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=seer_feature_priority("seer_rank"),
     )
-    cache_refresh_matcher.append_handler(handle_rank_cache_refresh)
+    cache_refresh_matcher.append_handler(
+        _with_game(group, rank_list_cache_handlers.handle_cache_refresh)
+    )
 
     cache_batch_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_cache_batch"),
@@ -251,7 +201,9 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=seer_feature_priority("seer_rank"),
     )
-    cache_batch_matcher.append_handler(handle_rank_cache_batch)
+    cache_batch_matcher.append_handler(
+        _with_game(group, rank_list_cache_handlers.handle_cache_batch)
+    )
 
     page_overview_matcher = group.on_fullmatch(
         with_admin_prefix(("榜单情况", "榜单状态")),
@@ -260,7 +212,9 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=seer_feature_priority("seer_rank"),
     )
-    page_overview_matcher.append_handler(handle_rank_page_cache_overview)
+    page_overview_matcher.append_handler(
+        rank_list_cache_handlers.handle_page_cache_overview
+    )
 
     page_status_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_page_cache_status"),
@@ -270,7 +224,9 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=seer_feature_priority("seer_rank"),
     )
-    page_status_matcher.append_handler(handle_rank_page_cache_status)
+    page_status_matcher.append_handler(
+        rank_list_cache_handlers.handle_page_cache_status
+    )
 
     page_refresh_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_page_cache_refresh"),
@@ -280,7 +236,9 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=seer_feature_priority("seer_rank"),
     )
-    page_refresh_matcher.append_handler(handle_rank_page_cache_refresh)
+    page_refresh_matcher.append_handler(
+        _with_game(group, rank_list_cache_handlers.handle_page_cache_refresh)
+    )
 
     display_limit_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_display_limit"),
@@ -289,7 +247,9 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=seer_feature_priority("seer_rank"),
     )
-    display_limit_matcher.append_handler(handle_rank_display_limit)
+    display_limit_matcher.append_handler(
+        rank_list_display_handlers.handle_display_limit
+    )
 
 
 __all__ = ["install"]

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from nonebot import logger
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank_cache_queries import get_local_rank_entries
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start, timestamp_text
 from ironsbot.services.seer.rank_list_global_messages import (
@@ -31,6 +30,7 @@ from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 from ..config import get_local_rank_config
 
 if TYPE_CHECKING:
+    from ironsbot.integrations.headless_seer.game import SeerGame
     from ironsbot.services.seer.rank_list_models import (
         GlobalRankSpec,
         LocalRankSpec,
@@ -42,13 +42,13 @@ if TYPE_CHECKING:
 
 
 async def build_global_rank_message(
+    game: SeerGame,
     spec: GlobalRankSpec,
     command: RankListCommand,
 ) -> str:
     spec = get_global_rank_spec(command.rank_key)
     if global_rank_spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
-    game = get_game_client()
     with headless_operation(
         "榜单查询",
         (
@@ -74,6 +74,7 @@ async def build_global_rank_message(
 
 
 async def build_global_rank_score_message(
+    game: SeerGame,
     spec: GlobalRankSpec,
     command: RankScoreCommand,
     *,
@@ -82,7 +83,6 @@ async def build_global_rank_score_message(
     spec = get_global_rank_spec(command.rank_key)
     if global_rank_spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
-    game = get_game_client()
     with headless_operation(
         "榜单分数查询",
         f"{spec.title} {command.score}{spec.unit}",
@@ -120,9 +120,11 @@ async def build_global_rank_score_message(
     )
 
 
-async def build_global_rank_player_message(command: RankPlayerCommand) -> str:
+async def build_global_rank_player_message(
+    game: SeerGame,
+    command: RankPlayerCommand,
+) -> str:
     spec = get_global_rank_spec(command.rank_key)
-    game = get_game_client()
     with headless_operation(
         "榜单玩家查询",
         f"{spec.title} 米米号 {command.player_id}",
@@ -136,6 +138,7 @@ async def build_global_rank_player_message(command: RankPlayerCommand) -> str:
 
 
 async def cache_global_rank_batch(
+    game: SeerGame,
     command: RankCacheBatchCommand,
 ) -> tuple[GlobalRankSpec, int, int]:
     spec = get_global_rank_spec(command.rank_key)
@@ -150,7 +153,7 @@ async def cache_global_rank_batch(
         source="手动缓存榜单",
     ):
         items = await fetch_daily_rank_page(
-            get_game_client(),
+            game,
             key=spec.key,
             sub_key=spec.sub_key,
             start=raw_start,

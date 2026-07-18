@@ -10,6 +10,7 @@ from ironsbot.services.ai.intent_actions import (
     is_team_action,
     run_ai_reply_action,
 )
+from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
@@ -47,28 +48,6 @@ async def _handle_ai_reply_action(
     )
 
 
-async def handle_ai_intent_action(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    action = state[ACTION_KEY]
-    if is_team_action(action):
-        await run_team_action(matcher, event, action)
-        return
-
-    if action.action == "ai_reply":
-        await _handle_ai_reply_action(action, matcher, event)
-        return
-
-    await finish_event_reply(
-        matcher,
-        event,
-        action.message,
-        mention_sender=True,
-    )
-
-
 def _resolve_action_command_id(
     _event: MessageEvent,
     state: T_State,
@@ -78,11 +57,30 @@ def _resolve_action_command_id(
     return f"ai_intent.{action_id}" if action_id else "ai_intent"
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(registry: MatcherRegistry, headless: HeadlessService) -> None:
+    async def handle_action(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        action = state[ACTION_KEY]
+        if is_team_action(action):
+            await run_team_action(matcher, event, action, headless.get_game())
+            return
+        if action.action == "ai_reply":
+            await _handle_ai_reply_action(action, matcher, event)
+            return
+        await finish_event_reply(
+            matcher,
+            event,
+            action.message,
+            mention_sender=True,
+        )
+
     matcher = registry.on_message(
         policy=CommandPolicy.command(_resolve_action_command_id),
         rule=Rule(_match_ai_intent_action) & no_reply(),
         priority=get_matcher_priority("ai_intent", 4),
         block=True,
     )
-    matcher.append_handler(handle_ai_intent_action)
+    matcher.append_handler(handle_action)
