@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
+
+
+def format_sub_lines(texts: Iterable[str], prefix: str = " ↳ ") -> str:
+    return "".join(f"{prefix}{text}\n" for text in texts)
 
 
 def format_datetime(timestamp: int) -> str:

@@ -13,7 +13,7 @@ from seerapi_models.common import SixAttributes
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
 
 from ironsbot.integrations.seer_data.getters import GemCategoryDataGetter
-from ironsbot.utils import build_sub_line
+from ironsbot.services.seer.formatting import format_sub_lines
 
 from ..config import get_mintmark_query_config
 from ..depends import (
@@ -198,7 +198,7 @@ async def build_mintmark_message(
     if mintmark.pet:
         if len(mintmark.pet) > 1:
             msg += "绑定精灵：\n"
-            msg += build_sub_line(texts=[_build_pet_bind(pet) for pet in mintmark.pet])
+            msg += format_sub_lines(_build_pet_bind(pet) for pet in mintmark.pet)
         else:
             msg += f"绑定精灵：{_build_pet_bind(mintmark.pet[0])}\n"
 
