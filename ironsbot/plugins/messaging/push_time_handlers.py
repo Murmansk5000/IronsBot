@@ -8,33 +8,30 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import (
-    event_conversation_session_id,
-    message_event_target,
-)
-from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
+from ironsbot.shared.messaging import message_event_target
+from ironsbot.shared.messaging.push_subscription_models import PushTargetType
+from ironsbot.utils.matcher import enter_prompt_loop
 
 from .push_management_runtime import (
-    PUSH_TIME_NAMESPACE,
+    PUSH_TIME_FLOW,
     PUSH_TIME_OPTIONS_KEY,
     PUSH_TIME_SELECTED_KEY,
-    PUSH_TIME_SESSION_KEY,
     PUSH_TIME_TARGET_ID_KEY,
-    PUSH_TIME_TARGET_TYPE_KEY,
-    PUSH_TIME_VERSION_KEY,
-    _normalize_push_time_input,
-    _push_subscription_store,
-    _push_time_menu_prompt,
-    _push_time_options,
-    _push_time_selection_rule,
-    _push_time_value_prompt,
-    _reject_push_time_input,
-    _reject_push_time_selection,
 )
-from .push_time import PushTimeOption
+from .push_time import (
+    PushTimeOption,
+    build_push_time_menu_prompt,
+    build_push_time_options,
+    normalize_push_time_input,
+    push_time_value_prompt,
+)
 
 if TYPE_CHECKING:
-    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
+    from ironsbot.shared.messaging.push_subscription_store import (
+        PushUnsubscribeStore,
+    )
+
+    from .runtime_service import MessagingResources
 
 RefreshPushTimeJobs = Callable[[PushTimeOption], Awaitable[None]]
 
@@ -45,37 +42,49 @@ class PushTimeValueContext:
     target_type: PushTargetType
     target_id: int
     refresh_push_time_jobs: RefreshPushTimeJobs
+    store: PushUnsubscribeStore
+    options_for: BuildPushTimeOptions
 
 
 PushTimeHandler = Callable[[Matcher, MessageEvent, T_State], Awaitable[None]]
+BuildPushTimeOptions = Callable[[PushTargetType, int], list[PushTimeOption]]
 
 
 def build_push_time_menu_handler(
     refresh_push_time_jobs: RefreshPushTimeJobs,
+    messaging: MessagingResources,
 ) -> PushTimeHandler:
+    def options_for(
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> list[PushTimeOption]:
+        return build_push_time_options(
+            target_type,
+            target_id,
+            message_config=messaging.config,
+            activity_config=messaging.activity,
+            store=messaging.store,
+        )
+
     async def handle_push_time_menu(
         matcher: Matcher,
         event: MessageEvent,
         state: T_State,
     ) -> None:
         target_type, target_id, _ = message_event_target(event)
-        options = _push_time_options(target_type, target_id)
+        options = options_for(target_type, target_id)
         if not options:
             await matcher.finish("当前没有可修改时间的推送。")
 
         state[PUSH_TIME_OPTIONS_KEY] = options
-        session_id = event_conversation_session_id(PUSH_TIME_NAMESPACE, event)
-        version = prompt_session_manager.acquire(session_id)
-        state[PUSH_TIME_SESSION_KEY] = session_id
+        session_id, version = PUSH_TIME_FLOW.begin(event, state, target_type)
         state[PUSH_TIME_TARGET_ID_KEY] = target_id
-        state[PUSH_TIME_TARGET_TYPE_KEY] = target_type
-        state[PUSH_TIME_VERSION_KEY] = version
 
         await enter_prompt_loop(
             matcher,
             handlers=[handle_push_time_select],
-            rule=_push_time_selection_rule(session_id, version, target_type),
-            prompt=_push_time_menu_prompt(target_type, options),
+            rule=PUSH_TIME_FLOW.rule(session_id, version, target_type),
+            prompt=build_push_time_menu_prompt(target_type, options),
         )
 
     async def handle_push_time_select(
@@ -88,7 +97,7 @@ def build_push_time_menu_handler(
             await matcher.finish()
         options: list[PushTimeOption] = raw_options
 
-        target_type = state.get(PUSH_TIME_TARGET_TYPE_KEY)
+        target_type = state.get(PUSH_TIME_FLOW.target_type_key)
         target_id = state.get(PUSH_TIME_TARGET_ID_KEY)
         if target_type not in {"private", "group"} or not isinstance(target_id, int):
             await matcher.finish()
@@ -113,6 +122,8 @@ def build_push_time_menu_handler(
                 target_type=target_type,
                 target_id=target_id,
                 refresh_push_time_jobs=refresh_push_time_jobs,
+                store=messaging.store,
+                options_for=options_for,
             ),
         )
 
@@ -129,17 +140,18 @@ async def _handle_push_time_index(
         await matcher.finish("已退出。")
     index = int(text)
     if index < 1 or index > len(options):
-        await _reject_push_time_selection(
+        await PUSH_TIME_FLOW.reject(
             matcher,
             state,
             "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
         )
     option = options[index - 1]
     state[PUSH_TIME_SELECTED_KEY] = index - 1
-    await _reject_push_time_input(
+    await PUSH_TIME_FLOW.reject(
         matcher,
         state,
-        _push_time_value_prompt(option),
+        push_time_value_prompt(option),
+        selection=False,
     )
 
 
@@ -153,25 +165,24 @@ async def _handle_push_time_value(
     selected_index = context.selected
     if selected_index < 0 or selected_index >= len(options):
         state.pop(PUSH_TIME_SELECTED_KEY, None)
-        await _reject_push_time_selection(
+        await PUSH_TIME_FLOW.reject(
             matcher,
             state,
-            _push_time_menu_prompt(context.target_type, options),
+            build_push_time_menu_prompt(context.target_type, options),
         )
 
     if text == "0":
         await matcher.finish("已退出。")
 
     option = options[selected_index]
-    store = _push_subscription_store()
     try:
-        normalized = _normalize_push_time_input(option, text)
+        normalized = normalize_push_time_input(option, text)
     except ValueError as e:
-        await _reject_push_time_input(matcher, state, str(e))
+        await PUSH_TIME_FLOW.reject(matcher, state, str(e), selection=False)
         return
 
     if normalized is None:
-        store.clear_time_preference(
+        context.store.clear_time_preference(
             context.target_type,
             context.target_id,
             option.key,
@@ -179,7 +190,7 @@ async def _handle_push_time_value(
         )
         result_message = f"已恢复默认：{option.label}。"
     else:
-        store.set_time_preference(
+        context.store.set_time_preference(
             context.target_type,
             context.target_id,
             option.key,
@@ -190,10 +201,10 @@ async def _handle_push_time_value(
 
     await context.refresh_push_time_jobs(option)
     state.pop(PUSH_TIME_SELECTED_KEY, None)
-    refreshed_options = _push_time_options(context.target_type, context.target_id)
+    refreshed_options = context.options_for(context.target_type, context.target_id)
     state[PUSH_TIME_OPTIONS_KEY] = refreshed_options
     prompt = (
         f"{result_message}\n\n"
-        f"{_push_time_menu_prompt(context.target_type, refreshed_options)}"
+        f"{build_push_time_menu_prompt(context.target_type, refreshed_options)}"
     )
-    await _reject_push_time_selection(matcher, state, prompt)
+    await PUSH_TIME_FLOW.reject(matcher, state, prompt)

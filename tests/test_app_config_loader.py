@@ -711,10 +711,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "ai_intent_service_for_app_config_test",
         ROOT / "ironsbot" / "services" / "ai" / "intent.py",
     )
-    message_config = _load_module_from_path(
-        "messaging_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
-    )
     team_resource_config = _load_module_from_path(
         "team_resource_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
@@ -733,12 +729,10 @@ def test_small_plugin_config_accessors_read_app_config(
         assert app_config.activity.lead_hours == [11, 1]
         assert "seerapi" in app_config.runtime.data_sync.sources
         assert (
-            message_config.get_message_config()
-            .outbound_rate_limit.windows[0]
-            .max_messages
+            app_config.message.outbound_rate_limit.windows[0].max_messages
             == DEFAULT_OUTBOUND_MAX_MESSAGES
         )
-        assert message_config.get_message_config().meeting.commands == [
+        assert app_config.message.meeting.commands == [
             "开播",
             "会议",
         ]

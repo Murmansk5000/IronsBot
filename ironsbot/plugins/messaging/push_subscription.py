@@ -17,9 +17,8 @@ from ironsbot.shared.messaging.push_subscriptions import (
     build_schedule_subscription_options,
 )
 
-from .config import get_message_config
-
 if TYPE_CHECKING:
+    from ironsbot.config.models.message import MessageConfig
     from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 
@@ -70,9 +69,9 @@ def _schedule_subscription_options(
     *,
     target_type: PushTargetType,
     target_id: int,
+    config: MessageConfig,
     store: PushUnsubscribeStore,
 ) -> list[PushSubscriptionOption]:
-    config = get_message_config()
     tasks = (
         config.group_schedules
         if target_type == "group"
@@ -95,6 +94,7 @@ def build_messaging_push_subscription_options(
     target_type: PushTargetType,
     target_id: int,
     *,
+    config: MessageConfig,
     store: PushUnsubscribeStore,
 ) -> list[PushSubscriptionOption]:
     from ironsbot.services.bilibili.targets import bili_push_subscription_options
@@ -113,6 +113,7 @@ def build_messaging_push_subscription_options(
         *_schedule_subscription_options(
             target_type=target_type,
             target_id=target_id,
+            config=config,
             store=store,
         ),
     ]

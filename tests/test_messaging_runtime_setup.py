@@ -1,6 +1,6 @@
 import asyncio
 import os
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -16,15 +16,21 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.app.composition import refresh_push_time_jobs
+from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.message import (
     GroupScheduledMessageAction,
+    MessageConfig,
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
-from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
+from ironsbot.plugins.messaging import matcher_rules, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
+from ironsbot.plugins.messaging.push_subscription import (
+    build_messaging_push_subscription_menu_prompt,
+)
 from ironsbot.plugins.messaging.push_time import PushTimeOption
+from ironsbot.plugins.messaging.runtime_service import MessagingResources
 from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
     CRON_TIME_PREFERENCE,
@@ -42,11 +48,6 @@ if TYPE_CHECKING:
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
-@dataclass(frozen=True, slots=True)
-class FakeMessageConfig:
-    push_unsubscribe: PushUnsubscribeConfig
-    private_schedules: list[PrivateScheduledMessageAction] = field(default_factory=list)
-    group_schedules: list[GroupScheduledMessageAction] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +103,22 @@ class FakeScheduler:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
 
 
+def _messaging_resources(
+    data_path: Path,
+    *,
+    group_schedules: list[GroupScheduledMessageAction] | None = None,
+) -> MessagingResources:
+    config = MessageConfig(
+        push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
+        group_schedules=group_schedules or [],
+    )
+    return MessagingResources(
+        config,
+        ActivityConfig(),
+        PushUnsubscribeStore(data_path),
+    )
+
+
 def _group_event(
     text: str = "TD",
     *,
@@ -121,20 +138,28 @@ def test_messaging_startup_prunes_preferences_before_registering_jobs(
 ) -> None:
     calls: list[str] = []
 
-    def fake_prune() -> PushPreferencePruneResult:
+    def fake_prune(_messaging: MessagingResources) -> PushPreferencePruneResult:
         calls.append("prune")
         return PushPreferencePruneResult(
             unsubscriptions_deleted=2,
             time_preferences_deleted=1,
         )
 
-    async def fake_register(_scheduler: object) -> None:
+    async def fake_register(
+        _scheduler: object,
+        _messaging: MessagingResources,
+    ) -> None:
         calls.append("register")
 
     monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
     monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
 
-    asyncio.run(runtime.start_messaging(object()))
+    asyncio.run(
+        runtime.start_messaging(
+            object(),
+            _messaging_resources(Path("unused.sqlite")),
+        )
+    )
 
     assert calls == ["prune", "register"]
 
@@ -144,17 +169,25 @@ def test_messaging_startup_continues_when_preference_cleanup_fails(
 ) -> None:
     calls: list[str] = []
 
-    def fake_prune() -> PushPreferencePruneResult:
+    def fake_prune(_messaging: MessagingResources) -> PushPreferencePruneResult:
         calls.append("prune")
         raise RuntimeError
 
-    async def fake_register(_scheduler: object) -> None:
+    async def fake_register(
+        _scheduler: object,
+        _messaging: MessagingResources,
+    ) -> None:
         calls.append("register")
 
     monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
     monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
 
-    asyncio.run(runtime.start_messaging(object()))
+    asyncio.run(
+        runtime.start_messaging(
+            object(),
+            _messaging_resources(Path("unused.sqlite")),
+        )
+    )
 
     assert calls == ["prune", "register"]
 
@@ -164,7 +197,10 @@ def test_push_time_refresh_uses_explicit_job_owner(
 ) -> None:
     calls: list[tuple[str, object]] = []
 
-    async def fake_register(scheduler: object) -> None:
+    async def fake_register(
+        scheduler: object,
+        _messaging: MessagingResources,
+    ) -> None:
         calls.append(("message", scheduler))
 
     class FakeActivityService:
@@ -173,6 +209,7 @@ def test_push_time_refresh_uses_explicit_job_owner(
 
     scheduler = object()
     activity_service = cast("ActivityService", FakeActivityService())
+    messaging = _messaging_resources(Path("unused.sqlite"))
     monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
     option = PushTimeOption("test", "测试", "test", CRON_TIME_PREFERENCE, "", "")
     for preference_type in (
@@ -184,6 +221,7 @@ def test_push_time_refresh_uses_explicit_job_owner(
                 replace(option, preference_type=preference_type),
                 scheduler=scheduler,
                 activity_service=activity_service,
+                messaging=messaging,
             )
         )
 
@@ -191,7 +229,7 @@ def test_push_time_refresh_uses_explicit_job_owner(
 
 
 def test_push_subscription_menu_prompt_marks_current_state() -> None:
-    prompt = push_management_runtime._push_subscription_menu_prompt(
+    prompt = build_messaging_push_subscription_menu_prompt(
         "private",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -211,7 +249,7 @@ def test_push_subscription_menu_prompt_marks_current_state() -> None:
 
 
 def test_push_subscription_menu_prompt_can_be_read_only() -> None:
-    prompt = push_management_runtime._push_subscription_menu_prompt(
+    prompt = build_messaging_push_subscription_menu_prompt(
         "group",
         [
             PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
@@ -225,47 +263,32 @@ def test_push_subscription_menu_prompt_can_be_read_only() -> None:
     assert "输入序号切换" not in prompt
 
 
-def test_group_push_subscription_command_allows_superuser_member(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        matcher_rules,
-        "get_message_config",
-        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
-    )
-
+def test_group_push_subscription_command_allows_superuser_member() -> None:
     assert asyncio.run(
-        matcher_rules.match_push_subscription_command(_group_event(), {})
+        matcher_rules.match_push_subscription_command(
+            _group_event(),
+            {},
+            config=PushUnsubscribeConfig(),
+        )
     )
 
 
-def test_group_push_subscription_command_allows_regular_member_to_view(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        matcher_rules,
-        "get_message_config",
-        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
-    )
-
+def test_group_push_subscription_command_allows_regular_member_to_view() -> None:
     assert asyncio.run(
-        matcher_rules.match_push_subscription_command(_group_event(), {})
+        matcher_rules.match_push_subscription_command(
+            _group_event(),
+            {},
+            config=PushUnsubscribeConfig(),
+        )
     )
 
 
-def test_group_push_subscription_management_command_matches_regular_member(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        matcher_rules,
-        "get_message_config",
-        lambda: FakeMessageConfig(push_unsubscribe=PushUnsubscribeConfig()),
-    )
-
+def test_group_push_subscription_management_command_matches_regular_member() -> None:
     assert asyncio.run(
         matcher_rules.match_push_subscription_command(
             _group_event("推送管理", user_id=3003),
             {},
+            config=PushUnsubscribeConfig(),
         )
     )
 
@@ -275,6 +298,7 @@ def test_scheduled_messages_append_fire_manual_ad(
     tmp_path: Path,
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
+    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
     async def fake_send_broadcast_message(
         message: str,
@@ -291,15 +315,6 @@ def test_scheduled_messages_append_fire_manual_ad(
         "send_broadcast_message",
         fake_send_broadcast_message,
     )
-    monkeypatch.setattr(
-        message_schedules,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(
-                data_path=str(tmp_path / "unsubscribe.sqlite")
-            )
-        ),
-    )
     monkeypatch.setattr(message_schedules, "users_for_feature", lambda _feature: [2001])
     monkeypatch.setattr(message_schedules, "users_with_superusers", list)
     monkeypatch.setattr(
@@ -315,12 +330,14 @@ def test_scheduled_messages_append_fire_manual_ad(
 
     asyncio.run(
         message_schedules.send_private_schedule(
-            _private_schedule("私聊定时")
+            _private_schedule("私聊定时"),
+            store=store,
         )
     )
     asyncio.run(
         message_schedules.send_group_schedule(
-            _group_schedule("群定时", at_user_ids=[3001])
+            _group_schedule("群定时", at_user_ids=[3001]),
+            store=store,
         )
     )
 
@@ -341,6 +358,7 @@ def test_private_schedule_passes_subscription_key(
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     data_path = tmp_path / "unsubscribe.sqlite"
+    store = PushUnsubscribeStore(data_path)
 
     async def fake_send_broadcast_message(
         message: str,
@@ -355,13 +373,6 @@ def test_private_schedule_passes_subscription_key(
     )
     monkeypatch.setattr(
         message_schedules,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
-        ),
-    )
-    monkeypatch.setattr(
-        message_schedules,
         "users_for_feature",
         lambda _feature: [2001, 2002],
     )
@@ -369,7 +380,8 @@ def test_private_schedule_passes_subscription_key(
 
     asyncio.run(
         message_schedules.send_private_schedule(
-            _private_schedule("私聊定时")
+            _private_schedule("私聊定时"),
+            store=store,
         )
     )
 
@@ -405,20 +417,14 @@ def test_group_schedule_skips_default_time_for_overridden_group(
     )
     monkeypatch.setattr(
         message_schedules,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
-        ),
-    )
-    monkeypatch.setattr(
-        message_schedules,
         "groups_for_feature",
         lambda _feature: [1001, 1002],
     )
 
     asyncio.run(
         message_schedules.send_group_schedule(
-            _group_schedule("group push", at_user_ids=[], schedule_id="daily")
+            _group_schedule("group push", at_user_ids=[], schedule_id="daily"),
+            store=store,
         )
     )
 
@@ -450,19 +456,16 @@ def test_group_schedule_override_job_targets_only_overridden_group(
 
     monkeypatch.setattr(
         message_schedules,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
-            group_schedules=[task],
-        ),
-    )
-    monkeypatch.setattr(
-        message_schedules,
         "groups_for_feature",
         lambda _feature: [1001, 1002],
     )
 
-    asyncio.run(message_schedules.register_message_schedules(scheduler))
+    asyncio.run(
+        message_schedules.register_message_schedules(
+            scheduler,
+            _messaging_resources(data_path, group_schedules=[task]),
+        )
+    )
 
     assert [job["id"] for job in scheduler.jobs] == [
         "message_action_group_schedule_daily",

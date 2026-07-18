@@ -1,21 +1,17 @@
-from dataclasses import dataclass
 from pathlib import Path
 
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.message import MessageConfig, PushUnsubscribeConfig
 from ironsbot.plugins.messaging import preference_cleanup
 from ironsbot.plugins.messaging.push_time import PushTimeOption
+from ironsbot.plugins.messaging.runtime_service import MessagingResources
 from ironsbot.shared.messaging.push_subscription_models import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
 )
 from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
-
-
-@dataclass(frozen=True, slots=True)
-class FakeMessageConfig:
-    push_unsubscribe: PushUnsubscribeConfig
 
 
 def test_cleanup_uses_current_subscription_and_time_catalogs(
@@ -43,13 +39,6 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
 
     monkeypatch.setattr(
         preference_cleanup,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
-        ),
-    )
-    monkeypatch.setattr(
-        preference_cleanup,
         "build_messaging_push_subscription_options",
         lambda *_args, **_kwargs: [
             PushSubscriptionOption("daily", "每日提醒", "text_push")
@@ -71,7 +60,15 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         ],
     )
 
-    result = preference_cleanup.prune_stale_push_preferences()
+    result = preference_cleanup.prune_stale_push_preferences(
+        MessagingResources(
+            MessageConfig(
+                push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
+            ),
+            ActivityConfig(),
+            store,
+        )
+    )
 
     assert result.unsubscriptions_deleted == 1
     assert result.time_preferences_deleted == 1

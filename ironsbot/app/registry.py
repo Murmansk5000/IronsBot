@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.secrets import SecretsConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
+    from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import AsyncHook
     from ironsbot.services.activity.service import ActivityService
@@ -104,6 +105,7 @@ def _install_seer_data(registry: MatcherRegistry) -> None:
 def _install_messaging(
     registry: MatcherRegistry,
     refresh_jobs: RefreshPushTimeJobs,
+    messaging: MessagingResources,
 ) -> None:
     from ironsbot.plugins.messaging import install
     from ironsbot.shared.messaging.outbound_rate_limit import (
@@ -111,7 +113,7 @@ def _install_messaging(
     )
 
     install_outbound_rate_limit_hooks()
-    install(registry, refresh_jobs)
+    install(registry, refresh_jobs, messaging)
 
 
 def _install_bilibili(registry: MatcherRegistry) -> None:
@@ -223,11 +225,13 @@ async def _refresh_push_time_jobs(
     option: PushTimeOption,
     *,
     activity_service: ActivityService,
+    messaging: MessagingResources,
 ) -> None:
     await refresh_push_time_jobs(
         option,
         scheduler=_scheduler(),
         activity_service=activity_service,
+        messaging=messaging,
     )
 
 
@@ -243,10 +247,10 @@ async def _shutdown_http_clients() -> None:
     await shutdown_http_clients()
 
 
-async def _start_messaging() -> None:
+async def _start_messaging(messaging: MessagingResources) -> None:
     from ironsbot.plugins.messaging.runtime import start_messaging
 
-    await start_messaging(_scheduler())
+    await start_messaging(_scheduler(), messaging)
 
 
 async def _register_headless_reconnect_jobs(
@@ -362,11 +366,22 @@ def build_plugin_registry(
     secrets: SecretsConfig,
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
+    from ironsbot.plugins.messaging.runtime_service import MessagingResources
+    from ironsbot.shared.messaging.push_subscription_store import (
+        PushUnsubscribeStore,
+    )
+
     definitions: tuple[PluginDefinition, ...] = ()
     runtime_config = config.runtime
+    messaging = MessagingResources(
+        config.message,
+        config.activity,
+        PushUnsubscribeStore(config.message.push_unsubscribe.data_path),
+    )
     push_time_refresher = partial(
         _refresh_push_time_jobs,
         activity_service=activity_service,
+        messaging=messaging,
     )
     startup_notice_service = StartupNoticeService()
     help_hint_service = HelpHintService(
@@ -528,9 +543,15 @@ def build_plugin_registry(
             install=partial(
                 _install_messaging,
                 refresh_jobs=push_time_refresher,
+                messaging=messaging,
             ),
             hooks=PluginHooks(
-                startup=(("messaging", _start_messaging),),
+                startup=(
+                    (
+                        "messaging",
+                        partial(_start_messaging, messaging),
+                    ),
+                ),
             ),
         ),
         PluginDefinition(

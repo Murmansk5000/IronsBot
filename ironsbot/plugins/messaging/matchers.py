@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves at runtime
@@ -26,10 +27,12 @@ from .matcher_rules import (
     match_push_subscription_command,
     match_push_time_command,
 )
-from .push_management_handlers import register_push_management_handlers
+from .push_subscription_handlers import handle_push_subscription_menu
+from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
     from .push_time_handlers import RefreshPushTimeJobs
+    from .runtime_service import MessagingResources
 
 
 def _message_subscription_priority() -> int:
@@ -82,12 +85,19 @@ def _action_command_id(
 def install(
     registry: MatcherRegistry,
     refresh_push_time_jobs: RefreshPushTimeJobs,
+    messaging: MessagingResources,
 ) -> None:
     private_matcher = registry.on_message(
         policy=CommandPolicy.command(
             _action_command_id(PRIVATE_ACTION_KEY, "message_private")
         ),
-        rule=Rule(match_private_command) & no_reply(),
+        rule=Rule(
+            partial(
+                match_private_command,
+                actions=messaging.config.private_commands,
+            )
+        )
+        & no_reply(),
         priority=get_matcher_priority("message_commands", 4),
         block=True,
     )
@@ -97,7 +107,13 @@ def install(
         policy=CommandPolicy.exempt(
             "second-level subscription toggle conversation"
         ),
-        rule=Rule(match_push_subscription_command) & no_reply(),
+        rule=Rule(
+            partial(
+                match_push_subscription_command,
+                config=messaging.config.push_unsubscribe,
+            )
+        )
+        & no_reply(),
         priority=_message_subscription_priority(),
         block=True,
     )
@@ -107,17 +123,30 @@ def install(
         priority=_message_subscription_priority(),
         block=True,
     )
-    register_push_management_handlers(
-        push_subscription_matcher=subscription_matcher,
-        push_time_matcher=push_time_matcher,
-        refresh_push_time_jobs=refresh_push_time_jobs,
+    subscription_matcher.handle()(
+        partial(
+            handle_push_subscription_menu,
+            messaging=messaging,
+        )
+    )
+    push_time_matcher.handle()(
+        build_push_time_menu_handler(
+            refresh_push_time_jobs,
+            messaging,
+        )
     )
 
     group_matcher = registry.on_message(
         policy=CommandPolicy.command(
             _action_command_id(GROUP_ACTION_KEY, "message_group")
         ),
-        rule=Rule(match_group_command) & no_reply(),
+        rule=Rule(
+            partial(
+                match_group_command,
+                actions=messaging.config.group_commands,
+            )
+        )
+        & no_reply(),
         priority=get_matcher_priority("message_commands", 4),
         block=True,
     )

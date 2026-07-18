@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches
@@ -8,7 +9,20 @@ from ironsbot.core.commands import command_text_matches
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from ironsbot.config.models.activity import ActivityConfig
+    from ironsbot.config.models.message import MessageConfig
+    from ironsbot.shared.messaging.push_subscription_store import (
+        PushUnsubscribeStore,
+    )
+
 ActionT = TypeVar("ActionT", bound="CommandAction")
+
+
+@dataclass(frozen=True, slots=True)
+class MessagingResources:
+    config: MessageConfig
+    activity: ActivityConfig
+    store: PushUnsubscribeStore
 
 
 class CommandAction(Protocol):

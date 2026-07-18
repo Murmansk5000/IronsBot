@@ -28,9 +28,9 @@ from ironsbot.shared.selection_menu import (
     format_selection_menu,
 )
 
-from .config import get_message_config
-
 if TYPE_CHECKING:
+    from ironsbot.config.models.activity import ActivityConfig
+    from ironsbot.config.models.message import MessageConfig
     from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 DEFAULT_TEXT = "默认"
@@ -82,16 +82,11 @@ def lead_hours_text(values: list[int]) -> str:
     return ",".join(str(value) for value in values)
 
 
-def _activity_default_lead_hours_text() -> str:
-    from ironsbot.config.loader import get_app_config
-
-    return lead_hours_text(get_app_config().activity.lead_hours)
-
-
 def _activity_time_option(
     *,
     target_type: PushTargetType,
     target_id: int,
+    config: ActivityConfig,
     store: PushUnsubscribeStore,
 ) -> PushTimeOption | None:
     eligible = _eligible_target_ids_by_feature(target_type, {"seer_activity_push"})
@@ -99,7 +94,7 @@ def _activity_time_option(
         return None
 
     key = "seer_activity_push"
-    default_value = _activity_default_lead_hours_text()
+    default_value = lead_hours_text(config.lead_hours)
     override = store.get_time_preference(
         target_type,
         target_id,
@@ -126,9 +121,9 @@ def _schedule_time_options(
     *,
     target_type: PushTargetType,
     target_id: int,
+    config: MessageConfig,
     store: PushUnsubscribeStore,
 ) -> list[PushTimeOption]:
-    config = get_message_config()
     tasks = (
         config.group_schedules
         if target_type == "group"
@@ -185,12 +180,15 @@ def build_push_time_options(
     target_type: PushTargetType,
     target_id: int,
     *,
+    message_config: MessageConfig,
+    activity_config: ActivityConfig,
     store: PushUnsubscribeStore,
 ) -> list[PushTimeOption]:
     options: list[PushTimeOption] = []
     activity_option = _activity_time_option(
         target_type=target_type,
         target_id=target_id,
+        config=activity_config,
         store=store,
     )
     if activity_option is not None:
@@ -199,6 +197,7 @@ def build_push_time_options(
         _schedule_time_options(
             target_type=target_type,
             target_id=target_id,
+            config=message_config,
             store=store,
         )
     )

@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.runtime import RuntimeConfig
     from ironsbot.config.models.secrets import CredentialsConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
+    from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.runtime.plugins import PluginDefinition
     from ironsbot.services.operations.headless import HeadlessService
 
@@ -67,13 +68,14 @@ async def refresh_push_time_jobs(
     *,
     scheduler: Any,
     activity_service: ActivityService,
+    messaging: MessagingResources,
 ) -> None:
     if option.preference_type == CRON_TIME_PREFERENCE:
         from ironsbot.plugins.messaging.schedules import (
             register_message_schedules,
         )
 
-        await register_message_schedules(scheduler)
+        await register_message_schedules(scheduler, messaging)
         return
 
     await activity_service.schedule_reminders(scheduler)
