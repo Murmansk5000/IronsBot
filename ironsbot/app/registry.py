@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import AsyncHook
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.operations.headless import HeadlessService
 
 
 class PluginRegistryError(ValueError):
@@ -71,10 +72,11 @@ def _install_server_status(
     registry: MatcherRegistry,
     server_status_config: ServerStatusConfig,
     docker_update_config: DockerUpdateConfig,
+    headless: HeadlessService,
 ) -> None:
     from ironsbot.plugins.server_status.handlers import install
 
-    install(registry, server_status_config, docker_update_config)
+    install(registry, server_status_config, docker_update_config, headless)
 
 
 def _install_db_sync(registry: MatcherRegistry) -> None:
@@ -117,16 +119,22 @@ def _install_activity(
     install(registry, service)
 
 
-def _install_team_resource(registry: MatcherRegistry) -> None:
+def _install_team_resource(
+    registry: MatcherRegistry,
+    headless: HeadlessService,
+) -> None:
     from ironsbot.plugins.team_resource_subscription import install
 
-    install(registry)
+    install(registry, headless)
 
 
-def _install_seer_query(registry: MatcherRegistry) -> None:
+def _install_seer_query(
+    registry: MatcherRegistry,
+    headless: HeadlessService,
+) -> None:
     from ironsbot.plugins.seer.query import install
 
-    install(registry)
+    install(registry, headless)
 
 
 def _install_team_audit(registry: MatcherRegistry) -> None:
@@ -219,30 +227,35 @@ async def _start_db_sync() -> None:
     await start_db_sync(_scheduler())
 
 
-async def _login_headless_seer() -> None:
-    from ironsbot.plugins.headless_seer.runtime import login_headless_seer
-
-    await login_headless_seer()
-
-
-async def _shutdown_headless_seer() -> None:
-    from ironsbot.plugins.headless_seer.runtime import shutdown_headless_seer
-
-    await shutdown_headless_seer()
-
-
 async def _start_messaging() -> None:
     from ironsbot.plugins.messaging.runtime import start_messaging
 
     await start_messaging(_scheduler())
 
 
-async def _register_headless_reconnect_jobs() -> None:
-    from ironsbot.plugins.headless_seer_notice.runtime import (
-        register_reconnect_checks,
-    )
+async def _register_headless_reconnect_jobs(
+    headless: HeadlessService,
+) -> None:
+    from ironsbot.config.models.runtime import INVALID_RECONNECT_TIME_ERROR
+    from ironsbot.core.time import daily_time_parts
+    from ironsbot.integrations.scheduler.jobs import JobRegistry
 
-    register_reconnect_checks(_scheduler())
+    registry = JobRegistry(_scheduler(), prefix="headless_reconnect_check:")
+    for scheduled_time in headless.reconnect_times:
+        hour, minute = daily_time_parts(
+            scheduled_time,
+            error_message=INVALID_RECONNECT_TIME_ERROR,
+        )
+        registry.add(
+            headless.reconnect,
+            "cron",
+            job_id=scheduled_time,
+            args=[scheduled_time],
+            hour=hour,
+            minute=minute,
+            second=0,
+            timezone="Asia/Shanghai",
+        )
 
 
 async def _register_restart_jobs(config: RestartConfig) -> None:
@@ -261,12 +274,14 @@ async def _register_activity_jobs(service: ActivityService) -> None:
     service.register_jobs(_scheduler())
 
 
-async def _register_team_resource_jobs() -> None:
+async def _register_team_resource_jobs(
+    headless: HeadlessService,
+) -> None:
     from ironsbot.plugins.team_resource_subscription.runtime import (
         register_team_resource_jobs,
     )
 
-    register_team_resource_jobs(_scheduler())
+    register_team_resource_jobs(_scheduler(), headless)
 
 
 async def _register_local_rank_jobs() -> None:
@@ -281,12 +296,11 @@ async def _register_rank_page_jobs() -> None:
     register_rank_page_refresh_jobs(_scheduler())
 
 
-async def _check_headless_seer(bot: Bot) -> None:
-    from ironsbot.plugins.headless_seer_notice.runtime import (
-        check_headless_on_connect,
-    )
-
-    await check_headless_on_connect(bot)
+async def _check_headless_seer(
+    _bot: Bot,
+    headless: HeadlessService,
+) -> None:
+    await headless.check_on_connect()
 
 
 async def _check_bilibili(bot: Bot) -> None:
@@ -347,6 +361,7 @@ def build_plugin_registry(
     *,
     config: AppConfig,
     activity_service: ActivityService,
+    headless: HeadlessService,
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
     definitions: tuple[PluginDefinition, ...] = ()
@@ -433,6 +448,7 @@ def build_plugin_registry(
                 _install_server_status,
                 server_status_config=runtime_config.server_status,
                 docker_update_config=runtime_config.docker_update,
+                headless=headless,
             ),
             hooks=PluginHooks(
                 startup=(("docker_update", start_docker_update),),
@@ -460,10 +476,10 @@ def build_plugin_registry(
             install=_noop_install,
             hooks=PluginHooks(
                 startup=(
-                    ("headless_seer", _login_headless_seer),
+                    ("headless_seer", headless.start),
                 ),
                 shutdown=(
-                    ("headless_seer", _shutdown_headless_seer),
+                    ("headless_seer", headless.shutdown),
                 ),
             ),
         ),
@@ -515,10 +531,16 @@ def build_plugin_registry(
             install=_noop_install,
             hooks=PluginHooks(
                 startup=(
-                    ("headless_reconnect_jobs", _register_headless_reconnect_jobs),
+                    (
+                        "headless_reconnect_jobs",
+                        partial(_register_headless_reconnect_jobs, headless),
+                    ),
                 ),
                 first_bot_connect=(
-                    ("headless_seer_check", _check_headless_seer),
+                    (
+                        "headless_seer_check",
+                        partial(_check_headless_seer, headless=headless),
+                    ),
                 ),
             ),
         ),
@@ -600,9 +622,14 @@ def build_plugin_registry(
                 group="seer",
                 order=50,
             ),
-            install=_install_team_resource,
+            install=partial(_install_team_resource, headless=headless),
             hooks=PluginHooks(
-                startup=(("team_resource_jobs", _register_team_resource_jobs),),
+                startup=(
+                    (
+                        "team_resource_jobs",
+                        partial(_register_team_resource_jobs, headless),
+                    ),
+                ),
             ),
         ),
         PluginDefinition(
@@ -648,7 +675,7 @@ def build_plugin_registry(
                 group="seer",
                 order=10,
             ),
-            install=_install_seer_query,
+            install=partial(_install_seer_query, headless=headless),
             hooks=PluginHooks(
                 startup=(
                     ("local_rank_jobs", _register_local_rank_jobs),

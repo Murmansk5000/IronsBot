@@ -2,7 +2,6 @@
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Final
 
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -100,7 +99,3 @@ def get_game_client() -> SeerGame:
     if getter is None:
         raise GameClientGetterNotRegisteredError
     return getter()
-
-
-client_manager: Final[ClientManager] = ClientManager()
-register_game_client_getter(client_manager.get_client)

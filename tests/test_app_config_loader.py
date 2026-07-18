@@ -48,7 +48,6 @@ DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
-DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
@@ -704,8 +703,6 @@ def test_small_plugin_config_accessors_read_app_config(
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
     monkeypatch.setenv("AI_KEY", "sk-test")
     monkeypatch.setenv("SENDPIC_CNB_TOKEN", "cnb-token")
-    monkeypatch.setenv("HEADLESS_SEER_USER_ID", str(HEADLESS_USER_ID))
-    monkeypatch.setenv("HEADLESS_SEER_PASSWORD", "md5")
 
     ai_config = _load_module_from_path(
         "ai_config_for_app_config_test",
@@ -722,14 +719,6 @@ def test_small_plugin_config_accessors_read_app_config(
     sendpic_config = _load_module_from_path(
         "sendpic_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
-    )
-    headless_config = _load_module_from_path(
-        "headless_seer_config_for_app_config_test",
-        ROOT / "ironsbot" / "integrations" / "headless_seer" / "config.py",
-    )
-    headless_notice_config = _load_module_from_path(
-        "headless_seer_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "headless_seer_notice" / "config.py",
     )
     meeting_config = _load_module_from_path(
         "meeting_config_for_app_config_test",
@@ -759,15 +748,6 @@ def test_small_plugin_config_accessors_read_app_config(
         assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
         assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"
         assert "seerapi" in app_config.runtime.data_sync.sources
-        assert (
-            headless_config.get_headless_config().heartbeat_interval
-            == DEFAULT_HEADLESS_HEARTBEAT_INTERVAL
-        )
-        assert (
-            headless_config.get_headless_credentials().headless_seer_user_id
-            == HEADLESS_USER_ID
-        )
-        assert headless_notice_config.get_headless_notice_config().login_notice
         assert (
             message_config.get_message_config()
             .outbound_rate_limit.windows[0]

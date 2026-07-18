@@ -41,8 +41,11 @@ if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
 
     from ironsbot.config.models.activity import ActivityConfig
+    from ironsbot.config.models.runtime import RuntimeConfig
+    from ironsbot.config.models.secrets import CredentialsConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.services.operations.headless import HeadlessService
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
@@ -158,6 +161,26 @@ def build_activity_component(
     return ActivityComponent(service=service, http_client=http_client)
 
 
+def build_headless_service(
+    config: RuntimeConfig,
+    credentials: CredentialsConfig,
+) -> HeadlessService:
+    from ironsbot.integrations.headless_seer.client import (
+        ClientManager,
+        register_game_client_getter,
+    )
+    from ironsbot.services.operations.headless import HeadlessService
+
+    client = ClientManager()
+    register_game_client_getter(client.get_client)
+    return HeadlessService(
+        client,
+        credentials,
+        config.headless,
+        config.headless_notice,
+    )
+
+
 def build_application_lifecycle(
     driver: Driver,
     definitions: tuple[PluginDefinition, ...],
@@ -196,5 +219,6 @@ __all__ = [
     "ActivityComponent",
     "build_activity_component",
     "build_application_lifecycle",
+    "build_headless_service",
     "refresh_push_time_jobs",
 ]

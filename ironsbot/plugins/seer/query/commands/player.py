@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+
 import asyncio
 from dataclasses import dataclass
 from typing import Any
@@ -19,10 +20,7 @@ from ironsbot.integrations.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.services.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
+from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.packets import ensure_extended_packets
@@ -161,13 +159,14 @@ async def handle_player(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    headless: HeadlessService,
 ) -> None:
     ensure_extended_packets()
     player_id: int = state[PLAYER_ID_KEY]
     player_config = get_player_query_config()
     try:
         pending, game_user_id = await _fetch_pending_player_query(player_id)
-        await mark_headless_available(
+        await headless.mark_available(
             source="米米号查询",
             user_id=game_user_id,
         )
@@ -175,7 +174,7 @@ async def handle_player(
         raise
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as e:
         if isinstance(e, (NotLoggedInError, DisconnectedError)):
-            await mark_headless_unavailable(str(e), source="米米号查询")
+            await headless.mark_unavailable(str(e), source="米米号查询")
         await finish_event_reply(
             matcher,
             event,
@@ -356,6 +355,7 @@ async def handle_player_binding_command(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    headless: HeadlessService,
 ) -> None:
     player_id = int(state[PLAYER_BINDING_COMMAND_ID_KEY])
     if not 1 <= player_id <= _MAX_PLAYER_ID:
@@ -368,7 +368,7 @@ async def handle_player_binding_command(
     ensure_extended_packets()
     try:
         pending, game_user_id = await _fetch_pending_player_query(player_id)
-        await mark_headless_available(
+        await headless.mark_available(
             source="米米号绑定",
             user_id=game_user_id,
         )
@@ -384,7 +384,7 @@ async def handle_player_binding_command(
         return
     except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
         if isinstance(error, (NotLoggedInError, DisconnectedError)):
-            await mark_headless_unavailable(str(error), source="米米号绑定")
+            await headless.mark_unavailable(str(error), source="米米号绑定")
         await finish_event_reply(
             matcher,
             event,
@@ -433,6 +433,20 @@ async def handle_player_unbind(matcher: Matcher, event: MessageEvent) -> None:
 
 
 def install(group: SeerMatcherGroup) -> None:
+    async def handle_binding(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        await handle_player_binding_command(matcher, event, state, group.headless)
+
+    async def handle_query(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        await handle_player(matcher, event, state, group.headless)
+
     binding_matcher = group.on_message(
         policy=CommandPolicy.command("seer_player_binding"),
         rule=seer_feature_rule("seer_player")
@@ -441,7 +455,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=get_matcher_priority("seer_player", 1),
         block=True,
     )
-    binding_matcher.append_handler(handle_player_binding_command)
+    binding_matcher.append_handler(handle_binding)
 
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
@@ -471,7 +485,7 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     query_matcher.append_handler(validate_player_id)
-    query_matcher.append_handler(handle_player)
+    query_matcher.append_handler(handle_query)
 
 
 __all__ = ["install"]

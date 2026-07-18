@@ -17,10 +17,6 @@ from ironsbot.integrations.headless_seer.exception import (
     NotLoggedInError,
 )
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.services.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
 from ironsbot.services.team_resource_adapter import (
     TeamResourceResult,
     fetch_team_resource_result,
@@ -50,6 +46,7 @@ from .config import (
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
+    from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.team_resource_subscriptions import (
         TeamResourceSubscription,
     )
@@ -96,22 +93,34 @@ def _format_resource_notice(
     )
 
 
-async def _fetch_team_result(team_id: int, *, source: str) -> TeamResourceResult:
+async def _fetch_team_result(
+    team_id: int,
+    *,
+    source: str,
+    headless: HeadlessService,
+) -> TeamResourceResult:
     result = await fetch_team_resource_result(team_id)
-    await mark_headless_available(source=source)
+    await headless.mark_available(source=source)
     return result
 
 
-async def _fetch_team_result_for_manual(team_id: int) -> TeamResourceResult | Message:
+async def _fetch_team_result_for_manual(
+    team_id: int,
+    headless: HeadlessService,
+) -> TeamResourceResult | Message:
     try:
         return await asyncio.wait_for(
-            _fetch_team_result(team_id, source="战队资源订阅"),
+            _fetch_team_result(
+                team_id,
+                source="战队资源订阅",
+                headless=headless,
+            ),
             timeout=get_team_resource_config().query_timeout_seconds,
         )
     except FinishedException:
         raise
     except (NotLoggedInError, DisconnectedError) as e:
-        await mark_headless_unavailable(str(e), source="战队资源订阅")
+        await headless.mark_unavailable(str(e), source="战队资源订阅")
         return Message(
             f"战队 {team_id} 暂时查不了："
             "需要连接赛尔号游戏服务器，当前可能在维护、未开放或无头客户端未登录。"
@@ -247,16 +256,23 @@ async def _is_team_resource_prompt_choice(event: MessageEvent) -> bool:
     return get_team_resource_store().get_pending_prompt(event.group_id) is not None
 
 
-async def _fetch_team_result_for_scan(team_id: int) -> TeamResourceResult | None:
+async def _fetch_team_result_for_scan(
+    team_id: int,
+    headless: HeadlessService,
+) -> TeamResourceResult | None:
     try:
         return await asyncio.wait_for(
-            _fetch_team_result(team_id, source="战队资源订阅"),
+            _fetch_team_result(
+                team_id,
+                source="战队资源订阅",
+                headless=headless,
+            ),
             timeout=get_team_resource_config().query_timeout_seconds,
         )
     except FinishedException:
         raise
     except (NotLoggedInError, DisconnectedError) as e:
-        await mark_headless_unavailable(str(e), source="战队资源订阅")
+        await headless.mark_unavailable(str(e), source="战队资源订阅")
         logger.warning(f"team resource scan unavailable, team id {team_id}: {e}")
     except TimeoutError:
         logger.warning(f"team resource scan timeout, team id {team_id}")
@@ -265,8 +281,11 @@ async def _fetch_team_result_for_scan(team_id: int) -> TeamResourceResult | None
     return None
 
 
-async def _scan_subscription(subscription: TeamResourceSubscription) -> None:
-    result = await _fetch_team_result_for_scan(subscription.team_id)
+async def _scan_subscription(
+    subscription: TeamResourceSubscription,
+    headless: HeadlessService,
+) -> None:
+    result = await _fetch_team_result_for_scan(subscription.team_id, headless)
     if result is None:
         return
 
@@ -286,19 +305,20 @@ async def _scan_subscription(subscription: TeamResourceSubscription) -> None:
     )
 
 
-async def scan_team_resource_subscriptions() -> None:
+async def scan_team_resource_subscriptions(headless: HeadlessService) -> None:
     config = get_team_resource_config()
     if not config.enabled:
         return
 
     for subscription in get_team_resource_subscriptions():
         if group_has_feature(subscription.group_id, TEAM_RESOURCE_FEATURE):
-            await _scan_subscription(subscription)
+            await _scan_subscription(subscription, headless)
 
 
 async def parse_team_resource_manage(
     matcher: Matcher,
     event: GroupMessageEvent,
+    headless: HeadlessService,
 ) -> None:
     command = _parse_team_resource_manage_command(event.get_plaintext())
     if command is None:
@@ -352,7 +372,7 @@ async def parse_team_resource_manage(
         )
         return
 
-    result = await _fetch_team_result_for_manual(command.team_id)
+    result = await _fetch_team_result_for_manual(command.team_id, headless)
     if not isinstance(result, TeamResourceResult):
         await finish_event_reply(matcher, event, result)
         return
@@ -431,6 +451,7 @@ async def handle_team_resource_prompt_choice(
 async def handle_team_resource(
     matcher: Matcher,
     event: GroupMessageEvent,
+    headless: HeadlessService,
 ) -> None:
     subscriptions = subscriptions_for_group(event.group_id)
     if not subscriptions:
@@ -443,7 +464,10 @@ async def handle_team_resource(
 
     replies: list[Message] = []
     for subscription in subscriptions:
-        result = await _fetch_team_result_for_manual(subscription.team_id)
+        result = await _fetch_team_result_for_manual(
+            subscription.team_id,
+            headless,
+        )
         replies.append(
             Message(result.message)
             if isinstance(result, TeamResourceResult)
@@ -454,14 +478,29 @@ async def handle_team_resource(
         await finish_message_sequence(matcher, replies, event=event)
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(
+    registry: MatcherRegistry,
+    headless: HeadlessService,
+) -> None:
+    async def handle_manage(
+        matcher: Matcher,
+        event: GroupMessageEvent,
+    ) -> None:
+        await parse_team_resource_manage(matcher, event, headless)
+
+    async def handle_query(
+        matcher: Matcher,
+        event: GroupMessageEvent,
+    ) -> None:
+        await handle_team_resource(matcher, event, headless)
+
     manage_matcher = registry.on_message(
         policy=CommandPolicy.command("team_resource_manage"),
         rule=Rule(_is_team_resource_manage) & no_reply(allow_at=True),
         priority=get_matcher_priority("team_resource_subscription", 1),
         block=True,
     )
-    manage_matcher.append_handler(parse_team_resource_manage)
+    manage_matcher.append_handler(handle_manage)
 
     prompt_matcher = registry.on_message(
         policy=CommandPolicy.exempt(
@@ -479,7 +518,7 @@ def install(registry: MatcherRegistry) -> None:
         priority=get_matcher_priority("team_resource_subscription", 2),
         block=True,
     )
-    query_matcher.append_handler(handle_team_resource)
+    query_matcher.append_handler(handle_query)
 
 
 def _format_group_subscriptions(group_id: int) -> str:

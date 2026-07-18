@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+
 import asyncio
 import re
 from typing import Any, cast
@@ -18,10 +19,7 @@ from ironsbot.integrations.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.services.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
+from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.errors import format_socket_recv_error
 from ironsbot.services.seer.team import (
     format_team_generic_error_message,
@@ -134,7 +132,10 @@ def _team_subscription_prompt(
     )
 
 
-async def _query_team_info(team_id: int) -> tuple[str, object]:
+async def _query_team_info(
+    team_id: int,
+    headless: HeadlessService,
+) -> tuple[str, object]:
     game = get_game_client()
     team_config = get_team_query_config()
     with headless_operation(
@@ -146,7 +147,7 @@ async def _query_team_info(team_id: int) -> tuple[str, object]:
             game.get_team_info(team_id),
             timeout=team_config.timeout_seconds,
         )
-    await mark_headless_available(source="战队查询", user_id=int(game.user_id))
+    await headless.mark_available(source="战队查询", user_id=int(game.user_id))
     return (
         format_team_info(
             team_info,
@@ -159,13 +160,14 @@ async def _query_team_info(team_id: int) -> tuple[str, object]:
 async def _collect_team_query_messages(
     team_ids: list[int],
     event: MessageEvent,
+    headless: HeadlessService,
 ) -> tuple[list[str], str | None]:
     messages: list[str] = []
     prompt: str | None = None
 
     for team_id in team_ids:
         try:
-            team_message, team_info = await _query_team_info(team_id)
+            team_message, team_info = await _query_team_info(team_id, headless)
         except (NotLoggedInError, DisconnectedError):
             raise
         except TimeoutError:
@@ -194,6 +196,7 @@ async def handle_team(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    headless: HeadlessService,
 ) -> None:
     team_ids: list[int] = state[TEAM_IDS_KEY]
 
@@ -201,11 +204,12 @@ async def handle_team(
         messages, prompt = await _collect_team_query_messages(
             team_ids,
             event,
+            headless,
         )
     except FinishedException:
         raise
     except (NotLoggedInError, DisconnectedError) as e:
-        await mark_headless_unavailable(str(e), source="战队查询")
+        await headless.mark_unavailable(str(e), source="战队查询")
         await _finish_team_query_failure(
             matcher,
             event,
@@ -225,6 +229,13 @@ async def handle_team(
 
 
 def install(group: SeerMatcherGroup) -> None:
+    async def handle_query(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        await handle_team(matcher, event, state, group.headless)
+
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_team"),
         rule=seer_feature_rule("seer_team")
@@ -239,7 +250,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=seer_feature_priority("seer_team"),
     )
     matcher.append_handler(validate_team_id)
-    matcher.append_handler(handle_team)
+    matcher.append_handler(handle_query)
 
 
 __all__ = ["install"]

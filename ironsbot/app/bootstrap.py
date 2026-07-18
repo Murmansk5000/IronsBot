@@ -12,10 +12,11 @@ from ironsbot.app.composition import (
     ActivityComponent,
     build_activity_component,
     build_application_lifecycle,
+    build_headless_service,
 )
 from ironsbot.app.file_logging import configure_file_logging
 from ironsbot.app.registry import build_plugin_registry
-from ironsbot.config.loader import get_app_config
+from ironsbot.config.loader import get_app_config, load_credentials_config
 from ironsbot.runtime.matchers import MatcherRegistry
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 
     from ironsbot.app.lifecycle import ApplicationLifecycle
     from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.services.operations.headless import HeadlessService
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +35,7 @@ class BootstrapState:
     matchers: MatcherRegistry
     lifecycle: ApplicationLifecycle
     activity: ActivityComponent
+    headless: HeadlessService
 
 
 def configure_third_party_logging() -> None:
@@ -54,9 +57,11 @@ def bootstrap() -> BootstrapState:
         config.activity,
         push_subscription_path=config.message.push_unsubscribe.data_path,
     )
+    headless = build_headless_service(config.runtime, load_credentials_config())
     plugins = build_plugin_registry(
         config=config,
         activity_service=activity.service,
+        headless=headless,
         shutdown_activity=activity.close,
     )
     matchers = MatcherRegistry()
@@ -73,6 +78,7 @@ def bootstrap() -> BootstrapState:
         matchers=matchers,
         lifecycle=lifecycle,
         activity=activity,
+        headless=headless,
     )
 
 

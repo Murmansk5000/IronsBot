@@ -14,7 +14,6 @@ from ironsbot.integrations.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.services.headless_seer_notice.state import mark_headless_available
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.player_binding import get_player_binding
 from ironsbot.services.seer.player_query import (
@@ -39,6 +38,8 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
+    from ironsbot.services.operations.headless import HeadlessService
+
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
 
 
@@ -54,6 +55,7 @@ async def handle_player_shortcut(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    headless: HeadlessService,
 ) -> None:
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
     player_id = command.player_id
@@ -89,7 +91,7 @@ async def handle_player_shortcut(
                 ),
                 timeout=get_player_query_config().detail_timeout_seconds,
             )
-        await mark_headless_available(
+        await headless.mark_available(
             source="米米号快捷详情查询",
             user_id=int(game.user_id),
         )
@@ -113,6 +115,13 @@ def _shortcut_command_id(
 
 
 def install(group: SeerMatcherGroup) -> None:
+    async def handle_shortcut(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        await handle_player_shortcut(matcher, event, state, group.headless)
+
     matcher = group.on_message(
         policy=CommandPolicy.command(_shortcut_command_id),
         rule=seer_feature_rule("seer_player")
@@ -121,7 +130,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=get_matcher_priority("seer_player", 1),
         block=True,
     )
-    matcher.append_handler(handle_player_shortcut)
+    matcher.append_handler(handle_shortcut)
 
 
 __all__ = ["install"]

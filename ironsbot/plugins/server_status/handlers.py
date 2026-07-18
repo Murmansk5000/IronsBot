@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         DockerUpdateConfig,
         ServerStatusConfig,
     )
+    from ironsbot.services.operations.headless import HeadlessService
 
 
 async def handle_disabled_bare_admin_status(
@@ -53,6 +54,7 @@ def install(
     registry: MatcherRegistry,
     server_status_config: ServerStatusConfig,
     docker_update_config: DockerUpdateConfig,
+    headless: HeadlessService,
 ) -> None:
     broadcast = OpenBroadcast(server_status_config)
 
@@ -64,6 +66,7 @@ def install(
             matcher,
             event,
             broadcast,
+            headless,
         )
 
     async def handle_admin_server_status(
@@ -74,6 +77,7 @@ def install(
             matcher,
             event,
             broadcast,
+            headless,
         )
 
     async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
