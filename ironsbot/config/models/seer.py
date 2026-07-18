@@ -408,7 +408,7 @@ class TeamResourceConfig(BaseModel):
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cache_dir: Path | None = Path("render_cache")
+    cache_dir: Path = Path("render_cache")
     cache_max_size_mb: int = Field(default=200, gt=0)
 
 

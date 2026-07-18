@@ -15,7 +15,7 @@ from ironsbot.integrations.seer_data.image import (
     PetBodyImageGetter,
     PetHeadImageGetter,
 )
-from ironsbot.services.seer.render_cache import render_cache
+from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
@@ -180,9 +180,9 @@ def _gender_icon_data_uri(gender_id: int) -> str:
     return to_data_uri(icon_path.read_bytes())
 
 
-async def render_custom_pet_info(pet: PetORM) -> bytes:
+async def render_custom_pet_info(cache: RenderCache, pet: PetORM) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
-    cached = render_cache.get("custom_pet_info", str(pet.id))
+    cached = cache.get("custom_pet_info", str(pet.id))
     if cached is not None:
         return cached
 
@@ -316,5 +316,5 @@ async def render_custom_pet_info(pet: PetORM) -> bytes:
         max_width=1200,
         allow_refit=False,
     )
-    render_cache.put("custom_pet_info", str(pet.id), result)
+    cache.put("custom_pet_info", str(pet.id), result)
     return result

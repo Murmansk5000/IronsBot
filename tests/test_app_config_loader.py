@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from ironsbot.config.loader import (
     CONFIG_EXAMPLE_PATH_ENV,
     ENV_EXAMPLE_PATH_ENV,
-    clear_app_config_cache,
     load_app_config,
     load_credentials_config,
     load_deployment_config,
@@ -714,20 +713,8 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.message.meeting.commands == ["开播", "会议"]
     assert "aliases" in app_config.runtime.data_sync.sources
     assert app_config.runtime.priority.enabled
-
-
-def test_seer_render_cache_reads_app_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    clear_app_config_cache()
-    monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
-
-    from ironsbot.services.seer import render_cache as seer_render_cache
-
-    try:
-        assert (
-            seer_render_cache.get_render_config().cache_max_size_mb
-            == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
-        )
-    finally:
-        clear_app_config_cache()
+    assert app_config.seer.render.cache_dir == Path("render_cache")
+    assert (
+        app_config.seer.render.cache_max_size_mb
+        == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
+    )

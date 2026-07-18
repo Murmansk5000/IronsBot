@@ -17,6 +17,7 @@ from ironsbot.runtime.plugins import (
 from ironsbot.services.help_hint import HelpHintService
 from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.startup_notice import StartupNoticeService
 
@@ -525,6 +526,10 @@ def build_plugin_registry(  # noqa: PLR0913
                 resources=SeerQueryResources(
                     config.seer,
                     RankDisplayService(config.seer.rank, config.feature.group_aliases),
+                    RenderCache(
+                        config.seer.render.cache_dir,
+                        config.seer.render.cache_max_size_mb * 1024 * 1024,
+                    ),
                     headless,
                     features,
                     priority_service,

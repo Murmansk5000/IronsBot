@@ -16,8 +16,8 @@ def _test_cache(
     version: str = "2026-06-12T00:00:00",
 ) -> RenderCache:
     return RenderCache(
-        cache_dir_getter=lambda: cache_dir,
-        max_size_bytes_getter=lambda: max_size_bytes,
+        cache_dir,
+        max_size_bytes,
         db_version_getter=lambda: version,
     )
 

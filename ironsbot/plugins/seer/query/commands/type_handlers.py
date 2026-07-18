@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import re
+from functools import partial
 
 from nonebot.adapters import Event
 from nonebot.exception import FinishedException
@@ -11,9 +12,11 @@ from seerapi_models.element_type import TypeCombinationORM
 from sqlmodel import select
 
 from ironsbot.integrations.seer_data.getters import (
+    GetTypeCombinationData,
     TypeCombinationDataGetter,
 )
 from ironsbot.integrations.seer_data.sessions import SQLModelSession
+from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.rendering.type_matchup import render_type_matchup
 from ironsbot.services.seer.type_calc import (
     calc_attack_table,
@@ -51,12 +54,14 @@ _CUSTOM_SEPARATOR_TRANSLATION = str.maketrans(
 _CUSTOM_TYPE_SPLIT_PATTERN = re.compile(r"[+,/|\s]+")
 
 async def _build_type_message(
+    cache: RenderCache,
     type_combination: TypeCombinationORM,
     *,
     session: SQLModelSession | None = None,
     cache_key: str | None = None,
 ) -> MessageFactory:
     pic_bytes = await render_type_matchup(
+        cache,
         type_combination,
         session=session,
         cache_key=cache_key,
@@ -138,6 +143,7 @@ def _parse_custom_type_combination(
 
 
 async def _type_prompt_resolver(
+    cache: RenderCache,
     item: PromptItem[int],
     matcher: Matcher,
     session: SQLModelSession,
@@ -151,16 +157,20 @@ async def _type_prompt_resolver(
     if _contains_normal_type(type_combination):
         await matcher.finish(_NORMAL_TYPE_MESSAGE)
 
-    msg = await _build_type_message(type_combination)
+    msg = await _build_type_message(cache, type_combination)
     await msg.send()
 
 
-async def handle_type(
+async def handle_type(  # noqa: PLR0913
+    cache: RenderCache,
     matcher: Matcher,
     state: T_State,
     event: Event,
     session: SeerAPISession,
-    type_combinations: tuple[TypeCombinationORM, ...],
+    type_combinations: tuple[
+        TypeCombinationORM,
+        ...,
+    ] = GetTypeCombinationData(),
 ) -> None:
     if not type_combinations:
         parsed = _parse_custom_type_combination(session, parse_string_arg(state))
@@ -172,6 +182,7 @@ async def handle_type(
             await matcher.finish(_NORMAL_TYPE_MESSAGE)
 
         msg = await _build_type_message(
+            cache,
             custom_combo,
             session=session,
             cache_key=cache_key,
@@ -182,7 +193,7 @@ async def handle_type(
         if _contains_normal_type(type_combinations[0]):
             await matcher.finish(_NORMAL_TYPE_MESSAGE)
 
-        msg = await _build_type_message(type_combinations[0])
+        msg = await _build_type_message(cache, type_combinations[0])
         await msg.finish()
     elif len(type_combinations) > PROMPT_MAX_ITEMS:
         await matcher.finish(f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！")
@@ -203,5 +214,5 @@ async def handle_type(
         event,
         state,
         prompt,
-        _type_prompt_resolver,
+        partial(_type_prompt_resolver, cache),
     )

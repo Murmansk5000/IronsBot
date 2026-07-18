@@ -7,7 +7,7 @@ from seerapi_models.element_type import TypeCombinationORM
 from sqlalchemy.orm import object_session
 
 from ironsbot.integrations.seer_data.image import ElementTypeImageGetter
-from ironsbot.services.seer.render_cache import render_cache
+from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.render_paths import TYPE_MATCHUP_TEMPLATE_PATH
 from ironsbot.services.seer.type_calc import calc_attack_table, calc_defense_table
 from ironsbot.utils.image import to_data_uri
@@ -59,7 +59,8 @@ async def _resolve_custom_target_icons(
     return to_data_uri(primary_bytes), to_data_uri(secondary_bytes)
 
 
-async def render_type_matchup(
+async def render_type_matchup(  # noqa: PLR0913
+    cache: RenderCache,
     target: TypeCombinationORM,
     *,
     session: "Session | None" = None,
@@ -72,7 +73,7 @@ async def render_type_matchup(
     包含攻击效果和被攻击效果两个区域，支持自定义属性组合渲染。
     """
     resolved_cache_key = cache_key if cache_key is not None else str(target.id)
-    cached = render_cache.get("type_matchup", resolved_cache_key)
+    cached = cache.get("type_matchup", resolved_cache_key)
     if cached is not None:
         return cached
 
@@ -146,5 +147,5 @@ async def render_type_matchup(
         max_width=MAX_WIDTH,
         allow_refit=False,
     )
-    render_cache.put("type_matchup", resolved_cache_key, result)
+    cache.put("type_matchup", resolved_cache_key, result)
     return result
