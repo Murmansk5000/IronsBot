@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from nonebot_plugin_htmlkit import template_to_pic
 
+from ironsbot.core import time
 from ironsbot.integrations.seer_data.image import (
     ElementTypeImageGetter,
     PetHeadImageGetter,
@@ -12,7 +13,6 @@ from ironsbot.services.seer.render_paths import (
     PEAK_POOL_VOTE_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.utils import time
 from ironsbot.utils.image import to_data_uri
 
 if TYPE_CHECKING:

@@ -15,6 +15,7 @@ from seerapi_models import (
 )
 from sqlmodel import select
 
+from ironsbot.core import time
 from ironsbot.integrations.headless_seer.game import (
     PEAK_TYPE_NAME_MAP,
     PeakItemData,
@@ -33,7 +34,6 @@ from ironsbot.integrations.seer_data.sessions import AllSessions
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
-from ironsbot.utils import time
 
 from ..depends import PetDataGetter, SeerAPISession
 

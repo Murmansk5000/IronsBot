@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timedelta, timezone
 
 from ironsbot.core.commands import csv_items, json_array
 
+TZ_CN = timezone(timedelta(hours=8))
 TIME_PART_COUNT = 2
 MIN_HOUR = 0
 MAX_HOUR = 23
@@ -13,6 +15,12 @@ MAX_MINUTE = 59
 FULLWIDTH_COMMA = "，"
 IDEOGRAPHIC_COMMA = "、"
 FULLWIDTH_SEMICOLON = "；"
+
+
+def now(tz: timezone | None = None) -> datetime:
+    if tz is None:
+        return datetime.now(timezone.utc).astimezone()
+    return datetime.now(tz=tz)
 
 
 def normalize_daily_time(value: object, *, error_message: str) -> str:
