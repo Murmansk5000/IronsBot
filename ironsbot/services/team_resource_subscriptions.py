@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import open_sqlite_schema
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,6 +54,7 @@ SCHEMA = (
     )
     """,
 )
+MIGRATIONS = (SqliteMigration(1, SCHEMA),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +253,10 @@ class TeamResourceSubscriptionStore:
             return cursor.rowcount > 0
 
     def _connect(self):
-        return open_sqlite_schema(self.path, SCHEMA)
+        return SqliteDatabase(
+            self.path,
+            migrations=MIGRATIONS,
+        ).connect()
 
 
 def _row_to_subscription(

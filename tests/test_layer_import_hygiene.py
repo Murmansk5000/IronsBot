@@ -18,7 +18,7 @@ TARGET_LAYER_IMPORTS = (
 )
 PLUGIN_OWNER_PARTS = 3
 SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
-SQLITE_HELPER_PATH = PACKAGE_ROOT / "shared" / "sqlite.py"
+SQLITE_DATABASE_PATH = PACKAGE_ROOT / "integrations" / "storage" / "sqlite.py"
 RUNTIME_JOBS_PATH = PACKAGE_ROOT / "shared" / "runtime" / "jobs.py"
 DISALLOWED_MODULE_NAME_PREFIXES = ("upstream_",)
 DRIVER_LIFECYCLE_METHODS = {
@@ -273,7 +273,7 @@ def _call_name(node: ast.Call) -> str | None:
 def _sqlite_connect_offenders() -> list[str]:
     offenders: list[str] = []
     for path in _python_files(PACKAGE_ROOT):
-        if path == SQLITE_HELPER_PATH:
+        if path == SQLITE_DATABASE_PATH:
             continue
         tree = _parse_python(path)
         for node in ast.walk(tree):
@@ -290,7 +290,7 @@ def _sqlite_connect_offenders() -> list[str]:
     return offenders
 
 
-def test_sqlite_connections_go_through_shared_helper() -> None:
+def test_sqlite_connections_go_through_storage_database() -> None:
     assert _sqlite_connect_offenders() == []
 
 

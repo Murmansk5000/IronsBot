@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import create_engine
 
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.integrations.storage.sqlite import SqliteDatabase
 
 
 class DatabaseManager:
@@ -46,7 +46,7 @@ class DatabaseManager:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
 
-        with open_sqlite(file_path, pragmas=False) as source:
+        with SqliteDatabase(file_path, pragmas=False).connect() as source:
             raw_conn = new_engine.raw_connection()
             try:
                 source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]

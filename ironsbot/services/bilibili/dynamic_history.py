@@ -1,8 +1,8 @@
 import json
 import sqlite3
 import time
-from collections.abc import Iterable, Iterator
-from contextlib import AbstractContextManager, contextmanager
+from collections.abc import Iterable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,6 +10,11 @@ from typing import Any
 from nonebot.log import logger
 
 from ironsbot.config.loader import get_app_config
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    ensure_sqlite_columns,
+)
 from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,
@@ -17,7 +22,6 @@ from ironsbot.services.bilibili.push import (
 from ironsbot.services.bilibili.storage import (
     dynamic_history_db_file,
 )
-from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,17 +72,14 @@ def _connect() -> AbstractContextManager[sqlite3.Connection]:
     return _connect_dynamic_history(db_file)
 
 
-@contextmanager
 def _connect_dynamic_history(
     db_file: str | Path,
-) -> Iterator[sqlite3.Connection]:
-    with open_sqlite_schema(
+) -> AbstractContextManager[sqlite3.Connection]:
+    return SqliteDatabase(
         db_file,
-        BILI_DYNAMIC_HISTORY_SCHEMA,
+        migrations=BILI_DYNAMIC_HISTORY_MIGRATIONS,
         row_factory=sqlite3.Row,
-    ) as conn:
-        _ensure_dynamic_columns(conn)
-        yield conn
+    ).connect()
 
 
 def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
@@ -90,6 +91,15 @@ def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
             "suppression_reason": "suppression_reason TEXT NOT NULL DEFAULT ''",
         },
     )
+
+
+BILI_DYNAMIC_HISTORY_MIGRATIONS = (
+    SqliteMigration(
+        1,
+        BILI_DYNAMIC_HISTORY_SCHEMA,
+        _ensure_dynamic_columns,
+    ),
+)
 
 
 def get_last_saved_times() -> dict[int, int]:

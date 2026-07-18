@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.shared.sqlite import open_sqlite_schema, resolve_sqlite_path
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    resolve_sqlite_path,
+)
 
 from .planning import reminder_key
 
@@ -28,6 +32,9 @@ CREATE TABLE IF NOT EXISTS sent_activity_reminders (
     PRIMARY KEY (activity_id, end_time, lead_hours)
 )
 """
+SENT_ACTIVITY_REMINDERS_MIGRATIONS = (
+    SqliteMigration(1, (SENT_ACTIVITY_REMINDERS_SCHEMA,)),
+)
 
 
 def _cache_path(cache_path: Path | None = None) -> Path:
@@ -38,7 +45,10 @@ def _cache_path(cache_path: Path | None = None) -> Path:
 def _connect_cache(
     cache_path: Path | None = None,
 ) -> AbstractContextManager[sqlite3.Connection]:
-    return open_sqlite_schema(_cache_path(cache_path), SENT_ACTIVITY_REMINDERS_SCHEMA)
+    return SqliteDatabase(
+        _cache_path(cache_path),
+        migrations=SENT_ACTIVITY_REMINDERS_MIGRATIONS,
+    ).connect()
 
 
 def filter_unsent(
