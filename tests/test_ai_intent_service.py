@@ -1,29 +1,10 @@
-import os
-from pathlib import Path
-
-import nonebot
 import pytest
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig, AiIntentAction
 from ironsbot.services.ai import intent, intent_actions
+from ironsbot.services.ai.resources import AiResources
 from tests.helpers.onebot_events import group_message_event
-
-ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
-
-try:
-    nonebot.get_driver()
-except ValueError:
-    nonebot.init()
-
-try:
-    nonebot.load_plugin("ironsbot.plugins.ai_intent")
-except RuntimeError as e:
-    if "Plugin already exists" not in str(e):
-        raise
-
-from ironsbot.plugins import ai_intent as ai_intent_plugin
 
 
 def test_intent_reply_yes_parser_accepts_short_yes_forms() -> None:
@@ -167,8 +148,14 @@ def _group_event(text: str):
     )
 
 
-def _ai_intent_enabled_config() -> AiConfig:
-    return AiConfig(intent_actions_enabled=True)
+def _resources(action: AiIntentAction) -> AiResources:
+    return AiResources(
+        AiConfig(intent_actions={action.id: action}),
+        "key",
+        {},
+        ("战队",),
+        20,
+    )
 
 
 @pytest.mark.asyncio
@@ -186,6 +173,7 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
     )
 
     async def fake_call_ai_chat(
+        _resources: AiResources,
         _prompt: str,
         _history: list[object],
         **_kwargs: object,
@@ -194,18 +182,12 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
         called = True
         return "yes"
 
-    monkeypatch.setattr(intent_actions, "get_configured_actions", lambda: [action])
-    monkeypatch.setattr(
-        intent_actions,
-        "get_ai_intent_config",
-        _ai_intent_enabled_config,
-    )
-    monkeypatch.setattr(intent_actions, "get_ai_key", lambda: "key")
     monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: True)
     monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
+        _resources(action),
         _group_event("我是抄火火手册里面说的。")
     )
 
@@ -228,6 +210,7 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature(
     )
 
     async def fake_call_ai_chat(
+        _resources: AiResources,
         _prompt: str,
         _history: list[object],
         **_kwargs: object,
@@ -236,18 +219,12 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature(
         called = True
         return "yes"
 
-    monkeypatch.setattr(intent_actions, "get_configured_actions", lambda: [action])
-    monkeypatch.setattr(
-        intent_actions,
-        "get_ai_intent_config",
-        _ai_intent_enabled_config,
-    )
-    monkeypatch.setattr(intent_actions, "get_ai_key", lambda: "key")
     monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: False)
     monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
+        _resources(action),
         _group_event("鎴橀槦")
     )
 
@@ -270,6 +247,7 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
     )
 
     async def fake_call_ai_chat(
+        _resources: AiResources,
         prompt: str,
         _history: list[object],
         **_kwargs: object,
@@ -277,22 +255,16 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
         prompts.append(prompt)
         return "yes"
 
-    monkeypatch.setattr(intent_actions, "get_configured_actions", lambda: [action])
-    monkeypatch.setattr(
-        intent_actions,
-        "get_ai_intent_config",
-        _ai_intent_enabled_config,
-    )
-    monkeypatch.setattr(intent_actions, "get_ai_key", lambda: "key")
     monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: True)
     monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
+        _resources(action),
         _group_event("求火火手册链接")
     )
 
-    assert matched is action
+    assert matched == action
     assert prompts
 
 
@@ -310,57 +282,20 @@ async def test_fire_manual_strong_intent_respects_ai_no(
     )
 
     async def fake_call_ai_chat(
+        _resources: AiResources,
         _prompt: str,
         _history: list[object],
         **_kwargs: object,
     ) -> str:
         return "no"
 
-    monkeypatch.setattr(intent_actions, "get_configured_actions", lambda: [action])
-    monkeypatch.setattr(
-        intent_actions,
-        "get_ai_intent_config",
-        _ai_intent_enabled_config,
-    )
-    monkeypatch.setattr(intent_actions, "get_ai_key", lambda: "key")
     monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: True)
     monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
+        _resources(action),
         _group_event("求火火手册链接")
     )
 
     assert matched is None
-
-
-@pytest.mark.asyncio
-async def test_ai_intent_plugin_rule_stores_matched_action(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    state: dict[str, object] = {}
-    action = AiIntentAction(
-        id="team",
-        feature="ai_intent",
-        keywords=["战队"],
-        action="message",
-        message="ok",
-        intent="team",
-    )
-
-    async def fake_classify(_event: object) -> AiIntentAction:
-        return action
-
-    monkeypatch.setattr(
-        ai_intent_plugin,
-        "classify_ai_intent_action",
-        fake_classify,
-    )
-
-    matched = await ai_intent_plugin._match_ai_intent_action(
-        _group_event("我要加战队"),
-        state,
-    )
-
-    assert matched
-    assert state[ai_intent_plugin.ACTION_KEY] is action

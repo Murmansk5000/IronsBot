@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
@@ -16,6 +17,9 @@ from ironsbot.services.ai.memory import (
     get_user_memory,
 )
 from ironsbot.shared.features import group_has_feature, is_superuser
+
+if TYPE_CHECKING:
+    from ironsbot.services.ai.resources import AiResources
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +45,7 @@ def get_ai_chat_key(event: MessageEvent) -> str:
 
 
 def build_ai_chat_context(
+    resources: AiResources,
     event: MessageEvent,
     prompt: str,
     *,
@@ -49,6 +54,7 @@ def build_ai_chat_context(
     chat_key = key or get_ai_chat_key(event)
     history = get_history(chat_key)
     memory = get_user_memory(
+        resources.config,
         event,
         current_session_key=chat_key,
         has_short_history=bool(history),
@@ -66,12 +72,14 @@ def is_ai_error_reply(reply: str) -> bool:
 
 
 def record_successful_ai_reply(
+    resources: AiResources,
     event: MessageEvent,
     context: AiChatContext,
     reply: str,
 ) -> None:
-    append_turn(context.key, context.prompt, reply)
+    append_turn(resources.config, context.key, context.prompt, reply)
     append_user_memory(
+        resources.config,
         event,
         session_key=context.key,
         prompt=context.prompt,

@@ -1,3 +1,5 @@
+from functools import partial
+
 import httpx
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
@@ -19,13 +21,13 @@ from ironsbot.services.ai.client import (
     AI_CHAT_ERROR_SUBSCRIPTION_KEY,
     call_ai_chat,
 )
-from ironsbot.services.ai.config import get_ai_config, get_ai_key
 from ironsbot.services.ai.mentions import mentions_bot
 from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
+from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.ai.source_context import (
     append_ai_notice_source_context,
-    build_ai_notice_source_context,
+    build_notice_source,
 )
 from ironsbot.shared.matcher_priority import (
     get_matcher_priority,
@@ -77,6 +79,7 @@ async def _run_ai_chat(
     bot: Bot,
     event: MessageEvent,
     state: T_State,
+    resources: AiResources,
 ) -> None:
     prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
     if not prompt:
@@ -88,9 +91,9 @@ async def _run_ai_chat(
         )
 
     key = get_ai_chat_key(event)
-    source_context = await build_ai_notice_source_context(event, prompt, bot=bot)
+    source_context = await build_notice_source(event, prompt, resources, bot=bot)
 
-    if not get_ai_key():
+    if not resources.api_key:
         await notify_superusers_once(
             "missing_api_key",
             append_ai_notice_source_context(
@@ -107,7 +110,7 @@ async def _run_ai_chat(
             "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
         )
 
-    config = get_ai_config()
+    config = resources.config
     if config.waiting_notice:
         await send_event_reply(
             matcher,
@@ -116,10 +119,11 @@ async def _run_ai_chat(
             mention_sender=True,
         )
 
-    chat_context = build_ai_chat_context(event, prompt, key=key)
+    chat_context = build_ai_chat_context(resources, event, prompt, key=key)
 
     try:
         reply = await call_ai_chat(
+            resources,
             prompt,
             chat_context.history,
             chat_context.memory,
@@ -129,7 +133,7 @@ async def _run_ai_chat(
             await _finish_admin_notice_or_silent(matcher, event, reply)
 
         if not is_ai_error_reply(reply):
-            record_successful_ai_reply(event, chat_context, reply)
+            record_successful_ai_reply(resources, event, chat_context, reply)
 
         await finish_event_reply(
             matcher,
@@ -194,14 +198,14 @@ async def _finish_admin_notice_or_silent(
     )
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(registry: MatcherRegistry, resources: AiResources) -> None:
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
         rule=Rule(_ai_chat_rule),
         priority=AI_CHAT_PRIORITY,
         block=True,
     )
-    direct_matcher.append_handler(_run_ai_chat)
+    direct_matcher.append_handler(partial(_run_ai_chat, resources=resources))
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
@@ -209,4 +213,4 @@ def install(registry: MatcherRegistry) -> None:
         priority=AI_GROUP_AT_CHAT_PRIORITY,
         block=True,
     )
-    group_at_matcher.append_handler(_run_ai_chat)
+    group_at_matcher.append_handler(partial(_run_ai_chat, resources=resources))

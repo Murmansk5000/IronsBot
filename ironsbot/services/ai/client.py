@@ -1,11 +1,10 @@
 import httpx
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config
-from ironsbot.services.ai.config import get_ai_key
 from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
 from ironsbot.services.ai.notifier import notify_superusers_once
+from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.ai.responses import parse_ai_response
 from ironsbot.services.ai.source_context import append_ai_notice_source_context
 
@@ -13,8 +12,7 @@ AI_CHAT_ERROR_SUBSCRIPTION_KEY = "ai_chat_error_notice"
 AI_CHAT_ERROR_ACTION_NAME = "AI chat error notice"
 
 
-def _truncate_reply(text: str) -> str:
-    max_chars = get_app_config().ai.max_reply_chars
+def _truncate_reply(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
 
@@ -22,16 +20,17 @@ def _truncate_reply(text: str) -> str:
 
 
 async def call_ai_chat(
+    resources: AiResources,
     prompt: str,
     history: list[HistoryMessage],
     memory: list[HistoryMessage] | None = None,
     *,
     source_context: str | None = None,
 ) -> str:
-    config = get_app_config().ai
+    config = resources.config
     payload = {
         "model": config.model,
-        "messages": build_messages(history, prompt, memory),
+        "messages": build_messages(config, history, prompt, memory),
         "temperature": config.temperature,
         "max_tokens": config.max_tokens,
         "stream": False,
@@ -44,7 +43,7 @@ async def call_ai_chat(
         },
     }
     headers = {
-        "Authorization": f"Bearer {get_ai_key()}",
+        "Authorization": f"Bearer {resources.api_key}",
         "Content-Type": "application/json",
     }
 
@@ -99,4 +98,4 @@ async def call_ai_chat(
         )
         return EMPTY_REPLY
 
-    return _truncate_reply(result.reply)
+    return _truncate_reply(result.reply, config.max_reply_chars)

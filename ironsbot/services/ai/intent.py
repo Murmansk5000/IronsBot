@@ -1,17 +1,14 @@
 import re
+from collections.abc import Sequence
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
 )
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.ai import (
-    AiConfig,
     AiIntentAction,
-    resolve_configured_actions,
 )
-from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.commands import (
     command_text_matches,
     normalize_command_text,
@@ -70,18 +67,6 @@ class TemplateContext(dict[str, str]):
         return "{" + key + "}"
 
 
-def get_ai_intent_config() -> AiConfig:
-    return get_app_config().ai
-
-
-def get_team_resource_config() -> TeamResourceConfig:
-    return get_app_config().seer.team_resource
-
-
-def get_configured_actions() -> list[AiIntentAction]:
-    return resolve_configured_actions(get_ai_intent_config())
-
-
 def contains_any_keyword(text: str, keywords: list[str]) -> bool:
     normalized = normalize_command_text(text)
     return any(
@@ -126,10 +111,14 @@ def passes_action_prefilter(text: str, action: AiIntentAction) -> bool:
     return True
 
 
-def excluded_by_command(text: str, action: AiIntentAction) -> bool:
+def excluded_by_command(
+    text: str,
+    action: AiIntentAction,
+    team_resource_commands: Sequence[str],
+) -> bool:
     exclude_commands = list(action.exclude_commands)
     if action.action == "team_resource":
-        exclude_commands.extend(get_team_resource_config().commands)
+        exclude_commands.extend(team_resource_commands)
 
     return bool(exclude_commands) and command_text_matches(text, exclude_commands)
 

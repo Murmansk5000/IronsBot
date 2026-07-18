@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import AsyncHook
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.ai.resources import AiResources
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
 
@@ -170,10 +171,10 @@ def _install_red_packet_notice(
     install(registry, config)
 
 
-def _install_ai_chat(registry: MatcherRegistry) -> None:
+def _install_ai_chat(registry: MatcherRegistry, resources: AiResources) -> None:
     from ironsbot.plugins.ai_chat import install
 
-    install(registry)
+    install(registry, resources)
 
 
 def _install_ai_mention_guard(
@@ -186,12 +187,12 @@ def _install_ai_mention_guard(
 
 def _install_ai_intent(
     registry: MatcherRegistry,
+    resources: AiResources,
     headless: HeadlessService,
-    team_resource_timeout_seconds: float,
 ) -> None:
     from ironsbot.plugins.ai_intent import install
 
-    install(registry, headless, team_resource_timeout_seconds)
+    install(registry, resources, headless)
 
 
 def _install_about(registry: MatcherRegistry) -> None:
@@ -379,6 +380,7 @@ def build_plugin_registry(
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
     from ironsbot.plugins.messaging.runtime_service import MessagingResources
+    from ironsbot.services.ai.resources import AiResources
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.messaging.push_subscription_store import (
         PushUnsubscribeStore,
@@ -394,6 +396,13 @@ def build_plugin_registry(
     team_resource_service = TeamResourceService.build(
         config.seer.team_resource,
         config.feature.user_aliases,
+    )
+    ai_resources = AiResources(
+        config.ai,
+        secrets.ai_key.strip(),
+        config.feature.group_aliases,
+        tuple(config.seer.team_resource.commands),
+        config.seer.team_resource.query_timeout_seconds,
     )
     push_time_refresher = partial(
         _refresh_push_time_jobs,
@@ -793,7 +802,7 @@ def build_plugin_registry(
                 group="ai",
                 order=10,
             ),
-            install=_install_ai_chat,
+            install=partial(_install_ai_chat, resources=ai_resources),
         ),
         PluginDefinition(
             id="ai_mention_guard",
@@ -825,10 +834,8 @@ def build_plugin_registry(
             ),
             install=partial(
                 _install_ai_intent,
+                resources=ai_resources,
                 headless=headless,
-                team_resource_timeout_seconds=(
-                    config.seer.team_resource.query_timeout_seconds
-                ),
             ),
         ),
         PluginDefinition(

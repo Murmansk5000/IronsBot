@@ -696,45 +696,25 @@ def test_env_secrets_credentials_and_deployment_are_separate() -> None:
     assert deployment.superusers == [SUPERUSER_ID]
 
 
-def test_small_plugin_config_accessors_read_app_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    clear_app_config_cache()
-    monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
-    monkeypatch.setenv("AI_KEY", "sk-test")
+def test_app_config_defaults_cover_runtime_services() -> None:
+    app_config = load_app_config(ROOT / "config.example.toml")
 
-    ai_config = _load_module_from_path(
-        "ai_config_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "ai" / "config.py",
+    assert app_config.ai.model == "deepseek-v4-pro"
+    assert app_config.ai.intent_actions
+    assert app_config.seer.team_resource.commands == ["战队"]
+    assert (
+        app_config.runtime.help.hint_max_per_window
+        == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
-    ai_intent_service = _load_module_from_path(
-        "ai_intent_service_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "ai" / "intent.py",
+    assert app_config.activity.lead_hours == [11, 1]
+    assert "seerapi" in app_config.runtime.data_sync.sources
+    assert (
+        app_config.message.outbound_rate_limit.windows[0].max_messages
+        == DEFAULT_OUTBOUND_MAX_MESSAGES
     )
-    try:
-        app_config = load_app_config(ROOT / "config.example.toml")
-        assert ai_config.get_ai_config().model == "deepseek-v4-pro"
-        assert ai_config.get_ai_key() == "sk-test"
-        assert ai_intent_service.get_configured_actions()
-        assert ai_intent_service.get_team_resource_config().commands == ["战队"]
-        assert (
-            app_config.runtime.help.hint_max_per_window
-            == DEFAULT_HELP_HINT_MAX_PER_WINDOW
-        )
-        assert app_config.activity.lead_hours == [11, 1]
-        assert "seerapi" in app_config.runtime.data_sync.sources
-        assert (
-            app_config.message.outbound_rate_limit.windows[0].max_messages
-            == DEFAULT_OUTBOUND_MAX_MESSAGES
-        )
-        assert app_config.message.meeting.commands == [
-            "开播",
-            "会议",
-        ]
-        assert "aliases" in app_config.runtime.data_sync.sources
-        assert app_config.runtime.priority.enabled
-    finally:
-        clear_app_config_cache()
+    assert app_config.message.meeting.commands == ["开播", "会议"]
+    assert "aliases" in app_config.runtime.data_sync.sources
+    assert app_config.runtime.priority.enabled
 
 
 def test_seer_plugin_config_accessors_read_app_config(
