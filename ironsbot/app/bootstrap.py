@@ -16,7 +16,11 @@ from ironsbot.app.composition import (
 )
 from ironsbot.app.file_logging import configure_file_logging
 from ironsbot.app.registry import build_plugin_registry
-from ironsbot.config.loader import get_app_config, load_credentials_config
+from ironsbot.config.loader import (
+    get_app_config,
+    load_credentials_config,
+    load_secrets_config,
+)
 from ironsbot.runtime.matchers import MatcherRegistry
 
 if TYPE_CHECKING:
@@ -57,11 +61,13 @@ def bootstrap() -> BootstrapState:
         config.activity,
         push_subscription_path=config.message.push_unsubscribe.data_path,
     )
+    github_token = load_secrets_config().github_workflow_token
     headless = build_headless_service(config.runtime, load_credentials_config())
     plugins = build_plugin_registry(
         config=config,
         activity_service=activity.service,
         headless=headless,
+        github_token=github_token,
         shutdown_activity=activity.close,
     )
     matchers = MatcherRegistry()

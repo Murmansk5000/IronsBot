@@ -1,25 +1,25 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
 from ironsbot.integrations.scheduler.jobs import JobRegistry
 
-_startup_sync_state: dict[str, str | None] = {"notice": None}
+if TYPE_CHECKING:
+    from ironsbot.config.models.runtime import DataSyncConfig
+
 DB_SYNC_JOB_PREFIX = "db_sync_"
 
 
-def get_startup_sync_notice() -> str | None:
-    return _startup_sync_state["notice"]
-
-
-def _register_interval_jobs(scheduler: Any) -> None:
-    if not get_app_config().runtime.data_sync.interval_enabled:
+def _register_interval_jobs(
+    scheduler: Any,
+    config: DataSyncConfig,
+) -> None:
+    if not config.interval_enabled:
         for name in db_sync_state.registered_syncs:
             logger.debug(f"已注册数据库 '{name}'，自动定时同步已关闭")
         return
@@ -38,16 +38,18 @@ def _register_interval_jobs(scheduler: Any) -> None:
         )
 
 
-async def start_db_sync(scheduler: Any) -> None:
-    _startup_sync_state["notice"] = None
+async def start_db_sync(
+    scheduler: Any,
+    config: DataSyncConfig,
+    github_token: str,
+) -> str | None:
     if (
         not db_sync_state.registered_syncs
         and not db_sync_state.registered_local_databases
     ):
         logger.debug("无已注册的同步数据库，db_sync 插件未激活")
-        return
+        return None
 
-    config = get_app_config().runtime.data_sync
     for name, entry in db_sync_state.registered_syncs.items():
         db_sync_runner.prepare_remote_database(name)
         logger.info(
@@ -57,14 +59,14 @@ async def start_db_sync(scheduler: Any) -> None:
     for name, file_path in db_sync_state.registered_local_databases.items():
         db_sync_runner.prepare_local_database(name, file_path)
 
-    _register_interval_jobs(scheduler)
+    _register_interval_jobs(scheduler, config)
 
     # Keep startup sync behind a switch to avoid slow container startup.
     if not config.on_startup:
         for name in db_sync_state.registered_syncs:
             db_sync_runner.load_cached_database(name)
         logger.info("启动时数据库同步已关闭，可由超级管理员发送“/更新数据”手动同步")
-        return
+        return None
 
     trigger_remote_build = getattr(config, "startup_trigger_remote_build", False)
     logger.info(
@@ -72,7 +74,8 @@ async def start_db_sync(scheduler: Any) -> None:
         + ("，将触发远程构建流水线" if trigger_remote_build else "")
     )
     did_run, results = await db_sync_runner.run_sync_all_databases(
-        trigger_remote_build=trigger_remote_build
+        github_token=github_token,
+        trigger_remote_build=trigger_remote_build,
     )
     if not did_run:
         for name in db_sync_state.registered_syncs:
@@ -82,10 +85,10 @@ async def start_db_sync(scheduler: Any) -> None:
             if not ok:
                 db_sync_runner.load_cached_database(name)
 
-    _startup_sync_state["notice"] = db_sync_runner.format_sync_result_notice(
+    return db_sync_runner.format_sync_result_notice(
         results if did_run else {},
         title_prefix="启动数据同步",
     )
 
 
-__all__ = ["get_startup_sync_notice", "start_db_sync"]
+__all__ = ["start_db_sync"]

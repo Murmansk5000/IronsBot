@@ -8,13 +8,8 @@ from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ironsbot.config.models.runtime import StartupConfig
-    from ironsbot.services.startup_notice import (
-        StartupNoticeProvider,
-        StartupNoticeService,
-    )
+    from ironsbot.services.startup_notice import StartupNoticeService
     from ironsbot.shared.messaging import AdminNoticeTargets, TargetSendSummary
 
 
@@ -39,7 +34,6 @@ async def _send_notice_part(
 
 async def send_startup_notice(
     _bot: Bot,
-    providers: Sequence[StartupNoticeProvider],
     service: StartupNoticeService,
     config: StartupConfig,
 ) -> None:
@@ -70,20 +64,15 @@ async def send_startup_notice(
         summaries.extend(
             [
                 await _send_notice_part(
-                    message_text=message,
-                    subscription_key=provider.subscription_key,
-                    action_name=provider.action_name,
+                    message_text=part.message,
+                    subscription_key=part.subscription_key,
+                    action_name=part.action_name,
                     targets=targets,
                 )
-                for provider in providers
-                if (message := provider.get_message())
+                for part in service.parts
             ]
         )
-        succeeded = [
-            target
-            for summary in summaries
-            for target in summary.succeeded
-        ]
+        succeeded = [target for summary in summaries for target in summary.succeeded]
 
         service.mark_result(succeeded)
         if service.sent:

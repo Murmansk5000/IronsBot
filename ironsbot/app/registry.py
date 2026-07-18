@@ -79,10 +79,13 @@ def _install_server_status(
     install(registry, server_status_config, docker_update_config, headless)
 
 
-def _install_db_sync(registry: MatcherRegistry) -> None:
+def _install_db_sync(
+    registry: MatcherRegistry,
+    github_token: str,
+) -> None:
     from ironsbot.plugins.db_sync import install
 
-    install(registry)
+    install(registry, github_token)
 
 
 def _install_seer_data(registry: MatcherRegistry) -> None:
@@ -224,12 +227,6 @@ async def _shutdown_http_clients() -> None:
     await shutdown_http_clients()
 
 
-async def _start_db_sync() -> None:
-    from ironsbot.plugins.db_sync.runtime import start_db_sync
-
-    await start_db_sync(_scheduler())
-
-
 async def _start_messaging() -> None:
     from ironsbot.plugins.messaging.runtime import start_messaging
 
@@ -316,29 +313,10 @@ async def _send_startup_notice(
     bot: Bot,
     service: StartupNoticeService,
     config: StartupConfig,
-    docker_update_notice: Callable[[], str | None],
 ) -> None:
-    from ironsbot.plugins.db_sync import runtime as db_sync_runtime
     from ironsbot.plugins.startup_notice.runtime import send_startup_notice
-    from ironsbot.services.startup_notice import StartupNoticeProvider
 
-    await send_startup_notice(
-        bot,
-        (
-            StartupNoticeProvider(
-                subscription_key="startup_docker_update",
-                action_name="startup docker update notice",
-                get_message=docker_update_notice,
-            ),
-            StartupNoticeProvider(
-                subscription_key="startup_data_sync",
-                action_name="startup data sync notice",
-                get_message=db_sync_runtime.get_startup_sync_notice,
-            ),
-        ),
-        service,
-        config,
-    )
+    await send_startup_notice(bot, service, config)
 
 
 async def _report_render_crash(_bot: Bot) -> None:
@@ -365,6 +343,7 @@ def build_plugin_registry(
     config: AppConfig,
     activity_service: ActivityService,
     headless: HeadlessService,
+    github_token: str,
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
     definitions: tuple[PluginDefinition, ...] = ()
@@ -374,18 +353,30 @@ def build_plugin_registry(
         activity_service=activity_service,
     )
     startup_notice_service = StartupNoticeService()
-    docker_update_notice: str | None = None
 
     async def start_docker_update() -> None:
-        nonlocal docker_update_notice
         from ironsbot.plugins.server_status.runtime import (
             start_docker_update as run_update,
         )
 
-        docker_update_notice = await run_update(runtime_config.docker_update)
+        startup_notice_service.add(
+            "startup_docker_update",
+            "startup docker update notice",
+            await run_update(runtime_config.docker_update),
+        )
 
-    def get_docker_update_notice() -> str | None:
-        return docker_update_notice
+    async def start_data_sync() -> None:
+        from ironsbot.plugins.db_sync.runtime import start_db_sync
+
+        startup_notice_service.add(
+            "startup_data_sync",
+            "startup data sync notice",
+            await start_db_sync(
+                _scheduler(),
+                runtime_config.data_sync,
+                github_token,
+            ),
+        )
 
     def install_help(registry: MatcherRegistry) -> None:
         from ironsbot.plugins import help as help_plugin
@@ -461,9 +452,12 @@ def build_plugin_registry(
             id="db_sync",
             features=frozenset(),
             help=None,
-            install=_install_db_sync,
+            install=partial(
+                _install_db_sync,
+                github_token=github_token,
+            ),
             hooks=PluginHooks(
-                startup=(("db_sync", _start_db_sync),),
+                startup=(("db_sync", start_data_sync),),
             ),
         ),
         PluginDefinition(
@@ -478,12 +472,8 @@ def build_plugin_registry(
             help=None,
             install=_noop_install,
             hooks=PluginHooks(
-                startup=(
-                    ("headless_seer", headless.start),
-                ),
-                shutdown=(
-                    ("headless_seer", headless.shutdown),
-                ),
+                startup=(("headless_seer", headless.start),),
+                shutdown=(("headless_seer", headless.shutdown),),
             ),
         ),
         PluginDefinition(
@@ -648,7 +638,6 @@ def build_plugin_registry(
                             _send_startup_notice,
                             service=startup_notice_service,
                             config=runtime_config.startup_notice,
-                            docker_update_notice=get_docker_update_notice,
                         ),
                     ),
                 ),
@@ -684,9 +673,7 @@ def build_plugin_registry(
                     ("local_rank_jobs", partial(_register_local_rank_jobs, headless)),
                     ("rank_page_jobs", partial(_register_rank_page_jobs, headless)),
                 ),
-                first_bot_connect=(
-                    ("render_crash_report", _report_render_crash),
-                ),
+                first_bot_connect=(("render_crash_report", _report_render_crash),),
             ),
         ),
         PluginDefinition(
@@ -822,14 +809,10 @@ def validate_plugin_registry(
     ids = [definition.id for definition in definitions]
     duplicates = sorted({plugin_id for plugin_id in ids if ids.count(plugin_id) > 1})
     if duplicates:
-        raise PluginRegistryError(
-            "duplicate plugin ids: " + ", ".join(duplicates)
-        )
+        raise PluginRegistryError("duplicate plugin ids: " + ", ".join(duplicates))
 
     owned_features = {
-        feature
-        for definition in definitions
-        for feature in definition.features
+        feature for definition in definitions for feature in definition.features
     }
     missing = sorted(
         set(Feature) - owned_features,

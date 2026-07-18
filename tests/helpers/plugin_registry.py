@@ -28,5 +28,6 @@ def build_test_plugin_registry() -> tuple[PluginDefinition, ...]:
             config.runtime.headless,
             config.runtime.headless_notice,
         ),
+        github_token="",
         shutdown_activity=_noop_shutdown,
     )
