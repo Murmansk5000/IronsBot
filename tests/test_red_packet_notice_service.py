@@ -1,12 +1,10 @@
 import asyncio
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
-import nonebot
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
+from ironsbot.plugins import red_packet_notice as red_packet_notice_plugin
 from ironsbot.services.red_packet_notice import (
     RedPacketNoticeLimiter,
     build_red_packet_notice_message,
@@ -14,38 +12,9 @@ from ironsbot.services.red_packet_notice import (
     is_red_packet_payload,
     summarize_red_packet_message,
 )
-from ironsbot.shared import matcher_priority
 
-_PLUGIN_PATH = (
-    Path(__file__).parents[1]
-    / "ironsbot"
-    / "plugins"
-    / "red_packet_notice"
-    / "__init__.py"
-)
-
-
-class _DummyMatcher:
-    def handle(self) -> Any:
-        def _decorator(func: Any) -> Any:
-            return func
-
-        return _decorator
-
-
-def _load_red_packet_notice_plugin(monkeypatch: MonkeyPatch) -> Any:
-    def _dummy_on_event(*_args: Any, **_kwargs: Any) -> _DummyMatcher:
-        return _DummyMatcher()
-
-    monkeypatch.setattr(nonebot, "on_message", _dummy_on_event)
-    monkeypatch.setattr(nonebot, "on_notice", _dummy_on_event)
-    monkeypatch.setattr(matcher_priority, "get_matcher_priority", lambda *_args: 1)
-
-    spec = spec_from_file_location("red_packet_notice_plugin_for_test", _PLUGIN_PATH)
-    assert spec is not None and spec.loader is not None
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Bot
 
 
 def test_red_packet_segment_is_detected() -> None:
@@ -115,8 +84,7 @@ def test_red_packet_notice_limiter_uses_per_group_cooldown() -> None:
 def test_red_packet_notice_uses_admin_notice_delivery(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    plugin = _load_red_packet_notice_plugin(monkeypatch)
-    bot = object()
+    bot = cast("Bot", object())
     calls: list[dict[str, Any]] = []
 
     async def fake_get_group_name(_bot: object, _group_id: int) -> str:
@@ -141,17 +109,21 @@ def test_red_packet_notice_uses_admin_notice_delivery(
         )
         return object()
 
-    monkeypatch.setattr(plugin, "_get_group_name", fake_get_group_name)
     monkeypatch.setattr(
-        plugin,
-        "_get_limiter",
-        lambda: RedPacketNoticeLimiter(cooldown_seconds=0.0),
+        red_packet_notice_plugin,
+        "_get_group_name",
+        fake_get_group_name,
     )
-    monkeypatch.setattr(plugin, "send_admin_notice", fake_send_admin_notice)
+    monkeypatch.setattr(
+        red_packet_notice_plugin,
+        "send_admin_notice",
+        fake_send_admin_notice,
+    )
 
     asyncio.run(
-        plugin._send_red_packet_notice(
+        red_packet_notice_plugin._send_red_packet_notice(
             bot=bot,
+            limiter=RedPacketNoticeLimiter(cooldown_seconds=0.0),
             group_id=987654321,
             sender_id=1234567890,
             summary="恭喜发财",

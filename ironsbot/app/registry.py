@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.config.models.app import AppConfig
+    from ironsbot.config.models.message import RedPacketNoticeConfig
     from ironsbot.config.models.runtime import (
         DockerUpdateConfig,
         RestartConfig,
@@ -146,10 +147,13 @@ def _install_team_audit(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_red_packet_notice(registry: MatcherRegistry) -> None:
+def _install_red_packet_notice(
+    registry: MatcherRegistry,
+    config: RedPacketNoticeConfig,
+) -> None:
     from ironsbot.plugins.red_packet_notice import install
 
-    install(registry)
+    install(registry, config)
 
 
 def _install_ai_chat(registry: MatcherRegistry) -> None:
@@ -695,7 +699,10 @@ def build_plugin_registry(
             id="red_packet_notice",
             features=frozenset(),
             help=None,
-            install=_install_red_packet_notice,
+            install=partial(
+                _install_red_packet_notice,
+                config=config.message.red_packet_notice,
+            ),
         ),
         PluginDefinition(
             id="ai_chat",
