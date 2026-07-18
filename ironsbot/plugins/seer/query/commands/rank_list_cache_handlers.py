@@ -26,11 +26,9 @@ from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_refresh_start_message,
 )
 from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
-from ironsbot.services.seer.rank_page_refresh import refresh_rank_page_cache
 from ironsbot.services.seer.rank_page_refresh_selection import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
-    preview_rank_page_refresh_targets,
     rank_refresh_target_label,
 )
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
@@ -110,12 +108,14 @@ async def handle_page_cache_status(
 ) -> None:
     command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
     spec = get_global_rank_spec(command.rank_key)
+    refresh = resources.rank_page_refresh
     pages = filter_standard_rank_page_summaries(
         spec,
         get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+        config=refresh.config,
         rank_key=command.rank_key,
     )
-    targets = preview_rank_page_refresh_targets([command.rank_key])
+    targets = refresh.preview([command.rank_key])
     rank_config = resources.config.rank
     await finish_event_reply(
         matcher,
@@ -125,7 +125,7 @@ async def handle_page_cache_status(
             pages,
             ttl_seconds=rank_config.page_cache_ttl_seconds,
             target_limit=rank_refresh_target_label(
-                rank_config.page_refresh,
+                refresh.config,
                 command.rank_key,
             ),
             next_ranges=[
@@ -141,9 +141,9 @@ async def handle_page_cache_overview(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    rank_config = resources.config.rank
-    specs = configured_rank_specs()
-    targets = preview_rank_page_refresh_targets()
+    refresh = resources.rank_page_refresh
+    specs = configured_rank_specs(refresh.config)
+    targets = refresh.preview()
     targets_by_rank = {
         rank_key: [target for target in targets if target.rank_key == rank_key]
         for rank_key, _spec in specs
@@ -155,10 +155,11 @@ async def handle_page_cache_overview(
             filter_standard_rank_page_summaries(
                 spec,
                 get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+                config=refresh.config,
                 rank_key=rank_key,
             ),
             targets_by_rank.get(rank_key, ()),
-            rank_refresh_target_label(rank_config.page_refresh, rank_key),
+            rank_refresh_target_label(refresh.config, rank_key),
         )
         for rank_key, spec in specs
     ]
@@ -187,7 +188,7 @@ async def handle_page_cache_refresh(
     )
     await resources.priority.release(state)
     rank_keys = None if command.rank_key is None else [command.rank_key]
-    result = await refresh_rank_page_cache(game, rank_keys)
+    result = await resources.rank_page_refresh.refresh(game, rank_keys)
     await finish_event_reply(
         matcher,
         event,

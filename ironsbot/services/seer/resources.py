@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.rank_display import RankDisplayService
+    from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
     from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.features import FeatureService
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 class SeerQueryResources:
     config: SeerConfig
     rank_display: RankDisplayService
+    rank_page_refresh: RankPageRefreshService
     render_cache: RenderCache
     headless: HeadlessService
     features: FeatureService

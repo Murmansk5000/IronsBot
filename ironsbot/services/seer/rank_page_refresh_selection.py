@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from math import log1p, sqrt
 from typing import TYPE_CHECKING
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
 from ironsbot.services.seer.rank_list_spec_resolution import (
@@ -42,10 +41,6 @@ class _RankPageRefreshCandidate:
     rank_order: int
 
 
-def get_rank_page_refresh_config() -> RankPageRefreshConfig:
-    return get_app_config().seer.rank.page_refresh
-
-
 def rank_target_limit(config: RankPageRefreshConfig, rank_key: str) -> int:
     return config.target_limits.get(rank_key, config.target_limit)
 
@@ -63,13 +58,10 @@ def rank_refresh_target_label(config: RankPageRefreshConfig, rank_key: str) -> s
 
 
 def configured_rank_specs(
+    config: RankPageRefreshConfig,
     rank_keys: Sequence[str] | None = None,
 ) -> list[tuple[str, GlobalRankSpec]]:
-    keys = (
-        list(rank_keys)
-        if rank_keys is not None
-        else get_rank_page_refresh_config().rank_keys
-    )
+    keys = list(rank_keys) if rank_keys is not None else config.rank_keys
     specs: list[tuple[str, GlobalRankSpec]] = []
     seen: set[str] = set()
     for key in keys:
@@ -235,10 +227,9 @@ def select_rank_page_refresh_targets(
     rank_specs: Sequence[tuple[str, GlobalRankSpec]],
     summaries: Mapping[str, Sequence[CachedRankPageSummary]],
     *,
-    config: RankPageRefreshConfig | None = None,
+    config: RankPageRefreshConfig,
 ) -> list[RankPageRefreshTarget]:
-    refresh_config = config or get_rank_page_refresh_config()
-    stale_after_seconds = refresh_config.refresh_stale_after_hours * 3600
+    stale_after_seconds = config.refresh_stale_after_hours * 3600
     pages_by_rank = {
         rank_key: {
             (page.start_index, page.end_index): page
@@ -253,8 +244,8 @@ def select_rank_page_refresh_targets(
                 rank_key=rank_key,
                 spec=spec,
                 pages_by_range=pages_by_rank.get(rank_key, {}),
-                config=refresh_config,
-                target_limit=rank_target_limit(refresh_config, rank_key),
+                config=config,
+                target_limit=rank_target_limit(config, rank_key),
                 stale_after_seconds=stale_after_seconds,
                 rank_order=rank_order,
             )
@@ -269,7 +260,7 @@ def select_rank_page_refresh_targets(
     )
     return [
         candidate.target
-        for candidate in candidates[: refresh_config.pages_per_run]
+        for candidate in candidates[: config.pages_per_run]
     ]
 
 
@@ -277,8 +268,8 @@ def filter_standard_rank_page_summaries(
     spec: GlobalRankSpec,
     pages: Sequence[CachedRankPageSummary],
     *,
+    config: RankPageRefreshConfig,
     rank_key: str | None = None,
-    config: RankPageRefreshConfig | None = None,
 ) -> list[CachedRankPageSummary]:
     """Keep scheduled refresh pages for coverage stats.
 
@@ -286,17 +277,16 @@ def filter_standard_rank_page_summaries(
     fragments are still useful for future rank lookup, but including them in
     coverage/status output makes the progress look broken.
     """
-    refresh_config = config or get_rank_page_refresh_config()
     standard_ranges = {
         (raw_start, raw_end)
         for _start_rank, _end_rank, raw_start, raw_end in page_refresh_rank_ranges(
             spec,
             target_limit=(
-                rank_target_limit(refresh_config, rank_key)
+                rank_target_limit(config, rank_key)
                 if rank_key is not None
-                else refresh_config.target_limit
+                else config.target_limit
             ),
-            page_size=refresh_config.page_size,
+            page_size=config.page_size,
         )
     }
     filtered = [
@@ -305,7 +295,7 @@ def filter_standard_rank_page_summaries(
         if (page.start_index, page.end_index) in standard_ranges
     ]
     score_cutoff = (
-        rank_score_cutoff(refresh_config, rank_key)
+        rank_score_cutoff(config, rank_key)
         if rank_key is not None
         else None
     )
@@ -321,28 +311,12 @@ def filter_standard_rank_page_summaries(
 
 
 def preview_rank_page_refresh_targets(
+    config: RankPageRefreshConfig,
     rank_keys: Sequence[str] | None = None,
 ) -> list[RankPageRefreshTarget]:
-    rank_specs = configured_rank_specs(rank_keys)
+    rank_specs = configured_rank_specs(config, rank_keys)
     summaries = {
         rank_key: get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key)
         for rank_key, spec in rank_specs
     }
-    return select_rank_page_refresh_targets(rank_specs, summaries)
-
-
-__all__ = [
-    "REFRESH_REASONS",
-    "REFRESH_REASON_MISSING",
-    "REFRESH_REASON_PARTIAL",
-    "REFRESH_REASON_STALE",
-    "configured_rank_specs",
-    "filter_standard_rank_page_summaries",
-    "get_rank_page_refresh_config",
-    "page_refresh_rank_ranges",
-    "preview_rank_page_refresh_targets",
-    "rank_refresh_target_label",
-    "rank_score_cutoff",
-    "rank_target_limit",
-    "select_rank_page_refresh_targets",
-]
+    return select_rank_page_refresh_targets(rank_specs, summaries, config=config)

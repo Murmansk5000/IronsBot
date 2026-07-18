@@ -16,6 +16,7 @@ from ironsbot.runtime.plugins import (
 )
 from ironsbot.services.help_hint import HelpHintService
 from ironsbot.services.seer.rank_display import RankDisplayService
+from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.resources import SeerQueryResources
@@ -95,8 +96,7 @@ def build_plugin_registry(  # noqa: PLR0913
     )
 
     definitions: tuple[PluginDefinition, ...] = ()
-    runtime_config = config.runtime
-    priority_service = AdminPriorityService(runtime_config.priority, features)
+    priority_service = AdminPriorityService(config.runtime.priority, features)
     subscription_store = PushUnsubscribeStore(
         config.message.push_unsubscribe.data_path
     )
@@ -120,6 +120,19 @@ def build_plugin_registry(  # noqa: PLR0913
         features,
         delivery,
     )
+    seer_resources = SeerQueryResources(
+        config.seer,
+        RankDisplayService(config.seer.rank, config.feature.group_aliases),
+        RankPageRefreshService(config.seer.rank.page_refresh),
+        RenderCache(
+            config.seer.render.cache_dir,
+            config.seer.render.cache_max_size_mb * 1024 * 1024,
+        ),
+        headless,
+        features,
+        priority_service,
+        team_resource_service,
+    )
     ai_resources = AiResources(
         config.ai,
         features,
@@ -134,7 +147,7 @@ def build_plugin_registry(  # noqa: PLR0913
             report_previous_render_crash,
         )
 
-        await report_previous_render_crash(ai_resources, runtime_config.logging)
+        await report_previous_render_crash(ai_resources, config.runtime.logging)
 
     push_time_refresher = partial(
         runtime.refresh_push_time_jobs,
@@ -143,7 +156,7 @@ def build_plugin_registry(  # noqa: PLR0913
     )
     startup_notice_service = StartupNoticeService(admin_notices)
     help_hint_service = HelpHintService(
-        runtime_config.help,
+        config.runtime.help,
         config.feature.group_aliases,
         config.feature.user_aliases,
     )
@@ -156,7 +169,7 @@ def build_plugin_registry(  # noqa: PLR0913
         startup_notice_service.add(
             "startup_docker_update",
             "startup docker update notice",
-            await run_update(runtime_config.docker_update),
+            await run_update(config.runtime.docker_update),
         )
 
     async def start_data_sync() -> None:
@@ -167,7 +180,7 @@ def build_plugin_registry(  # noqa: PLR0913
             "startup data sync notice",
             await start_db_sync(
                 runtime.scheduler(),
-                runtime_config.data_sync,
+                config.runtime.data_sync,
                 secrets.github_workflow_token,
             ),
         )
@@ -252,8 +265,8 @@ def build_plugin_registry(  # noqa: PLR0913
             ),
             install=partial(
                 install_server_status,
-                server_status_config=runtime_config.server_status,
-                docker_update_config=runtime_config.docker_update,
+                server_status_config=config.runtime.server_status,
+                docker_update_config=config.runtime.docker_update,
                 headless=headless,
                 features=features,
                 delivery=delivery,
@@ -280,7 +293,7 @@ def build_plugin_registry(  # noqa: PLR0913
             help=None,
             install=partial(
                 install_seer_data,
-                config=runtime_config.data_sync,
+                config=config.runtime.data_sync,
             ),
         ),
         PluginDefinition(
@@ -369,7 +382,7 @@ def build_plugin_registry(  # noqa: PLR0913
                 startup=(
                     (
                         "scheduled_restart_jobs",
-                        partial(runtime.register_restart_jobs, runtime_config.restart),
+                        partial(runtime.register_restart_jobs, config.runtime.restart),
                     ),
                 ),
             ),
@@ -491,7 +504,7 @@ def build_plugin_registry(  # noqa: PLR0913
                         partial(
                             runtime.send_startup_notice,
                             service=startup_notice_service,
-                            config=runtime_config.startup_notice,
+                            config=config.runtime.startup_notice,
                         ),
                     ),
                 ),
@@ -523,18 +536,7 @@ def build_plugin_registry(  # noqa: PLR0913
             ),
             install=partial(
                 runtime.install_seer_query,
-                resources=SeerQueryResources(
-                    config.seer,
-                    RankDisplayService(config.seer.rank, config.feature.group_aliases),
-                    RenderCache(
-                        config.seer.render.cache_dir,
-                        config.seer.render.cache_max_size_mb * 1024 * 1024,
-                    ),
-                    headless,
-                    features,
-                    priority_service,
-                    team_resource_service,
-                ),
+                resources=seer_resources,
             ),
             hooks=PluginHooks(
                 startup=(
@@ -551,7 +553,7 @@ def build_plugin_registry(  # noqa: PLR0913
                         partial(
                             runtime.register_rank_page_jobs,
                             headless,
-                            config.seer.rank.page_refresh,
+                            seer_resources.rank_page_refresh,
                         ),
                     ),
                 ),

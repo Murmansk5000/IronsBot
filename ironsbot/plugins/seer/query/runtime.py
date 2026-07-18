@@ -9,8 +9,9 @@ from nonebot import logger
 from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.seer import LocalRankConfig, RankPageRefreshConfig
+    from ironsbot.config.models.seer import LocalRankConfig
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 SEER_QUERY_JOB_PREFIX = "seer_"
 
@@ -69,17 +70,16 @@ def register_local_rank_refresh_job(
 
 async def _scheduled_rank_page_refresh(
     headless: HeadlessService,
-    config: RankPageRefreshConfig,
+    service: RankPageRefreshService,
 ) -> None:
-    from ironsbot.services.seer.rank_page_refresh import refresh_rank_page_cache
-
+    config = service.config
     if not config.enabled:
         return
     if not _is_rank_page_refresh_active(config):
         logger.info("rank page cache auto refresh skipped: outside active window")
         return
 
-    result = await refresh_rank_page_cache(headless.get_game())
+    result = await service.refresh(headless.get_game())
     logger.info(
         "rank page cache auto refresh finished: "
         f"total={result.total}, success={result.success}, failed={result.failed}"
@@ -89,8 +89,9 @@ async def _scheduled_rank_page_refresh(
 def register_rank_page_refresh_jobs(
     scheduler: Any,
     headless: HeadlessService,
-    config: RankPageRefreshConfig,
+    service: RankPageRefreshService,
 ) -> None:
+    config = service.config
     if not config.enabled:
         return
 
@@ -100,7 +101,7 @@ def register_rank_page_refresh_jobs(
         registry.add(
             _scheduled_rank_page_refresh,
             "cron",
-            args=[headless, config],
+            args=[headless, service],
             minute=minute_pattern,
             jitter=config.schedule_jitter_seconds,
             job_id="rank_page_refresh_interval",
@@ -111,7 +112,7 @@ def register_rank_page_refresh_jobs(
         registry.add(
             _scheduled_rank_page_refresh,
             "cron",
-            args=[headless, config],
+            args=[headless, service],
             hour=int(hour_text),
             minute=int(minute_text),
             jitter=config.schedule_jitter_seconds,

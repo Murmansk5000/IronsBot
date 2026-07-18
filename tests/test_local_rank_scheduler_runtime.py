@@ -28,6 +28,7 @@ from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
 )
 from ironsbot.plugins.seer.query import runtime as seer_runtime
+from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from tests.helpers.runtime import build_test_runtime
 
 TEST_CONFIG = AppConfig()
@@ -77,8 +78,9 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
         schedule_jitter_seconds=240,
         times=["01:15"],
     )
+    service = RankPageRefreshService(config)
 
-    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS, config)
+    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS, service)
 
     assert scheduler.jobs == [
         {
@@ -86,7 +88,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_interval",
             "replace_existing": True,
-            "args": [HEADLESS, config],
+            "args": [HEADLESS, service],
             "minute": "4/15",
             "jitter": 240,
         },
@@ -95,7 +97,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_0115",
             "replace_existing": True,
-            "args": [HEADLESS, config],
+            "args": [HEADLESS, service],
             "hour": 1,
             "minute": 15,
             "jitter": 240,
