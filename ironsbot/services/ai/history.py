@@ -1,15 +1,9 @@
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.ai import AiConfig
+from ironsbot.services.ai.resources import AiResources
 
 HistoryMessage = dict[str, str]
-
-_HISTORY: dict[str, list[HistoryMessage]] = {}
-
-
-def _get_ai_config():
-    return get_app_config().ai
-
 
 def history_key(event: MessageEvent) -> str:
     if isinstance(event, GroupMessageEvent):
@@ -18,16 +12,19 @@ def history_key(event: MessageEvent) -> str:
     return f"private:{event.user_id}"
 
 
-def trim_history(history: list[HistoryMessage]) -> list[HistoryMessage]:
-    config = _get_ai_config()
-    if config.history_turns <= 0:
+def trim_history(
+    history: list[HistoryMessage],
+    history_turns: int,
+) -> list[HistoryMessage]:
+    if history_turns <= 0:
         return []
 
-    max_messages = config.history_turns * 2
+    max_messages = history_turns * 2
     return history[-max_messages:]
 
 
 def build_messages(
+    config: AiConfig,
     history: list[HistoryMessage],
     prompt: str,
     memory: list[HistoryMessage] | None = None,
@@ -35,7 +32,7 @@ def build_messages(
     messages = [
         {
             "role": "system",
-            "content": _get_ai_config().prompt,
+            "content": config.prompt,
         }
     ]
     memory_text = format_memory(memory or [])
@@ -46,7 +43,7 @@ def build_messages(
                 "content": memory_text,
             }
         )
-    messages.extend(trim_history(history))
+    messages.extend(trim_history(history, config.history_turns))
     messages.append({"role": "user", "content": prompt})
     return messages
 
@@ -68,16 +65,17 @@ def format_memory(memory: list[HistoryMessage]) -> str:
     return "\n".join(lines)
 
 
-def get_history(key: str) -> list[HistoryMessage]:
-    return _HISTORY.get(key, [])
+def get_history(resources: AiResources, key: str) -> list[HistoryMessage]:
+    return resources.history.get(key, [])
 
 
-def append_turn(key: str, prompt: str, reply: str) -> None:
-    history = get_history(key)
-    _HISTORY[key] = trim_history(
+def append_turn(resources: AiResources, key: str, prompt: str, reply: str) -> None:
+    history = get_history(resources, key)
+    resources.history[key] = trim_history(
         [
-            *trim_history(history),
+            *trim_history(history, resources.config.history_turns),
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": reply},
-        ]
+        ],
+        resources.config.history_turns,
     )

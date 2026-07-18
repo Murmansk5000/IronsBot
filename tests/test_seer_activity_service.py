@@ -1,229 +1,107 @@
-from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable, Mapping
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from pytest import MonkeyPatch
-
-from ironsbot.services.activity import seer_activity
-from ironsbot.services.activity.models import (
-    ActivityInfo,
-    ActivityInfoCache,
-    ActivityReminder,
+from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.services.activity.delivery import (
+    ActivityReminderDelivery,
+    ActivityReminderTargets,
+)
+from ironsbot.services.activity.models import ActivityInfoCache
+from ironsbot.services.activity.service import (
+    EMPTY_SOON_ENDING_ACTIVITY_MESSAGE,
+    ActivityService,
 )
 
-ACTIVITY_ID_ONE = 1
-ACTIVITY_ID_TWO = 2
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 
-def dt(
-    year: int,
-    month: int,
-    day: int,
-    hour: int,
-    minute: int = 0,
-) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+def dt(day: int, hour: int = 10) -> datetime:
+    return datetime(2026, 6, day, hour, tzinfo=LOCAL_TZ)
 
 
-def _activity(
-    activity_id: int = ACTIVITY_ID_ONE,
+def _row(
+    activity_id: int,
+    name: str,
     *,
-    name: str = "银河斗技场",
-    start_time: datetime | None = None,
-    end_time: datetime | None = None,
-) -> ActivityInfo:
-    return ActivityInfo(
-        activity_id=activity_id,
-        name=name,
-        start_time=start_time or dt(2026, 6, 1, 10),
-        end_time=end_time or dt(2026, 6, 12, 10),
-        sort_order=activity_id,
-    )
+    end_day: int,
+) -> Mapping[str, Any]:
+    return {
+        "id": activity_id,
+        "name": name,
+        "start_time": "2026-06-01 10:00:00",
+        "end_time": f"2026-06-{end_day:02d} 10:00:00",
+        "sort_order": activity_id,
+    }
 
 
-def _empty_rows() -> list[Mapping[str, Any]]:
-    return []
-
-
-def _first_rows() -> list[Mapping[str, Any]]:
-    return [{"id": ACTIVITY_ID_ONE}]
-
-
-def _second_rows() -> list[Mapping[str, Any]]:
-    return [{"id": ACTIVITY_ID_TWO}]
-
-
-def _seer_activity_source(
-    cache: ActivityInfoCache,
-    load_rows: seer_activity.LoadActivityRows = _empty_rows,
+def _service(
+    rows: list[Mapping[str, Any]],
     *,
-    cache_ttl: timedelta | None = None,
-) -> seer_activity.SeerActivitySource:
-    return seer_activity.SeerActivitySource(
-        cache=cache,
-        load_rows=load_rows,
-        cache_ttl=cache_ttl or timedelta(minutes=1),
+    now: datetime,
+    cache_ttl: timedelta = timedelta(minutes=1),
+    load_rows: Callable[[], list[Mapping[str, Any]]] | None = None,
+) -> ActivityService:
+    async def broadcast(_delivery: ActivityReminderDelivery) -> bool:
+        return True
+
+    return ActivityService(
+        config=ActivityConfig(),
+        cache=ActivityInfoCache(),
+        load_rows=load_rows or (lambda: rows),
+        load_notice_text=lambda _now: "",
+        cache_ttl=cache_ttl,
         soon_ending_threshold=timedelta(days=7),
+        filter_unsent=lambda reminders: reminders,
+        mark_sent=lambda _reminders, _sent_at: None,
+        preference_values=tuple,
+        preference_for_target=lambda _target_type, _target_id: None,
+        targets=ActivityReminderTargets,
+        broadcast=broadcast,
+        now=lambda: now,
     )
 
 
-def _reminder() -> ActivityReminder:
-    return ActivityReminder(
-        activity_id=ACTIVITY_ID_ONE,
-        name="银河斗技场",
-        end_time=dt(2026, 6, 12, 10),
-        lead_hours=1,
-        send_time=dt(2026, 6, 12, 9),
+def test_active_activity_infos_reuses_cache_and_filters_against_now() -> None:
+    calls = 0
+    def load_rows() -> list[Mapping[str, Any]]:
+        nonlocal calls
+        calls += 1
+        return [_row(1, "银河斗技场", end_day=12)]
+
+    service = _service(
+        [],
+        now=dt(11),
+        cache_ttl=timedelta(days=2),
+        load_rows=load_rows,
     )
 
+    assert [item.activity_id for item in service.active_activity_infos(dt(11))] == [1]
+    assert service.active_activity_infos(dt(12, 11)) == []
+    assert calls == 1
 
-def test_active_activity_infos_reuses_cache_and_filters_against_now(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    cache = ActivityInfoCache()
-    build_calls: list[list[Mapping[str, Any]]] = []
 
-    def fake_build_active_activity_infos(
-        rows: Iterable[Mapping[str, Any]],
-        _now: datetime,
-    ) -> list[ActivityInfo]:
-        build_calls.append(list(rows))
-        return [_activity()]
-
-    monkeypatch.setattr(
-        seer_activity,
-        "build_active_activity_infos",
-        fake_build_active_activity_infos,
-    )
-    source = _seer_activity_source(cache, _first_rows, cache_ttl=timedelta(days=2))
-
-    first = seer_activity.active_activity_infos(
-        source,
-        dt(2026, 6, 11, 10),
-    )
-    second = seer_activity.active_activity_infos(
-        seer_activity.SeerActivitySource(
-            cache=cache,
-            load_rows=_second_rows,
-            cache_ttl=timedelta(days=2),
-            soon_ending_threshold=timedelta(days=7),
-        ),
-        dt(2026, 6, 12, 11),
+def test_build_current_message_renders_and_limits_activities() -> None:
+    service = _service(
+        [
+            _row(1, "银河斗技场", end_day=12),
+            _row(2, "审判天使", end_day=13),
+        ],
+        now=dt(11),
     )
 
-    assert [activity.activity_id for activity in first] == [ACTIVITY_ID_ONE]
-    assert second == []
-    assert build_calls == [[{"id": ACTIVITY_ID_ONE}]]
-
-
-def test_build_seer_activity_message_renders_current_activity(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    cache = ActivityInfoCache()
-
-    def fake_build_active_activity_infos(
-        _rows: Iterable[Mapping[str, Any]],
-        _now: datetime,
-    ) -> list[ActivityInfo]:
-        return [
-            _activity(ACTIVITY_ID_ONE, name="银河斗技场"),
-            _activity(ACTIVITY_ID_TWO, name="审判天使"),
-        ]
-
-    monkeypatch.setattr(
-        seer_activity,
-        "build_active_activity_infos",
-        fake_build_active_activity_infos,
-    )
-    source = _seer_activity_source(cache)
-
-    message = seer_activity.build_seer_activity_message(
-        source,
-        dt(2026, 6, 11, 10),
-        limit=1,
-    )
+    message = service.build_current_message(limit=1)
 
     assert "📅【当前活动】" in message
     assert "1. 银河斗技场：06-01 10:00 ~ 06-12 10:00 | 剩余：1天" in message
     assert "...还有 1 个活动未显示" in message
 
 
-def test_build_seer_activity_message_handles_empty_soon_ending_list(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    cache = ActivityInfoCache()
+def test_build_current_message_handles_empty_soon_ending_list() -> None:
+    service = _service([], now=dt(11))
 
-    def fake_build_active_activity_infos(
-        _rows: Iterable[Mapping[str, Any]],
-        _now: datetime,
-    ) -> list[ActivityInfo]:
-        return []
-
-    monkeypatch.setattr(
-        seer_activity,
-        "build_active_activity_infos",
-        fake_build_active_activity_infos,
+    assert (
+        service.build_current_message(soon_only=True)
+        == EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
     )
-    source = _seer_activity_source(cache)
-
-    message = seer_activity.build_seer_activity_message(
-        source,
-        dt(2026, 6, 11, 10),
-        soon_only=True,
-    )
-
-    assert message == seer_activity.EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
-
-
-def test_scheduled_reminders_uses_seer_activity_source_activities(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    cache = ActivityInfoCache()
-
-    def fake_build_active_activity_infos(
-        _rows: Iterable[Mapping[str, Any]],
-        _now: datetime,
-    ) -> list[ActivityInfo]:
-        return [_activity()]
-
-    monkeypatch.setattr(
-        seer_activity,
-        "build_active_activity_infos",
-        fake_build_active_activity_infos,
-    )
-
-    reminders = seer_activity.scheduled_reminders(
-        _seer_activity_source(cache),
-        dt(2026, 6, 12, 8, 50),
-        lead_hours=[1],
-        grace=timedelta(minutes=15),
-    )
-
-    assert len(reminders) == 1
-    assert reminders[0].send_time == dt(2026, 6, 12, 9)
-
-
-def test_valid_reminders_before_send_filters_against_current_seer_activity(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    cache = ActivityInfoCache()
-    reminder = _reminder()
-
-    def fake_build_active_activity_infos(
-        _rows: Iterable[Mapping[str, Any]],
-        _now: datetime,
-    ) -> list[ActivityInfo]:
-        return [_activity()]
-
-    monkeypatch.setattr(
-        seer_activity,
-        "build_active_activity_infos",
-        fake_build_active_activity_infos,
-    )
-
-    assert seer_activity.valid_reminders_before_send(
-        _seer_activity_source(cache),
-        [reminder],
-        now=dt(2026, 6, 12, 9),
-        dispatch_tolerance=timedelta(minutes=1),
-    ) == [reminder]

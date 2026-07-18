@@ -4,6 +4,8 @@ import nonebot
 import pytest
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.ai import AiConfig
+from ironsbot.services.ai.resources import AiResources
 from tests.helpers.onebot_events import group_message_event
 
 GROUP_ID = 456
@@ -18,6 +20,7 @@ except ValueError:
 service = pytest.importorskip("ironsbot.services.ai.chat")
 constants = pytest.importorskip("ironsbot.services.ai.constants")
 ai_client = pytest.importorskip("ironsbot.services.ai.client")
+ai_resources_module = pytest.importorskip("ironsbot.services.ai.resources")
 source_context = pytest.importorskip("ironsbot.services.ai.source_context")
 
 
@@ -30,6 +33,18 @@ class FakeBot:
     ) -> dict[str, object]:
         assert no_cache is False
         return {"group_id": group_id, "group_name": "示例群"}
+
+
+def _ai_resources(
+    group_aliases: dict[str, int] | None = None,
+) -> AiResources:
+    return AiResources(
+        AiConfig(),
+        "test-key",
+        group_aliases or {},
+        ("战队",),
+        20,
+    )
 
 
 def test_can_show_admin_notice_for_superuser(monkeypatch: MonkeyPatch) -> None:
@@ -83,7 +98,12 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
     )
 
     source = asyncio.run(
-        source_context.build_ai_notice_source_context(event, "你好", bot=FakeBot())
+        source_context.build_notice_source(
+            event,
+            "你好",
+            _ai_resources(),
+            bot=FakeBot(),
+        )
     )
 
     assert f"群：示例群（{GROUP_ID}）" in source
@@ -92,9 +112,7 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
     assert "消息：你好" in source
 
 
-def test_ai_notice_source_context_falls_back_to_group_alias(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_ai_notice_source_context_falls_back_to_group_alias() -> None:
     event = group_message_event("hello", group_id=GROUP_ID)
 
     async def fail_group_info(**_kwargs: object) -> dict[str, object]:
@@ -103,16 +121,11 @@ def test_ai_notice_source_context_falls_back_to_group_alias(
     class FailingBot:
         get_group_info = staticmethod(fail_group_info)
 
-    monkeypatch.setattr(
-        source_context,
-        "_configured_group_alias",
-        lambda group_id: "example" if group_id == GROUP_ID else "",
-    )
-
     source = asyncio.run(
-        source_context.build_ai_notice_source_context(
+        source_context.build_notice_source(
             event,
             "你好",
+            _ai_resources({"example": GROUP_ID}),
             bot=FailingBot(),
         )
     )
@@ -127,3 +140,17 @@ def test_ai_client_notice_appends_source_context() -> None:
     )
 
     assert message == "AI聊天接口异常。\n\n触发来源：\n群：456"
+
+
+def test_ai_admin_notice_is_limited_by_key(monkeypatch: MonkeyPatch) -> None:
+    sent: list[str] = []
+
+    async def fake_send(message: str, **_kwargs: object) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr(ai_resources_module, "send_admin_notice", fake_send)
+    resources = _ai_resources()
+    asyncio.run(resources.notify_admin_once("same", "first"))
+    asyncio.run(resources.notify_admin_once("same", "second"))
+
+    assert sent == ["first"]

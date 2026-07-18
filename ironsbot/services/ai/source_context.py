@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from ironsbot.config.loader import get_app_config
+from ironsbot.services.ai.resources import AiResources
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -10,15 +10,16 @@ if TYPE_CHECKING:
 AI_NOTICE_MESSAGE_MAX_CHARS = 300
 
 
-async def build_ai_notice_source_context(
+async def build_notice_source(
     event: MessageEvent,
     prompt: str,
+    resources: AiResources,
     *,
     bot: "Bot | None" = None,
 ) -> str:
     lines: list[str] = []
     if isinstance(event, GroupMessageEvent):
-        group_label = await _group_display_label(event, bot)
+        group_label = await _group_display_label(event, bot, resources)
         lines.append(f"群：{group_label}")
     else:
         lines.append("会话：私聊")
@@ -58,13 +59,15 @@ def _get_sender_display_name(event: MessageEvent) -> str:
     return ""
 
 
-async def _group_display_label(event: GroupMessageEvent, bot: "Bot | None") -> str:
+async def _group_display_label(
+    event: GroupMessageEvent, bot: "Bot | None", resources: AiResources
+) -> str:
     group_id = int(event.group_id)
     group_name = await _fetch_group_name(bot, group_id)
     if group_name:
         return f"{group_name}（{group_id}）"
 
-    group_alias = _configured_group_alias(group_id)
+    group_alias = _configured_group_alias(group_id, resources)
     if group_alias:
         return f"{group_alias}（{group_id}）"
 
@@ -85,13 +88,8 @@ async def _fetch_group_name(bot: "Bot | None", group_id: int) -> str:
     return str(getattr(group_info, "group_name", "") or "").strip()
 
 
-def _configured_group_alias(group_id: int) -> str:
-    try:
-        aliases = get_app_config().feature.group_aliases
-    except Exception:  # noqa: BLE001
-        return ""
-
-    for alias, alias_group_id in aliases.items():
+def _configured_group_alias(group_id: int, resources: AiResources) -> str:
+    for alias, alias_group_id in resources.group_aliases.items():
         if int(alias_group_id) == group_id:
             return alias
     return ""
@@ -106,5 +104,5 @@ def _truncate_notice_message(text: str) -> str:
 
 __all__ = [
     "append_ai_notice_source_context",
-    "build_ai_notice_source_context",
+    "build_notice_source",
 ]

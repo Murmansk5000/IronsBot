@@ -5,6 +5,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.services.bilibili.accounts import get_bili_config
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.cookie_cache import get_saved_cookie
@@ -28,7 +29,6 @@ from ironsbot.shared.messaging import (
 
 from .auth import send_bili_login_qrcode_to_superusers
 from .command_rules import is_dynamic_select_reply
-from .config import get_bili_config
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 
@@ -40,7 +40,7 @@ async def wait_dynamic_select(
         matcher,
         event,
         namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-        handlers=[handle_dynamic_select],
+        handlers=[handle_dynamic_select_action],
         reply_check=is_dynamic_select_reply,
     )
 
@@ -100,7 +100,7 @@ async def handle_dynamic_menu_action(
             matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[handle_dynamic_select],
+            handlers=[handle_dynamic_select_action],
             reply_check=is_dynamic_select_reply,
             prompt=Message(build_dynamic_menu_text(records)),
         )
@@ -183,11 +183,3 @@ async def handle_dynamic_select_action(
             event,
             "❌ 动态详情解析失败。",
         )
-
-
-async def handle_dynamic_select(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await handle_dynamic_select_action(matcher, event, state)

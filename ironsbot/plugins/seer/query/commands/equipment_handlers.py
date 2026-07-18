@@ -16,7 +16,7 @@ from ironsbot.integrations.seer_data.image import (
     SuitImageGetter,
     TitleImageGetter,
 )
-from ironsbot.utils import build_sub_line
+from ironsbot.services.seer.formatting import format_sub_lines
 
 from ..prompt import (
     Prompt,
@@ -49,7 +49,7 @@ async def _build_suit_message(suit: SuitORM) -> MessageFactory:
             text += f"\n    效果：{equip.bonus.desc}"
         equips.append(text)
 
-    msg += build_sub_line(texts=equips)
+    msg += format_sub_lines(equips)
     bonus_desc = suit.bonus.desc if suit.bonus else "无"
     msg += f"套装效果：{bonus_desc}"
     return msg

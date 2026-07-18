@@ -1,5 +1,3 @@
-from pytest import MonkeyPatch
-
 from ironsbot.config.models.runtime import RestartConfig
 from ironsbot.plugins.scheduled_restart import (
     runtime as scheduled_restart_runtime,
@@ -14,23 +12,17 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
-def test_register_restart_job_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_register_restart_job_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        scheduled_restart_runtime,
-        "get_restart_config",
-        lambda: RestartConfig.model_validate(
-            {
-                "enabled": True,
-                "times": ["04:30"],
-                "grace_seconds": 0,
-            }
-        ),
+    config = RestartConfig.model_validate(
+        {
+            "enabled": True,
+            "times": ["04:30"],
+            "grace_seconds": 0,
+        }
     )
 
-    scheduled_restart_runtime.register_restart_jobs(scheduler)
+    scheduled_restart_runtime.register_restart_jobs(scheduler, config)
 
     assert scheduler.jobs == [
         {
@@ -38,7 +30,7 @@ def test_register_restart_job_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "scheduled_bot_restart:04:30",
             "replace_existing": True,
-            "args": ["04:30"],
+            "args": ["04:30", config],
             "hour": 4,
             "minute": 30,
             "second": 0,

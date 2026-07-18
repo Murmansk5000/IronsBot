@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.shared.command_text import normalize_command_text
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,

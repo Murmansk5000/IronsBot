@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from ironsbot.shared.runtime.jobs import JobRegistry
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 from .service import run_check_logic
 
@@ -16,13 +16,9 @@ if TYPE_CHECKING:
 BILIBILI_MONITOR_JOB_PREFIX = "bilibili_monitor_"
 
 
-async def auto_check_job() -> None:
-    await run_check_logic()
-
-
 async def register_bili_auto_check_job(scheduler: Any) -> None:
     JobRegistry(scheduler, prefix=BILIBILI_MONITOR_JOB_PREFIX).add(
-        auto_check_job,
+        run_check_logic,
         "interval",
         minutes=1,
         job_id="auto_check",

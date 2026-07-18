@@ -6,10 +6,7 @@ from typing import TYPE_CHECKING, Literal
 
 from anyio import Path as AsyncPath
 
-from .docker_update_client import (
-    resolve_docker_container_name,
-    start_watchtower_update,
-)
+from .docker_update_client import start_watchtower_update
 from .docker_update_formatting import (
     format_docker_update_reply,
     is_docker_update_started,
@@ -17,7 +14,7 @@ from .docker_update_formatting import (
 from .docker_update_models import DockerUpdateResult, WatchtowerUpdateOptions
 
 if TYPE_CHECKING:
-    from .config import DockerUpdateConfig
+    from ironsbot.config.models.runtime import DockerUpdateConfig
 
 RestartAction = Literal["none", "process", "docker"]
 
@@ -29,7 +26,7 @@ class DockerSelfUpdateService:
         self._config = config
 
     def resolve_container_name(self) -> str:
-        return resolve_docker_container_name(str(self._config.container_name))
+        return str(self._config.container_name)
 
     async def run(self) -> tuple[str, DockerUpdateResult]:
         container_name = self.resolve_container_name()

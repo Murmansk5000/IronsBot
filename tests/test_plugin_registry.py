@@ -20,10 +20,11 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.app.composition import build_application_lifecycle
-from ironsbot.app.registry import build_plugin_registry, validate_plugin_registry
+from ironsbot.app.registry import validate_plugin_registry
 from ironsbot.core.features import Feature
+from tests.helpers.plugin_registry import build_test_plugin_registry
 
-DEFINITIONS = build_plugin_registry()
+DEFINITIONS = build_test_plugin_registry()
 DEFINITIONS_BY_ID = {definition.id: definition for definition in DEFINITIONS}
 
 
@@ -56,12 +57,6 @@ def test_registry_is_the_lifecycle_order_authority() -> None:
         DEFINITIONS,
     )
 
-    assert [name for name, _hook in lifecycle.installers] == [
-        "docker_update_notice",
-        "db_sync_notice",
-        "messaging_runtime",
-        "activity_runtime",
-    ]
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "http_client",
         "docker_update",
@@ -79,6 +74,7 @@ def test_registry_is_the_lifecycle_order_authority() -> None:
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "http_client",
         "headless_seer",
+        "activity",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
         "headless_seer_check",

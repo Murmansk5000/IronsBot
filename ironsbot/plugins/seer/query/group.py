@@ -7,6 +7,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 
@@ -29,6 +30,7 @@ def seer_feature_priority(feature: str, fallback: int | None = None) -> int:
 @dataclass(frozen=True, slots=True)
 class SeerMatcherGroup:
     registry: MatcherRegistry
+    headless: HeadlessService
 
     def on_message(
         self,

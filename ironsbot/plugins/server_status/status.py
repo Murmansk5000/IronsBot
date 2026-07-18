@@ -3,11 +3,11 @@ from dataclasses import dataclass
 
 from nonebot import logger
 
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.operations.headless import HeadlessService
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,9 +16,9 @@ class HeadlessStatus:
     reason: str = ""
 
 
-def get_headless_status() -> HeadlessStatus:
+def get_headless_status(headless: HeadlessService) -> HeadlessStatus:
     try:
-        game = get_game_client()
+        game = headless.get_game()
     except (DisconnectedError, NotLoggedInError) as e:
         return HeadlessStatus(connected=False, reason=str(e))
     except Exception:  # noqa: BLE001

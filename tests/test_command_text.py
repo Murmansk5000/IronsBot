@@ -1,4 +1,4 @@
-from ironsbot.shared.command_text import (
+from ironsbot.core.commands import (
     command_text_matches,
     normalize_command_text,
     strip_command_prefix,

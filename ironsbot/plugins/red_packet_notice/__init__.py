@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -12,7 +12,6 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.log import logger
 from nonebot.rule import Rule
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.red_packet_notice import (
     RedPacketNoticeLimiter,
@@ -26,31 +25,8 @@ from ironsbot.shared.messaging.admin_notice import send_admin_notice
 
 RED_PACKET_NOTICE_SUBSCRIPTION_KEY = "red_packet_notice"
 
-_limiter: RedPacketNoticeLimiter | None = None
-
-
-def _get_limiter() -> RedPacketNoticeLimiter:
-    global _limiter  # noqa: PLW0603
-
-    cooldown_seconds = get_app_config().message.red_packet_notice.cooldown_seconds
-    if _limiter is None or _limiter.cooldown_seconds != cooldown_seconds:
-        _limiter = RedPacketNoticeLimiter(cooldown_seconds=cooldown_seconds)
-    return _limiter
-
-
-async def _is_red_packet_notice_event(event: MessageEvent) -> bool:
-    if not isinstance(event, GroupMessageEvent):
-        return False
-    config = get_app_config().message.red_packet_notice
-    return config.enabled and is_red_packet_message(event.message)
-
-
-async def _is_red_packet_notice_payload(event: NoticeEvent) -> bool:
-    group_id = getattr(event, "group_id", None)
-    if group_id is None:
-        return False
-    config = get_app_config().message.red_packet_notice
-    return config.enabled and is_red_packet_payload(event.model_dump())
+if TYPE_CHECKING:
+    from ironsbot.config.models.message import RedPacketNoticeConfig
 
 
 async def _get_group_name(bot: Bot, group_id: int) -> str:
@@ -66,38 +42,15 @@ async def _get_group_name(bot: Bot, group_id: int) -> str:
     return str(info.get("group_name") or "").strip()
 
 
-async def handle_red_packet_notice(
-    bot: Bot,
-    event: GroupMessageEvent,
-) -> None:
-    await _send_red_packet_notice(
-        bot=bot,
-        group_id=event.group_id,
-        sender_id=event.user_id,
-        summary=summarize_red_packet_message(event.message),
-    )
-
-
-async def handle_red_packet_notice_payload(
-    bot: Bot,
-    event: NoticeEvent,
-) -> None:
-    await _send_red_packet_notice(
-        bot=bot,
-        group_id=int(getattr(event, "group_id", 0)),
-        sender_id=int(getattr(event, "user_id", 0) or 0),
-        summary="红包通知",
-    )
-
-
 async def _send_red_packet_notice(
     *,
     bot: Bot,
+    limiter: RedPacketNoticeLimiter,
     group_id: int,
     sender_id: int,
     summary: str,
 ) -> None:
-    if not _get_limiter().can_send(group_id):
+    if not limiter.can_send(group_id):
         logger.info(f"red packet notice suppressed by cooldown for group {group_id}")
         return
 
@@ -116,18 +69,52 @@ async def _send_red_packet_notice(
     )
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(registry: MatcherRegistry, config: RedPacketNoticeConfig) -> None:
+    limiter = RedPacketNoticeLimiter(config.cooldown_seconds)
+
+    async def is_message(event: MessageEvent) -> bool:
+        return (
+            config.enabled
+            and isinstance(event, GroupMessageEvent)
+            and is_red_packet_message(event.message)
+        )
+
+    async def handle_message(bot: Bot, event: GroupMessageEvent) -> None:
+        await _send_red_packet_notice(
+            bot=bot,
+            limiter=limiter,
+            group_id=event.group_id,
+            sender_id=event.user_id,
+            summary=summarize_red_packet_message(event.message),
+        )
+
+    async def is_payload(event: NoticeEvent) -> bool:
+        return (
+            config.enabled
+            and getattr(event, "group_id", None) is not None
+            and is_red_packet_payload(event.model_dump())
+        )
+
+    async def handle_payload(bot: Bot, event: NoticeEvent) -> None:
+        await _send_red_packet_notice(
+            bot=bot,
+            limiter=limiter,
+            group_id=int(getattr(event, "group_id", 0)),
+            sender_id=int(getattr(event, "user_id", 0) or 0),
+            summary="红包通知",
+        )
+
     message_matcher = registry.on_message(
         policy=CommandPolicy.exempt("passive red packet event detection"),
-        rule=Rule(_is_red_packet_notice_event),
+        rule=Rule(is_message),
         priority=get_matcher_priority("red_packet_notice", 1),
         block=False,
     )
-    message_matcher.append_handler(handle_red_packet_notice)
+    message_matcher.append_handler(handle_message)
 
     notice_matcher = registry.on_notice(
-        rule=Rule(_is_red_packet_notice_payload),
+        rule=Rule(is_payload),
         priority=get_matcher_priority("red_packet_notice", 1),
         block=False,
     )
-    notice_matcher.append_handler(handle_red_packet_notice_payload)
+    notice_matcher.append_handler(handle_payload)

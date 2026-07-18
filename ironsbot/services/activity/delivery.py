@@ -1,16 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
-
-from nonebot.log import logger
-
-from ironsbot.shared.features import (
-    groups_for_feature,
-    users_for_feature,
-    users_with_superusers,
-)
 
 from .formatting import format_activity_list
 from .planning import filter_valid_reminders
@@ -22,8 +15,8 @@ if TYPE_CHECKING:
     from .models import ActivityInfo, ActivityReminder
 
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-ACTIVITY_PUSH_FEATURE = "seer_activity_push"
 ActivityReminderDeliveryStatus = Literal["skip_empty", "skip_no_targets", "send"]
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,15 +42,6 @@ class ActivityReminderDelivery:
         return self.status == "send"
 
 
-def activity_reminder_targets(
-    feature: str = ACTIVITY_PUSH_FEATURE,
-) -> ActivityReminderTargets:
-    return ActivityReminderTargets(
-        group_ids=tuple(groups_for_feature(feature)),
-        private_user_ids=tuple(users_with_superusers(users_for_feature(feature))),
-    )
-
-
 def format_reminder_message(
     lead_hours: int,
     reminders: list[ActivityReminder],
@@ -71,8 +55,8 @@ def format_reminder_message(
             activity_count=len(reminders),
             activity_list=format_activity_list(reminders),
         )
-    except (KeyError, IndexError, ValueError) as e:
-        logger.warning(f"activity reminder template failed: {e}")
+    except (KeyError, IndexError, ValueError) as exc:
+        _LOGGER.warning("activity reminder template failed: %s", exc)
         return fallback_template.format(
             lead_hours=lead_hours,
             activity_list=format_activity_list(reminders),

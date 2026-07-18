@@ -1,4 +1,5 @@
 import asyncio
+from typing import cast
 
 from pytest import MonkeyPatch
 
@@ -140,15 +141,15 @@ def test_rank_page_refresh_enters_backoff_after_connection_failure(
             "preview_rank_page_refresh_targets",
             lambda _rank_keys=None: [target],
         )
-        monkeypatch.setattr(rank_page_refresh, "get_game_client", object)
         monkeypatch.setattr(rank_page_refresh, "fetch_daily_rank_page", fail_fetch)
         rank_page_refresh._rank_page_refresh_state.backoff_until = 0
+        game = cast("SeerGame", object())
 
-        result = await rank_page_refresh.refresh_rank_page_cache()
+        result = await rank_page_refresh.refresh_rank_page_cache(game)
         assert result.failed == 1
         assert rank_page_refresh._rank_page_refresh_backoff_remaining() > 0
 
-        skipped = await rank_page_refresh.refresh_rank_page_cache()
+        skipped = await rank_page_refresh.refresh_rank_page_cache(game)
         assert skipped.total == 0
 
     asyncio.run(run())

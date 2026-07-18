@@ -26,12 +26,14 @@ from ironsbot.utils.rule import no_reply
 
 from .menu import (
     HELP_ENTRIES_KEY,
+    HelpMenuEntry,
     format_plugin_detail,
     format_plugin_list,
     visible_help_entries,
 )
 
 if TYPE_CHECKING:
+    from ironsbot.config.models.app import AppConfig
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import PluginDefinition
 
@@ -75,9 +77,8 @@ async def handle_help(
     event: Event,
     state: T_State,
     *,
-    definitions: tuple[PluginDefinition, ...],
+    entries: list[HelpMenuEntry],
 ) -> None:
-    entries = visible_help_entries(definitions, event)
     if not entries:
         await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
 
@@ -134,6 +135,9 @@ def _create_selection_handler(
 def install(
     registry: MatcherRegistry,
     definitions: tuple[PluginDefinition, ...],
+    config: AppConfig,
+    *,
+    ai_key_configured: bool,
 ) -> None:
     matcher = registry.on_fullmatch(
         "帮助",
@@ -148,11 +152,17 @@ def install(
         event: Event,
         state: T_State,
     ) -> None:
+        entries = visible_help_entries(
+            definitions,
+            event,
+            config=config,
+            ai_key_configured=ai_key_configured,
+        )
         await handle_help(
             matcher,
             event,
             state,
-            definitions=definitions,
+            entries=entries,
         )
 
     matcher.append_handler(_handle_help)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -7,22 +9,27 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.shared.command_text import command_text_matches
+from ironsbot.core.commands import command_text_matches
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,
 )
 from ironsbot.shared.permissions import can_manage_group_event
 
-from .config import (
-    PrivateCommandMessageAction,
-    get_message_config,
-)
 from .push_management_runtime import (
     PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS,
     PUSH_TIME_COMMANDS,
 )
 from .runtime_service import find_command_action
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ironsbot.config.models.message import (
+        GroupCommandMessageAction,
+        PrivateCommandMessageAction,
+        PushUnsubscribeConfig,
+    )
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
@@ -38,15 +45,19 @@ def private_action_allowed(
     )
 
 
-async def match_private_command(event: MessageEvent, state: T_State) -> bool:
+async def match_private_command(
+    event: MessageEvent,
+    state: T_State,
+    *,
+    actions: Sequence[PrivateCommandMessageAction],
+) -> bool:
     if not isinstance(event, PrivateMessageEvent):
         return False
 
     text = event.get_plaintext()
-    config = get_message_config()
     action = find_command_action(
         text,
-        config.private_commands,
+        actions,
         is_allowed=lambda candidate: private_action_allowed(event, candidate),
     )
     if action is not None:
@@ -56,15 +67,19 @@ async def match_private_command(event: MessageEvent, state: T_State) -> bool:
     return False
 
 
-async def match_group_command(event: MessageEvent, state: T_State) -> bool:
+async def match_group_command(
+    event: MessageEvent,
+    state: T_State,
+    *,
+    actions: Sequence[GroupCommandMessageAction],
+) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
     text = event.get_plaintext()
-    config = get_message_config()
     action = find_command_action(
         text,
-        config.group_commands,
+        actions,
         is_allowed=lambda candidate: is_group_feature_allowed(
             event.user_id,
             event.group_id,
@@ -84,12 +99,13 @@ def is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
 
 async def match_push_subscription_command(
     event: MessageEvent,
-    _state: T_State,
+    state: T_State,
+    *,
+    config: PushUnsubscribeConfig,
 ) -> bool:
+    del state
     if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
-
-    config = get_message_config().push_unsubscribe
 
     text = event.get_plaintext()
     if command_text_matches(text, PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS):

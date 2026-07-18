@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import os
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -16,7 +15,6 @@ from ironsbot.config.models.runtime import (
     RemoteBuildConfig,
     RemoteBuildStepConfig,
 )
-from ironsbot.config.models.secrets import SecretsConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
@@ -54,24 +52,6 @@ def _data_sync_config(
         on_startup=on_startup,
         startup_trigger_remote_build=startup_trigger_remote_build,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class FakeRuntimeConfig:
-    data_sync: DataSyncConfig
-
-
-@dataclass(frozen=True, slots=True)
-class FakeAppConfig:
-    runtime: FakeRuntimeConfig
-
-
-def _app_config(*, data_sync: DataSyncConfig) -> FakeAppConfig:
-    return FakeAppConfig(runtime=FakeRuntimeConfig(data_sync=data_sync))
-
-
-def _secrets_config(*, github_workflow_token: str) -> SecretsConfig:
-    return SecretsConfig(github_workflow_token=github_workflow_token)
 
 
 class FakeScheduler:
@@ -127,16 +107,15 @@ def test_db_sync_startup_prepares_engines_and_interval_jobs(
         "register",
         registered_engines.append,
     )
-    monkeypatch.setattr(
-        db_sync_runtime,
-        "get_app_config",
-        lambda: _app_config(
-            data_sync=_data_sync_config(interval_enabled=True, on_startup=False)
-        ),
+    notice = asyncio.run(
+        db_sync_runtime.start_db_sync(
+            scheduler,
+            _data_sync_config(interval_enabled=True, on_startup=False),
+            "",
+        )
     )
 
-    asyncio.run(db_sync_runtime.start_db_sync(scheduler))
-
+    assert notice is None
     assert registered_engines == ["unit"]
     assert scheduler.jobs == [
         {
@@ -170,22 +149,12 @@ def test_db_sync_startup_can_trigger_remote_build(
     monkeypatch.setattr(db_sync_state, "prepared_databases", set())
     monkeypatch.setattr(db_sync_runner.db_manager, "register", lambda _name: None)
     monkeypatch.setattr(db_sync_runner, "load_cached_database", lambda _name: False)
-    monkeypatch.setattr(
-        db_sync_runtime,
-        "get_app_config",
-        lambda: _app_config(
-            data_sync=_data_sync_config(
-                interval_enabled=False,
-                on_startup=True,
-                startup_trigger_remote_build=True,
-            )
-        ),
-    )
-
     async def fake_run_sync_all_databases(
         *,
+        github_token: str,
         trigger_remote_build: bool = False,
     ) -> tuple[bool, dict[str, bool]]:
+        assert github_token == "token"
         calls.append(trigger_remote_build)
         return True, {"unit": True}
 
@@ -198,10 +167,20 @@ def test_db_sync_startup_can_trigger_remote_build(
         lambda results, *, title_prefix: f"{title_prefix}:{results}",
     )
 
-    asyncio.run(db_sync_runtime.start_db_sync(scheduler))
+    notice = asyncio.run(
+        db_sync_runtime.start_db_sync(
+            scheduler,
+            _data_sync_config(
+                interval_enabled=False,
+                on_startup=True,
+                startup_trigger_remote_build=True,
+            ),
+            "token",
+        )
+    )
 
     assert calls == [True]
-    assert db_sync_runtime.get_startup_sync_notice() == (
+    assert notice == (
         "启动数据同步:{'unit': True}"
     )
 
@@ -226,22 +205,12 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
     monkeypatch.setattr(db_sync_state, "prepared_databases", set())
     monkeypatch.setattr(db_sync_runner.db_manager, "register", lambda _name: None)
     monkeypatch.setattr(db_sync_runner, "load_cached_database", loaded.append)
-    monkeypatch.setattr(
-        db_sync_runtime,
-        "get_app_config",
-        lambda: _app_config(
-            data_sync=_data_sync_config(
-                interval_enabled=False,
-                on_startup=True,
-                startup_trigger_remote_build=False,
-            )
-        ),
-    )
-
     async def fake_run_sync_all_databases(
         *,
+        github_token: str,
         trigger_remote_build: bool = False,
     ) -> tuple[bool, dict[str, bool]]:
+        assert github_token == ""
         assert not trigger_remote_build
         return True, {"unit": False}
 
@@ -254,10 +223,20 @@ def test_db_sync_startup_falls_back_to_cache_on_sync_failure(
         lambda results, *, title_prefix: f"{title_prefix}:{results}",
     )
 
-    asyncio.run(db_sync_runtime.start_db_sync(scheduler))
+    notice = asyncio.run(
+        db_sync_runtime.start_db_sync(
+            scheduler,
+            _data_sync_config(
+                interval_enabled=False,
+                on_startup=True,
+                startup_trigger_remote_build=False,
+            ),
+            "",
+        )
+    )
 
     assert loaded == ["unit"]
-    assert db_sync_runtime.get_startup_sync_notice() == (
+    assert notice == (
         "启动数据同步:{'unit': False}"
     )
 
@@ -333,10 +312,6 @@ def test_manual_sync_triggers_remote_build_before_download(
             ),
         },
     )
-    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
-        lambda: _secrets_config(github_workflow_token="token"),
-    )
-
     async def fake_build(
         config: RemoteBuildConfig,
         *,
@@ -358,7 +333,12 @@ def test_manual_sync_triggers_remote_build_before_download(
     monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
     monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(
+        db_sync_runner.sync_all_databases(
+            github_token="token",
+            trigger_remote_build=True,
+        )
+    )
 
     assert results == {"seerapi": True, "aliases": True}
     assert calls == [
@@ -383,10 +363,6 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
             ),
         },
     )
-    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
-        lambda: _secrets_config(github_workflow_token="token"),
-    )
-
     async def fake_build(
         config: RemoteBuildStepConfig,
         *,
@@ -408,7 +384,12 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
     monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
     monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(
+        db_sync_runner.sync_all_databases(
+            github_token="token",
+            trigger_remote_build=True,
+        )
+    )
 
     assert results == {"seerapi": True}
     assert calls == [
@@ -436,10 +417,6 @@ def test_force_remote_build_adds_force_input_to_supported_steps(
             ),
         },
     )
-    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
-        lambda: _secrets_config(github_workflow_token="token"),
-    )
-
     async def fake_build(
         config: RemoteBuildStepConfig,
         *,
@@ -463,6 +440,7 @@ def test_force_remote_build_adds_force_input_to_supported_steps(
 
     results = asyncio.run(
         db_sync_runner.sync_all_databases(
+            github_token="token",
             trigger_remote_build=True,
             force_remote_build=True,
         )
@@ -504,10 +482,6 @@ def test_remote_build_failure_skips_old_release_download(
             ),
         },
     )
-    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
-        lambda: _secrets_config(github_workflow_token="token"),
-    )
-
     async def fake_build(
         config: RemoteBuildConfig,
         *,
@@ -528,7 +502,12 @@ def test_remote_build_failure_skips_old_release_download(
     monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fake_build)
     monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(
+        db_sync_runner.sync_all_databases(
+            github_token="token",
+            trigger_remote_build=True,
+        )
+    )
 
     assert results == {"seerapi": False, "aliases": True}
     assert synced == ["aliases"]
@@ -565,7 +544,7 @@ def test_scheduled_sync_does_not_trigger_remote_build(
     monkeypatch.setattr(db_sync_runner, "trigger_and_wait_workflow", fail_build)
     monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync_runner.sync_all_databases())
+    results = asyncio.run(db_sync_runner.sync_all_databases(github_token=""))
 
     assert results == {"seerapi": True}
     assert synced == ["seerapi"]
@@ -586,17 +565,18 @@ def test_remote_build_enabled_without_token_fails_fast(
             )
         },
     )
-    monkeypatch.setattr(db_sync_runner, "load_secrets_config",
-        lambda: _secrets_config(github_workflow_token=""),
-    )
-
     async def fake_sync(name: str) -> bool:
         synced.append(name)
         return True
 
     monkeypatch.setattr(db_sync_runner, "sync_database", fake_sync)
 
-    results = asyncio.run(db_sync_runner.sync_all_databases(trigger_remote_build=True))
+    results = asyncio.run(
+        db_sync_runner.sync_all_databases(
+            github_token="",
+            trigger_remote_build=True,
+        )
+    )
 
     assert results == {"seerapi": False}
     assert synced == []

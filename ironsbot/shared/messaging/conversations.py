@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import MessageEvent
 
-from ironsbot.shared.command_text import command_text_matches
+from ironsbot.core.commands import command_text_matches
 from ironsbot.utils.matcher import enter_prompt_loop, prompt_session_manager
 
 from .replies import event_sender_at_user_ids

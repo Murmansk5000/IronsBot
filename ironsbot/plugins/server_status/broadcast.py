@@ -16,55 +16,65 @@ from ironsbot.shared.features import (
 from ironsbot.shared.messaging import send_broadcast_message
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 
-from .config import get_server_status_config
 from .notice import DEFAULT_START_TIME, DEFAULT_UPDATE_WEEKDAY
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
+    from ironsbot.config.models.runtime import ServerStatusConfig
+
 
 @dataclass(slots=True)
-class OpenBroadcastState:
+class OpenBroadcast:
+    config: ServerStatusConfig
     last_at: datetime | None = None
 
+    async def send(self, event: MessageEvent, *, now: datetime) -> None:
+        if not self.config.broadcast:
+            logger.info("server status open broadcast skipped: disabled")
+            return
 
-_open_broadcast_state = OpenBroadcastState()
+        if not should_broadcast_opened(now):
+            return
 
+        group_ids = groups_for_feature("server_status_push")
+        user_ids = users_with_superusers(users_for_feature("server_status_push"))
+        if not group_ids and not user_ids:
+            logger.info("server status open broadcast skipped: no targets")
+            return
 
-async def broadcast_opened(event: MessageEvent, *, now: datetime) -> None:
-    config = get_server_status_config()
-    if not config.broadcast:
-        logger.info("server status open broadcast skipped: disabled")
-        return
+        if not can_trigger_open_broadcast(
+            event,
+            group_ids=group_ids,
+            user_ids=user_ids,
+        ):
+            logger.info("server status open broadcast skipped: trigger not allowed")
+            return
 
-    if not should_broadcast_opened(now):
-        return
+        if self._in_cooldown(now):
+            logger.info("server status open broadcast skipped: cooldown")
+            return
 
-    group_ids = groups_for_feature("server_status_push")
-    user_ids = users_with_superusers(users_for_feature("server_status_push"))
-    if not group_ids and not user_ids:
-        logger.info("server status open broadcast skipped: no targets")
-        return
+        summary = await send_broadcast_message(
+            self.config.broadcast_message,
+            group_ids=group_ids,
+            private_user_ids=user_ids,
+            action_name="server status open broadcast",
+            interval_seconds=1.2,
+            message_limiter=append_fire_manual_ad_for_group,
+            subscription_key="server_status_push",
+        )
+        if summary.succeeded:
+            self.last_at = now
 
-    if not can_trigger_open_broadcast(event, group_ids=group_ids, user_ids=user_ids):
-        logger.info("server status open broadcast skipped: trigger not allowed")
-        return
+    def _in_cooldown(self, now: datetime) -> bool:
+        if self.last_at is None:
+            return False
 
-    if is_open_broadcast_in_cooldown(now):
-        logger.info("server status open broadcast skipped: cooldown")
-        return
-
-    summary = await send_broadcast_message(
-        config.broadcast_message,
-        group_ids=group_ids,
-        private_user_ids=user_ids,
-        action_name="server status open broadcast",
-        interval_seconds=1.2,
-        message_limiter=append_fire_manual_ad_for_group,
-        subscription_key="server_status_push",
-    )
-    if summary.succeeded:
-        _open_broadcast_state.last_at = now
+        cooldown_minutes = self.config.broadcast_cooldown_minutes
+        return cooldown_minutes > 0 and now - self.last_at < timedelta(
+            minutes=cooldown_minutes
+        )
 
 
 def should_broadcast_opened(now: datetime) -> bool:
@@ -85,14 +95,3 @@ def can_trigger_open_broadcast(
         return int(group_id) in group_ids
 
     return event.user_id in user_ids
-
-
-def is_open_broadcast_in_cooldown(now: datetime) -> bool:
-    if _open_broadcast_state.last_at is None:
-        return False
-
-    cooldown_minutes = get_server_status_config().broadcast_cooldown_minutes
-    if cooldown_minutes <= 0:
-        return False
-
-    return now - _open_broadcast_state.last_at < timedelta(minutes=cooldown_minutes)

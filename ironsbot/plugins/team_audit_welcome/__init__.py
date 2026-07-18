@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
@@ -8,24 +10,22 @@ from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
     NoticeEvent,
 )
-from nonebot.log import logger
 from nonebot.rule import Rule
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.services.team_audit_welcome import record_team_audit_pending_reminder
-from ironsbot.shared.features import is_group_feature_allowed
+from ironsbot.shared.features import is_group_feature_allowed, resolve_group_refs
 from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.shared.messaging.text import build_message, render_text
 
-from .followup import schedule_team_audit_followup
-from .settings import (
+from .followup import (
     FIRST_FOLLOWUP_STEP,
-    followup_cache_path,
-    now_utc,
-    target_groups,
-    welcome_message,
+    schedule_team_audit_followup,
 )
 
 if TYPE_CHECKING:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    from ironsbot.config.models.message import TeamAuditWelcomeConfig
     from ironsbot.runtime.matchers import MatcherRegistry
 
 
@@ -36,12 +36,14 @@ async def _is_group_increase(event: NoticeEvent) -> bool:
 async def handle_team_audit_welcome(
     bot: Bot,
     event: GroupIncreaseNoticeEvent,
+    *,
+    config: TeamAuditWelcomeConfig,
+    scheduler: AsyncIOScheduler,
 ) -> None:
-    config = get_app_config().message.team_audit_welcome
     should_send = (
         config.enabled
         and event.user_id != event.self_id
-        and event.group_id in target_groups()
+        and event.group_id in resolve_group_refs(config.groups)
         and is_group_feature_allowed(event.user_id, event.group_id, config.feature)
     )
     if not should_send:
@@ -49,34 +51,40 @@ async def handle_team_audit_welcome(
 
     await bot.send_group_msg(
         group_id=event.group_id,
-        message=welcome_message(event.user_id),
+        message=build_message(
+            render_text(config.message),
+            at_user_ids=[event.user_id],
+        ),
     )
 
     if not config.followup_enabled:
         return
 
     reminder = record_team_audit_pending_reminder(
-        followup_cache_path(),
+        config.followup_cache_path,
         group_id=event.group_id,
         user_id=event.user_id,
-        joined_at=now_utc(),
+        joined_at=datetime.now(timezone.utc),
         delay_hours=config.followup_after_hours,
         step=FIRST_FOLLOWUP_STEP,
     )
-
-    try:
-        from nonebot_plugin_apscheduler import scheduler
-    except ImportError:
-        logger.warning("team audit followup scheduler is unavailable")
-        return
-
-    schedule_team_audit_followup(scheduler, reminder)
+    schedule_team_audit_followup(scheduler, reminder, config=config)
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(
+    registry: MatcherRegistry,
+    config: TeamAuditWelcomeConfig,
+    scheduler: AsyncIOScheduler,
+) -> None:
     matcher = registry.on_notice(
         rule=Rule(_is_group_increase),
         priority=get_matcher_priority("team_audit", 5),
         block=False,
     )
-    matcher.append_handler(handle_team_audit_welcome)
+    matcher.append_handler(
+        partial(
+            handle_team_audit_welcome,
+            config=config,
+            scheduler=scheduler,
+        )
+    )

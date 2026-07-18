@@ -7,7 +7,6 @@ from typing import Any, Protocol
 from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.client import get_game_client
 from ironsbot.services.seer.local_rank_cache_queries import (
     can_cache_player_id,
     get_refresh_candidate_player_ids,
@@ -55,6 +54,7 @@ def get_player_query_config() -> PlayerQueryConfig:
 
 
 async def refresh_local_rank_cache(
+    game: LocalRankGameClient,
     player_ids: Sequence[int] | None = None,
 ) -> LocalRankRefreshResult:
     local_rank_config = get_local_rank_config()
@@ -71,7 +71,6 @@ async def refresh_local_rank_cache(
     if not player_ids:
         return result
 
-    game = get_game_client()
     peak_sub_key = get_current_peak_sub_key()
 
     for player_id in player_ids:

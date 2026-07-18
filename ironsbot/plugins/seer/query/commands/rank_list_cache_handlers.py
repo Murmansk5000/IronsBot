@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
+    from ironsbot.integrations.headless_seer.game import SeerGame
     from ironsbot.services.seer.rank_list_models import (
         RankCacheBatchCommand,
         RankPageCacheRefreshCommand,
@@ -62,10 +63,11 @@ async def handle_cache_batch(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    game: SeerGame,
 ) -> None:
     ensure_extended_packets()
     command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
-    spec, item_count, requested_count = await cache_global_rank_batch(command)
+    spec, item_count, requested_count = await cache_global_rank_batch(game, command)
     if item_count <= 0:
         await finish_event_reply(
             matcher,
@@ -166,6 +168,7 @@ async def handle_page_cache_refresh(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    game: SeerGame,
 ) -> None:
     ensure_extended_packets()
     command: RankPageCacheRefreshCommand = state[
@@ -178,7 +181,7 @@ async def handle_page_cache_refresh(
     )
     await release_superuser_priority(state)
     rank_keys = None if command.rank_key is None else [command.rank_key]
-    result = await refresh_rank_page_cache(rank_keys)
+    result = await refresh_rank_page_cache(game, rank_keys)
     await finish_event_reply(
         matcher,
         event,
@@ -210,6 +213,7 @@ async def handle_cache_refresh(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    game: SeerGame,
 ) -> None:
     ensure_extended_packets()
     before = get_local_rank_cache_stats()
@@ -231,7 +235,7 @@ async def handle_cache_refresh(
         ),
     )
     await release_superuser_priority(state)
-    result = await refresh_local_rank_cache()
+    result = await refresh_local_rank_cache(game)
     after = get_local_rank_cache_stats()
 
     await finish_event_reply(

@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from .notice_source import fetch_unity_notice_text
-
 if TYPE_CHECKING:
     from .models import ActivityInfo
 
@@ -81,11 +79,13 @@ def _activity_notice_blocks(activity_name: str, notice_text: str) -> list[str]:
     return blocks
 
 
-def offer_blocks(activity: ActivityInfo, now: datetime) -> list[str]:
+def offer_blocks(
+    activity: ActivityInfo,
+    notice_text: str,
+) -> list[str]:
     if activity.start_time is None:
         return []
 
-    notice_text = fetch_unity_notice_text(now)
     if not notice_text:
         return []
     if activity.name not in notice_text:

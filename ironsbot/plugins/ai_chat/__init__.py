@@ -1,3 +1,5 @@
+from functools import partial
+
 import httpx
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
@@ -14,18 +16,13 @@ from ironsbot.services.ai.chat import (
     is_ai_error_reply,
     record_successful_ai_reply,
 )
-from ironsbot.services.ai.client import (
-    AI_CHAT_ERROR_ACTION_NAME,
-    AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-    call_ai_chat,
-)
-from ironsbot.services.ai.config import get_ai_config, get_ai_key
+from ironsbot.services.ai.client import call_ai_chat
 from ironsbot.services.ai.mentions import mentions_bot
-from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
+from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.ai.source_context import (
     append_ai_notice_source_context,
-    build_ai_notice_source_context,
+    build_notice_source,
 )
 from ironsbot.shared.matcher_priority import (
     get_matcher_priority,
@@ -77,6 +74,7 @@ async def _run_ai_chat(
     bot: Bot,
     event: MessageEvent,
     state: T_State,
+    resources: AiResources,
 ) -> None:
     prompt = state.get(AI_CHAT_PROMPT_KEY, "").strip()
     if not prompt:
@@ -88,18 +86,16 @@ async def _run_ai_chat(
         )
 
     key = get_ai_chat_key(event)
-    source_context = await build_ai_notice_source_context(event, prompt, bot=bot)
+    source_context = await build_notice_source(event, prompt, resources, bot=bot)
 
-    if not get_ai_key():
-        await notify_superusers_once(
+    if not resources.api_key:
+        await resources.notify_admin_once(
             "missing_api_key",
             append_ai_notice_source_context(
                 "AI聊天还没有配置 API Key。\n"
                 "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         await _finish_admin_notice_or_silent(
             matcher,
@@ -107,7 +103,7 @@ async def _run_ai_chat(
             "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
         )
 
-    config = get_ai_config()
+    config = resources.config
     if config.waiting_notice:
         await send_event_reply(
             matcher,
@@ -116,10 +112,11 @@ async def _run_ai_chat(
             mention_sender=True,
         )
 
-    chat_context = build_ai_chat_context(event, prompt, key=key)
+    chat_context = build_ai_chat_context(resources, event, prompt, key=key)
 
     try:
         reply = await call_ai_chat(
+            resources,
             prompt,
             chat_context.history,
             chat_context.memory,
@@ -129,7 +126,7 @@ async def _run_ai_chat(
             await _finish_admin_notice_or_silent(matcher, event, reply)
 
         if not is_ai_error_reply(reply):
-            record_successful_ai_reply(event, chat_context, reply)
+            record_successful_ai_reply(resources, event, chat_context, reply)
 
         await finish_event_reply(
             matcher,
@@ -142,7 +139,7 @@ async def _run_ai_chat(
         raise
     except httpx.TimeoutException:
         logger.warning("AI chat API timed out")
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             "timeout",
             append_ai_notice_source_context(
                 "AI聊天接口响应超时。\n"
@@ -151,8 +148,6 @@ async def _run_ai_chat(
                 "请检查网络或适当调大 ai.timeout。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         await _finish_admin_notice_or_silent(
             matcher,
@@ -161,7 +156,7 @@ async def _run_ai_chat(
         )
     except Exception as e:  # noqa: BLE001
         logger.error(f"AI chat failed: {e}")
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             "unexpected",
             append_ai_notice_source_context(
                 "AI聊天处理失败。\n"
@@ -169,8 +164,6 @@ async def _run_ai_chat(
                 "请查看容器日志确认具体原因。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         await _finish_admin_notice_or_silent(
             matcher,
@@ -194,32 +187,14 @@ async def _finish_admin_notice_or_silent(
     )
 
 
-async def handle_ai_chat(
-    matcher: Matcher,
-    bot: Bot,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await _run_ai_chat(matcher, bot, event, state)
-
-
-async def handle_group_at_ai_chat(
-    matcher: Matcher,
-    bot: Bot,
-    event: GroupMessageEvent,
-    state: T_State,
-) -> None:
-    await _run_ai_chat(matcher, bot, event, state)
-
-
-def install(registry: MatcherRegistry) -> None:
+def install(registry: MatcherRegistry, resources: AiResources) -> None:
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
         rule=Rule(_ai_chat_rule),
         priority=AI_CHAT_PRIORITY,
         block=True,
     )
-    direct_matcher.append_handler(handle_ai_chat)
+    direct_matcher.append_handler(partial(_run_ai_chat, resources=resources))
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
@@ -227,4 +202,4 @@ def install(registry: MatcherRegistry) -> None:
         priority=AI_GROUP_AT_CHAT_PRIORITY,
         block=True,
     )
-    group_at_matcher.append_handler(handle_group_at_ai_chat)
+    group_at_matcher.append_handler(partial(_run_ai_chat, resources=resources))

@@ -19,14 +19,12 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.app.composition import build_application_lifecycle
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
     create_watchtower_container,
     ensure_watchtower_image,
     pull_docker_image,
-    resolve_docker_container_name,
     split_docker_image,
 )
 from ironsbot.plugins.server_status.docker_update_formatting import (
@@ -41,6 +39,7 @@ from ironsbot.plugins.server_status.restart import (
     DockerSelfUpdateService,
     RestartService,
 )
+from tests.helpers.plugin_registry import build_test_plugin_registry
 
 
 def test_split_docker_image_with_tag() -> None:
@@ -55,14 +54,6 @@ def test_split_docker_image_defaults_latest() -> None:
         "containrrr/watchtower",
         "latest",
     )
-
-
-def test_resolve_container_name_prefers_unraid_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("HOST_CONTAINERNAME", "ironsbot-prod")
-
-    assert resolve_docker_container_name("ironsbot") == "ironsbot-prod"
 
 
 def test_format_docker_update_missing_socket_reply() -> None:
@@ -304,23 +295,21 @@ def test_target_image_pull_retries_transient_registry_eof(
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
     lifecycle = build_application_lifecycle(
         cast("Driver", object()),
-        build_plugin_registry(),
+        build_test_plugin_registry(),
     )
     names = [name for name, _hook in lifecycle.startup_hooks]
 
     assert names.index("docker_update") < names.index("db_sync")
 
 
-def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        docker_update_runtime,
-        "get_docker_update_config",
-        lambda: DockerUpdateConfig(check_on_startup=False),
+def test_startup_docker_update_disabled() -> None:
+    notice = asyncio.run(
+        docker_update_runtime.start_docker_update(
+            DockerUpdateConfig(check_on_startup=False)
+        )
     )
 
-    asyncio.run(docker_update_runtime.start_docker_update())
-
-    assert docker_update_runtime.get_startup_docker_update_notice() is None
+    assert notice is None
 
 
 def test_startup_docker_update_records_notice(
@@ -332,24 +321,19 @@ def test_startup_docker_update_records_notice(
             DockerUpdateResult(ok=True, updater_container_id="abcdef123456"),
         )
 
-    monkeypatch.setattr(
-        docker_update_runtime,
-        "get_docker_update_config",
-        lambda: DockerUpdateConfig(
-            check_on_startup=True,
-            container_name="ironsbot",
-            image="murmansk5000/ironsbot:latest",
-            docker_socket_path="/var/run/docker.sock",
-            watchtower_image="containrrr/watchtower:latest",
-            watchtower_docker_api_version="1.40",
-            timeout_seconds=300.0,
-        ),
+    config = DockerUpdateConfig(
+        check_on_startup=True,
+        container_name="ironsbot",
+        image="murmansk5000/ironsbot:latest",
+        docker_socket_path="/var/run/docker.sock",
+        watchtower_image="containrrr/watchtower:latest",
+        watchtower_docker_api_version="1.40",
+        timeout_seconds=300.0,
     )
     monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
 
-    asyncio.run(docker_update_runtime.start_docker_update())
+    notice = asyncio.run(docker_update_runtime.start_docker_update(config))
 
-    notice = docker_update_runtime.get_startup_docker_update_notice()
     assert notice is not None
     assert "ironsbot-prod" in notice
     assert "Docker 自更新任务已启动" in notice

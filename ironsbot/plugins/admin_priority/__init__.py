@@ -13,14 +13,10 @@ if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
 
 
-async def _enter_priority_gate(event: Event, state: T_State) -> None:
-    await enter_priority_gate(event, state)
-
-
 async def _leave_priority_gate(_event: Event, state: T_State) -> None:
     await leave_priority_gate(state)
 
 
 def install(_registry: MatcherRegistry) -> None:
-    event_preprocessor(_enter_priority_gate)
+    event_preprocessor(enter_priority_gate)
     event_postprocessor(_leave_priority_gate)

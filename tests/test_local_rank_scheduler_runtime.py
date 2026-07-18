@@ -4,7 +4,9 @@ from pathlib import Path
 import nonebot
 from pytest import MonkeyPatch
 
+from ironsbot.app.composition import build_headless_service
 from ironsbot.config.loader import clear_app_config_cache
+from ironsbot.config.models.app import AppConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
@@ -21,12 +23,15 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
+from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.config.models.seer import (
     LocalRankConfig,
     RankPageRefreshConfig,
     RankQueryConfig,
 )
 from ironsbot.plugins.seer.query import runtime as seer_runtime
+
+HEADLESS = build_headless_service(AppConfig().runtime, CredentialsConfig())
 
 
 class FakeScheduler:
@@ -47,7 +52,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
         lambda: LocalRankConfig(refresh_hour=3, refresh_minute=30),
     )
 
-    seer_runtime.register_local_rank_refresh_job(scheduler)
+    seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS)
 
     assert scheduler.jobs == [
         {
@@ -55,6 +60,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_local_rank_refresh",
             "replace_existing": True,
+            "args": [HEADLESS],
             "hour": 3,
             "minute": 30,
         }
@@ -79,7 +85,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
         ),
     )
 
-    seer_runtime.register_rank_page_refresh_jobs(scheduler)
+    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS)
 
     assert scheduler.jobs == [
         {
@@ -87,6 +93,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_interval",
             "replace_existing": True,
+            "args": [HEADLESS],
             "minute": "4/15",
             "jitter": 240,
         },
@@ -95,6 +102,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_0115",
             "replace_existing": True,
+            "args": [HEADLESS],
             "hour": 1,
             "minute": 15,
             "jitter": 240,

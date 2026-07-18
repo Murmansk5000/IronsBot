@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import cast
 
 import nonebot
@@ -6,15 +8,26 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.matcher import Matcher
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.runtime import HeadlessConfig, HeadlessNoticeConfig
+from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.runtime.matchers import MatcherRegistry
+from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.team_resource_adapter import TeamResourceResult
-from ironsbot.services.team_resource_subscriptions import TeamResourceSubscription
+from ironsbot.services.team_resource_subscriptions import (
+    TeamResourceService,
+    TeamResourceSubscription,
+)
 from ironsbot.shared.messaging.command_cooldown import (
     command_matcher_registration,
 )
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from tests.helpers.onebot_events import group_message_event
+
+os.environ["APP_CONFIG_PATH"] = str(
+    Path(__file__).resolve().parents[1] / "config.example.toml"
+)
 
 try:
     nonebot.get_driver()
@@ -26,8 +39,19 @@ from ironsbot.plugins.team_resource_subscription import runtime
 
 TEAM_ID = 1234567
 TEAM_THRESHOLD = 2000
+HEADLESS = HeadlessService(
+    ClientManager(),
+    CredentialsConfig(),
+    HeadlessConfig(),
+    HeadlessNoticeConfig(),
+)
 TEAM_RESOURCE_REGISTRY = MatcherRegistry()
-team_resource_subscription.install(TEAM_RESOURCE_REGISTRY)
+TEAM_RESOURCE_SERVICE = TeamResourceService.build(TeamResourceConfig(), {})
+team_resource_subscription.install(
+    TEAM_RESOURCE_REGISTRY,
+    HEADLESS,
+    TEAM_RESOURCE_SERVICE,
+)
 
 
 def _team_resource_matcher(command_id: str) -> type[Matcher]:
@@ -46,23 +70,22 @@ class FakeScheduler:
 
 
 def test_register_team_resource_jobs_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
 ) -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        runtime,
-        "get_team_resource_config",
-        lambda: TeamResourceConfig(
+    service = TeamResourceService.build(
+        TeamResourceConfig(
             enabled=True,
             times=["22:30", "23:45"],
         ),
+        {},
     )
 
-    runtime.register_team_resource_jobs(scheduler)
+    runtime.register_team_resource_jobs(scheduler, HEADLESS, service)
 
+    scan = scheduler.jobs[0]["func"]
     assert scheduler.jobs == [
         {
-            "func": runtime._scan_team_resources,
+            "func": scan,
             "trigger": "cron",
             "id": "team_resource_scan_2230",
             "replace_existing": True,
@@ -70,7 +93,7 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields(
             "minute": 30,
         },
         {
-            "func": runtime._scan_team_resources,
+            "func": scan,
             "trigger": "cron",
             "id": "team_resource_scan_2345",
             "replace_existing": True,
@@ -81,16 +104,14 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields(
 
 
 def test_register_team_resource_jobs_skips_when_disabled(
-    monkeypatch: MonkeyPatch,
 ) -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        runtime,
-        "get_team_resource_config",
-        lambda: TeamResourceConfig(enabled=False, times=["23:00"]),
+    service = TeamResourceService.build(
+        TeamResourceConfig(enabled=False, times=["23:00"]),
+        {},
     )
 
-    runtime.register_team_resource_jobs(scheduler)
+    runtime.register_team_resource_jobs(scheduler, HEADLESS, service)
 
     assert scheduler.jobs == []
 
@@ -144,11 +165,6 @@ def test_team_resource_manage_uses_command_cooldown() -> None:
 async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        team_resource_subscription,
-        "get_team_resource_config",
-        lambda: TeamResourceConfig(enabled=True),
-    )
     monkeypatch.setattr(
         team_resource_subscription,
         "is_group_feature_allowed",
@@ -213,7 +229,14 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
     )
     sent: list[tuple[list[MessageTarget], Message, dict[str, object]]] = []
 
-    async def fake_fetch(_team_id: int) -> TeamResourceResult:
+    async def fake_fetch(
+        _team_id: int,
+        _headless: HeadlessService,
+        _service: TeamResourceService,
+        *,
+        mode: str,
+    ) -> TeamResourceResult:
+        assert mode == "scan"
         return TeamResourceResult(TEAM_ID, "示例战队", "", 500)
 
     async def fake_send_target_messages(
@@ -226,7 +249,7 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
 
     monkeypatch.setattr(
         team_resource_subscription,
-        "_fetch_team_result_for_scan",
+        "_query_team_resource",
         fake_fetch,
     )
     monkeypatch.setattr(
@@ -237,6 +260,8 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
 
     await team_resource_subscription._scan_subscription(
         subscription,
+        HEADLESS,
+        TEAM_RESOURCE_SERVICE,
     )
 
     assert sent[0][0] == [MessageTarget("group", 987654321)]

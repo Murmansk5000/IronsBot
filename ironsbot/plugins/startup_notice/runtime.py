@@ -7,15 +7,10 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.shared.runtime.startup_notice import startup_notice_parts
-
-from .config import get_startup_config
-from .service import StartupNoticeService
-
 if TYPE_CHECKING:
-    from ironsbot.shared.messaging import TargetSendSummary
-
-startup_notice_service = StartupNoticeService()
+    from ironsbot.config.models.runtime import StartupConfig
+    from ironsbot.services.startup_notice import StartupNoticeService
+    from ironsbot.shared.messaging import AdminNoticeTargets, TargetSendSummary
 
 
 async def _send_notice_part(
@@ -23,10 +18,10 @@ async def _send_notice_part(
     message_text: str,
     subscription_key: str,
     action_name: str,
+    targets: AdminNoticeTargets,
 ) -> TargetSendSummary:
     from ironsbot.shared.messaging import send_broadcast_message
 
-    targets = startup_notice_service.get_targets()
     return await send_broadcast_message(
         Message(message_text),
         private_user_ids=targets.private_user_ids,
@@ -37,15 +32,18 @@ async def _send_notice_part(
     )
 
 
-async def send_startup_notice(_bot: Bot) -> None:
-    config = get_startup_config()
-    if not startup_notice_service.should_send(config):
+async def send_startup_notice(
+    _bot: Bot,
+    service: StartupNoticeService,
+    config: StartupConfig,
+) -> None:
+    if not service.should_send(enabled=config.enabled):
         return
 
-    startup_notice_service.begin_send()
+    service.begin_send()
 
     try:
-        targets = startup_notice_service.get_targets()
+        targets = service.get_targets()
         if targets.is_empty:
             logger.warning("startup notice has no admin notice targets")
             return
@@ -59,6 +57,7 @@ async def send_startup_notice(_bot: Bot) -> None:
                 message_text=config.message,
                 subscription_key="startup_notice",
                 action_name="startup notice",
+                targets=targets,
             )
         )
 
@@ -68,18 +67,15 @@ async def send_startup_notice(_bot: Bot) -> None:
                     message_text=part.message,
                     subscription_key=part.subscription_key,
                     action_name=part.action_name,
+                    targets=targets,
                 )
-                for part in startup_notice_parts()
+                for part in service.parts
             ]
         )
-        succeeded = [
-            target
-            for summary in summaries
-            for target in summary.succeeded
-        ]
+        succeeded = [target for summary in summaries for target in summary.succeeded]
 
-        startup_notice_service.mark_result(succeeded)
-        if startup_notice_service.state.sent:
+        service.mark_result(succeeded)
+        if service.sent:
             logger.info(
                 "startup notice sent to {} targets in {} parts",
                 len(set(succeeded)),
@@ -87,7 +83,7 @@ async def send_startup_notice(_bot: Bot) -> None:
             )
 
     finally:
-        startup_notice_service.finish_send()
+        service.finish_send()
 
 
 __all__ = ["send_startup_notice"]

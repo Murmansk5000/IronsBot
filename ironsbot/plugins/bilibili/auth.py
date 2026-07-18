@@ -5,6 +5,7 @@ import httpx
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.log import logger
 
+from ironsbot.services.bilibili.accounts import get_bili_config
 from ironsbot.services.bilibili.auth import (
     BiliLoginRuntimeState,
     build_bili_login_cookie_incomplete_text,
@@ -28,8 +29,6 @@ from ironsbot.services.bilibili.auth import (
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
 from ironsbot.shared.messaging.admin_notice import send_admin_notice
 from ironsbot.shared.messaging.bot_router import get_default_bot
-
-from .config import get_bili_config
 
 _login_state = BiliLoginRuntimeState()
 _login_poll_task: asyncio.Task[None] | None = None

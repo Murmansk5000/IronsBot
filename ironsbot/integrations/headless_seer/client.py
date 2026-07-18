@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 import logging
-from collections.abc import Callable
-from typing import Final
 
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -11,13 +9,6 @@ from ironsbot.integrations.headless_seer.exception import (
 from ironsbot.integrations.headless_seer.game import HeadlessStateNotifier, SeerGame
 
 logger = logging.getLogger(__name__)
-
-GameClientGetter = Callable[[], SeerGame]
-_state: dict[str, GameClientGetter | None] = {"game_client_getter": None}
-
-
-class GameClientGetterNotRegisteredError(RuntimeError):
-    """Raised when the headless Seer client provider is not registered."""
 
 
 class ClientManager:
@@ -89,18 +80,3 @@ class ClientManager:
             self._client.logout()
             logger.info("Headless Seer client disconnected")
             self._client = None
-
-
-def register_game_client_getter(getter: GameClientGetter) -> None:
-    _state["game_client_getter"] = getter
-
-
-def get_game_client() -> SeerGame:
-    getter = _state["game_client_getter"]
-    if getter is None:
-        raise GameClientGetterNotRegisteredError
-    return getter()
-
-
-client_manager: Final[ClientManager] = ClientManager()
-register_game_client_getter(client_manager.get_client)

@@ -1,8 +1,6 @@
 from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
-from typing import cast
 
-from nonebot import logger
 from nonebot.adapters import Bot, Message, MessageTemplate
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
@@ -10,27 +8,21 @@ from nonebot.params import CommandArg, Depends
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
+from ironsbot.config.models.message import PicConfig, SendpicBehaviorConfig
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
 from .backends import CnbBackend, LocalBackend
-from .config import (
-    PicConfig,
-    enabled_pic_configs,
-    get_sendpic_cnb_repo,
-    get_sendpic_cnb_token,
-    get_sendpic_config,
-    get_sendpic_local_root,
-    pic_id_is_enabled,
-)
 from .image_selection_service import (
     ImageIndexOutOfRangeError,
     InvalidImageArgumentError,
     build_image_file_path,
     select_image,
 )
+
+CNB_CONFIG_REQUIRED_ERROR = "启用 CNB 图床时必须配置 token 和 cnb_repo"
 
 
 def get_cnb_backend(
@@ -57,13 +49,8 @@ def create_image_command(
     registry: MatcherRegistry,
     config: PicConfig,
     backend_factory: Callable[..., AsyncGenerator[ImageBackend, None]],
-) -> type[Matcher] | None:
+) -> type[Matcher]:
     """根据配置创建一个「随机/指定索引 + 图床后端」的命令。"""
-    if not pic_id_is_enabled(get_sendpic_config(), config.id):
-        logger.warning(
-            f"图片类型【{config.id}】未启用，命令【{config.command}】将不会生效"
-        )
-
     matcher = registry.on_command(
         config.command,
         policy=CommandPolicy.command(f"sendpic.{config.id}"),
@@ -107,15 +94,20 @@ def create_image_command(
     return matcher
 
 
-def install(registry: MatcherRegistry) -> None:
-    for command in enabled_pic_configs(get_sendpic_config()):
+def install(
+    registry: MatcherRegistry,
+    config: SendpicBehaviorConfig,
+    cnb_token: str | None,
+) -> None:
+    for command in config.configs:
+        if command.id not in config.enabled_ids:
+            continue
         if command.backend == "cnb":
-            backend_factory = get_cnb_backend(
-                cast("str", get_sendpic_cnb_token()),
-                cast("str", get_sendpic_cnb_repo()),
-            )
+            if not cnb_token or not config.cnb_repo:
+                raise ValueError(CNB_CONFIG_REQUIRED_ERROR)
+            backend_factory = get_cnb_backend(cnb_token, config.cnb_repo)
         elif command.backend == "local":
-            backend_factory = get_local_backend(get_sendpic_local_root())
+            backend_factory = get_local_backend(config.local_root)
         else:
             raise ValueError(f"不支持的图床类型：{command.backend}")
 

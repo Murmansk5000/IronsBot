@@ -50,16 +50,11 @@ def fake_driver() -> Driver:
 
 def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
     driver = FakeDriver()
-    installed: list[str] = []
-    lifecycle = ApplicationLifecycle(
-        cast("Driver", driver),
-        installers=(("test", lambda: installed.append("test")),),
-    )
+    lifecycle = ApplicationLifecycle(cast("Driver", driver))
 
     lifecycle.install()
     lifecycle.install()
 
-    assert installed == ["test"]
     assert len(driver.startup_handlers) == 1
     assert len(driver.shutdown_handlers) == 1
     assert len(driver.bot_connect_handlers) == 1

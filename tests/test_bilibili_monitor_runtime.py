@@ -18,7 +18,7 @@ def test_register_bili_auto_check_job_uses_standard_scheduler_fields() -> None:
 
     assert scheduler.jobs == [
         {
-            "func": bili_runtime.auto_check_job,
+            "func": bili_runtime.run_check_logic,
             "trigger": "interval",
             "id": "bilibili_monitor_auto_check",
             "replace_existing": True,

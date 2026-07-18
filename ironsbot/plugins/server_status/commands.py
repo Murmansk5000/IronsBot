@@ -4,19 +4,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 
-from ironsbot.services.headless_seer_notice.service import login_headless_client
-from ironsbot.services.headless_seer_notice.state import (
-    mark_headless_available,
-    mark_headless_unavailable,
-)
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.messaging import finish_event_reply
 
-from .broadcast import broadcast_opened
 from .notice import (
     _build_fetch_failed_reply,
     _build_no_notice_reply,
@@ -25,11 +21,20 @@ from .notice import (
     _now,
     fetch_server_notice_text,
 )
-from .status import HeadlessStatus
-from .status import get_headless_status as _get_headless_status
+from .status import HeadlessStatus, get_headless_status
+
+if TYPE_CHECKING:
+    from ironsbot.services.operations.headless import HeadlessService
+
+    from .broadcast import OpenBroadcast
 
 
-async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
+async def handle_normal_status(
+    matcher: Matcher,
+    event: MessageEvent,
+    broadcast: OpenBroadcast,
+    headless: HeadlessService,
+) -> None:
     if not is_event_feature_allowed(event, "server_status_query"):
         logger.info(
             "normal server status command ignored: "
@@ -38,18 +43,18 @@ async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
         return
 
     now = _now()
-    headless_status = _get_headless_status()
+    headless_status = get_headless_status(headless)
     if headless_status.connected:
-        await mark_headless_available(source="开服了吗")
+        await headless.mark_available(source="开服了吗")
     else:
-        await mark_headless_unavailable(headless_status.reason, source="开服了吗")
+        await headless.mark_unavailable(headless_status.reason, source="开服了吗")
 
     try:
         notice_text = await fetch_server_notice_text()
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("开服公告读取失败")
         if headless_status.connected:
-            await broadcast_opened(event, now=now)
+            await broadcast.send(event, now=now)
         await finish_event_reply(
             matcher,
             event,
@@ -59,7 +64,7 @@ async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
         return
 
     if headless_status.connected:
-        await broadcast_opened(event, now=now)
+        await broadcast.send(event, now=now)
         await finish_event_reply(
             matcher,
             event,
@@ -84,26 +89,34 @@ async def handle_normal_status(matcher: Matcher, event: MessageEvent) -> None:
         mention_sender=True,
     )
 
-async def handle_admin_status(matcher: Matcher, event: MessageEvent) -> None:
+async def handle_admin_status(
+    matcher: Matcher,
+    event: MessageEvent,
+    broadcast: OpenBroadcast,
+    headless: HeadlessService,
+) -> None:
     now = _now()
     lines = ["🛠【管理员开服查询】"]
-    headless_status = _get_headless_status()
+    headless_status = get_headless_status(headless)
     if headless_status.connected:
-        await mark_headless_available(source="/开服查询")
+        await headless.mark_available(source="/开服查询")
         lines.append("无头状态：已登录游戏服务器。")
     else:
-        await mark_headless_unavailable(headless_status.reason, source="/开服查询")
+        await headless.mark_unavailable(headless_status.reason, source="/开服查询")
         lines.append(f"无头状态：未登录（{headless_status.reason}）。")
         try:
-            user_id = await login_headless_client()
+            user_id = await headless.login()
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=True).warning("管理员开服查询触发无头重连失败")
             headless_status = HeadlessStatus(connected=False, reason=str(e))
-            await mark_headless_unavailable(str(e), source="/开服查询重连")
+            await headless.mark_unavailable(str(e), source="/开服查询重连")
             lines.append(f"重连结果：失败：{e}")
         else:
             headless_status = HeadlessStatus(connected=True)
-            await mark_headless_available(source="/开服查询重连", user_id=user_id)
+            await headless.mark_available(
+                source="/开服查询重连",
+                user_id=user_id,
+            )
             lines.append(f"重连结果：已登录米米号 {user_id}。")
 
     try:
@@ -111,7 +124,7 @@ async def handle_admin_status(matcher: Matcher, event: MessageEvent) -> None:
     except Exception as e:  # noqa: BLE001
         logger.opt(exception=True).warning("管理员开服查询读取公告失败")
         if headless_status.connected:
-            await broadcast_opened(event, now=now)
+            await broadcast.send(event, now=now)
         lines.extend(
             (
                 "",
@@ -121,7 +134,7 @@ async def handle_admin_status(matcher: Matcher, event: MessageEvent) -> None:
     else:
         lines.append("")
         if headless_status.connected:
-            await broadcast_opened(event, now=now)
+            await broadcast.send(event, now=now)
             lines.append(_build_open_reply(now, notice_text=notice_text))
         elif notice_text:
             lines.append(_build_notice_reply(notice_text))

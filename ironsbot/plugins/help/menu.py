@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 from ironsbot.shared.selection_menu import (
     HELP_SELECTION_FOOTER,
@@ -17,7 +16,7 @@ from .visibility import plugin_visible_for_event
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.config.models.runtime import HelpConfig
+    from ironsbot.config.models.app import AppConfig
     from ironsbot.runtime.plugins import PluginDefinition
 
 HELP_ENTRIES_KEY = "_help_entries"
@@ -56,14 +55,6 @@ class MissingHelpEntryError(ValueError):
         return cls(f"plugin has no help entry: {plugin_id}")
 
 
-def get_help_config() -> HelpConfig:
-    return get_app_config().runtime.help
-
-
-def ignored_plugin_names() -> set[str]:
-    return set(get_help_config().ignored_plugins)
-
-
 def entry_from_definition(definition: PluginDefinition) -> HelpMenuEntry:
     help_entry = definition.help
     if help_entry is None:
@@ -90,10 +81,13 @@ def entry_sort_key(entry: HelpMenuEntry) -> tuple[int, int, str]:
 def visible_help_entries(
     definitions: tuple[PluginDefinition, ...],
     event: Event,
+    *,
+    config: AppConfig,
+    ai_key_configured: bool,
 ) -> list[HelpMenuEntry]:
     entries: list[HelpMenuEntry] = []
     seen_names: set[str] = set()
-    ignored_names = ignored_plugin_names()
+    ignored_names = set(config.runtime.help.ignored_plugins)
 
     for definition in definitions:
         help_entry = definition.help
@@ -105,7 +99,12 @@ def visible_help_entries(
             or help_entry.name in seen_names
         ):
             continue
-        if not plugin_visible_for_event(definition, event):
+        if not plugin_visible_for_event(
+            definition,
+            event,
+            config=config,
+            ai_key_configured=ai_key_configured,
+        ):
             continue
 
         entries.append(entry_from_definition(definition))

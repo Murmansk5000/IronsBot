@@ -6,7 +6,7 @@ from pathlib import Path
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.ai.history import HistoryMessage
 
@@ -31,23 +31,14 @@ AI_MEMORY_SCHEMA = (
 AI_MEMORY_MIGRATIONS = (SqliteMigration(1, AI_MEMORY_SCHEMA),)
 
 
-def _get_ai_config():
-    return get_app_config().ai
-
-
-def _memory_path() -> Path:
-    return _get_ai_config().memory_path
-
-
-def _connect() -> AbstractContextManager[sqlite3.Connection]:
+def _connect(path: Path) -> AbstractContextManager[sqlite3.Connection]:
     return SqliteDatabase(
-        _memory_path(),
+        path,
         migrations=AI_MEMORY_MIGRATIONS,
     ).connect()
 
 
-def _is_memory_enabled() -> bool:
-    config = _get_ai_config()
+def _is_memory_enabled(config: AiConfig) -> bool:
     return config.memory and config.memory_turns > 0
 
 
@@ -59,13 +50,14 @@ def _event_context(event: MessageEvent) -> tuple[str, int]:
 
 
 def append_user_memory(
+    config: AiConfig,
     event: MessageEvent,
     *,
     session_key: str,
     prompt: str,
     reply: str,
 ) -> None:
-    if not _is_memory_enabled():
+    if not _is_memory_enabled(config):
         return
 
     chat_scope, chat_id = _event_context(event)
@@ -92,7 +84,7 @@ def append_user_memory(
     )
 
     try:
-        with _connect() as conn:
+        with _connect(config.memory_path) as conn:
             conn.executemany(
                 """
                 INSERT INTO messages (
@@ -108,15 +100,16 @@ def append_user_memory(
 
 
 def get_user_memory(
+    config: AiConfig,
     event: MessageEvent,
     *,
     current_session_key: str,
     has_short_history: bool,
 ) -> list[HistoryMessage]:
-    if not _is_memory_enabled():
+    if not _is_memory_enabled(config):
         return []
 
-    message_limit = _get_ai_config().memory_turns * 2
+    message_limit = config.memory_turns * 2
     sql = (
         "SELECT role, content "
         "FROM messages "
@@ -131,7 +124,7 @@ def get_user_memory(
     params.append(message_limit)
 
     try:
-        with _connect() as conn:
+        with _connect(config.memory_path) as conn:
             rows = conn.execute(sql, params).fetchall()
     except sqlite3.Error as e:
         logger.warning(f"failed to read AI memory for {event.user_id}: {e}")
@@ -141,11 +134,13 @@ def get_user_memory(
         {"role": str(role), "content": str(content)}
         for role, content in reversed(rows)
     ]
-    return _trim_memory_chars(messages)
+    return _trim_memory_chars(messages, config.memory_max_chars)
 
 
-def _trim_memory_chars(messages: list[HistoryMessage]) -> list[HistoryMessage]:
-    max_chars = _get_ai_config().memory_max_chars
+def _trim_memory_chars(
+    messages: list[HistoryMessage],
+    max_chars: int,
+) -> list[HistoryMessage]:
     used = 0
     selected: list[HistoryMessage] = []
 

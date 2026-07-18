@@ -11,12 +11,12 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.plugins.help.menu import HELP_GROUP_TITLES
+from tests.helpers.plugin_registry import build_test_plugin_registry
 
 DEFINITIONS = {
     definition.id: definition
-    for definition in build_plugin_registry()
+    for definition in build_test_plugin_registry()
 }
 
 

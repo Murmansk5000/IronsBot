@@ -48,7 +48,6 @@ DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
-DEFAULT_HEADLESS_HEARTBEAT_INTERVAL = 300.0
 DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
@@ -697,116 +696,25 @@ def test_env_secrets_credentials_and_deployment_are_separate() -> None:
     assert deployment.superusers == [SUPERUSER_ID]
 
 
-def test_small_plugin_config_accessors_read_app_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    clear_app_config_cache()
-    monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
-    monkeypatch.setenv("AI_KEY", "sk-test")
-    monkeypatch.setenv("SENDPIC_CNB_TOKEN", "cnb-token")
-    monkeypatch.setenv("HEADLESS_SEER_USER_ID", str(HEADLESS_USER_ID))
-    monkeypatch.setenv("HEADLESS_SEER_PASSWORD", "md5")
+def test_app_config_defaults_cover_runtime_services() -> None:
+    app_config = load_app_config(ROOT / "config.example.toml")
 
-    ai_config = _load_module_from_path(
-        "ai_config_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "ai" / "config.py",
+    assert app_config.ai.model == "deepseek-v4-pro"
+    assert app_config.ai.intent_actions
+    assert app_config.seer.team_resource.commands == ["战队"]
+    assert (
+        app_config.runtime.help.hint_max_per_window
+        == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
-    ai_intent_service = _load_module_from_path(
-        "ai_intent_service_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "ai" / "intent.py",
+    assert app_config.activity.lead_hours == [11, 1]
+    assert "seerapi" in app_config.runtime.data_sync.sources
+    assert (
+        app_config.message.outbound_rate_limit.windows[0].max_messages
+        == DEFAULT_OUTBOUND_MAX_MESSAGES
     )
-    activity_config = _load_module_from_path(
-        "activity_reminder_config_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "activity" / "config.py",
-    )
-    bili_config = _load_module_from_path(
-        "bilibili_monitor_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "bilibili" / "config.py",
-    )
-    sendpic_config = _load_module_from_path(
-        "sendpic_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
-    )
-    headless_config = _load_module_from_path(
-        "headless_seer_config_for_app_config_test",
-        ROOT / "ironsbot" / "integrations" / "headless_seer" / "config.py",
-    )
-    headless_notice_config = _load_module_from_path(
-        "headless_seer_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "headless_seer_notice" / "config.py",
-    )
-    meeting_config = _load_module_from_path(
-        "meeting_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "meeting" / "config.py",
-    )
-    message_config = _load_module_from_path(
-        "messaging_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
-    )
-    server_status_config = _load_module_from_path(
-        "server_status_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "server_status" / "config.py",
-    )
-    scheduled_restart_config = _load_module_from_path(
-        "scheduled_restart_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "config.py",
-    )
-    startup_config = _load_module_from_path(
-        "startup_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "startup_notice" / "config.py",
-    )
-    team_resource_config = _load_module_from_path(
-        "team_resource_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
-    )
-
-    try:
-        app_config = load_app_config(ROOT / "config.example.toml")
-        assert ai_config.get_ai_config().model == "deepseek-v4-pro"
-        assert ai_config.get_ai_key() == "sk-test"
-        assert ai_intent_service.get_configured_actions()
-        assert ai_intent_service.get_team_resource_config().commands == ["战队"]
-        assert (
-            app_config.runtime.help.hint_max_per_window
-            == DEFAULT_HELP_HINT_MAX_PER_WINDOW
-        )
-        assert activity_config.get_activity_config().lead_hours == [11, 1]
-        assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
-        assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
-        assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"
-        assert "seerapi" in app_config.runtime.data_sync.sources
-        assert (
-            headless_config.get_headless_config().heartbeat_interval
-            == DEFAULT_HEADLESS_HEARTBEAT_INTERVAL
-        )
-        assert (
-            headless_config.get_headless_credentials().headless_seer_user_id
-            == HEADLESS_USER_ID
-        )
-        assert headless_notice_config.get_headless_notice_config().login_notice
-        assert (
-            message_config.get_message_config()
-            .outbound_rate_limit.windows[0]
-            .max_messages
-            == DEFAULT_OUTBOUND_MAX_MESSAGES
-        )
-        assert message_config.get_message_config().meeting.commands == [
-            "开播",
-            "会议",
-        ]
-        assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
-        assert startup_config.get_startup_config().message == "机器人已开启。"
-        assert not server_status_config.get_server_status_config().broadcast
-        assert (
-            server_status_config.get_docker_update_config().image
-            == "murmansk5000/ironsbot:latest"
-        )
-        assert not scheduled_restart_config.get_restart_config().enabled
-        assert "aliases" in app_config.runtime.data_sync.sources
-        assert app_config.runtime.priority.enabled
-        assert team_resource_config.get_team_resource_config().commands == ["战队"]
-    finally:
-        clear_app_config_cache()
+    assert app_config.message.meeting.commands == ["开播", "会议"]
+    assert "aliases" in app_config.runtime.data_sync.sources
+    assert app_config.runtime.priority.enabled
 
 
 def test_seer_plugin_config_accessors_read_app_config(

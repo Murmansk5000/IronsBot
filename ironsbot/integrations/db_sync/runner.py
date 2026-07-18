@@ -8,7 +8,6 @@ from anyio import Path as AsyncPath
 from anyio import to_thread
 from nonebot.log import logger
 
-from ironsbot.config.loader import load_secrets_config
 from ironsbot.integrations.db_registry import db_manager
 from ironsbot.integrations.db_sync.github_actions import trigger_and_wait_workflow
 
@@ -102,8 +101,7 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912, PLR
                     and not entry.local_path
                 ):
                     logger.debug(
-                        f"数据库 '{name}' 指纹未变化"
-                        f" ({fingerprint})，跳过同步"
+                        f"数据库 '{name}' 指纹未变化 ({fingerprint})，跳过同步"
                     )
                     sync_state.last_sync_statuses[name] = SyncStatus(
                         ok=True,
@@ -163,9 +161,7 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912, PLR
                 local_before=local_before,
                 remote=remote,
                 message=(
-                    "已更新"
-                    if cache_saved
-                    else "已加载到内存，但本地缓存写入失败"
+                    "已更新" if cache_saved else "已加载到内存，但本地缓存写入失败"
                 ),
             )
             if local_timestamp_after is not None:
@@ -188,8 +184,7 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912, PLR
             return False
         except httpx.TransportError as e:
             logger.warning(
-                f"数据库 '{name}' 同步失败（网络连接错误）："
-                f"{type(e).__name__}: {e}"
+                f"数据库 '{name}' 同步失败（网络连接错误）：{type(e).__name__}: {e}"
             )
             sync_state.last_sync_statuses[name] = SyncStatus(
                 ok=False,
@@ -200,8 +195,7 @@ async def sync_database(name: str) -> bool:  # noqa: C901, PLR0911, PLR0912, PLR
             return False
         except httpx.HTTPError as e:
             logger.warning(
-                f"数据库 '{name}' 同步失败（HTTP 客户端错误）："
-                f"{type(e).__name__}: {e}"
+                f"数据库 '{name}' 同步失败（HTTP 客户端错误）：{type(e).__name__}: {e}"
             )
             sync_state.last_sync_statuses[name] = SyncStatus(
                 ok=False,
@@ -248,10 +242,11 @@ def remote_build_names() -> list[str]:
 async def _run_remote_build(
     name: str,
     entry: SyncEntry,
+    github_token: str,
     *,
     force: bool = False,
 ) -> bool:
-    token = load_secrets_config().github_workflow_token.strip()
+    token = github_token.strip()
     return await sync_remote_build.run_remote_build(
         name=name,
         config=entry.remote_build,
@@ -264,6 +259,7 @@ async def _run_remote_build(
 
 async def sync_all_databases(
     *,
+    github_token: str,
     trigger_remote_build: bool = False,
     force_remote_build: bool = False,
 ) -> dict[str, bool]:
@@ -275,6 +271,7 @@ async def sync_all_databases(
         if trigger_remote_build and not await _run_remote_build(
             name,
             entry,
+            github_token,
             force=force_remote_build,
         ):
             results[name] = False
@@ -285,6 +282,7 @@ async def sync_all_databases(
 
 async def run_sync_all_databases(
     *,
+    github_token: str,
     trigger_remote_build: bool = False,
     force_remote_build: bool = False,
 ) -> tuple[bool, dict[str, bool]]:
@@ -294,17 +292,18 @@ async def run_sync_all_databases(
 
     async with sync_state.sync_all_lock:
         busy_names = [
-            name for name in sync_state.registered_syncs
+            name
+            for name in sync_state.registered_syncs
             if sync_state.get_lock(name).locked()
         ]
         if busy_names:
             logger.info(
-                "数据库同步正在运行，跳过本次手动触发: "
-                f"{', '.join(busy_names)}"
+                f"数据库同步正在运行，跳过本次手动触发: {', '.join(busy_names)}"
             )
             return False, {}
 
         return True, await sync_all_databases(
+            github_token=github_token,
             trigger_remote_build=trigger_remote_build,
             force_remote_build=force_remote_build,
         )

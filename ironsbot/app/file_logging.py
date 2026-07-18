@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config
-
 if TYPE_CHECKING:
     from ironsbot.config.models.runtime import LoggingConfig
 
@@ -15,26 +13,25 @@ _FILE_LOG_SINK_ID: int | None = None
 _ERROR_FILE_LOG_SINK_ID: int | None = None
 
 
-def configure_file_logging(config: LoggingConfig | None = None) -> int | None:
+def configure_file_logging(config: LoggingConfig) -> int | None:
     """Attach an optional rotating file sink to the shared NoneBot logger."""
     global _ERROR_FILE_LOG_SINK_ID, _FILE_LOG_SINK_ID  # noqa: PLW0603
 
-    log_config = config or get_app_config().runtime.logging
-    if not log_config.file_enabled:
+    if not config.file_enabled:
         return None
 
     if _FILE_LOG_SINK_ID is not None:
         return _FILE_LOG_SINK_ID
 
-    log_path = Path(log_config.file_path)
+    log_path = Path(config.file_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     _FILE_LOG_SINK_ID = logger.add(
         log_path,
-        level=log_config.file_level,
-        rotation=log_config.rotation,
-        retention=log_config.retention,
-        compression=log_config.compression,
+        level=config.file_level,
+        rotation=config.rotation,
+        retention=config.retention,
+        compression=config.compression,
         encoding="utf-8",
         enqueue=True,
         backtrace=True,
@@ -42,15 +39,15 @@ def configure_file_logging(config: LoggingConfig | None = None) -> int | None:
     )
     logger.info(f"file logging enabled: {log_path}")
 
-    if log_config.error_file_enabled:
-        error_log_path = Path(log_config.error_file_path)
+    if config.error_file_enabled:
+        error_log_path = Path(config.error_file_path)
         error_log_path.parent.mkdir(parents=True, exist_ok=True)
         _ERROR_FILE_LOG_SINK_ID = logger.add(
             error_log_path,
             level="ERROR",
-            rotation=log_config.rotation,
-            retention=log_config.retention,
-            compression=log_config.compression,
+            rotation=config.rotation,
+            retention=config.retention,
+            compression=config.compression,
             encoding="utf-8",
             enqueue=True,
             backtrace=True,

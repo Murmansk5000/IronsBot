@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
+
+    from ironsbot.config.models.seer import TeamResourceConfig
 
 TeamResourceSubscriptionRow = tuple[int, int, str, int, str, int, int, str, str]
 TeamResourceSubscriptionPromptRow = tuple[
@@ -259,6 +262,30 @@ class TeamResourceSubscriptionStore:
         ).connect()
 
 
+@dataclass(frozen=True, slots=True)
+class TeamResourceService:
+    config: TeamResourceConfig
+    store: TeamResourceSubscriptionStore
+    default_at_user_ids: tuple[int, ...]
+
+    @classmethod
+    def build(
+        cls,
+        config: TeamResourceConfig,
+        user_aliases: Mapping[str, int],
+    ) -> TeamResourceService:
+        user_ids = [
+            user_aliases[raw] if raw in user_aliases else int(raw)
+            for reference in config.default_at_users
+            if (raw := reference.strip())
+            and (raw in user_aliases or raw.isdigit())
+        ]
+        return cls(
+            config,
+            TeamResourceSubscriptionStore(config.subscription_path),
+            tuple(dict.fromkeys(user_ids)),
+        )
+
 def _row_to_subscription(
     row: TeamResourceSubscriptionRow,
 ) -> TeamResourceSubscription:
@@ -308,6 +335,7 @@ def _now_text() -> str:
 
 
 __all__ = [
+    "TeamResourceService",
     "TeamResourceSubscription",
     "TeamResourceSubscriptionPrompt",
     "TeamResourceSubscriptionStore",

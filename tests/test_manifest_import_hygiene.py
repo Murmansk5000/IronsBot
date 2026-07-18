@@ -81,11 +81,11 @@ asyncio.create_task = _forbidden_sync("async task creation")
 httpx.Client.request = _forbidden_sync("http request")
 httpx.AsyncClient.request = _forbidden_async_request
 
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.runtime.matchers import MatcherRegistry
+from tests.helpers.plugin_registry import build_test_plugin_registry
 
 external_ids = {"apscheduler", "localstore", "htmlkit", "saa"}
-definitions = build_plugin_registry()
+definitions = build_test_plugin_registry()
 registry = MatcherRegistry()
 for definition in definitions:
     if definition.id not in external_ids:
