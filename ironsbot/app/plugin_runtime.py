@@ -16,13 +16,14 @@ if TYPE_CHECKING:
         RestartConfig,
         StartupConfig,
     )
+    from ironsbot.config.models.seer import LocalRankConfig, RankPageRefreshConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.bilibili.resources import BilibiliResources
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.startup_notice import StartupNoticeService
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.features import FeatureService
@@ -37,13 +38,14 @@ def scheduler() -> Any:
 
 def install_seer_query(
     registry: MatcherRegistry,
-    headless: HeadlessService,
-    features: FeatureService,
-    priority: AdminPriorityService,
+    resources: SeerQueryResources,
 ) -> None:
     from ironsbot.plugins.seer.query import install
 
-    install(registry, headless, features, priority)
+    install(
+        registry,
+        resources,
+    )
 
 
 def install_sendpic(
@@ -141,16 +143,22 @@ async def register_team_resource_jobs(
     register_team_resource_jobs(scheduler(), headless, service)
 
 
-async def register_local_rank_jobs(headless: HeadlessService) -> None:
+async def register_local_rank_jobs(
+    headless: HeadlessService,
+    config: LocalRankConfig,
+) -> None:
     from ironsbot.plugins.seer.query.runtime import register_local_rank_refresh_job
 
-    register_local_rank_refresh_job(scheduler(), headless)
+    register_local_rank_refresh_job(scheduler(), headless, config)
 
 
-async def register_rank_page_jobs(headless: HeadlessService) -> None:
+async def register_rank_page_jobs(
+    headless: HeadlessService,
+    config: RankPageRefreshConfig,
+) -> None:
     from ironsbot.plugins.seer.query.runtime import register_rank_page_refresh_jobs
 
-    register_rank_page_refresh_jobs(scheduler(), headless)
+    register_rank_page_refresh_jobs(scheduler(), headless, config)
 
 
 async def check_headless_seer(_bot: Bot, headless: HeadlessService) -> None:

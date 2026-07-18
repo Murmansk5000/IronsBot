@@ -21,7 +21,6 @@ from ironsbot.services.seer.rank_list_models import (
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.messaging import finish_event_reply
 
-from ..config import get_player_query_config
 from .rank_list_actions import (
     build_global_rank_message,
     build_global_rank_player_message,
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
+    from ironsbot.config.models.seer import SeerConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
 
 
@@ -96,6 +96,7 @@ async def handle_score(
 
 
 async def handle_player(
+    config: SeerConfig,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -105,8 +106,12 @@ async def handle_player(
     spec = GLOBAL_RANKS[command.rank_key]
     try:
         message = await asyncio.wait_for(
-            build_global_rank_player_message(game, command),
-            timeout=get_player_query_config().detail_timeout_seconds,
+            build_global_rank_player_message(
+                game,
+                command,
+                local_rank_enabled=config.local_rank.enabled,
+            ),
+            timeout=config.player.detail_timeout_seconds,
         )
     except TimeoutError:
         message = f"❌ {spec.title}玩家查询超时，请稍后再试。"

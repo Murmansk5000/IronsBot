@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from dataclasses import dataclass
-from typing import Any
+from __future__ import annotations
 
-from nonebot.adapters import Event
-from nonebot.matcher import Matcher
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.services.admin_priority import AdminPriorityService
-from ironsbot.services.operations.headless import HeadlessService
-from ironsbot.shared.features import FeatureService
 from ironsbot.shared.features.visibility import event_has_feature
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+    from nonebot.matcher import Matcher
+
+    from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+    from ironsbot.services.seer.resources import SeerQueryResources
+    from ironsbot.shared.features import FeatureService
 
 
 def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
@@ -23,9 +27,7 @@ def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
 @dataclass(frozen=True, slots=True)
 class SeerMatcherGroup:
     registry: MatcherRegistry
-    headless: HeadlessService
-    features: FeatureService
-    priority: AdminPriorityService
+    resources: SeerQueryResources
 
     def on_message(
         self,

@@ -16,6 +16,7 @@ from ironsbot.runtime.plugins import (
 )
 from ironsbot.services.help_hint import HelpHintService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.startup_notice import StartupNoticeService
 
 if TYPE_CHECKING:
@@ -520,19 +521,31 @@ def build_plugin_registry(  # noqa: PLR0913
             ),
             install=partial(
                 runtime.install_seer_query,
-                headless=headless,
-                features=features,
-                priority=priority_service,
+                resources=SeerQueryResources(
+                    config.seer,
+                    headless,
+                    features,
+                    priority_service,
+                    team_resource_service,
+                ),
             ),
             hooks=PluginHooks(
                 startup=(
                     (
                         "local_rank_jobs",
-                        partial(runtime.register_local_rank_jobs, headless),
+                        partial(
+                            runtime.register_local_rank_jobs,
+                            headless,
+                            config.seer.local_rank,
+                        ),
                     ),
                     (
                         "rank_page_jobs",
-                        partial(runtime.register_rank_page_jobs, headless),
+                        partial(
+                            runtime.register_rank_page_jobs,
+                            headless,
+                            config.seer.rank.page_refresh,
+                        ),
                     ),
                 ),
                 first_bot_connect=(("render_crash_report", report_render_crash),),

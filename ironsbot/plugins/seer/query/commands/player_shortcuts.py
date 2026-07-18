@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
@@ -27,7 +28,6 @@ from ironsbot.services.seer.player_shortcuts import (
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
-from ..config import get_local_rank_config, get_player_query_config
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
-    from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
 
@@ -50,16 +50,18 @@ async def _is_player_shortcut(event: Event, state: T_State) -> bool:
 
 
 async def handle_player_shortcut(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    headless: HeadlessService,
 ) -> None:
+    config = resources.config
+    headless = resources.headless
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
     player_id = command.player_id
     if player_id is None:
         binding = get_player_binding(
-            get_player_query_config().binding.path,
+            config.player.binding.path,
             event.user_id,
         )
         player_id = binding.player_id
@@ -85,9 +87,9 @@ async def handle_player_shortcut(
                     game,
                     command=command,
                     player_id=player_id,
-                    local_rank_enabled=get_local_rank_config().enabled,
+                    local_rank_enabled=config.local_rank.enabled,
                 ),
-                timeout=get_player_query_config().detail_timeout_seconds,
+                timeout=config.player.detail_timeout_seconds,
             )
         await headless.mark_available(
             source="米米号快捷详情查询",
@@ -113,19 +115,12 @@ def _shortcut_command_id(
 
 
 def install(group: SeerMatcherGroup) -> None:
-    async def handle_shortcut(
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        await handle_player_shortcut(matcher, event, state, group.headless)
-
     matcher = group.on_message(
         policy=CommandPolicy.command(_shortcut_command_id),
-        rule=seer_feature_rule(group.features, "seer_player")
+        rule=seer_feature_rule(group.resources.features, "seer_player")
         & Rule(_is_player_shortcut)
         & no_reply(),
         priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
-    matcher.append_handler(handle_shortcut)
+    matcher.append_handler(partial(handle_player_shortcut, group.resources))

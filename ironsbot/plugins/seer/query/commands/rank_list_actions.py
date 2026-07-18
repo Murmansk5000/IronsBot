@@ -27,8 +27,6 @@ from ironsbot.services.seer.rank_pages import (
 from ironsbot.services.seer.rank_player_query import fetch_rank_player_message
 from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 
-from ..config import get_local_rank_config
-
 if TYPE_CHECKING:
     from ironsbot.integrations.headless_seer.game import SeerGame
     from ironsbot.services.seer.rank_list_models import (
@@ -123,6 +121,8 @@ async def build_global_rank_score_message(
 async def build_global_rank_player_message(
     game: SeerGame,
     command: RankPlayerCommand,
+    *,
+    local_rank_enabled: bool,
 ) -> str:
     spec = get_global_rank_spec(command.rank_key)
     with headless_operation(
@@ -133,19 +133,21 @@ async def build_global_rank_player_message(
         return await fetch_rank_player_message(
             game,
             command=command,
-            local_rank_enabled=get_local_rank_config().enabled,
+            local_rank_enabled=local_rank_enabled,
         )
 
 
 async def cache_global_rank_batch(
     game: SeerGame,
     command: RankCacheBatchCommand,
+    *,
+    batch_limit: int,
 ) -> tuple[GlobalRankSpec, int, int]:
     spec = get_global_rank_spec(command.rank_key)
     requested_count = command.end_rank - command.start_rank + 1
     if global_rank_spec_needs_sub_key(spec):
         return spec, 0, requested_count
-    count = min(requested_count, get_local_rank_config().batch_limit)
+    count = min(requested_count, batch_limit)
     raw_start = batch_raw_start(spec, command.start_rank)
     with headless_operation(
         "手动缓存榜单",

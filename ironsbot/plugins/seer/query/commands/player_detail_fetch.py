@@ -39,11 +39,10 @@ from ironsbot.services.seer.sequ_extra import (
     fetch_unity_peak,
 )
 
-from ..config import get_local_rank_config, get_player_query_config
-
 if TYPE_CHECKING:
     from typing import Any
 
+    from ironsbot.config.models.seer import SeerConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
 
 
@@ -57,6 +56,7 @@ def create_player_detail_task(  # noqa: PLR0913
     needs_peak_section: bool,
     has_autocard_rank: bool,
     show_local_rank: bool,
+    config: SeerConfig,
 ) -> asyncio.Task[PlayerDetailMessages]:
     task = asyncio.create_task(
         _build_player_detail_messages(
@@ -68,6 +68,7 @@ def create_player_detail_task(  # noqa: PLR0913
             needs_peak_section=needs_peak_section,
             has_autocard_rank=has_autocard_rank,
             show_local_rank=show_local_rank,
+            config=config,
         )
     )
     task.add_done_callback(_log_unrequested_player_detail_task_error)
@@ -100,14 +101,18 @@ async def _build_player_detail_messages(  # noqa: PLR0913
     needs_peak_section: bool,
     has_autocard_rank: bool,
     show_local_rank: bool,
+    config: SeerConfig,
 ) -> PlayerDetailMessages:
     extra_errors = PlayerDetailErrors()
-    extra_timeout_seconds = _player_extra_timeout_seconds()
+    extra_timeout_seconds = min(
+        float(config.player.timeout_seconds),
+        float(config.player.detail_timeout_seconds),
+    )
     fetch_plan = plan_player_detail_fetches(
         has_collection=has_collection,
         needs_peak_section=needs_peak_section,
         has_autocard_rank=has_autocard_rank,
-        local_rank_enabled=get_local_rank_config().enabled,
+        local_rank_enabled=config.local_rank.enabled,
     )
 
     with headless_operation(
@@ -231,12 +236,4 @@ async def _build_player_detail_messages(  # noqa: PLR0913
         has_autocard_rank=has_autocard_rank,
         show_local_rank=show_local_rank,
         extra_errors=extra_errors,
-    )
-
-
-def _player_extra_timeout_seconds() -> float:
-    player_config = get_player_query_config()
-    return min(
-        float(player_config.timeout_seconds),
-        float(player_config.detail_timeout_seconds),
     )

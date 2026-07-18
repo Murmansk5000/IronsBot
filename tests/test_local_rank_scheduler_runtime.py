@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import nonebot
-from pytest import MonkeyPatch
 
 from ironsbot.app.composition import build_headless_service
 from ironsbot.config.loader import clear_app_config_cache
@@ -27,7 +26,6 @@ from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.config.models.seer import (
     LocalRankConfig,
     RankPageRefreshConfig,
-    RankQueryConfig,
 )
 from ironsbot.plugins.seer.query import runtime as seer_runtime
 from tests.helpers.runtime import build_test_runtime
@@ -50,16 +48,11 @@ class FakeScheduler:
 
 
 def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
 ) -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        seer_runtime,
-        "get_local_rank_config",
-        lambda: LocalRankConfig(refresh_hour=3, refresh_minute=30),
-    )
+    config = LocalRankConfig(refresh_hour=3, refresh_minute=30)
 
-    seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS)
+    seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS, config)
 
     assert scheduler.jobs == [
         {
@@ -67,7 +60,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_local_rank_refresh",
             "replace_existing": True,
-            "args": [HEADLESS],
+            "args": [HEADLESS, config],
             "hour": 3,
             "minute": 30,
         }
@@ -75,24 +68,17 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
 
 
 def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
 ) -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        seer_runtime,
-        "get_rank_query_config",
-        lambda: RankQueryConfig(
-            page_refresh=RankPageRefreshConfig(
-                enabled=True,
-                interval_minutes=15,
-                interval_offset_minutes=4,
-                schedule_jitter_seconds=240,
-                times=["01:15"],
-            )
-        ),
+    config = RankPageRefreshConfig(
+        enabled=True,
+        interval_minutes=15,
+        interval_offset_minutes=4,
+        schedule_jitter_seconds=240,
+        times=["01:15"],
     )
 
-    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS)
+    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS, config)
 
     assert scheduler.jobs == [
         {
@@ -100,7 +86,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_interval",
             "replace_existing": True,
-            "args": [HEADLESS],
+            "args": [HEADLESS, config],
             "minute": "4/15",
             "jitter": 240,
         },
@@ -109,7 +95,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_0115",
             "replace_existing": True,
-            "args": [HEADLESS],
+            "args": [HEADLESS, config],
             "hour": 1,
             "minute": 15,
             "jitter": 240,

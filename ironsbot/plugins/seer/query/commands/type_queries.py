@@ -61,7 +61,7 @@ async def _handle_battle_effect(
 def install(group: SeerMatcherGroup) -> None:
     type_matcher = group.on_message(
         policy=CommandPolicy.command("seer_type_query"),
-        rule=seer_feature_rule(group.features, "seer_type")
+        rule=seer_feature_rule(group.resources.features, "seer_type")
         & startswith_or_endswith("属性")
         & no_reply(),
         priority=group.matcher_priority("seer_type"),
@@ -70,7 +70,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     effect_matcher = group.on_message(
         policy=CommandPolicy.command("seer_battle_effect_query"),
-        rule=seer_feature_rule(group.features, "seer_type")
+        rule=seer_feature_rule(group.resources.features, "seer_type")
         & startswith_or_endswith(
             ("异常", "查询异常状态"),
             suffixes="异常",

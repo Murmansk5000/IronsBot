@@ -15,7 +15,6 @@ from ironsbot.services.seer.rank_display import (
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.permissions import can_manage_group_event
 
-from ..config import get_rank_query_config
 from .rank_list_context import RANK_DISPLAY_LIMIT_COMMAND_KEY
 
 if TYPE_CHECKING:
@@ -27,11 +26,11 @@ if TYPE_CHECKING:
 
 
 async def handle_display_limit(
+    features: FeatureService,
+    max_display_limit: int,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    *,
-    features: FeatureService,
 ) -> None:
     command: RankDisplayLimitCommand = state[RANK_DISPLAY_LIMIT_COMMAND_KEY]
     if not isinstance(event, GroupMessageEvent):
@@ -46,8 +45,7 @@ async def handle_display_limit(
         )
         return
 
-    rank_config = get_rank_query_config()
-    if command.limit < 1 or command.limit > rank_config.max_display_limit:
+    if command.limit < 1 or command.limit > max_display_limit:
         await finish_event_reply(
             matcher,
             event,

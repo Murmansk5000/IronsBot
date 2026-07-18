@@ -71,7 +71,7 @@ async def handle_countermark_stat_rank(
 def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_countermark_stat_rank"),
-        rule=seer_feature_rule(group.features, "seer_mintmark")
+        rule=seer_feature_rule(group.resources.features, "seer_mintmark")
         & Rule(_is_countermark_stat_rank_command)
         & no_reply(),
         priority=group.matcher_priority("seer_mintmark"),

@@ -36,7 +36,6 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
 )
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
 
-from ..config import get_local_rank_config, get_rank_query_config, get_seer_config
 from .rank_list_actions import cache_global_rank_batch
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
@@ -51,25 +50,28 @@ if TYPE_CHECKING:
     from nonebot.typing import T_State
 
     from ironsbot.integrations.headless_seer.game import SeerGame
-    from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.seer.rank_list_models import (
         RankCacheBatchCommand,
         RankPageCacheRefreshCommand,
         RankPageCacheStatusCommand,
     )
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 
 async def handle_cache_batch(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     game: SeerGame,
-    *,
-    priority: AdminPriorityService,
 ) -> None:
     ensure_extended_packets()
     command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
-    spec, item_count, requested_count = await cache_global_rank_batch(game, command)
+    spec, item_count, requested_count = await cache_global_rank_batch(
+        game,
+        command,
+        batch_limit=resources.config.local_rank.batch_limit,
+    )
     if item_count <= 0:
         await finish_event_reply(
             matcher,
@@ -87,7 +89,7 @@ async def handle_cache_batch(
             requested_count=requested_count,
         ),
     )
-    await priority.release(state)
+    await resources.priority.release(state)
 
     await finish_event_reply(
         matcher,
@@ -102,6 +104,7 @@ async def handle_cache_batch(
 
 
 async def handle_page_cache_status(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -114,16 +117,16 @@ async def handle_page_cache_status(
         rank_key=command.rank_key,
     )
     targets = preview_rank_page_refresh_targets([command.rank_key])
-    refresh_config = get_rank_query_config().page_refresh
+    rank_config = resources.config.rank
     await finish_event_reply(
         matcher,
         event,
         build_rank_page_cache_status_message(
             spec,
             pages,
-            ttl_seconds=get_rank_query_config().page_cache_ttl_seconds,
+            ttl_seconds=rank_config.page_cache_ttl_seconds,
             target_limit=rank_refresh_target_label(
-                refresh_config,
+                rank_config.page_refresh,
                 command.rank_key,
             ),
             next_ranges=[
@@ -135,10 +138,11 @@ async def handle_page_cache_status(
 
 
 async def handle_page_cache_overview(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    rank_config = get_rank_query_config()
+    rank_config = resources.config.rank
     specs = configured_rank_specs()
     targets = preview_rank_page_refresh_targets()
     targets_by_rank = {
@@ -167,12 +171,11 @@ async def handle_page_cache_overview(
 
 
 async def handle_page_cache_refresh(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     game: SeerGame,
-    *,
-    priority: AdminPriorityService,
 ) -> None:
     ensure_extended_packets()
     command: RankPageCacheRefreshCommand = state[
@@ -183,7 +186,7 @@ async def handle_page_cache_refresh(
         event,
         build_rank_page_refresh_start_message(command),
     )
-    await priority.release(state)
+    await resources.priority.release(state)
     rank_keys = None if command.rank_key is None else [command.rank_key]
     result = await refresh_rank_page_cache(game, rank_keys)
     await finish_event_reply(
@@ -194,32 +197,31 @@ async def handle_page_cache_refresh(
 
 
 async def handle_cache_status(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
     stats = get_local_rank_cache_stats()
-    query_config = get_seer_config()
     await finish_event_reply(
         matcher,
         event,
         build_local_rank_cache_status_message(
             stats,
-            rank_limit=query_config.rank.limit,
-            batch_limit=query_config.local_rank.batch_limit,
-            refresh_limit=query_config.local_rank.refresh_limit,
-            refresh_max_age_hours=query_config.local_rank.refresh_max_age_hours,
+            rank_limit=resources.config.rank.limit,
+            batch_limit=resources.config.local_rank.batch_limit,
+            refresh_limit=resources.config.local_rank.refresh_limit,
+            refresh_max_age_hours=resources.config.local_rank.refresh_max_age_hours,
             display_limit=rank_display_limit_for_group(event_group_id(event)),
         ),
     )
 
 
 async def handle_cache_refresh(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     game: SeerGame,
-    *,
-    priority: AdminPriorityService,
 ) -> None:
     ensure_extended_packets()
     before = get_local_rank_cache_stats()
@@ -230,7 +232,7 @@ async def handle_cache_refresh(
             build_local_rank_refresh_empty_message(),
         )
 
-    local_rank_config = get_local_rank_config()
+    local_rank_config = resources.config.local_rank
     await send_event_reply(
         matcher,
         event,
@@ -240,7 +242,7 @@ async def handle_cache_refresh(
             refresh_max_age_hours=local_rank_config.refresh_max_age_hours,
         ),
     )
-    await priority.release(state)
+    await resources.priority.release(state)
     result = await refresh_local_rank_cache(game)
     after = get_local_rank_cache_stats()
 

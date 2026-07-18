@@ -35,7 +35,7 @@ async def _handle_peak_expert_pool(
 
 
 def install(group: SeerMatcherGroup) -> None:
-    game_client = game_client_dependency(group.headless)
+    game_client = game_client_dependency(group.resources.headless)
 
     async def handle_peak_vote(
         matcher: Matcher,
@@ -103,7 +103,7 @@ def install(group: SeerMatcherGroup) -> None:
             game=game,
         )
 
-    rule = seer_feature_rule(group.features, "seer_peak") & no_reply()
+    rule = seer_feature_rule(group.resources.features, "seer_peak") & no_reply()
     priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(

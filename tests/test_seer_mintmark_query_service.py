@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import nonebot
-from pytest import MonkeyPatch
 from seerapi_models import MintmarkClassCategoryORM, MintmarkORM
 from seerapi_models.mintmark import MintmarkMaxAttrORM, UniversalPartORM
 from sqlmodel import Session, SQLModel, create_engine
@@ -81,51 +80,55 @@ def _connected_mintmark_session() -> Session:
     return session
 
 
-def test_connected_mintmarks_merge_into_new_record(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        mintmark_handlers,
-        "get_mintmark_query_config",
-        lambda: MintmarkQueryConfig(merge_connected=True),
-    )
+def test_connected_mintmarks_merge_into_new_record() -> None:
     session = _connected_mintmark_session()
     old = session.get(MintmarkORM, OLD_MINTMARK_ID)
     new = session.get(MintmarkORM, NEW_MINTMARK_ID)
     assert old is not None and new is not None
 
-    views_from_old_id = mintmark_handlers._build_mintmark_views((old,))
-    views_from_new_id = mintmark_handlers._build_mintmark_views((new,))
+    views_from_old_id = mintmark_handlers._build_mintmark_views(
+        (old,),
+        "merged",
+    )
+    views_from_new_id = mintmark_handlers._build_mintmark_views(
+        (new,),
+        "merged",
+    )
 
     for views in (views_from_old_id, views_from_new_id):
         assert len(views) == 1
         assert views[0].mintmark.id == NEW_MINTMARK_ID
         assert views[0].related_ids == (OLD_MINTMARK_ID,)
-        assert mintmark_handlers._item_desc_fmt(views[0]).startswith("45001、41606")
+        assert mintmark_handlers._item_desc_fmt(
+            views[0],
+            "merged",
+        ).startswith("45001、41606")
 
 
-def test_connected_mintmarks_remain_separate_when_merge_disabled(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        mintmark_handlers,
-        "get_mintmark_query_config",
-        lambda: MintmarkQueryConfig(merge_connected=False),
-    )
+def test_connected_mintmarks_remain_separate_when_merge_disabled() -> None:
     session = _connected_mintmark_session()
     old = session.get(MintmarkORM, OLD_MINTMARK_ID)
     new = session.get(MintmarkORM, NEW_MINTMARK_ID)
     assert old is not None and new is not None
 
-    views = mintmark_handlers._build_mintmark_views((new, old))
+    views = mintmark_handlers._build_mintmark_views(
+        (new, old),
+        "separate",
+    )
 
     assert [view.mintmark.id for view in views] == [
         NEW_MINTMARK_ID,
         OLD_MINTMARK_ID,
     ]
-    assert mintmark_handlers._item_desc_fmt(views[0]).startswith(
+    assert mintmark_handlers._item_desc_fmt(
+        views[0],
+        "separate",
+    ).startswith(
         "45001，关联41606"
     )
-    assert mintmark_handlers._item_desc_fmt(views[1]).startswith(
+    assert mintmark_handlers._item_desc_fmt(
+        views[1],
+        "separate",
+    ).startswith(
         "41606，关联45001"
     )

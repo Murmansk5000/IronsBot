@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from nonebot.adapters import Event
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
@@ -25,29 +27,35 @@ from . import mintmark_handlers
 from .query_rules import not_rank_query
 
 
-async def _handle_mintmark(  # noqa: PLR0913
-    matcher: Matcher,
-    state: T_State,
-    event: Event,
-    sessions: AllSessions,
-    arg: str = Depends(parse_string_arg),
-    mintmarks: tuple[MintmarkORM, ...] = GetMintmarkData(),
-    classes: tuple[MintmarkClassCategoryORM, ...] = GetMintmarkClassData(),
-) -> None:
-    if not arg.strip():
-        raise FinishedException
-    custom_series = resolve_custom_mintmark_series(sessions, arg)
-    if custom_series:
-        mintmarks = custom_series
-        classes = ()
+@dataclass(frozen=True, slots=True)
+class MintmarkCommandHandler:
+    merge_mode: mintmark_handlers.MintmarkMergeMode
 
-    await mintmark_handlers.handle_mintmark(
-        matcher=matcher,
-        state=state,
-        event=event,
-        mintmarks=mintmarks,
-        classes=classes,
-    )
+    async def handle(  # noqa: PLR0913
+        self,
+        matcher: Matcher,
+        state: T_State,
+        event: Event,
+        sessions: AllSessions,
+        arg: str = Depends(parse_string_arg),
+        mintmarks: tuple[MintmarkORM, ...] = GetMintmarkData(),
+        classes: tuple[MintmarkClassCategoryORM, ...] = GetMintmarkClassData(),
+    ) -> None:
+        if not arg.strip():
+            raise FinishedException
+        custom_series = resolve_custom_mintmark_series(sessions, arg)
+        if custom_series:
+            mintmarks = custom_series
+            classes = ()
+
+        await mintmark_handlers.handle_mintmark(
+            matcher=matcher,
+            state=state,
+            event=event,
+            mintmarks=mintmarks
+            + tuple(part.mintmark for item in classes for part in item.mintmark),
+            merge_mode=self.merge_mode,
+        )
 
 
 async def _handle_gem(
@@ -70,17 +78,25 @@ async def _handle_gem(
 def install(group: SeerMatcherGroup) -> None:
     mintmark_matcher = group.on_message(
         policy=CommandPolicy.command("seer_mintmark_query"),
-        rule=seer_feature_rule(group.features, "seer_mintmark")
+        rule=seer_feature_rule(group.resources.features, "seer_mintmark")
         & startswith_or_endswith("刻印")
         & not_rank_query
         & no_reply(),
         priority=group.matcher_priority("seer_mintmark"),
     )
-    mintmark_matcher.append_handler(_handle_mintmark)
+    mintmark_matcher.append_handler(
+        MintmarkCommandHandler(
+            (
+                "merged"
+                if group.resources.config.mintmark.merge_connected
+                else "separate"
+            ),
+        ).handle
+    )
 
     gem_matcher = group.on_message(
         policy=CommandPolicy.command("seer_gem_query"),
-        rule=seer_feature_rule(group.features, "seer_mintmark")
+        rule=seer_feature_rule(group.resources.features, "seer_mintmark")
         & startswith_or_endswith("宝石")
         & no_reply(),
         priority=group.matcher_priority("seer_mintmark"),

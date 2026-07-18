@@ -241,7 +241,7 @@ async def handle_autocard_query(
 def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_autocard_query"),
-        rule=seer_feature_rule(group.features, "seer_autocard")
+        rule=seer_feature_rule(group.resources.features, "seer_autocard")
         & startswith_or_endswith(
             prefixes=AUTOCARD_QUERY_PREFIXES,
             suffixes=AUTOCARD_QUERY_SUFFIXES,

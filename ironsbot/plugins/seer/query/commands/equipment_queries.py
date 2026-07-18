@@ -67,7 +67,7 @@ async def _handle_title(
 def install(group: SeerMatcherGroup) -> None:
     suit_matcher = group.on_message(
         policy=CommandPolicy.command("seer_suit_query"),
-        rule=seer_feature_rule(group.features, "seer_equipment")
+        rule=seer_feature_rule(group.resources.features, "seer_equipment")
         & startswith_or_endswith(
             ("套装", "查询套装信息"),
             suffixes="套装",
@@ -80,7 +80,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     equip_matcher = group.on_message(
         policy=CommandPolicy.command("seer_equipment_query"),
-        rule=seer_feature_rule(group.features, "seer_equipment")
+        rule=seer_feature_rule(group.resources.features, "seer_equipment")
         & startswith_or_endswith(
             ("部件", "查询部件信息"),
             suffixes="部件",
@@ -93,7 +93,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     title_matcher = group.on_message(
         policy=CommandPolicy.command("seer_title_query"),
-        rule=seer_feature_rule(group.features, "seer_equipment")
+        rule=seer_feature_rule(group.resources.features, "seer_equipment")
         & startswith_or_endswith(
             ("称号", "查询称号信息"),
             suffixes="称号",

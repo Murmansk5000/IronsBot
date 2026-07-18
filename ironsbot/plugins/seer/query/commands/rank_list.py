@@ -125,7 +125,7 @@ def _with_game(
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        await handler(matcher, event, state, group.headless.get_game())
+        await handler(matcher, event, state, group.resources.headless.get_game())
 
     return bound_handler
 
@@ -134,14 +134,14 @@ def install(group: SeerMatcherGroup) -> None:
     help_matcher = group.on_fullmatch(
         RANK_HELP_DETAIL_COMMANDS,
         policy=CommandPolicy.command("seer_rank_help"),
-        rule=seer_feature_rule(group.features, "seer_rank") & no_reply(),
+        rule=seer_feature_rule(group.resources.features, "seer_rank") & no_reply(),
         priority=group.matcher_priority("seer_rank_help"),
     )
     help_matcher.append_handler(rank_list_query_handlers.handle_help)
 
     list_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_list"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_list_command)
         & no_reply(),
         priority=group.matcher_priority("seer_rank"),
@@ -152,18 +152,21 @@ def install(group: SeerMatcherGroup) -> None:
 
     player_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_player"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_player_command)
         & no_reply(),
         priority=group.matcher_priority("seer_rank"),
     )
     player_matcher.append_handler(
-        _with_game(group, rank_list_query_handlers.handle_player)
+        _with_game(
+            group,
+            partial(rank_list_query_handlers.handle_player, group.resources.config),
+        )
     )
 
     score_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_score"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_score_command)
         & no_reply(),
         priority=group.matcher_priority("seer_rank"),
@@ -175,34 +178,31 @@ def install(group: SeerMatcherGroup) -> None:
     cache_status_matcher = group.on_fullmatch(
         with_admin_prefix(("样本情况", "样本状态")),
         policy=CommandPolicy.command("seer_rank_cache_status"),
-        rule=seer_feature_rule(group.features, "seer_rank") & no_reply(),
+        rule=seer_feature_rule(group.resources.features, "seer_rank") & no_reply(),
         permission=SUPERUSER,
         priority=group.matcher_priority("seer_rank"),
     )
     cache_status_matcher.append_handler(
-        rank_list_cache_handlers.handle_cache_status
+        partial(rank_list_cache_handlers.handle_cache_status, group.resources)
     )
 
     cache_refresh_matcher = group.on_fullmatch(
         with_admin_prefix(("刷新样本",)),
         policy=CommandPolicy.command("seer_rank_cache_refresh"),
-        rule=seer_feature_rule(group.features, "seer_rank") & no_reply(),
+        rule=seer_feature_rule(group.resources.features, "seer_rank") & no_reply(),
         permission=SUPERUSER,
         priority=group.matcher_priority("seer_rank"),
     )
     cache_refresh_matcher.append_handler(
         _with_game(
             group,
-            partial(
-                rank_list_cache_handlers.handle_cache_refresh,
-                priority=group.priority,
-            ),
+            partial(rank_list_cache_handlers.handle_cache_refresh, group.resources),
         )
     )
 
     cache_batch_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_cache_batch"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_cache_batch_command)
         & no_reply(),
         permission=SUPERUSER,
@@ -211,39 +211,36 @@ def install(group: SeerMatcherGroup) -> None:
     cache_batch_matcher.append_handler(
         _with_game(
             group,
-            partial(
-                rank_list_cache_handlers.handle_cache_batch,
-                priority=group.priority,
-            ),
+            partial(rank_list_cache_handlers.handle_cache_batch, group.resources),
         )
     )
 
     page_overview_matcher = group.on_fullmatch(
         with_admin_prefix(("榜单情况", "榜单状态")),
         policy=CommandPolicy.command("seer_rank_page_cache_status"),
-        rule=seer_feature_rule(group.features, "seer_rank") & no_reply(),
+        rule=seer_feature_rule(group.resources.features, "seer_rank") & no_reply(),
         permission=SUPERUSER,
         priority=group.matcher_priority("seer_rank"),
     )
     page_overview_matcher.append_handler(
-        rank_list_cache_handlers.handle_page_cache_overview
+        partial(rank_list_cache_handlers.handle_page_cache_overview, group.resources)
     )
 
     page_status_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_page_cache_status"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_page_cache_status_command)
         & no_reply(),
         permission=SUPERUSER,
         priority=group.matcher_priority("seer_rank"),
     )
     page_status_matcher.append_handler(
-        rank_list_cache_handlers.handle_page_cache_status
+        partial(rank_list_cache_handlers.handle_page_cache_status, group.resources)
     )
 
     page_refresh_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_page_cache_refresh"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_page_cache_refresh_command)
         & no_reply(),
         permission=SUPERUSER,
@@ -254,14 +251,14 @@ def install(group: SeerMatcherGroup) -> None:
             group,
             partial(
                 rank_list_cache_handlers.handle_page_cache_refresh,
-                priority=group.priority,
+                group.resources,
             ),
         )
     )
 
     display_limit_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_display_limit"),
-        rule=seer_feature_rule(group.features, "seer_rank")
+        rule=seer_feature_rule(group.resources.features, "seer_rank")
         & Rule(_is_rank_display_limit_command)
         & no_reply(),
         priority=group.matcher_priority("seer_rank"),
@@ -269,6 +266,7 @@ def install(group: SeerMatcherGroup) -> None:
     display_limit_matcher.append_handler(
         partial(
             rank_list_display_handlers.handle_display_limit,
-            features=group.features,
+            group.resources.features,
+            group.resources.config.rank.max_display_limit,
         )
     )

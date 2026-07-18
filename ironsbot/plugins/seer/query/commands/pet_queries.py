@@ -45,7 +45,7 @@ async def _handle_pet_info(
 def install(group: SeerMatcherGroup) -> None:
     image_matcher = group.on_message(
         policy=CommandPolicy.command("seer_pet_image"),
-        rule=seer_feature_rule(group.features, "seer_pet")
+        rule=seer_feature_rule(group.resources.features, "seer_pet")
         & startswith_or_endswith(
             prefixes=("立绘", "皮肤", "查询立绘"),
         )
@@ -58,7 +58,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     info_matcher = group.on_message(
         policy=CommandPolicy.command("seer_pet_info"),
-        rule=seer_feature_rule(group.features, "seer_pet")
+        rule=seer_feature_rule(group.resources.features, "seer_pet")
         & startswith_or_endswith(
             prefixes=("精灵", "查询精灵信息", "魂印", "技能"),
             suffixes=("查询精灵信息", "魂印", "技能"),

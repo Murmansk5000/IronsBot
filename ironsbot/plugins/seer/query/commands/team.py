@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from functools import partial
 from typing import Any, cast
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
@@ -10,7 +11,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.config.loader import get_app_config
+from ironsbot.config.models.seer import TeamQueryConfig
 from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
@@ -20,6 +21,7 @@ from ironsbot.integrations.headless_seer.exception import (
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.errors import format_socket_recv_error
+from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import (
     format_team_generic_error_message,
     format_team_info,
@@ -27,14 +29,12 @@ from ironsbot.services.seer.team import (
     format_team_timeout_message,
     format_team_unavailable_message,
 )
-from ironsbot.services.team_resource_subscriptions import TeamResourceSubscriptionStore
-from ironsbot.shared.features import FeatureService
+from ironsbot.services.team_resource_subscriptions import TeamResourceService
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.permissions import can_manage_group_event
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..config import get_team_query_config
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 TEAM_IDS_KEY = "team_ids"
@@ -85,40 +85,32 @@ async def validate_team_id(
     state[TEAM_IDS_KEY] = team_ids
 
 
-def _team_resource_store() -> TeamResourceSubscriptionStore:
-    return TeamResourceSubscriptionStore(
-        get_app_config().seer.team_resource.subscription_path
-    )
-
-
 def _team_subscription_prompt(
-    features: FeatureService,
+    service: TeamResourceService,
     event: MessageEvent,
     team_info: object,
 ) -> str | None:
     if not isinstance(event, GroupMessageEvent):
         return None
-    if not can_manage_group_event(features, event):
+    if not can_manage_group_event(service.features, event):
         return None
 
-    config = get_app_config().seer.team_resource
-    if not config.enabled:
+    if not service.config.enabled:
         return None
-    if not features.is_group_feature_allowed(
+    if not service.features.is_group_feature_allowed(
         event.user_id,
         event.group_id,
         TEAM_RESOURCE_FEATURE,
     ):
         return None
 
-    store = _team_resource_store()
-    if store.has_prompted_group(event.group_id):
+    if service.store.has_prompted_group(event.group_id):
         return None
 
     typed_team_info = cast("Any", team_info)
     team_id = int(typed_team_info.team_id)
     team_name = str(typed_team_info.name or "")
-    store.mark_group_prompted(
+    service.store.mark_group_prompted(
         group_id=event.group_id,
         team_id=team_id,
         team_name=team_name,
@@ -135,9 +127,9 @@ def _team_subscription_prompt(
 async def _query_team_info(
     team_id: int,
     headless: HeadlessService,
+    config: TeamQueryConfig,
 ) -> tuple[str, object]:
     game = headless.get_game()
-    team_config = get_team_query_config()
     with headless_operation(
         "战队查询",
         f"战队 {team_id}",
@@ -145,30 +137,35 @@ async def _query_team_info(
     ):
         team_info = await asyncio.wait_for(
             game.get_team_info(team_id),
-            timeout=team_config.timeout_seconds,
+            timeout=config.timeout_seconds,
         )
     await headless.mark_available(source="战队查询", user_id=int(game.user_id))
     return (
         format_team_info(
             team_info,
-            set(team_config.sections),
+            set(config.sections),
         ),
         team_info,
     )
 
 
 async def _collect_team_query_messages(
-    features: FeatureService,
+    service: TeamResourceService,
     team_ids: list[int],
     event: MessageEvent,
     headless: HeadlessService,
+    query_config: TeamQueryConfig,
 ) -> tuple[list[str], str | None]:
     messages: list[str] = []
     prompt: str | None = None
 
     for team_id in team_ids:
         try:
-            team_message, team_info = await _query_team_info(team_id, headless)
+            team_message, team_info = await _query_team_info(
+                team_id,
+                headless,
+                query_config,
+            )
         except (NotLoggedInError, DisconnectedError):
             raise
         except TimeoutError:
@@ -188,31 +185,31 @@ async def _collect_team_query_messages(
 
         messages.append(team_message)
         if prompt is None:
-            prompt = _team_subscription_prompt(features, event, team_info)
+            prompt = _team_subscription_prompt(service, event, team_info)
 
     return messages, prompt
 
 
 async def handle_team(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    headless: HeadlessService,
-    features: FeatureService,
 ) -> None:
     team_ids: list[int] = state[TEAM_IDS_KEY]
 
     try:
         messages, prompt = await _collect_team_query_messages(
-            features,
+            resources.team_resource,
             team_ids,
             event,
-            headless,
+            resources.headless,
+            resources.config.team,
         )
     except FinishedException:
         raise
     except (NotLoggedInError, DisconnectedError) as e:
-        await headless.mark_unavailable(str(e), source="战队查询")
+        await resources.headless.mark_unavailable(str(e), source="战队查询")
         await _finish_team_query_failure(
             matcher,
             event,
@@ -232,22 +229,9 @@ async def handle_team(
 
 
 def install(group: SeerMatcherGroup) -> None:
-    async def handle_query(
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        await handle_team(
-            matcher,
-            event,
-            state,
-            group.headless,
-            group.features,
-        )
-
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_team"),
-        rule=seer_feature_rule(group.features, "seer_team")
+        rule=seer_feature_rule(group.resources.features, "seer_team")
         & (
             startswith_or_endswith(
                 prefixes=("战队", "查询战队信息"),
@@ -259,4 +243,4 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_team"),
     )
     matcher.append_handler(validate_team_id)
-    matcher.append_handler(handle_query)
+    matcher.append_handler(partial(handle_team, group.resources))

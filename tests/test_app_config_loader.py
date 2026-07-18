@@ -48,7 +48,6 @@ DEPLOYMENT_PORT = 9090
 SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
-DEFAULT_PLAYER_TIMEOUT_SECONDS = 30
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 DEFAULT_RANK_DISPLAY_LIMIT = 10
@@ -717,32 +716,15 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.runtime.priority.enabled
 
 
-def test_seer_plugin_config_accessors_read_app_config(
+def test_seer_render_cache_reads_app_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clear_app_config_cache()
     monkeypatch.setenv("APP_CONFIG_PATH", str(ROOT / "config.example.toml"))
 
-    seer_query_config = _load_module_from_path(
-        "seer_query_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "seer" / "query" / "config.py",
-    )
     from ironsbot.services.seer import render_cache as seer_render_cache
 
     try:
-        assert (
-            seer_query_config.get_player_query_config().timeout_seconds
-            == DEFAULT_PLAYER_TIMEOUT_SECONDS
-        )
-        assert seer_query_config.get_local_rank_config().enabled
-        assert (
-            seer_query_config.get_rank_query_config().display_limit
-            == DEFAULT_RANK_DISPLAY_LIMIT
-        )
-        assert (
-            seer_query_config.get_rank_query_config().max_display_limit
-            == DEFAULT_RANK_MAX_DISPLAY_LIMIT
-        )
         assert (
             seer_render_cache.get_render_config().cache_max_size_mb
             == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
