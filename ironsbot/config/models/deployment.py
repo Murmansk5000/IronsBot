@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ironsbot.shared.config.parsing import csv_items, int_list, json_array
+from ironsbot.core.commands import csv_items, int_list, json_array
 
 
 def command_start_list(value: object) -> list[str]:

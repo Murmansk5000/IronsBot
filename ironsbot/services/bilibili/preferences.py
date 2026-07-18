@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.shared.sqlite import open_sqlite_schema
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     import sqlite3
@@ -28,6 +28,9 @@ BILI_PUSH_PREFERENCE_SCHEMA = (
     ")",
     "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
     "ON bili_push_preferences (uid, target_type, target_id)",
+)
+BILI_PUSH_PREFERENCE_MIGRATIONS = (
+    SqliteMigration(1, BILI_PUSH_PREFERENCE_SCHEMA),
 )
 
 
@@ -124,7 +127,10 @@ class BiliPushPreferenceStore:
             )
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
-        return open_sqlite_schema(self.path, BILI_PUSH_PREFERENCE_SCHEMA)
+        return SqliteDatabase(
+            self.path,
+            migrations=BILI_PUSH_PREFERENCE_MIGRATIONS,
+        ).connect()
 
 
 __all__ = [

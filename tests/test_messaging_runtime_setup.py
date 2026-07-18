@@ -1,6 +1,5 @@
 import asyncio
 import os
-from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from ironsbot.config.models.message import (
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscription_models import (
@@ -30,27 +30,11 @@ from ironsbot.shared.messaging.push_subscription_store import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
 )
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
 
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
-StartupHandler = Callable[[], Coroutine[object, object, object]]
-
-
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[StartupHandler] = []
-
-    def on_startup(
-        self,
-        handler: StartupHandler,
-    ) -> StartupHandler:
-        self.startup_handlers.append(handler)
-        return handler
-
-
 @dataclass(frozen=True, slots=True)
 class FakeMessageConfig:
     push_unsubscribe: PushUnsubscribeConfig
@@ -125,35 +109,10 @@ def _group_event(
     )
 
 
-def test_messaging_runtime_setup_registers_startup_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        runtime._messaging_runtime_state,
-        "registered",
-        registered_state,
-    )
-    driver = FakeDriver()
-    scheduler = object()
-
-    runtime._setup_messaging_runtime(driver, scheduler)
-    runtime._setup_messaging_runtime(driver, scheduler)
-
-    assert len(driver.startup_handlers) == 1
-
-
 def test_messaging_startup_prunes_preferences_before_registering_jobs(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        runtime._messaging_runtime_state,
-        "registered",
-        registered_state,
-    )
     calls: list[str] = []
-    driver = FakeDriver()
 
     def fake_prune() -> PushPreferencePruneResult:
         calls.append("prune")
@@ -168,8 +127,7 @@ def test_messaging_startup_prunes_preferences_before_registering_jobs(
     monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
     monkeypatch.setattr(runtime, "register_message_schedules", fake_register)
 
-    runtime._setup_messaging_runtime(driver, object())
-    asyncio.run(driver.startup_handlers[0]())
+    asyncio.run(runtime.start_messaging(object()))
 
     assert calls == ["prune", "register"]
 
@@ -177,14 +135,7 @@ def test_messaging_startup_prunes_preferences_before_registering_jobs(
 def test_messaging_startup_continues_when_preference_cleanup_fails(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        runtime._messaging_runtime_state,
-        "registered",
-        registered_state,
-    )
     calls: list[str] = []
-    driver = FakeDriver()
 
     def fake_prune() -> PushPreferencePruneResult:
         calls.append("prune")
@@ -196,8 +147,7 @@ def test_messaging_startup_continues_when_preference_cleanup_fails(
     monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
     monkeypatch.setattr(runtime, "register_message_schedules", fake_register)
 
-    runtime._setup_messaging_runtime(driver, object())
-    asyncio.run(driver.startup_handlers[0]())
+    asyncio.run(runtime.start_messaging(object()))
 
     assert calls == ["prune", "register"]
 

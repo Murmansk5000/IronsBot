@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from nonebot.adapters import Bot, Event  # noqa: TC002
+from typing import TYPE_CHECKING
+
+from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
-from nonebot.plugin import PluginMetadata
-from nonebot.plugin.on import on_fullmatch
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.config.models.app import AppConfig
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     finish_event_reply,
@@ -31,22 +31,9 @@ from .menu import (
     visible_help_entries,
 )
 
-__plugin_meta__ = PluginMetadata(
-    name="帮助",
-    description="按当前群/私聊权限显示可用功能",
-    usage=(
-        "📖 帮助 — 查看当前会话可用的功能列表，输入序号查看详细帮助\n"
-        "帮助菜单会根据群号、用户 QQ、超级管理员和各插件变量自动过滤。"
-    ),
-    config=AppConfig,
-)
-
-help_cmd = on_fullmatch(
-    "帮助",
-    rule=no_reply(),
-    priority=get_matcher_priority("help", 0),
-    block=True,
-)
+if TYPE_CHECKING:
+    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.plugins import PluginDefinition
 
 
 def _help_prompt_message(event: Event, text: str):
@@ -83,14 +70,14 @@ def _is_digit_input(event: Event) -> bool:
     return event.get_plaintext().strip().isdigit()
 
 
-@help_cmd.handle()
 async def handle_help(
-    bot: Bot,
     matcher: Matcher,
     event: Event,
     state: T_State,
+    *,
+    definitions: tuple[PluginDefinition, ...],
 ) -> None:
-    entries = visible_help_entries(bot, event)
+    entries = visible_help_entries(definitions, event)
     if not entries:
         await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
 
@@ -142,3 +129,30 @@ def _create_selection_handler(
         await reject_with_rule(matcher, rule)
 
     return _handler
+
+
+def install(
+    registry: MatcherRegistry,
+    definitions: tuple[PluginDefinition, ...],
+) -> None:
+    matcher = registry.on_fullmatch(
+        "帮助",
+        policy=CommandPolicy.command("help"),
+        rule=no_reply(),
+        priority=get_matcher_priority("help", 0),
+        block=True,
+    )
+
+    async def _handle_help(
+        matcher: Matcher,
+        event: Event,
+        state: T_State,
+    ) -> None:
+        await handle_help(
+            matcher,
+            event,
+            state,
+            definitions=definitions,
+        )
+
+    matcher.append_handler(_handle_help)

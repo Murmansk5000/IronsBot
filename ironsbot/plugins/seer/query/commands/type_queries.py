@@ -14,21 +14,14 @@ from ironsbot.integrations.seer_data.getters import (
     GetBattleEffectData,
     GetTypeCombinationData,
 )
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import SeerAPISession
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
 from . import battle_effect_handlers, type_handlers
 
-type_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_type")
-    & startswith_or_endswith("属性")
-    & no_reply(),
-    priority=seer_feature_priority("seer_type"),
-)
 
-
-@type_matcher.handle()
 async def _handle_type(
     matcher: Matcher,
     state: T_State,
@@ -47,18 +40,7 @@ async def _handle_type(
         type_combinations=type_combinations,
     )
 
-battle_effect_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_type")
-    & startswith_or_endswith(
-        ("异常", "查询异常状态"),
-        suffixes="异常",
-    )
-    & no_reply(),
-    priority=seer_feature_priority("seer_type"),
-)
 
-
-@battle_effect_matcher.handle()
 async def _handle_battle_effect(
     matcher: Matcher,
     event: Event,
@@ -74,3 +56,29 @@ async def _handle_battle_effect(
         event=event,
         battle_effects=battle_effects,
     )
+
+
+def install(group: SeerMatcherGroup) -> None:
+    type_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_type_query"),
+        rule=seer_feature_rule("seer_type")
+        & startswith_or_endswith("属性")
+        & no_reply(),
+        priority=seer_feature_priority("seer_type"),
+    )
+    type_matcher.append_handler(_handle_type)
+
+    effect_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_battle_effect_query"),
+        rule=seer_feature_rule("seer_type")
+        & startswith_or_endswith(
+            ("异常", "查询异常状态"),
+            suffixes="异常",
+        )
+        & no_reply(),
+        priority=seer_feature_priority("seer_type"),
+    )
+    effect_matcher.append_handler(_handle_battle_effect)
+
+
+__all__ = ["install"]

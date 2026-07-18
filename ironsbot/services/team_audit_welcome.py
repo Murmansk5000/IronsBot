@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    ensure_sqlite_columns,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
 
@@ -129,17 +132,14 @@ def _connect(cache_path: str | Path) -> AbstractContextManager[sqlite3.Connectio
     return _connect_pending_reminders(cache_path)
 
 
-@contextmanager
 def _connect_pending_reminders(
     cache_path: str | Path,
-) -> Iterator[sqlite3.Connection]:
-    with open_sqlite_schema(
+) -> AbstractContextManager[sqlite3.Connection]:
+    return SqliteDatabase(
         cache_path,
-        TEAM_AUDIT_PENDING_SCHEMA,
+        migrations=TEAM_AUDIT_PENDING_MIGRATIONS,
         row_factory=sqlite3.Row,
-    ) as conn:
-        _ensure_step_column(conn)
-        yield conn
+    ).connect()
 
 
 def _ensure_step_column(conn: sqlite3.Connection) -> None:
@@ -148,6 +148,15 @@ def _ensure_step_column(conn: sqlite3.Connection) -> None:
         table_name="pending_team_audit_reminders",
         columns={"step": "step INTEGER NOT NULL DEFAULT 1"},
     )
+
+
+TEAM_AUDIT_PENDING_MIGRATIONS = (
+    SqliteMigration(
+        1,
+        (TEAM_AUDIT_PENDING_SCHEMA,),
+        _ensure_step_column,
+    ),
+)
 
 
 def _row_to_reminder(row: sqlite3.Row) -> TeamAuditPendingReminder:

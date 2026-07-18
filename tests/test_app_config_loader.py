@@ -105,21 +105,10 @@ STALE_PUBLIC_TEXT_PATTERNS = (
     r"旧榜单",
     r"db\s*(?:与|和)\s*image\s*模块",
     r"seer_rank`\s*/\s*`rank",
-)
-CONFIG_MIGRATION_FIELDS = (
-    "ai.reset_commands",
-    "ai.mention_guard_reply_window_seconds",
-    "ai.mention_guard_reply_max_per_window",
-    "bilibili.push.default_mode",
-    "bilibili.uids",
-    "message.private_unsubscribe",
-    "seer.player.failure_rate_limit_seconds",
-    "seer.player.rate_limit_seconds",
-    "seer.team.failure_rate_limit_seconds",
-    "seer.team.rate_limit_seconds",
-    "message.outbound_rate_limit.window_seconds",
-    "message.outbound_rate_limit.max_messages",
-    "seer.render.clear_on_startup",
+    r"TOML 使用宽松加载",
+    r"配置迁移",
+    r"Behavior Config Migration",
+    r"ignored with warning",
 )
 
 
@@ -469,13 +458,6 @@ def test_public_text_does_not_reference_stale_structures() -> None:
     assert stale_matches == []
 
 
-def test_readme_documents_lenient_config_migration() -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-
-    for field in CONFIG_MIGRATION_FIELDS:
-        assert f"`{field}`" in text
-
-
 def test_rank_page_refresh_interval_offset_must_be_smaller_than_interval() -> None:
     with pytest.raises(ValidationError):
         RankPageRefreshConfig(interval_minutes=10, interval_offset_minutes=10)
@@ -528,9 +510,8 @@ def test_default_app_config_is_created_when_path_env_is_missing(
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_are_ignored_with_exact_path(
+def test_unknown_app_config_fields_are_rejected_with_exact_path(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -545,18 +526,17 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert config.message.group_commands[0].id == "hello"
     assert (
-        "message.group_commands[0].unknown_command_field is not a recognized field"
-        in caplog.text
+        exc_info.value.errors()[0]["loc"]
+        == ("message", "group_commands", 0, "unknown_command_field")
     )
 
 
-def test_unregistered_feature_policy_is_ignored_with_exact_path(
+def test_unregistered_feature_policy_is_rejected_with_exact_path(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -567,15 +547,15 @@ main = ["seer_player", "rank"]
         encoding="utf-8",
     )
 
-    config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert config.feature.group_policy["main"] == ["seer_player"]
-    assert "feature.group_policy.main contains unknown feature 'rank'" in caplog.text
+    assert exc_info.value.errors()[0]["loc"] == ("feature",)
+    assert "feature.group_policy.main[1]=rank" in str(exc_info.value)
 
 
-def test_unknown_bilibili_account_is_ignored_with_exact_path(
+def test_unknown_bilibili_account_is_rejected_with_exact_path(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -586,18 +566,17 @@ accounts = ["missing_account"]
         encoding="utf-8",
     )
 
-    config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert config.bilibili.push.groups["main"].accounts == []
+    assert exc_info.value.errors()[0]["loc"] == ("bilibili",)
     assert (
-        "bilibili.push.groups.main.accounts[0] references unknown Bilibili account"
-        in caplog.text
+        "bilibili.push.groups.main.accounts[0]" in str(exc_info.value)
     )
 
 
-def test_unknown_seer_section_is_ignored_with_exact_path(
+def test_unknown_seer_section_is_rejected_with_exact_path(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -608,10 +587,11 @@ sections = ["basic", "unknown_section"]
         encoding="utf-8",
     )
 
-    config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert config.seer.player.sections == ["basic"]
-    assert "seer.player.sections contains unknown section(s)" in caplog.text
+    assert exc_info.value.errors()[0]["loc"] == ("seer", "player", "sections")
+    assert "seer.player.sections contains unknown section(s)" in str(exc_info.value)
 
 
 def test_player_binding_path_loads(tmp_path: Path) -> None:
@@ -631,9 +611,8 @@ path = "data/custom-player-bindings.sqlite"
     )
 
 
-def test_incomplete_unknown_ai_action_is_ignored_with_exact_path(
+def test_incomplete_unknown_ai_action_is_rejected_with_exact_path(
     tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -645,10 +624,12 @@ message = "hello"
         encoding="utf-8",
     )
 
-    config = load_app_config(config_path)
+    with pytest.raises(ValidationError) as exc_info:
+        load_app_config(config_path)
 
-    assert "custom_action" not in config.ai.intent_actions
-    assert "ai.intent_actions.custom_action is incomplete" in caplog.text
+    assert exc_info.value.errors()[0]["loc"] == ("ai",)
+    assert "ai.intent_actions.custom_action:" in str(exc_info.value)
+    assert "unknown AI intent action must configure" in str(exc_info.value)
 
 
 def test_invalid_app_config_field_values_still_fail(tmp_path: Path) -> None:

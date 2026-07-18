@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ironsbot.core.messaging import append_fire_manual_ad_text
 from ironsbot.shared.features import (
     groups_for_feature,
     users_for_feature,
@@ -19,10 +20,7 @@ from ironsbot.shared.messaging.push_subscriptions import (
     group_schedule_key,
     private_schedule_key,
 )
-from ironsbot.shared.promotions import (
-    append_fire_manual_ad_for_group,
-    append_fire_manual_ad_text,
-)
+from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .config import (

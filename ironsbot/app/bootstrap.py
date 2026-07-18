@@ -3,83 +3,35 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
+from ironsbot.app.composition import build_application_lifecycle
 from ironsbot.app.file_logging import configure_file_logging
-from ironsbot.app.plugin_manifest import (
-    RUNTIME_SETUP_CALLS,
-    iter_plugin_modules,
-    validate_plugin_manifest,
-)
+from ironsbot.app.registry import build_plugin_registry
+from ironsbot.runtime.matchers import MatcherRegistry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from nonebot.internal.driver import Driver
+
+    from ironsbot.app.lifecycle import ApplicationLifecycle
+    from ironsbot.runtime.plugins import PluginDefinition
 
 
 @dataclass(frozen=True, slots=True)
 class BootstrapState:
-    driver: Any
+    driver: Driver
     app: Any
-    loaded_plugins: tuple[str, ...]
-    runtime_setups: tuple[str, ...]
-
-
-class RuntimeSetupError(TypeError):
-    @classmethod
-    def not_callable(cls, setup_ref: str) -> RuntimeSetupError:
-        return cls(f"runtime setup is not callable: {setup_ref}")
+    plugins: tuple[PluginDefinition, ...]
+    matchers: MatcherRegistry
+    lifecycle: ApplicationLifecycle
 
 
 def configure_third_party_logging() -> None:
     for logger_name in ("httpx", "httpcore"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
-
-
-def load_manifest_plugins(
-    load_plugin: Callable[[str], object] | None = None,
-) -> tuple[str, ...]:
-    validate_plugin_manifest()
-    modules = iter_plugin_modules()
-    plugin_loader = load_plugin or nonebot.load_plugin
-
-    for module in modules:
-        plugin_loader(module)
-
-    return modules
-
-
-def _load_runtime_setup(
-    setup_ref: str,
-    *,
-    module_importer: Callable[[str], Any],
-) -> Callable[[], object]:
-    module_name, _separator, function_name = setup_ref.partition(":")
-    module = module_importer(module_name)
-    setup = getattr(module, function_name)
-    if not callable(setup):
-        raise RuntimeSetupError.not_callable(setup_ref)
-    return setup
-
-
-def run_runtime_setups(
-    setup_refs: tuple[str, ...] | None = None,
-    *,
-    module_importer: Callable[[str], Any] = import_module,
-) -> tuple[str, ...]:
-    validate_plugin_manifest()
-    refs = RUNTIME_SETUP_CALLS if setup_refs is None else setup_refs
-
-    for setup_ref in refs:
-        _load_runtime_setup(
-            setup_ref,
-            module_importer=module_importer,
-        )()
-
-    return refs
 
 
 def bootstrap() -> BootstrapState:
@@ -91,20 +43,24 @@ def bootstrap() -> BootstrapState:
     driver.register_adapter(ONEBOT_V11Adapter)
 
     app = nonebot.get_asgi()
-    loaded_plugins = load_manifest_plugins()
-    runtime_setups = run_runtime_setups()
+    plugins = build_plugin_registry()
+    matchers = MatcherRegistry()
+    for plugin in plugins:
+        plugin.install(matchers)
+    matchers.install_postprocessor()
+
+    lifecycle = build_application_lifecycle(driver, plugins)
+    lifecycle.install()
     return BootstrapState(
         driver=driver,
         app=app,
-        loaded_plugins=loaded_plugins,
-        runtime_setups=runtime_setups,
+        plugins=plugins,
+        matchers=matchers,
+        lifecycle=lifecycle,
     )
 
 
 __all__ = [
     "BootstrapState",
-    "RuntimeSetupError",
     "bootstrap",
-    "load_manifest_plugins",
-    "run_runtime_setups",
 ]

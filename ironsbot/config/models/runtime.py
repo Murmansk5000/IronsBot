@@ -6,8 +6,8 @@ from string import Formatter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
-from ironsbot.shared.config.parsing import string_list
-from ironsbot.shared.config.time import (
+from ironsbot.core.commands import string_list
+from ironsbot.core.time import (
     normalized_daily_time_csv,
     normalized_daily_times,
 )

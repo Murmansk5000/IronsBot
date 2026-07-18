@@ -1,12 +1,10 @@
-from nonebot import on_message
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
-from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.config.models.ai import AiIntentAction
-from ironsbot.config.models.app import AppConfig
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.ai.intent_actions import (
     classify_ai_intent_action,
     is_team_action,
@@ -23,19 +21,6 @@ from .team_actions import run_team_action
 ACTION_KEY = "_ai_intent_action"
 
 
-__plugin_meta__ = PluginMetadata(
-    name="AI意图分析",
-    description="按配置识别简短意图，并触发对应回复或功能。",
-    usage=(
-        "【AI意图分析】\n"
-        "按 ai.intent_actions 配置进行关键词粗筛和意图判断。\n"
-        "命中后可发送固定消息、生成 AI 回复，或分发给其它功能处理。\n"
-        "具体触发词、判定提示和动作都以当前配置为准。"
-    ),
-    config=AppConfig,
-)
-
-
 async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
     action = await classify_ai_intent_action(event)
     if action is None:
@@ -43,13 +28,6 @@ async def _match_ai_intent_action(event: MessageEvent, state: T_State) -> bool:
 
     state[ACTION_KEY] = action
     return True
-
-
-ai_intent_action_matcher = on_message(
-    rule=Rule(_match_ai_intent_action) & no_reply(),
-    priority=get_matcher_priority("ai_intent", 4),
-    block=True,
-)
 
 
 async def _handle_ai_reply_action(
@@ -69,7 +47,6 @@ async def _handle_ai_reply_action(
     )
 
 
-@ai_intent_action_matcher.handle()
 async def handle_ai_intent_action(
     matcher: Matcher,
     event: MessageEvent,
@@ -90,3 +67,22 @@ async def handle_ai_intent_action(
         action.message,
         mention_sender=True,
     )
+
+
+def _resolve_action_command_id(
+    _event: MessageEvent,
+    state: T_State,
+) -> str:
+    action = state.get(ACTION_KEY)
+    action_id = str(getattr(action, "id", "")).strip()
+    return f"ai_intent.{action_id}" if action_id else "ai_intent"
+
+
+def install(registry: MatcherRegistry) -> None:
+    matcher = registry.on_message(
+        policy=CommandPolicy.command(_resolve_action_command_id),
+        rule=Rule(_match_ai_intent_action) & no_reply(),
+        priority=get_matcher_priority("ai_intent", 4),
+        block=True,
+    )
+    matcher.append_handler(handle_ai_intent_action)

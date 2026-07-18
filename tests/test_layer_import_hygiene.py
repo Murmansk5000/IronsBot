@@ -4,17 +4,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "ironsbot"
 PLUGIN_ROOT = PACKAGE_ROOT / "plugins"
+CORE_ROOT = PACKAGE_ROOT / "core"
+CONFIG_ROOT = PACKAGE_ROOT / "config"
 LAYER_ROOTS = (
-    ROOT / "ironsbot" / "config",
-    ROOT / "ironsbot" / "integrations",
-    ROOT / "ironsbot" / "services",
-    ROOT / "ironsbot" / "shared",
+    CONFIG_ROOT,
+    PACKAGE_ROOT / "integrations",
+    PACKAGE_ROOT / "services",
+    PACKAGE_ROOT / "shared",
+)
+TARGET_LAYER_IMPORTS = (
+    (CORE_ROOT, frozenset({"core"})),
+    (CONFIG_ROOT, frozenset({"config", "core"})),
 )
 PLUGIN_OWNER_PARTS = 3
 SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
-SQLITE_HELPER_PATH = PACKAGE_ROOT / "shared" / "sqlite.py"
+SQLITE_DATABASE_PATH = PACKAGE_ROOT / "integrations" / "storage" / "sqlite.py"
 RUNTIME_JOBS_PATH = PACKAGE_ROOT / "shared" / "runtime" / "jobs.py"
 DISALLOWED_MODULE_NAME_PREFIXES = ("upstream_",)
+DRIVER_LIFECYCLE_METHODS = {
+    "on_startup",
+    "on_shutdown",
+    "on_bot_connect",
+    "on_bot_disconnect",
+}
+APPLICATION_LIFECYCLE_PATH = PACKAGE_ROOT / "app" / "lifecycle.py"
 
 
 def _python_files(root: Path) -> list[Path]:
@@ -98,6 +111,31 @@ def _plugin_reference_offenders() -> list[str]:
 
 def test_lower_layers_do_not_reference_plugin_modules() -> None:
     assert _plugin_reference_offenders() == []
+
+
+def _internal_layer(module_name: str) -> str | None:
+    parts = module_name.split(".")
+    if not parts or parts[0] != "ironsbot":
+        return None
+    return parts[1] if len(parts) > 1 else ""
+
+
+def _target_layer_import_offenders() -> list[str]:
+    offenders: list[str] = []
+    for root, allowed_layers in TARGET_LAYER_IMPORTS:
+        for path in root.rglob("*.py"):
+            for module_name in _imported_modules(path):
+                layer = _internal_layer(module_name)
+                if layer is None or layer in allowed_layers:
+                    continue
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
+                )
+    return offenders
+
+
+def test_core_and_config_follow_target_dependency_direction() -> None:
+    assert _target_layer_import_offenders() == []
 
 
 def _plugin_owner(path: Path) -> str:
@@ -185,6 +223,44 @@ def test_production_module_names_do_not_use_historical_prefixes() -> None:
     ] == []
 
 
+def _driver_lifecycle_registration_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        if path == APPLICATION_LIFECYCLE_PATH:
+            continue
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node) not in DRIVER_LIFECYCLE_METHODS:
+                continue
+            offenders.append(f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
+    return offenders
+
+
+def test_only_application_lifecycle_registers_driver_hooks() -> None:
+    assert _driver_lifecycle_registration_offenders() == []
+
+
+def _legacy_runtime_setup_offenders() -> list[str]:
+    offenders: list[str] = []
+    for path in _python_files(PACKAGE_ROOT):
+        tree = _parse_python(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name.startswith("setup_") and node.name.endswith("_runtime"):
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{node.lineno} "
+                    f"defines {node.name}"
+                )
+    return offenders
+
+
+def test_production_code_has_no_legacy_runtime_setup_functions() -> None:
+    assert _legacy_runtime_setup_offenders() == []
+
+
 def _call_name(node: ast.Call) -> str | None:
     func = node.func
     if isinstance(func, ast.Attribute):
@@ -197,7 +273,7 @@ def _call_name(node: ast.Call) -> str | None:
 def _sqlite_connect_offenders() -> list[str]:
     offenders: list[str] = []
     for path in _python_files(PACKAGE_ROOT):
-        if path == SQLITE_HELPER_PATH:
+        if path == SQLITE_DATABASE_PATH:
             continue
         tree = _parse_python(path)
         for node in ast.walk(tree):
@@ -214,7 +290,7 @@ def _sqlite_connect_offenders() -> list[str]:
     return offenders
 
 
-def test_sqlite_connections_go_through_shared_helper() -> None:
+def test_sqlite_connections_go_through_storage_database() -> None:
     assert _sqlite_connect_offenders() == []
 
 

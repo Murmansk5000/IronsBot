@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.shared.sqlite import open_sqlite_schema
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS group_rank_display_limits (
     updated_by INTEGER NOT NULL
 )
 """
+RANK_DISPLAY_LIMIT_MIGRATIONS = (
+    SqliteMigration(1, (RANK_DISPLAY_LIMIT_SCHEMA,)),
+)
 
 
 def rank_display_limit_for_group(group_id: int | None) -> int:
@@ -150,7 +153,10 @@ def _stored_group_limit(group_id: int | None) -> int | None:
 
 
 def _connect(path: Path) -> AbstractContextManager[sqlite3.Connection]:
-    return open_sqlite_schema(path, RANK_DISPLAY_LIMIT_SCHEMA)
+    return SqliteDatabase(
+        path,
+        migrations=RANK_DISPLAY_LIMIT_MIGRATIONS,
+    ).connect()
 
 
 def _clamp_limit(value: int, config: RankQueryConfig) -> int:

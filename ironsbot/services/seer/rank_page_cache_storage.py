@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import open_sqlite_schema
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     import sqlite3
@@ -56,10 +56,14 @@ RANK_PAGE_CACHE_SCHEMA = (
         ON player_rank_facts (key, sub_key, score DESC, rank_index)
     """,
 )
+RANK_PAGE_CACHE_MIGRATIONS = (SqliteMigration(1, RANK_PAGE_CACHE_SCHEMA),)
 
 
 def connect_rank_page_cache(path: Path) -> AbstractContextManager[sqlite3.Connection]:
-    return open_sqlite_schema(path, RANK_PAGE_CACHE_SCHEMA)
+    return SqliteDatabase(
+        path,
+        migrations=RANK_PAGE_CACHE_MIGRATIONS,
+    ).connect()
 
 
 __all__ = [

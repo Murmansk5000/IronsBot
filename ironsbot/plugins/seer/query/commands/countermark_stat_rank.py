@@ -8,6 +8,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.integrations.seer_data.sessions import SeerAPISession  # noqa: TC001
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
 )
@@ -28,7 +29,7 @@ from ironsbot.services.seer.countermark_stat_rank_repository import (
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
 
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
@@ -42,15 +43,6 @@ async def _is_countermark_stat_rank_command(event: Event, state: T_State) -> boo
     return True
 
 
-countermark_stat_rank_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_mintmark")
-    & Rule(_is_countermark_stat_rank_command)
-    & no_reply(),
-    priority=seer_feature_priority("seer_mintmark"),
-)
-
-
-@countermark_stat_rank_matcher.handle()
 async def handle_countermark_stat_rank(
     matcher: Matcher,
     event: MessageEvent,
@@ -74,3 +66,17 @@ async def handle_countermark_stat_rank(
         event,
         build_countermark_stat_rank_message(command, items),
     )
+
+
+def install(group: SeerMatcherGroup) -> None:
+    matcher = group.on_message(
+        policy=CommandPolicy.command("seer_countermark_stat_rank"),
+        rule=seer_feature_rule("seer_mintmark")
+        & Rule(_is_countermark_stat_rank_command)
+        & no_reply(),
+        priority=seer_feature_priority("seer_mintmark"),
+    )
+    matcher.append_handler(handle_countermark_stat_rank)
+
+
+__all__ = ["install"]

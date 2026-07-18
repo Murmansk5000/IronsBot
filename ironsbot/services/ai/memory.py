@@ -7,8 +7,8 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.log import logger
 
 from ironsbot.config.loader import get_app_config
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.ai.history import HistoryMessage
-from ironsbot.shared.sqlite import open_sqlite_schema
 
 AI_MEMORY_SCHEMA = (
     """
@@ -28,6 +28,7 @@ AI_MEMORY_SCHEMA = (
     ON messages (user_id, created_at DESC)
     """,
 )
+AI_MEMORY_MIGRATIONS = (SqliteMigration(1, AI_MEMORY_SCHEMA),)
 
 
 def _get_ai_config():
@@ -39,7 +40,10 @@ def _memory_path() -> Path:
 
 
 def _connect() -> AbstractContextManager[sqlite3.Connection]:
-    return open_sqlite_schema(_memory_path(), AI_MEMORY_SCHEMA)
+    return SqliteDatabase(
+        _memory_path(),
+        migrations=AI_MEMORY_MIGRATIONS,
+    ).connect()
 
 
 def _is_memory_enabled() -> bool:

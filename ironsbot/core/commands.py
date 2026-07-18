@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""Pure normalization helpers for command and configuration values."""
+
 from __future__ import annotations
 
 import json

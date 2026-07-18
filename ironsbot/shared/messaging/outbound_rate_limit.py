@@ -369,7 +369,6 @@ class GroupOutboundRateLimitService:
 
 group_outbound_rate_limit_service = GroupOutboundRateLimitService()
 _api_permits: dict[int, OutboundPermit] = {}
-_hooks_registered = False
 
 
 def _extract_group_id(api: str, data: dict[str, Any]) -> int | None:
@@ -489,14 +488,9 @@ def reset_outbound_rate_limit_state() -> None:
     group_outbound_rate_limit_service.reset()
 
 
-def setup_outbound_rate_limit_runtime() -> None:
-    global _hooks_registered  # noqa: PLW0603
-
-    if _hooks_registered:
-        return
+def install_outbound_rate_limit_hooks() -> None:
     Bot.on_calling_api(_check_group_send_api)
     Bot.on_called_api(_finalize_group_send_api)
-    _hooks_registered = True
 
 
 __all__ = [
@@ -505,8 +499,8 @@ __all__ = [
     "OutboundPermit",
     "OutboundRateLimitDecision",
     "group_outbound_rate_limit_service",
+    "install_outbound_rate_limit_hooks",
     "is_outbound_suppressed_result",
     "reset_outbound_rate_limit_state",
-    "setup_outbound_rate_limit_runtime",
     "use_preacquired_push_permit",
 ]

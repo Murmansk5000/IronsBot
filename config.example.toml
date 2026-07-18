@@ -51,11 +51,11 @@ user_a = 2345678901
 
 [feature.group_policy]
 # Default: empty table
-# EN: Group feature allowlist. Feature aliases include all, query, seer, bili,
+# EN: Group feature allowlist. Feature bundles include all, query, seer, bili,
 # seer_activity, server_status, text, text_push, and message. Seer sub-features:
 # seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
 # seer_peak, seer_autocard, seer_rank, seer_data.
-# ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询总别名；
+# ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询功能组合；
 # 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能。
 # 如果某个群不想开放精灵/刻印这类宽泛匹配功能，就不要写 seer，
 # 改写 seer_player、seer_rank、seer_autocard 等精细子功能。

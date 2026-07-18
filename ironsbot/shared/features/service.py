@@ -9,12 +9,8 @@ from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.feature import (
-    FEATURE_ALIASES,
-    KNOWN_FEATURES,
-    FeatureConfig,
-    unique_ints,
-)
+from ironsbot.config.models.feature import FeatureConfig, unique_ints
+from ironsbot.core.features import FEATURE_BUNDLES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -187,7 +183,7 @@ class FeatureService:
             return True
 
         return any(
-            feature in FEATURE_ALIASES.get(item, frozenset())
+            feature in FEATURE_BUNDLES.get(item, frozenset())
             for item in normalized
         )
 
@@ -239,8 +235,8 @@ class FeatureService:
             feature = raw_feature.strip()
             if not feature:
                 continue
-            if feature in FEATURE_ALIASES:
-                normalized.extend(FEATURE_ALIASES[feature])
+            if feature in FEATURE_BUNDLES:
+                normalized.extend(FEATURE_BUNDLES[feature])
                 continue
             normalized.append(feature)
         return list(dict.fromkeys(normalized))
@@ -320,8 +316,6 @@ def is_event_feature_allowed(event: Event, feature: str) -> bool:
 
 
 __all__ = [
-    "FEATURE_ALIASES",
-    "KNOWN_FEATURES",
     "FeatureConfig",
     "FeatureService",
     "feature_service",

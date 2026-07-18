@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.shared.messaging.push_subscription_models import (
     PushPreferenceType,
     PushTargetType,
     PushTimePreference,
 )
-from ironsbot.shared.sqlite import open_sqlite_schema
 
 if TYPE_CHECKING:
     import sqlite3
@@ -66,6 +66,9 @@ PUSH_SUBSCRIPTION_SCHEMA = (
     ")",
     "CREATE INDEX IF NOT EXISTS idx_push_daily_hints_lookup "
     "ON push_daily_hints (target_type, hint_key, delivered_on)",
+)
+PUSH_SUBSCRIPTION_MIGRATIONS = (
+    SqliteMigration(1, PUSH_SUBSCRIPTION_SCHEMA),
 )
 
 
@@ -425,4 +428,7 @@ class PushUnsubscribeStore:
         )
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
-        return open_sqlite_schema(self.path, PUSH_SUBSCRIPTION_SCHEMA)
+        return SqliteDatabase(
+            self.path,
+            migrations=PUSH_SUBSCRIPTION_MIGRATIONS,
+        ).connect()

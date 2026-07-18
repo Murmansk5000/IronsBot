@@ -5,60 +5,11 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ironsbot.plugin_catalog import KNOWN_FEATURES
-from ironsbot.shared.config.parsing import json_object, string_list, unique_items
+from ironsbot.core.commands import json_object, string_list, unique_items
+from ironsbot.core.features import REGISTERED_FEATURE_KEYS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-SEER_FEATURES = frozenset(
-    {
-        "seer_player",
-        "seer_team",
-        "seer_pet",
-        "seer_mintmark",
-        "seer_equipment",
-        "seer_type",
-        "seer_peak",
-        "seer_autocard",
-        "seer_rank",
-        "seer_data",
-    }
-)
-FEATURE_ALIASES: dict[str, frozenset[str]] = {
-    "all": (KNOWN_FEATURES - {"admin_notice", "seer"}) | SEER_FEATURES,
-    "seer": SEER_FEATURES,
-    "query": frozenset(
-        {
-            *SEER_FEATURES,
-            "image",
-            "seer_rank",
-            "bili_query",
-            "seer_activity_query",
-            "server_status_query",
-        }
-    ),
-    "bili": frozenset({"bili_query", "bili_push"}),
-    "activity": frozenset({"seer_activity_query", "seer_activity_push"}),
-    "seer_activity": frozenset({"seer_activity_query", "seer_activity_push"}),
-    "server_status": frozenset({"server_status_query", "server_status_push"}),
-    "text": frozenset({"text", "web_activity_link", "seerinfo"}),
-    "text_push": frozenset({"text_push", "web_activity_push"}),
-    "message": frozenset(
-        {
-            "text",
-            "text_push",
-            "web_activity_link",
-            "web_activity_push",
-            "seerinfo",
-            "team_audit",
-            "team_resource_subscription",
-            "ai_intent_team_recommend",
-        }
-    ),
-}
-
-REGISTERED_FEATURE_KEYS = KNOWN_FEATURES | frozenset(FEATURE_ALIASES)
 
 
 def _coerce_int_mapping(value: object) -> dict[str, int]:
@@ -126,10 +77,6 @@ def unique_ints(values: Iterable[int]) -> list[int]:
 
 
 __all__ = [
-    "FEATURE_ALIASES",
-    "KNOWN_FEATURES",
-    "REGISTERED_FEATURE_KEYS",
-    "SEER_FEATURES",
     "FeatureConfig",
     "unique_ints",
 ]

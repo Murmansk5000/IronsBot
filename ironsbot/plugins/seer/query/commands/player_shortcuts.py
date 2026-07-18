@@ -13,6 +13,7 @@ from ironsbot.integrations.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.headless_seer_notice.state import mark_headless_available
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.player_binding import get_player_binding
@@ -30,7 +31,7 @@ from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
 from ..config import get_local_rank_config, get_player_query_config
-from ..group import matcher_group, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -49,14 +50,6 @@ async def _is_player_shortcut(event: Event, state: T_State) -> bool:
     return True
 
 
-player_shortcut_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_player") & Rule(_is_player_shortcut) & no_reply(),
-    priority=get_matcher_priority("seer_player", 1),
-    block=True,
-)
-
-
-@player_shortcut_matcher.handle()
 async def handle_player_shortcut(
     matcher: Matcher,
     event: MessageEvent,
@@ -108,3 +101,27 @@ async def handle_player_shortcut(
         message = player_query_failure_message(player_id, error)
 
     await finish_event_reply(matcher, event, message, mention_sender=True)
+
+
+def _shortcut_command_id(
+    _event: Event,
+    state: T_State,
+) -> str:
+    command = state.get(_SHORTCUT_COMMAND_KEY)
+    kind = str(getattr(command, "kind", "")).strip()
+    return f"seer_player_{kind}" if kind else "seer_player"
+
+
+def install(group: SeerMatcherGroup) -> None:
+    matcher = group.on_message(
+        policy=CommandPolicy.command(_shortcut_command_id),
+        rule=seer_feature_rule("seer_player")
+        & Rule(_is_player_shortcut)
+        & no_reply(),
+        priority=get_matcher_priority("seer_player", 1),
+        block=True,
+    )
+    matcher.append_handler(handle_player_shortcut)
+
+
+__all__ = ["install"]

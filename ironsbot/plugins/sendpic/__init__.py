@@ -1,14 +1,9 @@
-from importlib import import_module
-
-from nonebot.plugin import PluginMetadata
-
-from ironsbot.config.models.app import AppConfig
+from ironsbot.runtime.matchers import MatcherRegistry
 from ironsbot.services.sendpic_fixed_image import FIXED_IMAGE_COMMANDS
 
 from .config import enabled_pic_configs, get_sendpic_config
-from .matchers import matcher_group as matcher_group
-
-import_module(f"{__name__}.fixed_images")
+from .fixed_images import install as install_fixed_images
+from .matchers import install as install_configured_images
 
 
 def _format_command_names(command: str, aliases: set[str]) -> str:
@@ -40,19 +35,20 @@ def _format_fixed_image_help() -> list[str]:
     return lines
 
 
-command_help = [
-    *_format_fixed_image_help(),
-    *_format_config_command_help(),
-]
-
-usage = """图片发送
+def build_usage() -> str:
+    command_help = [
+        *_format_fixed_image_help(),
+        *_format_config_command_help(),
+    ]
+    return """图片发送
 
 命令：
 """ + "\n".join(command_help)
 
-__plugin_meta__ = PluginMetadata(
-    name="图片发送",
-    description="发送固定图片或本地自定义图片",
-    usage=usage,
-    config=AppConfig,
-)
+
+def install(registry: MatcherRegistry) -> None:
+    install_fixed_images(registry)
+    install_configured_images(registry)
+
+
+__all__ = ["build_usage", "install"]

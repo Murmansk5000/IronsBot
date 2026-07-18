@@ -6,18 +6,16 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
-from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.config.models.app import AppConfig
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
@@ -72,22 +70,6 @@ TEAM_RESOURCE_MANAGE_TEAM_ID_KEY = "_team_resource_manage_team_id"
 TEAM_RESOURCE_MANAGE_THRESHOLD_KEY = "_team_resource_manage_threshold"
 _YES_REPLIES = frozenset(("是", "yes", "y", "确认", "确定"))
 _NO_REPLIES = frozenset(("否", "no", "n", "取消"))
-
-__plugin_meta__ = PluginMetadata(
-    name="战队资源订阅",
-    description="群内订阅战队，并在资源不足时定时提醒指定用户。",
-    usage=(
-        "【战队资源订阅】\n"
-        "群聊发送 seer.team_resource.commands 中配置的指令，默认：战队。\n"
-        "机器人会查询本群已订阅的战队。\n"
-        "群主/管理员可发送：订阅战队123456、取消订阅战队123456、战队订阅。\n"
-        "订阅时可追加阈值和 @ 提醒人，例如：订阅战队123456 1000 @某人。\n"
-        "到达 seer.team_resource.times 配置时间后，"
-        "资源低于订阅阈值的战队会提醒指定用户。"
-    ),
-    config=AppConfig,
-)
-
 
 @dataclass(frozen=True, slots=True)
 class TeamResourceManageCommand:
@@ -238,19 +220,6 @@ async def _is_team_resource_manage(event: MessageEvent) -> bool:
     return _parse_team_resource_manage_command(event.get_plaintext()) is not None
 
 
-team_resource_manage_matcher = on_message(
-    rule=Rule(_is_team_resource_manage) & no_reply(allow_at=True),
-    priority=get_matcher_priority("team_resource_subscription", 1),
-    block=True,
-)
-
-team_resource_matcher = on_message(
-    rule=Rule(_is_team_resource_query) & no_reply(),
-    priority=get_matcher_priority("team_resource_subscription", 2),
-    block=True,
-)
-
-
 def parse_team_resource_prompt_choice(text: str) -> bool | None:
     normalized = text.strip().casefold()
     if normalized in _YES_REPLIES:
@@ -276,13 +245,6 @@ async def _is_team_resource_prompt_choice(event: MessageEvent) -> bool:
     ):
         return False
     return get_team_resource_store().get_pending_prompt(event.group_id) is not None
-
-
-team_resource_prompt_matcher = on_message(
-    rule=Rule(_is_team_resource_prompt_choice) & no_reply(),
-    priority=get_matcher_priority("team_resource_subscription", 0),
-    block=True,
-)
 
 
 async def _fetch_team_result_for_scan(team_id: int) -> TeamResourceResult | None:
@@ -334,7 +296,6 @@ async def scan_team_resource_subscriptions() -> None:
             await _scan_subscription(subscription)
 
 
-@team_resource_manage_matcher.handle()
 async def parse_team_resource_manage(
     matcher: Matcher,
     event: GroupMessageEvent,
@@ -420,7 +381,6 @@ async def parse_team_resource_manage(
     )
 
 
-@team_resource_prompt_matcher.handle()
 async def handle_team_resource_prompt_choice(
     matcher: Matcher,
     event: GroupMessageEvent,
@@ -468,7 +428,6 @@ async def handle_team_resource_prompt_choice(
     )
 
 
-@team_resource_matcher.handle()
 async def handle_team_resource(
     matcher: Matcher,
     event: GroupMessageEvent,
@@ -493,6 +452,34 @@ async def handle_team_resource(
 
     if replies:
         await finish_message_sequence(matcher, replies, event=event)
+
+
+def install(registry: MatcherRegistry) -> None:
+    manage_matcher = registry.on_message(
+        policy=CommandPolicy.command("team_resource_manage"),
+        rule=Rule(_is_team_resource_manage) & no_reply(allow_at=True),
+        priority=get_matcher_priority("team_resource_subscription", 1),
+        block=True,
+    )
+    manage_matcher.append_handler(parse_team_resource_manage)
+
+    prompt_matcher = registry.on_message(
+        policy=CommandPolicy.exempt(
+            "second-level team subscription confirmation"
+        ),
+        rule=Rule(_is_team_resource_prompt_choice) & no_reply(),
+        priority=get_matcher_priority("team_resource_subscription", 0),
+        block=True,
+    )
+    prompt_matcher.append_handler(handle_team_resource_prompt_choice)
+
+    query_matcher = registry.on_message(
+        policy=CommandPolicy.command("team_resource_query"),
+        rule=Rule(_is_team_resource_query) & no_reply(),
+        priority=get_matcher_priority("team_resource_subscription", 2),
+        block=True,
+    )
+    query_matcher.append_handler(handle_team_resource)
 
 
 def _format_group_subscriptions(group_id: int) -> str:

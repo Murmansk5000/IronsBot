@@ -2,20 +2,22 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ironsbot.config.loader import get_app_config
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    ensure_sqlite_columns,
+)
 from ironsbot.services.seer.value_coercion import coerce_positive_int
-from ironsbot.shared.sqlite import ensure_sqlite_columns, open_sqlite_schema
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
     from ironsbot.services.seer.local_rank_metrics import MetricValue
-    from ironsbot.shared.sqlite import RowFactory
 
 
 def max_cached_players() -> int:
@@ -58,18 +60,15 @@ LOCAL_RANK_INDEX_SCHEMA = (
 )
 
 
-@contextmanager
-def connect_local_rank_cache() -> Iterator[sqlite3.Connection]:
-    with open_sqlite_schema(
+def connect_local_rank_cache() -> AbstractContextManager[sqlite3.Connection]:
+    return SqliteDatabase(
         sqlite_cache_path(),
-        LOCAL_RANK_BASE_SCHEMA,
-        row_factory=cast("RowFactory", sqlite3.Row),
-    ) as conn:
-        ensure_local_rank_cache_schema(conn)
-        yield conn
+        migrations=LOCAL_RANK_CACHE_MIGRATIONS,
+        row_factory=sqlite3.Row,
+    ).connect()
 
 
-def ensure_local_rank_cache_schema(conn: sqlite3.Connection) -> None:
+def _migrate_local_rank_cache(conn: sqlite3.Connection) -> None:
     added_columns = ensure_sqlite_columns(
         conn,
         table_name="players",
@@ -89,6 +88,15 @@ def ensure_local_rank_cache_schema(conn: sqlite3.Connection) -> None:
         )
     for statement in LOCAL_RANK_INDEX_SCHEMA:
         conn.execute(statement)
+
+
+LOCAL_RANK_CACHE_MIGRATIONS = (
+    SqliteMigration(
+        1,
+        LOCAL_RANK_BASE_SCHEMA,
+        _migrate_local_rank_cache,
+    ),
+)
 
 
 def write_player_metrics(  # noqa: PLR0913
@@ -152,7 +160,6 @@ def write_player_metrics(  # noqa: PLR0913
 
 __all__ = [
     "connect_local_rank_cache",
-    "ensure_local_rank_cache_schema",
     "max_cached_players",
     "sqlite_cache_path",
     "write_player_metrics",

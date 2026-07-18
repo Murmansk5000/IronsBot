@@ -1,14 +1,12 @@
 import httpx
-from nonebot import on_message
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
-from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.config.models.app import AppConfig
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.ai.chat import (
     build_ai_chat_context,
     can_show_admin_notice,
@@ -41,17 +39,6 @@ from ironsbot.shared.messaging import (
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)
 AI_GROUP_AT_CHAT_PRIORITY = get_pre_command_matcher_priority("ai_group_at")
-
-__plugin_meta__ = PluginMetadata(
-    name="AI聊天",
-    description="接入 DeepSeek / OpenAI-compatible API 的自定义聊天插件",
-    usage=(
-        "群聊中 @机器人 并附带问题\n"
-        "私聊中直接发送问题"
-    ),
-    config=AppConfig,
-)
-
 
 async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
     if getattr(event, "reply", None) is not None:
@@ -191,22 +178,6 @@ async def _run_ai_chat(
             "AI聊天出错了，我已经通知超级管理员。",
         )
 
-
-
-
-ai_chat_matcher = on_message(
-    rule=Rule(_ai_chat_rule),
-    priority=AI_CHAT_PRIORITY,
-    block=True,
-)
-
-ai_chat_group_at_matcher = on_message(
-    rule=Rule(_ai_chat_group_at_rule),
-    priority=AI_GROUP_AT_CHAT_PRIORITY,
-    block=True,
-)
-
-
 async def _finish_admin_notice_or_silent(
     matcher: Matcher,
     event: MessageEvent,
@@ -223,7 +194,6 @@ async def _finish_admin_notice_or_silent(
     )
 
 
-@ai_chat_matcher.handle()
 async def handle_ai_chat(
     matcher: Matcher,
     bot: Bot,
@@ -233,7 +203,6 @@ async def handle_ai_chat(
     await _run_ai_chat(matcher, bot, event, state)
 
 
-@ai_chat_group_at_matcher.handle()
 async def handle_group_at_ai_chat(
     matcher: Matcher,
     bot: Bot,
@@ -241,3 +210,21 @@ async def handle_group_at_ai_chat(
     state: T_State,
 ) -> None:
     await _run_ai_chat(matcher, bot, event, state)
+
+
+def install(registry: MatcherRegistry) -> None:
+    direct_matcher = registry.on_message(
+        policy=CommandPolicy.command("ai_chat"),
+        rule=Rule(_ai_chat_rule),
+        priority=AI_CHAT_PRIORITY,
+        block=True,
+    )
+    direct_matcher.append_handler(handle_ai_chat)
+
+    group_at_matcher = registry.on_message(
+        policy=CommandPolicy.command("ai_chat"),
+        rule=Rule(_ai_chat_group_at_rule),
+        priority=AI_GROUP_AT_CHAT_PRIORITY,
+        block=True,
+    )
+    group_at_matcher.append_handler(handle_group_at_ai_chat)

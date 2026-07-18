@@ -1,14 +1,25 @@
 import asyncio
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import httpx
+import nonebot
 import pytest
+
+if TYPE_CHECKING:
+    from nonebot.internal.driver import Driver
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
-from ironsbot.app.plugin_manifest import RUNTIME_SETUP_CALLS
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
+from ironsbot.app.composition import build_application_lifecycle
+from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
@@ -291,14 +302,13 @@ def test_target_image_pull_retries_transient_registry_eof(
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    docker_update = (
-        "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime"
+    lifecycle = build_application_lifecycle(
+        cast("Driver", object()),
+        build_plugin_registry(),
     )
-    data_sync = "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime"
+    names = [name for name, _hook in lifecycle.startup_hooks]
 
-    assert RUNTIME_SETUP_CALLS.index(docker_update) < RUNTIME_SETUP_CALLS.index(
-        data_sync
-    )
+    assert names.index("docker_update") < names.index("db_sync")
 
 
 def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -308,7 +318,7 @@ def test_startup_docker_update_disabled(monkeypatch: pytest.MonkeyPatch) -> None
         lambda: DockerUpdateConfig(check_on_startup=False),
     )
 
-    asyncio.run(docker_update_runtime._start_docker_update_runtime())
+    asyncio.run(docker_update_runtime.start_docker_update())
 
     assert docker_update_runtime.get_startup_docker_update_notice() is None
 
@@ -337,7 +347,7 @@ def test_startup_docker_update_records_notice(
     )
     monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
 
-    asyncio.run(docker_update_runtime._start_docker_update_runtime())
+    asyncio.run(docker_update_runtime.start_docker_update())
 
     notice = docker_update_runtime.get_startup_docker_update_notice()
     assert notice is not None

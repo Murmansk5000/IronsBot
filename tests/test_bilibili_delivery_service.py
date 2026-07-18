@@ -5,6 +5,7 @@ from typing import Any
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.message import PushUnsubscribeConfig
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.services.bilibili import delivery as delivery_service
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
@@ -13,7 +14,6 @@ from ironsbot.services.bilibili.delivery import (
     append_bili_admin_hint_for_group,
     build_dynamic_push_deliveries,
 )
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 from tests.helpers.config import stub_app_config
 
 PUB_TS = 1781004683

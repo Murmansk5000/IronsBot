@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot import MatcherGroup
+from dataclasses import dataclass
+from typing import Any
+
 from nonebot.adapters import Event
+from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.shared.features import is_event_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
+
+SEER_QUERY_PRIORITY = get_matcher_priority("seer_query", 2)
 
 
 def seer_feature_rule(feature: str) -> Rule:
@@ -20,7 +26,45 @@ def seer_feature_priority(feature: str, fallback: int | None = None) -> int:
     return get_matcher_priority(feature, fallback)
 
 
-matcher_group = MatcherGroup(
-    block=True,
-    priority=get_matcher_priority("seer_query", 2),
-)
+@dataclass(frozen=True, slots=True)
+class SeerMatcherGroup:
+    registry: MatcherRegistry
+
+    def on_message(
+        self,
+        *,
+        policy: CommandPolicy,
+        **kwargs: Any,
+    ) -> type[Matcher]:
+        return self.registry.on_message(
+            policy=policy,
+            **self._with_defaults(kwargs),
+        )
+
+    def on_fullmatch(
+        self,
+        msg: str | tuple[str, ...],
+        *,
+        policy: CommandPolicy,
+        **kwargs: Any,
+    ) -> type[Matcher]:
+        return self.registry.on_fullmatch(
+            msg,
+            policy=policy,
+            **self._with_defaults(kwargs),
+        )
+
+    @staticmethod
+    def _with_defaults(kwargs: dict[str, Any]) -> dict[str, Any]:
+        options = dict(kwargs)
+        options.setdefault("block", True)
+        options.setdefault("priority", SEER_QUERY_PRIORITY)
+        return options
+
+
+__all__ = [
+    "SEER_QUERY_PRIORITY",
+    "SeerMatcherGroup",
+    "seer_feature_priority",
+    "seer_feature_rule",
+]

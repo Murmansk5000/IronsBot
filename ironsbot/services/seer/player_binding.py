@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.sqlite import open_sqlite_schema
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS player_bindings (
     updated_at TEXT NOT NULL
 )
 """
+_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
 
 _YES_REPLIES = frozenset(("是", "yes", "y", "确认", "确定"))
 _NO_REPLIES = frozenset(("否", "no", "n", "取消"))
@@ -64,7 +65,7 @@ def player_binding_offer_message(player_id: int, nick: str) -> str:
 
 
 def get_player_binding(path: str | Path, qq_user_id: int) -> PlayerBindingState:
-    with open_sqlite_schema(path, _SCHEMA) as conn:
+    with _database(path).connect() as conn:
         row = conn.execute(
             """
             SELECT player_id, player_nick, choice_completed
@@ -91,7 +92,7 @@ def bind_player(
     player_nick: str,
 ) -> None:
     now = _utc_now()
-    with open_sqlite_schema(path, _SCHEMA) as conn:
+    with _database(path).connect() as conn:
         conn.execute(
             """
             INSERT INTO player_bindings(
@@ -111,7 +112,7 @@ def bind_player(
 
 def decline_player_binding(path: str | Path, *, qq_user_id: int) -> None:
     now = _utc_now()
-    with open_sqlite_schema(path, _SCHEMA) as conn:
+    with _database(path).connect() as conn:
         conn.execute(
             """
             INSERT INTO player_bindings(
@@ -129,7 +130,7 @@ def decline_player_binding(path: str | Path, *, qq_user_id: int) -> None:
 
 def unbind_player(path: str | Path, *, qq_user_id: int) -> bool:
     now = _utc_now()
-    with open_sqlite_schema(path, _SCHEMA) as conn:
+    with _database(path).connect() as conn:
         cursor = conn.execute(
             """
             UPDATE player_bindings
@@ -144,6 +145,10 @@ def unbind_player(path: str | Path, *, qq_user_id: int) -> bool:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _database(path: str | Path) -> SqliteDatabase:
+    return SqliteDatabase(path, migrations=_MIGRATIONS)
 
 
 __all__ = [

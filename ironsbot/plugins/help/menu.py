@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
-
-from nonebot import get_loaded_plugins
+from typing import TYPE_CHECKING
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.plugin_catalog import help_layout_for_module
 from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 from ironsbot.shared.selection_menu import (
     HELP_SELECTION_FOOTER,
@@ -18,10 +15,10 @@ from ironsbot.shared.selection_menu import (
 from .visibility import plugin_visible_for_event
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Bot, Event
-    from nonebot.plugin import Plugin, PluginMetadata
+    from nonebot.adapters import Event
 
     from ironsbot.config.models.runtime import HelpConfig
+    from ironsbot.runtime.plugins import PluginDefinition
 
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_PLUGIN_NAME = "help"
@@ -44,7 +41,7 @@ HELP_GROUP_TITLES = {
 
 
 @dataclass(frozen=True, slots=True)
-class HelpEntry:
+class HelpMenuEntry:
     key: str
     name: str
     description: str
@@ -53,49 +50,35 @@ class HelpEntry:
     order: int
 
 
+class MissingHelpEntryError(ValueError):
+    @classmethod
+    def for_plugin(cls, plugin_id: str) -> MissingHelpEntryError:
+        return cls(f"plugin has no help entry: {plugin_id}")
+
+
 def get_help_config() -> HelpConfig:
     return get_app_config().runtime.help
-
-
-def plugin_module_name(plugin: Plugin) -> str:
-    return str(getattr(plugin, "module_name", "") or getattr(plugin, "name", ""))
-
-
-def plugin_key(plugin: Plugin) -> str:
-    return plugin_module_name(plugin) or cast("PluginMetadata", plugin.metadata).name
 
 
 def ignored_plugin_names() -> set[str]:
     return set(get_help_config().ignored_plugins)
 
 
-def is_supported_adapter(bot: "Bot", metadata: PluginMetadata) -> bool:
-    if metadata.supported_adapters is None:
-        return True
-    supported_adapters = metadata.get_supported_adapters()
-    if not supported_adapters:
-        return False
-    return any(isinstance(bot.adapter, adapter) for adapter in supported_adapters)
-
-
-def is_supported_type(metadata: PluginMetadata) -> bool:
-    return metadata.type is None or metadata.type == "application"
-
-
-def entry_from_plugin(plugin: Plugin) -> HelpEntry:
-    metadata = cast("PluginMetadata", plugin.metadata)
-    group, order = help_layout_for_module(plugin_module_name(plugin))
-    return HelpEntry(
-        key=plugin_key(plugin),
-        name=metadata.name,
-        description=metadata.description,
-        usage=metadata.usage or "暂无详细帮助。",
-        group=group,
-        order=order,
+def entry_from_definition(definition: PluginDefinition) -> HelpMenuEntry:
+    help_entry = definition.help
+    if help_entry is None:
+        raise MissingHelpEntryError.for_plugin(definition.id)
+    return HelpMenuEntry(
+        key=definition.id,
+        name=help_entry.name,
+        description=help_entry.description,
+        usage=help_entry.usage or "暂无详细帮助。",
+        group=help_entry.group,
+        order=help_entry.order,
     )
 
 
-def entry_sort_key(entry: HelpEntry) -> tuple[int, int, str]:
+def entry_sort_key(entry: HelpMenuEntry) -> tuple[int, int, str]:
     group_index = (
         HELP_GROUP_ORDER.index(entry.group)
         if entry.group in HELP_GROUP_ORDER
@@ -104,36 +87,34 @@ def entry_sort_key(entry: HelpEntry) -> tuple[int, int, str]:
     return (group_index, entry.order, entry.name)
 
 
-def visible_help_entries(bot: "Bot", event: "Event") -> list[HelpEntry]:
-    entries: list[HelpEntry] = []
+def visible_help_entries(
+    definitions: tuple[PluginDefinition, ...],
+    event: Event,
+) -> list[HelpMenuEntry]:
+    entries: list[HelpMenuEntry] = []
     seen_names: set[str] = set()
     ignored_names = ignored_plugin_names()
 
-    plugins = sorted(
-        get_loaded_plugins(),
-        key=lambda plugin: (
-            cast("PluginMetadata", plugin.metadata).name if plugin.metadata else ""
-        ),
-    )
-    for plugin in plugins:
-        metadata = plugin.metadata
-        if metadata is None:
+    for definition in definitions:
+        help_entry = definition.help
+        if help_entry is None:
             continue
-        if metadata.name in ignored_names or metadata.name in seen_names:
+        if (
+            definition.id in ignored_names
+            or help_entry.name in ignored_names
+            or help_entry.name in seen_names
+        ):
             continue
-        if not is_supported_type(metadata) or not is_supported_adapter(bot, metadata):
-            continue
-        module_name = plugin_module_name(plugin)
-        if not plugin_visible_for_event(metadata.name, module_name, event):
+        if not plugin_visible_for_event(definition, event):
             continue
 
-        entries.append(entry_from_plugin(plugin))
-        seen_names.add(metadata.name)
+        entries.append(entry_from_definition(definition))
+        seen_names.add(help_entry.name)
 
     return sorted(entries, key=entry_sort_key)
 
 
-def format_plugin_list(entries: list[HelpEntry]) -> str:
+def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
     if not entries:
         return "当前会话没有可用的功能。"
 
@@ -174,8 +155,8 @@ def format_plugin_list(entries: list[HelpEntry]) -> str:
     )
 
 
-def format_plugin_detail(entry: HelpEntry, event: "Event") -> str:
-    if entry.key.startswith("ironsbot.plugins.seer.query"):
+def format_plugin_detail(entry: HelpMenuEntry, event: Event) -> str:
+    if entry.key == "seer_query":
         return f"📖 {entry.name}\n\n{build_seer_query_usage_message(event)}"
 
     return f"📖 {entry.name}\n\n{entry.usage}"
@@ -185,7 +166,7 @@ __all__ = [
     "HELP_ENTRIES_KEY",
     "HELP_GROUP_TITLES",
     "HELP_PLUGIN_NAME",
-    "HelpEntry",
+    "HelpMenuEntry",
     "format_plugin_detail",
     "format_plugin_list",
     "visible_help_entries",

@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from ironsbot.shared.plugin_runtime.startup_ready import ensure_startup_ready
 from ironsbot.shared.runtime.startup_notice import startup_notice_parts
 
 from .config import get_startup_config
@@ -18,7 +16,6 @@ if TYPE_CHECKING:
     from ironsbot.shared.messaging import TargetSendSummary
 
 startup_notice_service = StartupNoticeService()
-_startup_notice_runtime_state = {"registered": False}
 
 
 async def _send_notice_part(
@@ -40,7 +37,7 @@ async def _send_notice_part(
     )
 
 
-async def send_startup_notice(bot: Bot) -> None:
+async def send_startup_notice(_bot: Bot) -> None:
     config = get_startup_config()
     if not startup_notice_service.should_send(config):
         return
@@ -52,8 +49,6 @@ async def send_startup_notice(bot: Bot) -> None:
         if targets.is_empty:
             logger.warning("startup notice has no admin notice targets")
             return
-
-        await ensure_startup_ready(bot)
 
         if config.delay > 0:
             await asyncio.sleep(config.delay)
@@ -95,16 +90,4 @@ async def send_startup_notice(bot: Bot) -> None:
         startup_notice_service.finish_send()
 
 
-def _setup_startup_notice_runtime(driver: Any) -> None:
-    if _startup_notice_runtime_state["registered"]:
-        return
-
-    driver.on_bot_connect(send_startup_notice)
-    _startup_notice_runtime_state["registered"] = True
-
-
-def setup_startup_notice_runtime() -> None:
-    _setup_startup_notice_runtime(get_driver())
-
-
-__all__ = ["setup_startup_notice_runtime"]
+__all__ = ["send_startup_notice"]

@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-from nonebot import on_message
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
@@ -10,6 +9,7 @@ from ironsbot.integrations.db_sync import registry as db_sync_registry
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
 from ironsbot.integrations.db_sync.models import SyncStatus
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.shared.command_text import normalize_command_text
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.utils.rule import no_reply
@@ -45,15 +45,6 @@ def _is_force_manual_sync_event(event: Event) -> bool:
     return command in NORMALIZED_FORCE_MANUAL_SYNC_COMMANDS
 
 
-manual_sync_matcher = on_message(
-    rule=Rule(_is_manual_sync_command) & no_reply(),
-    permission=SUPERUSER,
-    priority=get_matcher_priority("db_sync", 5),
-    block=True,
-)
-
-
-@manual_sync_matcher.handle()
 async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
     await handle_manual_sync(
         matcher,
@@ -70,3 +61,14 @@ async def _handle_manual_sync(matcher: Matcher, event: MessageEvent) -> None:
             format_remote_build_failures=db_sync_runner.format_remote_build_failures,
         ),
     )
+
+
+def install(registry: MatcherRegistry) -> None:
+    matcher = registry.on_message(
+        policy=CommandPolicy.command("data_sync"),
+        rule=Rule(_is_manual_sync_command) & no_reply(),
+        permission=SUPERUSER,
+        priority=get_matcher_priority("db_sync", 5),
+        block=True,
+    )
+    matcher.append_handler(_handle_manual_sync)

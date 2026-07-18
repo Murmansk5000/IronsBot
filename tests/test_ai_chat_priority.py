@@ -16,17 +16,13 @@ except ValueError:
 
 from ironsbot.plugins.ai_chat import AI_CHAT_PRIORITY, AI_GROUP_AT_CHAT_PRIORITY
 from ironsbot.plugins.ai_mention_guard import AI_MENTION_GUARD_PRIORITY
-from ironsbot.plugins.seer.query.group import matcher_group
+from ironsbot.plugins.seer.query.group import SEER_QUERY_PRIORITY
 
 
 def test_ai_chat_runs_after_seer_query_matchers() -> None:
-    seer_query_priority = matcher_group.base_kwargs["priority"]
-
-    assert seer_query_priority < AI_CHAT_PRIORITY
+    assert SEER_QUERY_PRIORITY < AI_CHAT_PRIORITY
 
 
 def test_group_at_matchers_run_before_seer_query_matchers() -> None:
-    seer_query_priority = matcher_group.base_kwargs["priority"]
-
-    assert seer_query_priority > AI_GROUP_AT_CHAT_PRIORITY
-    assert seer_query_priority > AI_MENTION_GUARD_PRIORITY
+    assert SEER_QUERY_PRIORITY > AI_GROUP_AT_CHAT_PRIORITY
+    assert SEER_QUERY_PRIORITY > AI_MENTION_GUARD_PRIORITY
