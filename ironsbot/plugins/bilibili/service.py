@@ -3,6 +3,7 @@ from typing import Any
 
 from nonebot.log import logger
 
+from ironsbot.services.bilibili.accounts import get_bili_config
 from ironsbot.services.bilibili.checkpoints import (
     DynamicItem,
     initialize_missing_checkpoints,
@@ -44,7 +45,6 @@ from ironsbot.services.bilibili.targets import (
 )
 
 from .auth import send_bili_login_qrcode_to_superusers
-from .config import get_bili_config
 
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 

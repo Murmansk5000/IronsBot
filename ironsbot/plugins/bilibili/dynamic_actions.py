@@ -5,6 +5,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.services.bilibili.accounts import get_bili_config
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
 from ironsbot.services.bilibili.cookie_cache import get_saved_cookie
@@ -28,7 +29,6 @@ from ironsbot.shared.messaging import (
 
 from .auth import send_bili_login_qrcode_to_superusers
 from .command_rules import is_dynamic_select_reply
-from .config import get_bili_config
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 

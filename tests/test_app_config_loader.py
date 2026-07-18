@@ -711,10 +711,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "ai_intent_service_for_app_config_test",
         ROOT / "ironsbot" / "services" / "ai" / "intent.py",
     )
-    bili_config = _load_module_from_path(
-        "bilibili_monitor_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "bilibili" / "config.py",
-    )
     message_config = _load_module_from_path(
         "messaging_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
@@ -735,7 +731,6 @@ def test_small_plugin_config_accessors_read_app_config(
             == DEFAULT_HELP_HINT_MAX_PER_WINDOW
         )
         assert app_config.activity.lead_hours == [11, 1]
-        assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
         assert "seerapi" in app_config.runtime.data_sync.sources
         assert (
             message_config.get_message_config()
