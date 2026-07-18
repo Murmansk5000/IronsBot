@@ -4,11 +4,11 @@ from __future__ import annotations
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.core.commands import command_text_matches, strip_command_prefix
 from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
-from ironsbot.shared.command_text import command_text_matches, strip_command_prefix
 from ironsbot.shared.features import is_event_feature_allowed
 
 from .account_commands import (

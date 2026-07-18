@@ -11,6 +11,7 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.rule import Rule
 
+from ironsbot.core.commands import command_text_matches
 from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
@@ -25,7 +26,6 @@ from ironsbot.services.team_resource_adapter import (
     fetch_team_resource_result,
 )
 from ironsbot.services.team_resource_subscriptions import TeamResourceSubscriptionUpdate
-from ironsbot.shared.command_text import command_text_matches
 from ironsbot.shared.features import group_has_feature, is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (

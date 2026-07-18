@@ -5,12 +5,12 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.integrations.db_sync import registry as db_sync_registry
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
 from ironsbot.integrations.db_sync.models import SyncStatus
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.command_text import normalize_command_text
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.utils.rule import no_reply
 

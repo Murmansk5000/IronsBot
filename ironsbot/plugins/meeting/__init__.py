@@ -5,8 +5,8 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
+from ironsbot.core.commands import command_text_matches
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.command_text import command_text_matches
 from ironsbot.shared.features import (
     is_group_feature_allowed,
     is_private_feature_allowed,

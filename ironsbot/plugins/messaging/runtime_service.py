@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
-from ironsbot.shared.command_text import command_text_matches
+from ironsbot.core.commands import command_text_matches
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from ironsbot.core.commands import normalize_command_text, strip_command_prefix
 from ironsbot.services.seer.rank_list_models import (
     BATCH_CACHE_PREFIXES,
     GLOBAL_RANKS,
@@ -20,7 +21,6 @@ from ironsbot.services.seer.rank_list_models import (
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
-from ironsbot.shared.command_text import normalize_command_text, strip_command_prefix
 
 MAX_PLAYER_ID = 2_000_000_000
 

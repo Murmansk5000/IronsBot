@@ -12,11 +12,11 @@ from ironsbot.config.models.ai import (
     resolve_configured_actions,
 )
 from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
-from ironsbot.shared.command_text import (
+from ironsbot.core.commands import (
     command_text_matches,
     normalize_command_text,
 )
+from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
 from ironsbot.shared.features import (
     group_has_feature,
     is_group_feature_allowed,
