@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING
 from ironsbot.services.seer.rank_list_models import RANK_LIST_SIZE, GlobalRankSpec
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from typing import Any
-
+    from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
+    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshResult
     from ironsbot.services.seer.rank_list_models import RankCacheBatchCommand
+
+_FAILURE_PREVIEW_LIMIT = 5
 
 
 def build_rank_batch_no_players_message(spec: GlobalRankSpec) -> str:
@@ -62,7 +63,7 @@ def build_rank_batch_result_message(
 
 
 def build_local_rank_cache_status_message(  # noqa: PLR0913
-    stats: Any,
+    stats: LocalRankCacheStats,
     *,
     rank_limit: int,
     batch_limit: int,
@@ -96,7 +97,7 @@ def build_local_rank_refresh_empty_message() -> str:
 
 
 def build_local_rank_refresh_start_message(
-    before_stats: Any,
+    before_stats: LocalRankCacheStats,
     *,
     refresh_limit: int,
     refresh_max_age_hours: int,
@@ -112,10 +113,8 @@ def build_local_rank_refresh_start_message(
 
 
 def build_local_rank_refresh_result_message(
-    result: Any,
-    after_stats: Any,
-    *,
-    failure_lines: Sequence[str] = (),
+    result: LocalRankRefreshResult,
+    after_stats: LocalRankCacheStats,
 ) -> str:
     lines = [
         "✅【样本榜缓存刷新完成】",
@@ -125,19 +124,16 @@ def build_local_rank_refresh_result_message(
         f"失败：{result.failed} 个",
         f"当前缓存米米号：{after_stats.player_count}/{after_stats.max_players} 个",
     ]
-    if failure_lines:
+    failures = result.failures[:_FAILURE_PREVIEW_LIMIT]
+    if failures:
         lines.append("")
         lines.append("失败示例：")
-        lines.extend(failure_lines)
+        lines.extend(
+            f"- {failure.player_id}: {failure.reason}" for failure in failures
+        )
+        if result.failed > _FAILURE_PREVIEW_LIMIT:
+            lines.append(
+                f"- 另有 {result.failed - _FAILURE_PREVIEW_LIMIT} 个失败，"
+                "日志里可继续看。"
+            )
     return "\n".join(lines)
-
-
-__all__ = [
-    "build_local_rank_cache_status_message",
-    "build_local_rank_refresh_empty_message",
-    "build_local_rank_refresh_result_message",
-    "build_local_rank_refresh_start_message",
-    "build_rank_batch_no_players_message",
-    "build_rank_batch_result_message",
-    "build_rank_batch_start_message",
-]

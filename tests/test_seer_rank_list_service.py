@@ -2,6 +2,11 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
+from ironsbot.services.seer.local_rank_refresh import (
+    LocalRankRefreshFailure,
+    LocalRankRefreshResult,
+)
 from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
     build_local_rank_refresh_empty_message,
@@ -123,22 +128,6 @@ class LocalRankEntry:
     nick: str
     user_id: int
     display: str
-
-
-@dataclass(frozen=True)
-class LocalRankStats:
-    player_count: int
-    max_players: int
-    total_player_count: int = 0
-    metric_counts: dict[str, int] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class LocalRefreshResult:
-    total: int
-    success: int
-    skipped_full: int
-    failed: int
 
 
 def test_parse_rank_list_command_reads_global_aliases() -> None:
@@ -883,7 +872,7 @@ def test_build_rank_batch_admin_messages() -> None:
 
 
 def test_build_local_rank_cache_status_message() -> None:
-    stats = LocalRankStats(
+    stats = LocalRankCacheStats(
         player_count=10,
         total_player_count=15,
         max_players=100,
@@ -914,9 +903,13 @@ def test_build_local_rank_cache_status_message() -> None:
 
 
 def test_build_local_rank_refresh_messages() -> None:
-    before_stats = LocalRankStats(player_count=10, max_players=100)
-    after_stats = LocalRankStats(player_count=11, max_players=100)
-    result = LocalRefreshResult(total=10, success=9, skipped_full=0, failed=1)
+    before_stats = LocalRankCacheStats(10, 10, 100, {})
+    after_stats = LocalRankCacheStats(11, 11, 100, {})
+    result = LocalRankRefreshResult(
+        total=10,
+        success=9,
+        failures=[LocalRankRefreshFailure(123, "查询超时")],
+    )
 
     assert build_local_rank_refresh_empty_message() == (
         "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。"
@@ -932,7 +925,6 @@ def test_build_local_rank_refresh_messages() -> None:
     assert build_local_rank_refresh_result_message(
         result,
         after_stats,
-        failure_lines=("- 123: 查询超时",),
     ) == (
         "✅【样本榜缓存刷新完成】\n"
         "本轮候选米米号：10 个\n"

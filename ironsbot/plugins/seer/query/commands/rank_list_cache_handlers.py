@@ -4,10 +4,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.local_rank_cache_queries import get_local_rank_cache_stats
-from ironsbot.services.seer.local_rank_refresh import (
-    format_refresh_failures,
-    refresh_local_rank_cache,
-)
 from ironsbot.services.seer.packets import ensure_extended_packets
 from ironsbot.services.seer.rank_cache_messages import (
     build_local_rank_cache_status_message,
@@ -243,7 +239,7 @@ async def handle_cache_refresh(
         ),
     )
     await resources.priority.release(state)
-    result = await refresh_local_rank_cache(game)
+    result = await resources.local_rank_refresh.refresh(game)
     after = get_local_rank_cache_stats()
 
     await finish_event_reply(
@@ -252,6 +248,5 @@ async def handle_cache_refresh(
         build_local_rank_refresh_result_message(
             result,
             after,
-            failure_lines=format_refresh_failures(result.failures),
         ),
     )

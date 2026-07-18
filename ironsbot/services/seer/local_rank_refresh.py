@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
 from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.services.seer.local_rank_cache_queries import (
@@ -12,8 +11,10 @@ from ironsbot.services.seer.local_rank_cache_queries import (
     get_refresh_candidate_player_ids,
 )
 from ironsbot.services.seer.local_rank_update import update_local_rank_cache
-from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
-from ironsbot.services.seer.rank_peak import build_peak_rating_score
+from ironsbot.services.seer.rank_peak import (
+    build_peak_rating_score,
+    get_current_peak_sub_key,
+)
 from ironsbot.services.seer.rank_summary_runtime import fetch_player_rank_summary
 from ironsbot.services.seer.sequ_extra import (
     fetch_unity_part_one,
@@ -45,74 +46,70 @@ class LocalRankRefreshResult:
         return len(self.failures)
 
 
-def get_local_rank_config() -> LocalRankConfig:
-    return get_app_config().seer.local_rank
+@dataclass(frozen=True, slots=True)
+class LocalRankRefreshService:
+    config: LocalRankConfig
+    player_config: PlayerQueryConfig
+    peak_subkey: int | None
 
-
-def get_player_query_config() -> PlayerQueryConfig:
-    return get_app_config().seer.player
-
-
-async def refresh_local_rank_cache(
-    game: LocalRankGameClient,
-    player_ids: Sequence[int] | None = None,
-) -> LocalRankRefreshResult:
-    local_rank_config = get_local_rank_config()
-    player_config = get_player_query_config()
-    if player_ids is None:
-        player_ids = get_refresh_candidate_player_ids(
-            limit=local_rank_config.refresh_limit,
-            max_age_hours=local_rank_config.refresh_max_age_hours,
-        )
-    else:
-        player_ids = list(dict.fromkeys(player_ids))
-
-    result = LocalRankRefreshResult(total=len(player_ids))
-    if not player_ids:
-        return result
-
-    peak_sub_key = get_current_peak_sub_key()
-
-    for player_id in player_ids:
-        if not can_cache_player_id(player_id):
-            result.skipped_full += 1
-            continue
-
-        try:
-            with headless_operation(
-                "本地样本刷新",
-                f"米米号 {player_id}",
-                source="本地样本刷新",
-                background=True,
-            ):
-                await asyncio.wait_for(
-                    _refresh_one_player(
-                        game=game,
-                        peak_sub_key=peak_sub_key,
-                        player_id=player_id,
-                    ),
-                    timeout=player_config.detail_timeout_seconds,
-                )
-        except asyncio.TimeoutError:
-            result.failures.append(
-                LocalRankRefreshFailure(
-                    player_id=player_id,
-                    reason="查询超时",
-                )
-            )
-        except Exception as e:  # noqa: BLE001
-            result.failures.append(
-                LocalRankRefreshFailure(
-                    player_id=player_id,
-                    reason=str(e),
-                )
+    async def refresh(
+        self,
+        game: LocalRankGameClient,
+        player_ids: Sequence[int] | None = None,
+    ) -> LocalRankRefreshResult:
+        if player_ids is None:
+            player_ids = get_refresh_candidate_player_ids(
+                limit=self.config.refresh_limit,
+                max_age_hours=self.config.refresh_max_age_hours,
             )
         else:
-            result.success += 1
+            player_ids = list(dict.fromkeys(player_ids))
 
-        await asyncio.sleep(local_rank_config.refresh_interval_seconds)
+        result = LocalRankRefreshResult(total=len(player_ids))
+        if not player_ids:
+            return result
 
-    return result
+        peak_sub_key = get_current_peak_sub_key(self.peak_subkey)
+        for player_id in player_ids:
+            if not can_cache_player_id(player_id):
+                result.skipped_full += 1
+                continue
+
+            try:
+                with headless_operation(
+                    "本地样本刷新",
+                    f"米米号 {player_id}",
+                    source="本地样本刷新",
+                    background=True,
+                ):
+                    await asyncio.wait_for(
+                        _refresh_one_player(
+                            game=game,
+                            peak_sub_key=peak_sub_key,
+                            player_id=player_id,
+                        ),
+                        timeout=self.player_config.detail_timeout_seconds,
+                    )
+            except asyncio.TimeoutError:
+                result.failures.append(
+                    LocalRankRefreshFailure(
+                        player_id=player_id,
+                        reason="查询超时",
+                    )
+                )
+            except Exception as error:  # noqa: BLE001
+                result.failures.append(
+                    LocalRankRefreshFailure(
+                        player_id=player_id,
+                        reason=str(error),
+                    )
+                )
+            else:
+                result.success += 1
+
+            await asyncio.sleep(self.config.refresh_interval_seconds)
+
+        return result
 
 
 async def _refresh_one_player(
@@ -167,17 +164,3 @@ async def _refresh_one_player(
         peak_wild_score=peak_wild_score,
         peak_expert_score=peak_expert_score,
     )
-
-
-def format_refresh_failures(
-    failures: list[LocalRankRefreshFailure],
-    *,
-    limit: int = 5,
-) -> list[str]:
-    lines = [
-        f"- {failure.player_id}: {failure.reason}"
-        for failure in failures[:limit]
-    ]
-    if len(failures) > limit:
-        lines.append(f"- 另有 {len(failures) - limit} 个失败，日志里可继续看。")
-    return lines

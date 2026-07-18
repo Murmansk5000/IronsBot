@@ -16,13 +16,13 @@ if TYPE_CHECKING:
         RestartConfig,
         StartupConfig,
     )
-    from ironsbot.config.models.seer import LocalRankConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.bilibili.resources import BilibiliResources
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.startup_notice import StartupNoticeService
@@ -146,11 +146,11 @@ async def register_team_resource_jobs(
 
 async def register_local_rank_jobs(
     headless: HeadlessService,
-    config: LocalRankConfig,
+    service: LocalRankRefreshService,
 ) -> None:
     from ironsbot.plugins.seer.query.runtime import register_local_rank_refresh_job
 
-    register_local_rank_refresh_job(scheduler(), headless, config)
+    register_local_rank_refresh_job(scheduler(), headless, service)
 
 
 async def register_rank_page_jobs(

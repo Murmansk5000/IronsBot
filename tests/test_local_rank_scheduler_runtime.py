@@ -25,9 +25,11 @@ except RuntimeError as e:
 from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.config.models.seer import (
     LocalRankConfig,
+    PlayerQueryConfig,
     RankPageRefreshConfig,
 )
 from ironsbot.plugins.seer.query import runtime as seer_runtime
+from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from tests.helpers.runtime import build_test_runtime
 
@@ -52,8 +54,9 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
 ) -> None:
     scheduler = FakeScheduler()
     config = LocalRankConfig(refresh_hour=3, refresh_minute=30)
+    service = LocalRankRefreshService(config, PlayerQueryConfig(), None)
 
-    seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS, config)
+    seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS, service)
 
     assert scheduler.jobs == [
         {
@@ -61,7 +64,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_local_rank_refresh",
             "replace_existing": True,
-            "args": [HEADLESS, config],
+            "args": [HEADLESS, service],
             "hour": 3,
             "minute": 30,
         }

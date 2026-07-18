@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
     from ironsbot.services.seer.rank_display import RankDisplayService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
     from ironsbot.services.seer.render_cache import RenderCache
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class SeerQueryResources:
     config: SeerConfig
+    local_rank_refresh: LocalRankRefreshService
     rank_display: RankDisplayService
     rank_page_refresh: RankPageRefreshService
     render_cache: RenderCache

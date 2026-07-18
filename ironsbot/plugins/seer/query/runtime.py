@@ -9,8 +9,8 @@ from nonebot import logger
 from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.seer import LocalRankConfig
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 SEER_QUERY_JOB_PREFIX = "seer_"
@@ -36,14 +36,13 @@ def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) 
 
 async def _scheduled_local_rank_refresh(
     headless: HeadlessService,
-    config: LocalRankConfig,
+    service: LocalRankRefreshService,
 ) -> None:
-    from ironsbot.services.seer.local_rank_refresh import refresh_local_rank_cache
-
+    config = service.config
     if not config.auto_refresh:
         return
 
-    result = await refresh_local_rank_cache(headless.get_game())
+    result = await service.refresh(headless.get_game())
     logger.info(
         "local rank cache auto refresh finished: "
         f"total={result.total}, "
@@ -56,12 +55,13 @@ async def _scheduled_local_rank_refresh(
 def register_local_rank_refresh_job(
     scheduler: Any,
     headless: HeadlessService,
-    config: LocalRankConfig,
+    service: LocalRankRefreshService,
 ) -> None:
+    config = service.config
     JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
         _scheduled_local_rank_refresh,
         "cron",
-        args=[headless, config],
+        args=[headless, service],
         hour=config.refresh_hour,
         minute=config.refresh_minute,
         job_id="local_rank_refresh",

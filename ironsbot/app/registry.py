@@ -15,6 +15,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
 )
 from ironsbot.services.help_hint import HelpHintService
+from ironsbot.services.seer.local_rank_refresh import LocalRankRefreshService
 from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
@@ -122,6 +123,11 @@ def build_plugin_registry(  # noqa: PLR0913
     )
     seer_resources = SeerQueryResources(
         config.seer,
+        LocalRankRefreshService(
+            config.seer.local_rank,
+            config.seer.player,
+            config.seer.rank.peak_subkey,
+        ),
         RankDisplayService(config.seer.rank, config.feature.group_aliases),
         RankPageRefreshService(config.seer.rank.page_refresh),
         RenderCache(
@@ -545,7 +551,7 @@ def build_plugin_registry(  # noqa: PLR0913
                         partial(
                             runtime.register_local_rank_jobs,
                             headless,
-                            config.seer.local_rank,
+                            seer_resources.local_rank_refresh,
                         ),
                     ),
                     (
