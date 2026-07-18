@@ -1,37 +1,15 @@
-import sys
-from dataclasses import dataclass
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-
-_SERVICE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "plugins"
-    / "startup_notice"
-    / "service.py"
-)
-_SPEC = spec_from_file_location("startup_notice_service_for_test", _SERVICE_PATH)
-assert _SPEC is not None and _SPEC.loader is not None
-_SERVICE = module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _SERVICE
-_SPEC.loader.exec_module(_SERVICE)
-StartupNoticeService = _SERVICE.StartupNoticeService
-AdminNoticeTargets = _SERVICE.AdminNoticeTargets
-
-
-@dataclass
-class Config:
-    enabled: bool = True
+from ironsbot.services.startup_notice import StartupNoticeService
+from ironsbot.shared.messaging.admin_notice import AdminNoticeTargets
 
 
 def test_startup_notice_service_respects_enabled_and_busy_state() -> None:
     service = StartupNoticeService()
 
-    assert not service.should_send(Config(enabled=False))
-    assert service.should_send(Config())
+    assert not service.should_send(enabled=False)
+    assert service.should_send(enabled=True)
 
     service.begin_send()
-    assert not service.should_send(Config())
+    assert not service.should_send(enabled=True)
 
 
 def test_startup_notice_service_resolves_targets() -> None:
@@ -56,8 +34,8 @@ def test_startup_notice_service_resets_sending_after_failed_send() -> None:
     service.mark_result([])
     service.finish_send()
 
-    assert not service.state.sent
-    assert not service.state.sending
+    assert not service.sent
+    assert not service.sending
 
 
 def test_startup_notice_service_marks_successful_send() -> None:
@@ -67,4 +45,5 @@ def test_startup_notice_service_marks_successful_send() -> None:
     service.mark_result([123])
     service.finish_send()
 
-    assert service.state.sent
+    assert service.sent
+    assert not service.sending

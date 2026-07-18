@@ -15,6 +15,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
 )
 from ironsbot.services.seer.rank_usage import build_rank_help_message
+from ironsbot.services.startup_notice import StartupNoticeService
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -289,11 +290,14 @@ async def _check_bilibili(bot: Bot) -> None:
     await check_bilibili_on_connect(bot)
 
 
-async def _send_startup_notice(bot: Bot) -> None:
+async def _send_startup_notice(
+    bot: Bot,
+    service: StartupNoticeService,
+) -> None:
     from ironsbot.plugins.db_sync import runtime as db_sync_runtime
     from ironsbot.plugins.server_status import runtime as server_status_runtime
     from ironsbot.plugins.startup_notice.runtime import send_startup_notice
-    from ironsbot.plugins.startup_notice.service import StartupNoticeProvider
+    from ironsbot.services.startup_notice import StartupNoticeProvider
 
     await send_startup_notice(
         bot,
@@ -309,6 +313,7 @@ async def _send_startup_notice(bot: Bot) -> None:
                 get_message=db_sync_runtime.get_startup_sync_notice,
             ),
         ),
+        service,
     )
 
 
@@ -341,6 +346,7 @@ def build_plugin_registry(
         _refresh_push_time_jobs,
         activity_service=activity_service,
     )
+    startup_notice_service = StartupNoticeService()
 
     def install_help(registry: MatcherRegistry) -> None:
         from ironsbot.plugins import help as help_plugin
@@ -575,7 +581,12 @@ def build_plugin_registry(
             help=None,
             install=_noop_install,
             hooks=PluginHooks(
-                first_bot_connect=(("startup_notice", _send_startup_notice),),
+                first_bot_connect=(
+                    (
+                        "startup_notice",
+                        partial(_send_startup_notice, service=startup_notice_service),
+                    ),
+                ),
             ),
         ),
         PluginDefinition(

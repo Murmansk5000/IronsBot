@@ -1,7 +1,8 @@
+# SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ironsbot.shared.messaging.admin_notice import (
     AdminNoticeTargets,
@@ -12,10 +13,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 
-class StartupNoticeConfig(Protocol):
-    enabled: bool
-
-
 @dataclass(frozen=True, slots=True)
 class StartupNoticeProvider:
     subscription_key: str
@@ -24,29 +21,23 @@ class StartupNoticeProvider:
 
 
 @dataclass(slots=True)
-class StartupNoticeState:
+class StartupNoticeService:
+    target_loader: Callable[[], AdminNoticeTargets] = admin_notice_targets
     sent: bool = False
     sending: bool = False
 
-
-@dataclass(slots=True)
-class StartupNoticeService:
-    state: StartupNoticeState = field(default_factory=StartupNoticeState)
-    target_loader: Callable[[], AdminNoticeTargets] = admin_notice_targets
-
-    def should_send(self, config: StartupNoticeConfig) -> bool:
-        return config.enabled and not self.state.sent and not self.state.sending
+    def should_send(self, *, enabled: bool) -> bool:
+        return enabled and not self.sent and not self.sending
 
     def begin_send(self) -> None:
-        self.state.sending = True
+        self.sending = True
 
     def get_targets(self) -> AdminNoticeTargets:
         return self.target_loader()
 
     def mark_result(self, succeeded: Sequence[object]) -> None:
         if succeeded:
-            self.state.sent = True
+            self.sent = True
 
     def finish_send(self) -> None:
-        if not self.state.sent:
-            self.state.sending = False
+        self.sending = False

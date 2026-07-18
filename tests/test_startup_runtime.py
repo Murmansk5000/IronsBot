@@ -5,7 +5,10 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.runtime import StartupConfig
 from ironsbot.plugins.startup_notice import runtime as startup_notice_runtime
-from ironsbot.plugins.startup_notice.service import StartupNoticeProvider
+from ironsbot.services.startup_notice import (
+    StartupNoticeProvider,
+    StartupNoticeService,
+)
 from ironsbot.shared.messaging.admin_notice import AdminNoticeTargets
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 
@@ -13,20 +16,19 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
 
+def _startup_notice_service() -> StartupNoticeService:
+    return StartupNoticeService(
+        target_loader=lambda: AdminNoticeTargets(
+            private_user_ids=[1],
+            group_ids=[],
+        )
+    )
+
+
 def test_startup_notice_appends_db_sync_notice(
     monkeypatch: MonkeyPatch,
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sent",
-        False,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sending",
-        False,
-    )
     monkeypatch.setattr(
         startup_notice_runtime,
         "get_startup_config",
@@ -41,11 +43,6 @@ def test_startup_notice_appends_db_sync_notice(
         sent_messages.append((str(message), kwargs.get("subscription_key")))
         return TargetSendSummary([MessageTarget("private", 1)], [])
 
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service,
-        "target_loader",
-        lambda: AdminNoticeTargets(private_user_ids=[1], group_ids=[]),
-    )
     monkeypatch.setattr(
         "ironsbot.shared.messaging.send_broadcast_message",
         fake_send_broadcast_message,
@@ -63,6 +60,7 @@ def test_startup_notice_appends_db_sync_notice(
                     ),
                 ),
             ),
+            _startup_notice_service(),
         )
     )
 
@@ -80,16 +78,6 @@ def test_startup_notice_appends_docker_update_before_db_sync(
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sent",
-        False,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sending",
-        False,
-    )
-    monkeypatch.setattr(
         startup_notice_runtime,
         "get_startup_config",
         lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
@@ -102,11 +90,6 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         sent_messages.append((str(message), kwargs.get("subscription_key")))
         return TargetSendSummary([MessageTarget("private", 1)], [])
 
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service,
-        "target_loader",
-        lambda: AdminNoticeTargets(private_user_ids=[1], group_ids=[]),
-    )
     monkeypatch.setattr(
         "ironsbot.shared.messaging.send_broadcast_message",
         fake_send_broadcast_message,
@@ -127,6 +110,7 @@ def test_startup_notice_appends_docker_update_before_db_sync(
                     get_message=lambda: "启动数据同步已是最新，无需更新：seerapi",
                 ),
             ),
+            _startup_notice_service(),
         )
     )
 
