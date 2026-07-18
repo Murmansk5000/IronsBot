@@ -720,10 +720,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "sendpic_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "sendpic" / "config.py",
     )
-    meeting_config = _load_module_from_path(
-        "meeting_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "meeting" / "config.py",
-    )
     message_config = _load_module_from_path(
         "messaging_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "messaging" / "config.py",
@@ -758,7 +754,6 @@ def test_small_plugin_config_accessors_read_app_config(
             "开播",
             "会议",
         ]
-        assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
         assert "aliases" in app_config.runtime.data_sync.sources
         assert app_config.runtime.priority.enabled
         assert team_resource_config.get_team_resource_config().commands == ["战队"]

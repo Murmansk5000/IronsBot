@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.config.models.app import AppConfig
-    from ironsbot.config.models.message import RedPacketNoticeConfig
+    from ironsbot.config.models.message import MeetingConfig, RedPacketNoticeConfig
     from ironsbot.config.models.runtime import (
         DockerUpdateConfig,
         RestartConfig,
@@ -195,10 +195,10 @@ def _install_sendpic(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_meeting(registry: MatcherRegistry) -> None:
+def _install_meeting(registry: MatcherRegistry, config: MeetingConfig) -> None:
     from ironsbot.plugins.meeting import install
 
-    install(registry)
+    install(registry, config)
 
 
 def _install_rank_help(registry: MatcherRegistry) -> None:
@@ -791,7 +791,10 @@ def build_plugin_registry(
                 group="message",
                 order=40,
             ),
-            install=_install_meeting,
+            install=partial(
+                _install_meeting,
+                config=config.message.meeting,
+            ),
         ),
         PluginDefinition(
             id="rank_help",
