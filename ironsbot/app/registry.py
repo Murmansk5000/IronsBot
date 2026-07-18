@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         MeetingConfig,
         RedPacketNoticeConfig,
         SendpicBehaviorConfig,
+        TeamAuditWelcomeConfig,
     )
     from ironsbot.config.models.runtime import (
         DockerUpdateConfig,
@@ -149,10 +150,13 @@ def _install_seer_query(
     install(registry, headless)
 
 
-def _install_team_audit(registry: MatcherRegistry) -> None:
+def _install_team_audit(
+    registry: MatcherRegistry,
+    config: TeamAuditWelcomeConfig,
+) -> None:
     from ironsbot.plugins.team_audit_welcome import install
 
-    install(registry)
+    install(registry, config, _scheduler())
 
 
 def _install_red_packet_notice(
@@ -347,15 +351,19 @@ async def _report_render_crash(_bot: Bot) -> None:
     await report_previous_render_crash()
 
 
-async def _team_audit_on_connect(bot: Bot) -> None:
-    from ironsbot.plugins.team_audit_welcome.runtime import (
-        schedule_team_audit_followups_on_connect,
+async def _team_audit_on_connect(
+    bot: Bot,
+    config: TeamAuditWelcomeConfig,
+) -> None:
+    from ironsbot.plugins.team_audit_welcome.followup import (
+        register_team_audit_followup_scan,
+        schedule_pending_team_audit_followups,
     )
 
-    await schedule_team_audit_followups_on_connect(
-        bot,
-        scheduler=_scheduler(),
-    )
+    del bot
+    scheduler = _scheduler()
+    await schedule_pending_team_audit_followups(scheduler, config=config)
+    register_team_audit_followup_scan(scheduler, config=config)
 
 
 def build_plugin_registry(
@@ -727,9 +735,20 @@ def build_plugin_registry(
             id="team_audit",
             features=frozenset({Feature.TEAM_AUDIT}),
             help=None,
-            install=_install_team_audit,
+            install=partial(
+                _install_team_audit,
+                config=config.message.team_audit_welcome,
+            ),
             hooks=PluginHooks(
-                bot_connect=(("team_audit_followups", _team_audit_on_connect),),
+                bot_connect=(
+                    (
+                        "team_audit_followups",
+                        partial(
+                            _team_audit_on_connect,
+                            config=config.message.team_audit_welcome,
+                        ),
+                    ),
+                ),
             ),
         ),
         PluginDefinition(
