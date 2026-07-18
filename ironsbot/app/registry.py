@@ -402,7 +402,12 @@ def build_plugin_registry(
     def install_help(registry: MatcherRegistry) -> None:
         from ironsbot.plugins import help as help_plugin
 
-        help_plugin.install(registry, definitions)
+        help_plugin.install(
+            registry,
+            definitions,
+            config,
+            ai_key_configured=bool(secrets.ai_key.strip()),
+        )
 
     definitions = (
         PluginDefinition(
