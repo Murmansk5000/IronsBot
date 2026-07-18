@@ -9,6 +9,7 @@ import nonebot
 from ironsbot.app import plugin_runtime as runtime
 from ironsbot.core.features import Feature
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
+from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 from ironsbot.plugins.server_status.command_text import SERVER_STATUS_USAGE
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -17,6 +18,7 @@ from ironsbot.runtime.plugins import (
 )
 from ironsbot.services.help_hint import HelpHintService
 from ironsbot.services.seer.local_rank import LocalRankService
+from ironsbot.services.seer.rank import RankService
 from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
@@ -58,7 +60,7 @@ def _external_install(module: str) -> Callable[[MatcherRegistry], None]:
     return install
 
 
-def build_plugin_registry(  # noqa: PLR0913
+def build_plugin_registry(  # noqa: PLR0913, PLR0915
     *,
     config: AppConfig,
     features: FeatureService,
@@ -122,8 +124,18 @@ def build_plugin_registry(  # noqa: PLR0913
         features,
         delivery,
     )
+    rank_service = RankService(
+        config.seer.rank,
+        SqliteRankPageCache(
+            config.seer.rank.page_cache_path,
+            enabled=config.seer.rank.page_cache,
+            ttl_seconds=config.seer.rank.page_cache_ttl_seconds,
+            allow_stale=config.seer.rank.allow_stale_cache,
+        ),
+    )
     seer_resources = SeerQueryResources(
         config.seer,
+        rank_service,
         LocalRankService(
             SqliteLocalRankRepository(
                 config.seer.local_rank.path,
@@ -131,10 +143,10 @@ def build_plugin_registry(  # noqa: PLR0913
             ),
             config.seer.local_rank,
             config.seer.player,
-            config.seer.rank.peak_subkey,
+            rank_service,
         ),
         RankDisplayService(config.seer.rank, config.feature.group_aliases),
-        RankPageRefreshService(config.seer.rank.page_refresh),
+        RankPageRefreshService(config.seer.rank.page_refresh, rank_service),
         RenderCache(
             config.seer.render.cache_dir,
             config.seer.render.cache_max_size_mb * 1024 * 1024,

@@ -1,5 +1,5 @@
 import asyncio
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from pytest import MonkeyPatch
 
@@ -13,6 +13,9 @@ from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.services.seer import rank_page_refresh
 from ironsbot.services.seer.rank_list_models import GlobalRankSpec
 from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.rank import RankService
 
 
 def test_headless_operation_context_keeps_recent_operation() -> None:
@@ -128,18 +131,22 @@ def test_rank_page_refresh_enters_backoff_after_connection_failure(
         async def fail_fetch(*_args: object, **_kwargs: object) -> list[object]:
             raise TimeoutError
 
+        rank = cast(
+            "RankService",
+            type("FailingRank", (), {"fetch_range": fail_fetch})(),
+        )
         service = rank_page_refresh.RankPageRefreshService(
             RankPageRefreshConfig(
                 pages_per_run=1,
                 pages_per_run_min=1,
-            )
+            ),
+            rank,
         )
         monkeypatch.setattr(
-            rank_page_refresh,
-            "preview_rank_page_refresh_targets",
-            lambda _config, _rank_keys=None: [target],
+            rank_page_refresh.RankPageRefreshService,
+            "preview",
+            lambda _self, _rank_keys=None: [target],
         )
-        monkeypatch.setattr(rank_page_refresh, "fetch_daily_rank_page", fail_fetch)
         game = cast("SeerGame", object())
 
         result = await service.refresh(game)

@@ -339,6 +339,7 @@ async def _send_pending_player_query(
     section_plan = pending.section_plan
     detail_task = (
         create_player_detail_task(
+            resources.rank,
             resources.local_rank,
             pending.game,
             player_id=pending.player_id,

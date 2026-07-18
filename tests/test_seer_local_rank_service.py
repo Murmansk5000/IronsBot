@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.services.seer.local_rank_metrics import MetricValue
+    from ironsbot.services.seer.rank import RankService
 
 EXPECTED_POSITIVE_INT = 12
 
@@ -47,7 +48,7 @@ async def test_upsert_local_rank_metrics_clears_unconfirmed_peak_metrics(
         SqliteLocalRankRepository(path, config.max_players),
         config,
         PlayerQueryConfig(),
-        None,
+        cast("RankService", object()),
     )
     metrics: dict[str, MetricValue] = {
         "peak_wild": {"value": 400100, "season_sub_key": 20260717},

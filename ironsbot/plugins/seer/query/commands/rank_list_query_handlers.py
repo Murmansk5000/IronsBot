@@ -63,8 +63,8 @@ async def handle_list(
             matcher,
             event,
             await build_global_rank_message(
+                resources.rank,
                 game,
-                GLOBAL_RANKS[command.rank_key],
                 command,
             ),
         )
@@ -73,6 +73,7 @@ async def handle_list(
         matcher,
         event,
         build_local_rank_message(
+            resources.rank,
             resources.local_rank,
             LOCAL_RANKS[command.rank_key],
             command,
@@ -92,8 +93,8 @@ async def handle_score(
         matcher,
         event,
         await build_global_rank_score_message(
+            resources.rank,
             game,
-            GLOBAL_RANKS[command.rank_key],
             command,
             display_limit=resources.rank_display.limit_for_group(event_group_id(event)),
         ),
@@ -112,6 +113,7 @@ async def handle_player(
     try:
         message = await asyncio.wait_for(
             build_global_rank_player_message(
+                resources.rank,
                 resources.local_rank,
                 game,
                 command,

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import nonebot
 
@@ -34,6 +35,9 @@ from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from tests.helpers.runtime import build_test_runtime
 
+if TYPE_CHECKING:
+    from ironsbot.services.seer.rank import RankService
+
 TEST_CONFIG = AppConfig()
 TEST_RUNTIME = build_test_runtime(feature_config=TEST_CONFIG.feature)
 HEADLESS = build_headless_service(
@@ -41,6 +45,7 @@ HEADLESS = build_headless_service(
     CredentialsConfig(),
     TEST_RUNTIME.admin_notices,
 )
+RANK = cast("RankService", object())
 
 
 class FakeScheduler:
@@ -64,7 +69,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
         SqliteLocalRankRepository(config.path, config.max_players),
         config,
         PlayerQueryConfig(),
-        None,
+        RANK,
     )
 
     seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS, service)
@@ -92,7 +97,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
         schedule_jitter_seconds=240,
         times=["01:15"],
     )
-    service = RankPageRefreshService(config)
+    service = RankPageRefreshService(config, RANK)
 
     seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS, service)
 

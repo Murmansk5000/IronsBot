@@ -84,6 +84,7 @@ async def handle_player_shortcut(
         ):
             message = await asyncio.wait_for(
                 fetch_player_shortcut_message(
+                    resources.rank,
                     resources.local_rank,
                     game,
                     command=command,

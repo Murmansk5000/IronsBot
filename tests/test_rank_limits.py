@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import nonebot
 from pytest import MonkeyPatch
@@ -61,27 +61,17 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.services.seer import rank_lookup_runtime as _rank_lookup
-from ironsbot.services.seer import rank_pages
-from ironsbot.services.seer import rank_score_runtime as _rank_score
+from ironsbot.config.models.seer import RankQueryConfig
+from ironsbot.services.seer.rank import RankPageCache, RankService
 from ironsbot.services.seer.rank_models import RankPageResult
 from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankLookup,
 )
 
+if TYPE_CHECKING:
+    from ironsbot.integrations.headless_seer.game import SeerGame
 
-@dataclass(frozen=True)
-class RankConfig:
-    limit: int
-    online_limit: int
-    page_size: int
-    page_cache: bool
-    page_cache_ttl_seconds: int
-    allow_stale_cache: bool
-    refresh_stale_cache: bool
-    score_search_probe_limit: int
-    score_search_tie_page_limit: int
-    peak_subkey: int | None
+GAME = cast("SeerGame", object())
 
 
 @dataclass(frozen=True)
@@ -125,61 +115,52 @@ class RankRequestParam(Protocol):
     end: int
 
 
-def _patch_rank_config(  # noqa: PLR0913
-    monkeypatch: MonkeyPatch,
+class FakeRankPageCache:
+    def page(self, **_kwargs: object) -> object | None:
+        return None
+
+    def item(self, **_kwargs: object) -> object | None:
+        return None
+
+    def item_by_index(self, **_kwargs: object) -> object | None:
+        return None
+
+    def summary(self, **_kwargs: object) -> list[object]:
+        return []
+
+    def score_indexes(self, **_kwargs: object) -> list[int]:
+        return []
+
+    def save(self, **_kwargs: object) -> None:
+        return
+
+
+def _build_rank(
     *,
     online_limit: int = ONLINE_LIMIT,
     rank_limit: int = RANK_LIMIT,
     page_size: int = 100,
     score_search_probe_limit: int = 32,
     score_search_tie_page_limit: int = 5,
-) -> None:
-    rank_config = RankConfig(
+) -> tuple[RankService, FakeRankPageCache]:
+    config = RankQueryConfig(
         limit=rank_limit,
         online_limit=online_limit,
         page_size=page_size,
-        page_cache=True,
-        page_cache_ttl_seconds=3600,
-        allow_stale_cache=True,
-        refresh_stale_cache=True,
         score_search_probe_limit=score_search_probe_limit,
         score_search_tie_page_limit=score_search_tie_page_limit,
-        peak_subkey=None,
     )
-    monkeypatch.setattr(
-        _rank_lookup,
-        "get_rank_query_config",
-        lambda: rank_config,
-    )
-    monkeypatch.setattr(
-        _rank_score,
-        "get_rank_query_config",
-        lambda: rank_config,
-    )
-    monkeypatch.setattr(
-        rank_pages,
-        "get_rank_query_config",
-        lambda: rank_config,
-    )
-    monkeypatch.setattr(
-        _rank_score,
-        "get_rank_page_cache_summary",
-        lambda **_: [],
-    )
-    monkeypatch.setattr(
-        _rank_score,
-        "get_cached_rank_score_indexes",
-        lambda **_: [],
-    )
+    cache = FakeRankPageCache()
+    return RankService(config, cast("RankPageCache", cache)), cache
 
 
 def test_score_rank_lookup_uses_rank_limit_not_online_limit(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT)
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT)
     requested_indexes: list[int] = []
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: None)
+    monkeypatch.setattr(cache, "item", lambda **_: None)
 
     async def fake_fetch_rank_item(
         *_args: object,
@@ -189,11 +170,11 @@ def test_score_rank_lookup_uses_rank_limit_not_online_limit(
         requested_indexes.append(index)
         return RankItem(score=0)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="achievement",
             score_name="score",
@@ -214,10 +195,10 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
 ) -> None:
     online_limit = 250
     page_size = 100
-    _patch_rank_config(monkeypatch, online_limit=online_limit, page_size=page_size)
+    rank, cache = _build_rank(online_limit=online_limit, page_size=page_size)
     requested_pages: list[tuple[int, int]] = []
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: None)
+    monkeypatch.setattr(cache, "item", lambda **_: None)
 
     async def fake_fetch_rank_page(
         *_args: object,
@@ -231,11 +212,11 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
             for rank_index in range(start, end + 1)
         ]
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_page", fake_fetch_rank_page)
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="autocard",
             score_name="score",
@@ -252,10 +233,10 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
 def test_score_rank_lookup_rejects_target_below_boundary(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT)
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT)
     requested_indexes: list[int] = []
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: None)
+    monkeypatch.setattr(cache, "item", lambda **_: None)
 
     async def fake_fetch_rank_item(
         *_args: object,
@@ -265,11 +246,11 @@ def test_score_rank_lookup_rejects_target_below_boundary(
         requested_indexes.append(index)
         return RankItem(score=100)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="achievement",
             score_name="score",
@@ -287,11 +268,11 @@ def test_score_rank_lookup_rejects_target_below_boundary(
 def test_score_rank_lookup_finds_rank_with_binary_search(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, online_limit=BINARY_ONLINE_LIMIT)
+    rank, cache = _build_rank(online_limit=BINARY_ONLINE_LIMIT)
     requested_indexes: list[int] = []
     requested_pages: list[tuple[int, int]] = []
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: None)
+    monkeypatch.setattr(cache, "item", lambda **_: None)
 
     async def fake_fetch_rank_item(
         *_args: object,
@@ -316,12 +297,12 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
             for rank_index in range(start, end + 1)
         ]
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
-    monkeypatch.setattr(rank_pages, "fetch_rank_page", fake_fetch_rank_page)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="achievement",
             score_name="score",
@@ -341,8 +322,7 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
 def test_score_rank_lookup_limits_tied_score_page_scan(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, cache = _build_rank(
         online_limit=BINARY_ONLINE_LIMIT,
         rank_limit=BINARY_ONLINE_LIMIT,
         page_size=TIED_PAGE_SIZE,
@@ -351,7 +331,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
     )
     requested_pages: list[tuple[int, int]] = []
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: None)
+    monkeypatch.setattr(cache, "item", lambda **_: None)
 
     async def fake_fetch_rank_item(
         *_args: object,
@@ -372,12 +352,12 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
             for rank_index in range(start, end + 1)
         ]
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
-    monkeypatch.setattr(rank_pages, "fetch_rank_page", fake_fetch_rank_page)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="achievement",
             score_name="score",
@@ -398,8 +378,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
 def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, _cache = _build_rank(
         online_limit=100,
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
@@ -451,16 +430,16 @@ def test_fetch_rank_score_segment_uses_binary_search_and_fetches_tie_pages(
             )
         return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="achievement",
             score_name="score",
             key=17,
@@ -488,8 +467,7 @@ def test_fetch_rank_score_segment_samples_only_tie_range_head_and_tail(
     segment_start = 10
     segment_end = 90
     sample_limit = 10
-    _patch_rank_config(
-        monkeypatch,
+    rank, _cache = _build_rank(
         online_limit=100,
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
@@ -531,16 +509,16 @@ def test_fetch_rank_score_segment_samples_only_tie_range_head_and_tail(
             fetched_at=FETCHED_AT,
         )
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="standard peak",
             score_name="score",
             key=17,
@@ -564,8 +542,7 @@ def test_fetch_rank_score_segment_samples_only_tie_range_head_and_tail(
 def test_fetch_large_rank_score_segment_samples_real_head_and_tail(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, _cache = _build_rank(
         online_limit=ONLINE_LIMIT,
         rank_limit=LARGE_SEGMENT_LIMIT,
         page_size=LARGE_SEGMENT_PAGE_SIZE,
@@ -607,16 +584,16 @@ def test_fetch_large_rank_score_segment_samples_real_head_and_tail(
             fetched_at=FETCHED_AT,
         )
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="standard peak",
             score_name="score",
             key=17,
@@ -646,8 +623,7 @@ def test_fetch_large_rank_score_segment_samples_real_head_and_tail(
 def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, cache = _build_rank(
         online_limit=100,
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
@@ -658,8 +634,8 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
     page_use_cache_values: list[bool] = []
 
     monkeypatch.setattr(
-        _rank_score,
-        "get_rank_page_cache_summary",
+        cache,
+        "summary",
         lambda **_: [
             RankPageSummary(start_index=20, end_index=29, min_score=150, max_score=200),
             RankPageSummary(start_index=30, end_index=39, min_score=150, max_score=150),
@@ -696,16 +672,16 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
             )
         return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", unexpected_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", unexpected_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="mount",
             score_name="score",
             key=17,
@@ -728,8 +704,7 @@ def test_fetch_rank_score_segment_uses_cached_score_bounds_as_hint(
 def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, cache = _build_rank(
         online_limit=100,
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
@@ -739,8 +714,8 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
     requested_pages: list[tuple[int, int]] = []
 
     monkeypatch.setattr(
-        _rank_score,
-        "get_cached_rank_score_indexes",
+        cache,
+        "score_indexes",
         lambda **_: [SEGMENT_START_INDEX],
     )
 
@@ -766,16 +741,16 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
             )
         return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", unexpected_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", unexpected_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="book",
             score_name="score",
             key=156,
@@ -794,8 +769,7 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
 def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_score(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, cache = _build_rank(
         online_limit=100,
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
@@ -804,8 +778,8 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
     )
 
     monkeypatch.setattr(
-        _rank_score,
-        "get_rank_page_cache_summary",
+        cache,
+        "summary",
         lambda **_: [
             RankPageSummary(
                 start_index=50,
@@ -820,10 +794,10 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
             )
         ],
     )
-    monkeypatch.setattr(_rank_score, "get_cached_rank_score_indexes", lambda **_: [])
+    monkeypatch.setattr(cache, "score_indexes", lambda **_: [])
     monkeypatch.setattr(
-        _rank_score,
-        "get_cached_rank_page_result",
+        cache,
+        "page",
         lambda **_: CachedRankPageResult(
             fetched_at=FETCHED_AT,
             items=[
@@ -855,16 +829,16 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
     ) -> None:
         raise AssertionError
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", unexpected_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", unexpected_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         unexpected_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="autocard",
             score_name="score",
             key=240,
@@ -890,8 +864,7 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
     monkeypatch: MonkeyPatch,
 ) -> None:
     missing_score = 175
-    _patch_rank_config(
-        monkeypatch,
+    rank, _cache = _build_rank(
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
         score_search_probe_limit=20,
@@ -930,16 +903,16 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
             )
         return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="book",
             score_name="score",
             key=156,
@@ -963,7 +936,7 @@ def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
 def test_fetch_rank_score_segment_rejects_score_below_boundary(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, rank_limit=100)
+    rank, _cache = _build_rank(rank_limit=100)
     requested_indexes: list[int] = []
 
     async def fake_fetch_rank_item(
@@ -978,11 +951,11 @@ def test_fetch_rank_score_segment_rejects_score_below_boundary(
             score=SEGMENT_BOUNDARY_SCORE,
         )
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="achievement",
             score_name="score",
             key=17,
@@ -999,8 +972,7 @@ def test_fetch_rank_score_segment_rejects_score_below_boundary(
 def test_fetch_rank_score_segment_handles_short_rank_board(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(
-        monkeypatch,
+    rank, _cache = _build_rank(
         rank_limit=100,
         page_size=TIED_PAGE_SIZE,
         score_search_probe_limit=20,
@@ -1046,16 +1018,16 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
             )
         return RankPageResult(items=items, fetched_at=FETCHED_AT)
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_item", fake_fetch_rank_item)
+    monkeypatch.setattr(RankService, "fetch_item", fake_fetch_rank_item)
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        _rank_score.fetch_rank_score_segment(
-            object(),
+        rank.fetch_score_segment(
+            GAME,
             title="book",
             score_name="score",
             key=156,
@@ -1077,7 +1049,7 @@ def test_fetch_rank_score_segment_handles_short_rank_board(
 def test_fresh_cached_rank_is_verified_online_when_score_matches(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT, page_size=100)
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
     requested_ranges: list[tuple[int, int]] = []
     cached_item = CachedRankLookup(
         id=105023264,
@@ -1088,11 +1060,10 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
         is_stale=False,
     )
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: cached_item)
+    monkeypatch.setattr(cache, "item", lambda **_: cached_item)
 
     async def fake_fetch_rank_page(
-        _game: object,
-        *,
+        *_args: object,
         key: int,
         sub_key: int,
         start: int,
@@ -1106,11 +1077,11 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
             RankItem(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
         ]
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_page", fake_fetch_rank_page)
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="book",
             score_name="score",
@@ -1129,7 +1100,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
 def test_cached_rank_without_target_score_is_verified_nearby(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, online_limit=ONLINE_LIMIT, page_size=100)
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
     requested_ranges: list[tuple[int, int]] = []
     cached_item = CachedRankLookup(
         id=105023264,
@@ -1140,11 +1111,10 @@ def test_cached_rank_without_target_score_is_verified_nearby(
         is_stale=False,
     )
 
-    monkeypatch.setattr(_rank_lookup, "get_cached_rank_item", lambda **_: cached_item)
+    monkeypatch.setattr(cache, "item", lambda **_: cached_item)
 
     async def fake_fetch_rank_page(
-        _game: object,
-        *,
+        *_args: object,
         key: int,
         sub_key: int,
         start: int,
@@ -1157,11 +1127,11 @@ def test_cached_rank_without_target_score_is_verified_nearby(
             RankItem(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
         ]
 
-    monkeypatch.setattr(rank_pages, "fetch_rank_page", fake_fetch_rank_page)
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
 
     result = asyncio.run(
-        _rank_lookup.find_rank(
-            object(),
+        rank.find_rank(
+            GAME,
             user_id=105023264,
             title="autocard",
             score_name="score",
@@ -1178,11 +1148,11 @@ def test_cached_rank_without_target_score_is_verified_nearby(
 def test_fetch_rank_item_fetches_aligned_page_on_cache_miss(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, page_size=100)
+    rank, cache = _build_rank(page_size=100)
     requested_ranges: list[tuple[int, int]] = []
 
-    monkeypatch.setattr(rank_pages, "get_cached_rank_item_by_index", lambda **_: None)
-    monkeypatch.setattr(rank_pages, "save_rank_page", lambda **_: None)
+    monkeypatch.setattr(cache, "item_by_index", lambda **_: None)
+    monkeypatch.setattr(cache, "save", lambda **_: None)
 
     class FakeGame:
         async def send_and_wait(
@@ -1200,7 +1170,12 @@ def test_fetch_rank_item_fetches_aligned_page_on_cache_miss(
             )
 
     item = asyncio.run(
-        rank_pages.fetch_rank_item(FakeGame(), key=1, sub_key=2, index=LOOKUP_INDEX)
+        rank.fetch_item(
+            cast("SeerGame", FakeGame()),
+            key=1,
+            sub_key=2,
+            index=LOOKUP_INDEX,
+        )
     )
 
     assert requested_ranges == [(0, 99)]
@@ -1211,12 +1186,11 @@ def test_fetch_rank_item_fetches_aligned_page_on_cache_miss(
 def test_daily_rank_page_result_fetches_aligned_page_and_slices(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_rank_config(monkeypatch, page_size=100)
+    rank, _cache = _build_rank(page_size=100)
     requested_ranges: list[tuple[int, int]] = []
 
     async def fake_fetch_rank_page_result(
-        _game: object,
-        *,
+        *_args: object,
         key: int,
         sub_key: int,
         start: int,
@@ -1234,14 +1208,14 @@ def test_daily_rank_page_result_fetches_aligned_page_and_slices(
         )
 
     monkeypatch.setattr(
-        rank_pages,
-        "fetch_rank_page_result",
+        RankService,
+        "fetch_page_result",
         fake_fetch_rank_page_result,
     )
 
     result = asyncio.run(
-        rank_pages.fetch_daily_rank_page_result(
-            object(),
+        rank.fetch_range_result(
+            GAME,
             key=1,
             sub_key=2,
             start=LOOKUP_INDEX,

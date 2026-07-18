@@ -6,10 +6,6 @@ from typing import Any
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.packets.peak import DailyRankParam
 from ironsbot.services.seer.rank_models import RankPageResult
-from ironsbot.services.seer.rank_page_cache_queries import (
-    get_cached_rank_page_result,
-)
-from ironsbot.services.seer.rank_page_cache_writer import save_rank_page
 
 
 async def fetch_rank_page_result_from_game(  # noqa: PLR0913
@@ -19,9 +15,9 @@ async def fetch_rank_page_result_from_game(  # noqa: PLR0913
     sub_key: int,
     start: int,
     end: int,
-    use_cache: bool = False,
-    get_cached_page: Callable[..., Any] = get_cached_rank_page_result,
-    save_page: Callable[..., object] = save_rank_page,
+    use_cache: bool,
+    get_cached_page: Callable[..., Any],
+    save_page: Callable[..., object],
 ) -> RankPageResult:
     if use_cache:
         cached_page = get_cached_page(
@@ -52,6 +48,3 @@ async def fetch_rank_page_result_from_game(  # noqa: PLR0913
         fetched_at=fetched_at,
     )
     return RankPageResult(items=items, fetched_at=fetched_at)
-
-
-__all__ = ["fetch_rank_page_result_from_game"]

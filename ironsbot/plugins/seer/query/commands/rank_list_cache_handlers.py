@@ -13,14 +13,12 @@ from ironsbot.services.seer.rank_cache_messages import (
     build_rank_batch_result_message,
     build_rank_batch_start_message,
 )
-from ironsbot.services.seer.rank_list_spec_resolution import get_global_rank_spec
 from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_cache_overview_message,
     build_rank_page_cache_status_message,
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
 )
-from ironsbot.services.seer.rank_page_cache_queries import get_rank_page_cache_summary
 from ironsbot.services.seer.rank_page_refresh_selection import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
@@ -60,6 +58,7 @@ async def handle_cache_batch(
     ensure_extended_packets()
     command: RankCacheBatchCommand = state[RANK_CACHE_BATCH_COMMAND_KEY]
     spec, item_count, requested_count = await cache_global_rank_batch(
+        resources.rank,
         game,
         command,
         batch_limit=resources.config.local_rank.batch_limit,
@@ -102,11 +101,11 @@ async def handle_page_cache_status(
     state: T_State,
 ) -> None:
     command: RankPageCacheStatusCommand = state[RANK_PAGE_CACHE_STATUS_COMMAND_KEY]
-    spec = get_global_rank_spec(command.rank_key)
+    spec = resources.rank.get_spec(command.rank_key)
     refresh = resources.rank_page_refresh
     pages = filter_standard_rank_page_summaries(
         spec,
-        get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+        resources.rank.cache.summary(key=spec.key, sub_key=spec.sub_key),
         config=refresh.config,
         rank_key=command.rank_key,
     )
@@ -137,7 +136,7 @@ async def handle_page_cache_overview(
     event: MessageEvent,
 ) -> None:
     refresh = resources.rank_page_refresh
-    specs = configured_rank_specs(refresh.config)
+    specs = configured_rank_specs(refresh.config, resources.rank)
     targets = refresh.preview()
     targets_by_rank = {
         rank_key: [target for target in targets if target.rank_key == rank_key]
@@ -149,7 +148,7 @@ async def handle_page_cache_overview(
             spec,
             filter_standard_rank_page_summaries(
                 spec,
-                get_rank_page_cache_summary(key=spec.key, sub_key=spec.sub_key),
+                resources.rank.cache.summary(key=spec.key, sub_key=spec.sub_key),
                 config=refresh.config,
                 rank_key=rank_key,
             ),
