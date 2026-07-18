@@ -747,10 +747,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "scheduled_restart_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "config.py",
     )
-    startup_config = _load_module_from_path(
-        "startup_notice_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "startup_notice" / "config.py",
-    )
     team_resource_config = _load_module_from_path(
         "team_resource_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
@@ -791,7 +787,6 @@ def test_small_plugin_config_accessors_read_app_config(
             "会议",
         ]
         assert meeting_config.get_meeting_config().commands == ["开播", "会议"]
-        assert startup_config.get_startup_config().message == "机器人已开启。"
         assert not server_status_config.get_server_status_config().broadcast
         assert (
             server_status_config.get_docker_update_config().image

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot
 
+    from ironsbot.config.models.runtime import StartupConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
     from ironsbot.runtime.matchers import MatcherRegistry
@@ -293,6 +294,7 @@ async def _check_bilibili(bot: Bot) -> None:
 async def _send_startup_notice(
     bot: Bot,
     service: StartupNoticeService,
+    config: StartupConfig,
 ) -> None:
     from ironsbot.plugins.db_sync import runtime as db_sync_runtime
     from ironsbot.plugins.server_status import runtime as server_status_runtime
@@ -314,6 +316,7 @@ async def _send_startup_notice(
             ),
         ),
         service,
+        config,
     )
 
 
@@ -340,6 +343,7 @@ def build_plugin_registry(
     *,
     activity_service: ActivityService,
     shutdown_activity: AsyncHook,
+    startup_config: StartupConfig,
 ) -> tuple[PluginDefinition, ...]:
     definitions: tuple[PluginDefinition, ...] = ()
     push_time_refresher = partial(
@@ -584,7 +588,11 @@ def build_plugin_registry(
                 first_bot_connect=(
                     (
                         "startup_notice",
-                        partial(_send_startup_notice, service=startup_notice_service),
+                        partial(
+                            _send_startup_notice,
+                            service=startup_notice_service,
+                            config=startup_config,
+                        ),
                     ),
                 ),
             ),

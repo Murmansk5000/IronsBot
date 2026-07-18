@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
-from .config import get_startup_config
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from ironsbot.config.models.runtime import StartupConfig
     from ironsbot.services.startup_notice import (
         StartupNoticeProvider,
         StartupNoticeService,
@@ -42,8 +41,8 @@ async def send_startup_notice(
     _bot: Bot,
     providers: Sequence[StartupNoticeProvider],
     service: StartupNoticeService,
+    config: StartupConfig,
 ) -> None:
-    config = get_startup_config()
     if not service.should_send(enabled=config.enabled):
         return
 

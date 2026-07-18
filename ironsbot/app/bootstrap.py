@@ -57,6 +57,7 @@ def bootstrap() -> BootstrapState:
     plugins = build_plugin_registry(
         activity_service=activity.service,
         shutdown_activity=activity.close,
+        startup_config=config.runtime.startup_notice,
     )
     matchers = MatcherRegistry()
     for plugin in plugins:

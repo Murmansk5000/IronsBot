@@ -29,12 +29,6 @@ def test_startup_notice_appends_db_sync_notice(
     monkeypatch: MonkeyPatch,
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        startup_notice_runtime,
-        "get_startup_config",
-        lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
-    )
-
     async def fake_send_broadcast_message(
         message: object,
         **kwargs: object,
@@ -61,6 +55,7 @@ def test_startup_notice_appends_db_sync_notice(
                 ),
             ),
             _startup_notice_service(),
+            StartupConfig(enabled=True, message="机器人已开启。", delay=0),
         )
     )
 
@@ -77,12 +72,6 @@ def test_startup_notice_appends_docker_update_before_db_sync(
     monkeypatch: MonkeyPatch,
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        startup_notice_runtime,
-        "get_startup_config",
-        lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
-    )
-
     async def fake_send_broadcast_message(
         message: object,
         **kwargs: object,
@@ -111,6 +100,7 @@ def test_startup_notice_appends_docker_update_before_db_sync(
                 ),
             ),
             _startup_notice_service(),
+            StartupConfig(enabled=True, message="机器人已开启。", delay=0),
         )
     )
 
