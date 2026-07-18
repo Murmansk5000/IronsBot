@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ironsbot.core.features import FEATURE_KEYS
 from ironsbot.plugin_catalog import (
     PLUGIN_GROUP_ORDER,
+    PLUGIN_SPECS,
     iter_feature_module_prefixes,
     iter_plugin_modules,
     plugin_modules_for_group,
@@ -38,6 +40,16 @@ class PluginManifestError(ValueError):
             + ", ".join(modules)
         )
 
+    @classmethod
+    def unknown_features(cls, features: list[str]) -> PluginManifestError:
+        return cls(
+            "plugin catalog references unknown features: " + ", ".join(features)
+        )
+
+    @classmethod
+    def unowned_features(cls, features: list[str]) -> PluginManifestError:
+        return cls("features have no owning plugin: " + ", ".join(features))
+
 
 def validate_plugin_manifest() -> None:
     seen: set[str] = set()
@@ -59,6 +71,16 @@ def validate_plugin_manifest() -> None:
         raise PluginManifestError.empty_groups(empty_groups)
     if duplicates:
         raise PluginManifestError.duplicate_modules(duplicates)
+
+    owned_features = {
+        feature for plugin in PLUGIN_SPECS for feature in plugin.features
+    }
+    unknown_features = sorted(owned_features - FEATURE_KEYS)
+    if unknown_features:
+        raise PluginManifestError.unknown_features(unknown_features)
+    unowned_features = sorted(FEATURE_KEYS - owned_features)
+    if unowned_features:
+        raise PluginManifestError.unowned_features(unowned_features)
 
     _validate_feature_module_coverage()
 

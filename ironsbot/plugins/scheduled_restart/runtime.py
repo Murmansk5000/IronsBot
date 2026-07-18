@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from nonebot import get_driver, logger, require
 
-from ironsbot.shared.config.time import daily_time_parts
+from ironsbot.core.time import daily_time_parts
 from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .config import INVALID_RESTART_TIME_ERROR, get_restart_config

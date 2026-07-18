@@ -9,7 +9,7 @@ from ironsbot.config.models.ai import (
     AiIntentAction,
     resolve_configured_actions,
 )
-from ironsbot.shared.promotions import (
+from ironsbot.core.messaging import (
     FIRE_MANUAL_LINK_MESSAGE,
     FIRE_MANUAL_URL,
 )

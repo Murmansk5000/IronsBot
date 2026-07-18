@@ -6,8 +6,8 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ironsbot.shared.config.parsing import json_object, string_list
-from ironsbot.shared.config.time import normalize_daily_time
+from ironsbot.core.commands import json_object, string_list
+from ironsbot.core.time import normalize_daily_time
 
 INVALID_INTERVAL_TIME_ERROR = (
     "APP_CONFIG.bilibili.polling.windows time must use HH:MM"

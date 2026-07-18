@@ -20,6 +20,7 @@ from ironsbot.config.models.message import (
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
 from ironsbot.shared.messaging.push_subscription_models import (
@@ -30,7 +31,6 @@ from ironsbot.shared.messaging.push_subscription_store import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
 )
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
 
 SUPERUSER_ID = 1002

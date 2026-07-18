@@ -25,12 +25,6 @@ class PluginSpec:
     help_visibility: HelpVisibility = "default"
 
 
-@dataclass(frozen=True, slots=True)
-class FeatureSpec:
-    name: str
-    modules: tuple[str, ...]
-
-
 PLUGIN_SPECS: Final[tuple[PluginSpec, ...]] = (
     PluginSpec("nonebot_plugin_apscheduler", "external", help_visibility="hidden"),
     PluginSpec("nonebot_plugin_localstore", "external", help_visibility="hidden"),
@@ -229,23 +223,6 @@ PLUGIN_SPECS: Final[tuple[PluginSpec, ...]] = (
 )
 
 
-def _build_feature_specs() -> tuple[FeatureSpec, ...]:
-    feature_modules: dict[str, list[str]] = {}
-    for plugin in PLUGIN_SPECS:
-        for feature in plugin.features:
-            feature_modules.setdefault(feature, []).append(plugin.module)
-    return tuple(
-        FeatureSpec(name=name, modules=tuple(modules))
-        for name, modules in feature_modules.items()
-    )
-
-
-FEATURE_SPECS: Final[tuple[FeatureSpec, ...]] = _build_feature_specs()
-KNOWN_FEATURES: Final[frozenset[str]] = frozenset(
-    feature.name for feature in FEATURE_SPECS
-)
-
-
 def plugin_modules_for_group(group: PluginGroup) -> tuple[str, ...]:
     return tuple(spec.module for spec in PLUGIN_SPECS if spec.group == group)
 
@@ -260,11 +237,12 @@ def iter_plugin_modules() -> tuple[str, ...]:
 
 def features_for_plugin_module(module_name: str) -> tuple[str, ...]:
     return tuple(
-        feature.name
-        for feature in FEATURE_SPECS
-        if any(
-            module_name == module or module_name.startswith(f"{module}.")
-            for module in feature.modules
+        dict.fromkeys(
+            feature
+            for spec in PLUGIN_SPECS
+            if module_name == spec.module
+            or module_name.startswith(f"{spec.module}.")
+            for feature in spec.features
         )
     )
 
@@ -272,9 +250,9 @@ def features_for_plugin_module(module_name: str) -> tuple[str, ...]:
 def iter_feature_module_prefixes() -> tuple[str, ...]:
     return tuple(
         dict.fromkeys(
-            module
-            for feature in FEATURE_SPECS
-            for module in feature.modules
+            spec.module
+            for spec in PLUGIN_SPECS
+            if spec.features
         )
     )
 
@@ -307,11 +285,8 @@ def help_visibility_for_module(module_name: str) -> HelpVisibility:
 
 
 __all__ = [
-    "FEATURE_SPECS",
-    "KNOWN_FEATURES",
     "PLUGIN_GROUP_ORDER",
     "PLUGIN_SPECS",
-    "FeatureSpec",
     "HelpVisibility",
     "PluginGroup",
     "PluginSpec",

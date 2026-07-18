@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ironsbot.shared.config.parsing import csv_items, json_array
+from ironsbot.core.commands import csv_items, json_array
 
 TIME_PART_COUNT = 2
 MIN_HOUR = 0

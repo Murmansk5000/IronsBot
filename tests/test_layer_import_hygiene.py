@@ -4,11 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "ironsbot"
 PLUGIN_ROOT = PACKAGE_ROOT / "plugins"
+CORE_ROOT = PACKAGE_ROOT / "core"
+CONFIG_ROOT = PACKAGE_ROOT / "config"
 LAYER_ROOTS = (
-    ROOT / "ironsbot" / "config",
-    ROOT / "ironsbot" / "integrations",
-    ROOT / "ironsbot" / "services",
-    ROOT / "ironsbot" / "shared",
+    CONFIG_ROOT,
+    PACKAGE_ROOT / "integrations",
+    PACKAGE_ROOT / "services",
+    PACKAGE_ROOT / "shared",
+)
+TARGET_LAYER_IMPORTS = (
+    (CORE_ROOT, frozenset({"core"})),
+    (CONFIG_ROOT, frozenset({"config", "core"})),
 )
 PLUGIN_OWNER_PARTS = 3
 SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
@@ -98,6 +104,31 @@ def _plugin_reference_offenders() -> list[str]:
 
 def test_lower_layers_do_not_reference_plugin_modules() -> None:
     assert _plugin_reference_offenders() == []
+
+
+def _internal_layer(module_name: str) -> str | None:
+    parts = module_name.split(".")
+    if not parts or parts[0] != "ironsbot":
+        return None
+    return parts[1] if len(parts) > 1 else ""
+
+
+def _target_layer_import_offenders() -> list[str]:
+    offenders: list[str] = []
+    for root, allowed_layers in TARGET_LAYER_IMPORTS:
+        for path in root.rglob("*.py"):
+            for module_name in _imported_modules(path):
+                layer = _internal_layer(module_name)
+                if layer is None or layer in allowed_layers:
+                    continue
+                offenders.append(
+                    f"{path.relative_to(ROOT).as_posix()} imports {module_name}"
+                )
+    return offenders
+
+
+def test_core_and_config_follow_target_dependency_direction() -> None:
+    assert _target_layer_import_offenders() == []
 
 
 def _plugin_owner(path: Path) -> str:

@@ -3,19 +3,12 @@ from __future__ import annotations
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-FIRE_MANUAL_AD_FEATURE = "fire_manual_ad"
-FIRE_MANUAL_INTENT_FEATURE = "ai_intent_fire_manual"
-FIRE_MANUAL_URL = "https://seerinfo.yuyuqaq.cn/firedict"
-FIRE_MANUAL_LINK_MESSAGE = f"火火手册链接：{FIRE_MANUAL_URL}"
-
-
-def append_fire_manual_ad_text(message: str) -> str:
-    text = message.rstrip()
-    if FIRE_MANUAL_URL in text:
-        return text
-    if not text:
-        return FIRE_MANUAL_LINK_MESSAGE
-    return f"{text}\n\n{FIRE_MANUAL_LINK_MESSAGE}"
+from ironsbot.core.features import FIRE_MANUAL_AD_FEATURE
+from ironsbot.core.messaging import (
+    FIRE_MANUAL_LINK_MESSAGE,
+    FIRE_MANUAL_URL,
+    append_fire_manual_ad_text,
+)
 
 
 def append_fire_manual_ad_message(message: Message) -> Message:
@@ -59,13 +52,8 @@ def split_fire_manual_ad_group_ids(
 
 
 __all__ = [
-    "FIRE_MANUAL_AD_FEATURE",
-    "FIRE_MANUAL_INTENT_FEATURE",
-    "FIRE_MANUAL_LINK_MESSAGE",
-    "FIRE_MANUAL_URL",
     "append_fire_manual_ad_for_group",
     "append_fire_manual_ad_message",
-    "append_fire_manual_ad_text",
     "fire_manual_ad_enabled_for_group",
     "split_fire_manual_ad_group_ids",
 ]

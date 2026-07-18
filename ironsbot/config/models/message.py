@@ -8,7 +8,7 @@ from typing import Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
-from ironsbot.shared.config.parsing import int_list, string_list
+from ironsbot.core.commands import int_list, string_list
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"

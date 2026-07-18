@@ -7,6 +7,7 @@ from nonebot import get_driver, require
 from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.log import logger
 
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.headless_seer_notice.config import (
     INVALID_RECONNECT_TIME_ERROR,
     get_headless_notice_config,
@@ -15,7 +16,6 @@ from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
 )
-from ironsbot.shared.config.time import daily_time_parts
 from ironsbot.shared.messaging.admin_notice import send_admin_notice
 from ironsbot.shared.plugin_runtime.startup_ready import register_startup_check
 from ironsbot.shared.runtime.jobs import JobRegistry

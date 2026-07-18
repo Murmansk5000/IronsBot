@@ -1,6 +1,4 @@
 from .service import (
-    FEATURE_ALIASES,
-    KNOWN_FEATURES,
     FeatureConfig,
     FeatureService,
     feature_service,
@@ -21,8 +19,6 @@ from .service import (
 )
 
 __all__ = [
-    "FEATURE_ALIASES",
-    "KNOWN_FEATURES",
     "FeatureConfig",
     "FeatureService",
     "feature_service",

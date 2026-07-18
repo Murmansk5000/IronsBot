@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ironsbot.shared.config.parsing import positive_int_list
+from ironsbot.core.commands import positive_int_list
 
 DEFAULT_ACTIVITY_MESSAGE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
 DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS = 8.0

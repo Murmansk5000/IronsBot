@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ironsbot.shared.config.parsing import string_list
-from ironsbot.shared.config.time import normalized_daily_times
+from ironsbot.core.commands import string_list
+from ironsbot.core.time import normalized_daily_times
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

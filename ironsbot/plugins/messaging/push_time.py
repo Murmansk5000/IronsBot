@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.config.parsing import positive_int_list
-from ironsbot.shared.config.time import normalize_daily_time
+from ironsbot.core.commands import positive_int_list
+from ironsbot.core.time import normalize_daily_time
 from ironsbot.shared.features import (
     groups_for_feature,
     users_for_feature,

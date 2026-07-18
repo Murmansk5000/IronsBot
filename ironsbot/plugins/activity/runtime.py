@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_driver, require
 from nonebot.log import logger
 
+from ironsbot.core.commands import positive_int_list
 from ironsbot.services.activity.config import get_activity_config
 from ironsbot.services.activity.delivery import (
     activity_reminder_targets,
@@ -22,7 +23,6 @@ from ironsbot.services.activity.seer_activity import (
     valid_reminders_before_send,
 )
 from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
-from ironsbot.shared.config.parsing import positive_int_list
 from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
 )

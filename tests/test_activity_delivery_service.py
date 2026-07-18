@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
 
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.services.activity import delivery as delivery_service
 from ironsbot.services.activity.delivery import (
     ActivityReminderTargets,
@@ -12,7 +13,6 @@ from ironsbot.services.activity.delivery import (
     format_reminder_message,
 )
 from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
-from ironsbot.shared.promotions import FIRE_MANUAL_LINK_MESSAGE
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GROUP_ID = 987654321
