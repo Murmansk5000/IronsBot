@@ -254,31 +254,10 @@ default_at_users = ["owner"]
 只控制主动推送末尾的火火手册链接；`ai_intent_fire_manual`
 控制用户明确索要手册链接时的 AI 意图动作。
 
-TOML 使用宽松加载：未知字段、未注册 feature、未知 B站账号引用、未知 Seer
-展示区块和残缺 AI action 会被忽略，并在日志中给出配置路径，方便先启动后迁移。
-TOML 语法错误、字段类型错误和越界值仍会阻止启动。
-
-### 配置迁移
-
-升级后若日志提示忽略了旧字段，按提示路径迁移；旧字段可以先留在文件里，
-机器人会忽略它们并继续启动，但建议尽快删掉，避免以后维护时误判：
-
-| 旧写法 | 处理方式 | 当前写法 |
-| --- | --- | --- |
-| `ai.reset_commands` | 删除，无替代 | AI 上下文/长期记忆清空入口已移除，避免误删数据。 |
-| `ai.mention_guard_reply_window_seconds` | 移动 | `runtime.help.hint_window_seconds` |
-| `ai.mention_guard_reply_max_per_window` | 移动 | `runtime.help.hint_max_per_window` |
-| `bilibili.uids` | 改为命名账号 | 在 `[bilibili.accounts]` 中定义账号，再由 `bilibili.push.accounts` 或目标的 `accounts` 引用账号名。 |
-| `bilibili.push.default_mode` | 改名 | `bilibili.push.mode` |
-| `message.private_unsubscribe` | 移动并统一 | `[message.push_unsubscribe]`，同时管理私聊和群聊推送。 |
-| `seer.player.failure_rate_limit_seconds` | 删除 | 使用 `[runtime.command_cooldown]`；不再按查询结果区分冷却。 |
-| `seer.player.rate_limit_seconds` | 移动并统一 | `runtime.command_cooldown.commands.seer_player`；省略时使用 `default_seconds`。 |
-| `seer.team.failure_rate_limit_seconds` | 删除 | 使用 `[runtime.command_cooldown]`；不再按查询结果区分冷却。 |
-| `seer.team.rate_limit_seconds` | 移动并统一 | `runtime.command_cooldown.commands.seer_team`；省略时使用 `default_seconds`。 |
-| `message.outbound_rate_limit.window_seconds` | 替换为多窗口 | `message.outbound_rate_limit.windows[].window_seconds` |
-| `message.outbound_rate_limit.max_messages` | 替换为多窗口 | `message.outbound_rate_limit.windows[].max_messages` |
-| `seer.render.clear_on_startup` | 删除，无替代 | 使用 `seer.render.cache_max_size_mb` 进行容量淘汰，不再在启动时清空缓存。 |
-| feature `rank` | 改名 | `seer_rank`；旧 feature 会被忽略并写 warning。 |
+TOML 使用严格加载。未知或已删除的字段、未注册 feature、未知 B站账号引用、
+未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
+[config.example.toml](config.example.toml) 是当前唯一权威示例；升级时应直接删除
+旧字段并使用当前结构，不会保留旧字段兼容或静默忽略逻辑。
 
 帮助提示与未开启 AI 群的 @ 提示共用 `[runtime.help]` 的两项限流配置。
 用户命令冷却统一放在 `[runtime.command_cooldown]`：同一 QQ 的同一语义命令
@@ -295,8 +274,7 @@ TOML 语法错误、字段类型错误和越界值仍会阻止启动。
 任一窗口达到上限都会抑制后续普通回复；主动推送可以在每群独立 FIFO 队列中
 短暂等待，私聊和启用 `admin_notice` 的管理群不计入群额度。
 
-行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥，
-不需要为上述迁移新增或保留环境变量。
+行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥。
 
 ### Feature 对照表
 

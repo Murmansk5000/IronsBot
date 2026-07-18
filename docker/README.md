@@ -344,15 +344,15 @@ mode = "link"
 # B站推送模式 seer 默认
 ```
 
-### Behavior Config Migration
+### Behavior Config Validation
 
 Behavior settings belong in `/config/ironsbot.toml`. The current `.env` and
 Unraid template only contain deployment settings and secrets, so behavior
-upgrades do not require adding removed behavior fields to the container template.
-Before upgrading an existing config, follow the authoritative
-[TOML migration table](../README.md#配置迁移). Unknown or removed fields are
-ignored with warning logs that include the exact TOML path; syntax errors and
-invalid values still stop startup.
+upgrades do not require adding behavior fields to the container template.
+Configuration is strict: unknown or removed fields, unknown references, and
+invalid values stop startup with their TOML path. Use
+[config.example.toml](../config.example.toml) as the only authoritative
+configuration shape and delete obsolete fields instead of retaining them.
 
 ## Team Resource Subscription
 
