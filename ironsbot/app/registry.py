@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import nonebot
 
+from ironsbot.app.composition import refresh_push_time_jobs
 from ironsbot.core.features import Feature
 from ironsbot.plugins.server_status.command_text import SERVER_STATUS_USAGE
 from ironsbot.runtime.plugins import (
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot
 
+    from ironsbot.plugins.messaging.push_time import PushTimeOption
+    from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import AsyncHook
     from ironsbot.services.activity.service import ActivityService
@@ -74,10 +77,17 @@ def _install_seer_data(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_messaging(registry: MatcherRegistry) -> None:
+def _install_messaging(
+    registry: MatcherRegistry,
+    refresh_jobs: RefreshPushTimeJobs,
+) -> None:
     from ironsbot.plugins.messaging import install
+    from ironsbot.shared.messaging.outbound_rate_limit import (
+        install_outbound_rate_limit_hooks,
+    )
 
-    install(registry)
+    install_outbound_rate_limit_hooks()
+    install(registry, refresh_jobs)
 
 
 def _install_bilibili(registry: MatcherRegistry) -> None:
@@ -167,31 +177,15 @@ def _install_rank_help(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_messaging_runtime() -> None:
-    from ironsbot.plugins.messaging import runtime
-    from ironsbot.shared.messaging.outbound_rate_limit import (
-        install_outbound_rate_limit_hooks,
-    )
-    from ironsbot.shared.runtime.refresh import register_runtime_refresh
-
-    scheduler = _scheduler()
-    install_outbound_rate_limit_hooks()
-    register_runtime_refresh(
-        runtime.MESSAGE_SCHEDULE_REFRESH_KEY,
-        partial(runtime.register_message_schedules, scheduler),
-    )
-
-
-def _install_activity_runtime(service: ActivityService) -> None:
-    from ironsbot.services.activity.runtime_keys import (
-        ACTIVITY_REMINDER_REFRESH_KEY,
-    )
-    from ironsbot.shared.runtime.refresh import register_runtime_refresh
-
-    scheduler = _scheduler()
-    register_runtime_refresh(
-        ACTIVITY_REMINDER_REFRESH_KEY,
-        partial(service.schedule_reminders, scheduler),
+async def _refresh_push_time_jobs(
+    option: PushTimeOption,
+    *,
+    activity_service: ActivityService,
+) -> None:
+    await refresh_push_time_jobs(
+        option,
+        scheduler=_scheduler(),
+        activity_service=activity_service,
     )
 
 
@@ -353,8 +347,11 @@ def build_plugin_registry(
     activity_service: ActivityService,
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
-
     definitions: tuple[PluginDefinition, ...] = ()
+    push_time_refresher = partial(
+        _refresh_push_time_jobs,
+        activity_service=activity_service,
+    )
 
     def install_help(registry: MatcherRegistry) -> None:
         from ironsbot.plugins import help as help_plugin
@@ -475,9 +472,11 @@ def build_plugin_registry(
                 group="message",
                 order=30,
             ),
-            install=_install_messaging,
+            install=partial(
+                _install_messaging,
+                refresh_jobs=push_time_refresher,
+            ),
             hooks=PluginHooks(
-                installers=(("messaging_runtime", _install_messaging_runtime),),
                 startup=(("messaging", _start_messaging),),
             ),
         ),
@@ -554,12 +553,6 @@ def build_plugin_registry(
             ),
             install=partial(_install_activity, service=activity_service),
             hooks=PluginHooks(
-                installers=(
-                    (
-                        "activity_runtime",
-                        partial(_install_activity_runtime, activity_service),
-                    ),
-                ),
                 startup=(
                     (
                         "activity_reminder_jobs",

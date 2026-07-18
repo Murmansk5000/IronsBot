@@ -24,10 +24,6 @@ def _ensure_nonebot_initialized() -> None:
             "ironsbot.plugins.messaging.push_subscription_handlers",
             ["handle_push_subscription_menu", "handle_push_subscription_select"],
         ),
-        (
-            "ironsbot.plugins.messaging.push_time_handlers",
-            ["handle_push_time_menu", "handle_push_time_select"],
-        ),
     ],
 )
 def test_prompt_handler_annotations_resolve_at_runtime(

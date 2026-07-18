@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -30,6 +30,7 @@ from ironsbot.shared.features import (
 from ironsbot.shared.messaging import send_broadcast_message
 from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
+    CRON_TIME_PREFERENCE,
 )
 from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
 
     from ironsbot.config.models.activity import ActivityConfig
+    from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.runtime.plugins import PluginDefinition
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -55,6 +57,23 @@ class ActivityComponent:
 
     async def close(self) -> None:
         self.http_client.close()
+
+
+async def refresh_push_time_jobs(
+    option: PushTimeOption,
+    *,
+    scheduler: Any,
+    activity_service: ActivityService,
+) -> None:
+    if option.preference_type == CRON_TIME_PREFERENCE:
+        from ironsbot.plugins.messaging.schedules import (
+            register_message_schedules,
+        )
+
+        await register_message_schedules(scheduler)
+        return
+
+    await activity_service.schedule_reminders(scheduler)
 
 
 def build_activity_component(
@@ -182,4 +201,5 @@ __all__ = [
     "ActivityComponent",
     "build_activity_component",
     "build_application_lifecycle",
+    "refresh_push_time_jobs",
 ]

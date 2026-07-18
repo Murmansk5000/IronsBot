@@ -1,7 +1,8 @@
 import asyncio
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import nonebot
 from pytest import MonkeyPatch
@@ -14,6 +15,7 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.app.composition import refresh_push_time_jobs
 from ironsbot.config.models.message import (
     GroupScheduledMessageAction,
     PrivateScheduledMessageAction,
@@ -22,7 +24,9 @@ from ironsbot.config.models.message import (
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.plugins.messaging import matcher_rules, push_management_runtime, runtime
 from ironsbot.plugins.messaging import schedules as message_schedules
+from ironsbot.plugins.messaging.push_time import PushTimeOption
 from ironsbot.shared.messaging.push_subscription_models import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
 )
@@ -31,6 +35,9 @@ from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
+
+if TYPE_CHECKING:
+    from ironsbot.services.activity.service import ActivityService
 
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
@@ -125,7 +132,7 @@ def test_messaging_startup_prunes_preferences_before_registering_jobs(
         calls.append("register")
 
     monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
-    monkeypatch.setattr(runtime, "register_message_schedules", fake_register)
+    monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
 
     asyncio.run(runtime.start_messaging(object()))
 
@@ -145,11 +152,42 @@ def test_messaging_startup_continues_when_preference_cleanup_fails(
         calls.append("register")
 
     monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
-    monkeypatch.setattr(runtime, "register_message_schedules", fake_register)
+    monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
 
     asyncio.run(runtime.start_messaging(object()))
 
     assert calls == ["prune", "register"]
+
+
+def test_push_time_refresh_uses_explicit_job_owner(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    async def fake_register(scheduler: object) -> None:
+        calls.append(("message", scheduler))
+
+    class FakeActivityService:
+        async def schedule_reminders(self, scheduler: object) -> None:
+            calls.append(("activity", scheduler))
+
+    scheduler = object()
+    activity_service = cast("ActivityService", FakeActivityService())
+    monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
+    option = PushTimeOption("test", "测试", "test", CRON_TIME_PREFERENCE, "", "")
+    for preference_type in (
+        CRON_TIME_PREFERENCE,
+        ACTIVITY_LEAD_HOURS_PREFERENCE,
+    ):
+        asyncio.run(
+            refresh_push_time_jobs(
+                replace(option, preference_type=preference_type),
+                scheduler=scheduler,
+                activity_service=activity_service,
+            )
+        )
+
+    assert calls == [("message", scheduler), ("activity", scheduler)]
 
 
 def test_push_subscription_menu_prompt_marks_current_state() -> None:

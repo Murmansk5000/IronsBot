@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves at runtime
     GroupMessageEvent,
     PrivateMessageEvent,
@@ -25,7 +27,9 @@ from .matcher_rules import (
     match_push_time_command,
 )
 from .push_management_handlers import register_push_management_handlers
-from .runtime import refresh_push_time_jobs
+
+if TYPE_CHECKING:
+    from .push_time_handlers import RefreshPushTimeJobs
 
 
 def _message_subscription_priority() -> int:
@@ -75,7 +79,10 @@ def _action_command_id(
     return resolve
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(
+    registry: MatcherRegistry,
+    refresh_push_time_jobs: RefreshPushTimeJobs,
+) -> None:
     private_matcher = registry.on_message(
         policy=CommandPolicy.command(
             _action_command_id(PRIVATE_ACTION_KEY, "message_private")
