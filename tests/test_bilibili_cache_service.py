@@ -1,21 +1,25 @@
+from pathlib import Path
 from typing import Any
 
-from pytest import MonkeyPatch
-
-from ironsbot.services.bilibili import dynamic_history
+from ironsbot.services.bilibili.dynamic_history import (
+    BiliDynamicHistoryStore,
+)
 from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 
 AUTHOR_UID = 1310714247
 PUB_TS = 1781004683
 
 
-def _dynamic_item(*, text: str = "恭喜测试用户获得赛尔号奖励内容") -> dict[str, Any]:
+def _dynamic_item(
+    *,
+    text: str = "恭喜测试用户获得一个闪亮奖励内容",
+) -> dict[str, Any]:
     return {
         "id_str": "dynamic-1",
         "modules": {
             "module_author": {
                 "mid": AUTHOR_UID,
-                "name": "赛尔号",
+                "name": "Seer",
                 "pub_ts": PUB_TS,
             },
             "module_dynamic": {
@@ -29,79 +33,49 @@ def _dynamic_item(*, text: str = "恭喜测试用户获得赛尔号奖励内容"
     }
 
 
-def test_save_dynamic_history_snapshot_forwards_snapshot_fields(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    calls: list[tuple[dict[str, Any], dict[str, Any]]] = []
-
-    def fake_save_dynamic_history_item(
-        item: dict[str, Any],
-        **kwargs: Any,
-    ) -> None:
-        calls.append((item, kwargs))
-
-    monkeypatch.setattr(
-        dynamic_history,
-        "save_dynamic_history_item",
-        fake_save_dynamic_history_item,
-    )
+def test_save_dynamic_history_snapshot_persists_fields(tmp_path: Path) -> None:
+    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
     item = {"id_str": "dynamic-1"}
     snapshot = DynamicHistorySnapshot(
         item=item,
         pub_ts=PUB_TS,
         author_mid=AUTHOR_UID,
-        author_name="赛尔号",
-        brief="测试动态",
+        author_name="Seer",
+        brief="test dynamic",
         pushed=True,
         suppressed=True,
-        suppression_reason="命中规则：测试",
+        suppression_reason="test rule",
     )
 
-    dynamic_history.save_dynamic_history_snapshot(snapshot)
+    history.save_snapshot(snapshot)
 
-    assert calls == [
-        (
-            item,
-            {
-                "pub_ts": PUB_TS,
-                "author_mid": AUTHOR_UID,
-                "author_name": "赛尔号",
-                "brief": "测试动态",
-                "pushed": True,
-                "suppressed": True,
-                "suppression_reason": "命中规则：测试",
-            },
-        )
-    ]
+    saved = history.get("dynamic-1")
+    assert saved is not None
+    assert saved.item == item
+    assert saved.pub_ts == PUB_TS
+    assert saved.uid == AUTHOR_UID
+    assert saved.pushed
+    assert saved.suppressed
+    assert saved.suppression_reason == "test rule"
 
 
 def test_save_target_dynamic_history_builds_and_saves_snapshots(
-    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    saved_snapshots: list[DynamicHistorySnapshot] = []
+    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    pattern = "恭喜.*奖励"
 
-    def fake_save_dynamic_history_snapshot(
-        snapshot: DynamicHistorySnapshot,
-    ) -> None:
-        saved_snapshots.append(snapshot)
-
-    monkeypatch.setattr(
-        dynamic_history,
-        "save_dynamic_history_snapshot",
-        fake_save_dynamic_history_snapshot,
-    )
-
-    saved_count = dynamic_history.save_target_dynamic_history(
+    saved_count = history.save_target_dynamics(
         [
             (PUB_TS, _dynamic_item()),
             (PUB_TS, {"id_str": "missing-author"}),
         ],
-        suppress_patterns=["恭喜.*获得"],
+        suppress_patterns=[pattern],
     )
 
     assert saved_count == 1
-    assert len(saved_snapshots) == 1
-    snapshot = saved_snapshots[0]
-    assert snapshot.author_mid == AUTHOR_UID
-    assert snapshot.suppressed
-    assert snapshot.suppression_reason == "命中规则：恭喜.*获得"
+    records = history.list()
+    assert len(records) == 1
+    assert records[0].uid == AUTHOR_UID
+    assert records[0].suppressed
+    assert records[0].suppression_reason.endswith(pattern)

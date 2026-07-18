@@ -10,10 +10,6 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.shared.features import (
-    is_group_feature_allowed,
-    is_private_feature_allowed,
-)
 from ironsbot.shared.permissions import can_manage_group_event
 
 from .push_management_runtime import (
@@ -30,16 +26,18 @@ if TYPE_CHECKING:
         PrivateCommandMessageAction,
         PushUnsubscribeConfig,
     )
+    from ironsbot.plugins.messaging.runtime_service import MessagingResources
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
 
 
 def private_action_allowed(
+    messaging: MessagingResources,
     event: PrivateMessageEvent,
     action: PrivateCommandMessageAction,
 ) -> bool:
-    return is_private_feature_allowed(
+    return messaging.features.is_private_feature_allowed(
         event.user_id,
         action.feature,
     )
@@ -49,6 +47,7 @@ async def match_private_command(
     event: MessageEvent,
     state: T_State,
     *,
+    messaging: MessagingResources,
     actions: Sequence[PrivateCommandMessageAction],
 ) -> bool:
     if not isinstance(event, PrivateMessageEvent):
@@ -58,7 +57,9 @@ async def match_private_command(
     action = find_command_action(
         text,
         actions,
-        is_allowed=lambda candidate: private_action_allowed(event, candidate),
+        is_allowed=lambda candidate: private_action_allowed(
+            messaging, event, candidate
+        ),
     )
     if action is not None:
         state[PRIVATE_ACTION_KEY] = action
@@ -71,6 +72,7 @@ async def match_group_command(
     event: MessageEvent,
     state: T_State,
     *,
+    messaging: MessagingResources,
     actions: Sequence[GroupCommandMessageAction],
 ) -> bool:
     if not isinstance(event, GroupMessageEvent):
@@ -80,7 +82,7 @@ async def match_group_command(
     action = find_command_action(
         text,
         actions,
-        is_allowed=lambda candidate: is_group_feature_allowed(
+        is_allowed=lambda candidate: messaging.features.is_group_feature_allowed(
             event.user_id,
             event.group_id,
             candidate.feature,
@@ -93,8 +95,11 @@ async def match_group_command(
     return False
 
 
-def is_group_push_subscription_manager(event: GroupMessageEvent) -> bool:
-    return can_manage_group_event(event)
+def is_group_push_subscription_manager(
+    messaging: MessagingResources,
+    event: GroupMessageEvent,
+) -> bool:
+    return can_manage_group_event(messaging.features, event)
 
 
 async def match_push_subscription_command(
@@ -117,23 +122,15 @@ async def match_push_subscription_command(
 
 async def match_push_time_command(
     event: MessageEvent,
-    _state: T_State,
+    state: T_State,
+    *,
+    messaging: MessagingResources,
 ) -> bool:
+    del state
     if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
     if isinstance(event, GroupMessageEvent) and not is_group_push_subscription_manager(
-        event
+        messaging, event
     ):
         return False
     return command_text_matches(event.get_plaintext(), PUSH_TIME_COMMANDS)
-
-
-__all__ = [
-    "GROUP_ACTION_KEY",
-    "PRIVATE_ACTION_KEY",
-    "is_group_push_subscription_manager",
-    "match_group_command",
-    "match_private_command",
-    "match_push_subscription_command",
-    "match_push_time_command",
-]

@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 from nonebot.exception import MockApiException
-from pytest import MonkeyPatch
 
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
@@ -17,7 +17,7 @@ from ironsbot.shared.messaging.outbound_rate_limit import (
     reset_outbound_rate_limit_state,
     use_preacquired_push_permit,
 )
-from tests.helpers.config import stub_app_config
+from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 100
 OTHER_GROUP_ID = 101
@@ -36,31 +36,25 @@ def _windows(
     ]
 
 
-def _set_config(
-    monkeypatch: MonkeyPatch,
+def _service(
     *,
     windows: list[OutboundRateLimitWindowConfig] | None = None,
     queue_wait: float = 0.2,
     queue_size: int = 10,
-) -> None:
-    monkeypatch.setattr(
-        outbound_rate_limit,
-        "get_app_config",
-        lambda: stub_app_config(
-            outbound_rate_limit_config=OutboundRateLimitConfig(
-                enabled=True,
-                windows=windows or _windows((60.0, 10), (600.0, 30)),
-                push_queue_max_wait_seconds=queue_wait,
-                push_queue_max_messages=queue_size,
-                cooldown_message="进入冷却",
-            )
+) -> GroupOutboundRateLimitService:
+    config = OutboundRateLimitConfig(
+        enabled=True,
+        windows=windows or _windows((60.0, 10), (600.0, 30)),
+        push_queue_max_wait_seconds=queue_wait,
+        push_queue_max_messages=queue_size,
+        cooldown_message="进入冷却",
+    )
+    return build_test_runtime(
+        outbound_config=config,
+        feature_config=FeatureConfig(
+            group_policy={str(ADMIN_GROUP_ID): ["admin_notice"]},
         ),
-    )
-    monkeypatch.setattr(
-        GroupOutboundRateLimitService,
-        "_is_limited_group",
-        staticmethod(lambda group_id: group_id != ADMIN_GROUP_ID),
-    )
+    ).delivery.outbound
 
 
 def test_multi_window_rate_limit_checks_and_records_atomically() -> None:
@@ -124,11 +118,8 @@ def test_outbound_permit_can_be_rolled_back() -> None:
     assert limiter.acquire(GROUP_ID, windows, source="reply", now=1).allowed
 
 
-def test_service_ignores_admin_groups_and_private_targets(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    _set_config(monkeypatch, windows=_windows((60.0, 1)))
-    service = GroupOutboundRateLimitService()
+def test_service_ignores_admin_groups_and_private_targets() -> None:
+    service = _service(windows=_windows((60.0, 1)))
 
     assert service.acquire_reply(None, now=0).allowed
     assert service.acquire_reply(None, now=1).allowed
@@ -136,51 +127,35 @@ def test_service_ignores_admin_groups_and_private_targets(
     assert service.acquire_reply(ADMIN_GROUP_ID, now=1).allowed
 
 
-def test_push_waits_for_capacity_without_blocking_other_groups(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    _set_config(
-        monkeypatch,
-        windows=_windows((0.03, 1)),
-        queue_wait=0.2,
-    )
-    service = GroupOutboundRateLimitService()
+def test_push_waits_for_capacity_without_blocking_other_groups() -> None:
+    service = _service(windows=_windows((0.03, 1)), queue_wait=0.2)
 
-    async def _run() -> None:
-        first = await service.acquire_push(GROUP_ID, source="first")
-        assert first.allowed
-
+    async def run() -> None:
+        assert (await service.acquire_push(GROUP_ID, source="first")).allowed
         waiting = asyncio.create_task(
             service.acquire_push(GROUP_ID, source="waiting")
         )
         await asyncio.sleep(0)
-        other_group = await service.acquire_push(
-            OTHER_GROUP_ID,
-            source="other",
-        )
+        other_group = await service.acquire_push(OTHER_GROUP_ID, source="other")
         delayed = await waiting
 
         assert other_group.allowed
         assert delayed.allowed
 
     try:
-        asyncio.run(_run())
+        asyncio.run(run())
     finally:
         service.reset()
 
 
-def test_push_queue_rejects_when_full(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    _set_config(
-        monkeypatch,
+def test_push_queue_rejects_when_full() -> None:
+    service = _service(
         windows=_windows((1.0, 1)),
         queue_wait=0.05,
         queue_size=1,
     )
-    service = GroupOutboundRateLimitService()
 
-    async def _run() -> None:
+    async def run() -> None:
         assert (await service.acquire_push(GROUP_ID, source="first")).allowed
         waiting = asyncio.create_task(
             service.acquire_push(GROUP_ID, source="waiting")
@@ -196,23 +171,18 @@ def test_push_queue_rejects_when_full(
         assert timed_out.reason == "queue_timeout"
 
     try:
-        asyncio.run(_run())
+        asyncio.run(run())
     finally:
         service.reset()
 
 
-def test_api_hook_appends_boundary_notice_and_rolls_back_failure(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    _set_config(monkeypatch, windows=_windows((60.0, 1)))
-    reset_outbound_rate_limit_state()
+def test_api_hook_appends_boundary_notice_and_rolls_back_failure() -> None:
+    service = _service(windows=_windows((60.0, 1)))
 
-    async def _run() -> None:
-        data: dict[str, object] = {
-            "group_id": GROUP_ID,
-            "message": "正文",
-        }
+    async def run() -> None:
+        data: dict[str, object] = {"group_id": GROUP_ID, "message": "正文"}
         await outbound_rate_limit._check_group_send_api(
+            service,
             None,  # type: ignore[arg-type]
             "send_group_msg",
             data,
@@ -220,18 +190,19 @@ def test_api_hook_appends_boundary_notice_and_rolls_back_failure(
         assert str(data["message"]) == "正文\n\n进入冷却"
 
         await outbound_rate_limit._finalize_group_send_api(
+            service,
             None,  # type: ignore[arg-type]
             RuntimeError("send failed"),
             "send_group_msg",
             data,
             None,
         )
-
         retry_data: dict[str, object] = {
             "group_id": GROUP_ID,
             "message": "重试",
         }
         await outbound_rate_limit._check_group_send_api(
+            service,
             None,  # type: ignore[arg-type]
             "send_group_msg",
             retry_data,
@@ -239,28 +210,24 @@ def test_api_hook_appends_boundary_notice_and_rolls_back_failure(
         assert str(retry_data["message"]) == "重试\n\n进入冷却"
 
     try:
-        asyncio.run(_run())
+        asyncio.run(run())
     finally:
-        reset_outbound_rate_limit_state()
+        reset_outbound_rate_limit_state(service)
 
 
-def test_api_hook_suppresses_messages_after_group_limit(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    _set_config(monkeypatch, windows=_windows((60.0, 1)))
-    reset_outbound_rate_limit_state()
+def test_api_hook_suppresses_messages_after_group_limit() -> None:
+    service = _service(windows=_windows((60.0, 1)))
 
-    async def _run() -> None:
-        first: dict[str, object] = {
-            "group_id": GROUP_ID,
-            "message": "first",
-        }
+    async def run() -> None:
+        first: dict[str, object] = {"group_id": GROUP_ID, "message": "first"}
         await outbound_rate_limit._check_group_send_api(
+            service,
             None,  # type: ignore[arg-type]
             "send_group_msg",
             first,
         )
         await outbound_rate_limit._finalize_group_send_api(
+            service,
             None,  # type: ignore[arg-type]
             None,
             "send_group_msg",
@@ -268,49 +235,37 @@ def test_api_hook_suppresses_messages_after_group_limit(
             {"message_id": 1},
         )
 
-        blocked: dict[str, object] = {
-            "group_id": GROUP_ID,
-            "message": "blocked",
-        }
         with pytest.raises(MockApiException):
             await outbound_rate_limit._check_group_send_api(
+                service,
                 None,  # type: ignore[arg-type]
                 "send_group_msg",
-                blocked,
+                {"group_id": GROUP_ID, "message": "blocked"},
             )
 
     try:
-        asyncio.run(_run())
+        asyncio.run(run())
     finally:
-        reset_outbound_rate_limit_state()
+        reset_outbound_rate_limit_state(service)
 
 
-def test_preacquired_push_permit_is_not_counted_twice(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    _set_config(monkeypatch, windows=_windows((60.0, 1)))
-    reset_outbound_rate_limit_state()
+def test_preacquired_push_permit_is_not_counted_twice() -> None:
+    service = _service(windows=_windows((60.0, 1)))
 
-    async def _run() -> None:
-        decision = await (
-            outbound_rate_limit.group_outbound_rate_limit_service.acquire_push(
-                GROUP_ID,
-                source="test push",
-            )
-        )
+    async def run() -> None:
+        decision = await service.acquire_push(GROUP_ID, source="test push")
         assert decision.permit is not None
 
-        data: dict[str, object] = {
-            "group_id": GROUP_ID,
-            "message": "push",
-        }
-        with use_preacquired_push_permit(decision.permit):
+        data: dict[str, object] = {"group_id": GROUP_ID, "message": "push"}
+        with use_preacquired_push_permit(service, decision.permit):
             await outbound_rate_limit._check_group_send_api(
+                service,
                 None,  # type: ignore[arg-type]
                 "send_group_msg",
                 data,
             )
         await outbound_rate_limit._finalize_group_send_api(
+            service,
             None,  # type: ignore[arg-type]
             None,
             "send_group_msg",
@@ -320,12 +275,13 @@ def test_preacquired_push_permit_is_not_counted_twice(
 
         with pytest.raises(MockApiException):
             await outbound_rate_limit._check_group_send_api(
+                service,
                 None,  # type: ignore[arg-type]
                 "send_group_msg",
                 {"group_id": GROUP_ID, "message": "blocked"},
             )
 
     try:
-        asyncio.run(_run())
+        asyncio.run(run())
     finally:
-        reset_outbound_rate_limit_state()
+        reset_outbound_rate_limit_state(service)

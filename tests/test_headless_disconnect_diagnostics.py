@@ -128,28 +128,25 @@ def test_rank_page_refresh_enters_backoff_after_connection_failure(
         async def fail_fetch(*_args: object, **_kwargs: object) -> list[object]:
             raise TimeoutError
 
-        monkeypatch.setattr(
-            rank_page_refresh,
-            "get_rank_page_refresh_config",
-            lambda: RankPageRefreshConfig(
+        service = rank_page_refresh.RankPageRefreshService(
+            RankPageRefreshConfig(
                 pages_per_run=1,
                 pages_per_run_min=1,
-            ),
+            )
         )
         monkeypatch.setattr(
             rank_page_refresh,
             "preview_rank_page_refresh_targets",
-            lambda _rank_keys=None: [target],
+            lambda _config, _rank_keys=None: [target],
         )
         monkeypatch.setattr(rank_page_refresh, "fetch_daily_rank_page", fail_fetch)
-        rank_page_refresh._rank_page_refresh_state.backoff_until = 0
         game = cast("SeerGame", object())
 
-        result = await rank_page_refresh.refresh_rank_page_cache(game)
+        result = await service.refresh(game)
         assert result.failed == 1
-        assert rank_page_refresh._rank_page_refresh_backoff_remaining() > 0
+        assert service.backoff_remaining() > 0
 
-        skipped = await rank_page_refresh.refresh_rank_page_cache(game)
+        skipped = await service.refresh(game)
         assert skipped.total == 0
 
     asyncio.run(run())

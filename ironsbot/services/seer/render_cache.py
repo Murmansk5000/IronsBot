@@ -9,35 +9,14 @@ from seerapi_models import ApiMetadataORM
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_registry import db_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ironsbot.config.models.seer import RenderConfig
-
 _SEERAPI_DB = "seerapi"
 UNKNOWN_RENDER_CACHE_VERSION = "unknown"
-
-
-def get_render_config() -> RenderConfig:
-    return get_app_config().seer.render
-
-
-def get_render_cache_dir() -> Path:
-    cache_dir = get_render_config().cache_dir
-    if cache_dir is not None:
-        return cache_dir
-
-    from nonebot_plugin_localstore import get_plugin_cache_dir
-
-    return get_plugin_cache_dir()
-
-
-def get_render_cache_max_size_bytes() -> int:
-    return get_render_config().cache_max_size_mb * 1024 * 1024
 
 
 def get_seerapi_db_version() -> str:
@@ -59,28 +38,17 @@ class RenderCache:
 
     def __init__(
         self,
+        cache_dir: Path,
+        max_size_bytes: int,
         *,
-        cache_dir_getter: Callable[[], Path] = get_render_cache_dir,
-        max_size_bytes_getter: Callable[[], int] = get_render_cache_max_size_bytes,
         db_version_getter: Callable[[], str] = get_seerapi_db_version,
     ) -> None:
-        self._cache_dir_getter = cache_dir_getter
-        self._max_size_bytes_getter = max_size_bytes_getter
+        self._cache_dir = cache_dir
+        self._max_size_bytes = max_size_bytes
         self._db_version_getter = db_version_getter
-
-    @property
-    def _cache_dir(self) -> Path:
-        return self._cache_dir_getter()
-
-    @property
-    def _max_size_bytes(self) -> int:
-        return self._max_size_bytes_getter()
 
     def _ensure_cache_dir(self) -> None:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-
-    def _get_db_version(self) -> str:
-        return self._db_version_getter()
 
     @staticmethod
     def _version_hash(version: str) -> str:
@@ -93,7 +61,7 @@ class RenderCache:
         return self._cache_dir / self._build_filename(category, content_key, ver_hash)
 
     def get(self, category: str, content_key: str) -> bytes | None:
-        version = self._get_db_version()
+        version = self._db_version_getter()
         if version == UNKNOWN_RENDER_CACHE_VERSION:
             return None
         ver_hash = self._version_hash(version)
@@ -104,7 +72,7 @@ class RenderCache:
         return None
 
     def put(self, category: str, content_key: str, data: bytes) -> None:
-        version = self._get_db_version()
+        version = self._db_version_getter()
         if version == UNKNOWN_RENDER_CACHE_VERSION:
             return
         self._ensure_cache_dir()
@@ -141,16 +109,8 @@ class RenderCache:
             return 0
         return sum(f.stat().st_size for f in self._cache_dir.iterdir() if f.is_file())
 
-
-render_cache = RenderCache()
-
-
 __all__ = [
     "UNKNOWN_RENDER_CACHE_VERSION",
     "RenderCache",
-    "get_render_cache_dir",
-    "get_render_cache_max_size_bytes",
-    "get_render_config",
     "get_seerapi_db_version",
-    "render_cache",
 ]

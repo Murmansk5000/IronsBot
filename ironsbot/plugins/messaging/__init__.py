@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.services.admin_priority import wait_for_superuser_priority
 from ironsbot.shared.messaging import configure_reply_delivery_policy
 
 from .matchers import install as install_matchers
@@ -19,7 +18,7 @@ def install(
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingResources,
 ) -> None:
-    configure_reply_delivery_policy(before_send=wait_for_superuser_priority)
+    configure_reply_delivery_policy(before_send=messaging.priority.wait)
     install_matchers(
         registry,
         refresh_push_time_jobs,

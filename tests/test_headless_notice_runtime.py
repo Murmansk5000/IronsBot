@@ -4,12 +4,13 @@ from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
 
-from ironsbot.app import registry as app_registry
+from ironsbot.app import plugin_runtime
 from ironsbot.config.models.runtime import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.integrations.headless_seer.client import ClientManager
-from ironsbot.services.operations import headless as headless_module
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+from tests.helpers.runtime import build_test_runtime
 
 USER_ID = 123456
 
@@ -35,6 +36,7 @@ def build_service(
         ),
         HeadlessConfig(),
         notices or HeadlessNoticeConfig(),
+        build_test_runtime().admin_notices,
         now=now,  # type: ignore[arg-type]
     )
 
@@ -46,9 +48,9 @@ def test_register_reconnect_checks_uses_standard_scheduler_fields(
     service = build_service(
         notices=HeadlessNoticeConfig(reconnect_check_times="00:01,00:02")
     )
-    monkeypatch.setattr(app_registry, "_scheduler", lambda: scheduler)
+    monkeypatch.setattr(plugin_runtime, "scheduler", lambda: scheduler)
 
-    asyncio.run(app_registry._register_headless_reconnect_jobs(service))
+    asyncio.run(plugin_runtime.register_headless_reconnect_jobs(service))
 
     assert scheduler.jobs == [
         {
@@ -87,7 +89,11 @@ def test_startup_check_sends_failure_through_admin_notice(
         )
     )
 
-    async def fake_send(message: object, **kwargs: object) -> object:
+    async def fake_send(
+        _service: AdminNoticeService,
+        message: object,
+        **kwargs: object,
+    ) -> object:
         sent.append(
             (
                 str(message),
@@ -97,7 +103,7 @@ def test_startup_check_sends_failure_through_admin_notice(
         )
         return object()
 
-    monkeypatch.setattr(headless_module, "send_admin_notice", fake_send)
+    monkeypatch.setattr(AdminNoticeService, "send", fake_send)
 
     asyncio.run(service.check_on_connect())
 
@@ -120,7 +126,11 @@ def test_headless_state_notice_uses_admin_notice_delivery(
         )
     )
 
-    async def fake_send(message: object, **kwargs: object) -> object:
+    async def fake_send(
+        _service: AdminNoticeService,
+        message: object,
+        **kwargs: object,
+    ) -> object:
         sent.append(
             (
                 str(message),
@@ -130,7 +140,7 @@ def test_headless_state_notice_uses_admin_notice_delivery(
         )
         return object()
 
-    monkeypatch.setattr(headless_module, "send_admin_notice", fake_send)
+    monkeypatch.setattr(AdminNoticeService, "send", fake_send)
 
     asyncio.run(service.mark_available(source="initial", notify=False))
     asyncio.run(service.mark_unavailable("disconnected", source="test"))
@@ -164,11 +174,15 @@ def test_headless_recovery_notice_includes_offline_duration(
         now=lambda: next(timestamps),
     )
 
-    async def fake_send(message: object, **_kwargs: object) -> object:
+    async def fake_send(
+        _service: AdminNoticeService,
+        message: object,
+        **_kwargs: object,
+    ) -> object:
         sent.append(str(message))
         return object()
 
-    monkeypatch.setattr(headless_module, "send_admin_notice", fake_send)
+    monkeypatch.setattr(AdminNoticeService, "send", fake_send)
 
     asyncio.run(service.mark_available(source="initial", notify=False))
     asyncio.run(service.mark_unavailable("disconnected", source="offline"))

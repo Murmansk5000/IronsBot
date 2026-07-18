@@ -61,9 +61,7 @@ def build_push_time_menu_handler(
         return build_push_time_options(
             target_type,
             target_id,
-            message_config=messaging.config,
-            activity_config=messaging.activity,
-            store=messaging.store,
+            messaging=messaging,
         )
 
     async def handle_push_time_menu(

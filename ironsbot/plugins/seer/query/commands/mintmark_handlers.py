@@ -1,21 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from functools import partial
+from typing import Any, Literal
 
 from nonebot.adapters import Event
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 from nonebot_plugin_saa import MessageFactory
-from seerapi_models import GemCategoryORM, MintmarkClassCategoryORM, MintmarkORM, PetORM
+from seerapi_models import GemCategoryORM, MintmarkORM, PetORM
 from seerapi_models.common import SixAttributes
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
 
 from ironsbot.integrations.seer_data.getters import GemCategoryDataGetter
 from ironsbot.services.seer.formatting import format_sub_lines
 
-from ..config import get_mintmark_query_config
 from ..depends import (
     MintmarkBodyImageGetter,
     MintmarkDataGetter,
@@ -32,6 +32,7 @@ ATTACK_MARK_THRESHOLD = 54
 SPEED_MARK_THRESHOLD = 40
 DEFENSE_MARK_THRESHOLD = 40
 HP_MARK_THRESHOLD = 100
+MintmarkMergeMode = Literal["merged", "separate"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,12 +129,13 @@ def _preferred_connected_mintmark(
 
 def _build_mintmark_views(
     mintmarks: Iterable[MintmarkORM],
+    merge_mode: MintmarkMergeMode,
 ) -> tuple[MintmarkQueryView, ...]:
     unique = {mintmark.id: mintmark for mintmark in mintmarks}
     if not unique:
         return ()
 
-    if not get_mintmark_query_config().merge_connected:
+    if merge_mode == "separate":
         return tuple(
             MintmarkQueryView(
                 mintmark=mintmark,
@@ -184,6 +186,7 @@ def _build_pet_bind(pet: PetORM) -> str:
 
 async def build_mintmark_message(
     item: MintmarkQueryView | MintmarkORM,
+    merge_mode: MintmarkMergeMode,
 ) -> MessageFactory:
     view = item if isinstance(item, MintmarkQueryView) else MintmarkQueryView(item)
     mintmark = view.mintmark
@@ -191,7 +194,7 @@ async def build_mintmark_message(
     msg += f"💮【{mintmark.name}】\n"
     msg += await MintmarkBodyImageGetter.get(str(mintmark.id))
     id_text = "、".join(str(mintmark_id) for mintmark_id in view.ids)
-    if not get_mintmark_query_config().merge_connected and view.related_ids:
+    if merge_mode == "separate" and view.related_ids:
         related_text = "、".join(str(mintmark_id) for mintmark_id in view.related_ids)
         id_text = f"{mintmark.id}（关联{related_text}）"
     msg += f"🆔：{id_text}\n"
@@ -230,11 +233,11 @@ async def build_mintmark_message(
     return msg
 
 
-def _item_desc_fmt(item: MintmarkQueryView) -> str:
+def _item_desc_fmt(item: MintmarkQueryView, merge_mode: MintmarkMergeMode) -> str:
     mintmark = item.mintmark
     attr = _mark_attributes(mintmark)
     desc = _mark_type_description(attr) if attr is not None else ""
-    if get_mintmark_query_config().merge_connected:
+    if merge_mode == "merged":
         id_text = "、".join(str(mintmark_id) for mintmark_id in item.ids)
         return " ".join(part for part in (id_text, desc) if part)
 
@@ -248,6 +251,7 @@ def _item_desc_fmt(item: MintmarkQueryView) -> str:
 
 
 async def _resolve_mintmark_prompt(
+    merge_mode: MintmarkMergeMode,
     item: PromptItem[int],
     matcher: Matcher,
     session: Any,
@@ -257,12 +261,12 @@ async def _resolve_mintmark_prompt(
         await matcher.finish(
             f"❌未找到刻印 {item.value}（这是一个bug，请反馈给开发者）"
         )
-    views = _build_mintmark_views((mintmark,))
+    views = _build_mintmark_views((mintmark,), merge_mode)
     if not views:
         await matcher.finish(
             f"❌未找到刻印 {item.value}（这是一个bug，请反馈给开发者）"
         )
-    msg = await build_mintmark_message(views[0])
+    msg = await build_mintmark_message(views[0], merge_mode)
     await msg.send()
 
 
@@ -271,17 +275,15 @@ async def handle_mintmark(
     state: T_State,
     event: Event,
     mintmarks: tuple[MintmarkORM, ...],
-    classes: tuple[MintmarkClassCategoryORM, ...],
+    merge_mode: MintmarkMergeMode,
 ) -> None:
-
-    mintmarks = mintmarks + tuple(part.mintmark for c in classes for part in c.mintmark)
-    views = _build_mintmark_views(mintmarks)
+    views = _build_mintmark_views(mintmarks, merge_mode)
 
     if not views:
         raise FinishedException
 
     if len(views) == 1:
-        msg = await build_mintmark_message(views[0])
+        msg = await build_mintmark_message(views[0], merge_mode)
         await msg.finish()
 
     elif len(views) > PROMPT_MAX_ITEMS:
@@ -291,7 +293,7 @@ async def handle_mintmark(
         items=[
             PromptItem(
                 name=view.mintmark.name,
-                desc=_item_desc_fmt(view),
+                desc=_item_desc_fmt(view, merge_mode),
                 value=view.mintmark.id,
             )
             for view in views
@@ -302,7 +304,10 @@ async def handle_mintmark(
         event,
         state,
         prompt,
-        _resolve_mintmark_prompt,
+        partial(
+            _resolve_mintmark_prompt,
+            merge_mode,
+        ),
     )
 
 

@@ -1,22 +1,28 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
 import asyncio
 import hashlib
-from collections.abc import Sequence
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from nonebot_plugin_htmlkit import template_to_pic
-from seerapi_models import PeakExpertPoolORM, PeakPoolORM
 
 from ironsbot.integrations.seer_data.image import (
     ElementTypeImageGetter,
     PetHeadImageGetter,
 )
-from ironsbot.services.seer.render_cache import render_cache
 from ironsbot.services.seer.render_paths import (
     PEAK_POOL_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
 from ironsbot.utils.image import to_data_uri
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from seerapi_models import PeakExpertPoolORM, PeakPoolORM
+
+    from ironsbot.services.seer.render_cache import RenderCache
 
 TEMPLATE_PATH = PEAK_POOL_TEMPLATE_PATH
 SHARED_PATH = SHARED_TEMPLATE_PATH
@@ -50,11 +56,13 @@ def _peak_pool_cache_key(
 
 
 async def render_peak_pool(
-    pools: Sequence[PeakPoolORM | PeakExpertPoolORM], pool_type: str
+    cache: RenderCache,
+    pools: Sequence[PeakPoolORM | PeakExpertPoolORM],
+    pool_type: str,
 ) -> bytes:
     """渲染巅峰池信息卡片图片，返回 PNG 图片字节"""
     content_key = _peak_pool_cache_key(pools, pool_type)
-    cached = render_cache.get("peak_pool", content_key)
+    cached = cache.get("peak_pool", content_key)
     if cached is not None:
         return cached
 
@@ -120,5 +128,5 @@ async def render_peak_pool(
         max_width=max_width + 20,
         allow_refit=False,
     )
-    render_cache.put("peak_pool", content_key, result)
+    cache.put("peak_pool", content_key, result)
     return result

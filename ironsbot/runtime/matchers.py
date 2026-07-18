@@ -6,16 +6,14 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.plugin import on_command, on_fullmatch, on_message, on_notice
 
-from ironsbot.shared.messaging.command_cooldown import (
-    CommandIdSource,
-    install_command_cooldown_postprocessor,
-    mark_command_matcher_exempt,
-    register_command_matcher,
-    validate_command_matcher_coverage,
-)
-
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
+
+    from ironsbot.config.models.runtime import MatcherPriorityConfig
+    from ironsbot.shared.messaging.command_cooldown import (
+        CommandCooldownService,
+        CommandIdSource,
+    )
 
 
 class CommandPolicyError(ValueError):
@@ -50,6 +48,8 @@ class CommandPolicy:
 
 @dataclass(slots=True)
 class MatcherRegistry:
+    cooldown: CommandCooldownService
+    priorities: MatcherPriorityConfig
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
     _notice_matchers: list[type[Matcher]] = field(default_factory=list)
 
@@ -85,11 +85,13 @@ class MatcherRegistry:
         return matcher
 
     def install_postprocessor(self) -> None:
-        registered = frozenset(self._message_matchers)
-        validate_command_matcher_coverage(lambda matcher: matcher in registered)
-        install_command_cooldown_postprocessor(
-            lambda matcher: matcher in registered
-        )
+        self.cooldown.install_postprocessor()
+
+    def priority(self, name: str, fallback: int) -> int:
+        return int(getattr(self.priorities, name, fallback))
+
+    def pre_command_priority(self, name: str, fallback: int = -1) -> int:
+        return min(self.priority(name, fallback), -1)
 
     @property
     def message_matchers(self) -> tuple[type[Matcher], ...]:
@@ -105,14 +107,11 @@ class MatcherRegistry:
         policy: CommandPolicy,
     ) -> type[Matcher]:
         if policy.command_id is not None:
-            register_command_matcher(matcher, policy.command_id)
+            self.cooldown.register_matcher(matcher, policy.command_id)
         else:
-            mark_command_matcher_exempt(
+            self.cooldown.exempt_matcher(
                 matcher,
                 policy.exemption_reason or "",
             )
         self._message_matchers.append(matcher)
         return matcher
-
-
-__all__ = ["CommandPolicy", "CommandPolicyError", "MatcherRegistry"]

@@ -6,6 +6,7 @@ from ironsbot.services.team_resource_subscriptions import (
     TeamResourceSubscriptionStore,
     TeamResourceSubscriptionUpdate,
 )
+from tests.helpers.runtime import build_test_runtime
 
 TEAM_ID = 1234567
 TEAM_RESOURCE_THRESHOLD = 2000
@@ -20,9 +21,12 @@ def test_team_resource_subscription_store_is_used_for_group(
         subscription_path=tmp_path / "team_resource.sqlite",
         default_at_users=["owner", "2345678901"],
     )
+    runtime = build_test_runtime()
     service = TeamResourceService.build(
         config,
         {"owner": OWNER_ID},
+        runtime.features,
+        runtime.delivery,
     )
 
     service.store.upsert(
@@ -55,7 +59,13 @@ def test_team_resource_disabled_has_no_subscriptions(
         enabled=False,
         subscription_path=tmp_path / "team_resource.sqlite",
     )
-    service = TeamResourceService.build(config, {})
+    runtime = build_test_runtime()
+    service = TeamResourceService.build(
+        config,
+        {},
+        runtime.features,
+        runtime.delivery,
+    )
 
     assert not service.config.enabled
     assert service.store.list_all() == []

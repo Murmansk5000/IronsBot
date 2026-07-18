@@ -14,7 +14,10 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Message
 
-    from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
+    from ironsbot.services.bilibili.dynamic_history import (
+        BiliDynamicHistoryStore,
+        DynamicHistoryRecord,
+    )
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
 
@@ -61,14 +64,6 @@ def parse_single_item(
     from ironsbot.services.bilibili.parser import parse_single_item as parse
 
     return parse(item, pub_ts, menu_mode=menu_mode, mode=mode)
-
-
-def get_dynamic_history_item(dynamic_id: str) -> DynamicHistoryRecord | None:
-    from ironsbot.services.bilibili.dynamic_history import (
-        get_dynamic_history_item as get_item,
-    )
-
-    return get_item(dynamic_id)
 
 
 def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:
@@ -132,6 +127,7 @@ def select_cached_dynamic_id(
 
 
 def build_dynamic_detail_for_selection(
+    history: BiliDynamicHistoryStore,
     cached_ids: Sequence[object],
     raw_text: str,
 ) -> DynamicDetailSelection:
@@ -142,7 +138,7 @@ def build_dynamic_detail_for_selection(
             available_count=selection.available_count,
         )
 
-    record = get_dynamic_history_item(selection.dynamic_id)
+    record = history.get(selection.dynamic_id)
     if record is None:
         return DynamicDetailSelection(
             status="missing",

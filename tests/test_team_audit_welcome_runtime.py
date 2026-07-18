@@ -7,9 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import TeamAuditWelcomeConfig
 from ironsbot.services.team_audit_welcome import TeamAuditPendingReminder
+from ironsbot.shared.messaging.bot_router import BotRouter
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
+from tests.helpers.runtime import build_test_runtime
 
 os.environ["APP_CONFIG_PATH"] = str(
     Path(__file__).resolve().parents[1] / "config.example.toml"
@@ -19,6 +22,13 @@ from ironsbot.plugins.team_audit_welcome import followup
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+TEAM_AUDIT_RUNTIME = build_test_runtime(
+    feature_config=FeatureConfig(
+        group_policy={"987654321": ["team_audit"]},
+        superuser_bypass=False,
+    )
+)
 
 
 class FakeScheduler:
@@ -60,6 +70,8 @@ def test_schedule_team_audit_followup_uses_standard_scheduler_fields() -> None:
         scheduler,  # type: ignore[arg-type]
         reminder,
         config=config,
+        features=TEAM_AUDIT_RUNTIME.features,
+        delivery=TEAM_AUDIT_RUNTIME.delivery,
         now=datetime(2026, 7, 8, 11, 0, tzinfo=timezone.utc),
     )
 
@@ -71,7 +83,12 @@ def test_schedule_team_audit_followup_uses_standard_scheduler_fields() -> None:
             "replace_existing": True,
             "run_date": remind_at,
             "args": [987654321, 1234567890],
-            "kwargs": {"config": config, "scheduler": scheduler},
+            "kwargs": {
+                "config": config,
+                "scheduler": scheduler,
+                "features": TEAM_AUDIT_RUNTIME.features,
+                "delivery": TEAM_AUDIT_RUNTIME.delivery,
+            },
             "misfire_grace_time": 3600,
         }
     ]
@@ -83,6 +100,8 @@ def test_register_team_audit_followup_scan_uses_standard_scheduler_fields() -> N
     followup.register_team_audit_followup_scan(
         scheduler,  # type: ignore[arg-type]
         config=config,
+        features=TEAM_AUDIT_RUNTIME.features,
+        delivery=TEAM_AUDIT_RUNTIME.delivery,
     )
 
     assert scheduler.jobs == [
@@ -93,7 +112,11 @@ def test_register_team_audit_followup_scan_uses_standard_scheduler_fields() -> N
             "replace_existing": True,
             "minutes": followup.FOLLOWUP_SCAN_INTERVAL_MINUTES,
             "args": [scheduler],
-            "kwargs": {"config": config},
+            "kwargs": {
+                "config": config,
+                "features": TEAM_AUDIT_RUNTIME.features,
+                "delivery": TEAM_AUDIT_RUNTIME.delivery,
+            },
         }
     ]
 
@@ -113,6 +136,7 @@ def test_team_audit_followup_uses_group_routed_bot(
     sent: dict[str, object] = {}
 
     async def fake_send_target_messages(
+        _delivery: object,
         targets: list[MessageTarget],
         _message: object,
         **kwargs: object,
@@ -120,13 +144,16 @@ def test_team_audit_followup_uses_group_routed_bot(
         sent.update(targets=targets, **kwargs)
         return TargetSendSummary(targets, [])
 
-    monkeypatch.setattr(followup, "is_group_feature_allowed", lambda *_args: True)
     monkeypatch.setattr(
         followup,
         "get_team_audit_pending_reminder",
         lambda _path, **_kwargs: reminder,
     )
-    monkeypatch.setattr(followup, "get_bot_for_group", lambda _group_id: bot)
+    monkeypatch.setattr(
+        BotRouter,
+        "for_target",
+        lambda _router, _target: bot,
+    )
     monkeypatch.setattr(followup, "_bot_can_access_group", _async_true)
     monkeypatch.setattr(followup, "_is_member_still_in_group", _async_true)
     monkeypatch.setattr(followup, "send_target_messages", fake_send_target_messages)
@@ -142,6 +169,8 @@ def test_team_audit_followup_uses_group_routed_bot(
             1234567890,
             config=config,
             scheduler=scheduler,  # type: ignore[arg-type]
+            features=TEAM_AUDIT_RUNTIME.features,
+            delivery=TEAM_AUDIT_RUNTIME.delivery,
         )
     )
 
@@ -170,13 +199,16 @@ def test_team_audit_followup_keeps_pending_when_bot_cannot_access_group(
         nonlocal cleared
         cleared = True
 
-    monkeypatch.setattr(followup, "is_group_feature_allowed", lambda *_args: True)
     monkeypatch.setattr(
         followup,
         "get_team_audit_pending_reminder",
         lambda _path, **_kwargs: reminder,
     )
-    monkeypatch.setattr(followup, "get_bot_for_group", lambda _group_id: bot)
+    monkeypatch.setattr(
+        BotRouter,
+        "for_target",
+        lambda _router, _target: bot,
+    )
     monkeypatch.setattr(followup, "_bot_can_access_group", inaccessible)
     monkeypatch.setattr(
         followup,
@@ -190,6 +222,8 @@ def test_team_audit_followup_keeps_pending_when_bot_cannot_access_group(
             1234567890,
             config=config,
             scheduler=scheduler,  # type: ignore[arg-type]
+            features=TEAM_AUDIT_RUNTIME.features,
+            delivery=TEAM_AUDIT_RUNTIME.delivery,
         )
     )
 

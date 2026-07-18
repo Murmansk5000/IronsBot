@@ -16,7 +16,6 @@ from ironsbot.services.ai.memory import (
     append_user_memory,
     get_user_memory,
 )
-from ironsbot.shared.features import group_has_feature, is_superuser
 
 if TYPE_CHECKING:
     from ironsbot.services.ai.resources import AiResources
@@ -30,12 +29,12 @@ class AiChatContext:
     memory: list[HistoryMessage]
 
 
-def can_show_admin_notice(event: MessageEvent) -> bool:
-    if is_superuser(event.user_id):
+def can_show_admin_notice(resources: AiResources, event: MessageEvent) -> bool:
+    if resources.features.is_superuser(event.user_id):
         return True
 
     if isinstance(event, GroupMessageEvent):
-        return group_has_feature(event.group_id, "admin_notice")
+        return resources.features.group_has_feature(event.group_id, "admin_notice")
 
     return False
 

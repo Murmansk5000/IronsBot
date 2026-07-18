@@ -14,11 +14,7 @@ from ironsbot.core.commands import (
     normalize_command_text,
 )
 from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
-from ironsbot.shared.features import (
-    group_has_feature,
-    is_group_feature_allowed,
-    is_private_feature_allowed,
-)
+from ironsbot.shared.features import FeatureService
 
 FIRE_MANUAL_ANNOUNCEMENT_MARKERS = (
     "发布",
@@ -129,28 +125,35 @@ def excluded_by_context(text: str, action: AiIntentAction) -> bool:
     return False
 
 
-def is_action_allowed(event: MessageEvent, action: AiIntentAction) -> bool:
+def is_action_allowed(
+    features: FeatureService,
+    event: MessageEvent,
+    action: AiIntentAction,
+) -> bool:
     if isinstance(event, GroupMessageEvent):
         if action.feature == FIRE_MANUAL_INTENT_FEATURE:
-            return group_has_feature(event.group_id, action.feature)
-        return is_group_feature_allowed(
+            return features.group_has_feature(event.group_id, action.feature)
+        return features.is_group_feature_allowed(
             event.user_id,
             event.group_id,
             action.feature,
         )
 
-    return is_private_feature_allowed(event.user_id, action.feature)
+    return features.is_private_feature_allowed(event.user_id, action.feature)
 
 
-def is_ai_intent_allowed(event: MessageEvent) -> bool:
+def is_ai_intent_allowed(
+    features: FeatureService,
+    event: MessageEvent,
+) -> bool:
     if isinstance(event, GroupMessageEvent):
-        return is_group_feature_allowed(
+        return features.is_group_feature_allowed(
             event.user_id,
             event.group_id,
             "ai_intent",
         )
 
-    return is_private_feature_allowed(event.user_id, "ai_intent")
+    return features.is_private_feature_allowed(event.user_id, "ai_intent")
 
 
 def format_action_template(action: AiIntentAction, template: str, text: str) -> str:

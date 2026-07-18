@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from ironsbot.shared.features import get_superuser_ids, groups_for_feature
-
-from .senders import OneBotMessageSender, send_broadcast_message
+from .senders import DeliveryResources, OneBotMessageSender, send_broadcast_message
 from .targets import TargetSendSummary
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message
+
+    from ironsbot.shared.features import FeatureService
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
 
@@ -27,40 +27,38 @@ class AdminNoticeTargets:
         return not self.private_user_ids and not self.group_ids
 
 
-def admin_notice_targets() -> AdminNoticeTargets:
-    return AdminNoticeTargets(
-        private_user_ids=sorted(get_superuser_ids()),
-        group_ids=groups_for_feature(ADMIN_NOTICE_FEATURE),
-    )
+@dataclass(frozen=True, slots=True)
+class AdminNoticeService:
+    features: FeatureService
+    delivery: DeliveryResources
 
+    def targets(self) -> AdminNoticeTargets:
+        return AdminNoticeTargets(
+            private_user_ids=sorted(self.features.superuser_ids),
+            group_ids=self.features.groups_for_feature(ADMIN_NOTICE_FEATURE),
+        )
 
-async def send_admin_notice(
-    message: str | Message,
-    *,
-    subscription_key: str,
-    action_name: str,
-    bot: OneBotMessageSender | None = None,
-    interval_seconds: float = 1.5,
-) -> TargetSendSummary:
-    targets = admin_notice_targets()
-    if targets.is_empty:
-        logger.warning(f"{action_name} has no admin notice targets")
-        return TargetSendSummary([], [])
+    async def send(
+        self,
+        message: str | Message,
+        *,
+        subscription_key: str,
+        action_name: str,
+        bot: OneBotMessageSender | None = None,
+        interval_seconds: float = 1.5,
+    ) -> TargetSendSummary:
+        targets = self.targets()
+        if targets.is_empty:
+            logger.warning(f"{action_name} has no admin notice targets")
+            return TargetSendSummary([], [])
 
-    return await send_broadcast_message(
-        message,
-        private_user_ids=targets.private_user_ids,
-        group_ids=targets.group_ids,
-        bot=bot,
-        action_name=action_name,
-        interval_seconds=interval_seconds,
-        subscription_key=subscription_key,
-    )
-
-
-__all__ = [
-    "ADMIN_NOTICE_FEATURE",
-    "AdminNoticeTargets",
-    "admin_notice_targets",
-    "send_admin_notice",
-]
+        return await send_broadcast_message(
+            self.delivery,
+            message,
+            private_user_ids=targets.private_user_ids,
+            group_ids=targets.group_ids,
+            bot=bot,
+            action_name=action_name,
+            interval_seconds=interval_seconds,
+            subscription_key=subscription_key,
+        )

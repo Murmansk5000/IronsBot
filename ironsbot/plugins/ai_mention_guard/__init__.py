@@ -4,18 +4,13 @@ from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.ai.mention_guard import should_guard_non_ai_group_mention
+from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.help_hint import HelpHintService
 from ironsbot.shared.help_hints import (
     DIRECT_COMMAND_HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
 )
-from ironsbot.shared.matcher_priority import get_pre_command_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
-
-AI_MENTION_GUARD_PRIORITY = get_pre_command_matcher_priority("ai_mention_guard")
-
-async def _is_non_ai_group_at_guarded_user(event: MessageEvent) -> bool:
-    return await should_guard_non_ai_group_mention(event)
 
 
 def _build_guard_message(event: MessageEvent) -> str:
@@ -25,7 +20,11 @@ def _build_guard_message(event: MessageEvent) -> str:
     return message
 
 
-def install(registry: MatcherRegistry, help_hint: HelpHintService) -> None:
+def install(
+    registry: MatcherRegistry,
+    help_hint: HelpHintService,
+    resources: AiResources,
+) -> None:
     async def handle_non_ai_group_at_bot(
         matcher: Matcher,
         event: GroupMessageEvent,
@@ -42,8 +41,10 @@ def install(registry: MatcherRegistry, help_hint: HelpHintService) -> None:
 
     matcher = registry.on_message(
         policy=CommandPolicy.command("ai_mention_guard"),
-        rule=Rule(_is_non_ai_group_at_guarded_user),
-        priority=AI_MENTION_GUARD_PRIORITY,
+        rule=Rule(
+            lambda event: should_guard_non_ai_group_mention(resources, event)
+        ),
+        priority=registry.pre_command_priority("ai_mention_guard"),
         block=True,
     )
     matcher.append_handler(handle_non_ai_group_at_bot)

@@ -1,11 +1,7 @@
 from pathlib import Path
 
-from pytest import MonkeyPatch
-
-from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.seer import RankQueryConfig
-from ironsbot.services.seer import rank_display
-from tests.helpers.config import stub_app_config
+from ironsbot.services.seer.rank_display import RankDisplayService
 
 GROUP_ID = 987654321
 USER_ID = 1234567890
@@ -24,34 +20,24 @@ def _rank_config(tmp_path: Path) -> RankQueryConfig:
 
 def test_rank_display_limit_prefers_stored_group_limit(
     tmp_path: Path,
-    monkeypatch: MonkeyPatch,
 ) -> None:
-    config = stub_app_config(
-        rank_config=_rank_config(tmp_path),
-        feature_config=FeatureConfig(group_aliases={}),
-    )
-    monkeypatch.setattr(rank_display, "get_app_config", lambda: config)
+    service = RankDisplayService(_rank_config(tmp_path), {})
 
-    rank_display.set_group_rank_display_limit(
+    service.set_group_limit(
         group_id=GROUP_ID,
         user_id=USER_ID,
         limit=STORED_LIMIT,
     )
 
-    assert rank_display.rank_display_limit_for_group(GROUP_ID) == STORED_LIMIT
+    assert service.limit_for_group(GROUP_ID) == STORED_LIMIT
 
 
 def test_rank_display_limit_uses_configured_alias(
     tmp_path: Path,
-    monkeypatch: MonkeyPatch,
 ) -> None:
     rank_config = _rank_config(tmp_path).model_copy(
         update={"display_limits": {"example": ALIAS_LIMIT}}
     )
-    config = stub_app_config(
-        rank_config=rank_config,
-        feature_config=FeatureConfig(group_aliases={"example": GROUP_ID}),
-    )
-    monkeypatch.setattr(rank_display, "get_app_config", lambda: config)
+    service = RankDisplayService(rank_config, {"example": GROUP_ID})
 
-    assert rank_display.rank_display_limit_for_group(GROUP_ID) == ALIAS_LIMIT
+    assert service.limit_for_group(GROUP_ID) == ALIAS_LIMIT

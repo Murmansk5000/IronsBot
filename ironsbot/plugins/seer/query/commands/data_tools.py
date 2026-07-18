@@ -1,26 +1,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# NoneBot inspects handler annotations at runtime.
+# ruff: noqa: TC001, TC002
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta, timezone
-from typing import TYPE_CHECKING
 
 from httpx import HTTPStatusError, RequestError
+from nonebot.adapters import Event
+from nonebot.matcher import Matcher
 from nonebot_plugin_saa import Image, MessageFactory, MessageSegmentFactory
 from seerapi_models import ApiMetadataORM
 from sqlmodel import select
 
+from ironsbot.config.models.seer import SeasonCountdownConfig
 from ironsbot.integrations.http_client import get_http_origin_client
 from ironsbot.integrations.seer_data.image import PreviewImageGetter
 from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 
+from ..depends import SeerAPISession
 from .query_replies import finish_query_reply
-
-if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.matcher import Matcher
-
-    from ..depends import SeerAPISession
 
 
 async def fetch_weekly_preview_image(image_url: str) -> MessageSegmentFactory:
@@ -58,11 +58,19 @@ async def handle_data_version(
     await matcher.finish(f"数据更新时间：{local_time:%Y-%m-%d %H:%M:%S}")
 
 
-async def handle_season_countdown(
-    *,
-    matcher: Matcher,
-    event: Event,
-    session: SeerAPISession,
-) -> None:
-    message = format_season_countdown(session)
-    await finish_query_reply(matcher, event, message)
+@dataclass(frozen=True, slots=True)
+class SeasonCountdownHandler:
+    config: SeasonCountdownConfig
+
+    async def handle(
+        self,
+        *,
+        matcher: Matcher,
+        event: Event,
+        session: SeerAPISession,
+    ) -> None:
+        await finish_query_reply(
+            matcher,
+            event,
+            format_season_countdown(session, self.config),
+        )

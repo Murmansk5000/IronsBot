@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from nonebot import logger
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.services.seer.local_rank_cache_queries import get_local_rank_entries
 from ironsbot.services.seer.rank_list_formatting import batch_raw_start, timestamp_text
 from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_message,
@@ -19,7 +18,6 @@ from ironsbot.services.seer.rank_list_spec_resolution import (
     get_global_rank_spec,
     global_rank_spec_needs_sub_key,
 )
-from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_pages import (
     fetch_daily_rank_page,
     fetch_daily_rank_page_result,
@@ -27,10 +25,9 @@ from ironsbot.services.seer.rank_pages import (
 from ironsbot.services.seer.rank_player_query import fetch_rank_player_message
 from ironsbot.services.seer.rank_score_runtime import fetch_rank_score_segment
 
-from ..config import get_local_rank_config
-
 if TYPE_CHECKING:
     from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.rank_list_models import (
         GlobalRankSpec,
         LocalRankSpec,
@@ -121,6 +118,7 @@ async def build_global_rank_score_message(
 
 
 async def build_global_rank_player_message(
+    local_rank: LocalRankService,
     game: SeerGame,
     command: RankPlayerCommand,
 ) -> str:
@@ -131,21 +129,23 @@ async def build_global_rank_player_message(
         source="榜单玩家查询",
     ):
         return await fetch_rank_player_message(
+            local_rank,
             game,
             command=command,
-            local_rank_enabled=get_local_rank_config().enabled,
         )
 
 
 async def cache_global_rank_batch(
     game: SeerGame,
     command: RankCacheBatchCommand,
+    *,
+    batch_limit: int,
 ) -> tuple[GlobalRankSpec, int, int]:
     spec = get_global_rank_spec(command.rank_key)
     requested_count = command.end_rank - command.start_rank + 1
     if global_rank_spec_needs_sub_key(spec):
         return spec, 0, requested_count
-    count = min(requested_count, get_local_rank_config().batch_limit)
+    count = min(requested_count, batch_limit)
     raw_start = batch_raw_start(spec, command.start_rank)
     with headless_operation(
         "手动缓存榜单",
@@ -163,10 +163,16 @@ async def cache_global_rank_batch(
     return spec, len(items), requested_count
 
 
-def build_local_rank_message(spec: LocalRankSpec, command: RankListCommand) -> str:
-    season_sub_key = get_current_peak_sub_key() if spec.season_limited else None
+def build_local_rank_message(
+    local_rank: LocalRankService,
+    spec: LocalRankSpec,
+    command: RankListCommand,
+) -> str:
+    season_sub_key = (
+        local_rank.current_peak_sub_key() if spec.season_limited else None
+    )
     season_sub_key_text = str(season_sub_key) if season_sub_key is not None else None
-    entries, sample_count = get_local_rank_entries(
+    entries, sample_count = local_rank.entries(
         spec.metric_key,
         limit=command.limit,
         start_rank=command.start_rank,

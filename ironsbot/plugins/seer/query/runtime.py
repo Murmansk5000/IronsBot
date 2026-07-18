@@ -8,10 +8,10 @@ from nonebot import logger
 
 from ironsbot.integrations.scheduler.jobs import JobRegistry
 
-from .config import get_local_rank_config, get_rank_query_config
-
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 SEER_QUERY_JOB_PREFIX = "seer_"
 
@@ -34,13 +34,15 @@ def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) 
     return current >= start or current <= end
 
 
-async def _scheduled_local_rank_refresh(headless: HeadlessService) -> None:
-    from ironsbot.services.seer.local_rank_refresh import refresh_local_rank_cache
-
-    if not get_local_rank_config().auto_refresh:
+async def _scheduled_local_rank_refresh(
+    headless: HeadlessService,
+    service: LocalRankService,
+) -> None:
+    config = service.config
+    if not config.auto_refresh:
         return
 
-    result = await refresh_local_rank_cache(headless.get_game())
+    result = await service.refresh(headless.get_game())
     logger.info(
         "local rank cache auto refresh finished: "
         f"total={result.total}, "
@@ -51,30 +53,33 @@ async def _scheduled_local_rank_refresh(headless: HeadlessService) -> None:
 
 
 def register_local_rank_refresh_job(
-    scheduler: Any, headless: HeadlessService
+    scheduler: Any,
+    headless: HeadlessService,
+    service: LocalRankService,
 ) -> None:
-    local_rank_config = get_local_rank_config()
+    config = service.config
     JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
         _scheduled_local_rank_refresh,
         "cron",
-        args=[headless],
-        hour=local_rank_config.refresh_hour,
-        minute=local_rank_config.refresh_minute,
+        args=[headless, service],
+        hour=config.refresh_hour,
+        minute=config.refresh_minute,
         job_id="local_rank_refresh",
     )
 
 
-async def _scheduled_rank_page_refresh(headless: HeadlessService) -> None:
-    from ironsbot.services.seer.rank_page_refresh import refresh_rank_page_cache
-
-    rank_config = get_rank_query_config().page_refresh
-    if not rank_config.enabled:
+async def _scheduled_rank_page_refresh(
+    headless: HeadlessService,
+    service: RankPageRefreshService,
+) -> None:
+    config = service.config
+    if not config.enabled:
         return
-    if not _is_rank_page_refresh_active(rank_config):
+    if not _is_rank_page_refresh_active(config):
         logger.info("rank page cache auto refresh skipped: outside active window")
         return
 
-    result = await refresh_rank_page_cache(headless.get_game())
+    result = await service.refresh(headless.get_game())
     logger.info(
         "rank page cache auto refresh finished: "
         f"total={result.total}, success={result.success}, failed={result.failed}"
@@ -82,40 +87,34 @@ async def _scheduled_rank_page_refresh(headless: HeadlessService) -> None:
 
 
 def register_rank_page_refresh_jobs(
-    scheduler: Any, headless: HeadlessService
+    scheduler: Any,
+    headless: HeadlessService,
+    service: RankPageRefreshService,
 ) -> None:
-    rank_config = get_rank_query_config().page_refresh
-    if not rank_config.enabled:
+    config = service.config
+    if not config.enabled:
         return
 
     registry = JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX)
-    if rank_config.interval_minutes > 0:
-        minute_pattern = (
-            f"{rank_config.interval_offset_minutes}/{rank_config.interval_minutes}"
-        )
+    if config.interval_minutes > 0:
+        minute_pattern = f"{config.interval_offset_minutes}/{config.interval_minutes}"
         registry.add(
             _scheduled_rank_page_refresh,
             "cron",
-            args=[headless],
+            args=[headless, service],
             minute=minute_pattern,
-            jitter=rank_config.schedule_jitter_seconds,
+            jitter=config.schedule_jitter_seconds,
             job_id="rank_page_refresh_interval",
         )
 
-    for refresh_time in rank_config.times:
+    for refresh_time in config.times:
         hour_text, minute_text = refresh_time.split(":", maxsplit=1)
         registry.add(
             _scheduled_rank_page_refresh,
             "cron",
-            args=[headless],
+            args=[headless, service],
             hour=int(hour_text),
             minute=int(minute_text),
-            jitter=rank_config.schedule_jitter_seconds,
+            jitter=config.schedule_jitter_seconds,
             job_id=f"rank_page_refresh_{hour_text}{minute_text}",
         )
-
-
-__all__ = [
-    "register_local_rank_refresh_job",
-    "register_rank_page_refresh_jobs",
-]

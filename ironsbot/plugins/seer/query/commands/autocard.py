@@ -35,7 +35,7 @@ from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from .query_rules import not_rank_query
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
@@ -241,16 +241,13 @@ async def handle_autocard_query(
 def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_autocard_query"),
-        rule=seer_feature_rule("seer_autocard")
+        rule=seer_feature_rule(group.resources.features, "seer_autocard")
         & startswith_or_endswith(
             prefixes=AUTOCARD_QUERY_PREFIXES,
             suffixes=AUTOCARD_QUERY_SUFFIXES,
         )
         & not_rank_query
         & no_reply(),
-        priority=seer_feature_priority("seer_autocard"),
+        priority=group.matcher_priority("seer_autocard"),
     )
     matcher.append_handler(handle_autocard_query)
-
-
-__all__ = ["install"]

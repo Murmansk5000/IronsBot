@@ -5,10 +5,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.shared.features import (
-    is_group_feature_allowed,
-    is_private_feature_allowed,
-)
+from ironsbot.shared.features import FeatureService
 
 RESERVED_PRIVATE_COMMANDS = {
     "help",
@@ -36,16 +33,16 @@ def is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
     return normalized in RESERVED_PRIVATE_COMMANDS
 
 
-def is_allowed(event: MessageEvent) -> bool:
+def is_allowed(features: FeatureService, event: MessageEvent) -> bool:
     if isinstance(event, GroupMessageEvent):
-        return is_group_feature_allowed(
+        return features.is_group_feature_allowed(
             event.user_id,
             event.group_id,
             "ai_chat",
         )
 
     if isinstance(event, PrivateMessageEvent):
-        return is_private_feature_allowed(
+        return features.is_private_feature_allowed(
             event.user_id,
             "ai_chat",
         )

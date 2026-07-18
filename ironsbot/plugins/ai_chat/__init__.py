@@ -24,24 +24,21 @@ from ironsbot.services.ai.source_context import (
     append_ai_notice_source_context,
     build_notice_source,
 )
-from ironsbot.shared.matcher_priority import (
-    get_matcher_priority,
-    get_pre_command_matcher_priority,
-)
 from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
-AI_CHAT_PRIORITY = get_matcher_priority("ai_chat", 99)
-AI_GROUP_AT_CHAT_PRIORITY = get_pre_command_matcher_priority("ai_group_at")
-
-async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
+async def _ai_chat_rule(
+    event: MessageEvent,
+    state: T_State,
+    resources: AiResources,
+) -> bool:
     if getattr(event, "reply", None) is not None:
         return False
 
-    if not is_allowed(event):
+    if not is_allowed(resources.features, event):
         return False
 
     if isinstance(event, GroupMessageEvent) and not mentions_bot(event):
@@ -55,11 +52,15 @@ async def _ai_chat_rule(event: MessageEvent, state: T_State) -> bool:
     return True
 
 
-async def _ai_chat_group_at_rule(event: GroupMessageEvent, state: T_State) -> bool:
+async def _ai_chat_group_at_rule(
+    event: GroupMessageEvent,
+    state: T_State,
+    resources: AiResources,
+) -> bool:
     if getattr(event, "reply", None) is not None:
         return False
 
-    if not is_allowed(event):
+    if not is_allowed(resources.features, event):
         return False
 
     if not mentions_bot(event):
@@ -98,6 +99,7 @@ async def _run_ai_chat(
             ),
         )
         await _finish_admin_notice_or_silent(
+            resources,
             matcher,
             event,
             "AI聊天还没有配置 API Key。请先设置 AI_KEY。",
@@ -123,7 +125,7 @@ async def _run_ai_chat(
             source_context=source_context,
         )
         if is_ai_error_reply(reply):
-            await _finish_admin_notice_or_silent(matcher, event, reply)
+            await _finish_admin_notice_or_silent(resources, matcher, event, reply)
 
         if not is_ai_error_reply(reply):
             record_successful_ai_reply(resources, event, chat_context, reply)
@@ -150,6 +152,7 @@ async def _run_ai_chat(
             ),
         )
         await _finish_admin_notice_or_silent(
+            resources,
             matcher,
             event,
             "AI接口响应超时，我已经通知超级管理员。",
@@ -166,17 +169,19 @@ async def _run_ai_chat(
             ),
         )
         await _finish_admin_notice_or_silent(
+            resources,
             matcher,
             event,
             "AI聊天出错了，我已经通知超级管理员。",
         )
 
 async def _finish_admin_notice_or_silent(
+    resources: AiResources,
     matcher: Matcher,
     event: MessageEvent,
     message: str,
 ) -> None:
-    if not can_show_admin_notice(event):
+    if not can_show_admin_notice(resources, event):
         raise FinishedException
 
     await finish_event_reply(
@@ -190,16 +195,16 @@ async def _finish_admin_notice_or_silent(
 def install(registry: MatcherRegistry, resources: AiResources) -> None:
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
-        rule=Rule(_ai_chat_rule),
-        priority=AI_CHAT_PRIORITY,
+        rule=Rule(partial(_ai_chat_rule, resources=resources)),
+        priority=registry.priority("ai_chat", 99),
         block=True,
     )
     direct_matcher.append_handler(partial(_run_ai_chat, resources=resources))
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
-        rule=Rule(_ai_chat_group_at_rule),
-        priority=AI_GROUP_AT_CHAT_PRIORITY,
+        rule=Rule(partial(_ai_chat_group_at_rule, resources=resources)),
+        priority=registry.pre_command_priority("ai_group_at"),
         block=True,
     )
     group_at_matcher.append_handler(partial(_run_ai_chat, resources=resources))

@@ -42,13 +42,17 @@ async def classify_ai_intent_action(
         return None
 
     text = event.get_plaintext().strip()
-    if not text or not resources.api_key or not is_ai_intent_allowed(event):
+    if (
+        not text
+        or not resources.api_key
+        or not is_ai_intent_allowed(resources.features, event)
+    ):
         return None
 
     for action in resolve_configured_actions(resources.config):
         if (
             not action.enabled
-            or not is_action_allowed(event, action)
+            or not is_action_allowed(resources.features, event, action)
             or not contains_any_keyword(text, action.keywords)
             or not passes_action_prefilter(text, action)
             or excluded_by_command(text, action, resources.team_resource_commands)
@@ -96,11 +100,3 @@ async def run_ai_reply_action(
     if reply in {REQUEST_FAILED_REPLY, EMPTY_REPLY}:
         return None
     return reply
-
-
-__all__ = [
-    "TEAM_ACTIONS",
-    "classify_ai_intent_action",
-    "is_team_action",
-    "run_ai_reply_action",
-]

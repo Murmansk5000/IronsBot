@@ -9,14 +9,18 @@ from ironsbot.plugins.bilibili import service
 from ironsbot.services.bilibili.delivery import DynamicPushDelivery
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from ironsbot.shared.messaging.targets import TargetSendSummary
+from tests.helpers.bilibili import build_test_bilibili_resources
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pytest import MonkeyPatch
 
 
 @pytest.mark.asyncio
 async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     sent: list[dict[str, object]] = []
     delivery = DynamicPushDelivery(
@@ -32,6 +36,7 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     )
 
     async def fake_send_broadcast_message(
+        _delivery: object,
         _message: object,
         **kwargs: object,
     ) -> TargetSendSummary:
@@ -44,6 +49,7 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     )
 
     await service._send_dynamic_push(
+        build_test_bilibili_resources(tmp_path),
         {},
         1,
         1310714247,
@@ -54,4 +60,3 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     assert sent[0]["group_ids"] == [987654321]
     assert sent[0]["private_user_ids"] == [1234567890]
     assert "bot" not in sent[0]
-

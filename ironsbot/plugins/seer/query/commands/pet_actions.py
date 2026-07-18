@@ -20,8 +20,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
     from ironsbot.integrations.seer_data.sessions import SQLModelSession
-
-
+    from ironsbot.services.seer.render_cache import RenderCache
 
 PET_PROMPT_MAX_ITEMS = 20
 
@@ -104,7 +103,10 @@ async def pet_image_resolver(
     await msg.send()
 
 
-async def build_pet_info_message(pet: PetORM) -> MessageFactory:
+async def build_pet_info_message(
+    cache: RenderCache,
+    pet: PetORM,
+) -> MessageFactory:
     logger.info(
         "rendering pet info image: pet_id={} pet_name={} resource_id={}",
         pet.id,
@@ -117,7 +119,7 @@ async def build_pet_info_message(pet: PetORM) -> MessageFactory:
         pet_name=pet.name,
         resource_id=pet.resource_id,
     ):
-        pic_bytes = await render_custom_pet_info(pet)
+        pic_bytes = await render_custom_pet_info(cache, pet)
     logger.info(
         "rendered pet info image: pet_id={} pet_name={} bytes={}",
         pet.id,

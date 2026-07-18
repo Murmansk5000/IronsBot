@@ -9,7 +9,6 @@ from nonebot.rule import Rule
 
 from ironsbot.services.help_hint import HelpHintService, is_poke_at_bot
 from ironsbot.shared.help_hints import POKE_HELP_HINT_TEXT
-from ironsbot.shared.matcher_priority import get_matcher_priority
 
 if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
@@ -46,7 +45,7 @@ def install(registry: MatcherRegistry, service: HelpHintService) -> None:
 
     matcher = registry.on_notice(
         rule=Rule(_is_poke_at_bot),
-        priority=get_matcher_priority("help_hint", 0),
+        priority=registry.priority("help_hint", 0),
         block=True,
     )
     matcher.append_handler(handle_poke_help)

@@ -10,7 +10,6 @@ from ironsbot.integrations.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.services.seer.errors import format_player_query_error
-from ironsbot.services.seer.rank_display import rank_display_limit_for_group
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
     LOCAL_RANKS,
@@ -21,7 +20,6 @@ from ironsbot.services.seer.rank_list_models import (
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.shared.messaging import finish_event_reply
 
-from ..config import get_player_query_config
 from .rank_list_actions import (
     build_global_rank_message,
     build_global_rank_player_message,
@@ -41,6 +39,7 @@ if TYPE_CHECKING:
     from nonebot.typing import T_State
 
     from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 
 async def handle_help(
@@ -51,6 +50,7 @@ async def handle_help(
 
 
 async def handle_list(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -72,11 +72,16 @@ async def handle_list(
     await finish_event_reply(
         matcher,
         event,
-        build_local_rank_message(LOCAL_RANKS[command.rank_key], command),
+        build_local_rank_message(
+            resources.local_rank,
+            LOCAL_RANKS[command.rank_key],
+            command,
+        ),
     )
 
 
 async def handle_score(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -90,12 +95,13 @@ async def handle_score(
             game,
             GLOBAL_RANKS[command.rank_key],
             command,
-            display_limit=rank_display_limit_for_group(event_group_id(event)),
+            display_limit=resources.rank_display.limit_for_group(event_group_id(event)),
         ),
     )
 
 
 async def handle_player(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -105,8 +111,12 @@ async def handle_player(
     spec = GLOBAL_RANKS[command.rank_key]
     try:
         message = await asyncio.wait_for(
-            build_global_rank_player_message(game, command),
-            timeout=get_player_query_config().detail_timeout_seconds,
+            build_global_rank_player_message(
+                resources.local_rank,
+                game,
+                command,
+            ),
+            timeout=resources.config.player.detail_timeout_seconds,
         )
     except TimeoutError:
         message = f"❌ {spec.title}玩家查询超时，请稍后再试。"

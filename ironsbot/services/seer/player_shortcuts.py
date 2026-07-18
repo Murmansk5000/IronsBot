@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
-from ironsbot.services.seer.local_rank_update import upsert_local_rank_metrics
 from ironsbot.services.seer.player_collection_formatting import (
     format_autocard_rank_info,
     format_collection_info,
@@ -20,7 +19,6 @@ from ironsbot.services.seer.player_query import (
     calculate_player_peak_scores,
     validate_player_peak_season,
 )
-from ironsbot.services.seer.rank_lookup_runtime import get_current_peak_sub_key
 from ironsbot.services.seer.rank_models import PlayerRankSummary
 from ironsbot.services.seer.rank_summary_runtime import (
     fetch_autocard_rank_summary,
@@ -35,6 +33,7 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
 
 PlayerShortcutKind = Literal["collection", "peak", "autocard"]
@@ -94,36 +93,36 @@ def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
 
 
 async def fetch_player_shortcut_message(
+    local_rank: LocalRankService,
     game: Any,
     *,
     command: PlayerShortcutCommand,
     player_id: int,
-    local_rank_enabled: bool,
 ) -> str:
     if command.kind == "collection":
         return await _fetch_collection_message(
+            local_rank,
             game,
             player_id=player_id,
-            local_rank_enabled=local_rank_enabled,
         )
     if command.kind == "peak":
         return await _fetch_peak_message(
+            local_rank,
             game,
             player_id=player_id,
-            local_rank_enabled=local_rank_enabled,
         )
     return await _fetch_autocard_message(
+        local_rank,
         game,
         player_id=player_id,
-        local_rank_enabled=local_rank_enabled,
     )
 
 
 async def _fetch_collection_message(
+    local_rank: LocalRankService,
     game: Any,
     *,
     player_id: int,
-    local_rank_enabled: bool,
 ) -> str:
     user_info, more_info, unity_part_one = await asyncio.gather(
         game.get_user_info(player_id),
@@ -149,7 +148,7 @@ async def _fetch_collection_message(
         peak_expert_score=None,
     )
     local_summary = await _update_selected_metrics(
-        enabled=local_rank_enabled,
+        local_rank,
         player_id=player_id,
         nick=str(user_info.nick),
         metrics=metrics,
@@ -166,16 +165,16 @@ async def _fetch_collection_message(
 
 
 async def _fetch_peak_message(
+    local_rank: LocalRankService,
     game: Any,
     *,
     player_id: int,
-    local_rank_enabled: bool,
 ) -> str:
     user_info, unity_peak = await asyncio.gather(
         game.get_user_info(player_id),
         fetch_unity_peak(game, player_id),
     )
-    peak_sub_key = get_current_peak_sub_key()
+    peak_sub_key = local_rank.current_peak_sub_key()
     scores = calculate_player_peak_scores(unity_peak)
     rank_summary = await fetch_peak_season_rank_summary(
         game,
@@ -203,7 +202,7 @@ async def _fetch_peak_message(
     for metric_key in validated_peak.clear_metric_keys:
         metrics.pop(metric_key, None)
     local_summary = await _update_selected_metrics(
-        enabled=local_rank_enabled,
+        local_rank,
         player_id=player_id,
         nick=str(user_info.nick),
         metrics=metrics,
@@ -221,10 +220,10 @@ async def _fetch_peak_message(
 
 
 async def _fetch_autocard_message(
+    local_rank: LocalRankService,
     game: Any,
     *,
     player_id: int,
-    local_rank_enabled: bool,
 ) -> str:
     user_info, result = await asyncio.gather(
         game.get_user_info(player_id),
@@ -238,7 +237,7 @@ async def _fetch_autocard_message(
         }
     }
     local_summary = await _update_selected_metrics(
-        enabled=local_rank_enabled,
+        local_rank,
         player_id=player_id,
         nick=str(user_info.nick),
         metrics=metrics,
@@ -253,8 +252,8 @@ async def _fetch_autocard_message(
 
 
 async def _update_selected_metrics(  # noqa: PLR0913
+    local_rank: LocalRankService,
     *,
-    enabled: bool,
     player_id: int,
     nick: str,
     metrics: dict[str, MetricValue],
@@ -267,19 +266,12 @@ async def _update_selected_metrics(  # noqa: PLR0913
         for key, value in metrics.items()
         if key in allowed_keys and value.get("value") is not None
     }
-    if not enabled or (not selected and not clear_metric_keys):
+    if not local_rank.config.enabled or (not selected and not clear_metric_keys):
         return LocalRankSummary()
-    return await upsert_local_rank_metrics(
+    return await local_rank.upsert_metrics(
         player_id=player_id,
         nick=nick,
         current_metrics=selected,
         peak_sub_key=peak_sub_key,
         clear_metric_keys=clear_metric_keys & allowed_keys,
     )
-
-
-__all__ = [
-    "PlayerShortcutCommand",
-    "fetch_player_shortcut_message",
-    "parse_player_shortcut_command",
-]

@@ -8,6 +8,7 @@ from seerapi_models import BattleEffectORM
 
 from ironsbot.integrations.seer_data.getters import (
     BattleEffectDataGetter,
+    GetBattleEffectData,
 )
 from ironsbot.integrations.seer_data.image import BattleEffectImageGetter
 
@@ -41,7 +42,10 @@ async def handle_battle_effect(
     matcher: Matcher,
     event: Event,
     state: T_State,
-    battle_effects: tuple[BattleEffectORM, ...],
+    battle_effects: tuple[
+        BattleEffectORM,
+        ...,
+    ] = GetBattleEffectData(),
 ) -> None:
     if not battle_effects:
         raise FinishedException

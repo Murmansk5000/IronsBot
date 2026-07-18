@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.config.models.seer import TeamResourceConfig
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 TeamResourceSubscriptionRow = tuple[int, int, str, int, str, int, int, str, str]
 TeamResourceSubscriptionPromptRow = tuple[
@@ -267,12 +269,16 @@ class TeamResourceService:
     config: TeamResourceConfig
     store: TeamResourceSubscriptionStore
     default_at_user_ids: tuple[int, ...]
+    features: FeatureService
+    delivery: DeliveryResources
 
     @classmethod
     def build(
         cls,
         config: TeamResourceConfig,
         user_aliases: Mapping[str, int],
+        features: FeatureService,
+        delivery: DeliveryResources,
     ) -> TeamResourceService:
         user_ids = [
             user_aliases[raw] if raw in user_aliases else int(raw)
@@ -284,6 +290,8 @@ class TeamResourceService:
             config,
             TeamResourceSubscriptionStore(config.subscription_path),
             tuple(dict.fromkeys(user_ids)),
+            features,
+            delivery,
         )
 
 def _row_to_subscription(
@@ -332,12 +340,3 @@ def _decode_user_ids(value: str) -> tuple[int, ...]:
 
 def _now_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-__all__ = [
-    "TeamResourceService",
-    "TeamResourceSubscription",
-    "TeamResourceSubscriptionPrompt",
-    "TeamResourceSubscriptionStore",
-    "TeamResourceSubscriptionUpdate",
-]

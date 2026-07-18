@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
@@ -21,11 +22,6 @@ from ironsbot.services.activity.service import (
     ACTIVITY_PUSH_SUBSCRIPTION_KEY,
     ActivityService,
     TargetType,
-)
-from ironsbot.shared.features import (
-    groups_for_feature,
-    users_for_feature,
-    users_with_superusers,
 )
 from ironsbot.shared.messaging import send_broadcast_message
 from ironsbot.shared.messaging.push_subscription_models import (
@@ -47,6 +43,9 @@ if TYPE_CHECKING:
     from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.runtime.plugins import PluginDefinition
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
@@ -83,6 +82,8 @@ async def refresh_push_time_jobs(
 
 def build_activity_component(
     config: ActivityConfig,
+    features: FeatureService,
+    message_delivery: DeliveryResources,
     *,
     push_subscription_path: str,
 ) -> ActivityComponent:
@@ -125,22 +126,25 @@ def build_activity_component(
 
     def targets() -> ActivityReminderTargets:
         return ActivityReminderTargets(
-            group_ids=tuple(groups_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)),
+            group_ids=tuple(
+                features.groups_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+            ),
             private_user_ids=tuple(
-                users_with_superusers(
-                    users_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+                features.users_with_superusers(
+                    features.users_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
                 )
             ),
         )
 
-    async def broadcast(delivery: ActivityReminderDelivery) -> bool:
+    async def broadcast(reminder: ActivityReminderDelivery) -> bool:
         summary = await send_broadcast_message(
-            delivery.message,
-            group_ids=delivery.group_ids,
-            private_user_ids=delivery.private_user_ids,
-            action_name=delivery.action_name,
+            message_delivery,
+            reminder.message,
+            group_ids=reminder.group_ids,
+            private_user_ids=reminder.private_user_ids,
+            action_name=reminder.action_name,
             interval_seconds=1.2,
-            message_limiter=append_fire_manual_ad_for_group,
+            message_limiter=partial(append_fire_manual_ad_for_group, features),
             subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
         )
         return bool(summary.succeeded)
@@ -166,6 +170,7 @@ def build_activity_component(
 def build_headless_service(
     config: RuntimeConfig,
     credentials: CredentialsConfig,
+    admin_notices: AdminNoticeService,
 ) -> HeadlessService:
     from ironsbot.integrations.headless_seer.client import ClientManager
     from ironsbot.services.operations.headless import HeadlessService
@@ -176,6 +181,7 @@ def build_headless_service(
         credentials,
         config.headless,
         config.headless_notice,
+        admin_notices,
     )
 
 
@@ -211,12 +217,3 @@ def build_application_lifecycle(
             for hook in definition.hooks.bot_disconnect
         ),
     )
-
-
-__all__ = [
-    "ActivityComponent",
-    "build_activity_component",
-    "build_application_lifecycle",
-    "build_headless_service",
-    "refresh_push_time_jobs",
-]

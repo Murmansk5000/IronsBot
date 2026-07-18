@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from ironsbot.config.loader import get_app_config
+if TYPE_CHECKING:
+    from ironsbot.config.models.seer import SeasonCountdownConfig
 
 CHINA_TZ = timezone(timedelta(hours=8))
 
@@ -87,8 +88,9 @@ def load_peak_season_window(session: Any) -> SeasonWindow | None:
     )
 
 
-def load_autocard_season_window() -> SeasonWindow:
-    config = get_app_config().seer.season
+def load_autocard_season_window(
+    config: SeasonCountdownConfig,
+) -> SeasonWindow:
     return SeasonWindow(
         name=config.autocard_name,
         start_time=cast("datetime | None", config.autocard_start_time),
@@ -96,7 +98,10 @@ def load_autocard_season_window() -> SeasonWindow:
     )
 
 
-def format_season_countdown(session: Any) -> str:
+def format_season_countdown(
+    session: Any,
+    config: SeasonCountdownConfig,
+) -> str:
     now = _as_china_time(datetime.now(CHINA_TZ))
     if now is None:
         now = datetime.now(CHINA_TZ)
@@ -112,7 +117,7 @@ def format_season_countdown(session: Any) -> str:
     else:
         lines.append(_format_window(peak, now=now))
 
-    lines.extend(("", _format_window(load_autocard_season_window(), now=now)))
+    lines.extend(("", _format_window(load_autocard_season_window(config), now=now)))
     return "\n".join(lines)
 
 

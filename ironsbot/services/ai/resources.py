@@ -3,13 +3,16 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ironsbot.config.models.ai import AiConfig
-from ironsbot.shared.messaging.admin_notice import send_admin_notice
+from ironsbot.shared.features import FeatureService
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 from ironsbot.shared.messaging.rate_limits import SlidingWindowRateLimiter
 
 
 @dataclass(frozen=True, slots=True)
 class AiResources:
     config: AiConfig
+    features: FeatureService
+    admin_notices: AdminNoticeService
     api_key: str
     group_aliases: Mapping[str, int]
     team_resource_commands: tuple[str, ...]
@@ -38,7 +41,7 @@ class AiResources:
             < 0
         ):
             return
-        await send_admin_notice(
+        await self.admin_notices.send(
             message,
             subscription_key=subscription_key,
             action_name=action_name,

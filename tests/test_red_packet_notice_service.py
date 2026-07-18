@@ -12,6 +12,8 @@ from ironsbot.services.red_packet_notice import (
     is_red_packet_payload,
     summarize_red_packet_message,
 )
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -91,6 +93,7 @@ def test_red_packet_notice_uses_admin_notice_delivery(
         return "示例群"
 
     async def fake_send_admin_notice(
+        _service: AdminNoticeService,
         message: object,
         *,
         subscription_key: str,
@@ -115,8 +118,8 @@ def test_red_packet_notice_uses_admin_notice_delivery(
         fake_get_group_name,
     )
     monkeypatch.setattr(
-        red_packet_notice_plugin,
-        "send_admin_notice",
+        AdminNoticeService,
+        "send",
         fake_send_admin_notice,
     )
 
@@ -127,6 +130,7 @@ def test_red_packet_notice_uses_admin_notice_delivery(
             group_id=987654321,
             sender_id=1234567890,
             summary="恭喜发财",
+            admin_notices=build_test_runtime().admin_notices,
         )
     )
 

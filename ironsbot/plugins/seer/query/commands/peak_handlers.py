@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, NamedTuple, TypedDict
 
 from nonebot.matcher import Matcher
-from nonebot.params import Fullmatch
+from nonebot.params import Depends, Fullmatch
 from nonebot_plugin_saa import Image, MessageFactory
 from seerapi_models import (
     PeakExpertPoolORM,
@@ -31,6 +31,7 @@ from ironsbot.integrations.seer_data.resolvers import (
     from_id_get_name,
 )
 from ironsbot.integrations.seer_data.sessions import AllSessions
+from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
@@ -76,26 +77,36 @@ async def get_expert_ban_pool(
 
 
 async def handle_peak_pool(
+    cache: RenderCache,
     matcher: Matcher,
-    pools: list[PeakPoolORM],
+    pools: list[PeakPoolORM] = Depends(get_standard_limit_pool),
 ) -> None:
     await matcher.send("正在生成图片...")
     start_time = pools[0].start_time.strftime("%Y-%m-%d")
     end_time = pools[0].end_time.strftime("%Y-%m-%d")
-    pic_bytes = await render_peak_pool(pools, f"竞技池 / {start_time} ~ {end_time}")
+    pic_bytes = await render_peak_pool(
+        cache,
+        pools,
+        f"竞技池 / {start_time} ~ {end_time}",
+    )
     msg = MessageFactory()
     msg += Image(pic_bytes)
     await msg.finish(at_sender=False)
 
 
 async def handle_peak_expert_pool(
+    cache: RenderCache,
     matcher: Matcher,
-    pools: list[PeakExpertPoolORM],
+    pools: list[PeakExpertPoolORM] = Depends(get_expert_ban_pool),
 ) -> None:
     await matcher.send("正在生成图片...")
     start_time = pools[0].start_time.strftime("%Y-%m-%d")
     end_time = pools[0].end_time.strftime("%Y-%m-%d")
-    pic_bytes = await render_peak_pool(pools, f"专家禁用池 / {start_time} ~ {end_time}")
+    pic_bytes = await render_peak_pool(
+        cache,
+        pools,
+        f"专家禁用池 / {start_time} ~ {end_time}",
+    )
     msg = MessageFactory()
     msg += Image(pic_bytes)
     await msg.finish(at_sender=False)

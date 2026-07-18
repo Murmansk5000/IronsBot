@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Annotated
 
 from nonebot.matcher import Matcher
 from nonebot.params import Depends, Fullmatch
-from seerapi_models import PeakExpertPoolORM, PeakPoolORM
+from seerapi_models import PeakExpertPoolORM
 
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.integrations.seer_data.sessions import AllSessions
@@ -16,26 +17,12 @@ from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.rule import no_reply
 
 from ..depends import SeerAPISession, game_client_dependency
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from . import peak_handlers
 
 
-async def _handle_peak_pool(
-    matcher: Matcher,
-    pools: list[PeakPoolORM] = Depends(peak_handlers.get_standard_limit_pool),
-) -> None:
-    await peak_handlers.handle_peak_pool(matcher=matcher, pools=pools)
-
-
-async def _handle_peak_expert_pool(
-    matcher: Matcher,
-    pools: list[PeakExpertPoolORM] = Depends(peak_handlers.get_expert_ban_pool),
-) -> None:
-    await peak_handlers.handle_peak_expert_pool(matcher=matcher, pools=pools)
-
-
 def install(group: SeerMatcherGroup) -> None:
-    game_client = game_client_dependency(group.headless)
+    game_client = game_client_dependency(group.resources.headless)
 
     async def handle_peak_vote(
         matcher: Matcher,
@@ -103,8 +90,8 @@ def install(group: SeerMatcherGroup) -> None:
             game=game,
         )
 
-    rule = seer_feature_rule("seer_peak") & no_reply()
-    priority = seer_feature_priority("seer_peak")
+    rule = seer_feature_rule(group.resources.features, "seer_peak") & no_reply()
+    priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(
         ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
@@ -112,7 +99,9 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pool.append_handler(_handle_peak_pool)
+    pool.append_handler(
+        partial(peak_handlers.handle_peak_pool, group.resources.render_cache)
+    )
 
     expert_pool = group.on_fullmatch(
         ("专家池", "巅峰专家池", "专家禁用池"),
@@ -120,7 +109,9 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    expert_pool.append_handler(_handle_peak_expert_pool)
+    expert_pool.append_handler(
+        partial(peak_handlers.handle_peak_expert_pool, group.resources.render_cache)
+    )
 
     vote = group.on_fullmatch(
         ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
@@ -160,6 +151,3 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     pet.append_handler(handle_peak_pet)
-
-
-__all__ = ["install"]

@@ -1,16 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any
+from functools import partial
+from typing import TYPE_CHECKING, Any
 
 from nonebot import logger
-from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher
 from nonebot.rule import Rule
-from nonebot.typing import T_State
 
 from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.integrations.headless_seer.exception import (
@@ -18,9 +16,7 @@ from ironsbot.integrations.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
-from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.packets import ensure_extended_packets
@@ -48,18 +44,12 @@ from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
 from ironsbot.services.seer.sequ_extra import (
     UnityPeakInfo,
 )
-from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
 )
 from ironsbot.utils.rule import BOT_COMMAND_ARG_KEY, no_reply
 
-from ..config import (
-    get_local_rank_config,
-    get_player_query_config,
-    get_team_query_config,
-)
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ._args import parse_numeric_id
 from .player_context import (
@@ -75,6 +65,16 @@ from .player_detail_conversation import (
 from .player_detail_fetch import create_player_detail_task
 
 _MAX_PLAYER_ID = 2_000_000_000
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+    from nonebot.adapters.onebot.v11 import MessageEvent
+    from nonebot.matcher import Matcher
+    from nonebot.typing import T_State
+
+    from ironsbot.config.models.seer import SeerConfig
+    from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 
 @dataclass(slots=True)
@@ -125,6 +125,7 @@ def _log_player_extra_error(label: str, _error: Exception) -> None:
 
 
 async def validate_player_id(
+    config: SeerConfig,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -139,7 +140,7 @@ async def validate_player_id(
         )
     else:
         binding = get_player_binding(
-            get_player_query_config().binding.path,
+            config.player.binding.path,
             event.user_id,
         )
         if binding.player_id is None:
@@ -157,16 +158,19 @@ async def validate_player_id(
 
 
 async def handle_player(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    headless: HeadlessService,
 ) -> None:
     ensure_extended_packets()
+    config = resources.config
+    headless = resources.headless
     player_id: int = state[PLAYER_ID_KEY]
-    player_config = get_player_query_config()
+    player_config = config.player
     try:
         pending = await _fetch_pending_player_query(
+            config,
             player_id,
             headless.get_game(),
         )
@@ -210,25 +214,26 @@ async def handle_player(
             matcher,
             event,
             namespace=PLAYER_BINDING_NAMESPACE,
-            handlers=[handle_player_binding_choice],
+            handlers=[partial(handle_player_binding_choice, resources)],
             reply_check=lambda reply: parse_binding_choice(reply.get_plaintext())
             is not None,
             prompt=player_binding_offer_message(player_id, pending.user_info.nick),
             mention_sender=True,
         )
 
-    await _send_pending_player_query(matcher, event, state, pending)
+    await _send_pending_player_query(resources, matcher, event, state, pending)
 
 
 async def _fetch_pending_player_query(
+    config: SeerConfig,
     player_id: int,
     game: SeerGame,
 ) -> PendingPlayerQuery:
     extra_errors: list[str] = []
-    player_config = get_player_query_config()
+    player_config = config.player
     section_plan = plan_player_query_sections(
         player_config.sections,
-        local_rank_enabled=get_local_rank_config().enabled,
+        local_rank_enabled=config.local_rank.enabled,
     )
     with headless_operation(
         "米米号查询",
@@ -256,7 +261,7 @@ async def _fetch_pending_player_query(
         try:
             team_info = await asyncio.wait_for(
                 game.get_team_info(user_info.team_id),
-                timeout=min(5.0, get_team_query_config().timeout_seconds),
+                timeout=min(5.0, config.team.timeout_seconds),
             )
             team_name = team_info.name
         except Exception:  # noqa: BLE001
@@ -287,6 +292,7 @@ async def _fetch_pending_player_query(
 
 
 async def handle_player_binding_choice(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -303,7 +309,7 @@ async def handle_player_binding_choice(
     try:
         if choice:
             bind_player(
-                get_player_query_config().binding.path,
+                resources.config.player.binding.path,
                 qq_user_id=event.user_id,
                 player_id=pending.player_id,
                 player_nick=str(pending.user_info.nick),
@@ -311,7 +317,7 @@ async def handle_player_binding_choice(
             status_message = f"已设置默认米米号：{pending.player_id}。"
         else:
             decline_player_binding(
-                get_player_query_config().binding.path,
+                resources.config.player.binding.path,
                 qq_user_id=event.user_id,
             )
             status_message = "已跳过默认米米号设置。"
@@ -320,10 +326,11 @@ async def handle_player_binding_choice(
         status_message = f"⚠️ 默认米米号设置保存失败：{error}"
 
     pending.player_message = f"{status_message}\n\n{pending.player_message}"
-    await _send_pending_player_query(matcher, event, state, pending)
+    await _send_pending_player_query(resources, matcher, event, state, pending)
 
 
 async def _send_pending_player_query(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -332,6 +339,7 @@ async def _send_pending_player_query(
     section_plan = pending.section_plan
     detail_task = (
         create_player_detail_task(
+            resources.local_rank,
             pending.game,
             player_id=pending.player_id,
             user_info=pending.user_info,
@@ -340,6 +348,7 @@ async def _send_pending_player_query(
             needs_peak_section=section_plan.needs_peak_section,
             has_autocard_rank=section_plan.has_autocard_rank,
             show_local_rank=section_plan.show_local_rank,
+            config=resources.config,
         )
         if section_plan.needs_detail_task
         else None
@@ -357,11 +366,13 @@ async def _send_pending_player_query(
 
 
 async def handle_player_binding_command(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    headless: HeadlessService,
 ) -> None:
+    config = resources.config
+    headless = resources.headless
     player_id = int(state[PLAYER_BINDING_COMMAND_ID_KEY])
     if not 1 <= player_id <= _MAX_PLAYER_ID:
         await finish_event_reply(
@@ -373,6 +384,7 @@ async def handle_player_binding_command(
     ensure_extended_packets()
     try:
         pending = await _fetch_pending_player_query(
+            config,
             player_id,
             headless.get_game(),
         )
@@ -412,7 +424,7 @@ async def handle_player_binding_command(
     status_message: str
     try:
         bind_player(
-            get_player_query_config().binding.path,
+            config.player.binding.path,
             qq_user_id=event.user_id,
             player_id=player_id,
             player_nick=str(pending.user_info.nick),
@@ -424,6 +436,7 @@ async def handle_player_binding_command(
 
     pending.player_message = f"{status_message}\n\n{pending.player_message}"
     await _send_pending_player_query(
+        resources,
         matcher,
         event,
         state,
@@ -431,9 +444,13 @@ async def handle_player_binding_command(
     )
 
 
-async def handle_player_unbind(matcher: Matcher, event: MessageEvent) -> None:
+async def handle_player_unbind(
+    config: SeerConfig,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
     removed = unbind_player(
-        get_player_query_config().binding.path,
+        config.player.binding.path,
         qq_user_id=event.user_id,
     )
     message = "已解除默认米米号。" if removed else "当前没有已绑定的米米号。"
@@ -441,59 +458,44 @@ async def handle_player_unbind(matcher: Matcher, event: MessageEvent) -> None:
 
 
 def install(group: SeerMatcherGroup) -> None:
-    async def handle_binding(
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        await handle_player_binding_command(matcher, event, state, group.headless)
-
-    async def handle_query(
-        matcher: Matcher,
-        event: MessageEvent,
-        state: T_State,
-    ) -> None:
-        await handle_player(matcher, event, state, group.headless)
-
     binding_matcher = group.on_message(
         policy=CommandPolicy.command("seer_player_binding"),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.resources.features, "seer_player")
         & Rule(_is_binding_command)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
-    binding_matcher.append_handler(handle_binding)
+    binding_matcher.append_handler(
+        partial(handle_player_binding_command, group.resources)
+    )
 
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
         policy=CommandPolicy.command("seer_player_binding"),
-        rule=seer_feature_rule("seer_player") & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        rule=seer_feature_rule(group.resources.features, "seer_player") & no_reply(),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
-    unbind_matcher.append_handler(handle_player_unbind)
+    unbind_matcher.append_handler(partial(handle_player_unbind, group.resources.config))
 
     invalid_matcher = group.on_message(
         policy=CommandPolicy.exempt("silent invalid player query blocker"),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.resources.features, "seer_player")
         & Rule(_is_invalid_player_text_query)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
     invalid_matcher.append_handler(block_invalid_player_text_query)
 
     query_matcher = group.on_message(
         policy=CommandPolicy.command("seer_player"),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.resources.features, "seer_player")
         & Rule(_is_player_id_query)
         & no_reply(),
-        priority=get_matcher_priority("seer_player", 1),
+        priority=group.matcher_priority("seer_player", 1),
         block=True,
     )
-    query_matcher.append_handler(validate_player_id)
-    query_matcher.append_handler(handle_query)
-
-
-__all__ = ["install"]
+    query_matcher.append_handler(partial(validate_player_id, group.resources.config))
+    query_matcher.append_handler(partial(handle_player, group.resources))

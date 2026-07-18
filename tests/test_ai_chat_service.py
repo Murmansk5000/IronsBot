@@ -5,8 +5,11 @@ import pytest
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.services.ai.resources import AiResources
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 456
 USER_ID = 123
@@ -20,7 +23,6 @@ except ValueError:
 service = pytest.importorskip("ironsbot.services.ai.chat")
 constants = pytest.importorskip("ironsbot.services.ai.constants")
 ai_client = pytest.importorskip("ironsbot.services.ai.client")
-ai_resources_module = pytest.importorskip("ironsbot.services.ai.resources")
 source_context = pytest.importorskip("ironsbot.services.ai.source_context")
 
 
@@ -37,47 +39,48 @@ class FakeBot:
 
 def _ai_resources(
     group_aliases: dict[str, int] | None = None,
+    *,
+    admin_groups: tuple[int, ...] = (),
+    superusers: tuple[int, ...] = (),
 ) -> AiResources:
+    aliases = group_aliases or {}
+    runtime = build_test_runtime(
+        feature_config=FeatureConfig(
+            group_aliases=aliases,
+            group_policy={
+                str(group_id): ["admin_notice"] for group_id in admin_groups
+            },
+        ),
+        superuser_ids=superusers,
+    )
     return AiResources(
         AiConfig(),
+        runtime.features,
+        runtime.admin_notices,
         "test-key",
-        group_aliases or {},
+        aliases,
         ("战队",),
         20,
     )
 
 
-def test_can_show_admin_notice_for_superuser(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(service, "is_superuser", lambda user_id: user_id == USER_ID)
-    monkeypatch.setattr(service, "group_has_feature", lambda *_args: False)
-
+def test_can_show_admin_notice_for_superuser() -> None:
     assert service.can_show_admin_notice(
+        _ai_resources(superusers=(USER_ID,)),
         group_message_event(user_id=USER_ID, group_id=GROUP_ID)
     )
 
 
-def test_can_show_admin_notice_for_admin_notice_group(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(service, "is_superuser", lambda _user_id: False)
-    monkeypatch.setattr(
-        service,
-        "group_has_feature",
-        lambda group_id, feature: group_id == GROUP_ID and feature == "admin_notice",
-    )
-
+def test_can_show_admin_notice_for_admin_notice_group() -> None:
     assert service.can_show_admin_notice(
+        _ai_resources(admin_groups=(GROUP_ID,)),
         group_message_event(user_id=USER_ID, group_id=GROUP_ID)
     )
 
 
-def test_can_hide_admin_notice_for_regular_group(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(service, "is_superuser", lambda _user_id: False)
-    monkeypatch.setattr(service, "group_has_feature", lambda *_args: False)
-
+def test_can_hide_admin_notice_for_regular_group() -> None:
     assert not service.can_show_admin_notice(
+        _ai_resources(),
         group_message_event(user_id=USER_ID, group_id=GROUP_ID)
     )
 
@@ -145,10 +148,14 @@ def test_ai_client_notice_appends_source_context() -> None:
 def test_ai_admin_notice_is_limited_by_key(monkeypatch: MonkeyPatch) -> None:
     sent: list[str] = []
 
-    async def fake_send(message: str, **_kwargs: object) -> None:
+    async def fake_send(
+        _service: AdminNoticeService,
+        message: str,
+        **_kwargs: object,
+    ) -> None:
         sent.append(message)
 
-    monkeypatch.setattr(ai_resources_module, "send_admin_notice", fake_send)
+    monkeypatch.setattr(AdminNoticeService, "send", fake_send)
     resources = _ai_resources()
     asyncio.run(resources.notify_admin_once("same", "first"))
     asyncio.run(resources.notify_admin_once("same", "second"))

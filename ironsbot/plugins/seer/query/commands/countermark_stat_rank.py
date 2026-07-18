@@ -29,7 +29,7 @@ from ironsbot.services.seer.countermark_stat_rank_repository import (
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
 
-from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
@@ -71,12 +71,9 @@ async def handle_countermark_stat_rank(
 def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_countermark_stat_rank"),
-        rule=seer_feature_rule("seer_mintmark")
+        rule=seer_feature_rule(group.resources.features, "seer_mintmark")
         & Rule(_is_countermark_stat_rank_command)
         & no_reply(),
-        priority=seer_feature_priority("seer_mintmark"),
+        priority=group.matcher_priority("seer_mintmark"),
     )
     matcher.append_handler(handle_countermark_stat_rank)
-
-
-__all__ = ["install"]

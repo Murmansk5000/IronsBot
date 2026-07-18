@@ -10,22 +10,18 @@ from nonebot.log import logger
 if TYPE_CHECKING:
     from ironsbot.config.models.runtime import StartupConfig
     from ironsbot.services.startup_notice import StartupNoticeService
-    from ironsbot.shared.messaging import AdminNoticeTargets, TargetSendSummary
+    from ironsbot.shared.messaging import TargetSendSummary
 
 
 async def _send_notice_part(
     *,
+    service: StartupNoticeService,
     message_text: str,
     subscription_key: str,
     action_name: str,
-    targets: AdminNoticeTargets,
 ) -> TargetSendSummary:
-    from ironsbot.shared.messaging import send_broadcast_message
-
-    return await send_broadcast_message(
+    return await service.admin_notices.send(
         Message(message_text),
-        private_user_ids=targets.private_user_ids,
-        group_ids=targets.group_ids,
         action_name=action_name,
         interval_seconds=1.2,
         subscription_key=subscription_key,
@@ -43,7 +39,7 @@ async def send_startup_notice(
     service.begin_send()
 
     try:
-        targets = service.get_targets()
+        targets = service.admin_notices.targets()
         if targets.is_empty:
             logger.warning("startup notice has no admin notice targets")
             return
@@ -55,9 +51,9 @@ async def send_startup_notice(
         summaries.append(
             await _send_notice_part(
                 message_text=config.message,
+                service=service,
                 subscription_key="startup_notice",
                 action_name="startup notice",
-                targets=targets,
             )
         )
 
@@ -65,9 +61,9 @@ async def send_startup_notice(
             [
                 await _send_notice_part(
                     message_text=part.message,
+                    service=service,
                     subscription_key=part.subscription_key,
                     action_name=part.action_name,
-                    targets=targets,
                 )
                 for part in service.parts
             ]
@@ -84,6 +80,3 @@ async def send_startup_notice(
 
     finally:
         service.finish_send()
-
-
-__all__ = ["send_startup_notice"]

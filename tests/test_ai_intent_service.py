@@ -2,9 +2,11 @@ import pytest
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig, AiIntentAction
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.services.ai import intent, intent_actions
 from ironsbot.services.ai.resources import AiResources
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.runtime import build_test_runtime
 
 
 def test_intent_reply_yes_parser_accepts_short_yes_forms() -> None:
@@ -116,7 +118,7 @@ def test_fire_manual_action_prefilter_is_feature_specific() -> None:
     assert intent.passes_action_prefilter("战队", team_action)
 
 
-def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> None:
+def test_fire_manual_action_requires_group_feature() -> None:
     event = group_message_event(
         "手册在哪",
         user_id=2,
@@ -130,14 +132,9 @@ def test_fire_manual_action_requires_group_feature(monkeypatch: MonkeyPatch) -> 
         message="ok",
         intent="manual",
     )
-    monkeypatch.setattr(intent, "group_has_feature", lambda _group_id, _feature: False)
-    monkeypatch.setattr(
-        intent,
-        "is_group_feature_allowed",
-        lambda _user_id, _group_id, _feature: True,
-    )
+    resources = _resources(action, "ai_intent")
 
-    assert not intent.is_action_allowed(event, action)
+    assert not intent.is_action_allowed(resources.features, event, action)
 
 
 def _group_event(text: str):
@@ -148,9 +145,21 @@ def _group_event(text: str):
     )
 
 
-def _resources(action: AiIntentAction) -> AiResources:
+def _resources(
+    action: AiIntentAction,
+    *allowed_features: str,
+) -> AiResources:
+    enabled = allowed_features or ("ai_intent", action.feature)
+    runtime = build_test_runtime(
+        feature_config=FeatureConfig(
+            group_policy={"4": list(dict.fromkeys(enabled))},
+            superuser_bypass=False,
+        )
+    )
     return AiResources(
         AiConfig(intent_actions={action.id: action}),
+        runtime.features,
+        runtime.admin_notices,
         "key",
         {},
         ("战队",),
@@ -182,8 +191,6 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
         called = True
         return "yes"
 
-    monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: True)
-    monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
@@ -219,12 +226,10 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature(
         called = True
         return "yes"
 
-    monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: False)
-    monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
-        _resources(action),
+        _resources(action, action.feature),
         _group_event("鎴橀槦")
     )
 
@@ -255,8 +260,6 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
         prompts.append(prompt)
         return "yes"
 
-    monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: True)
-    monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
@@ -289,8 +292,6 @@ async def test_fire_manual_strong_intent_respects_ai_no(
     ) -> str:
         return "no"
 
-    monkeypatch.setattr(intent_actions, "is_ai_intent_allowed", lambda _event: True)
-    monkeypatch.setattr(intent_actions, "is_action_allowed", lambda *_args: True)
     monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
 
     matched = await intent_actions.classify_ai_intent_action(
