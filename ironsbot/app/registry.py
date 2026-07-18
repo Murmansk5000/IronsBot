@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.plugins import AsyncHook
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.team_resource_subscriptions import TeamResourceService
 
 
 class PluginRegistryError(ValueError):
@@ -135,10 +136,11 @@ def _install_activity(
 def _install_team_resource(
     registry: MatcherRegistry,
     headless: HeadlessService,
+    service: TeamResourceService,
 ) -> None:
     from ironsbot.plugins.team_resource_subscription import install
 
-    install(registry, headless)
+    install(registry, headless, service)
 
 
 def _install_seer_query(
@@ -185,10 +187,11 @@ def _install_ai_mention_guard(
 def _install_ai_intent(
     registry: MatcherRegistry,
     headless: HeadlessService,
+    team_resource_timeout_seconds: float,
 ) -> None:
     from ironsbot.plugins.ai_intent import install
 
-    install(registry, headless)
+    install(registry, headless, team_resource_timeout_seconds)
 
 
 def _install_about(registry: MatcherRegistry) -> None:
@@ -300,12 +303,13 @@ async def _register_activity_jobs(service: ActivityService) -> None:
 
 async def _register_team_resource_jobs(
     headless: HeadlessService,
+    service: TeamResourceService,
 ) -> None:
     from ironsbot.plugins.team_resource_subscription.runtime import (
         register_team_resource_jobs,
     )
 
-    register_team_resource_jobs(_scheduler(), headless)
+    register_team_resource_jobs(_scheduler(), headless, service)
 
 
 async def _register_local_rank_jobs(headless: HeadlessService) -> None:
@@ -375,6 +379,7 @@ def build_plugin_registry(
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
     from ironsbot.plugins.messaging.runtime_service import MessagingResources
+    from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.messaging.push_subscription_store import (
         PushUnsubscribeStore,
     )
@@ -385,6 +390,10 @@ def build_plugin_registry(
         config.message,
         config.activity,
         PushUnsubscribeStore(config.message.push_unsubscribe.data_path),
+    )
+    team_resource_service = TeamResourceService.build(
+        config.seer.team_resource,
+        config.feature.user_aliases,
     )
     push_time_refresher = partial(
         _refresh_push_time_jobs,
@@ -670,12 +679,20 @@ def build_plugin_registry(
                 group="seer",
                 order=50,
             ),
-            install=partial(_install_team_resource, headless=headless),
+            install=partial(
+                _install_team_resource,
+                headless=headless,
+                service=team_resource_service,
+            ),
             hooks=PluginHooks(
                 startup=(
                     (
                         "team_resource_jobs",
-                        partial(_register_team_resource_jobs, headless),
+                        partial(
+                            _register_team_resource_jobs,
+                            headless,
+                            team_resource_service,
+                        ),
                     ),
                 ),
             ),
@@ -806,7 +823,13 @@ def build_plugin_registry(
                 group="ai",
                 order=20,
             ),
-            install=partial(_install_ai_intent, headless=headless),
+            install=partial(
+                _install_ai_intent,
+                headless=headless,
+                team_resource_timeout_seconds=(
+                    config.seer.team_resource.query_timeout_seconds
+                ),
+            ),
         ),
         PluginDefinition(
             id="about",

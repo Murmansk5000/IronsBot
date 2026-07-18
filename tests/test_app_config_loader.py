@@ -711,11 +711,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "ai_intent_service_for_app_config_test",
         ROOT / "ironsbot" / "services" / "ai" / "intent.py",
     )
-    team_resource_config = _load_module_from_path(
-        "team_resource_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
-    )
-
     try:
         app_config = load_app_config(ROOT / "config.example.toml")
         assert ai_config.get_ai_config().model == "deepseek-v4-pro"
@@ -738,7 +733,6 @@ def test_small_plugin_config_accessors_read_app_config(
         ]
         assert "aliases" in app_config.runtime.data_sync.sources
         assert app_config.runtime.priority.enabled
-        assert team_resource_config.get_team_resource_config().commands == ["战队"]
     finally:
         clear_app_config_cache()
 

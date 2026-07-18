@@ -57,7 +57,11 @@ def _resolve_action_command_id(
     return f"ai_intent.{action_id}" if action_id else "ai_intent"
 
 
-def install(registry: MatcherRegistry, headless: HeadlessService) -> None:
+def install(
+    registry: MatcherRegistry,
+    headless: HeadlessService,
+    team_resource_timeout_seconds: float,
+) -> None:
     async def handle_action(
         matcher: Matcher,
         event: MessageEvent,
@@ -65,7 +69,13 @@ def install(registry: MatcherRegistry, headless: HeadlessService) -> None:
     ) -> None:
         action = state[ACTION_KEY]
         if is_team_action(action):
-            await run_team_action(matcher, event, action, headless.get_game())
+            await run_team_action(
+                matcher,
+                event,
+                action,
+                headless.get_game(),
+                team_resource_timeout_seconds,
+            )
             return
         if action.action == "ai_reply":
             await _handle_ai_reply_action(action, matcher, event)

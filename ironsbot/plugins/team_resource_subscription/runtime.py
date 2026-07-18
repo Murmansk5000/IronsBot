@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 from . import scan_team_resource_subscriptions
-from .config import get_team_resource_config
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.team_resource_subscriptions import TeamResourceService
 
 TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
 
@@ -17,13 +17,14 @@ TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
 def register_team_resource_jobs(
     scheduler: Any,
     headless: HeadlessService,
+    service: TeamResourceService,
 ) -> None:
-    config = get_team_resource_config()
+    config = service.config
     if not config.enabled:
         return
 
     async def scan() -> None:
-        await scan_team_resource_subscriptions(headless)
+        await scan_team_resource_subscriptions(headless, service)
 
     registry = JobRegistry(scheduler, prefix=TEAM_RESOURCE_JOB_PREFIX)
     for time_text in config.times:

@@ -8,9 +8,6 @@ from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 
-from ironsbot.services.ai.intent import (
-    get_team_resource_config,
-)
 from ironsbot.services.team_resource_adapter import (
     fetch_team_resource_result,
 )
@@ -40,6 +37,7 @@ async def _handle_team_resource_action(
     action: AiIntentAction,
     event: MessageEvent,
     game: SeerGame,
+    query_timeout_seconds: float,
 ) -> None:
     team_ids = action.team_ids
     if not team_ids:
@@ -55,7 +53,7 @@ async def _handle_team_resource_action(
         try:
             result = await asyncio.wait_for(
                 fetch_team_resource_result(game, team_id),
-                timeout=get_team_resource_config().query_timeout_seconds,
+                timeout=query_timeout_seconds,
             )
         except FinishedException:
             raise
@@ -79,9 +77,16 @@ async def run_team_action(
     event: MessageEvent,
     action: AiIntentAction,
     game: SeerGame,
+    query_timeout_seconds: float,
 ) -> None:
     if action.action == "team_resource":
-        await _handle_team_resource_action(matcher, action, event, game)
+        await _handle_team_resource_action(
+            matcher,
+            action,
+            event,
+            game,
+            query_timeout_seconds,
+        )
         return
 
     await _handle_team_recommend_action(matcher, action, event)
