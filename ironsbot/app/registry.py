@@ -15,6 +15,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
 )
 from ironsbot.services.help_hint import HelpHintService
+from ironsbot.services.seer.rank_display import RankDisplayService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.startup_notice import StartupNoticeService
@@ -523,6 +524,7 @@ def build_plugin_registry(  # noqa: PLR0913
                 runtime.install_seer_query,
                 resources=SeerQueryResources(
                     config.seer,
+                    RankDisplayService(config.seer.rank, config.feature.group_aliases),
                     headless,
                     features,
                     priority_service,

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.rank_display import RankDisplayService
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.features import FeatureService
 
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class SeerQueryResources:
     config: SeerConfig
+    rank_display: RankDisplayService
     headless: HeadlessService
     features: FeatureService
     priority: AdminPriorityService

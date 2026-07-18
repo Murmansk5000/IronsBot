@@ -18,7 +18,6 @@ from ironsbot.services.seer.rank_cache_messages import (
     build_rank_batch_result_message,
     build_rank_batch_start_message,
 )
-from ironsbot.services.seer.rank_display import rank_display_limit_for_group
 from ironsbot.services.seer.rank_list_spec_resolution import get_global_rank_spec
 from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_cache_overview_message,
@@ -211,7 +210,7 @@ async def handle_cache_status(
             batch_limit=resources.config.local_rank.batch_limit,
             refresh_limit=resources.config.local_rank.refresh_limit,
             refresh_max_age_hours=resources.config.local_rank.refresh_max_age_hours,
-            display_limit=rank_display_limit_for_group(event_group_id(event)),
+            display_limit=resources.rank_display.limit_for_group(event_group_id(event)),
         ),
     )
 

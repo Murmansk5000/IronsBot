@@ -10,7 +10,6 @@ from ironsbot.integrations.headless_seer.exception import (
     SocketRecvError,
 )
 from ironsbot.services.seer.errors import format_player_query_error
-from ironsbot.services.seer.rank_display import rank_display_limit_for_group
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
     LOCAL_RANKS,
@@ -41,6 +40,7 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 
 async def handle_help(
@@ -77,6 +77,7 @@ async def handle_list(
 
 
 async def handle_score(
+    resources: SeerQueryResources,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -90,7 +91,7 @@ async def handle_score(
             game,
             GLOBAL_RANKS[command.rank_key],
             command,
-            display_limit=rank_display_limit_for_group(event_group_id(event)),
+            display_limit=resources.rank_display.limit_for_group(event_group_id(event)),
         ),
     )
 

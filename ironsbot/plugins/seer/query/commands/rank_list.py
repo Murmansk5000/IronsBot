@@ -12,8 +12,8 @@ from nonebot.typing import T_State
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.seer.rank_display import (
+    RankDisplayService,
     parse_rank_display_limit_command,
-    rank_display_limit_for_group,
 )
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
@@ -50,10 +50,14 @@ GameHandler = Callable[
 ]
 
 
-async def _is_rank_list_command(event: Event, state: T_State) -> bool:
+async def _is_rank_list_command(
+    rank_display: RankDisplayService,
+    event: Event,
+    state: T_State,
+) -> bool:
     command = parse_rank_list_command(
         event.get_plaintext(),
-        default_limit=rank_display_limit_for_group(event_group_id(event)),
+        default_limit=rank_display.limit_for_group(event_group_id(event)),
     )
     if command is None:
         return False
@@ -142,7 +146,7 @@ def install(group: SeerMatcherGroup) -> None:
     list_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_list"),
         rule=seer_feature_rule(group.resources.features, "seer_rank")
-        & Rule(_is_rank_list_command)
+        & Rule(partial(_is_rank_list_command, group.resources.rank_display))
         & no_reply(),
         priority=group.matcher_priority("seer_rank"),
     )
@@ -171,9 +175,8 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=group.matcher_priority("seer_rank"),
     )
-    score_matcher.append_handler(
-        _with_game(group, rank_list_query_handlers.handle_score)
-    )
+    score_handler = partial(rank_list_query_handlers.handle_score, group.resources)
+    score_matcher.append_handler(_with_game(group, score_handler))
 
     cache_status_matcher = group.on_fullmatch(
         with_admin_prefix(("样本情况", "样本状态")),
@@ -264,9 +267,5 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_rank"),
     )
     display_limit_matcher.append_handler(
-        partial(
-            rank_list_display_handlers.handle_display_limit,
-            group.resources.features,
-            group.resources.config.rank.max_display_limit,
-        )
+        partial(rank_list_display_handlers.handle_display_limit, group.resources)
     )
