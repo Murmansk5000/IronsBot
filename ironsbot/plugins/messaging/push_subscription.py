@@ -73,15 +73,8 @@ def build_messaging_push_subscription_options(
     *,
     messaging: MessagingResources,
 ) -> list[PushSubscriptionOption]:
-    from ironsbot.services.bilibili.targets import bili_push_subscription_options
-
     return [
-        *bili_push_subscription_options(
-            target_type=target_type,
-            target_id=target_id,
-            store=messaging.store,
-            features=messaging.features,
-        ),
+        *messaging.extra_push_options(target_type, target_id),
         *_builtin_subscription_options(
             target_type=target_type,
             target_id=target_id,

@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from ironsbot.config.models.message import MessageConfig
     from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.shared.features import FeatureService
-    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
+    from ironsbot.shared.messaging.push_subscription_models import (
+        PushSubscriptionOption,
+        PushTargetType,
+    )
     from ironsbot.shared.messaging.push_subscription_store import (
         PushUnsubscribeStore,
     )
@@ -30,6 +33,10 @@ class MessagingResources:
     features: FeatureService
     priority: AdminPriorityService
     delivery: DeliveryResources
+    extra_push_options: Callable[
+        [PushTargetType, int],
+        list[PushSubscriptionOption],
+    ]
 
     def eligible_target_ids(
         self,

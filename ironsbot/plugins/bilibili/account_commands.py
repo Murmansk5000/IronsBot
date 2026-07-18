@@ -3,7 +3,6 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.accounts import (
     account_display_label,
     account_nickname,
@@ -16,18 +15,11 @@ from ironsbot.services.bilibili.preferences import (
     normalize_push_mode_text,
     push_mode_label,
 )
-from ironsbot.services.bilibili.storage import push_preference_store
-from ironsbot.services.bilibili.targets import (
-    mode_for_target_account,
-    target_rule,
-)
+from ironsbot.services.bilibili.resources import BilibiliResources
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging import finish_event_reply, message_event_target
 from ironsbot.shared.messaging.push_subscription_models import (
     PushTargetType,
-)
-from ironsbot.shared.messaging.push_subscription_store import (
-    PushUnsubscribeStore,
 )
 from ironsbot.shared.permissions import (
     can_manage_conversation_event,
@@ -53,39 +45,42 @@ def _bili_push_mode_usage() -> str:
     )
 
 
-def _push_unsubscribe_store() -> PushUnsubscribeStore:
-    return PushUnsubscribeStore(get_app_config().message.push_unsubscribe.data_path)
-
-
 def _format_account_mode_line(  # noqa: PLR0913
     *,
-    features: FeatureService,
+    resources: BilibiliResources,
     target_type: PushTargetType,
     target_id: int,
     account: str,
     uid: int,
     unsubscribed_keys: set[str],
 ) -> str:
-    mode = mode_for_target_account(features, target_type, target_id, account)
+    mode = resources.targets.mode_for_account(
+        target_type,
+        target_id,
+        account,
+    )
     mode_text = push_mode_label(mode)
     td_text = "，已 TD" if bili_push_subscription_key(uid) in unsubscribed_keys else ""
-    return f"- {account_display_label(account, uid=uid)}：{mode_text}{td_text}"
+    return (
+        f"- {account_display_label(account, resources.config, uid=uid)}："
+        f"{mode_text}{td_text}"
+    )
 
 
 async def handle_bili_accounts_action(
     matcher: Matcher,
     event: MessageEvent,
-    features: FeatureService,
+    resources: BilibiliResources,
 ) -> None:
     target_type, target_id, _ = message_event_target(event)
-    rule = target_rule(features, target_type, target_id)
-    accounts = bili_accounts()
+    rule = resources.targets.target_rule(target_type, target_id)
+    accounts = bili_accounts(resources.config)
 
     lines = ["📺【B站账号】"]
     account_lines = "、".join(
         (
             f"{nickname}（{uid}）"
-            if (nickname := account_nickname(name))
+            if (nickname := account_nickname(name, resources.config))
             else f"{name}={uid}"
         )
         for name, uid in accounts.items()
@@ -96,16 +91,18 @@ async def handle_bili_accounts_action(
         await finish_event_reply(matcher, event, "\n".join(lines))
         return
 
-    unsubscribed_keys = _push_unsubscribe_store().target_unsubscribed_keys(
+    unsubscribed_keys = (
+        resources.targets.unsubscribe_store.target_unsubscribed_keys(
         target_type,
         target_id,
+        )
     )
     lines.append("当前订阅：")
     for account in sorted(rule.accounts):
         uid = accounts[account]
         lines.append(
             _format_account_mode_line(
-                features=features,
+                resources=resources,
                 target_type=target_type,
                 target_id=target_id,
                 account=account,
@@ -121,8 +118,9 @@ async def handle_bili_push_mode_action(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    features: FeatureService,
+    resources: BilibiliResources,
 ) -> None:
+    features = resources.admin_notices.features
     if not _is_bili_push_mode_manager(features, event):
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
         return
@@ -133,8 +131,8 @@ async def handle_bili_push_mode_action(
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
         return
 
-    account = resolve_account_reference(account_ref)
-    uid = account_uid(account) if account is not None else None
+    account = resolve_account_reference(account_ref, resources.config)
+    uid = account_uid(account, resources.config) if account is not None else None
     if account is None or uid is None:
         await finish_event_reply(
             matcher,
@@ -144,9 +142,11 @@ async def handle_bili_push_mode_action(
         return
 
     target_type, target_id, _ = message_event_target(event)
-    rule = target_rule(features, target_type, target_id)
-    current_mode = mode_for_target_account(
-        features, target_type, target_id, account
+    rule = resources.targets.target_rule(target_type, target_id)
+    current_mode = resources.targets.mode_for_account(
+        target_type,
+        target_id,
+        account,
     )
     if current_mode is None:
         await finish_event_reply(
@@ -165,17 +165,23 @@ async def handle_bili_push_mode_action(
         await finish_event_reply(matcher, event, _bili_push_mode_usage())
         return
 
-    store = push_preference_store()
+    store = resources.targets.preferences
     if mode is None:
         store.clear_mode(target_type, target_id, uid)
     else:
         store.set_mode(target_type, target_id, uid, mode)
 
-    effective_mode = mode_for_target_account(
-        features, target_type, target_id, account
+    effective_mode = resources.targets.mode_for_account(
+        target_type,
+        target_id,
+        account,
     )
     scope = "当前群" if target_type == "group" else "当前私聊"
-    account_text = account_display_label(account, uid=uid)
+    account_text = account_display_label(
+        account,
+        resources.config,
+        uid=uid,
+    )
     await finish_event_reply(
         matcher,
         event,

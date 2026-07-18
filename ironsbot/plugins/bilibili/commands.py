@@ -3,7 +3,7 @@ from functools import partial
 from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.bilibili.resources import BilibiliResources
 from ironsbot.utils.rule import no_reply
 
 from .account_commands import (
@@ -22,8 +22,9 @@ from .update_actions import handle_update_dynamic_action
 
 def install(
     registry: MatcherRegistry,
-    admin_notices: AdminNoticeService,
+    resources: BilibiliResources,
 ) -> None:
+    admin_notices = resources.admin_notices
     features = admin_notices.features
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query"),
@@ -34,7 +35,7 @@ def install(
     dynamic_menu.append_handler(
         partial(
             handle_dynamic_menu_action,
-            admin_notices=admin_notices,
+            resources=resources,
         )
     )
 
@@ -47,7 +48,7 @@ def install(
     update_dynamic.append_handler(
         partial(
             handle_update_dynamic_action,
-            admin_notices=admin_notices,
+            resources=resources,
         )
     )
 
@@ -58,7 +59,7 @@ def install(
         block=True,
     )
     bili_account.append_handler(
-        partial(handle_bili_accounts_action, features=features)
+        partial(handle_bili_accounts_action, resources=resources)
     )
 
     push_mode = registry.on_message(
@@ -68,5 +69,5 @@ def install(
         block=True,
     )
     push_mode.append_handler(
-        partial(handle_bili_push_mode_action, features=features)
+        partial(handle_bili_push_mode_action, resources=resources)
     )

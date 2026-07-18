@@ -9,15 +9,18 @@ from ironsbot.plugins.bilibili import service
 from ironsbot.services.bilibili.delivery import DynamicPushDelivery
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from ironsbot.shared.messaging.targets import TargetSendSummary
-from tests.helpers.runtime import build_test_runtime
+from tests.helpers.bilibili import build_test_bilibili_resources
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pytest import MonkeyPatch
 
 
 @pytest.mark.asyncio
 async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     sent: list[dict[str, object]] = []
     delivery = DynamicPushDelivery(
@@ -46,7 +49,7 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     )
 
     await service._send_dynamic_push(
-        build_test_runtime().admin_notices,
+        build_test_bilibili_resources(tmp_path),
         {},
         1,
         1310714247,

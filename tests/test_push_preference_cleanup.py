@@ -71,6 +71,7 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         runtime.features,
         runtime.priority,
         runtime.delivery,
+        lambda _target_type, _target_id: [],
     )
     result = preference_cleanup.prune_stale_push_preferences(messaging)
 

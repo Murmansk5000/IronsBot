@@ -3,9 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.parser import parse_single_item
-from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 from ironsbot.shared.messaging.push_subscriptions import append_text_hint
 from ironsbot.shared.promotions import (
     append_fire_manual_ad_message,
@@ -16,6 +14,9 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message
 
     from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.push_subscription_store import (
+        PushUnsubscribeStore,
+    )
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
@@ -132,14 +133,13 @@ def _build_delivery_variants(
 
 
 def append_bili_admin_hint_for_group(
+    store: PushUnsubscribeStore,
     message: str | Message,
     group_id: int | None,
 ) -> str | Message:
     if group_id is None:
         return message
 
-    config = get_app_config().message.push_unsubscribe
-    store = PushUnsubscribeStore(config.data_path)
     if not store.mark_daily_hint_sent("group", group_id, BILI_PUSH_ADMIN_HINT_KEY):
         return message.rstrip() if isinstance(message, str) else message
 

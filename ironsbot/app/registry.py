@@ -85,6 +85,7 @@ def build_plugin_registry(  # noqa: PLR0913
     )
     from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.ai.resources import AiResources
+    from ironsbot.services.bilibili.resources import BilibiliResources
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.messaging.push_subscription_store import (
         PushUnsubscribeStore,
@@ -93,13 +94,22 @@ def build_plugin_registry(  # noqa: PLR0913
     definitions: tuple[PluginDefinition, ...] = ()
     runtime_config = config.runtime
     priority_service = AdminPriorityService(runtime_config.priority, features)
+    subscription_store = PushUnsubscribeStore(
+        config.message.push_unsubscribe.data_path
+    )
+    bilibili_resources = BilibiliResources.build(
+        config.bilibili,
+        subscription_store,
+        admin_notices,
+    )
     messaging = MessagingResources(
         config.message,
         config.activity,
-        PushUnsubscribeStore(config.message.push_unsubscribe.data_path),
+        subscription_store,
         features,
         priority_service,
         delivery,
+        bilibili_resources.targets.subscription_options,
     )
     team_resource_service = TeamResourceService.build(
         config.seer.team_resource,
@@ -116,7 +126,6 @@ def build_plugin_registry(  # noqa: PLR0913
         tuple(config.seer.team_resource.commands),
         config.seer.team_resource.query_timeout_seconds,
     )
-
     async def report_render_crash(_bot: Bot) -> None:
         from ironsbot.services.seer.render_crash_report import (
             report_previous_render_crash,
@@ -380,13 +389,16 @@ def build_plugin_registry(  # noqa: PLR0913
             ),
             install=partial(
                 install_bilibili,
-                admin_notices=admin_notices,
+                resources=bilibili_resources,
             ),
             hooks=PluginHooks(
                 startup=(
                     (
                         "bilibili_monitor_jobs",
-                        partial(runtime.register_bilibili_jobs, admin_notices),
+                        partial(
+                            runtime.register_bilibili_jobs,
+                            bilibili_resources,
+                        ),
                     ),
                 ),
                 first_bot_connect=(
@@ -394,7 +406,7 @@ def build_plugin_registry(  # noqa: PLR0913
                         "bilibili_check",
                         partial(
                             runtime.check_bilibili,
-                            admin_notices=admin_notices,
+                            resources=bilibili_resources,
                         ),
                     ),
                 ),

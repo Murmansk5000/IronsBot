@@ -1,8 +1,9 @@
 import asyncio
 from functools import partial
+from pathlib import Path
 
 from ironsbot.plugins.bilibili import runtime as bili_runtime
-from tests.helpers.runtime import build_test_runtime
+from tests.helpers.bilibili import build_test_bilibili_resources
 
 
 class FakeScheduler:
@@ -13,19 +14,21 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
-def test_register_bili_auto_check_job_uses_standard_scheduler_fields() -> None:
+def test_register_bili_auto_check_job_uses_standard_scheduler_fields(
+    tmp_path: Path,
+) -> None:
     scheduler = FakeScheduler()
-    admin_notices = build_test_runtime().admin_notices
+    resources = build_test_bilibili_resources(tmp_path)
 
     asyncio.run(
-        bili_runtime.register_bili_auto_check_job(scheduler, admin_notices)
+        bili_runtime.register_bili_auto_check_job(scheduler, resources)
     )
 
     job = scheduler.jobs[0]
     func = job.pop("func")
     assert isinstance(func, partial)
     assert func.func is bili_runtime.run_check_logic
-    assert func.args == (admin_notices,)
+    assert func.args == (resources,)
     assert job == {
         "trigger": "interval",
         "id": "bilibili_monitor_auto_check",

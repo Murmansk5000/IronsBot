@@ -14,17 +14,17 @@ from .service import run_check_logic
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
-    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.bilibili.resources import BilibiliResources
 
 BILIBILI_MONITOR_JOB_PREFIX = "bilibili_monitor_"
 
 
 async def register_bili_auto_check_job(
     scheduler: Any,
-    admin_notices: AdminNoticeService,
+    resources: BilibiliResources,
 ) -> None:
     JobRegistry(scheduler, prefix=BILIBILI_MONITOR_JOB_PREFIX).add(
-        partial(run_check_logic, admin_notices),
+        partial(run_check_logic, resources),
         "interval",
         minutes=1,
         job_id="auto_check",
@@ -33,8 +33,8 @@ async def register_bili_auto_check_job(
 
 async def check_bilibili_on_connect(
     bot: Bot,
-    admin_notices: AdminNoticeService,
+    resources: BilibiliResources,
 ) -> None:
     logger.info(f"Bilibili monitor saw bot connected: {bot.self_id}")
     await asyncio.sleep(2)
-    await run_check_logic(admin_notices, is_startup_check=True)
+    await run_check_logic(resources, is_startup_check=True)

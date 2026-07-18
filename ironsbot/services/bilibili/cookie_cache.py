@@ -1,15 +1,16 @@
-from ironsbot.services.bilibili.storage import cookie_cache_file
+from dataclasses import dataclass
+from pathlib import Path
 
 
-def get_saved_cookie() -> str:
-    cache_file = cookie_cache_file()
-    if not cache_file.exists():
-        return ""
+@dataclass(frozen=True, slots=True)
+class BiliCookieStore:
+    path: Path
 
-    return cache_file.read_text(encoding="utf-8").strip()
+    def load(self) -> str:
+        if not self.path.exists():
+            return ""
+        return self.path.read_text(encoding="utf-8").strip()
 
-
-def save_new_cookie(cookie_str: str) -> None:
-    cache_file = cookie_cache_file()
-    cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(cookie_str, encoding="utf-8")
+    def save(self, cookie: str) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(cookie, encoding="utf-8")

@@ -1,18 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from functools import partial
+
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.services.bilibili.accounts import get_bili_config
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.client import fetch_dynamic_feed
-from ironsbot.services.bilibili.cookie_cache import get_saved_cookie
-from ironsbot.services.bilibili.dynamic_history import (
-    list_dynamic_history,
-    save_target_dynamic_history,
-)
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_IDS_STATE_KEY,
     build_dynamic_detail_for_selection,
@@ -20,13 +16,12 @@ from ironsbot.services.bilibili.menu import (
     dynamic_record_ids,
 )
 from ironsbot.services.bilibili.parser import target_dynamics_from_response
-from ironsbot.services.bilibili.targets import query_uids_for_event
+from ironsbot.services.bilibili.resources import BilibiliResources
 from ironsbot.shared.messaging import (
     enter_event_reply_conversation,
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 
 from .auth import send_bili_login_qrcode_to_superusers
 from .command_rules import is_dynamic_select_reply
@@ -36,12 +31,13 @@ DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 async def wait_dynamic_select(
     matcher: Matcher,
     event: MessageEvent,
+    resources: BilibiliResources,
 ) -> None:
     await enter_event_reply_conversation(
         matcher,
         event,
         namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-        handlers=[handle_dynamic_select_action],
+        handlers=[partial(handle_dynamic_select_action, resources=resources)],
         reply_check=is_dynamic_select_reply,
     )
 
@@ -49,10 +45,10 @@ async def handle_dynamic_menu_action(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    admin_notices: AdminNoticeService,
+    resources: BilibiliResources,
 ) -> None:
     try:
-        query_uids = query_uids_for_event(admin_notices.features, event)
+        query_uids = resources.targets.query_uids_for_event(event)
         logger.info(
             f"Bilibili dynamic menu query: user={event.user_id} uids={query_uids}"
         )
@@ -63,10 +59,12 @@ async def handle_dynamic_menu_action(
                 "📭 当前会话没有配置可查询的 B 站账号。",
             )
 
-        response, res_json = await fetch_dynamic_feed(get_saved_cookie())
+        response, res_json = await fetch_dynamic_feed(
+            resources.cookie_store.load()
+        )
         if is_bili_auth_invalid(response.status_code, res_json):
             await send_bili_login_qrcode_to_superusers(
-                admin_notices,
+                resources,
                 "用户查询动态时发现 B 站登录失效"
             )
             await finish_event_reply(
@@ -81,12 +79,15 @@ async def handle_dynamic_menu_action(
             newest_first=True,
         )
         if target_dynamics:
-            save_target_dynamic_history(
+            resources.history.save_target_dynamics(
                 target_dynamics,
-                suppress_patterns=get_bili_config().filters.suppress_push_patterns,
+                suppress_patterns=resources.config.filters.suppress_push_patterns,
             )
 
-        records = list_dynamic_history(limit=10, uids=query_uids)
+        records = resources.history.list(
+            limit=10,
+            uids=query_uids,
+        )
         if not records:
             await finish_event_reply(
                 matcher,
@@ -103,7 +104,7 @@ async def handle_dynamic_menu_action(
             matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[handle_dynamic_select_action],
+            handlers=[partial(handle_dynamic_select_action, resources=resources)],
             reply_check=is_dynamic_select_reply,
             prompt=Message(build_dynamic_menu_text(records)),
         )
@@ -122,10 +123,12 @@ async def handle_dynamic_select_action(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    resources: BilibiliResources,
 ) -> None:
     try:
         cached_ids = state.get(DYNAMIC_IDS_STATE_KEY, [])
         selection = build_dynamic_detail_for_selection(
+            resources.history,
             cached_ids,
             event.get_plaintext(),
         )
@@ -142,7 +145,7 @@ async def handle_dynamic_select_action(
                 event,
                 "请输入数字。",
             )
-            await wait_dynamic_select(matcher, event)
+            await wait_dynamic_select(matcher, event, resources)
             return
 
         if selection.status == "out_of_range":
@@ -151,7 +154,7 @@ async def handle_dynamic_select_action(
                 event,
                 f"请输入 1~{selection.available_count} 之间的数字。",
             )
-            await wait_dynamic_select(matcher, event)
+            await wait_dynamic_select(matcher, event, resources)
             return
 
         if selection.status == "missing":
@@ -175,7 +178,7 @@ async def handle_dynamic_select_action(
                 selection.message,
             )
 
-        await wait_dynamic_select(matcher, event)
+        await wait_dynamic_select(matcher, event, resources)
 
     except FinishedException:
         raise

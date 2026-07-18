@@ -131,6 +131,7 @@ def _messaging_resources(
         resources.features,
         resources.priority,
         resources.delivery,
+        lambda _target_type, _target_id: [],
     )
 
 

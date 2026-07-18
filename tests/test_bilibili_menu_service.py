@@ -1,6 +1,11 @@
-import pytest
+from pathlib import Path
 
-from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
+from pytest import MonkeyPatch
+
+from ironsbot.services.bilibili.dynamic_history import (
+    BiliDynamicHistoryStore,
+    DynamicHistoryRecord,
+)
 from ironsbot.services.bilibili.menu import (
     build_dynamic_detail_for_selection,
     build_dynamic_menu_text,
@@ -28,8 +33,20 @@ def _record(
     )
 
 
-def _record_by_dynamic_id(dynamic_id: str) -> DynamicHistoryRecord:
-    return _record(dynamic_id)
+def _save_record(
+    history: BiliDynamicHistoryStore,
+    record: DynamicHistoryRecord,
+) -> None:
+    history.save_item(
+        record.item,
+        pub_ts=record.pub_ts,
+        author_mid=record.uid,
+        author_name=record.author_name,
+        brief=record.brief,
+        pushed=record.pushed,
+        suppressed=record.suppressed,
+        suppression_reason=record.suppression_reason,
+    )
 
 
 def test_build_dynamic_menu_text_renders_records() -> None:
@@ -66,14 +83,16 @@ def test_select_cached_dynamic_id_handles_statuses() -> None:
 
 
 def test_build_dynamic_detail_for_selection_renders_record(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.menu.get_dynamic_history_item",
-        _record_by_dynamic_id,
-    )
+    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    _save_record(history, _record("dynamic-1"))
 
-    result = build_dynamic_detail_for_selection(["dynamic-1"], "1")
+    result = build_dynamic_detail_for_selection(
+        history,
+        ["dynamic-1"],
+        "1",
+    )
 
     assert result.is_ok
     assert result.message is not None
@@ -82,32 +101,35 @@ def test_build_dynamic_detail_for_selection_renders_record(
 
 
 def test_build_dynamic_detail_for_selection_handles_missing_record(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.menu.get_dynamic_history_item",
-        lambda _dynamic_id: None,
+    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    result = build_dynamic_detail_for_selection(
+        history,
+        ["dynamic-1"],
+        "1",
     )
-
-    result = build_dynamic_detail_for_selection(["dynamic-1"], "1")
 
     assert result.status == "missing"
     assert result.message is None
 
 
 def test_build_dynamic_detail_for_selection_handles_parse_failure(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.menu.get_dynamic_history_item",
-        _record_by_dynamic_id,
-    )
+    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    _save_record(history, _record("dynamic-1"))
     monkeypatch.setattr(
         "ironsbot.services.bilibili.menu.parse_single_item",
         lambda *_args, **_kwargs: None,
     )
 
-    result = build_dynamic_detail_for_selection(["dynamic-1"], "1")
+    result = build_dynamic_detail_for_selection(
+        history,
+        ["dynamic-1"],
+        "1",
+    )
 
     assert result.status == "parse_failed"
     assert result.message is None

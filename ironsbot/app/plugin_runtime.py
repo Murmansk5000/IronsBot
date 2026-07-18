@@ -21,11 +21,11 @@ if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.admin_priority import AdminPriorityService
+    from ironsbot.services.bilibili.resources import BilibiliResources
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.startup_notice import StartupNoticeService
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.features import FeatureService
-    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
     from ironsbot.shared.messaging.senders import DeliveryResources
 
 
@@ -119,11 +119,11 @@ async def register_restart_jobs(config: RestartConfig) -> None:
 
 
 async def register_bilibili_jobs(
-    admin_notices: AdminNoticeService,
+    resources: BilibiliResources,
 ) -> None:
     from ironsbot.plugins.bilibili.runtime import register_bili_auto_check_job
 
-    await register_bili_auto_check_job(scheduler(), admin_notices)
+    await register_bili_auto_check_job(scheduler(), resources)
 
 
 async def register_activity_jobs(service: ActivityService) -> None:
@@ -159,11 +159,11 @@ async def check_headless_seer(_bot: Bot, headless: HeadlessService) -> None:
 
 async def check_bilibili(
     bot: Bot,
-    admin_notices: AdminNoticeService,
+    resources: BilibiliResources,
 ) -> None:
     from ironsbot.plugins.bilibili.runtime import check_bilibili_on_connect
 
-    await check_bilibili_on_connect(bot, admin_notices)
+    await check_bilibili_on_connect(bot, resources)
 
 
 async def send_startup_notice(

@@ -2,12 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pytest import MonkeyPatch
-
 from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
-from ironsbot.services.bilibili import delivery as delivery_service
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
@@ -15,7 +11,7 @@ from ironsbot.services.bilibili.delivery import (
     append_bili_admin_hint_for_group,
     build_dynamic_push_deliveries,
 )
-from tests.helpers.config import stub_app_config
+from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 from tests.helpers.runtime import build_test_runtime
 
 PUB_TS = 1781004683
@@ -154,22 +150,16 @@ def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
 
 
 def test_append_bili_admin_hint_for_group_once_per_day(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    config = PushUnsubscribeConfig(
-        data_path=str(tmp_path / "push_unsubscriptions.sqlite")
-    )
-    monkeypatch.setattr(
-        delivery_service,
-        "get_app_config",
-        lambda: stub_app_config(push_unsubscribe_config=config),
+    store = PushUnsubscribeStore(
+        tmp_path / "push_unsubscriptions.sqlite"
     )
 
-    first = append_bili_admin_hint_for_group("正文", 1001)
-    second = append_bili_admin_hint_for_group("正文2", 1001)
-    other_group = append_bili_admin_hint_for_group("正文3", 1002)
-    private = append_bili_admin_hint_for_group("正文4", None)
+    first = append_bili_admin_hint_for_group(store, "正文", 1001)
+    second = append_bili_admin_hint_for_group(store, "正文2", 1001)
+    other_group = append_bili_admin_hint_for_group(store, "正文3", 1002)
+    private = append_bili_admin_hint_for_group(store, "正文4", None)
 
     assert first == f"正文\n\n{BILI_PUSH_ADMIN_HINT}"
     assert second == "正文2"

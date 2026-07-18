@@ -1,9 +1,7 @@
-import importlib
 from pathlib import Path
 from typing import Any
 
 import nonebot
-import pytest
 
 from ironsbot.config.models.bilibili import (
     DEFAULT_BILI_ACCOUNT_UID,
@@ -13,7 +11,12 @@ from ironsbot.config.models.bilibili import (
     BiliStorageConfig,
 )
 from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.services.bilibili.preferences import bili_push_subscription_key
+from ironsbot.services.bilibili import accounts
+from ironsbot.services.bilibili.preferences import (
+    BiliPushPreferenceStore,
+    bili_push_subscription_key,
+)
+from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
@@ -22,9 +25,6 @@ try:
 except ValueError:
     nonebot.init()
 
-accounts = importlib.import_module("ironsbot.services.bilibili.accounts")
-targets = importlib.import_module("ironsbot.services.bilibili.targets")
-storage = importlib.import_module("ironsbot.services.bilibili.storage")
 FIRE_BILI_UID = 375750254
 
 
@@ -44,6 +44,19 @@ def _features(
 
 def _bili_config(**data: Any) -> BiliConfig:
     return BiliConfig.model_validate(data)
+
+
+def _target_service(
+    config: BiliConfig,
+    features: FeatureService,
+    data_dir: Path = Path("__unused_bili_test_store__"),
+) -> BiliTargetService:
+    return BiliTargetService(
+        config,
+        features,
+        BiliPushPreferenceStore(data_dir / "preferences.sqlite"),
+        PushUnsubscribeStore(data_dir / "unsubscribe.sqlite"),
+    )
 
 
 def test_bili_login_notice_cooldown_lives_in_bili_config() -> None:
@@ -96,58 +109,39 @@ def test_bili_account_reference_accepts_alias_or_nickname() -> None:
     assert accounts.resolve_account_reference("火火", config) == "fire"
 
 
-def test_group_query_falls_back_to_global_uids_when_feature_enabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        BiliConfig,
-    )
+def test_group_query_falls_back_to_global_uids_when_feature_enabled() -> None:
     features = _features({"987654321": ["bili_query"]})
 
-    assert targets.query_uids_for_group(
-        features,
+    assert _target_service(BiliConfig(), features).query_uids_for_group(
         user_id=1,
         group_id=987654321,
     ) == [1310714247]
 
 
-def test_group_query_still_requires_bili_feature(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        BiliConfig,
-    )
-    assert targets.query_uids_for_group(
-        _features(),
+def test_group_query_still_requires_bili_feature() -> None:
+    assert _target_service(BiliConfig(), _features()).query_uids_for_group(
         user_id=1,
         group_id=987654321,
     ) == []
 
 
-def test_group_query_uses_group_subscription_rule(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        lambda: _bili_config(
-            accounts={"fire": FIRE_BILI_UID},
-            push={
-                "groups": {
-                    "987654321": {
-                        "accounts": ["fire"],
-                        "modes": {"fire": "link"},
-                    }
+def test_group_query_uses_group_subscription_rule() -> None:
+    config = _bili_config(
+        accounts={"fire": FIRE_BILI_UID},
+        push={
+            "groups": {
+                "987654321": {
+                    "accounts": ["fire"],
+                    "modes": {"fire": "link"},
                 }
-            },
-        ),
+            }
+        },
     )
-    assert targets.query_uids_for_group(
+    service = _target_service(
+        config,
         _features({"987654321": ["bili_query"]}),
+    )
+    assert service.query_uids_for_group(
         user_id=1,
         group_id=987654321,
     ) == [
@@ -156,19 +150,15 @@ def test_group_query_uses_group_subscription_rule(
     ]
 
 
-def test_private_superuser_can_query_global_monitored_uids(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        lambda: _bili_config(
+def test_private_superuser_can_query_global_monitored_uids() -> None:
+    service = _target_service(
+        _bili_config(
             accounts={"fire": FIRE_BILI_UID},
             push={"accounts": ["seer", "fire"]},
         ),
-    )
-    assert targets.query_uids_for_private(
         _features(superusers=(1234567890,)),
+    )
+    assert service.query_uids_for_private(
         user_id=1234567890,
     ) == [
         375750254,
@@ -176,28 +166,23 @@ def test_private_superuser_can_query_global_monitored_uids(
     ]
 
 
-def test_push_group_rules_use_global_accounts_for_feature_groups(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        lambda: _bili_config(
-            accounts={"fire": FIRE_BILI_UID},
-            push={
-                "groups": {
-                    "222": {
-                        "accounts": ["fire"],
-                        "modes": {"seer": "full"},
-                    }
+def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:
+    config = _bili_config(
+        accounts={"fire": FIRE_BILI_UID},
+        push={
+            "groups": {
+                "222": {
+                    "accounts": ["fire"],
+                    "modes": {"seer": "full"},
                 }
-            },
-        ),
+            }
+        },
     )
 
-    rules = targets.push_group_rules(
-        _features({"111": ["bili_push"], "222": ["bili_push"]})
-    )
+    rules = _target_service(
+        config,
+        _features({"111": ["bili_push"], "222": ["bili_push"]}),
+    ).push_group_rules()
 
     assert rules[111].accounts == frozenset({"seer"})
     assert rules[111].uids == frozenset({1310714247})
@@ -215,11 +200,14 @@ def test_global_modes_apply_to_extra_group_accounts() -> None:
             "mode": "link",
             "accounts": ["seer"],
             "modes": {"seer": "full", "fire": "full"},
-            "groups": {"main": {"accounts": ["fire"]}},
+            "groups": {"1": {"accounts": ["fire"]}},
         },
     )
 
-    rule = targets._resolve_rule(config.push.groups["main"], config)
+    rule = _target_service(
+        config,
+        _features({"1": ["bili_push"]}),
+    ).push_group_rules()[1]
 
     assert rule.mode_for_uid(1310714247) == "full"
     assert rule.mode_for_uid(FIRE_BILI_UID) == "full"
@@ -233,7 +221,7 @@ def test_group_modes_override_global_modes() -> None:
             "accounts": ["seer"],
             "modes": {"seer": "full", "fire": "full"},
             "groups": {
-                "main": {
+                "1": {
                     "accounts": ["fire"],
                     "modes": {"fire": "link"},
                 }
@@ -241,7 +229,10 @@ def test_group_modes_override_global_modes() -> None:
         },
     )
 
-    rule = targets._resolve_rule(config.push.groups["main"], config)
+    rule = _target_service(
+        config,
+        _features({"1": ["bili_push"]}),
+    ).push_group_rules()[1]
 
     assert rule.mode_for_uid(1310714247) == "full"
     assert rule.mode_for_uid(FIRE_BILI_UID) == "link"
@@ -249,37 +240,25 @@ def test_group_modes_override_global_modes() -> None:
 
 def test_push_targets_for_uid_respects_runtime_mode_override(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        storage,
-        "get_bili_config",
-        lambda: _bili_config(
+    service = _target_service(
+        _bili_config(
             accounts={"fire": FIRE_BILI_UID},
             push={"groups": {"987654321": {"accounts": ["fire"]}}},
             storage=BiliStorageConfig(data_dir=tmp_path),
         ),
-    )
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        lambda: _bili_config(
-            accounts={"fire": FIRE_BILI_UID},
-            push={"groups": {"987654321": {"accounts": ["fire"]}}},
-        ),
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
     )
 
-    storage.push_preference_store().set_mode(
+    service.preferences.set_mode(
         "group",
         987654321,
         375750254,
         "link",
     )
 
-    push_targets = targets.push_targets_for_uid(
-        _features({"987654321": ["bili_push"]}),
-        375750254,
-    )
+    push_targets = service.push_targets_for_uid(375750254)
 
     assert push_targets.full_group_ids == []
     assert push_targets.link_group_ids == [987654321]
@@ -287,24 +266,17 @@ def test_push_targets_for_uid_respects_runtime_mode_override(
 
 def test_bili_push_subscription_options_are_per_uid(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        lambda: _bili_config(
+    service = _target_service(
+        _bili_config(
             accounts={"fire": FIRE_BILI_UID},
             push={"groups": {"987654321": {"accounts": ["fire"]}}},
         ),
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
     )
-    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
-    options = targets.bili_push_subscription_options(
-        target_type="group",
-        target_id=987654321,
-        store=store,
-        features=_features({"987654321": ["bili_push"]}),
-    )
+    options = service.subscription_options("group", 987654321)
 
     assert [option.key for option in options] == [
         bili_push_subscription_key(375750254),
@@ -315,19 +287,14 @@ def test_bili_push_subscription_options_are_per_uid(
         "B站动态：赛尔号官方（1310714247）",
     ]
 
-    store.unsubscribe_target(
+    service.unsubscribe_store.unsubscribe_target(
         "group",
         987654321,
         bili_push_subscription_key(375750254),
         "bili_push",
     )
 
-    options = targets.bili_push_subscription_options(
-        target_type="group",
-        target_id=987654321,
-        store=store,
-        features=_features({"987654321": ["bili_push"]}),
-    )
+    options = service.subscription_options("group", 987654321)
 
     assert [option.key for option in options] == [
         bili_push_subscription_key(375750254),
@@ -338,25 +305,18 @@ def test_bili_push_subscription_options_are_per_uid(
 
 def test_bili_push_subscription_options_use_rule_nicknames(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _bili_config(
         accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}},
         push={"groups": {"987654321": {"accounts": ["fire"]}}},
     )
-    monkeypatch.setattr(
-        targets,
-        "get_bili_config",
-        lambda: config,
+    service = _target_service(
+        config,
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
     )
-    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
-    options = targets.bili_push_subscription_options(
-        target_type="group",
-        target_id=987654321,
-        store=store,
-        features=_features({"987654321": ["bili_push"]}),
-    )
+    options = service.subscription_options("group", 987654321)
 
     assert [option.label for option in options] == [
         "B站动态：火火（375750254）",
