@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.messaging import append_fire_manual_ad_text
 from ironsbot.integrations.scheduler.jobs import JobRegistry
@@ -23,13 +23,15 @@ from ironsbot.shared.messaging.push_subscriptions import (
 )
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 
-from .config import (
-    GroupScheduledMessageAction,
-    PrivateScheduledMessageAction,
-    get_message_config,
-)
+from .config import get_message_config
 from .push_time import daily_time_parts_for_push
 from .runtime_service import build_schedule_job_id, build_schedule_trigger_kwargs
+
+if TYPE_CHECKING:
+    from ironsbot.config.models.message import (
+        GroupScheduledMessageAction,
+        PrivateScheduledMessageAction,
+    )
 
 MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
 

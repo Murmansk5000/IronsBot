@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -14,15 +16,15 @@ from ironsbot.shared.features import (
 )
 from ironsbot.shared.permissions import can_manage_group_event
 
-from .config import (
-    PrivateCommandMessageAction,
-    get_message_config,
-)
+from .config import get_message_config
 from .push_management_runtime import (
     PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS,
     PUSH_TIME_COMMANDS,
 )
 from .runtime_service import find_command_action
+
+if TYPE_CHECKING:
+    from ironsbot.config.models.message import PrivateCommandMessageAction
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
