@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 import nonebot
@@ -11,8 +10,8 @@ from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
 from ironsbot.app.file_logging import configure_file_logging
 from ironsbot.app.plugin_manifest import (
-    RUNTIME_SETUP_CALLS,
     iter_plugin_modules,
+    runtime_setup_callbacks,
     validate_plugin_manifest,
 )
 
@@ -26,12 +25,6 @@ class BootstrapState:
     app: Any
     loaded_plugins: tuple[str, ...]
     runtime_setups: tuple[str, ...]
-
-
-class RuntimeSetupError(TypeError):
-    @classmethod
-    def not_callable(cls, setup_ref: str) -> RuntimeSetupError:
-        return cls(f"runtime setup is not callable: {setup_ref}")
 
 
 def configure_third_party_logging() -> None:
@@ -52,34 +45,16 @@ def load_manifest_plugins(
     return modules
 
 
-def _load_runtime_setup(
-    setup_ref: str,
-    *,
-    module_importer: Callable[[str], Any],
-) -> Callable[[], object]:
-    module_name, _separator, function_name = setup_ref.partition(":")
-    module = module_importer(module_name)
-    setup = getattr(module, function_name)
-    if not callable(setup):
-        raise RuntimeSetupError.not_callable(setup_ref)
-    return setup
-
-
 def run_runtime_setups(
-    setup_refs: tuple[str, ...] | None = None,
-    *,
-    module_importer: Callable[[str], Any] = import_module,
+    setups: tuple[Callable[[], object], ...] | None = None,
 ) -> tuple[str, ...]:
     validate_plugin_manifest()
-    refs = RUNTIME_SETUP_CALLS if setup_refs is None else setup_refs
+    callbacks = runtime_setup_callbacks() if setups is None else setups
 
-    for setup_ref in refs:
-        _load_runtime_setup(
-            setup_ref,
-            module_importer=module_importer,
-        )()
+    for setup in callbacks:
+        setup()
 
-    return refs
+    return tuple(f"{setup.__module__}.{setup.__qualname__}" for setup in callbacks)
 
 
 def bootstrap() -> BootstrapState:
@@ -103,7 +78,6 @@ def bootstrap() -> BootstrapState:
 
 __all__ = [
     "BootstrapState",
-    "RuntimeSetupError",
     "bootstrap",
     "load_manifest_plugins",
     "run_runtime_setups",

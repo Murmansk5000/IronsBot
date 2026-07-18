@@ -8,8 +8,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
-from ironsbot.app.plugin_manifest import RUNTIME_SETUP_CALLS
+from ironsbot.app.plugin_manifest import runtime_setup_callbacks
 from ironsbot.config.models.runtime import DockerUpdateConfig
+from ironsbot.plugins.db_sync import runtime as db_sync_runtime
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
     create_watchtower_container,
@@ -291,13 +292,12 @@ def test_target_image_pull_retries_transient_registry_eof(
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    docker_update = (
-        "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime"
-    )
-    data_sync = "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime"
+    callbacks = runtime_setup_callbacks()
 
-    assert RUNTIME_SETUP_CALLS.index(docker_update) < RUNTIME_SETUP_CALLS.index(
-        data_sync
+    assert callbacks.index(
+        docker_update_runtime.setup_docker_update_runtime
+    ) < callbacks.index(
+        db_sync_runtime.setup_db_sync_runtime
     )
 
 

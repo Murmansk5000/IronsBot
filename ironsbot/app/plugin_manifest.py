@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Final
+from typing import TYPE_CHECKING
 
 from ironsbot.plugin_catalog import (
     PLUGIN_GROUP_ORDER,
@@ -10,27 +10,9 @@ from ironsbot.plugin_catalog import (
     plugin_modules_for_group,
 )
 
-RUNTIME_SETUP_CALLS: Final[tuple[str, ...]] = (
-    "ironsbot.app.command_cooldown_manifest:"
-    "setup_command_cooldown_manifest_runtime",
-    "ironsbot.shared.messaging.outbound_rate_limit:"
-    "setup_outbound_rate_limit_runtime",
-    "ironsbot.plugins.server_status.runtime:setup_docker_update_runtime",
-    "ironsbot.plugins.db_sync.runtime:setup_db_sync_runtime",
-    "ironsbot.plugins.http_client.runtime:setup_http_client_runtime",
-    "ironsbot.plugins.headless_seer.runtime:setup_headless_seer_runtime",
-    "ironsbot.plugins.messaging.runtime:setup_messaging_runtime",
-    "ironsbot.plugins.headless_seer_notice.runtime:setup_headless_notice_runtime",
-    "ironsbot.plugins.scheduled_restart.runtime:setup_scheduled_restart_runtime",
-    "ironsbot.shared.plugin_runtime.startup_ready_runtime:setup_startup_ready_runtime",
-    "ironsbot.plugins.startup_notice.runtime:setup_startup_notice_runtime",
-    "ironsbot.plugins.bilibili.runtime:setup_bilibili_monitor_runtime",
-    "ironsbot.plugins.activity.runtime:setup_activity_reminder_runtime",
-    "ironsbot.plugins.team_resource_subscription.runtime:setup_team_resource_runtime",
-    "ironsbot.plugins.seer.query.runtime:setup_local_rank_scheduler_runtime",
-    "ironsbot.plugins.team_audit_welcome.runtime:setup_team_audit_welcome_runtime",
-    "ironsbot.plugins.seer.query.runtime:setup_render_crash_report_runtime",
-)
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 class PluginManifestError(ValueError):
     """Raised when the static plugin manifest is internally inconsistent."""
@@ -48,10 +30,6 @@ class PluginManifestError(ValueError):
     @classmethod
     def duplicate_modules(cls, modules: list[str]) -> PluginManifestError:
         return cls(f"plugin manifest contains duplicate modules: {', '.join(modules)}")
-
-    @classmethod
-    def invalid_setup_ref(cls, setup_ref: str) -> PluginManifestError:
-        return cls(f"runtime setup reference must use module:function: {setup_ref}")
 
     @classmethod
     def missing_feature_modules(cls, modules: list[str]) -> PluginManifestError:
@@ -84,17 +62,6 @@ def validate_plugin_manifest() -> None:
 
     _validate_feature_module_coverage()
 
-    for setup_ref in RUNTIME_SETUP_CALLS:
-        module_name, separator, function_name = setup_ref.partition(":")
-        if (
-            not separator
-            or not module_name.strip()
-            or not function_name.strip()
-            or ":" in function_name
-        ):
-                raise PluginManifestError.invalid_setup_ref(setup_ref)
-
-
 def _validate_feature_module_coverage() -> None:
     loaded_modules = iter_plugin_modules()
     missing_feature_modules = [
@@ -118,9 +85,65 @@ def _module_prefix_is_loaded(
     )
 
 
+def runtime_setup_callbacks() -> tuple[Callable[[], object], ...]:
+    from ironsbot.app.command_cooldown_manifest import (
+        setup_command_cooldown_manifest_runtime,
+    )
+    from ironsbot.plugins.activity.runtime import setup_activity_reminder_runtime
+    from ironsbot.plugins.bilibili.runtime import setup_bilibili_monitor_runtime
+    from ironsbot.plugins.db_sync.runtime import setup_db_sync_runtime
+    from ironsbot.plugins.headless_seer.runtime import setup_headless_seer_runtime
+    from ironsbot.plugins.headless_seer_notice.runtime import (
+        setup_headless_notice_runtime,
+    )
+    from ironsbot.plugins.http_client.runtime import setup_http_client_runtime
+    from ironsbot.plugins.messaging.runtime import setup_messaging_runtime
+    from ironsbot.plugins.scheduled_restart.runtime import (
+        setup_scheduled_restart_runtime,
+    )
+    from ironsbot.plugins.seer.query.runtime import (
+        setup_local_rank_scheduler_runtime,
+        setup_render_crash_report_runtime,
+    )
+    from ironsbot.plugins.server_status.runtime import setup_docker_update_runtime
+    from ironsbot.plugins.startup_notice.runtime import setup_startup_notice_runtime
+    from ironsbot.plugins.team_audit_welcome.runtime import (
+        setup_team_audit_welcome_runtime,
+    )
+    from ironsbot.plugins.team_resource_subscription.runtime import (
+        setup_team_resource_runtime,
+    )
+    from ironsbot.shared.messaging.outbound_rate_limit import (
+        setup_outbound_rate_limit_runtime,
+    )
+    from ironsbot.shared.plugin_runtime.startup_ready_runtime import (
+        setup_startup_ready_runtime,
+    )
+
+    return (
+        setup_command_cooldown_manifest_runtime,
+        setup_outbound_rate_limit_runtime,
+        setup_docker_update_runtime,
+        setup_db_sync_runtime,
+        setup_http_client_runtime,
+        setup_headless_seer_runtime,
+        setup_messaging_runtime,
+        setup_headless_notice_runtime,
+        setup_scheduled_restart_runtime,
+        setup_startup_ready_runtime,
+        setup_startup_notice_runtime,
+        setup_bilibili_monitor_runtime,
+        setup_activity_reminder_runtime,
+        setup_team_resource_runtime,
+        setup_local_rank_scheduler_runtime,
+        setup_team_audit_welcome_runtime,
+        setup_render_crash_report_runtime,
+    )
+
+
 __all__ = [
-    "RUNTIME_SETUP_CALLS",
     "PluginManifestError",
     "iter_plugin_modules",
+    "runtime_setup_callbacks",
     "validate_plugin_manifest",
 ]

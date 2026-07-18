@@ -4,8 +4,8 @@ import tomli
 
 from ironsbot.app.bootstrap import load_manifest_plugins, run_runtime_setups
 from ironsbot.app.plugin_manifest import (
-    RUNTIME_SETUP_CALLS,
     iter_plugin_modules,
+    runtime_setup_callbacks,
     validate_plugin_manifest,
 )
 from ironsbot.plugin_catalog import iter_feature_module_prefixes
@@ -23,7 +23,6 @@ class RuntimeModule:
 
 def test_plugin_manifest_validates() -> None:
     validate_plugin_manifest()
-    assert RUNTIME_SETUP_CALLS
 
 
 def test_manifest_covers_feature_visibility_modules() -> None:
@@ -72,15 +71,19 @@ def test_pyproject_does_not_define_plugin_loading_lists() -> None:
     assert "plugins" not in nonebot_config
 
 
-def test_runtime_setups_run_manifest_refs() -> None:
+def test_runtime_setups_run_callbacks() -> None:
     called: list[str] = []
 
-    def import_module(module_name: str) -> object:
-        assert module_name == "example.runtime"
-        return RuntimeModule(called)
+    setup = RuntimeModule(called).setup
 
-    assert run_runtime_setups(
-        ("example.runtime:setup",),
-        module_importer=import_module,
-    ) == ("example.runtime:setup",)
+    assert run_runtime_setups((setup,)) == (
+        f"{setup.__module__}.{setup.__qualname__}",
+    )
     assert called == ["setup"]
+
+
+def test_runtime_setup_registry_contains_unique_callables() -> None:
+    callbacks = runtime_setup_callbacks()
+
+    assert callbacks
+    assert len(callbacks) == len(set(callbacks))
