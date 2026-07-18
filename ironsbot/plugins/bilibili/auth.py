@@ -27,7 +27,7 @@ from ironsbot.services.bilibili.auth import (
     store_bili_login_qr_request,
 )
 from ironsbot.services.bilibili.cookie_cache import save_new_cookie
-from ironsbot.shared.messaging.admin_notice import send_admin_notice
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 from ironsbot.shared.messaging.bot_router import get_default_bot
 
 _login_state = BiliLoginRuntimeState()
@@ -39,12 +39,13 @@ def _set_bili_login_required(required: bool) -> None:
 
 
 async def _send_private_to_superusers(
+    admin_notices: AdminNoticeService,
     message: str | Message,
     bot: Bot | None = None,
     user_ids: list[int] | None = None,
 ) -> None:
     if user_ids is None:
-        await send_admin_notice(
+        await admin_notices.send(
             message,
             bot=bot,
             action_name="Bilibili login notice",
@@ -60,6 +61,7 @@ async def _send_private_to_superusers(
     from ironsbot.shared.messaging import send_broadcast_message
 
     await send_broadcast_message(
+        admin_notices.delivery,
         message,
         private_user_ids=user_ids,
         bot=bot,
@@ -86,6 +88,7 @@ def _build_login_qrcode_message(qr_url: str) -> Message:
 
 async def request_bili_login_qrcode(
     bot: Bot,
+    admin_notices: AdminNoticeService,
     requester_id: int | None = None,
 ) -> Message:
     global _login_poll_task
@@ -120,6 +123,7 @@ async def request_bili_login_qrcode(
     _login_poll_task = asyncio.create_task(
         _poll_bili_login(
             bot=bot,
+            admin_notices=admin_notices,
             qrcode_key=qr_request.qrcode_key,
             requester_id=requester_id,
         )
@@ -129,6 +133,7 @@ async def request_bili_login_qrcode(
 
 
 async def send_bili_login_qrcode_to_superusers(
+    admin_notices: AdminNoticeService,
     reason: str = "",
     force: bool = False,
 ) -> None:
@@ -149,17 +154,22 @@ async def send_bili_login_qrcode_to_superusers(
         return
 
     try:
-        qr_message = await request_bili_login_qrcode(bot)
+        qr_message = await request_bili_login_qrcode(
+            bot,
+            admin_notices,
+        )
         mark_bili_login_notice_sent(_login_state, now=now)
     except Exception as e:
         logger.error(f"Bilibili QR request failed: {e}")
         mark_bili_login_notice_sent(_login_state, now=now)
         await _send_private_to_superusers(
+            admin_notices,
             build_bili_login_qrcode_request_failed_text(reason),
         )
         return
 
     await _send_private_to_superusers(
+        admin_notices,
         Message(
             [
                 MessageSegment.text(build_bili_login_notice_text(reason)),
@@ -171,6 +181,7 @@ async def send_bili_login_qrcode_to_superusers(
 
 async def _poll_bili_login(
     bot: Bot,
+    admin_notices: AdminNoticeService,
     qrcode_key: str,
     requester_id: int | None = None,
 ) -> None:
@@ -200,6 +211,7 @@ async def _poll_bili_login(
 
                     if not has_complete_bili_login_cookie(new_cookie):
                         await _send_private_to_superusers(
+                            admin_notices,
                             build_bili_login_cookie_incomplete_text(),
                             bot=bot if requester_id else None,
                             user_ids=[requester_id] if requester_id else None,
@@ -210,6 +222,7 @@ async def _poll_bili_login(
                     _set_bili_login_required(False)
                     logger.info("Bilibili cookie refreshed")
                     await _send_private_to_superusers(
+                        admin_notices,
                         build_bili_login_success_text(),
                         bot=bot if requester_id else None,
                     )
@@ -226,6 +239,7 @@ async def _poll_bili_login(
     except Exception as e:
         logger.error(f"Bilibili QR polling failed: {e}")
         await _send_private_to_superusers(
+            admin_notices,
             build_bili_login_poll_error_text(),
             bot=bot if requester_id else None,
             user_ids=[requester_id] if requester_id else None,

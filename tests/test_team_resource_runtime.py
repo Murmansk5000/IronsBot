@@ -8,22 +8,20 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.matcher import Matcher
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.runtime import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.integrations.headless_seer.client import ClientManager
-from ironsbot.runtime.matchers import MatcherRegistry
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.team_resource_adapter import TeamResourceResult
 from ironsbot.services.team_resource_subscriptions import (
     TeamResourceService,
     TeamResourceSubscription,
 )
-from ironsbot.shared.messaging.command_cooldown import (
-    command_matcher_registration,
-)
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.runtime import build_test_runtime
 
 os.environ["APP_CONFIG_PATH"] = str(
     Path(__file__).resolve().parents[1] / "config.example.toml"
@@ -39,14 +37,25 @@ from ironsbot.plugins.team_resource_subscription import runtime
 
 TEAM_ID = 1234567
 TEAM_THRESHOLD = 2000
+TEST_RUNTIME = build_test_runtime(
+    feature_config=FeatureConfig(
+        group_policy={"456": ["team_resource_subscription"]},
+    )
+)
 HEADLESS = HeadlessService(
     ClientManager(),
     CredentialsConfig(),
     HeadlessConfig(),
     HeadlessNoticeConfig(),
+    TEST_RUNTIME.admin_notices,
 )
-TEAM_RESOURCE_REGISTRY = MatcherRegistry()
-TEAM_RESOURCE_SERVICE = TeamResourceService.build(TeamResourceConfig(), {})
+TEAM_RESOURCE_REGISTRY = TEST_RUNTIME.matcher_registry()
+TEAM_RESOURCE_SERVICE = TeamResourceService.build(
+    TeamResourceConfig(),
+    {},
+    TEST_RUNTIME.features,
+    TEST_RUNTIME.delivery,
+)
 team_resource_subscription.install(
     TEAM_RESOURCE_REGISTRY,
     HEADLESS,
@@ -56,7 +65,10 @@ team_resource_subscription.install(
 
 def _team_resource_matcher(command_id: str) -> type[Matcher]:
     for matcher in TEAM_RESOURCE_REGISTRY.message_matchers:
-        if command_matcher_registration(matcher) == ("command", command_id):
+        if TEAM_RESOURCE_REGISTRY.cooldown.registration(matcher) == (
+            "command",
+            command_id,
+        ):
             return matcher
     raise AssertionError(command_id)
 
@@ -78,6 +90,8 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields(
             times=["22:30", "23:45"],
         ),
         {},
+        TEST_RUNTIME.features,
+        TEST_RUNTIME.delivery,
     )
 
     runtime.register_team_resource_jobs(scheduler, HEADLESS, service)
@@ -109,6 +123,8 @@ def test_register_team_resource_jobs_skips_when_disabled(
     service = TeamResourceService.build(
         TeamResourceConfig(enabled=False, times=["23:00"]),
         {},
+        TEST_RUNTIME.features,
+        TEST_RUNTIME.delivery,
     )
 
     runtime.register_team_resource_jobs(scheduler, HEADLESS, service)
@@ -153,8 +169,8 @@ def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold(
 
 
 def test_team_resource_manage_uses_command_cooldown() -> None:
-    assert command_matcher_registration(
-        _team_resource_matcher("team_resource_manage")
+    assert TEAM_RESOURCE_REGISTRY.cooldown.registration(
+        _team_resource_matcher("team_resource_manage"),
     ) == (
         "command",
         "team_resource_manage",
@@ -163,13 +179,7 @@ def test_team_resource_manage_uses_command_cooldown() -> None:
 
 @pytest.mark.asyncio
 async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies(
-    monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        team_resource_subscription,
-        "is_group_feature_allowed",
-        lambda *_args: True,
-    )
     message = Message(
         [
             MessageSegment.text(f"订阅战队{TEAM_ID} {TEAM_THRESHOLD} "),
@@ -240,6 +250,7 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
         return TeamResourceResult(TEAM_ID, "示例战队", "", 500)
 
     async def fake_send_target_messages(
+        _delivery: object,
         targets: list[MessageTarget],
         message: Message,
         **kwargs: object,

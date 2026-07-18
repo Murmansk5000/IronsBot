@@ -5,11 +5,6 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.commands import positive_int_list
 from ironsbot.core.time import normalize_daily_time
-from ironsbot.shared.features import (
-    groups_for_feature,
-    users_for_feature,
-    users_with_superusers,
-)
 from ironsbot.shared.messaging.push_subscription_models import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
     CRON_TIME_PREFERENCE,
@@ -31,6 +26,7 @@ from ironsbot.shared.selection_menu import (
 if TYPE_CHECKING:
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.message import MessageConfig
+    from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 DEFAULT_TEXT = "默认"
@@ -49,22 +45,6 @@ class PushTimeOption:
     default_value: str
     current_value: str
     overridden: bool = False
-
-
-def _eligible_target_ids_by_feature(
-    target_type: PushTargetType,
-    features: set[str],
-) -> dict[str, set[int]]:
-    if target_type == "group":
-        return {
-            feature: set(groups_for_feature(feature))
-            for feature in features
-        }
-
-    return {
-        feature: set(users_with_superusers(users_for_feature(feature)))
-        for feature in features
-    }
 
 
 def _schedule_time_option_label(
@@ -88,8 +68,9 @@ def _activity_time_option(
     target_id: int,
     config: ActivityConfig,
     store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> PushTimeOption | None:
-    eligible = _eligible_target_ids_by_feature(target_type, {"seer_activity_push"})
+    eligible = messaging.eligible_target_ids(target_type, {"seer_activity_push"})
     if target_id not in eligible.get("seer_activity_push", set()):
         return None
 
@@ -123,6 +104,7 @@ def _schedule_time_options(
     target_id: int,
     config: MessageConfig,
     store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> list[PushTimeOption]:
     tasks = (
         config.group_schedules
@@ -130,7 +112,7 @@ def _schedule_time_options(
         else config.private_schedules
     )
     features = {task.feature for task in tasks if task.enabled}
-    eligible = _eligible_target_ids_by_feature(target_type, features)
+    eligible = messaging.eligible_target_ids(target_type, features)
 
     options: list[PushTimeOption] = []
     for index, task in enumerate(tasks, start=1):
@@ -180,16 +162,15 @@ def build_push_time_options(
     target_type: PushTargetType,
     target_id: int,
     *,
-    message_config: MessageConfig,
-    activity_config: ActivityConfig,
-    store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> list[PushTimeOption]:
     options: list[PushTimeOption] = []
     activity_option = _activity_time_option(
         target_type=target_type,
         target_id=target_id,
-        config=activity_config,
-        store=store,
+        config=messaging.activity,
+        store=messaging.store,
+        messaging=messaging,
     )
     if activity_option is not None:
         options.append(activity_option)
@@ -197,8 +178,9 @@ def build_push_time_options(
         _schedule_time_options(
             target_type=target_type,
             target_id=target_id,
-            config=message_config,
-            store=store,
+            config=messaging.config,
+            store=messaging.store,
+            messaging=messaging,
         )
     )
     return options

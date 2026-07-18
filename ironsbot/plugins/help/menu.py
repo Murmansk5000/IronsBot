@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.app import AppConfig
     from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.shared.features import FeatureService
 
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_PLUGIN_NAME = "help"
@@ -82,6 +83,7 @@ def visible_help_entries(
     definitions: tuple[PluginDefinition, ...],
     event: Event,
     *,
+    features: FeatureService,
     config: AppConfig,
     ai_key_configured: bool,
 ) -> list[HelpMenuEntry]:
@@ -102,6 +104,7 @@ def visible_help_entries(
         if not plugin_visible_for_event(
             definition,
             event,
+            features=features,
             config=config,
             ai_key_configured=ai_key_configured,
         ):
@@ -154,19 +157,12 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
     )
 
 
-def format_plugin_detail(entry: HelpMenuEntry, event: Event) -> str:
+def format_plugin_detail(
+    entry: HelpMenuEntry,
+    event: Event,
+    features: FeatureService,
+) -> str:
     if entry.key == "seer_query":
-        return f"📖 {entry.name}\n\n{build_seer_query_usage_message(event)}"
+        return f"📖 {entry.name}\n\n{build_seer_query_usage_message(features, event)}"
 
     return f"📖 {entry.name}\n\n{entry.usage}"
-
-
-__all__ = [
-    "HELP_ENTRIES_KEY",
-    "HELP_GROUP_TITLES",
-    "HELP_PLUGIN_NAME",
-    "HelpMenuEntry",
-    "format_plugin_detail",
-    "format_plugin_list",
-    "visible_help_entries",
-]

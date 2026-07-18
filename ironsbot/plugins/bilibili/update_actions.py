@@ -4,8 +4,8 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 
-from ironsbot.services.bilibili.permissions import is_bili_superuser
 from ironsbot.shared.messaging import finish_event_reply, send_event_reply
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 
 from .service import run_check_logic
 
@@ -13,8 +13,9 @@ from .service import run_check_logic
 async def handle_update_dynamic_action(
     matcher: Matcher,
     event: MessageEvent,
+    admin_notices: AdminNoticeService,
 ) -> None:
-    if not is_bili_superuser(event.user_id):
+    if not admin_notices.features.is_superuser(event.user_id):
         await finish_event_reply(
             matcher,
             event,
@@ -29,7 +30,11 @@ async def handle_update_dynamic_action(
             "⚡ 正在刷新动态...",
         )
 
-        did_run = await run_check_logic(is_startup_check=True, force=True)
+        did_run = await run_check_logic(
+            admin_notices,
+            is_startup_check=True,
+            force=True,
+        )
         if not did_run:
             await finish_event_reply(
                 matcher,

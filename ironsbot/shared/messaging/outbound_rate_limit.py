@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.adapters import Bot
@@ -14,13 +15,14 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.exception import MockApiException
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config
-from ironsbot.shared.features import feature_service
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ironsbot.config.models.message import OutboundRateLimitWindowConfig
+    from ironsbot.config.models.message import (
+        OutboundRateLimitConfig,
+        OutboundRateLimitWindowConfig,
+    )
+    from ironsbot.shared.features import FeatureService
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
 _SUPPORTED_GROUP_SEND_APIS = frozenset(("send_msg", "send_group_msg"))
@@ -34,12 +36,6 @@ class OutboundPermit:
     reserved_at: float
     append_cooldown_notice: bool = False
     source: str = "reply"
-
-
-_preacquired_push_permit: ContextVar[OutboundPermit | None] = ContextVar(
-    "ironsbot_preacquired_push_permit",
-    default=None,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,9 +182,22 @@ class _GroupPushQueue:
 
 
 class GroupOutboundRateLimitService:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        config: OutboundRateLimitConfig,
+        features: FeatureService,
+    ) -> None:
+        self.config = config
+        self.features = features
         self._limiter = MultiWindowGroupRateLimiter()
         self._push_queues: dict[int, _GroupPushQueue] = {}
+        self._api_permits: dict[int, OutboundPermit] = {}
+        self._preacquired_push_permit: ContextVar[
+            OutboundPermit | None
+        ] = ContextVar(
+            "ironsbot_preacquired_push_permit",
+            default=None,
+        )
 
     def acquire_reply(
         self,
@@ -198,7 +207,7 @@ class GroupOutboundRateLimitService:
     ) -> OutboundRateLimitDecision:
         if group_id is None or not self._is_limited_group(group_id):
             return OutboundRateLimitDecision(allowed=True)
-        config = get_app_config().message.outbound_rate_limit
+        config = self.config
         return self._limiter.acquire(
             group_id,
             config.windows,
@@ -215,7 +224,7 @@ class GroupOutboundRateLimitService:
         if group_id is None or not self._is_limited_group(group_id):
             return OutboundRateLimitDecision(allowed=True)
 
-        config = get_app_config().message.outbound_rate_limit
+        config = self.config
         queue = self._push_queues.get(group_id)
         if queue is None or not queue.waiters:
             immediate = self._limiter.acquire(
@@ -320,7 +329,7 @@ class GroupOutboundRateLimitService:
                     )
                     continue
 
-                config = get_app_config().message.outbound_rate_limit
+                config = self.config
                 decision = self._limiter.acquire(
                     group_id,
                     config.windows,
@@ -358,17 +367,11 @@ class GroupOutboundRateLimitService:
             if not queue.waiters:
                 self._push_queues.pop(group_id, None)
 
-    @staticmethod
-    def _is_limited_group(group_id: int) -> bool:
-        config = get_app_config().message.outbound_rate_limit
-        return config.enabled and not feature_service.group_has_feature(
+    def _is_limited_group(self, group_id: int) -> bool:
+        return self.config.enabled and not self.features.group_has_feature(
             group_id,
             ADMIN_NOTICE_FEATURE,
         )
-
-
-group_outbound_rate_limit_service = GroupOutboundRateLimitService()
-_api_permits: dict[int, OutboundPermit] = {}
 
 
 def _extract_group_id(api: str, data: dict[str, Any]) -> int | None:
@@ -420,16 +423,18 @@ def is_outbound_suppressed_result(result: object) -> bool:
 
 @contextmanager
 def use_preacquired_push_permit(
+    service: GroupOutboundRateLimitService,
     permit: OutboundPermit | None,
 ) -> Iterator[None]:
-    token = _preacquired_push_permit.set(permit)
+    token = service._preacquired_push_permit.set(permit)
     try:
         yield
     finally:
-        _preacquired_push_permit.reset(token)
+        service._preacquired_push_permit.reset(token)
 
 
 async def _check_group_send_api(
+    service: GroupOutboundRateLimitService,
     _bot: Bot,
     api: str,
     data: dict[str, Any],
@@ -440,12 +445,12 @@ async def _check_group_send_api(
     if group_id is None:
         return
 
-    preacquired = _preacquired_push_permit.get()
+    preacquired = service._preacquired_push_permit.get()
     if preacquired is not None and preacquired.group_id == group_id:
         permit = preacquired
         decision = OutboundRateLimitDecision(allowed=True, permit=permit)
     else:
-        decision = group_outbound_rate_limit_service.acquire_reply(group_id)
+        decision = service.acquire_reply(group_id)
         permit = decision.permit
 
     if not decision.allowed:
@@ -463,13 +468,14 @@ async def _check_group_send_api(
 
     if permit is None:
         return
-    _api_permits[id(data)] = permit
+    service._api_permits[id(data)] = permit
     if permit.append_cooldown_notice:
-        notice = get_app_config().message.outbound_rate_limit.cooldown_message
+        notice = service.config.cooldown_message
         _append_cooldown_notice(data, notice)
 
 
 async def _finalize_group_send_api(
+    service: GroupOutboundRateLimitService,
     _bot: Bot,
     exception: Exception | None,
     api: str,
@@ -478,29 +484,20 @@ async def _finalize_group_send_api(
 ) -> None:
     if api not in _SUPPORTED_GROUP_SEND_APIS:
         return
-    permit = _api_permits.pop(id(data), None)
+    permit = service._api_permits.pop(id(data), None)
     if exception is not None:
-        group_outbound_rate_limit_service.rollback(permit)
+        service.rollback(permit)
 
 
-def reset_outbound_rate_limit_state() -> None:
-    _api_permits.clear()
-    group_outbound_rate_limit_service.reset()
+def reset_outbound_rate_limit_state(
+    service: GroupOutboundRateLimitService,
+) -> None:
+    service._api_permits.clear()
+    service.reset()
 
 
-def install_outbound_rate_limit_hooks() -> None:
-    Bot.on_calling_api(_check_group_send_api)
-    Bot.on_called_api(_finalize_group_send_api)
-
-
-__all__ = [
-    "GroupOutboundRateLimitService",
-    "MultiWindowGroupRateLimiter",
-    "OutboundPermit",
-    "OutboundRateLimitDecision",
-    "group_outbound_rate_limit_service",
-    "install_outbound_rate_limit_hooks",
-    "is_outbound_suppressed_result",
-    "reset_outbound_rate_limit_state",
-    "use_preacquired_push_permit",
-]
+def install_outbound_rate_limit_hooks(
+    service: GroupOutboundRateLimitService,
+) -> None:
+    Bot.on_calling_api(partial(_check_group_send_api, service))
+    Bot.on_called_api(partial(_finalize_group_send_api, service))

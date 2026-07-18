@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.shared import permissions
+from ironsbot.shared.features import FeatureService
 from tests.helpers.onebot_events import (
     group_admin_message_event,
     group_member_message_event,
@@ -11,55 +11,54 @@ from tests.helpers.onebot_events import (
     private_message_event,
 )
 
-if TYPE_CHECKING:
-    from pytest import MonkeyPatch
+REGULAR_FEATURES = FeatureService(FeatureConfig(), frozenset())
+SUPERUSER_FEATURES = FeatureService(FeatureConfig(), frozenset({123}))
 
 
-def test_can_manage_group_event_allows_group_owner(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
-
-    assert permissions.can_manage_group_event(group_owner_message_event())
-
-
-def test_can_manage_group_event_allows_group_admin(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
-
-    assert permissions.can_manage_group_event(group_admin_message_event())
+def test_can_manage_group_event_allows_group_owner() -> None:
+    assert permissions.can_manage_group_event(
+        REGULAR_FEATURES,
+        group_owner_message_event(),
+    )
 
 
-def test_can_manage_group_event_allows_superuser(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: True)
-
-    assert permissions.can_manage_group_event(group_member_message_event())
-
-
-def test_can_manage_group_event_rejects_regular_member(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
-
-    assert not permissions.can_manage_group_event(group_member_message_event())
+def test_can_manage_group_event_allows_group_admin() -> None:
+    assert permissions.can_manage_group_event(
+        REGULAR_FEATURES,
+        group_admin_message_event(),
+    )
 
 
-def test_can_manage_conversation_event_allows_group_manager(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
-
-    assert permissions.can_manage_conversation_event(group_admin_message_event())
-
-
-def test_can_manage_conversation_event_allows_private_superuser(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: True)
-
-    assert permissions.can_manage_conversation_event(private_message_event())
+def test_can_manage_group_event_allows_superuser() -> None:
+    assert permissions.can_manage_group_event(
+        SUPERUSER_FEATURES,
+        group_member_message_event(),
+    )
 
 
-def test_can_manage_conversation_event_rejects_regular_private_user(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(permissions, "is_superuser_event", lambda _event: False)
+def test_can_manage_group_event_rejects_regular_member() -> None:
+    assert not permissions.can_manage_group_event(
+        REGULAR_FEATURES,
+        group_member_message_event(),
+    )
 
-    assert not permissions.can_manage_conversation_event(private_message_event())
+
+def test_can_manage_conversation_event_allows_group_manager() -> None:
+    assert permissions.can_manage_conversation_event(
+        REGULAR_FEATURES,
+        group_admin_message_event(),
+    )
+
+
+def test_can_manage_conversation_event_allows_private_superuser() -> None:
+    assert permissions.can_manage_conversation_event(
+        SUPERUSER_FEATURES,
+        private_message_event(),
+    )
+
+
+def test_can_manage_conversation_event_rejects_regular_private_user() -> None:
+    assert not permissions.can_manage_conversation_event(
+        REGULAR_FEATURES,
+        private_message_event(),
+    )

@@ -457,7 +457,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     binding_matcher = group.on_message(
         policy=CommandPolicy.command("seer_player_binding"),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
         & no_reply(),
         priority=get_matcher_priority("seer_player", 1),
@@ -468,7 +468,7 @@ def install(group: SeerMatcherGroup) -> None:
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
         policy=CommandPolicy.command("seer_player_binding"),
-        rule=seer_feature_rule("seer_player") & no_reply(),
+        rule=seer_feature_rule(group.features, "seer_player") & no_reply(),
         priority=get_matcher_priority("seer_player", 1),
         block=True,
     )
@@ -476,7 +476,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     invalid_matcher = group.on_message(
         policy=CommandPolicy.exempt("silent invalid player query blocker"),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_invalid_player_text_query)
         & no_reply(),
         priority=get_matcher_priority("seer_player", 1),
@@ -486,7 +486,7 @@ def install(group: SeerMatcherGroup) -> None:
 
     query_matcher = group.on_message(
         policy=CommandPolicy.command("seer_player"),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_id_query)
         & no_reply(),
         priority=get_matcher_priority("seer_player", 1),
@@ -494,6 +494,3 @@ def install(group: SeerMatcherGroup) -> None:
     )
     query_matcher.append_handler(validate_player_id)
     query_matcher.append_handler(handle_query)
-
-
-__all__ = ["install"]

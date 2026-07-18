@@ -3,21 +3,24 @@ from __future__ import annotations
 
 import pytest
 
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.shared.messaging import admin_notice
 from ironsbot.shared.messaging.targets import TargetSendSummary
+from tests.helpers.runtime import build_test_runtime
 
 
-def test_admin_notice_targets_use_superusers_and_admin_notice_groups(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(admin_notice, "get_superuser_ids", lambda: {2002, 1001})
-    monkeypatch.setattr(
-        admin_notice,
-        "groups_for_feature",
-        lambda feature: [3003] if feature == "admin_notice" else [4004],
+def _service(*, with_targets: bool = True) -> admin_notice.AdminNoticeService:
+    feature_config = FeatureConfig(
+        group_policy={"3003": ["admin_notice"]} if with_targets else {},
     )
+    return build_test_runtime(
+        feature_config=feature_config,
+        superuser_ids=(2002, 1001) if with_targets else (),
+    ).admin_notices
 
-    targets = admin_notice.admin_notice_targets()
+
+def test_admin_notice_targets_use_superusers_and_admin_notice_groups() -> None:
+    targets = _service().targets()
 
     assert targets.private_user_ids == [1001, 2002]
     assert targets.group_ids == [3003]
@@ -28,9 +31,9 @@ async def test_send_admin_notice_uses_admin_notice_targets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sent: dict[str, object] = {}
-    monkeypatch.setattr(admin_notice, "get_superuser_ids", lambda: {1001})
-    monkeypatch.setattr(admin_notice, "groups_for_feature", lambda _feature: [3003])
+
     async def fake_send_broadcast_message(
+        _delivery: object,
         message: str,
         *,
         private_user_ids: list[int],
@@ -54,7 +57,7 @@ async def test_send_admin_notice_uses_admin_notice_targets(
         fake_send_broadcast_message,
     )
 
-    await admin_notice.send_admin_notice(
+    await _service().send(
         "AI聊天接口异常。",
         subscription_key="ai_chat_error_notice",
         action_name="AI chat error notice",
@@ -62,7 +65,7 @@ async def test_send_admin_notice_uses_admin_notice_targets(
 
     assert sent == {
         "message": "AI聊天接口异常。",
-        "private_user_ids": [1001],
+        "private_user_ids": [1001, 2002],
         "group_ids": [3003],
         "action_name": "AI chat error notice",
         "subscription_key": "ai_chat_error_notice",
@@ -75,12 +78,6 @@ async def test_send_admin_notice_skips_when_no_admin_targets(
 ) -> None:
     called = False
 
-    def no_superusers() -> set[int]:
-        return set()
-
-    monkeypatch.setattr(admin_notice, "get_superuser_ids", no_superusers)
-    monkeypatch.setattr(admin_notice, "groups_for_feature", lambda _feature: [])
-
     async def fake_send_broadcast_message(*_args: object, **_kwargs: object):
         nonlocal called
         called = True
@@ -92,7 +89,7 @@ async def test_send_admin_notice_skips_when_no_admin_targets(
         fake_send_broadcast_message,
     )
 
-    summary = await admin_notice.send_admin_notice(
+    summary = await _service(with_targets=False).send(
         "AI聊天接口异常。",
         subscription_key="ai_chat_error_notice",
         action_name="AI chat error notice",

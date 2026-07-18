@@ -29,7 +29,6 @@ from ironsbot.services.team_resource_subscriptions import (
     TeamResourceService,
     TeamResourceSubscriptionUpdate,
 )
-from ironsbot.shared.features import group_has_feature, is_group_feature_allowed
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import (
     MessageTarget,
@@ -49,6 +48,7 @@ if TYPE_CHECKING:
     )
 
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
+MANUAL_QUERY_EMPTY_ERROR = "manual team resource query returned no result"
 TEAM_ID_MIN = 100_000
 TEAM_ID_MAX = 2_000_000_000
 
@@ -134,7 +134,7 @@ async def _is_team_resource_query(
     if not config.enabled:
         return False
 
-    if not is_group_feature_allowed(
+    if not service.features.is_group_feature_allowed(
         event.user_id,
         event.group_id,
         TEAM_RESOURCE_FEATURE,
@@ -218,7 +218,7 @@ async def _is_team_resource_manage(
         return False
     if not service.config.enabled:
         return False
-    if not is_group_feature_allowed(
+    if not service.features.is_group_feature_allowed(
         event.user_id,
         event.group_id,
         TEAM_RESOURCE_FEATURE,
@@ -247,9 +247,9 @@ async def _is_team_resource_prompt_choice(
         return False
     if parse_team_resource_prompt_choice(event.get_plaintext()) is None:
         return False
-    if not can_manage_group_event(event):
+    if not can_manage_group_event(service.features, event):
         return False
-    if not is_group_feature_allowed(
+    if not service.features.is_group_feature_allowed(
         event.user_id,
         event.group_id,
         TEAM_RESOURCE_FEATURE,
@@ -281,6 +281,7 @@ async def _scan_subscription(
         return
 
     await send_target_messages(
+        service.delivery,
         [MessageTarget("group", subscription.group_id)],
         _format_resource_notice(result, subscription, service),
         action_name="team resource subscription notice",
@@ -295,7 +296,10 @@ async def scan_team_resource_subscriptions(
     if not service.config.enabled:
         return
     for subscription in service.store.list_all():
-        if group_has_feature(subscription.group_id, TEAM_RESOURCE_FEATURE):
+        if service.features.group_has_feature(
+            subscription.group_id,
+            TEAM_RESOURCE_FEATURE,
+        ):
             await _scan_subscription(subscription, headless, service)
 
 
@@ -317,7 +321,7 @@ async def parse_team_resource_manage(
         )
         return
 
-    if not can_manage_group_event(event):
+    if not can_manage_group_event(service.features, event):
         await finish_event_reply(
             matcher,
             event,
@@ -364,7 +368,8 @@ async def parse_team_resource_manage(
         mode="manual",
     )
     if not isinstance(result, TeamResourceResult):
-        assert result is not None
+        if result is None:
+            raise RuntimeError(MANUAL_QUERY_EMPTY_ERROR)
         await finish_event_reply(matcher, event, result)
         return
 
@@ -463,7 +468,8 @@ async def handle_team_resource(
             service,
             mode="manual",
         )
-        assert result is not None
+        if result is None:
+            raise RuntimeError(MANUAL_QUERY_EMPTY_ERROR)
         replies.append(
             Message(result.message)
             if isinstance(result, TeamResourceResult)
@@ -573,9 +579,3 @@ def _format_at_users(user_ids: tuple[int, ...]) -> str:
     if not user_ids:
         return "无"
     return "、".join(str(user_id) for user_id in user_ids)
-
-
-__all__ = [
-    "parse_team_resource_prompt_choice",
-    "scan_team_resource_subscriptions",
-]

@@ -11,9 +11,13 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.message import MessageConfig
+    from ironsbot.services.admin_priority import AdminPriorityService
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
     from ironsbot.shared.messaging.push_subscription_store import (
         PushUnsubscribeStore,
     )
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 ActionT = TypeVar("ActionT", bound="CommandAction")
 
@@ -23,6 +27,28 @@ class MessagingResources:
     config: MessageConfig
     activity: ActivityConfig
     store: PushUnsubscribeStore
+    features: FeatureService
+    priority: AdminPriorityService
+    delivery: DeliveryResources
+
+    def eligible_target_ids(
+        self,
+        target_type: PushTargetType,
+        feature_keys: set[str],
+    ) -> dict[str, set[int]]:
+        if target_type == "group":
+            return {
+                feature: set(self.features.groups_for_feature(feature))
+                for feature in feature_keys
+            }
+        return {
+            feature: set(
+                self.features.users_with_superusers(
+                    self.features.users_for_feature(feature)
+                )
+            )
+            for feature in feature_keys
+        }
 
 
 class CommandAction(Protocol):

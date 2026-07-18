@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.features import (
-    groups_for_feature,
-    users_for_feature,
-    users_with_superusers,
-)
 from ironsbot.shared.messaging.push_subscription_models import (
     BUILTIN_PUSH_OPTIONS,
     PushSubscriptionOption,
@@ -18,34 +13,17 @@ from ironsbot.shared.messaging.push_subscriptions import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.message import MessageConfig
-    from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
-
-
-def _eligible_target_ids_by_feature(
-    target_type: PushTargetType,
-    features: set[str],
-) -> dict[str, set[int]]:
-    if target_type == "group":
-        return {
-            feature: set(groups_for_feature(feature))
-            for feature in features
-        }
-
-    return {
-        feature: set(users_with_superusers(users_for_feature(feature)))
-        for feature in features
-    }
+    from ironsbot.plugins.messaging.runtime_service import MessagingResources
 
 
 def _builtin_subscription_options(
     *,
     target_type: PushTargetType,
     target_id: int,
-    store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> list[PushSubscriptionOption]:
-    unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
-    eligible = _eligible_target_ids_by_feature(
+    unsubscribed = messaging.store.target_unsubscribed_keys(target_type, target_id)
+    eligible = messaging.eligible_target_ids(
         target_type,
         {option.feature for option in BUILTIN_PUSH_OPTIONS},
     )
@@ -69,24 +47,23 @@ def _schedule_subscription_options(
     *,
     target_type: PushTargetType,
     target_id: int,
-    config: MessageConfig,
-    store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> list[PushSubscriptionOption]:
     tasks = (
-        config.group_schedules
+        messaging.config.group_schedules
         if target_type == "group"
-        else config.private_schedules
+        else messaging.config.private_schedules
     )
     features = {task.feature for task in tasks if task.enabled}
     return build_schedule_subscription_options(
         target_type=target_type,
         target_id=target_id,
         tasks=tasks,
-        eligible_target_ids_for_feature=_eligible_target_ids_by_feature(
+        eligible_target_ids_for_feature=messaging.eligible_target_ids(
             target_type,
             features,
         ),
-        store=store,
+        store=messaging.store,
     )
 
 
@@ -94,8 +71,7 @@ def build_messaging_push_subscription_options(
     target_type: PushTargetType,
     target_id: int,
     *,
-    config: MessageConfig,
-    store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> list[PushSubscriptionOption]:
     from ironsbot.services.bilibili.targets import bili_push_subscription_options
 
@@ -103,18 +79,18 @@ def build_messaging_push_subscription_options(
         *bili_push_subscription_options(
             target_type=target_type,
             target_id=target_id,
-            store=store,
+            store=messaging.store,
+            features=messaging.features,
         ),
         *_builtin_subscription_options(
             target_type=target_type,
             target_id=target_id,
-            store=store,
+            messaging=messaging,
         ),
         *_schedule_subscription_options(
             target_type=target_type,
             target_id=target_id,
-            config=config,
-            store=store,
+            messaging=messaging,
         ),
     ]
 

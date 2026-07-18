@@ -40,13 +40,12 @@ async def handle_push_subscription_menu(
 ) -> None:
     target_type, target_id, _ = message_event_target(event)
     read_only = isinstance(event, GroupMessageEvent) and not (
-        is_group_push_subscription_manager(event)
+        is_group_push_subscription_manager(messaging, event)
     )
     options = build_messaging_push_subscription_options(
         target_type,
         target_id,
-        config=messaging.config,
-        store=messaging.store,
+        messaging=messaging,
     )
     if not options:
         await matcher.finish("当前没有可管理的推送订阅。")
@@ -112,7 +111,7 @@ async def handle_push_subscription_select(
 
     if target_type == "group" and (
         not isinstance(event, GroupMessageEvent)
-        or not is_group_push_subscription_manager(event)
+        or not is_group_push_subscription_manager(messaging, event)
     ):
         menu_prompt = build_messaging_push_subscription_menu_prompt(
             target_type,
@@ -140,8 +139,7 @@ async def handle_push_subscription_select(
     refreshed_options = build_messaging_push_subscription_options(
         target_type,
         target_id,
-        config=messaging.config,
-        store=messaging.store,
+        messaging=messaging,
     )
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options
     menu_prompt = build_messaging_push_subscription_menu_prompt(
@@ -150,9 +148,3 @@ async def handle_push_subscription_select(
     )
     prompt = f"{result_message}\n\n{menu_prompt}"
     await PUSH_SUBSCRIPTION_FLOW.reject(matcher, state, prompt)
-
-
-__all__ = [
-    "handle_push_subscription_menu",
-    "handle_push_subscription_select",
-]

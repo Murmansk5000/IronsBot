@@ -7,6 +7,7 @@ from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.runtime import LoggingConfig
 from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.seer import render_crash_report
+from tests.helpers.runtime import build_test_runtime
 
 
 def test_render_crash_marker_clears_after_success(
@@ -54,7 +55,16 @@ def test_report_previous_render_crash_notifies_superusers(
 
     monkeypatch.setattr(render_crash_report, "MARKER_PATH", marker_path)
     monkeypatch.setattr(AiResources, "notify_admin_once", fake_notify)
-    resources = AiResources(AiConfig(), "", {}, (), 20)
+    runtime = build_test_runtime()
+    resources = AiResources(
+        AiConfig(),
+        runtime.features,
+        runtime.admin_notices,
+        "",
+        {},
+        (),
+        20,
+    )
     logging = LoggingConfig(file_enabled=True, file_path=str(log_path))
 
     asyncio.run(render_crash_report.report_previous_render_crash(resources, logging))

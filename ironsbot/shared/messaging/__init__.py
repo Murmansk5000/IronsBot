@@ -9,12 +9,7 @@ from ironsbot.shared.selection_menu import (
     format_selection_menu,
 )
 
-from .admin_notice import (
-    ADMIN_NOTICE_FEATURE,
-    AdminNoticeTargets,
-    admin_notice_targets,
-    send_admin_notice,
-)
+from .admin_notice import AdminNoticeService
 from .bot_router import (
     get_bot_for_group,
     get_bot_for_target,
@@ -26,10 +21,6 @@ from .command_cooldown import (
     CommandCooldownDecision,
     CommandCooldownService,
     CommandCooldownToken,
-    command_matcher_registration,
-    mark_command_matcher_exempt,
-    register_command_matcher,
-    reset_command_cooldown_state,
 )
 from .conversations import (
     EventReplyCheck,
@@ -50,9 +41,9 @@ from .replies import (
     send_matcher_message,
 )
 from .senders import (
+    DeliveryResources,
     MessageLimiter,
     OneBotMessageSender,
-    get_bot_or_none,
     send_broadcast_message,
     send_target_messages,
 )
@@ -70,15 +61,15 @@ from .text import (
 )
 
 __all__ = [
-    "ADMIN_NOTICE_FEATURE",
     "DEFAULT_SELECTION_FOOTER",
     "HELP_SELECTION_FOOTER",
     "TOGGLE_SELECTION_FOOTER",
-    "AdminNoticeTargets",
+    "AdminNoticeService",
     "BeforeReplySendHook",
     "CommandCooldownDecision",
     "CommandCooldownService",
     "CommandCooldownToken",
+    "DeliveryResources",
     "EventReplyCheck",
     "MessageLimiter",
     "MessageTarget",
@@ -88,11 +79,9 @@ __all__ = [
     "SelectionMenuItem",
     "SelectionMenuSection",
     "TargetSendSummary",
-    "admin_notice_targets",
     "apply_reply_before_send",
     "broadcast_targets",
     "build_message",
-    "command_matcher_registration",
     "command_reply_check",
     "configure_reply_delivery_policy",
     "enter_event_reply_conversation",
@@ -105,17 +94,12 @@ __all__ = [
     "get_bot_for_group",
     "get_bot_for_target",
     "get_bot_for_user",
-    "get_bot_or_none",
     "get_default_bot",
     "group_targets",
-    "mark_command_matcher_exempt",
     "message_event_target",
     "private_targets",
-    "register_command_matcher",
     "render_text",
-    "reset_command_cooldown_state",
     "resolve_bot_id",
-    "send_admin_notice",
     "send_broadcast_message",
     "send_event_reply",
     "send_matcher_message",

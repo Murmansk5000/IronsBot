@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import nonebot
 
-from ironsbot.app.composition import refresh_push_time_jobs
+from ironsbot.app import plugin_runtime as runtime
 from ironsbot.core.features import Feature
 from ironsbot.plugins.server_status.command_text import SERVER_STATUS_USAGE
 from ironsbot.runtime.plugins import (
@@ -20,33 +20,18 @@ from ironsbot.services.startup_notice import StartupNoticeService
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
 
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.config.models.app import AppConfig
-    from ironsbot.config.models.message import (
-        MeetingConfig,
-        RedPacketNoticeConfig,
-        SendpicBehaviorConfig,
-        TeamAuditWelcomeConfig,
-    )
-    from ironsbot.config.models.runtime import (
-        DockerUpdateConfig,
-        RestartConfig,
-        ServerStatusConfig,
-        StartupConfig,
-    )
     from ironsbot.config.models.secrets import SecretsConfig
-    from ironsbot.plugins.messaging.push_time import PushTimeOption
-    from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
-    from ironsbot.plugins.messaging.runtime_service import MessagingResources
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import AsyncHook
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.services.ai.resources import AiResources
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.team_resource_subscriptions import TeamResourceService
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 
 class PluginRegistryError(ValueError):
@@ -67,311 +52,38 @@ def _external_install(module: str) -> Callable[[MatcherRegistry], None]:
     return install
 
 
-def _scheduler() -> Any:
-    from nonebot_plugin_apscheduler import scheduler
-
-    return scheduler
-
-
-def _install_admin_priority(registry: MatcherRegistry) -> None:
-    from ironsbot.plugins.admin_priority import install
-
-    install(registry)
-
-
-def _install_server_status(
-    registry: MatcherRegistry,
-    server_status_config: ServerStatusConfig,
-    docker_update_config: DockerUpdateConfig,
-    headless: HeadlessService,
-) -> None:
-    from ironsbot.plugins.server_status.handlers import install
-
-    install(registry, server_status_config, docker_update_config, headless)
-
-
-def _install_db_sync(
-    registry: MatcherRegistry,
-    github_token: str,
-) -> None:
-    from ironsbot.plugins.db_sync import install
-
-    install(registry, github_token)
-
-
-def _install_seer_data(registry: MatcherRegistry) -> None:
-    from ironsbot.plugins.seer_data import install
-
-    install(registry)
-
-
-def _install_messaging(
-    registry: MatcherRegistry,
-    refresh_jobs: RefreshPushTimeJobs,
-    messaging: MessagingResources,
-) -> None:
-    from ironsbot.plugins.messaging import install
-    from ironsbot.shared.messaging.outbound_rate_limit import (
-        install_outbound_rate_limit_hooks,
-    )
-
-    install_outbound_rate_limit_hooks()
-    install(registry, refresh_jobs, messaging)
-
-
-def _install_bilibili(registry: MatcherRegistry) -> None:
-    from ironsbot.plugins.bilibili.commands import install
-
-    install(registry)
-
-
-def _install_activity(
-    registry: MatcherRegistry,
-    service: ActivityService,
-) -> None:
-    from ironsbot.plugins.activity import install
-
-    install(registry, service)
-
-
-def _install_team_resource(
-    registry: MatcherRegistry,
-    headless: HeadlessService,
-    service: TeamResourceService,
-) -> None:
-    from ironsbot.plugins.team_resource_subscription import install
-
-    install(registry, headless, service)
-
-
-def _install_seer_query(
-    registry: MatcherRegistry,
-    headless: HeadlessService,
-) -> None:
-    from ironsbot.plugins.seer.query import install
-
-    install(registry, headless)
-
-
-def _install_team_audit(
-    registry: MatcherRegistry,
-    config: TeamAuditWelcomeConfig,
-) -> None:
-    from ironsbot.plugins.team_audit_welcome import install
-
-    install(registry, config, _scheduler())
-
-
-def _install_red_packet_notice(
-    registry: MatcherRegistry,
-    config: RedPacketNoticeConfig,
-) -> None:
-    from ironsbot.plugins.red_packet_notice import install
-
-    install(registry, config)
-
-
-def _install_ai_chat(registry: MatcherRegistry, resources: AiResources) -> None:
-    from ironsbot.plugins.ai_chat import install
-
-    install(registry, resources)
-
-
-def _install_ai_mention_guard(
-    registry: MatcherRegistry, service: HelpHintService
-) -> None:
-    from ironsbot.plugins.ai_mention_guard import install
-
-    install(registry, service)
-
-
-def _install_ai_intent(
-    registry: MatcherRegistry,
-    resources: AiResources,
-    headless: HeadlessService,
-) -> None:
-    from ironsbot.plugins.ai_intent import install
-
-    install(registry, resources, headless)
-
-
-def _install_about(registry: MatcherRegistry) -> None:
-    from ironsbot.plugins.about import install
-
-    install(registry)
-
-
-def _install_help_hint(registry: MatcherRegistry, service: HelpHintService) -> None:
-    from ironsbot.plugins.help_hint import install
-
-    install(registry, service)
-
-
-def _install_sendpic(
-    registry: MatcherRegistry,
-    config: SendpicBehaviorConfig,
-    cnb_token: str | None,
-) -> None:
-    from ironsbot.plugins.sendpic import install
-
-    install(registry, config, cnb_token)
-
-
-def _install_meeting(registry: MatcherRegistry, config: MeetingConfig) -> None:
-    from ironsbot.plugins.meeting import install
-
-    install(registry, config)
-
-
-def _install_rank_help(registry: MatcherRegistry) -> None:
-    from ironsbot.plugins.seer.rank_help import install
-
-    install(registry)
-
-
-async def _refresh_push_time_jobs(
-    option: PushTimeOption,
-    *,
-    activity_service: ActivityService,
-    messaging: MessagingResources,
-) -> None:
-    await refresh_push_time_jobs(
-        option,
-        scheduler=_scheduler(),
-        activity_service=activity_service,
-        messaging=messaging,
-    )
-
-
-async def _initialize_http_clients() -> None:
-    from ironsbot.plugins.http_client.runtime import initialize_http_clients
-
-    await initialize_http_clients()
-
-
-async def _shutdown_http_clients() -> None:
-    from ironsbot.plugins.http_client.runtime import shutdown_http_clients
-
-    await shutdown_http_clients()
-
-
-async def _start_messaging(messaging: MessagingResources) -> None:
-    from ironsbot.plugins.messaging.runtime import start_messaging
-
-    await start_messaging(_scheduler(), messaging)
-
-
-async def _register_headless_reconnect_jobs(
-    headless: HeadlessService,
-) -> None:
-    from ironsbot.config.models.runtime import INVALID_RECONNECT_TIME_ERROR
-    from ironsbot.core.time import daily_time_parts
-    from ironsbot.integrations.scheduler.jobs import JobRegistry
-
-    registry = JobRegistry(_scheduler(), prefix="headless_reconnect_check:")
-    for scheduled_time in headless.reconnect_times:
-        hour, minute = daily_time_parts(
-            scheduled_time,
-            error_message=INVALID_RECONNECT_TIME_ERROR,
-        )
-        registry.add(
-            headless.reconnect,
-            "cron",
-            job_id=scheduled_time,
-            args=[scheduled_time],
-            hour=hour,
-            minute=minute,
-            second=0,
-            timezone="Asia/Shanghai",
-        )
-
-
-async def _register_restart_jobs(config: RestartConfig) -> None:
-    from ironsbot.plugins.scheduled_restart.runtime import register_restart_jobs
-
-    register_restart_jobs(_scheduler(), config)
-
-
-async def _register_bilibili_jobs() -> None:
-    from ironsbot.plugins.bilibili.runtime import register_bili_auto_check_job
-
-    await register_bili_auto_check_job(_scheduler())
-
-
-async def _register_activity_jobs(service: ActivityService) -> None:
-    service.register_jobs(_scheduler())
-
-
-async def _register_team_resource_jobs(
-    headless: HeadlessService,
-    service: TeamResourceService,
-) -> None:
-    from ironsbot.plugins.team_resource_subscription.runtime import (
-        register_team_resource_jobs,
-    )
-
-    register_team_resource_jobs(_scheduler(), headless, service)
-
-
-async def _register_local_rank_jobs(headless: HeadlessService) -> None:
-    from ironsbot.plugins.seer.query.runtime import register_local_rank_refresh_job
-
-    register_local_rank_refresh_job(_scheduler(), headless)
-
-
-async def _register_rank_page_jobs(headless: HeadlessService) -> None:
-    from ironsbot.plugins.seer.query.runtime import register_rank_page_refresh_jobs
-
-    register_rank_page_refresh_jobs(_scheduler(), headless)
-
-
-async def _check_headless_seer(
-    _bot: Bot,
-    headless: HeadlessService,
-) -> None:
-    await headless.check_on_connect()
-
-
-async def _check_bilibili(bot: Bot) -> None:
-    from ironsbot.plugins.bilibili.runtime import check_bilibili_on_connect
-
-    await check_bilibili_on_connect(bot)
-
-
-async def _send_startup_notice(
-    bot: Bot,
-    service: StartupNoticeService,
-    config: StartupConfig,
-) -> None:
-    from ironsbot.plugins.startup_notice.runtime import send_startup_notice
-
-    await send_startup_notice(bot, service, config)
-
-
-async def _team_audit_on_connect(
-    bot: Bot,
-    config: TeamAuditWelcomeConfig,
-) -> None:
-    from ironsbot.plugins.team_audit_welcome.followup import (
-        register_team_audit_followup_scan,
-        schedule_pending_team_audit_followups,
-    )
-
-    del bot
-    scheduler = _scheduler()
-    await schedule_pending_team_audit_followups(scheduler, config=config)
-    register_team_audit_followup_scan(scheduler, config=config)
-
-
-def build_plugin_registry(
+def build_plugin_registry(  # noqa: PLR0913
     *,
     config: AppConfig,
+    features: FeatureService,
+    delivery: DeliveryResources,
+    admin_notices: AdminNoticeService,
     activity_service: ActivityService,
     headless: HeadlessService,
     secrets: SecretsConfig,
     shutdown_activity: AsyncHook,
 ) -> tuple[PluginDefinition, ...]:
+    from ironsbot.plugins.about import install as install_about
+    from ironsbot.plugins.activity import install as install_activity
+    from ironsbot.plugins.admin_priority import install as install_admin_priority
+    from ironsbot.plugins.ai_chat import install as install_ai_chat
+    from ironsbot.plugins.ai_intent import install as install_ai_intent
+    from ironsbot.plugins.ai_mention_guard import install as install_ai_mention_guard
+    from ironsbot.plugins.bilibili.commands import install as install_bilibili
+    from ironsbot.plugins.db_sync import install as install_db_sync
+    from ironsbot.plugins.help_hint import install as install_help_hint
+    from ironsbot.plugins.meeting import install as install_meeting
+    from ironsbot.plugins.messaging import install as install_messaging
     from ironsbot.plugins.messaging.runtime_service import MessagingResources
+    from ironsbot.plugins.red_packet_notice import install as install_red_packet_notice
+    from ironsbot.plugins.seer.rank_help import install as install_rank_help
+    from ironsbot.plugins.seer_data import install as install_seer_data
+    from ironsbot.plugins.server_status.handlers import install as install_server_status
+    from ironsbot.plugins.team_audit_welcome import install as install_team_audit
+    from ironsbot.plugins.team_resource_subscription import (
+        install as install_team_resource,
+    )
+    from ironsbot.services.admin_priority import AdminPriorityService
     from ironsbot.services.ai.resources import AiResources
     from ironsbot.services.team_resource_subscriptions import TeamResourceService
     from ironsbot.shared.messaging.push_subscription_store import (
@@ -380,17 +92,25 @@ def build_plugin_registry(
 
     definitions: tuple[PluginDefinition, ...] = ()
     runtime_config = config.runtime
+    priority_service = AdminPriorityService(runtime_config.priority, features)
     messaging = MessagingResources(
         config.message,
         config.activity,
         PushUnsubscribeStore(config.message.push_unsubscribe.data_path),
+        features,
+        priority_service,
+        delivery,
     )
     team_resource_service = TeamResourceService.build(
         config.seer.team_resource,
         config.feature.user_aliases,
+        features,
+        delivery,
     )
     ai_resources = AiResources(
         config.ai,
+        features,
+        admin_notices,
         secrets.ai_key.strip(),
         config.feature.group_aliases,
         tuple(config.seer.team_resource.commands),
@@ -405,11 +125,11 @@ def build_plugin_registry(
         await report_previous_render_crash(ai_resources, runtime_config.logging)
 
     push_time_refresher = partial(
-        _refresh_push_time_jobs,
+        runtime.refresh_push_time_jobs,
         activity_service=activity_service,
         messaging=messaging,
     )
-    startup_notice_service = StartupNoticeService()
+    startup_notice_service = StartupNoticeService(admin_notices)
     help_hint_service = HelpHintService(
         runtime_config.help,
         config.feature.group_aliases,
@@ -434,9 +154,9 @@ def build_plugin_registry(
             "startup_data_sync",
             "startup data sync notice",
             await start_db_sync(
-            _scheduler(),
-            runtime_config.data_sync,
-            secrets.github_workflow_token,
+                runtime.scheduler(),
+                runtime_config.data_sync,
+                secrets.github_workflow_token,
             ),
         )
 
@@ -447,7 +167,17 @@ def build_plugin_registry(
             registry,
             definitions,
             config,
+            features,
             ai_key_configured=bool(secrets.ai_key.strip()),
+        )
+
+    def install_team_audit_plugin(registry: MatcherRegistry) -> None:
+        install_team_audit(
+            registry,
+            config.message.team_audit_welcome,
+            runtime.scheduler(),
+            features,
+            delivery,
         )
 
     definitions = (
@@ -479,7 +209,10 @@ def build_plugin_registry(
             id="admin_priority",
             features=frozenset(),
             help=None,
-            install=_install_admin_priority,
+            install=partial(
+                install_admin_priority,
+                service=priority_service,
+            ),
         ),
         PluginDefinition(
             id="http_client",
@@ -487,8 +220,8 @@ def build_plugin_registry(
             help=None,
             install=_noop_install,
             hooks=PluginHooks(
-                startup=(("http_client", _initialize_http_clients),),
-                shutdown=(("http_client", _shutdown_http_clients),),
+                startup=(("http_client", runtime.initialize_http_clients),),
+                shutdown=(("http_client", runtime.shutdown_http_clients),),
             ),
         ),
         PluginDefinition(
@@ -506,10 +239,12 @@ def build_plugin_registry(
                 order=70,
             ),
             install=partial(
-                _install_server_status,
+                install_server_status,
                 server_status_config=runtime_config.server_status,
                 docker_update_config=runtime_config.docker_update,
                 headless=headless,
+                features=features,
+                delivery=delivery,
             ),
             hooks=PluginHooks(
                 startup=(("docker_update", start_docker_update),),
@@ -520,7 +255,7 @@ def build_plugin_registry(
             features=frozenset(),
             help=None,
             install=partial(
-                _install_db_sync,
+                install_db_sync,
                 github_token=secrets.github_workflow_token,
             ),
             hooks=PluginHooks(
@@ -531,7 +266,7 @@ def build_plugin_registry(
             id="seer_data",
             features=frozenset(),
             help=None,
-            install=_install_seer_data,
+            install=install_seer_data,
         ),
         PluginDefinition(
             id="headless_seer",
@@ -567,15 +302,15 @@ def build_plugin_registry(
                 order=30,
             ),
             install=partial(
-                _install_messaging,
-                refresh_jobs=push_time_refresher,
+                install_messaging,
+                refresh_push_time_jobs=push_time_refresher,
                 messaging=messaging,
             ),
             hooks=PluginHooks(
                 startup=(
                     (
                         "messaging",
-                        partial(_start_messaging, messaging),
+                        partial(runtime.start_messaging, messaging),
                     ),
                 ),
             ),
@@ -599,13 +334,13 @@ def build_plugin_registry(
                 startup=(
                     (
                         "headless_reconnect_jobs",
-                        partial(_register_headless_reconnect_jobs, headless),
+                        partial(runtime.register_headless_reconnect_jobs, headless),
                     ),
                 ),
                 first_bot_connect=(
                     (
                         "headless_seer_check",
-                        partial(_check_headless_seer, headless=headless),
+                        partial(runtime.check_headless_seer, headless=headless),
                     ),
                 ),
             ),
@@ -619,7 +354,7 @@ def build_plugin_registry(
                 startup=(
                     (
                         "scheduled_restart_jobs",
-                        partial(_register_restart_jobs, runtime_config.restart),
+                        partial(runtime.register_restart_jobs, runtime_config.restart),
                     ),
                 ),
             ),
@@ -640,10 +375,26 @@ def build_plugin_registry(
                 group="message",
                 order=20,
             ),
-            install=_install_bilibili,
+            install=partial(
+                install_bilibili,
+                admin_notices=admin_notices,
+            ),
             hooks=PluginHooks(
-                startup=(("bilibili_monitor_jobs", _register_bilibili_jobs),),
-                first_bot_connect=(("bilibili_check", _check_bilibili),),
+                startup=(
+                    (
+                        "bilibili_monitor_jobs",
+                        partial(runtime.register_bilibili_jobs, admin_notices),
+                    ),
+                ),
+                first_bot_connect=(
+                    (
+                        "bilibili_check",
+                        partial(
+                            runtime.check_bilibili,
+                            admin_notices=admin_notices,
+                        ),
+                    ),
+                ),
             ),
         ),
         PluginDefinition(
@@ -662,12 +413,16 @@ def build_plugin_registry(
                 group="message",
                 order=10,
             ),
-            install=partial(_install_activity, service=activity_service),
+            install=partial(
+                install_activity,
+                service=activity_service,
+                features=features,
+            ),
             hooks=PluginHooks(
                 startup=(
                     (
                         "activity_reminder_jobs",
-                        partial(_register_activity_jobs, activity_service),
+                        partial(runtime.register_activity_jobs, activity_service),
                     ),
                 ),
                 shutdown=(("activity", shutdown_activity),),
@@ -689,7 +444,7 @@ def build_plugin_registry(
                 order=50,
             ),
             install=partial(
-                _install_team_resource,
+                install_team_resource,
                 headless=headless,
                 service=team_resource_service,
             ),
@@ -698,7 +453,7 @@ def build_plugin_registry(
                     (
                         "team_resource_jobs",
                         partial(
-                            _register_team_resource_jobs,
+                            runtime.register_team_resource_jobs,
                             headless,
                             team_resource_service,
                         ),
@@ -716,7 +471,7 @@ def build_plugin_registry(
                     (
                         "startup_notice",
                         partial(
-                            _send_startup_notice,
+                            runtime.send_startup_notice,
                             service=startup_notice_service,
                             config=runtime_config.startup_notice,
                         ),
@@ -748,11 +503,22 @@ def build_plugin_registry(
                 group="seer",
                 order=10,
             ),
-            install=partial(_install_seer_query, headless=headless),
+            install=partial(
+                runtime.install_seer_query,
+                headless=headless,
+                features=features,
+                priority=priority_service,
+            ),
             hooks=PluginHooks(
                 startup=(
-                    ("local_rank_jobs", partial(_register_local_rank_jobs, headless)),
-                    ("rank_page_jobs", partial(_register_rank_page_jobs, headless)),
+                    (
+                        "local_rank_jobs",
+                        partial(runtime.register_local_rank_jobs, headless),
+                    ),
+                    (
+                        "rank_page_jobs",
+                        partial(runtime.register_rank_page_jobs, headless),
+                    ),
                 ),
                 first_bot_connect=(("render_crash_report", report_render_crash),),
             ),
@@ -761,17 +527,16 @@ def build_plugin_registry(
             id="team_audit",
             features=frozenset({Feature.TEAM_AUDIT}),
             help=None,
-            install=partial(
-                _install_team_audit,
-                config=config.message.team_audit_welcome,
-            ),
+            install=install_team_audit_plugin,
             hooks=PluginHooks(
                 bot_connect=(
                     (
                         "team_audit_followups",
                         partial(
-                            _team_audit_on_connect,
+                            runtime.team_audit_on_connect,
                             config=config.message.team_audit_welcome,
+                            features=features,
+                            delivery=delivery,
                         ),
                     ),
                 ),
@@ -788,8 +553,9 @@ def build_plugin_registry(
             features=frozenset(),
             help=None,
             install=partial(
-                _install_red_packet_notice,
+                install_red_packet_notice,
                 config=config.message.red_packet_notice,
+                admin_notices=admin_notices,
             ),
         ),
         PluginDefinition(
@@ -802,15 +568,16 @@ def build_plugin_registry(
                 group="ai",
                 order=10,
             ),
-            install=partial(_install_ai_chat, resources=ai_resources),
+            install=partial(install_ai_chat, resources=ai_resources),
         ),
         PluginDefinition(
             id="ai_mention_guard",
             features=frozenset({Feature.AI_CHAT}),
             help=None,
             install=partial(
-                _install_ai_mention_guard,
-                service=help_hint_service,
+                install_ai_mention_guard,
+                help_hint=help_hint_service,
+                resources=ai_resources,
             ),
         ),
         PluginDefinition(
@@ -833,7 +600,7 @@ def build_plugin_registry(
                 order=20,
             ),
             install=partial(
-                _install_ai_intent,
+                install_ai_intent,
                 resources=ai_resources,
                 headless=headless,
             ),
@@ -849,7 +616,7 @@ def build_plugin_registry(
                 order=20,
                 visibility="always",
             ),
-            install=_install_about,
+            install=install_about,
         ),
         PluginDefinition(
             id="help",
@@ -869,7 +636,7 @@ def build_plugin_registry(
             features=frozenset(),
             help=None,
             install=partial(
-                _install_help_hint,
+                install_help_hint,
                 service=help_hint_service,
             ),
         ),
@@ -878,9 +645,10 @@ def build_plugin_registry(
             features=frozenset({Feature.IMAGE}),
             help=None,
             install=partial(
-                _install_sendpic,
+                runtime.install_sendpic,
                 config=config.message.sendpic,
                 cnb_token=secrets.sendpic_cnb_token,
+                features=features,
             ),
         ),
         PluginDefinition(
@@ -894,8 +662,9 @@ def build_plugin_registry(
                 order=40,
             ),
             install=partial(
-                _install_meeting,
+                install_meeting,
                 config=config.message.meeting,
+                features=features,
             ),
         ),
         PluginDefinition(
@@ -908,7 +677,7 @@ def build_plugin_registry(
                 group="seer",
                 order=20,
             ),
-            install=_install_rank_help,
+            install=partial(install_rank_help, features=features),
         ),
     )
     validate_plugin_registry(definitions)
@@ -935,10 +704,3 @@ def validate_plugin_registry(
             "features have no owning plugin: "
             + ", ".join(feature.value for feature in missing)
         )
-
-
-__all__ = [
-    "PluginRegistryError",
-    "build_plugin_registry",
-    "validate_plugin_registry",
-]

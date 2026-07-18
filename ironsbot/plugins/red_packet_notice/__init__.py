@@ -21,12 +21,12 @@ from ironsbot.services.red_packet_notice import (
     summarize_red_packet_message,
 )
 from ironsbot.shared.matcher_priority import get_matcher_priority
-from ironsbot.shared.messaging.admin_notice import send_admin_notice
 
 RED_PACKET_NOTICE_SUBSCRIPTION_KEY = "red_packet_notice"
 
 if TYPE_CHECKING:
     from ironsbot.config.models.message import RedPacketNoticeConfig
+    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 
 
 async def _get_group_name(bot: Bot, group_id: int) -> str:
@@ -42,13 +42,14 @@ async def _get_group_name(bot: Bot, group_id: int) -> str:
     return str(info.get("group_name") or "").strip()
 
 
-async def _send_red_packet_notice(
+async def _send_red_packet_notice(  # noqa: PLR0913
     *,
     bot: Bot,
     limiter: RedPacketNoticeLimiter,
     group_id: int,
     sender_id: int,
     summary: str,
+    admin_notices: AdminNoticeService,
 ) -> None:
     if not limiter.can_send(group_id):
         logger.info(f"red packet notice suppressed by cooldown for group {group_id}")
@@ -62,14 +63,18 @@ async def _send_red_packet_notice(
         sender_id=sender_id,
         summary=summary,
     )
-    await send_admin_notice(
+    await admin_notices.send(
         notice,
         action_name="red packet notice",
         subscription_key=RED_PACKET_NOTICE_SUBSCRIPTION_KEY,
     )
 
 
-def install(registry: MatcherRegistry, config: RedPacketNoticeConfig) -> None:
+def install(
+    registry: MatcherRegistry,
+    config: RedPacketNoticeConfig,
+    admin_notices: AdminNoticeService,
+) -> None:
     limiter = RedPacketNoticeLimiter(config.cooldown_seconds)
 
     async def is_message(event: MessageEvent) -> bool:
@@ -86,6 +91,7 @@ def install(registry: MatcherRegistry, config: RedPacketNoticeConfig) -> None:
             group_id=event.group_id,
             sender_id=event.user_id,
             summary=summarize_red_packet_message(event.message),
+            admin_notices=admin_notices,
         )
 
     async def is_payload(event: NoticeEvent) -> bool:
@@ -102,6 +108,7 @@ def install(registry: MatcherRegistry, config: RedPacketNoticeConfig) -> None:
             group_id=int(getattr(event, "group_id", 0)),
             sender_id=int(getattr(event, "user_id", 0) or 0),
             summary="红包通知",
+            admin_notices=admin_notices,
         )
 
     message_matcher = registry.on_message(

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
@@ -9,12 +11,15 @@ from ironsbot.services.bilibili.permissions import (
     is_dynamic_query_allowed,
     is_dynamic_update_allowed,
 )
-from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.features.visibility import event_has_feature
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
     BILI_PUSH_MODE_RAW_KEY,
 )
+
+if TYPE_CHECKING:
+    from ironsbot.shared.features import FeatureService
 
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
@@ -23,8 +28,11 @@ BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
 BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 
 
-async def is_dynamic_menu_command(event: MessageEvent) -> bool:
-    if not is_dynamic_query_allowed(event):
+async def is_dynamic_menu_command(
+    features: FeatureService,
+    event: MessageEvent,
+) -> bool:
+    if not is_dynamic_query_allowed(features, event):
         return False
 
     return command_text_matches(
@@ -33,7 +41,10 @@ async def is_dynamic_menu_command(event: MessageEvent) -> bool:
     )
 
 
-async def is_update_dynamic_command(event: MessageEvent) -> bool:
+async def is_update_dynamic_command(
+    features: FeatureService,
+    event: MessageEvent,
+) -> bool:
     command = strip_command_prefix(event.get_plaintext())
     if command is None:
         return False
@@ -44,12 +55,16 @@ async def is_update_dynamic_command(event: MessageEvent) -> bool:
     ):
         return False
 
-    return is_dynamic_update_allowed(event)
+    return is_dynamic_update_allowed(features, event)
 
 
-async def is_bili_account_command(event: MessageEvent) -> bool:
+async def is_bili_account_command(
+    features: FeatureService,
+    event: MessageEvent,
+) -> bool:
     if not (
-        is_dynamic_query_allowed(event) or is_event_feature_allowed(event, "bili_push")
+        is_dynamic_query_allowed(features, event)
+        or event_has_feature(features, event, "bili_push")
     ):
         return False
 

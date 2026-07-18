@@ -3,16 +3,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot import logger
 
-from ironsbot.shared.features import (
-    groups_for_feature,
-    is_superuser,
-    users_for_feature,
-    users_with_superusers,
-)
 from ironsbot.shared.messaging import send_broadcast_message
 from ironsbot.shared.promotions import append_fire_manual_ad_for_group
 
@@ -22,11 +17,15 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.config.models.runtime import ServerStatusConfig
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 
 @dataclass(slots=True)
 class OpenBroadcast:
     config: ServerStatusConfig
+    features: FeatureService
+    delivery: DeliveryResources
     last_at: datetime | None = None
 
     async def send(self, event: MessageEvent, *, now: datetime) -> None:
@@ -37,13 +36,16 @@ class OpenBroadcast:
         if not should_broadcast_opened(now):
             return
 
-        group_ids = groups_for_feature("server_status_push")
-        user_ids = users_with_superusers(users_for_feature("server_status_push"))
+        group_ids = self.features.groups_for_feature("server_status_push")
+        user_ids = self.features.users_with_superusers(
+            self.features.users_for_feature("server_status_push")
+        )
         if not group_ids and not user_ids:
             logger.info("server status open broadcast skipped: no targets")
             return
 
         if not can_trigger_open_broadcast(
+            self.features,
             event,
             group_ids=group_ids,
             user_ids=user_ids,
@@ -56,12 +58,16 @@ class OpenBroadcast:
             return
 
         summary = await send_broadcast_message(
+            self.delivery,
             self.config.broadcast_message,
             group_ids=group_ids,
             private_user_ids=user_ids,
             action_name="server status open broadcast",
             interval_seconds=1.2,
-            message_limiter=append_fire_manual_ad_for_group,
+            message_limiter=partial(
+                append_fire_manual_ad_for_group,
+                self.features,
+            ),
             subscription_key="server_status_push",
         )
         if summary.succeeded:
@@ -82,12 +88,13 @@ def should_broadcast_opened(now: datetime) -> bool:
 
 
 def can_trigger_open_broadcast(
+    features: FeatureService,
     event: MessageEvent,
     *,
     group_ids: list[int],
     user_ids: list[int],
 ) -> bool:
-    if is_superuser(event.user_id):
+    if features.is_superuser(event.user_id):
         return True
 
     group_id = getattr(event, "group_id", None)

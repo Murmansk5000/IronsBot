@@ -21,6 +21,7 @@ from ironsbot.services.bilibili.targets import (
     mode_for_target_account,
     target_rule,
 )
+from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging import finish_event_reply, message_event_target
 from ironsbot.shared.messaging.push_subscription_models import (
     PushTargetType,
@@ -36,8 +37,11 @@ BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"
 BILI_PUSH_MODE_RAW_KEY = "_bili_push_mode_raw"
 
 
-def _is_bili_push_mode_manager(event: MessageEvent) -> bool:
-    return can_manage_conversation_event(event)
+def _is_bili_push_mode_manager(
+    features: FeatureService,
+    event: MessageEvent,
+) -> bool:
+    return can_manage_conversation_event(features, event)
 
 
 def _bili_push_mode_usage() -> str:
@@ -53,15 +57,16 @@ def _push_unsubscribe_store() -> PushUnsubscribeStore:
     return PushUnsubscribeStore(get_app_config().message.push_unsubscribe.data_path)
 
 
-def _format_account_mode_line(
+def _format_account_mode_line(  # noqa: PLR0913
     *,
+    features: FeatureService,
     target_type: PushTargetType,
     target_id: int,
     account: str,
     uid: int,
     unsubscribed_keys: set[str],
 ) -> str:
-    mode = mode_for_target_account(target_type, target_id, account)
+    mode = mode_for_target_account(features, target_type, target_id, account)
     mode_text = push_mode_label(mode)
     td_text = "，已 TD" if bili_push_subscription_key(uid) in unsubscribed_keys else ""
     return f"- {account_display_label(account, uid=uid)}：{mode_text}{td_text}"
@@ -70,9 +75,10 @@ def _format_account_mode_line(
 async def handle_bili_accounts_action(
     matcher: Matcher,
     event: MessageEvent,
+    features: FeatureService,
 ) -> None:
     target_type, target_id, _ = message_event_target(event)
-    rule = target_rule(target_type, target_id)
+    rule = target_rule(features, target_type, target_id)
     accounts = bili_accounts()
 
     lines = ["📺【B站账号】"]
@@ -99,6 +105,7 @@ async def handle_bili_accounts_action(
         uid = accounts[account]
         lines.append(
             _format_account_mode_line(
+                features=features,
                 target_type=target_type,
                 target_id=target_id,
                 account=account,
@@ -114,8 +121,9 @@ async def handle_bili_push_mode_action(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    features: FeatureService,
 ) -> None:
-    if not _is_bili_push_mode_manager(event):
+    if not _is_bili_push_mode_manager(features, event):
         await finish_event_reply(matcher, event, "❌ 仅群主、管理员或超级管理员可用。")
         return
 
@@ -136,8 +144,10 @@ async def handle_bili_push_mode_action(
         return
 
     target_type, target_id, _ = message_event_target(event)
-    rule = target_rule(target_type, target_id)
-    current_mode = mode_for_target_account(target_type, target_id, account)
+    rule = target_rule(features, target_type, target_id)
+    current_mode = mode_for_target_account(
+        features, target_type, target_id, account
+    )
     if current_mode is None:
         await finish_event_reply(
             matcher,
@@ -161,7 +171,9 @@ async def handle_bili_push_mode_action(
     else:
         store.set_mode(target_type, target_id, uid, mode)
 
-    effective_mode = mode_for_target_account(target_type, target_id, account)
+    effective_mode = mode_for_target_account(
+        features, target_type, target_id, account
+    )
     scope = "当前群" if target_type == "group" else "当前私聊"
     account_text = account_display_label(account, uid=uid)
     await finish_event_reply(

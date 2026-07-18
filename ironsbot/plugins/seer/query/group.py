@@ -7,16 +7,18 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.services.admin_priority import AdminPriorityService
 from ironsbot.services.operations.headless import HeadlessService
-from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.features import FeatureService
+from ironsbot.shared.features.visibility import event_has_feature
 from ironsbot.shared.matcher_priority import get_matcher_priority
 
 SEER_QUERY_PRIORITY = get_matcher_priority("seer_query", 2)
 
 
-def seer_feature_rule(feature: str) -> Rule:
+def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
     async def _is_feature_allowed(event: Event) -> bool:
-        return is_event_feature_allowed(event, feature)
+        return event_has_feature(features, event, feature)
 
     return Rule(_is_feature_allowed)
 
@@ -31,6 +33,8 @@ def seer_feature_priority(feature: str, fallback: int | None = None) -> int:
 class SeerMatcherGroup:
     registry: MatcherRegistry
     headless: HeadlessService
+    features: FeatureService
+    priority: AdminPriorityService
 
     def on_message(
         self,
@@ -62,11 +66,3 @@ class SeerMatcherGroup:
         options.setdefault("block", True)
         options.setdefault("priority", SEER_QUERY_PRIORITY)
         return options
-
-
-__all__ = [
-    "SEER_QUERY_PRIORITY",
-    "SeerMatcherGroup",
-    "seer_feature_priority",
-    "seer_feature_rule",
-]

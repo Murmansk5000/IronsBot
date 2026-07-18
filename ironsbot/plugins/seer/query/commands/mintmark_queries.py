@@ -70,7 +70,7 @@ async def _handle_gem(
 def install(group: SeerMatcherGroup) -> None:
     mintmark_matcher = group.on_message(
         policy=CommandPolicy.command("seer_mintmark_query"),
-        rule=seer_feature_rule("seer_mintmark")
+        rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("刻印")
         & not_rank_query
         & no_reply(),
@@ -80,12 +80,9 @@ def install(group: SeerMatcherGroup) -> None:
 
     gem_matcher = group.on_message(
         policy=CommandPolicy.command("seer_gem_query"),
-        rule=seer_feature_rule("seer_mintmark")
+        rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("宝石")
         & no_reply(),
         priority=seer_feature_priority("seer_mintmark"),
     )
     gem_matcher.append_handler(_handle_gem)
-
-
-__all__ = ["install"]

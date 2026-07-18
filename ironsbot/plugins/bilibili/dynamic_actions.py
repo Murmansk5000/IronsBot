@@ -26,6 +26,7 @@ from ironsbot.shared.messaging import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 
 from .auth import send_bili_login_qrcode_to_superusers
 from .command_rules import is_dynamic_select_reply
@@ -48,9 +49,10 @@ async def handle_dynamic_menu_action(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    admin_notices: AdminNoticeService,
 ) -> None:
     try:
-        query_uids = query_uids_for_event(event)
+        query_uids = query_uids_for_event(admin_notices.features, event)
         logger.info(
             f"Bilibili dynamic menu query: user={event.user_id} uids={query_uids}"
         )
@@ -64,6 +66,7 @@ async def handle_dynamic_menu_action(
         response, res_json = await fetch_dynamic_feed(get_saved_cookie())
         if is_bili_auth_invalid(response.status_code, res_json):
             await send_bili_login_qrcode_to_superusers(
+                admin_notices,
                 "用户查询动态时发现 B 站登录失效"
             )
             await finish_event_reply(

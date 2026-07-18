@@ -12,6 +12,7 @@ from ironsbot.shared.messaging.push_subscription_models import (
     PushSubscriptionOption,
 )
 from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
+from tests.helpers.runtime import build_test_runtime
 
 
 def test_cleanup_uses_current_subscription_and_time_catalogs(
@@ -60,15 +61,18 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         ],
     )
 
-    result = preference_cleanup.prune_stale_push_preferences(
-        MessagingResources(
-            MessageConfig(
-                push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
-            ),
-            ActivityConfig(),
-            store,
-        )
+    runtime = build_test_runtime()
+    messaging = MessagingResources(
+        MessageConfig(
+            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
+        ),
+        ActivityConfig(),
+        store,
+        runtime.features,
+        runtime.priority,
+        runtime.delivery,
     )
+    result = preference_cleanup.prune_stale_push_preferences(messaging)
 
     assert result.unsubscriptions_deleted == 1
     assert result.time_preferences_deleted == 1

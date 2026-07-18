@@ -94,6 +94,7 @@ def install(
         rule=Rule(
             partial(
                 match_private_command,
+                messaging=messaging,
                 actions=messaging.config.private_commands,
             )
         )
@@ -119,7 +120,7 @@ def install(
     )
     push_time_matcher = registry.on_message(
         policy=CommandPolicy.exempt("second-level push time conversation"),
-        rule=Rule(match_push_time_command) & no_reply(),
+        rule=Rule(partial(match_push_time_command, messaging=messaging)) & no_reply(),
         priority=_message_subscription_priority(),
         block=True,
     )
@@ -143,6 +144,7 @@ def install(
         rule=Rule(
             partial(
                 match_group_command,
+                messaging=messaging,
                 actions=messaging.config.group_commands,
             )
         )
@@ -151,6 +153,3 @@ def install(
         block=True,
     )
     group_matcher.append_handler(handle_group_command)
-
-
-__all__ = ["handle_group_command", "handle_private_command", "install"]

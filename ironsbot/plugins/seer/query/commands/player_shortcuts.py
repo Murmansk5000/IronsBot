@@ -123,13 +123,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     matcher = group.on_message(
         policy=CommandPolicy.command(_shortcut_command_id),
-        rule=seer_feature_rule("seer_player")
+        rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_shortcut)
         & no_reply(),
         priority=get_matcher_priority("seer_player", 1),
         block=True,
     )
     matcher.append_handler(handle_shortcut)
-
-
-__all__ = ["install"]

@@ -1,7 +1,7 @@
-from dataclasses import dataclass
-from typing import Any, Protocol
+from __future__ import annotations
 
-from nonebot.adapters.onebot.v11 import Message
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.config.loader import get_app_config
 from ironsbot.services.bilibili.parser import parse_single_item
@@ -11,6 +11,11 @@ from ironsbot.shared.promotions import (
     append_fire_manual_ad_message,
     split_fire_manual_ad_group_ids,
 )
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Message
+
+    from ironsbot.shared.features import FeatureService
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
@@ -43,6 +48,7 @@ class DynamicPushDelivery:
 
 
 def build_dynamic_push_deliveries(
+    features: FeatureService,
     item: dict[str, Any],
     pub_ts: int,
     targets: HasDynamicPushTargets,
@@ -54,6 +60,7 @@ def build_dynamic_push_deliveries(
         if full_message:
             deliveries.extend(
                 _build_delivery_variants(
+                    features,
                     full_message,
                     group_ids=targets.full_group_ids,
                     private_user_ids=targets.full_user_ids,
@@ -66,6 +73,7 @@ def build_dynamic_push_deliveries(
         if link_message:
             deliveries.extend(
                 _build_delivery_variants(
+                    features,
                     link_message,
                     group_ids=targets.link_group_ids,
                     private_user_ids=targets.link_user_ids,
@@ -77,13 +85,17 @@ def build_dynamic_push_deliveries(
 
 
 def _build_delivery_variants(
+    features: FeatureService,
     message: Message,
     *,
     group_ids: list[int],
     private_user_ids: list[int],
     action_name: str,
 ) -> list[DynamicPushDelivery]:
-    ad_group_ids, plain_group_ids = split_fire_manual_ad_group_ids(group_ids)
+    ad_group_ids, plain_group_ids = split_fire_manual_ad_group_ids(
+        features,
+        group_ids,
+    )
     deliveries: list[DynamicPushDelivery] = []
 
     if ad_group_ids:

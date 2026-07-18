@@ -10,7 +10,7 @@ from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 
-from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.features.visibility import event_has_feature
 from ironsbot.shared.messaging import finish_event_reply
 
 from .notice import (
@@ -35,7 +35,7 @@ async def handle_normal_status(
     broadcast: OpenBroadcast,
     headless: HeadlessService,
 ) -> None:
-    if not is_event_feature_allowed(event, "server_status_query"):
+    if not event_has_feature(broadcast.features, event, "server_status_query"):
         logger.info(
             "normal server status command ignored: "
             "server_status_query feature not allowed"

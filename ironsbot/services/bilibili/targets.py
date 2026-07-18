@@ -17,15 +17,7 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_label,
 )
 from ironsbot.services.bilibili.storage import push_preference_store
-from ironsbot.shared.features import (
-    groups_for_feature,
-    is_group_feature_allowed,
-    is_private_feature_allowed,
-    is_superuser,
-    resolve_group_refs,
-    resolve_user_refs,
-    users_for_feature,
-)
+from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging.push_subscription_models import (
     PushSubscriptionOption,
     PushTargetType,
@@ -88,13 +80,6 @@ class BiliPushTargets:
         )
 
 
-CONFIGURED_GROUP_RULES: dict[int, BiliTargetRule] | None = None
-CONFIGURED_USER_RULES: dict[int, BiliTargetRule] | None = None
-PUSH_GROUP_RULES: dict[int, BiliTargetRule] | None = None
-PUSH_USER_RULES: dict[int, BiliTargetRule] | None = None
-MONITORED_UIDS: list[int] | None = None
-
-
 def _target_accounts(
     target_config: BiliPushTargetConfig,
     config: BiliConfig,
@@ -154,11 +139,14 @@ def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTarg
     )
 
 
-def _resolve_group_rules(config: BiliConfig) -> dict[int, BiliTargetRule]:
+def _resolve_group_rules(
+    features: FeatureService,
+    config: BiliConfig,
+) -> dict[int, BiliTargetRule]:
     rules: dict[int, BiliTargetRule] = {}
     for ref, target_config in config.push.groups.items():
         rule = _resolve_rule(target_config, config)
-        for group_id in resolve_group_refs([ref]):
+        for group_id in features.resolve_group_refs([ref]):
             rules[group_id] = (
                 _merge_rules(rules[group_id], rule)
                 if group_id in rules
@@ -167,11 +155,14 @@ def _resolve_group_rules(config: BiliConfig) -> dict[int, BiliTargetRule]:
     return rules
 
 
-def _resolve_user_rules(config: BiliConfig) -> dict[int, BiliTargetRule]:
+def _resolve_user_rules(
+    features: FeatureService,
+    config: BiliConfig,
+) -> dict[int, BiliTargetRule]:
     rules: dict[int, BiliTargetRule] = {}
     for ref, target_config in config.push.users.items():
         rule = _resolve_rule(target_config, config)
-        for user_id in resolve_user_refs([ref]):
+        for user_id in features.resolve_user_refs([ref]):
             rules[user_id] = (
                 _merge_rules(rules[user_id], rule)
                 if user_id in rules
@@ -180,85 +171,88 @@ def _resolve_user_rules(config: BiliConfig) -> dict[int, BiliTargetRule]:
     return rules
 
 
-def configured_group_rules() -> dict[int, BiliTargetRule]:
-    if CONFIGURED_GROUP_RULES is not None:
-        return CONFIGURED_GROUP_RULES
-    return _resolve_group_rules(get_bili_config())
+def configured_group_rules(
+    features: FeatureService,
+) -> dict[int, BiliTargetRule]:
+    return _resolve_group_rules(features, get_bili_config())
 
 
-def configured_user_rules() -> dict[int, BiliTargetRule]:
-    if CONFIGURED_USER_RULES is not None:
-        return CONFIGURED_USER_RULES
-    return _resolve_user_rules(get_bili_config())
+def configured_user_rules(
+    features: FeatureService,
+) -> dict[int, BiliTargetRule]:
+    return _resolve_user_rules(features, get_bili_config())
 
 
-def push_group_rules() -> dict[int, BiliTargetRule]:
-    if PUSH_GROUP_RULES is not None:
-        return PUSH_GROUP_RULES
+def push_group_rules(features: FeatureService) -> dict[int, BiliTargetRule]:
     config = get_bili_config()
     default_rule = _default_rule(config)
-    configured_rules = configured_group_rules()
+    configured_rules = configured_group_rules(features)
     return {
         group_id: configured_rules.get(group_id, default_rule)
-        for group_id in groups_for_feature("bili_push")
+        for group_id in features.groups_for_feature("bili_push")
     }
 
 
-def push_user_rules() -> dict[int, BiliTargetRule]:
-    if PUSH_USER_RULES is not None:
-        return PUSH_USER_RULES
+def push_user_rules(features: FeatureService) -> dict[int, BiliTargetRule]:
     config = get_bili_config()
     default_rule = _default_rule(config)
-    configured_rules = configured_user_rules()
+    configured_rules = configured_user_rules(features)
     return {
         user_id: configured_rules.get(user_id, default_rule)
-        for user_id in users_for_feature("bili_push")
+        for user_id in features.users_for_feature("bili_push")
     }
 
 
-def monitored_uids() -> list[int]:
-    if MONITORED_UIDS is not None:
-        return MONITORED_UIDS
-
+def monitored_uids(features: FeatureService) -> list[int]:
     config = get_bili_config()
     uids = set(_default_rule(config).uids)
     for rule in [
-        *configured_group_rules().values(),
-        *configured_user_rules().values(),
+        *configured_group_rules(features).values(),
+        *configured_user_rules(features).values(),
     ]:
         uids.update(rule.uids)
     return _unique_ints(sorted(uids))
 
 
-def query_uids_for_group(user_id: int, group_id: int) -> list[int]:
-    if not is_group_feature_allowed(user_id, group_id, "bili_query"):
+def query_uids_for_group(
+    features: FeatureService,
+    user_id: int,
+    group_id: int,
+) -> list[int]:
+    if not features.is_group_feature_allowed(user_id, group_id, "bili_query"):
         return []
 
-    rule = configured_group_rules().get(group_id)
+    rule = configured_group_rules(features).get(group_id)
     if rule is None:
         rule = _default_rule(get_bili_config())
     return sorted(rule.uids)
 
 
-def query_uids_for_private(user_id: int) -> list[int]:
-    rule = configured_user_rules().get(user_id)
+def query_uids_for_private(
+    features: FeatureService,
+    user_id: int,
+) -> list[int]:
+    rule = configured_user_rules(features).get(user_id)
     if rule is not None:
-        if is_private_feature_allowed(user_id, "bili_query"):
+        if features.is_private_feature_allowed(user_id, "bili_query"):
             return sorted(rule.uids)
         return []
 
-    if is_superuser(user_id):
-        return monitored_uids()
+    if features.is_superuser(user_id):
+        return monitored_uids(features)
 
     return []
 
 
-def query_uids_for_event(event: MessageEvent) -> list[int]:
+def query_uids_for_event(
+    features: FeatureService,
+    event: MessageEvent,
+) -> list[int]:
     if isinstance(event, GroupMessageEvent):
-        return query_uids_for_group(event.user_id, event.group_id)
+        return query_uids_for_group(features, event.user_id, event.group_id)
 
     if isinstance(event, PrivateMessageEvent):
-        return query_uids_for_private(event.user_id)
+        return query_uids_for_private(features, event.user_id)
 
     return []
 
@@ -272,11 +266,16 @@ def _runtime_mode_for_target(
 
 
 def mode_for_target_uid(
+    features: FeatureService,
     target_type: PushTargetType,
     target_id: int,
     uid: int,
 ) -> BiliPushMode | None:
-    rules = push_group_rules() if target_type == "group" else push_user_rules()
+    rules = (
+        push_group_rules(features)
+        if target_type == "group"
+        else push_user_rules(features)
+    )
     rule = rules.get(target_id)
     if rule is None or uid not in rule.uids:
         return None
@@ -288,6 +287,7 @@ def mode_for_target_uid(
 
 
 def mode_for_target_account(
+    features: FeatureService,
     target_type: PushTargetType,
     target_id: int,
     account: str,
@@ -295,14 +295,19 @@ def mode_for_target_account(
     uid = account_uid(account)
     if uid is None:
         return None
-    return mode_for_target_uid(target_type, target_id, uid)
+    return mode_for_target_uid(features, target_type, target_id, uid)
 
 
 def target_rule(
+    features: FeatureService,
     target_type: PushTargetType,
     target_id: int,
 ) -> BiliTargetRule | None:
-    rules = push_group_rules() if target_type == "group" else push_user_rules()
+    rules = (
+        push_group_rules(features)
+        if target_type == "group"
+        else push_user_rules(features)
+    )
     return rules.get(target_id)
 
 
@@ -311,8 +316,13 @@ def bili_push_subscription_options(
     target_type: PushTargetType,
     target_id: int,
     store: PushUnsubscribeStore,
+    features: FeatureService,
 ) -> list[PushSubscriptionOption]:
-    rules = push_group_rules() if target_type == "group" else push_user_rules()
+    rules = (
+        push_group_rules(features)
+        if target_type == "group"
+        else push_user_rules(features)
+    )
     rule = rules.get(target_id)
     if rule is None:
         return []
@@ -333,11 +343,14 @@ def bili_push_subscription_options(
     return options
 
 
-def push_targets_for_uid(uid: int) -> BiliPushTargets:
+def push_targets_for_uid(
+    features: FeatureService,
+    uid: int,
+) -> BiliPushTargets:
     full_group_ids: list[int] = []
     link_group_ids: list[int] = []
-    for group_id in push_group_rules():
-        mode = mode_for_target_uid("group", group_id, uid)
+    for group_id in push_group_rules(features):
+        mode = mode_for_target_uid(features, "group", group_id, uid)
         if mode == "full":
             full_group_ids.append(group_id)
         elif mode == "link":
@@ -345,8 +358,8 @@ def push_targets_for_uid(uid: int) -> BiliPushTargets:
 
     full_user_ids: list[int] = []
     link_user_ids: list[int] = []
-    for user_id in push_user_rules():
-        mode = mode_for_target_uid("private", user_id, uid)
+    for user_id in push_user_rules(features):
+        mode = mode_for_target_uid(features, "private", user_id, uid)
         if mode == "full":
             full_user_ids.append(user_id)
         elif mode == "link":

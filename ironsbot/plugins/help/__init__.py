@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.app import AppConfig
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.shared.features import FeatureService
 
 
 def _help_prompt_message(event: Event, text: str):
@@ -78,6 +79,7 @@ async def handle_help(
     state: T_State,
     *,
     entries: list[HelpMenuEntry],
+    features: FeatureService,
 ) -> None:
     if not entries:
         await _finish_help_reply(matcher, event, "当前会话没有可用的功能。")
@@ -86,7 +88,7 @@ async def handle_help(
     session_id = event.get_session_id()
     version = prompt_session_manager.acquire(session_id)
     rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
-    handler = _create_selection_handler(session_id, version)
+    handler = _create_selection_handler(session_id, version, features)
 
     await enter_prompt_loop(
         matcher,
@@ -99,6 +101,7 @@ async def handle_help(
 def _create_selection_handler(
     session_id: str,
     version: int,
+    features: FeatureService,
 ) -> object:
     async def _handler(
         matcher: Matcher,
@@ -123,7 +126,7 @@ def _create_selection_handler(
         await _send_help_reply(
             matcher,
             event,
-            format_plugin_detail(entries[index - 1], event),
+            format_plugin_detail(entries[index - 1], event, features),
         )
 
         rule = prompt_session_manager.make_rule(session_id, version, _is_digit_input)
@@ -136,6 +139,7 @@ def install(
     registry: MatcherRegistry,
     definitions: tuple[PluginDefinition, ...],
     config: AppConfig,
+    features: FeatureService,
     *,
     ai_key_configured: bool,
 ) -> None:
@@ -155,6 +159,7 @@ def install(
         entries = visible_help_entries(
             definitions,
             event,
+            features=features,
             config=config,
             ai_key_configured=ai_key_configured,
         )
@@ -163,6 +168,7 @@ def install(
             event,
             state,
             entries=entries,
+            features=features,
         )
 
     matcher.append_handler(_handle_help)

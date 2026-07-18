@@ -37,6 +37,8 @@ if TYPE_CHECKING:
         ServerStatusConfig,
     )
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 
 async def handle_disabled_bare_admin_status(
@@ -50,13 +52,15 @@ async def handle_disabled_bare_admin_status(
     )
 
 
-def install(
+def install(  # noqa: PLR0913
     registry: MatcherRegistry,
     server_status_config: ServerStatusConfig,
     docker_update_config: DockerUpdateConfig,
     headless: HeadlessService,
+    features: FeatureService,
+    delivery: DeliveryResources,
 ) -> None:
-    broadcast = OpenBroadcast(server_status_config)
+    broadcast = OpenBroadcast(server_status_config, features, delivery)
 
     async def handle_normal_server_status(
         matcher: Matcher,

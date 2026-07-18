@@ -23,18 +23,22 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
     from nonebot.typing import T_State
 
+    from ironsbot.shared.features import FeatureService
+
 
 async def handle_display_limit(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
+    *,
+    features: FeatureService,
 ) -> None:
     command: RankDisplayLimitCommand = state[RANK_DISPLAY_LIMIT_COMMAND_KEY]
     if not isinstance(event, GroupMessageEvent):
         await finish_event_reply(matcher, event, "❌ 这个设置只能在群聊中修改。")
         return
 
-    if not can_manage_group_event(event):
+    if not can_manage_group_event(features, event):
         await finish_event_reply(
             matcher,
             event,

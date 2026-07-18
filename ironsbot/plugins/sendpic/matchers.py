@@ -10,7 +10,8 @@ from nonebot_plugin_saa import Image
 
 from ironsbot.config.models.message import PicConfig, SendpicBehaviorConfig
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.features import is_event_feature_allowed
+from ironsbot.shared.features import FeatureService
+from ironsbot.shared.features.visibility import event_has_feature
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
@@ -49,13 +50,15 @@ def create_image_command(
     registry: MatcherRegistry,
     config: PicConfig,
     backend_factory: Callable[..., AsyncGenerator[ImageBackend, None]],
+    features: FeatureService,
 ) -> type[Matcher]:
     """根据配置创建一个「随机/指定索引 + 图床后端」的命令。"""
     matcher = registry.on_command(
         config.command,
         policy=CommandPolicy.command(f"sendpic.{config.id}"),
         aliases=set(config.aliases),
-        rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
+        rule=Rule(lambda event: event_has_feature(features, event, "image"))
+        & no_reply(),
     )
     template = config.message_template
 
@@ -98,6 +101,7 @@ def install(
     registry: MatcherRegistry,
     config: SendpicBehaviorConfig,
     cnb_token: str | None,
+    features: FeatureService,
 ) -> None:
     for command in config.configs:
         if command.id not in config.enabled_ids:
@@ -111,4 +115,4 @@ def install(
         else:
             raise ValueError(f"不支持的图床类型：{command.backend}")
 
-        create_image_command(registry, command, backend_factory)
+        create_image_command(registry, command, backend_factory, features)

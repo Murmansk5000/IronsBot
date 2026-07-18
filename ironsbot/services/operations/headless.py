@@ -13,7 +13,6 @@ from ironsbot.integrations.headless_seer.exception import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.shared.messaging.admin_notice import send_admin_notice
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,6 +21,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.secrets import CredentialsConfig
     from ironsbot.integrations.headless_seer.client import ClientManager
     from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 DAILY_QUIET_START = time(hour=23, minute=55)
@@ -73,12 +73,13 @@ def _format_offline_duration(delta: timedelta | None) -> str:
 
 
 class HeadlessService:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         client: ClientManager,
         credentials: CredentialsConfig,
         connection: HeadlessConfig,
         notices: HeadlessNoticeConfig,
+        admin_notices: AdminNoticeService,
         *,
         now: Callable[[], datetime] | None = None,
     ) -> None:
@@ -86,6 +87,7 @@ class HeadlessService:
         self._credentials = credentials
         self._connection = connection
         self._notices = notices
+        self._admin_notices = admin_notices
         self._now = now or (lambda: datetime.now(LOCAL_TZ))
         self._state = HeadlessState()
         self._state_lock = asyncio.Lock()
@@ -165,7 +167,7 @@ class HeadlessService:
 
         await self.mark_unavailable(reason, source="启动检查", notify=False)
         if self._notices.login_notice:
-            await send_admin_notice(
+            await self._admin_notices.send(
                 self._notices.login_notice_message.format(
                     user_id=self.user_id_text,
                     reason=reason,
@@ -294,7 +296,7 @@ class HeadlessService:
             if connected
             else self._notices.state_offline_message
         )
-        await send_admin_notice(
+        await self._admin_notices.send(
             message_template.format(
                 user_id=user_id or self.user_id_text,
                 reason=reason.strip() or "状态未知",
@@ -309,10 +311,3 @@ class HeadlessService:
             interval_seconds=1.2,
             subscription_key="headless_seer_notice",
         )
-
-
-__all__ = [
-    "HeadlessService",
-    "HeadlessState",
-    "in_headless_notice_quiet_window",
-]

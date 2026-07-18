@@ -19,7 +19,7 @@ TARGET_LAYER_IMPORTS = (
 PLUGIN_OWNER_PARTS = 3
 SCHEDULER_JOB_METHODS = {"add_job", "get_jobs", "remove_job"}
 SQLITE_DATABASE_PATH = PACKAGE_ROOT / "integrations" / "storage" / "sqlite.py"
-RUNTIME_JOBS_PATH = PACKAGE_ROOT / "shared" / "runtime" / "jobs.py"
+RUNTIME_JOBS_PATH = PACKAGE_ROOT / "integrations" / "scheduler" / "jobs.py"
 DISALLOWED_MODULE_NAME_PREFIXES = ("upstream_",)
 DRIVER_LIFECYCLE_METHODS = {
     "on_startup",

@@ -6,14 +6,11 @@ from .push_subscription import build_messaging_push_subscription_options
 from .push_time import build_push_time_options
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.activity import ActivityConfig
-    from ironsbot.config.models.message import MessageConfig
     from ironsbot.shared.messaging.push_subscription_models import PushTargetType
     from ironsbot.shared.messaging.push_subscription_store import (
         PushPreferencePruneResult,
         PushPreferenceTarget,
         PushTimePreferenceIdentity,
-        PushUnsubscribeStore,
     )
 
     from .runtime_service import MessagingResources
@@ -23,17 +20,14 @@ def _valid_preferences_for_target(
     target_type: PushTargetType,
     target_id: int,
     *,
-    message_config: MessageConfig,
-    activity_config: ActivityConfig,
-    store: PushUnsubscribeStore,
+    messaging: MessagingResources,
 ) -> tuple[set[str], set[PushTimePreferenceIdentity]]:
     subscription_keys = {
         option.key
         for option in build_messaging_push_subscription_options(
             target_type,
             target_id,
-            config=message_config,
-            store=store,
+            messaging=messaging,
         )
     }
     time_preferences: set[PushTimePreferenceIdentity] = {
@@ -41,9 +35,7 @@ def _valid_preferences_for_target(
         for option in build_push_time_options(
             target_type,
             target_id,
-            message_config=message_config,
-            activity_config=activity_config,
-            store=store,
+            messaging=messaging,
         )
     }
     return subscription_keys, time_preferences
@@ -63,9 +55,7 @@ def prune_stale_push_preferences(
         subscription_keys, time_preferences = _valid_preferences_for_target(
             target_type,
             target_id,
-            message_config=messaging.config,
-            activity_config=messaging.activity,
-            store=messaging.store,
+            messaging=messaging,
         )
         valid_unsubscription_keys[target] = subscription_keys
         valid_time_preferences[target] = time_preferences
@@ -74,6 +64,3 @@ def prune_stale_push_preferences(
         valid_unsubscription_keys=valid_unsubscription_keys,
         valid_time_preferences=valid_time_preferences,
     )
-
-
-__all__ = ["prune_stale_push_preferences"]

@@ -1,12 +1,18 @@
 import asyncio
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 from nonebot.adapters.onebot.v11 import Message
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.shared.messaging import senders
-from ironsbot.shared.messaging.outbound_rate_limit import OutboundRateLimitDecision
-from ironsbot.shared.messaging.senders import send_target_messages
+from ironsbot.shared.messaging.outbound_rate_limit import (
+    GroupOutboundRateLimitService,
+    OutboundPermit,
+    OutboundRateLimitDecision,
+)
+from ironsbot.shared.messaging.senders import DeliveryResources, send_target_messages
 from ironsbot.shared.messaging.targets import MessageTarget
 
 GROUP_ID = 10
@@ -19,22 +25,26 @@ class FakeSendError(RuntimeError):
 
 
 @dataclass
-class FakeOutboundService:
+class FakeOutboundService(GroupOutboundRateLimitService):
     decisions: list[OutboundRateLimitDecision] = field(default_factory=list)
     rollbacks: list[object] = field(default_factory=list)
+    _preacquired_push_permit: ContextVar[OutboundPermit | None] = field(
+        default_factory=lambda: ContextVar("test_preacquired_permit", default=None),
+        init=False,
+    )
 
     async def acquire_push(
         self,
-        _group_id: int | None,
+        group_id: int | None,
         *,
         source: str,
     ) -> OutboundRateLimitDecision:
-        del source
+        del group_id, source
         if self.decisions:
             return self.decisions.pop(0)
         return OutboundRateLimitDecision(allowed=True)
 
-    def rollback(self, permit: object) -> None:
+    def rollback(self, permit: OutboundPermit | None) -> None:
         self.rollbacks.append(permit)
 
 
@@ -54,21 +64,17 @@ class FakeBot:
         self.group_messages.append((group_id, message))
 
 
-def _allow_pushes(monkeypatch: MonkeyPatch) -> FakeOutboundService:
-    service = FakeOutboundService()
-    monkeypatch.setattr(
-        senders,
-        "group_outbound_rate_limit_service",
-        service,
+def _delivery(
+    outbound: FakeOutboundService | None = None,
+) -> DeliveryResources:
+    return DeliveryResources(
+        outbound or FakeOutboundService(),
+        PushUnsubscribeConfig(),
     )
-    return service
 
 
-def test_send_target_messages_dedupes_and_limits_by_group(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_send_target_messages_dedupes_and_limits_by_group() -> None:
     bot = FakeBot()
-    _allow_pushes(monkeypatch)
     limiter_calls: list[int | None] = []
 
     def _limit(message: str | Message, group_id: int | None) -> str | Message:
@@ -77,6 +83,7 @@ def test_send_target_messages_dedupes_and_limits_by_group(
 
     summary = asyncio.run(
         send_target_messages(
+            _delivery(),
             [
                 MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
                 MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
@@ -107,14 +114,13 @@ def test_send_target_messages_dedupes_and_limits_by_group(
     assert private_message[-1].data["text"] == "hello:group=None"
 
 
-def test_send_target_messages_reports_failed_targets(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_send_target_messages_reports_failed_targets() -> None:
     bot = FakeBot(failed_group_ids={GROUP_ID})
-    outbound = _allow_pushes(monkeypatch)
+    outbound = FakeOutboundService()
 
     summary = asyncio.run(
         send_target_messages(
+            _delivery(outbound),
             [
                 MessageTarget("group", GROUP_ID),
                 MessageTarget("private", PRIVATE_USER_ID),
@@ -135,7 +141,6 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
 ) -> None:
     group_bot = FakeBot(self_id=111111111)
     private_bot = FakeBot(self_id=222222222)
-    _allow_pushes(monkeypatch)
 
     monkeypatch.setattr(
         senders,
@@ -145,6 +150,7 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
 
     summary = asyncio.run(
         send_target_messages(
+            _delivery(),
             [
                 MessageTarget("group", GROUP_ID),
                 MessageTarget("private", PRIVATE_USER_ID),
@@ -161,13 +167,9 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
     assert not private_bot.group_messages
 
 
-def test_send_target_messages_reports_push_queue_suppression(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_send_target_messages_reports_push_queue_suppression() -> None:
     bot = FakeBot()
-    monkeypatch.setattr(
-        senders,
-        "group_outbound_rate_limit_service",
+    delivery = _delivery(
         FakeOutboundService(
             decisions=[
                 OutboundRateLimitDecision(allowed=True),
@@ -176,11 +178,12 @@ def test_send_target_messages_reports_push_queue_suppression(
                     reason="queue_full",
                 ),
             ]
-        ),
+        )
     )
 
     summary = asyncio.run(
         send_target_messages(
+            delivery,
             [
                 MessageTarget("group", GROUP_ID),
                 MessageTarget("group", GROUP_ID + 1),

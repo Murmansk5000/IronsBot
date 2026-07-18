@@ -103,7 +103,7 @@ def install(group: SeerMatcherGroup) -> None:
             game=game,
         )
 
-    rule = seer_feature_rule("seer_peak") & no_reply()
+    rule = seer_feature_rule(group.features, "seer_peak") & no_reply()
     priority = seer_feature_priority("seer_peak")
 
     pool = group.on_fullmatch(
@@ -160,6 +160,3 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     pet.append_handler(handle_peak_pet)
-
-
-__all__ = ["install"]

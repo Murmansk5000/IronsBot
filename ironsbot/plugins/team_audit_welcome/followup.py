@@ -15,7 +15,6 @@ from ironsbot.services.team_audit_welcome import (
     list_team_audit_pending_reminders,
     record_team_audit_pending_reminder,
 )
-from ironsbot.shared.features import is_group_feature_allowed, resolve_group_refs
 from ironsbot.shared.messaging import (
     MessageTarget,
     get_bot_for_group,
@@ -28,6 +27,8 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot, Message
 
     from ironsbot.config.models.message import TeamAuditWelcomeConfig
+    from ironsbot.shared.features import FeatureService
+    from ironsbot.shared.messaging.senders import DeliveryResources
 
 TEAM_AUDIT_FOLLOWUP_JOB_PREFIX = "team_audit_followup_"
 FOLLOWUP_SCAN_INTERVAL_MINUTES = 10
@@ -97,11 +98,13 @@ def _followup_message(
     return build_message(text, at_user_ids=[user_id])
 
 
-def schedule_team_audit_followup(
+def schedule_team_audit_followup(  # noqa: PLR0913
     scheduler: AsyncIOScheduler,
     reminder: TeamAuditPendingReminder,
     *,
     config: TeamAuditWelcomeConfig,
+    features: FeatureService,
+    delivery: DeliveryResources,
     now: datetime | None = None,
 ) -> None:
     if not config.enabled or not config.followup_enabled:
@@ -117,7 +120,12 @@ def schedule_team_audit_followup(
         "date",
         run_date=run_at,
         args=[reminder.group_id, reminder.user_id],
-        kwargs={"config": config, "scheduler": scheduler},
+        kwargs={
+            "config": config,
+            "scheduler": scheduler,
+            "features": features,
+            "delivery": delivery,
+        },
         job_id=_followup_job_suffix(reminder.group_id, reminder.user_id),
         misfire_grace_time=3600,
     )
@@ -127,25 +135,39 @@ async def schedule_pending_team_audit_followups(
     scheduler: AsyncIOScheduler,
     *,
     config: TeamAuditWelcomeConfig,
+    features: FeatureService,
+    delivery: DeliveryResources,
 ) -> None:
     if not config.enabled or not config.followup_enabled:
         return
 
     for reminder in list_team_audit_pending_reminders(config.followup_cache_path):
-        schedule_team_audit_followup(scheduler, reminder, config=config)
+        schedule_team_audit_followup(
+            scheduler,
+            reminder,
+            config=config,
+            features=features,
+            delivery=delivery,
+        )
 
 
 def register_team_audit_followup_scan(
     scheduler: AsyncIOScheduler,
     *,
     config: TeamAuditWelcomeConfig,
+    features: FeatureService,
+    delivery: DeliveryResources,
 ) -> None:
     _followup_job_registry(scheduler).add(
         schedule_pending_team_audit_followups,
         "interval",
         minutes=FOLLOWUP_SCAN_INTERVAL_MINUTES,
         args=[scheduler],
-        kwargs={"config": config},
+        kwargs={
+            "config": config,
+            "features": features,
+            "delivery": delivery,
+        },
         job_id="scan",
     )
 
@@ -155,6 +177,8 @@ def _schedule_final_followup(
     *,
     config: TeamAuditWelcomeConfig,
     scheduler: AsyncIOScheduler,
+    features: FeatureService,
+    delivery: DeliveryResources,
 ) -> None:
     final_reminder = record_team_audit_pending_reminder(
         config.followup_cache_path,
@@ -164,7 +188,13 @@ def _schedule_final_followup(
         delay_hours=config.final_followup_after_hours,
         step=FINAL_FOLLOWUP_STEP,
     )
-    schedule_team_audit_followup(scheduler, final_reminder, config=config)
+    schedule_team_audit_followup(
+        scheduler,
+        final_reminder,
+        config=config,
+        features=features,
+        delivery=delivery,
+    )
 
 
 def _finish_sent_followup(
@@ -172,12 +202,16 @@ def _finish_sent_followup(
     *,
     config: TeamAuditWelcomeConfig,
     scheduler: AsyncIOScheduler,
+    features: FeatureService,
+    delivery: DeliveryResources,
 ) -> None:
     if reminder.step < FINAL_FOLLOWUP_STEP and config.final_followup_enabled:
         _schedule_final_followup(
             reminder,
             config=config,
             scheduler=scheduler,
+            features=features,
+            delivery=delivery,
         )
         return
     clear_team_audit_pending_reminder(
@@ -187,12 +221,14 @@ def _finish_sent_followup(
     )
 
 
-async def send_team_audit_followup(  # noqa: PLR0911
+async def send_team_audit_followup(  # noqa: PLR0911, PLR0913
     group_id: int,
     user_id: int,
     *,
     config: TeamAuditWelcomeConfig,
     scheduler: AsyncIOScheduler,
+    features: FeatureService,
+    delivery: DeliveryResources,
 ) -> None:
     if not config.enabled or not config.followup_enabled:
         return
@@ -212,7 +248,7 @@ async def send_team_audit_followup(  # noqa: PLR0911
         )
         return
 
-    if group_id not in resolve_group_refs(config.groups):
+    if group_id not in features.resolve_group_refs(config.groups):
         clear_team_audit_pending_reminder(
             config.followup_cache_path,
             group_id=group_id,
@@ -220,7 +256,7 @@ async def send_team_audit_followup(  # noqa: PLR0911
         )
         return
 
-    if not is_group_feature_allowed(user_id, group_id, config.feature):
+    if not features.is_group_feature_allowed(user_id, group_id, config.feature):
         return
 
     bot = get_bot_for_group(group_id)
@@ -243,6 +279,7 @@ async def send_team_audit_followup(  # noqa: PLR0911
         return
 
     summary = await send_target_messages(
+        delivery,
         [MessageTarget("group", group_id)],
         _followup_message(config, user_id, group_id=group_id, reminder=reminder),
         bot=bot,
@@ -262,13 +299,6 @@ async def send_team_audit_followup(  # noqa: PLR0911
         reminder,
         config=config,
         scheduler=scheduler,
+        features=features,
+        delivery=delivery,
     )
-
-
-__all__ = [
-    "FOLLOWUP_SCAN_INTERVAL_MINUTES",
-    "register_team_audit_followup_scan",
-    "schedule_pending_team_audit_followups",
-    "schedule_team_audit_followup",
-    "send_team_audit_followup",
-]

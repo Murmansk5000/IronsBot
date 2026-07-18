@@ -83,10 +83,11 @@ httpx.AsyncClient.request = _forbidden_async_request
 
 from ironsbot.runtime.matchers import MatcherRegistry
 from tests.helpers.plugin_registry import build_test_plugin_registry
+from tests.helpers.runtime import build_test_runtime
 
 external_ids = {"apscheduler", "localstore", "htmlkit", "saa"}
 definitions = build_test_plugin_registry()
-registry = MatcherRegistry()
+registry = build_test_runtime().matcher_registry()
 for definition in definitions:
     if definition.id not in external_ids:
         definition.install(registry)

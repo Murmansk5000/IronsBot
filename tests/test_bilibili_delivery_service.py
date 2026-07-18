@@ -4,6 +4,7 @@ from typing import Any
 
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import PushUnsubscribeConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.services.bilibili import delivery as delivery_service
@@ -15,6 +16,7 @@ from ironsbot.services.bilibili.delivery import (
     build_dynamic_push_deliveries,
 )
 from tests.helpers.config import stub_app_config
+from tests.helpers.runtime import build_test_runtime
 
 PUB_TS = 1781004683
 SPLIT_DELIVERY_COUNT = 2
@@ -55,15 +57,18 @@ def _item(
 
 
 def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
-    monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        delivery_service,
-        "split_fire_manual_ad_group_ids",
-        lambda group_ids: (group_ids, []),
-    )
+    features = build_test_runtime(
+        feature_config=FeatureConfig(
+            group_policy={
+                "1001": ["fire_manual_ad"],
+                "1002": ["fire_manual_ad"],
+            }
+        )
+    ).features
 
     deliveries = build_dynamic_push_deliveries(
+        features,
         _item(),
         PUB_TS,
         FakePushTargets(
@@ -106,15 +111,13 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
 
 
 def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
-    monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        delivery_service,
-        "split_fire_manual_ad_group_ids",
-        lambda group_ids: ([group_ids[0]], group_ids[1:]),
-    )
-
     deliveries = build_dynamic_push_deliveries(
+        build_test_runtime(
+            feature_config=FeatureConfig(
+                group_policy={"1001": ["fire_manual_ad"]},
+            )
+        ).features,
         _item(),
         PUB_TS,
         FakePushTargets(
@@ -136,6 +139,7 @@ def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
 
 def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
     deliveries = build_dynamic_push_deliveries(
+        build_test_runtime().features,
         _item(),
         PUB_TS,
         FakePushTargets(

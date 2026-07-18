@@ -28,7 +28,7 @@ from ironsbot.services.seer.team import (
     format_team_unavailable_message,
 )
 from ironsbot.services.team_resource_subscriptions import TeamResourceSubscriptionStore
-from ironsbot.shared.features import is_group_feature_allowed
+from ironsbot.shared.features import FeatureService
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.shared.permissions import can_manage_group_event
 from ironsbot.utils.parse_arg import parse_string_arg
@@ -92,18 +92,19 @@ def _team_resource_store() -> TeamResourceSubscriptionStore:
 
 
 def _team_subscription_prompt(
+    features: FeatureService,
     event: MessageEvent,
     team_info: object,
 ) -> str | None:
     if not isinstance(event, GroupMessageEvent):
         return None
-    if not can_manage_group_event(event):
+    if not can_manage_group_event(features, event):
         return None
 
     config = get_app_config().seer.team_resource
     if not config.enabled:
         return None
-    if not is_group_feature_allowed(
+    if not features.is_group_feature_allowed(
         event.user_id,
         event.group_id,
         TEAM_RESOURCE_FEATURE,
@@ -157,6 +158,7 @@ async def _query_team_info(
 
 
 async def _collect_team_query_messages(
+    features: FeatureService,
     team_ids: list[int],
     event: MessageEvent,
     headless: HeadlessService,
@@ -186,7 +188,7 @@ async def _collect_team_query_messages(
 
         messages.append(team_message)
         if prompt is None:
-            prompt = _team_subscription_prompt(event, team_info)
+            prompt = _team_subscription_prompt(features, event, team_info)
 
     return messages, prompt
 
@@ -196,11 +198,13 @@ async def handle_team(
     event: MessageEvent,
     state: T_State,
     headless: HeadlessService,
+    features: FeatureService,
 ) -> None:
     team_ids: list[int] = state[TEAM_IDS_KEY]
 
     try:
         messages, prompt = await _collect_team_query_messages(
+            features,
             team_ids,
             event,
             headless,
@@ -233,11 +237,17 @@ def install(group: SeerMatcherGroup) -> None:
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        await handle_team(matcher, event, state, group.headless)
+        await handle_team(
+            matcher,
+            event,
+            state,
+            group.headless,
+            group.features,
+        )
 
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_team"),
-        rule=seer_feature_rule("seer_team")
+        rule=seer_feature_rule(group.features, "seer_team")
         & (
             startswith_or_endswith(
                 prefixes=("战队", "查询战队信息"),
@@ -250,6 +260,3 @@ def install(group: SeerMatcherGroup) -> None:
     )
     matcher.append_handler(validate_team_id)
     matcher.append_handler(handle_query)
-
-
-__all__ = ["install"]

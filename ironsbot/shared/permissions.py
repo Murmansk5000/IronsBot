@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from ironsbot.shared.features import is_superuser
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ironsbot.shared.features import FeatureService
 
 GROUP_MANAGER_ROLES = frozenset({"owner", "admin"})
 
@@ -13,9 +16,9 @@ def event_user_id(event: object) -> int | None:
     return int(user_id)
 
 
-def is_superuser_event(event: object) -> bool:
+def is_superuser_event(features: FeatureService, event: object) -> bool:
     user_id = event_user_id(event)
-    return user_id is not None and is_superuser(user_id)
+    return user_id is not None and features.is_superuser(user_id)
 
 
 def is_group_owner_or_admin_event(event: object) -> bool:
@@ -24,21 +27,11 @@ def is_group_owner_or_admin_event(event: object) -> bool:
     return role in GROUP_MANAGER_ROLES
 
 
-def can_manage_group_event(event: object) -> bool:
-    return is_superuser_event(event) or is_group_owner_or_admin_event(event)
+def can_manage_group_event(features: FeatureService, event: object) -> bool:
+    return is_superuser_event(features, event) or is_group_owner_or_admin_event(event)
 
 
-def can_manage_conversation_event(event: object) -> bool:
+def can_manage_conversation_event(features: FeatureService, event: object) -> bool:
     if getattr(event, "group_id", None) is not None:
-        return can_manage_group_event(event)
-    return is_superuser_event(event)
-
-
-__all__ = [
-    "GROUP_MANAGER_ROLES",
-    "can_manage_conversation_event",
-    "can_manage_group_event",
-    "event_user_id",
-    "is_group_owner_or_admin_event",
-    "is_superuser_event",
-]
+        return can_manage_group_event(features, event)
+    return is_superuser_event(features, event)

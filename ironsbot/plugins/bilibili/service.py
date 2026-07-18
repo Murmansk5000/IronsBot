@@ -43,6 +43,7 @@ from ironsbot.services.bilibili.targets import (
     monitored_uids,
     push_targets_for_uid,
 )
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 
 from .auth import send_bili_login_qrcode_to_superusers
 
@@ -52,13 +53,18 @@ DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 _auto_check_state = AutoCheckState()
 
 
-async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) -> bool:
+async def _is_valid_dynamic_response(
+    admin_notices: AdminNoticeService,
+    response: Any,
+    res_json: dict[str, Any],
+) -> bool:
     check = check_dynamic_response(response.status_code, res_json)
     if check.is_ok:
         return True
 
     if check.status == "auth_invalid":
         await send_bili_login_qrcode_to_superusers(
+            admin_notices,
             "自动检查动态时发现 B 站登录失效"
         )
         return False
@@ -74,6 +80,7 @@ async def _is_valid_dynamic_response(response: Any, res_json: dict[str, Any]) ->
 
 
 async def _send_dynamic_push(
+    admin_notices: AdminNoticeService,
     item: dict[str, Any],
     pub_ts: int,
     author_mid: int,
@@ -81,8 +88,14 @@ async def _send_dynamic_push(
 ) -> None:
     from ironsbot.shared.messaging import send_broadcast_message
 
-    for delivery in build_dynamic_push_deliveries(item, pub_ts, targets):
+    for delivery in build_dynamic_push_deliveries(
+        admin_notices.features,
+        item,
+        pub_ts,
+        targets,
+    ):
         await send_broadcast_message(
+            admin_notices.delivery,
             delivery.message,
             group_ids=delivery.group_ids,
             private_user_ids=delivery.private_user_ids,
@@ -112,6 +125,7 @@ def _log_non_delivery_decision(
 
 
 async def _push_new_dynamics(
+    admin_notices: AdminNoticeService,
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
 ) -> bool:
@@ -135,7 +149,7 @@ async def _push_new_dynamics(
             suppression_reason=snapshot.suppression_reason,
         )
         if decision is None:
-            targets = push_targets_for_uid(author_mid)
+            targets = push_targets_for_uid(admin_notices.features, author_mid)
             decision = decide_dynamic_push_after_targets(targets)
 
         if decision.status == "skip_existing":
@@ -150,9 +164,15 @@ async def _push_new_dynamics(
             continue
 
         if targets is None:
-            targets = push_targets_for_uid(author_mid)
+            targets = push_targets_for_uid(admin_notices.features, author_mid)
 
-        await _send_dynamic_push(item, pub_ts, author_mid, targets)
+        await _send_dynamic_push(
+            admin_notices,
+            item,
+            pub_ts,
+            author_mid,
+            targets,
+        )
         save_dynamic_history_snapshot(mark_history_snapshot_pushed(snapshot))
         checkpoint_changed = (
             mark_checkpoint(checkpoints, author_mid, pub_ts)
@@ -162,15 +182,21 @@ async def _push_new_dynamics(
     return checkpoint_changed
 
 
-async def _do_check_logic() -> None:
+async def _do_check_logic(
+    admin_notices: AdminNoticeService,
+) -> None:
     try:
         response, res_json = await fetch_dynamic_feed(get_saved_cookie())
-        if not await _is_valid_dynamic_response(response, res_json):
+        if not await _is_valid_dynamic_response(
+            admin_notices,
+            response,
+            res_json,
+        ):
             return
 
         valid_dynamics = target_dynamics_from_response(
             res_json,
-            monitored_uids(),
+            monitored_uids(admin_notices.features),
         )
         if not valid_dynamics:
             return
@@ -188,7 +214,11 @@ async def _do_check_logic() -> None:
                 f"({checkpoint.author_mid}): {checkpoint.pub_ts}"
             )
 
-        if await _push_new_dynamics(valid_dynamics, checkpoints):
+        if await _push_new_dynamics(
+            admin_notices,
+            valid_dynamics,
+            checkpoints,
+        ):
             checkpoint_changed = True
 
         if checkpoint_changed:
@@ -200,6 +230,7 @@ async def _do_check_logic() -> None:
 
 
 async def run_check_logic(
+    admin_notices: AdminNoticeService,
     *,
     is_startup_check: bool = False,
     force: bool = False,
@@ -221,7 +252,7 @@ async def run_check_logic(
         ):
             return False
 
-        await _do_check_logic()
+        await _do_check_logic(admin_notices)
         mark_auto_check(_auto_check_state, now)
 
     return True

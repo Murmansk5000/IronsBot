@@ -30,8 +30,15 @@ from ironsbot.config.models.seer import (
     RankQueryConfig,
 )
 from ironsbot.plugins.seer.query import runtime as seer_runtime
+from tests.helpers.runtime import build_test_runtime
 
-HEADLESS = build_headless_service(AppConfig().runtime, CredentialsConfig())
+TEST_CONFIG = AppConfig()
+TEST_RUNTIME = build_test_runtime(feature_config=TEST_CONFIG.feature)
+HEADLESS = build_headless_service(
+    TEST_CONFIG.runtime,
+    CredentialsConfig(),
+    TEST_RUNTIME.admin_notices,
+)
 
 
 class FakeScheduler:

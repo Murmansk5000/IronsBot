@@ -6,8 +6,9 @@ from pytest import MonkeyPatch
 from ironsbot.config.models.runtime import StartupConfig
 from ironsbot.plugins.startup_notice import runtime as startup_notice_runtime
 from ironsbot.services.startup_notice import StartupNoticeService
-from ironsbot.shared.messaging.admin_notice import AdminNoticeTargets
+from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -17,10 +18,7 @@ def _startup_notice_service(
     *parts: tuple[str, str, str],
 ) -> StartupNoticeService:
     service = StartupNoticeService(
-        target_loader=lambda: AdminNoticeTargets(
-            private_user_ids=[1],
-            group_ids=[],
-        )
+        build_test_runtime(superuser_ids=(1,)).admin_notices
     )
     for part in parts:
         service.add(*part)
@@ -32,6 +30,7 @@ def test_startup_notice_appends_db_sync_notice(
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
     async def fake_send_broadcast_message(
+        _service: AdminNoticeService,
         message: object,
         **kwargs: object,
     ) -> TargetSendSummary:
@@ -40,7 +39,8 @@ def test_startup_notice_appends_db_sync_notice(
         return TargetSendSummary([MessageTarget("private", 1)], [])
 
     monkeypatch.setattr(
-        "ironsbot.shared.messaging.send_broadcast_message",
+        AdminNoticeService,
+        "send",
         fake_send_broadcast_message,
     )
 
@@ -72,6 +72,7 @@ def test_startup_notice_appends_docker_update_before_db_sync(
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
     async def fake_send_broadcast_message(
+        _service: AdminNoticeService,
         message: object,
         **kwargs: object,
     ) -> TargetSendSummary:
@@ -79,7 +80,8 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         return TargetSendSummary([MessageTarget("private", 1)], [])
 
     monkeypatch.setattr(
-        "ironsbot.shared.messaging.send_broadcast_message",
+        AdminNoticeService,
+        "send",
         fake_send_broadcast_message,
     )
 

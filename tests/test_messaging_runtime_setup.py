@@ -17,6 +17,7 @@ except ValueError:
 
 from ironsbot.app.composition import refresh_push_time_jobs
 from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.config.models.message import (
     GroupScheduledMessageAction,
     MessageConfig,
@@ -41,6 +42,7 @@ from ironsbot.shared.messaging.push_subscription_store import (
     PushUnsubscribeStore,
 )
 from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from ironsbot.services.activity.service import ActivityService
@@ -107,15 +109,28 @@ def _messaging_resources(
     data_path: Path,
     *,
     group_schedules: list[GroupScheduledMessageAction] | None = None,
+    group_policy: dict[str, list[str]] | None = None,
+    user_policy: dict[str, list[str]] | None = None,
+    superusers: tuple[int, ...] = (),
 ) -> MessagingResources:
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
         group_schedules=group_schedules or [],
     )
+    resources = build_test_runtime(
+        feature_config=FeatureConfig(
+            group_policy=group_policy or {},
+            user_policy=user_policy or {},
+        ),
+        superuser_ids=superusers,
+    )
     return MessagingResources(
         config,
         ActivityConfig(),
         PushUnsubscribeStore(data_path),
+        resources.features,
+        resources.priority,
+        resources.delivery,
     )
 
 
@@ -298,9 +313,14 @@ def test_scheduled_messages_append_fire_manual_ad(
     tmp_path: Path,
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
-    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        user_policy={"2001": ["text_push"]},
+        group_policy={"1001": ["text_push", "fire_manual_ad"]},
+    )
 
     async def fake_send_broadcast_message(
+        _delivery: object,
         message: str,
         **kwargs: object,
     ) -> None:
@@ -315,29 +335,16 @@ def test_scheduled_messages_append_fire_manual_ad(
         "send_broadcast_message",
         fake_send_broadcast_message,
     )
-    monkeypatch.setattr(message_schedules, "users_for_feature", lambda _feature: [2001])
-    monkeypatch.setattr(message_schedules, "users_with_superusers", list)
-    monkeypatch.setattr(
-        message_schedules,
-        "groups_for_feature",
-        lambda _feature: [1001],
-    )
-    monkeypatch.setattr(
-        message_schedules,
-        "append_fire_manual_ad_for_group",
-        lambda message, _group_id: f"{message}\n\n{FIRE_MANUAL_LINK_MESSAGE}",
-    )
-
     asyncio.run(
         message_schedules.send_private_schedule(
             _private_schedule("私聊定时"),
-            store=store,
+            messaging=messaging,
         )
     )
     asyncio.run(
         message_schedules.send_group_schedule(
             _group_schedule("群定时", at_user_ids=[3001]),
-            store=store,
+            messaging=messaging,
         )
     )
 
@@ -358,9 +365,16 @@ def test_private_schedule_passes_subscription_key(
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     data_path = tmp_path / "unsubscribe.sqlite"
-    store = PushUnsubscribeStore(data_path)
+    messaging = _messaging_resources(
+        data_path,
+        user_policy={
+            "2001": ["text_push"],
+            "2002": ["text_push"],
+        },
+    )
 
     async def fake_send_broadcast_message(
+        _delivery: object,
         message: str,
         **kwargs: object,
     ) -> None:
@@ -371,17 +385,10 @@ def test_private_schedule_passes_subscription_key(
         "send_broadcast_message",
         fake_send_broadcast_message,
     )
-    monkeypatch.setattr(
-        message_schedules,
-        "users_for_feature",
-        lambda _feature: [2001, 2002],
-    )
-    monkeypatch.setattr(message_schedules, "users_with_superusers", list)
-
     asyncio.run(
         message_schedules.send_private_schedule(
             _private_schedule("私聊定时"),
-            store=store,
+            messaging=messaging,
         )
     )
 
@@ -395,8 +402,14 @@ def test_group_schedule_skips_default_time_for_overridden_group(
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     data_path = tmp_path / "unsubscribe.sqlite"
-    store = PushUnsubscribeStore(data_path)
-    store.set_time_preference(
+    messaging = _messaging_resources(
+        data_path,
+        group_policy={
+            "1001": ["text_push"],
+            "1002": ["text_push"],
+        },
+    )
+    messaging.store.set_time_preference(
         "group",
         1001,
         "daily",
@@ -405,6 +418,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
     )
 
     async def fake_send_broadcast_message(
+        _delivery: object,
         message: str,
         **kwargs: object,
     ) -> None:
@@ -415,16 +429,10 @@ def test_group_schedule_skips_default_time_for_overridden_group(
         "send_broadcast_message",
         fake_send_broadcast_message,
     )
-    monkeypatch.setattr(
-        message_schedules,
-        "groups_for_feature",
-        lambda _feature: [1001, 1002],
-    )
-
     asyncio.run(
         message_schedules.send_group_schedule(
             _group_schedule("group push", at_user_ids=[], schedule_id="daily"),
-            store=store,
+            messaging=messaging,
         )
     )
 
@@ -433,7 +441,6 @@ def test_group_schedule_skips_default_time_for_overridden_group(
 
 
 def test_group_schedule_override_job_targets_only_overridden_group(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     data_path = tmp_path / "unsubscribe.sqlite"
@@ -454,16 +461,17 @@ def test_group_schedule_override_job_targets_only_overridden_group(
     )
     scheduler = FakeScheduler()
 
-    monkeypatch.setattr(
-        message_schedules,
-        "groups_for_feature",
-        lambda _feature: [1001, 1002],
-    )
-
     asyncio.run(
         message_schedules.register_message_schedules(
             scheduler,
-            _messaging_resources(data_path, group_schedules=[task]),
+            _messaging_resources(
+                data_path,
+                group_schedules=[task],
+                group_policy={
+                    "1001": ["text_push"],
+                    "1002": ["text_push"],
+                },
+            ),
         )
     )
 
