@@ -56,6 +56,7 @@ def bootstrap() -> BootstrapState:
     )
     plugins = build_plugin_registry(
         activity_service=activity.service,
+        restart_config=config.runtime.restart,
         shutdown_activity=activity.close,
         startup_config=config.runtime.startup_notice,
     )

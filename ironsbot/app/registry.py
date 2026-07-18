@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot
 
-    from ironsbot.config.models.runtime import StartupConfig
+    from ironsbot.config.models.runtime import RestartConfig, StartupConfig
     from ironsbot.plugins.messaging.push_time import PushTimeOption
     from ironsbot.plugins.messaging.push_time_handlers import RefreshPushTimeJobs
     from ironsbot.runtime.matchers import MatcherRegistry
@@ -241,10 +241,10 @@ async def _register_headless_reconnect_jobs() -> None:
     register_reconnect_checks(_scheduler())
 
 
-async def _register_restart_jobs() -> None:
+async def _register_restart_jobs(config: RestartConfig) -> None:
     from ironsbot.plugins.scheduled_restart.runtime import register_restart_jobs
 
-    register_restart_jobs(_scheduler())
+    register_restart_jobs(_scheduler(), config)
 
 
 async def _register_bilibili_jobs() -> None:
@@ -342,6 +342,7 @@ async def _team_audit_on_connect(bot: Bot) -> None:
 def build_plugin_registry(
     *,
     activity_service: ActivityService,
+    restart_config: RestartConfig,
     shutdown_activity: AsyncHook,
     startup_config: StartupConfig,
 ) -> tuple[PluginDefinition, ...]:
@@ -507,7 +508,12 @@ def build_plugin_registry(
             help=None,
             install=_noop_install,
             hooks=PluginHooks(
-                startup=(("scheduled_restart_jobs", _register_restart_jobs),),
+                startup=(
+                    (
+                        "scheduled_restart_jobs",
+                        partial(_register_restart_jobs, restart_config),
+                    ),
+                ),
             ),
         ),
         PluginDefinition(

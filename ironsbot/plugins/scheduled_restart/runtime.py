@@ -9,17 +9,20 @@ from zoneinfo import ZoneInfo
 
 from nonebot import logger
 
+from ironsbot.config.models.runtime import (
+    INVALID_RESTART_TIME_ERROR,
+    RestartConfig,
+)
 from ironsbot.core.time import daily_time_parts
 from ironsbot.integrations.scheduler.jobs import JobRegistry
-
-from .config import INVALID_RESTART_TIME_ERROR, get_restart_config
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 JOB_ID = "scheduled_bot_restart"
 PARENT_EXIT_WAIT_SECONDS = 5.0
 
-def _target_pid() -> int:
-    if not get_restart_config().signal_parent:
+
+def _target_pid(config: RestartConfig) -> int:
+    if not config.signal_parent:
         return os.getpid()
 
     parent_pid = os.getppid()
@@ -29,8 +32,11 @@ def _target_pid() -> int:
     return os.getpid()
 
 
-async def _scheduled_restart(scheduled_time: str) -> None:
-    grace_seconds = get_restart_config().grace_seconds
+async def _scheduled_restart(
+    scheduled_time: str,
+    config: RestartConfig,
+) -> None:
+    grace_seconds = config.grace_seconds
     if grace_seconds > 0:
         logger.warning(
             "scheduled bot restart {} will signal process in {:.1f}s",
@@ -40,7 +46,7 @@ async def _scheduled_restart(scheduled_time: str) -> None:
         await asyncio.sleep(grace_seconds)
 
     current_pid = os.getpid()
-    target_pid = _target_pid()
+    target_pid = _target_pid(config)
     logger.warning(
         "scheduled bot restart sending SIGTERM: "
         "time={}, current_pid={}, target_pid={}",
@@ -59,13 +65,12 @@ async def _scheduled_restart(scheduled_time: str) -> None:
         os.kill(current_pid, signal.SIGTERM)
 
 
-def register_restart_jobs(scheduler: Any) -> None:
-    restart_config = get_restart_config()
-    if not restart_config.enabled:
+def register_restart_jobs(scheduler: Any, config: RestartConfig) -> None:
+    if not config.enabled:
         logger.info("scheduled bot restart disabled")
         return
 
-    restart_times = restart_config.parsed_restart_times
+    restart_times = config.parsed_restart_times
     registry = JobRegistry(scheduler, prefix=f"{JOB_ID}:")
     for scheduled_time in restart_times:
         hour, minute = daily_time_parts(
@@ -76,7 +81,7 @@ def register_restart_jobs(scheduler: Any) -> None:
             _scheduled_restart,
             "cron",
             job_id=scheduled_time,
-            args=[scheduled_time],
+            args=[scheduled_time, config],
             hour=hour,
             minute=minute,
             second=0,

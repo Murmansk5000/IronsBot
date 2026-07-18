@@ -743,10 +743,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "server_status_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "server_status" / "config.py",
     )
-    scheduled_restart_config = _load_module_from_path(
-        "scheduled_restart_config_for_app_config_test",
-        ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "config.py",
-    )
     team_resource_config = _load_module_from_path(
         "team_resource_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "team_resource_subscription" / "config.py",
@@ -792,7 +788,6 @@ def test_small_plugin_config_accessors_read_app_config(
             server_status_config.get_docker_update_config().image
             == "murmansk5000/ironsbot:latest"
         )
-        assert not scheduled_restart_config.get_restart_config().enabled
         assert "aliases" in app_config.runtime.data_sync.sources
         assert app_config.runtime.priority.enabled
         assert team_resource_config.get_team_resource_config().commands == ["战队"]
