@@ -8,7 +8,7 @@ from nonebot.log import logger
 from ironsbot.config.loader import get_app_config
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync import state as db_sync_state
-from ironsbot.shared.runtime.jobs import JobRegistry
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 _startup_sync_state: dict[str, str | None] = {"notice": None}
 DB_SYNC_JOB_PREFIX = "db_sync_"

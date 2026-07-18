@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from ironsbot.shared.runtime.jobs import JobRegistry
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 from .service import run_check_logic
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ironsbot.shared.runtime.jobs import JobRegistry
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 from . import scan_team_resource_subscriptions
 from .config import get_team_resource_config

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.shared.runtime.jobs import JobRegistry
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 from .planning import group_by_send_time
 

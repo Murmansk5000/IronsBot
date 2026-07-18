@@ -6,7 +6,7 @@ from typing import Any
 
 from nonebot import logger
 
-from ironsbot.shared.runtime.jobs import JobRegistry
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 
 from .config import get_local_rank_config, get_rank_query_config
 

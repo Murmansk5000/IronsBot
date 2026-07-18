@@ -8,6 +8,7 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.log import logger
 
 from ironsbot.config.loader import get_app_config
+from ironsbot.integrations.scheduler.jobs import JobRegistry
 from ironsbot.services.team_audit_welcome import (
     TeamAuditPendingReminder,
     clear_team_audit_pending_reminder,
@@ -21,7 +22,6 @@ from ironsbot.shared.messaging import (
     get_bot_for_group,
     send_target_messages,
 )
-from ironsbot.shared.runtime.jobs import JobRegistry
 
 from .settings import (
     FINAL_FOLLOWUP_STEP,
