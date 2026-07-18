@@ -1,16 +1,15 @@
 # SPDX-License-Identifier: MIT
 import httpx
 from nonebot import logger
-from nonebot.plugin import PluginMetadata
 
 from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.app import AppConfig
 from ironsbot.config.models.runtime import RemoteBuildConfig
 from ironsbot.integrations.db_sync.models import GetFingerprintFn
 from ironsbot.integrations.db_sync.registry import (
     register_database,
     register_local_database,
 )
+from ironsbot.runtime.matchers import MatcherRegistry
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
@@ -64,15 +63,6 @@ def _register_source(name: str) -> None:
     )
 
 
-_register_source(_SEERAPI_DB)
-_register_source(_ALIAS_DB)
-
-__plugin_meta__ = PluginMetadata(
-    name="赛尔号数据",
-    description="赛尔号 API 数据库同步、查询依赖与游戏资源图片获取",
-    usage=(
-        "加载后注册 seerapi 与 aliases 数据源；"
-        "查询和图片访问使用 integrations.seer_data。"
-    ),
-    config=AppConfig,
-)
+def install(_registry: MatcherRegistry) -> None:
+    _register_source(_SEERAPI_DB)
+    _register_source(_ALIAS_DB)

@@ -18,6 +18,7 @@ from ironsbot.integrations.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
@@ -61,7 +62,7 @@ from ..config import (
     get_player_query_config,
     get_team_query_config,
 )
-from ..group import matcher_group, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_rule
 from ._args import parse_numeric_id
 from .player_context import (
     PLAYER_BINDING_COMMAND_ID_KEY,
@@ -116,35 +117,6 @@ async def _is_binding_command(event: Event, state: T_State) -> bool:
     return True
 
 
-player_binding_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_player") & Rule(_is_binding_command) & no_reply(),
-    priority=get_matcher_priority("seer_player", 1),
-    block=True,
-)
-
-player_unbind_matcher = matcher_group.on_fullmatch(
-    ("解绑米米号",),
-    rule=seer_feature_rule("seer_player") & no_reply(),
-    priority=get_matcher_priority("seer_player", 1),
-    block=True,
-)
-
-player_invalid_text_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_player")
-    & Rule(_is_invalid_player_text_query)
-    & no_reply(),
-    priority=get_matcher_priority("seer_player", 1),
-    block=True,
-)
-
-player_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_player") & Rule(_is_player_id_query) & no_reply(),
-    priority=get_matcher_priority("seer_player", 1),
-    block=True,
-)
-
-
-@player_invalid_text_matcher.handle()
 async def block_invalid_player_text_query() -> None:
     return
 
@@ -153,7 +125,6 @@ def _log_player_extra_error(label: str, _error: Exception) -> None:
     logger.opt(exception=True).warning(f"米米号扩展字段获取失败：{label}")
 
 
-@player_matcher.handle()
 async def validate_player_id(
     matcher: Matcher,
     event: MessageEvent,
@@ -186,7 +157,6 @@ async def validate_player_id(
     state[PLAYER_ID_KEY] = player_id
 
 
-@player_matcher.handle()
 async def handle_player(
     matcher: Matcher,
     event: MessageEvent,
@@ -382,7 +352,6 @@ async def _send_pending_player_query(
     )
 
 
-@player_binding_matcher.handle()
 async def handle_player_binding_command(
     matcher: Matcher,
     event: MessageEvent,
@@ -454,7 +423,6 @@ async def handle_player_binding_command(
     )
 
 
-@player_unbind_matcher.handle()
 async def handle_player_unbind(matcher: Matcher, event: MessageEvent) -> None:
     removed = unbind_player(
         get_player_query_config().binding.path,
@@ -462,3 +430,48 @@ async def handle_player_unbind(matcher: Matcher, event: MessageEvent) -> None:
     )
     message = "已解除默认米米号。" if removed else "当前没有已绑定的米米号。"
     await finish_event_reply(matcher, event, message, mention_sender=True)
+
+
+def install(group: SeerMatcherGroup) -> None:
+    binding_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_player_binding"),
+        rule=seer_feature_rule("seer_player")
+        & Rule(_is_binding_command)
+        & no_reply(),
+        priority=get_matcher_priority("seer_player", 1),
+        block=True,
+    )
+    binding_matcher.append_handler(handle_player_binding_command)
+
+    unbind_matcher = group.on_fullmatch(
+        ("解绑米米号",),
+        policy=CommandPolicy.command("seer_player_binding"),
+        rule=seer_feature_rule("seer_player") & no_reply(),
+        priority=get_matcher_priority("seer_player", 1),
+        block=True,
+    )
+    unbind_matcher.append_handler(handle_player_unbind)
+
+    invalid_matcher = group.on_message(
+        policy=CommandPolicy.exempt("silent invalid player query blocker"),
+        rule=seer_feature_rule("seer_player")
+        & Rule(_is_invalid_player_text_query)
+        & no_reply(),
+        priority=get_matcher_priority("seer_player", 1),
+        block=True,
+    )
+    invalid_matcher.append_handler(block_invalid_player_text_query)
+
+    query_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_player"),
+        rule=seer_feature_rule("seer_player")
+        & Rule(_is_player_id_query)
+        & no_reply(),
+        priority=get_matcher_priority("seer_player", 1),
+        block=True,
+    )
+    query_matcher.append_handler(validate_player_id)
+    query_matcher.append_handler(handle_player)
+
+
+__all__ = ["install"]

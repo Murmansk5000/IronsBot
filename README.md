@@ -150,7 +150,7 @@ services:
 | `ai_intent_team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
-仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
+仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/registry.py` 中唯一的 `PluginDefinition` 注册表显式安装外部依赖、命令入口和生命周期钩子。
 
 ## 配置方式
 

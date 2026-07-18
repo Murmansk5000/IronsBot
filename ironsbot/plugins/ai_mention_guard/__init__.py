@@ -1,9 +1,8 @@
-from nonebot import on_message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher
-from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.ai.mention_guard import should_guard_non_ai_group_mention
 from ironsbot.services.help_hint import can_send_group_help_hint
 from ironsbot.shared.help_hints import (
@@ -14,16 +13,6 @@ from ironsbot.shared.matcher_priority import get_pre_command_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 
 AI_MENTION_GUARD_PRIORITY = get_pre_command_matcher_priority("ai_mention_guard")
-
-__plugin_meta__ = PluginMetadata(
-    name="AI @ 提示拦截",
-    description="在未启用 AI 聊天的群里拦截 @机器人，避免普通查询被 @ 触发。",
-    usage=(
-        "@机器人不会触发普通查询；"
-        "未启用 AI 的群会提示直接发送指令，或发送“帮助”查看用法。"
-    ),
-)
-
 
 async def _is_non_ai_group_at_guarded_user(event: MessageEvent) -> bool:
     return await should_guard_non_ai_group_mention(event)
@@ -36,14 +25,6 @@ def _build_guard_message(event: MessageEvent) -> str:
     return message
 
 
-mention_guard_matcher = on_message(
-    rule=Rule(_is_non_ai_group_at_guarded_user),
-    priority=AI_MENTION_GUARD_PRIORITY,
-    block=True,
-)
-
-
-@mention_guard_matcher.handle()
 async def handle_non_ai_group_at_bot(
     matcher: Matcher,
     event: GroupMessageEvent,
@@ -57,3 +38,13 @@ async def handle_non_ai_group_at_bot(
         _build_guard_message(event),
         mention_sender=False,
     )
+
+
+def install(registry: MatcherRegistry) -> None:
+    matcher = registry.on_message(
+        policy=CommandPolicy.command("ai_mention_guard"),
+        rule=Rule(_is_non_ai_group_at_guarded_user),
+        priority=AI_MENTION_GUARD_PRIORITY,
+        block=True,
+    )
+    matcher.append_handler(handle_non_ai_group_at_bot)

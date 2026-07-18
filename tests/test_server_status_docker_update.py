@@ -4,16 +4,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import httpx
+import nonebot
 import pytest
 
 if TYPE_CHECKING:
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from nonebot.internal.driver import Driver
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
 from ironsbot.app.composition import build_application_lifecycle
+from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
@@ -298,7 +304,7 @@ def test_target_image_pull_retries_transient_registry_eof(
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
     lifecycle = build_application_lifecycle(
         cast("Driver", object()),
-        cast("AsyncIOScheduler", object()),
+        build_plugin_registry(),
     )
     names = [name for name, _hook in lifecycle.startup_hooks]
 

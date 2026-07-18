@@ -19,11 +19,13 @@ from nonebot.log import logger
 logger.remove()
 
 from ironsbot.app.bootstrap import bootstrap
-from ironsbot.app.plugin_manifest import iter_plugin_modules
 
 state = bootstrap()
 assert state.lifecycle is not None
-assert state.loaded_plugins == iter_plugin_modules()
+assert len(state.plugins) > 0
+assert len(state.matchers.message_matchers) > 0
+assert len(state.matchers.notice_matchers) > 0
+assert len({plugin.id for plugin in state.plugins}) == len(state.plugins)
 print("BOOTSTRAP_OK")
 """
     result = subprocess.run(

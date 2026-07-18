@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from nonebot import on_notice
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import MessageSegment, NoticeEvent, PokeNotifyEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
@@ -14,6 +15,9 @@ from ironsbot.services.help_hint import (
 from ironsbot.shared.help_hints import POKE_HELP_HINT_TEXT
 from ironsbot.shared.matcher_priority import get_matcher_priority
 
+if TYPE_CHECKING:
+    from ironsbot.runtime.matchers import MatcherRegistry
+
 
 async def _is_poke_at_bot(event: NoticeEvent) -> bool:
     if not isinstance(event, PokeNotifyEvent):
@@ -21,14 +25,6 @@ async def _is_poke_at_bot(event: NoticeEvent) -> bool:
     return is_poke_at_bot(event)
 
 
-poke_help_matcher = on_notice(
-    rule=Rule(_is_poke_at_bot),
-    priority=get_matcher_priority("help_hint", 0),
-    block=True,
-)
-
-
-@poke_help_matcher.handle()
 async def handle_poke_help(matcher: Matcher, event: PokeNotifyEvent) -> None:
     if not can_send_group_help_hint(event.group_id):
         await matcher.finish()
@@ -44,3 +40,12 @@ async def handle_poke_help(matcher: Matcher, event: PokeNotifyEvent) -> None:
         MessageSegment.at(event.user_id)
         + MessageSegment.text(f" {reply}")
     )
+
+
+def install(registry: MatcherRegistry) -> None:
+    matcher = registry.on_notice(
+        rule=Rule(_is_poke_at_bot),
+        priority=get_matcher_priority("help_hint", 0),
+        block=True,
+    )
+    matcher.append_handler(handle_poke_help)

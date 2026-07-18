@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import cast
 
-from nonebot import MatcherGroup, logger
+from nonebot import logger
 from nonebot.adapters import Bot, Message, MessageTemplate
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
@@ -10,8 +10,8 @@ from nonebot.params import CommandArg, Depends
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.shared.features import is_event_feature_allowed
-from ironsbot.shared.messaging import register_command_matcher
 from ironsbot.utils.rule import no_reply
 
 from .backend import ImageBackend
@@ -31,8 +31,6 @@ from .image_selection_service import (
     build_image_file_path,
     select_image,
 )
-
-matcher_group = MatcherGroup()
 
 
 def get_cnb_backend(
@@ -56,7 +54,7 @@ def get_local_backend(
 
 
 def create_image_command(
-    group: MatcherGroup,
+    registry: MatcherRegistry,
     config: PicConfig,
     backend_factory: Callable[..., AsyncGenerator[ImageBackend, None]],
 ) -> type[Matcher] | None:
@@ -66,12 +64,12 @@ def create_image_command(
             f"图片类型【{config.id}】未启用，命令【{config.command}】将不会生效"
         )
 
-    matcher = group.on_command(
+    matcher = registry.on_command(
         config.command,
+        policy=CommandPolicy.command(f"sendpic.{config.id}"),
         aliases=set(config.aliases),
         rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
     )
-    register_command_matcher(matcher, f"sendpic.{config.id}")
     template = config.message_template
 
     async def _handler(
@@ -109,15 +107,16 @@ def create_image_command(
     return matcher
 
 
-for _cmd in enabled_pic_configs(get_sendpic_config()):
-    if _cmd.backend == "cnb":
-        backend_factory = get_cnb_backend(
-            cast("str", get_sendpic_cnb_token()),
-            cast("str", get_sendpic_cnb_repo()),
-        )
-    elif _cmd.backend == "local":
-        backend_factory = get_local_backend(get_sendpic_local_root())
-    else:
-        raise ValueError(f"不支持的图床类型：{_cmd.backend}")
+def install(registry: MatcherRegistry) -> None:
+    for command in enabled_pic_configs(get_sendpic_config()):
+        if command.backend == "cnb":
+            backend_factory = get_cnb_backend(
+                cast("str", get_sendpic_cnb_token()),
+                cast("str", get_sendpic_cnb_repo()),
+            )
+        elif command.backend == "local":
+            backend_factory = get_local_backend(get_sendpic_local_root())
+        else:
+            raise ValueError(f"不支持的图床类型：{command.backend}")
 
-    create_image_command(matcher_group, _cmd, backend_factory)
+        create_image_command(registry, command, backend_factory)

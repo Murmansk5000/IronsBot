@@ -17,6 +17,7 @@ from ironsbot.integrations.headless_seer.exception import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.headless_seer_notice.state import (
     mark_headless_available,
     mark_headless_unavailable,
@@ -37,7 +38,7 @@ from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..config import get_team_query_config
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
 
 TEAM_IDS_KEY = "team_ids"
 TEAM_ID_MIN = 100_000
@@ -57,17 +58,6 @@ async def _has_team_id_args(state: T_State) -> bool:
     return bool(_parse_team_ids(parse_string_arg(state)))
 
 
-team_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_team")
-    & (
-        startswith_or_endswith(prefixes=("战队", "查询战队信息"), suffixes=())
-        & Rule(_has_team_id_args)
-        & no_reply()
-    ),
-    priority=seer_feature_priority("seer_team"),
-)
-
-
 async def _finish_team_query_failure(
     matcher: Matcher,
     event: MessageEvent,
@@ -81,7 +71,6 @@ async def _finish_team_query_failure(
     )
 
 
-@team_matcher.handle()
 async def validate_team_id(
     matcher: Matcher,
     event: MessageEvent,
@@ -201,7 +190,6 @@ async def _collect_team_query_messages(
     return messages, prompt
 
 
-@team_matcher.handle()
 async def handle_team(
     matcher: Matcher,
     event: MessageEvent,
@@ -234,3 +222,24 @@ async def handle_team(
         "\n\n".join(messages),
         mention_sender=True,
     )
+
+
+def install(group: SeerMatcherGroup) -> None:
+    matcher = group.on_message(
+        policy=CommandPolicy.command("seer_team"),
+        rule=seer_feature_rule("seer_team")
+        & (
+            startswith_or_endswith(
+                prefixes=("战队", "查询战队信息"),
+                suffixes=(),
+            )
+            & Rule(_has_team_id_args)
+            & no_reply()
+        ),
+        priority=seer_feature_priority("seer_team"),
+    )
+    matcher.append_handler(validate_team_id)
+    matcher.append_handler(handle_team)
+
+
+__all__ = ["install"]

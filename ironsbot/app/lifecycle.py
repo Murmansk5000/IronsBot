@@ -1,22 +1,23 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Bot
     from nonebot.internal.driver import Driver
 
-AsyncHook: TypeAlias = Callable[[], Awaitable[None]]
-BotHook: TypeAlias = Callable[[Bot], Awaitable[None]]
-Installer: TypeAlias = Callable[[], None]
-NamedAsyncHook: TypeAlias = tuple[str, AsyncHook]
-NamedBotHook: TypeAlias = tuple[str, BotHook]
-NamedInstaller: TypeAlias = tuple[str, Installer]
+    from ironsbot.runtime.plugins import (
+        AsyncHook,
+        BotHook,
+        Installer,
+        NamedAsyncHook,
+        NamedBotHook,
+        NamedInstaller,
+    )
 
 
 @dataclass(slots=True)
@@ -135,11 +136,4 @@ class ApplicationLifecycle:
             )
 
 
-__all__ = [
-    "ApplicationLifecycle",
-    "AsyncHook",
-    "BotHook",
-    "NamedAsyncHook",
-    "NamedBotHook",
-    "NamedInstaller",
-]
+__all__ = ["ApplicationLifecycle"]

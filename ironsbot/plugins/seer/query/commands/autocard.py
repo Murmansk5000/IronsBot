@@ -8,6 +8,7 @@ from nonebot.params import Depends
 from nonebot.typing import T_State
 
 from ironsbot.integrations.seer_data.sessions import SeerAPISession
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.services.seer.autocard import (
     AUTOCARD_PROMPT_MAX_ITEMS,
     AUTOCARD_QUERY_PREFIXES,
@@ -34,23 +35,11 @@ from ironsbot.utils.matcher import prompt_session_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
 from .query_rules import not_rank_query
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
-
-
-autocard_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_autocard")
-    & startswith_or_endswith(
-        prefixes=AUTOCARD_QUERY_PREFIXES,
-        suffixes=AUTOCARD_QUERY_SUFFIXES,
-    )
-    & not_rank_query
-    & no_reply(),
-    priority=seer_feature_priority("seer_autocard"),
-)
 
 
 def _is_autocard_prompt_reply(event: MessageEvent) -> bool:
@@ -201,7 +190,6 @@ async def _handle_autocard_prompt_reply(
     await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
 
 
-@autocard_matcher.handle()
 async def handle_autocard_query(
     matcher: Matcher,
     event: MessageEvent,
@@ -248,3 +236,21 @@ async def handle_autocard_query(
         build_autocard_prompt_values(matches),
         prompt=build_autocard_prompt_text(dataset, matches),
     )
+
+
+def install(group: SeerMatcherGroup) -> None:
+    matcher = group.on_message(
+        policy=CommandPolicy.command("seer_autocard_query"),
+        rule=seer_feature_rule("seer_autocard")
+        & startswith_or_endswith(
+            prefixes=AUTOCARD_QUERY_PREFIXES,
+            suffixes=AUTOCARD_QUERY_SUFFIXES,
+        )
+        & not_rank_query
+        & no_reply(),
+        priority=seer_feature_priority("seer_autocard"),
+    )
+    matcher.append_handler(handle_autocard_query)
+
+
+__all__ = ["install"]

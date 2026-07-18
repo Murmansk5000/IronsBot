@@ -45,7 +45,7 @@ def _subprocess_env() -> dict[str, str]:
     return env
 
 
-def test_manifest_plugin_imports_have_no_runtime_side_effects(
+def test_registry_install_has_no_storage_or_network_side_effects(
     tmp_path: Path,
 ) -> None:
     script = r"""
@@ -58,22 +58,8 @@ import sys
 import httpx
 import nonebot
 
-from ironsbot.app.plugin_manifest import (
-    validate_plugin_manifest,
-)
-from ironsbot.app.command_cooldown_manifest import (
-    install_command_cooldown_policy,
-)
-from ironsbot.plugin_catalog import plugin_modules_for_group
-
 os.chdir(sys.argv[1])
 nonebot.init()
-validate_plugin_manifest()
-
-for module in plugin_modules_for_group("external"):
-    plugin = nonebot.load_plugin(module)
-    if plugin is None:
-        raise AssertionError(f"failed to load plugin: {module}")
 
 
 def _forbidden_sync(action):
@@ -95,13 +81,16 @@ asyncio.create_task = _forbidden_sync("async task creation")
 httpx.Client.request = _forbidden_sync("http request")
 httpx.AsyncClient.request = _forbidden_async_request
 
-for group in ("core", "infrastructure", "feature"):
-    for module in plugin_modules_for_group(group):
-        plugin = nonebot.load_plugin(module)
-        if plugin is None:
-            raise AssertionError(f"failed to load plugin: {module}")
+from ironsbot.app.registry import build_plugin_registry
+from ironsbot.runtime.matchers import MatcherRegistry
 
-install_command_cooldown_policy()
+external_ids = {"apscheduler", "localstore", "htmlkit", "saa"}
+definitions = build_plugin_registry()
+registry = MatcherRegistry()
+for definition in definitions:
+    if definition.id not in external_ids:
+        definition.install(registry)
+registry.install_postprocessor()
 
 runtime_paths = [
     pathlib.Path("data"),
@@ -120,7 +109,7 @@ if created_paths or created_db_files:
         + ", ".join([*created_paths, *created_db_files])
     )
 
-print("manifest import hygiene ok")
+print("registry import hygiene ok")
 """
 
     result = subprocess.run(
@@ -133,4 +122,4 @@ print("manifest import hygiene ok")
     )
 
     assert result.returncode == 0, result.stderr
-    assert "manifest import hygiene ok" in result.stdout
+    assert "registry import hygiene ok" in result.stdout

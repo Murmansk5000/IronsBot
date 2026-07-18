@@ -15,38 +15,24 @@ from ironsbot.integrations.seer_data.mintmark_series_resolvers import (
     resolve_custom_mintmark_series,
 )
 from ironsbot.integrations.seer_data.sessions import AllSessions
+from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.utils.parse_arg import parse_string_arg
 from ironsbot.utils.rule import no_reply, startswith_or_endswith
 
 from ..depends import GetGemCategoryData, GetMintmarkClassData, GetMintmarkData
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
+from ..group import SeerMatcherGroup, seer_feature_priority, seer_feature_rule
 from . import mintmark_handlers
 from .query_rules import not_rank_query
 
-mintmark_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_mintmark")
-    & startswith_or_endswith("刻印")
-    & not_rank_query
-    & no_reply(),
-    priority=seer_feature_priority("seer_mintmark"),
-)
 
-
-@mintmark_matcher.handle()
 async def _handle_mintmark(  # noqa: PLR0913
     matcher: Matcher,
     state: T_State,
     event: Event,
     sessions: AllSessions,
     arg: str = Depends(parse_string_arg),
-    mintmarks: tuple[
-        MintmarkORM,
-        ...,
-    ] = GetMintmarkData(),
-    classes: tuple[
-        MintmarkClassCategoryORM,
-        ...,
-    ] = GetMintmarkClassData(),
+    mintmarks: tuple[MintmarkORM, ...] = GetMintmarkData(),
+    classes: tuple[MintmarkClassCategoryORM, ...] = GetMintmarkClassData(),
 ) -> None:
     if not arg.strip():
         raise FinishedException
@@ -64,24 +50,12 @@ async def _handle_mintmark(  # noqa: PLR0913
     )
 
 
-gem_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_mintmark")
-    & startswith_or_endswith("宝石")
-    & no_reply(),
-    priority=seer_feature_priority("seer_mintmark"),
-)
-
-
-@gem_matcher.handle()
 async def _handle_gem(
     matcher: Matcher,
     state: T_State,
     event: Event,
     arg: str = Depends(parse_string_arg),
-    categories: tuple[
-        GemCategoryORM,
-        ...,
-    ] = GetGemCategoryData(),
+    categories: tuple[GemCategoryORM, ...] = GetGemCategoryData(),
 ) -> None:
     if not arg.strip():
         raise FinishedException
@@ -91,3 +65,27 @@ async def _handle_gem(
         event=event,
         categories=categories,
     )
+
+
+def install(group: SeerMatcherGroup) -> None:
+    mintmark_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_mintmark_query"),
+        rule=seer_feature_rule("seer_mintmark")
+        & startswith_or_endswith("刻印")
+        & not_rank_query
+        & no_reply(),
+        priority=seer_feature_priority("seer_mintmark"),
+    )
+    mintmark_matcher.append_handler(_handle_mintmark)
+
+    gem_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_gem_query"),
+        rule=seer_feature_rule("seer_mintmark")
+        & startswith_or_endswith("宝石")
+        & no_reply(),
+        priority=seer_feature_priority("seer_mintmark"),
+    )
+    gem_matcher.append_handler(_handle_gem)
+
+
+__all__ = ["install"]

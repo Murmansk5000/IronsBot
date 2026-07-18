@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from nonebot import on_notice
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupIncreaseNoticeEvent,
     NoticeEvent,
 )
 from nonebot.log import logger
-from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.config.loader import get_app_config
@@ -25,28 +25,14 @@ from .settings import (
     welcome_message,
 )
 
-__plugin_meta__ = PluginMetadata(
-    name="战队审核入群提示",
-    description="在指定战队审核群有新人入群时发送审核指引。",
-    usage=(
-        "配置 message.team_audit_welcome.enabled=true，并在 "
-        "message.team_audit_welcome.groups 中填写群别名或群号。"
-    ),
-)
+if TYPE_CHECKING:
+    from ironsbot.runtime.matchers import MatcherRegistry
 
 
 async def _is_group_increase(event: NoticeEvent) -> bool:
     return isinstance(event, GroupIncreaseNoticeEvent)
 
 
-team_audit_welcome_matcher = on_notice(
-    rule=Rule(_is_group_increase),
-    priority=get_matcher_priority("team_audit", 5),
-    block=False,
-)
-
-
-@team_audit_welcome_matcher.handle()
 async def handle_team_audit_welcome(
     bot: Bot,
     event: GroupIncreaseNoticeEvent,
@@ -85,3 +71,12 @@ async def handle_team_audit_welcome(
         return
 
     schedule_team_audit_followup(scheduler, reminder)
+
+
+def install(registry: MatcherRegistry) -> None:
+    matcher = registry.on_notice(
+        rule=Rule(_is_group_increase),
+        priority=get_matcher_priority("team_audit", 5),
+        block=False,
+    )
+    matcher.append_handler(handle_team_audit_welcome)

@@ -1,15 +1,28 @@
 import os
 from pathlib import Path
 
+import nonebot
 from pytest import MonkeyPatch
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
+from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.core.features import Feature
 from ironsbot.plugins.help import visibility
 from tests.helpers.config import StubMessageAction, stub_app_config
 from tests.helpers.onebot_events import group_message_event
+
+DEFINITIONS = {
+    definition.id: definition
+    for definition in build_plugin_registry()
+}
 
 
 def _group_event(text: str = "帮助"):
@@ -35,30 +48,29 @@ def _config(
 
 def test_always_visible_help_is_shown() -> None:
     assert visibility.plugin_visible_for_event(
-        "帮助",
-        "ironsbot.plugins.help",
+        DEFINITIONS["help"],
         _group_event(),
     )
 
 
-def test_help_visibility_maps_features_to_plugin_modules() -> None:
-    assert visibility.features_for_plugin_module(
-        "ironsbot.plugins.team_audit_welcome"
-    ) == ("team_audit",)
-    assert visibility.features_for_plugin_module(
-        "ironsbot.plugins.team_resource_subscription"
-    ) == ("team_resource_subscription",)
-    assert visibility.features_for_plugin_module("ironsbot.plugins.fire_manual_ad") == (
-        "fire_manual_ad",
+def test_plugin_definitions_own_feature_visibility() -> None:
+    assert DEFINITIONS["team_audit"].features == frozenset({Feature.TEAM_AUDIT})
+    assert DEFINITIONS["team_resource"].features == frozenset(
+        {Feature.TEAM_RESOURCE_SUBSCRIPTION}
     )
-    assert visibility.features_for_plugin_module("ironsbot.plugins.ai_intent") == (
-        "ai_intent",
-        "ai_intent_team_recommend",
-        "ai_intent_fire_manual",
+    assert DEFINITIONS["fire_manual_ad"].features == frozenset(
+        {Feature.FIRE_MANUAL_AD}
+    )
+    assert DEFINITIONS["ai_intent"].features == frozenset(
+        {
+            Feature.AI_INTENT,
+            Feature.AI_INTENT_TEAM_RECOMMEND,
+            Feature.AI_INTENT_FIRE_MANUAL,
+        }
     )
 
 
-def test_feature_module_visibility_uses_feature_service(
+def test_feature_visibility_uses_feature_service(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -68,13 +80,11 @@ def test_feature_module_visibility_uses_feature_service(
     )
 
     assert visibility.plugin_visible_for_event(
-        "赛尔号查询",
-        "ironsbot.plugins.seer.query",
+        DEFINITIONS["seer_query"],
         _group_event(),
     )
     assert not visibility.plugin_visible_for_event(
-        "榜单",
-        "ironsbot.plugins.seer.rank_help",
+        DEFINITIONS["rank_help"],
         _group_event(),
     )
 
@@ -89,8 +99,7 @@ def test_seer_query_visible_when_any_seer_subfeature_allowed(
     )
 
     assert visibility.plugin_visible_for_event(
-        "赛尔号查询",
-        "ironsbot.plugins.seer.query",
+        DEFINITIONS["seer_query"],
         _group_event(),
     )
 
@@ -105,8 +114,7 @@ def test_rank_help_visible_when_seer_rank_allowed(
     )
 
     assert visibility.plugin_visible_for_event(
-        "榜单",
-        "ironsbot.plugins.seer.rank_help",
+        DEFINITIONS["rank_help"],
         _group_event(),
     )
 
@@ -128,8 +136,7 @@ def test_messaging_visibility_reads_app_config(
     )
 
     assert visibility.plugin_visible_for_event(
-        "文本发送",
-        "ironsbot.plugins.messaging",
+        DEFINITIONS["messaging"],
         _group_event(),
     )
 
@@ -154,13 +161,11 @@ def test_ai_intent_visibility_requires_key_and_feature(
     )
 
     assert visibility.plugin_visible_for_event(
-        "AI意图分析",
-        "ironsbot.plugins.ai_intent",
+        DEFINITIONS["ai_intent"],
         _group_event(),
     )
     assert not visibility.plugin_visible_for_event(
-        "战队审核入群提示",
-        "ironsbot.plugins.team_audit_welcome",
+        DEFINITIONS["team_audit"],
         _group_event(),
     )
 
@@ -180,8 +185,7 @@ def test_team_resource_visibility_reads_app_config(
     )
 
     assert visibility.plugin_visible_for_event(
-        "战队资源订阅",
-        "ironsbot.plugins.team_resource_subscription",
+        DEFINITIONS["team_resource"],
         _group_event(),
     )
 
@@ -191,7 +195,6 @@ def test_team_resource_visibility_reads_app_config(
         lambda: _config(team_resource_enabled=False),
     )
     assert not visibility.plugin_visible_for_event(
-        "战队资源订阅",
-        "ironsbot.plugins.team_resource_subscription",
+        DEFINITIONS["team_resource"],
         _group_event(),
     )

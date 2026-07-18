@@ -10,43 +10,28 @@ from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
 from ironsbot.app.composition import build_application_lifecycle
 from ironsbot.app.file_logging import configure_file_logging
-from ironsbot.app.plugin_manifest import (
-    iter_plugin_modules,
-    validate_plugin_manifest,
-)
+from ironsbot.app.registry import build_plugin_registry
+from ironsbot.runtime.matchers import MatcherRegistry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from nonebot.internal.driver import Driver
 
     from ironsbot.app.lifecycle import ApplicationLifecycle
+    from ironsbot.runtime.plugins import PluginDefinition
 
 
 @dataclass(frozen=True, slots=True)
 class BootstrapState:
     driver: Driver
     app: Any
-    loaded_plugins: tuple[str, ...]
+    plugins: tuple[PluginDefinition, ...]
+    matchers: MatcherRegistry
     lifecycle: ApplicationLifecycle
 
 
 def configure_third_party_logging() -> None:
     for logger_name in ("httpx", "httpcore"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
-
-
-def load_manifest_plugins(
-    load_plugin: Callable[[str], object] | None = None,
-) -> tuple[str, ...]:
-    validate_plugin_manifest()
-    modules = iter_plugin_modules()
-    plugin_loader = load_plugin or nonebot.load_plugin
-
-    for module in modules:
-        plugin_loader(module)
-
-    return modules
 
 
 def bootstrap() -> BootstrapState:
@@ -58,15 +43,19 @@ def bootstrap() -> BootstrapState:
     driver.register_adapter(ONEBOT_V11Adapter)
 
     app = nonebot.get_asgi()
-    loaded_plugins = load_manifest_plugins()
-    from nonebot_plugin_apscheduler import scheduler
+    plugins = build_plugin_registry()
+    matchers = MatcherRegistry()
+    for plugin in plugins:
+        plugin.install(matchers)
+    matchers.install_postprocessor()
 
-    lifecycle = build_application_lifecycle(driver, scheduler)
+    lifecycle = build_application_lifecycle(driver, plugins)
     lifecycle.install()
     return BootstrapState(
         driver=driver,
         app=app,
-        loaded_plugins=loaded_plugins,
+        plugins=plugins,
+        matchers=matchers,
         lifecycle=lifecycle,
     )
 
@@ -74,5 +63,4 @@ def bootstrap() -> BootstrapState:
 __all__ = [
     "BootstrapState",
     "bootstrap",
-    "load_manifest_plugins",
 ]

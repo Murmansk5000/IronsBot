@@ -2,18 +2,11 @@
 from anyio import Path as AsyncPath
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
-from nonebot.plugin import PluginMetadata, on_fullmatch
 
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.shared.matcher_priority import get_matcher_priority
 from ironsbot.shared.messaging import finish_event_reply
 from ironsbot.utils.rule import no_reply
-
-__plugin_meta__ = PluginMetadata(
-    name="关于",
-    description="IronsBot 项目信息与当前版本",
-    usage="发送“关于”查看 IronsBot 当前版本、项目地址和主要能力。",
-    supported_adapters={"~onebot.v11"},
-)
 
 ABOUT_MESSAGE = """
 🤖 IronsBot
@@ -33,15 +26,7 @@ ABOUT_MESSAGE = """
 
 VERSION_FILE_PATH = AsyncPath("__version__")
 
-matcher = on_fullmatch(
-    "关于",
-    rule=no_reply(),
-    priority=get_matcher_priority("about", 0),
-    block=True,
-)
 
-
-@matcher.handle()
 async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
     try:
         version = (await VERSION_FILE_PATH.read_text(encoding="utf-8")).strip()
@@ -53,3 +38,14 @@ async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
         event=event,
         message=ABOUT_MESSAGE.format(version=version),
     )
+
+
+def install(registry: MatcherRegistry) -> None:
+    matcher = registry.on_fullmatch(
+        "关于",
+        policy=CommandPolicy.command("about"),
+        rule=no_reply(),
+        priority=get_matcher_priority("about", 0),
+        block=True,
+    )
+    matcher.append_handler(handle_about)

@@ -3,15 +3,16 @@ from typing import cast
 import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
+from nonebot.matcher import Matcher
 from pytest import MonkeyPatch
 
-from ironsbot.app.command_cooldown_manifest import (
-    _COMMAND_MATCHERS,
-    _EXEMPT_MESSAGE_MATCHERS,
-)
 from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.runtime.matchers import MatcherRegistry
 from ironsbot.services.team_resource_adapter import TeamResourceResult
 from ironsbot.services.team_resource_subscriptions import TeamResourceSubscription
+from ironsbot.shared.messaging.command_cooldown import (
+    command_matcher_registration,
+)
 from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
 from tests.helpers.onebot_events import group_message_event
 
@@ -25,9 +26,15 @@ from ironsbot.plugins.team_resource_subscription import runtime
 
 TEAM_ID = 1234567
 TEAM_THRESHOLD = 2000
-TEAM_RESOURCE_MANAGE_MATCHER_REF = (
-    "ironsbot.plugins.team_resource_subscription:team_resource_manage_matcher"
-)
+TEAM_RESOURCE_REGISTRY = MatcherRegistry()
+team_resource_subscription.install(TEAM_RESOURCE_REGISTRY)
+
+
+def _team_resource_matcher(command_id: str) -> type[Matcher]:
+    for matcher in TEAM_RESOURCE_REGISTRY.message_matchers:
+        if command_matcher_registration(matcher) == ("command", command_id):
+            return matcher
+    raise AssertionError(command_id)
 
 
 class FakeScheduler:
@@ -125,12 +132,11 @@ def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold(
 
 
 def test_team_resource_manage_uses_command_cooldown() -> None:
-    assert (TEAM_RESOURCE_MANAGE_MATCHER_REF, "team_resource_manage") in (
-        _COMMAND_MATCHERS
-    )
-    assert all(
-        matcher_ref != TEAM_RESOURCE_MANAGE_MATCHER_REF
-        for matcher_ref, _reason in _EXEMPT_MESSAGE_MATCHERS
+    assert command_matcher_registration(
+        _team_resource_matcher("team_resource_manage")
+    ) == (
+        "command",
+        "team_resource_manage",
     )
 
 
@@ -162,12 +168,13 @@ async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies(
     )
 
     assert team_resource_subscription._at_user_ids_from_event(event) == (234,)
-    assert await team_resource_subscription.team_resource_manage_matcher.rule(
+    matcher = _team_resource_matcher("team_resource_manage")
+    assert await matcher.rule(
         cast("Bot", None),
         event,
         {},
     )
-    assert not await team_resource_subscription.team_resource_manage_matcher.rule(
+    assert not await matcher.rule(
         cast("Bot", None),
         replied_event,
         {},
