@@ -40,7 +40,7 @@ async def wait_dynamic_select(
         matcher,
         event,
         namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-        handlers=[handle_dynamic_select],
+        handlers=[handle_dynamic_select_action],
         reply_check=is_dynamic_select_reply,
     )
 
@@ -100,7 +100,7 @@ async def handle_dynamic_menu_action(
             matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[handle_dynamic_select],
+            handlers=[handle_dynamic_select_action],
             reply_check=is_dynamic_select_reply,
             prompt=Message(build_dynamic_menu_text(records)),
         )
@@ -183,11 +183,3 @@ async def handle_dynamic_select_action(
             event,
             "❌ 动态详情解析失败。",
         )
-
-
-async def handle_dynamic_select(
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await handle_dynamic_select_action(matcher, event, state)

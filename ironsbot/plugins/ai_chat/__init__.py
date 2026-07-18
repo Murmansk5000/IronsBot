@@ -194,24 +194,6 @@ async def _finish_admin_notice_or_silent(
     )
 
 
-async def handle_ai_chat(
-    matcher: Matcher,
-    bot: Bot,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    await _run_ai_chat(matcher, bot, event, state)
-
-
-async def handle_group_at_ai_chat(
-    matcher: Matcher,
-    bot: Bot,
-    event: GroupMessageEvent,
-    state: T_State,
-) -> None:
-    await _run_ai_chat(matcher, bot, event, state)
-
-
 def install(registry: MatcherRegistry) -> None:
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
@@ -219,7 +201,7 @@ def install(registry: MatcherRegistry) -> None:
         priority=AI_CHAT_PRIORITY,
         block=True,
     )
-    direct_matcher.append_handler(handle_ai_chat)
+    direct_matcher.append_handler(_run_ai_chat)
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
@@ -227,4 +209,4 @@ def install(registry: MatcherRegistry) -> None:
         priority=AI_GROUP_AT_CHAT_PRIORITY,
         block=True,
     )
-    group_at_matcher.append_handler(handle_group_at_ai_chat)
+    group_at_matcher.append_handler(_run_ai_chat)
