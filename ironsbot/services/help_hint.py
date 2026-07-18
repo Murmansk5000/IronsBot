@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Protocol
 
-from ironsbot.config.loader import get_app_config
-from ironsbot.shared.messaging.rate_limits import hit_sliding_window_rate_limit
+from ironsbot.shared.messaging.rate_limits import SlidingWindowRateLimiter
 
-HELP_HINT_RATE_LIMIT_NAMESPACE = "help_hint"
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ironsbot.config.models.runtime import HelpConfig
 
 
 class PokeLikeEvent(Protocol):
@@ -21,8 +24,8 @@ def is_poke_at_bot(event: PokeLikeEvent) -> bool:
 def _get_poke_reply(
     target_id: int | None,
     *,
-    aliases: dict[str, int],
-    replies: dict[str, str],
+    aliases: Mapping[str, int],
+    replies: Mapping[str, str],
 ) -> str | None:
     if target_id is None:
         return None
@@ -36,54 +39,42 @@ def _get_poke_reply(
     return None
 
 
-def get_group_poke_reply(group_id: int | None) -> str | None:
-    config = get_app_config()
-    return _get_poke_reply(
-        group_id,
-        aliases=config.feature.group_aliases,
-        replies=config.runtime.help.poke_replies,
+@dataclass(slots=True)
+class HelpHintService:
+    config: HelpConfig
+    group_aliases: Mapping[str, int]
+    user_aliases: Mapping[str, int]
+    limiter: SlidingWindowRateLimiter = field(
+        default_factory=SlidingWindowRateLimiter
     )
 
-
-def get_user_poke_reply(user_id: int) -> str | None:
-    config = get_app_config()
-    return _get_poke_reply(
-        user_id,
-        aliases=config.feature.user_aliases,
-        replies=config.runtime.help.poke_user_replies,
-    )
-
-
-def get_poke_reply(*, group_id: int | None, user_id: int) -> str | None:
-    return get_user_poke_reply(user_id) or get_group_poke_reply(group_id)
-
-
-def can_send_group_help_hint(
-    group_id: int | None,
-    *,
-    now: float | None = None,
-) -> bool:
-    if group_id is None:
-        return True
-
-    config = get_app_config().runtime.help
-    return (
-        hit_sliding_window_rate_limit(
-            HELP_HINT_RATE_LIMIT_NAMESPACE,
+    def get_poke_reply(self, *, group_id: int | None, user_id: int) -> str | None:
+        return _get_poke_reply(
+            user_id,
+            aliases=self.user_aliases,
+            replies=self.config.poke_user_replies,
+        ) or _get_poke_reply(
             group_id,
-            window_seconds=config.hint_window_seconds,
-            max_events=config.hint_max_per_window,
-            now=now,
+            aliases=self.group_aliases,
+            replies=self.config.poke_replies,
         )
-        >= 0
-    )
+
+    def can_send(self, group_id: int | None, *, now: float | None = None) -> bool:
+        if group_id is None:
+            return True
+        return (
+            self.limiter.hit(
+                "help_hint",
+                group_id,
+                window_seconds=self.config.hint_window_seconds,
+                max_events=self.config.hint_max_per_window,
+                now=now,
+            )
+            >= 0
+        )
 
 
 __all__ = [
-    "HELP_HINT_RATE_LIMIT_NAMESPACE",
-    "can_send_group_help_hint",
-    "get_group_poke_reply",
-    "get_poke_reply",
-    "get_user_poke_reply",
+    "HelpHintService",
     "is_poke_at_bot",
 ]

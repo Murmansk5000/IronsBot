@@ -14,6 +14,7 @@ from ironsbot.runtime.plugins import (
     PluginDefinition,
     PluginHooks,
 )
+from ironsbot.services.help_hint import HelpHintService
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 from ironsbot.services.startup_notice import StartupNoticeService
 
@@ -167,10 +168,12 @@ def _install_ai_chat(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_ai_mention_guard(registry: MatcherRegistry) -> None:
+def _install_ai_mention_guard(
+    registry: MatcherRegistry, service: HelpHintService
+) -> None:
     from ironsbot.plugins.ai_mention_guard import install
 
-    install(registry)
+    install(registry, service)
 
 
 def _install_ai_intent(
@@ -188,10 +191,10 @@ def _install_about(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_help_hint(registry: MatcherRegistry) -> None:
+def _install_help_hint(registry: MatcherRegistry, service: HelpHintService) -> None:
     from ironsbot.plugins.help_hint import install
 
-    install(registry)
+    install(registry, service)
 
 
 def _install_sendpic(
@@ -366,6 +369,11 @@ def build_plugin_registry(
         activity_service=activity_service,
     )
     startup_notice_service = StartupNoticeService()
+    help_hint_service = HelpHintService(
+        runtime_config.help,
+        config.feature.group_aliases,
+        config.feature.user_aliases,
+    )
 
     async def start_docker_update() -> None:
         from ironsbot.plugins.server_status.runtime import (
@@ -729,7 +737,10 @@ def build_plugin_registry(
             id="ai_mention_guard",
             features=frozenset({Feature.AI_CHAT}),
             help=None,
-            install=_install_ai_mention_guard,
+            install=partial(
+                _install_ai_mention_guard,
+                service=help_hint_service,
+            ),
         ),
         PluginDefinition(
             id="ai_intent",
@@ -782,7 +793,10 @@ def build_plugin_registry(
             id="help_hint",
             features=frozenset(),
             help=None,
-            install=_install_help_hint,
+            install=partial(
+                _install_help_hint,
+                service=help_hint_service,
+            ),
         ),
         PluginDefinition(
             id="sendpic",

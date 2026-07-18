@@ -4,7 +4,7 @@ from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.ai.mention_guard import should_guard_non_ai_group_mention
-from ironsbot.services.help_hint import can_send_group_help_hint
+from ironsbot.services.help_hint import HelpHintService
 from ironsbot.shared.help_hints import (
     DIRECT_COMMAND_HELP_HINT_TEXT,
     PET_CONFIG_UNAVAILABLE_TEXT,
@@ -25,22 +25,21 @@ def _build_guard_message(event: MessageEvent) -> str:
     return message
 
 
-async def handle_non_ai_group_at_bot(
-    matcher: Matcher,
-    event: GroupMessageEvent,
-) -> None:
-    if not can_send_group_help_hint(event.group_id):
-        return
+def install(registry: MatcherRegistry, help_hint: HelpHintService) -> None:
+    async def handle_non_ai_group_at_bot(
+        matcher: Matcher,
+        event: GroupMessageEvent,
+    ) -> None:
+        if not help_hint.can_send(event.group_id):
+            return
 
-    await finish_event_reply(
-        matcher,
-        event,
-        _build_guard_message(event),
-        mention_sender=False,
-    )
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_guard_message(event),
+            mention_sender=False,
+        )
 
-
-def install(registry: MatcherRegistry) -> None:
     matcher = registry.on_message(
         policy=CommandPolicy.command("ai_mention_guard"),
         rule=Rule(_is_non_ai_group_at_guarded_user),

@@ -50,25 +50,3 @@ class SlidingWindowRateLimiter:
     def _trim(timestamps: deque[float], *, cutoff: float) -> None:
         while timestamps and timestamps[0] <= cutoff:
             timestamps.popleft()
-
-
-sliding_window_rate_limiter = SlidingWindowRateLimiter()
-
-
-def hit_sliding_window_rate_limit(  # noqa: PLR0913
-    namespace: str,
-    subject_id: RateLimitSubject,
-    *,
-    window_seconds: float,
-    max_events: int,
-    now: float | None = None,
-    exempt: bool = False,
-) -> int:
-    return sliding_window_rate_limiter.hit(
-        namespace,
-        subject_id,
-        window_seconds=window_seconds,
-        max_events=max_events,
-        now=now,
-        exempt=exempt,
-    )
