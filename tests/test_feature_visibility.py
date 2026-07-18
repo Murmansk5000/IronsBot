@@ -12,16 +12,16 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.features import Feature
 from ironsbot.plugins.help import visibility
 from tests.helpers.config import StubMessageAction, stub_app_config
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.plugin_registry import build_test_plugin_registry
 
 DEFINITIONS = {
     definition.id: definition
-    for definition in build_plugin_registry()
+    for definition in build_test_plugin_registry()
 }
 
 

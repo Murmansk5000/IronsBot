@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.plugins import AsyncHook
+    from ironsbot.services.activity.service import ActivityService
 
 
 class PluginRegistryError(ValueError):
@@ -84,10 +86,13 @@ def _install_bilibili(registry: MatcherRegistry) -> None:
     install(registry)
 
 
-def _install_activity(registry: MatcherRegistry) -> None:
+def _install_activity(
+    registry: MatcherRegistry,
+    service: ActivityService,
+) -> None:
     from ironsbot.plugins.activity import install
 
-    install(registry)
+    install(registry, service)
 
 
 def _install_team_resource(registry: MatcherRegistry) -> None:
@@ -177,8 +182,7 @@ def _install_messaging_runtime() -> None:
     )
 
 
-def _install_activity_runtime() -> None:
-    from ironsbot.plugins.activity import runtime
+def _install_activity_runtime(service: ActivityService) -> None:
     from ironsbot.services.activity.runtime_keys import (
         ACTIVITY_REMINDER_REFRESH_KEY,
     )
@@ -187,7 +191,7 @@ def _install_activity_runtime() -> None:
     scheduler = _scheduler()
     register_runtime_refresh(
         ACTIVITY_REMINDER_REFRESH_KEY,
-        partial(runtime.schedule_activity_reminders, scheduler),
+        partial(service.schedule_reminders, scheduler),
     )
 
 
@@ -281,10 +285,8 @@ async def _register_bilibili_jobs() -> None:
     await register_bili_auto_check_job(_scheduler())
 
 
-async def _register_activity_jobs() -> None:
-    from ironsbot.plugins.activity.runtime import register_activity_reminder_jobs
-
-    register_activity_reminder_jobs(_scheduler())
+async def _register_activity_jobs(service: ActivityService) -> None:
+    service.register_jobs(_scheduler())
 
 
 async def _register_team_resource_jobs() -> None:
@@ -346,7 +348,11 @@ async def _team_audit_on_connect(bot: Bot) -> None:
     )
 
 
-def build_plugin_registry() -> tuple[PluginDefinition, ...]:
+def build_plugin_registry(
+    *,
+    activity_service: ActivityService,
+    shutdown_activity: AsyncHook,
+) -> tuple[PluginDefinition, ...]:
 
     definitions: tuple[PluginDefinition, ...] = ()
 
@@ -546,10 +552,21 @@ def build_plugin_registry() -> tuple[PluginDefinition, ...]:
                 group="message",
                 order=10,
             ),
-            install=_install_activity,
+            install=partial(_install_activity, service=activity_service),
             hooks=PluginHooks(
-                installers=(("activity_runtime", _install_activity_runtime),),
-                startup=(("activity_reminder_jobs", _register_activity_jobs),),
+                installers=(
+                    (
+                        "activity_runtime",
+                        partial(_install_activity_runtime, activity_service),
+                    ),
+                ),
+                startup=(
+                    (
+                        "activity_reminder_jobs",
+                        partial(_register_activity_jobs, activity_service),
+                    ),
+                ),
+                shutdown=(("activity", shutdown_activity),),
             ),
         ),
         PluginDefinition(

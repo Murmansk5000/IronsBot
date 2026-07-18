@@ -83,9 +83,9 @@ def lead_hours_text(values: list[int]) -> str:
 
 
 def _activity_default_lead_hours_text() -> str:
-    from ironsbot.services.activity.config import get_activity_config
+    from ironsbot.config.loader import get_app_config
 
-    return lead_hours_text(get_activity_config().lead_hours)
+    return lead_hours_text(get_app_config().activity.lead_hours)
 
 
 def _activity_time_option(

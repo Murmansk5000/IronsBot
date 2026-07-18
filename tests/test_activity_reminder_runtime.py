@@ -1,31 +1,14 @@
-import os
-from pathlib import Path
-
-import nonebot
-from pytest import MonkeyPatch
-
-from ironsbot.config.loader import clear_app_config_cache
-
-ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
-clear_app_config_cache()
-
-try:
-    nonebot.get_driver()
-except ValueError:
-    nonebot.init()
+from collections.abc import Iterable
+from datetime import datetime, timedelta, timezone
+from inspect import iscoroutinefunction
 
 from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.plugins import activity
-from ironsbot.plugins.activity import runtime as activity_runtime
-from ironsbot.services.activity.delivery import ActivityReminderTargets
-from ironsbot.shared.messaging.push_subscription_models import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
+from ironsbot.services.activity.delivery import (
+    ActivityReminderDelivery,
+    ActivityReminderTargets,
 )
-from ironsbot.shared.messaging.push_subscription_store import (
-    PushUnsubscribeStore,
-)
-from tests.helpers.config import stub_app_config
+from ironsbot.services.activity.models import ActivityInfoCache, ActivityReminder
+from ironsbot.services.activity.service import ActivityService, TargetType
 
 
 class FakeScheduler:
@@ -36,105 +19,77 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
-def test_register_activity_reminder_jobs_installs_startup_and_daily_scans(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        activity_runtime,
-        "get_activity_config",
-        lambda: ActivityConfig(enabled=True),
+def _service(
+    *,
+    config: ActivityConfig | None = None,
+    preference_values: Iterable[str] = (),
+    preference_for_target: dict[tuple[TargetType, int], str] | None = None,
+    targets: ActivityReminderTargets = ActivityReminderTargets(),
+) -> ActivityService:
+    preferences = preference_for_target or {}
+
+    async def broadcast(_delivery: ActivityReminderDelivery) -> bool:
+        return True
+
+    def mark_sent(
+        _reminders: list[ActivityReminder],
+        _sent_at: datetime,
+    ) -> None:
+        return
+
+    return ActivityService(
+        config=config or ActivityConfig(),
+        cache=ActivityInfoCache(),
+        load_rows=list,
+        load_notice_text=lambda _now: "",
+        cache_ttl=timedelta(minutes=1),
+        soon_ending_threshold=timedelta(days=7),
+        filter_unsent=lambda reminders: reminders,
+        mark_sent=mark_sent,
+        preference_values=lambda: preference_values,
+        preference_for_target=lambda target_type, target_id: preferences.get(
+            (target_type, target_id)
+        ),
+        targets=lambda: targets,
+        broadcast=broadcast,
+        now=lambda: datetime(2026, 6, 1, tzinfo=timezone.utc),
     )
 
-    activity_runtime.register_activity_reminder_jobs(scheduler)
+
+def test_register_activity_reminder_jobs_installs_startup_and_daily_scans() -> None:
+    scheduler = FakeScheduler()
+
+    _service().register_jobs(scheduler)
 
     assert [job["id"] for job in scheduler.jobs] == [
         "activity_reminder_startup_scan",
         "activity_reminder_daily_scan",
     ]
-
-
-def test_load_activity_rows_resolves_session_factory_at_runtime(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    session_factory = object()
-    calls: list[tuple[object, str, bool]] = []
-
-    def fake_load_activity_rows(
-        raw_session_factory: object,
-        *,
-        database_name: str,
-        only_shown: bool,
-    ) -> list[dict[str, int]]:
-        calls.append((raw_session_factory, database_name, only_shown))
-        return [{"id": 1}]
-
-    monkeypatch.setattr(
-        activity,
-        "_activity_db_session_factory",
-        lambda: session_factory,
-    )
-    monkeypatch.setattr(
-        activity,
-        "get_activity_config",
-        lambda: ActivityConfig(only_shown=False),
-    )
-    monkeypatch.setattr(
-        activity,
-        "load_activity_rows",
-        fake_load_activity_rows,
+    assert all(
+        iscoroutinefunction(job["func"])
+        for job in scheduler.jobs
     )
 
-    assert activity._load_activity_rows() == [{"id": 1}]
-    assert calls == [(session_factory, activity.SEERAPI_DB_NAME, False)]
 
-
-def test_activity_lead_hour_overrides_filter_targets(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
-    store.set_time_preference(
-        "group",
-        1001,
-        activity_runtime.ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-        ACTIVITY_LEAD_HOURS_PREFERENCE,
-        "24,3,1",
-    )
-    store.set_time_preference(
-        "private",
-        2001,
-        activity_runtime.ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-        ACTIVITY_LEAD_HOURS_PREFERENCE,
-        "3",
-    )
-
-    monkeypatch.setattr(activity_runtime, "_activity_push_store", lambda: store)
-    monkeypatch.setattr(
-        activity_runtime,
-        "get_activity_config",
-        lambda: stub_app_config(
-            activity_config=ActivityConfig(lead_hours=[11, 1])
-        ).activity,
-    )
-    monkeypatch.setattr(
-        activity_runtime,
-        "activity_reminder_targets",
-        lambda: ActivityReminderTargets(
+def test_activity_lead_hour_overrides_filter_targets() -> None:
+    service = _service(
+        config=ActivityConfig(lead_hours=[11, 1]),
+        preference_values=("24,3,1", "3"),
+        preference_for_target={
+            ("group", 1001): "24,3,1",
+            ("private", 2001): "3",
+        },
+        targets=ActivityReminderTargets(
             group_ids=(1001, 1002),
             private_user_ids=(2001,),
         ),
     )
 
-    assert activity_runtime._configured_activity_lead_hours([11, 1]) == [
-        24,
-        11,
-        3,
-        1,
-    ]
-    assert activity_runtime._activity_reminder_targets_for_lead(11) == (
-        ActivityReminderTargets(group_ids=(1002,), private_user_ids=())
+    assert service._configured_lead_hours() == [24, 11, 3, 1]
+    assert service._targets_for_lead(11) == ActivityReminderTargets(
+        group_ids=(1002,)
     )
-    assert activity_runtime._activity_reminder_targets_for_lead(3) == (
-        ActivityReminderTargets(group_ids=(1001,), private_user_ids=(2001,))
+    assert service._targets_for_lead(3) == ActivityReminderTargets(
+        group_ids=(1001,),
+        private_user_ids=(2001,),
     )

@@ -19,7 +19,6 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.app.composition import build_application_lifecycle
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.runtime import DockerUpdateConfig
 from ironsbot.plugins.server_status import runtime as docker_update_runtime
 from ironsbot.plugins.server_status.docker_update_client import (
@@ -41,6 +40,7 @@ from ironsbot.plugins.server_status.restart import (
     DockerSelfUpdateService,
     RestartService,
 )
+from tests.helpers.plugin_registry import build_test_plugin_registry
 
 
 def test_split_docker_image_with_tag() -> None:
@@ -304,7 +304,7 @@ def test_target_image_pull_retries_transient_registry_eof(
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
     lifecycle = build_application_lifecycle(
         cast("Driver", object()),
-        build_plugin_registry(),
+        build_test_plugin_registry(),
     )
     names = [name for name, _hook in lifecycle.startup_hooks]
 

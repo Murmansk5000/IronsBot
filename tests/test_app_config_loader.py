@@ -715,10 +715,6 @@ def test_small_plugin_config_accessors_read_app_config(
         "ai_intent_service_for_app_config_test",
         ROOT / "ironsbot" / "services" / "ai" / "intent.py",
     )
-    activity_config = _load_module_from_path(
-        "activity_reminder_config_for_app_config_test",
-        ROOT / "ironsbot" / "services" / "activity" / "config.py",
-    )
     bili_config = _load_module_from_path(
         "bilibili_monitor_config_for_app_config_test",
         ROOT / "ironsbot" / "plugins" / "bilibili" / "config.py",
@@ -770,7 +766,7 @@ def test_small_plugin_config_accessors_read_app_config(
             app_config.runtime.help.hint_max_per_window
             == DEFAULT_HELP_HINT_MAX_PER_WINDOW
         )
-        assert activity_config.get_activity_config().lead_hours == [11, 1]
+        assert app_config.activity.lead_hours == [11, 1]
         assert bili_config.get_bili_config().polling.windows[0].start == "07:00"
         assert sendpic_config.get_sendpic_config().local_root.name == "sendpic"
         assert sendpic_config.get_sendpic_cnb_token() == "cnb-token"

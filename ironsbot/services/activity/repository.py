@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
-from nonebot.log import logger
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -14,13 +14,14 @@ ACTIVITY_REQUIRED_COLUMNS = frozenset(
     {"id", "name", "end_time", "is_show", "sort_order"}
 )
 _logged_warnings: set[str] = set()
+_LOGGER = logging.getLogger(__name__)
 
 
 def _warn_activity_data_unavailable(key: str, reason: str) -> None:
     if key in _logged_warnings:
         return
 
-    logger.warning(f"activity reminder skipped: {reason}")
+    _LOGGER.warning("activity reminder skipped: %s", reason)
     _logged_warnings.add(key)
 
 
@@ -109,7 +110,7 @@ def load_activity_rows(
 
         rows = session.execute(query).mappings().all()
     except OperationalError as e:
-        logger.opt(exception=True).debug("activity reminder query failed")
+        _LOGGER.debug("activity reminder query failed", exc_info=True)
         _warn_activity_data_unavailable(
             "query_failed",
             f"activity table query failed: {e.__class__.__name__}",

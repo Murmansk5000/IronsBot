@@ -2,8 +2,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.services.activity.models import ActivityReminder
-from ironsbot.services.activity.sent_cache import filter_unsent, mark_sent
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -30,24 +30,25 @@ def _reminder(activity_id: int = 1) -> ActivityReminder:
 
 def test_filter_unsent_returns_missing_reminders(tmp_path: Path) -> None:
     cache_path = tmp_path / "sent.sqlite"
+    store = ActivitySentStore(cache_path)
     reminders = [_reminder(1), _reminder(2)]
 
-    assert filter_unsent(reminders, cache_path=cache_path) == reminders
+    assert store.filter_unsent(reminders) == reminders
 
-    mark_sent(
+    store.mark_sent(
         [reminders[0]],
-        cache_path=cache_path,
         sent_at=dt(2026, 6, 12, 9),
     )
 
-    assert filter_unsent(reminders, cache_path=cache_path) == [reminders[1]]
+    assert store.filter_unsent(reminders) == [reminders[1]]
 
 
 def test_mark_sent_is_idempotent(tmp_path: Path) -> None:
     cache_path = tmp_path / "sent.sqlite"
+    store = ActivitySentStore(cache_path)
     reminder = _reminder()
 
-    mark_sent([reminder], cache_path=cache_path, sent_at=dt(2026, 6, 12, 9))
-    mark_sent([reminder], cache_path=cache_path, sent_at=dt(2026, 6, 12, 9))
+    store.mark_sent([reminder], sent_at=dt(2026, 6, 12, 9))
+    store.mark_sent([reminder], sent_at=dt(2026, 6, 12, 9))
 
-    assert filter_unsent([reminder], cache_path=cache_path) == []
+    assert store.filter_unsent([reminder]) == []
