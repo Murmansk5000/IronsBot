@@ -3,13 +3,9 @@ from nonebot.log import logger
 
 from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
 from ironsbot.services.ai.history import HistoryMessage, build_messages
-from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.ai.responses import parse_ai_response
 from ironsbot.services.ai.source_context import append_ai_notice_source_context
-
-AI_CHAT_ERROR_SUBSCRIPTION_KEY = "ai_chat_error_notice"
-AI_CHAT_ERROR_ACTION_NAME = "AI chat error notice"
 
 
 def _truncate_reply(text: str, max_chars: int) -> str:
@@ -63,7 +59,7 @@ async def call_ai_chat(
             "AI chat API failed: "
             f"HTTP {result.status_code}, {result.error_detail}"
         )
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             (
                 f"http_{result.status_code}"
                 if result.error_kind == "http"
@@ -79,13 +75,11 @@ async def call_ai_chat(
                 "请检查 AI_KEY、账户额度、模型名和网络连接。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         return REQUEST_FAILED_REPLY
 
     if result.error_kind == "empty_reply":
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             "empty_reply",
             append_ai_notice_source_context(
                 "AI聊天接口返回了空内容。\n"
@@ -93,8 +87,6 @@ async def call_ai_chat(
                 "请检查模型配置或稍后重试。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         return EMPTY_REPLY
 

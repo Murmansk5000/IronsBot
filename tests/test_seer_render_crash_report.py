@@ -1,10 +1,12 @@
+import asyncio
 from pathlib import Path
 
 import pytest
 
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.runtime import LoggingConfig
+from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.seer import render_crash_report
-from tests.helpers.config import stub_app_config
 
 
 def test_render_crash_marker_clears_after_success(
@@ -42,25 +44,20 @@ def test_report_previous_render_crash_notifies_superusers(
     log_path.write_text("before\nrendering pet info image\nrestart\n", encoding="utf-8")
     notices: list[tuple[str, str]] = []
 
-    async def fake_notify(key: str, message: str, **_kwargs: object) -> None:
+    async def fake_notify(
+        _resources: AiResources,
+        key: str,
+        message: str,
+        **_kwargs: object,
+    ) -> None:
         notices.append((key, message))
 
     monkeypatch.setattr(render_crash_report, "MARKER_PATH", marker_path)
-    monkeypatch.setattr(render_crash_report, "notify_superusers_once", fake_notify)
-    monkeypatch.setattr(
-        render_crash_report,
-        "get_app_config",
-        lambda: stub_app_config(
-            logging_config=LoggingConfig(
-                file_enabled=True,
-                file_path=str(log_path),
-            )
-        ),
-    )
+    monkeypatch.setattr(AiResources, "notify_admin_once", fake_notify)
+    resources = AiResources(AiConfig(), "", {}, (), 20)
+    logging = LoggingConfig(file_enabled=True, file_path=str(log_path))
 
-    import asyncio
-
-    asyncio.run(render_crash_report.report_previous_render_crash())
+    asyncio.run(render_crash_report.report_previous_render_crash(resources, logging))
 
     assert not marker_path.exists()
     assert len(notices) == 1

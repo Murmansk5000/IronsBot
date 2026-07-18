@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from ironsbot.config.loader import get_app_config
-from ironsbot.services.ai.notifier import notify_superusers_once
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from ironsbot.config.models.runtime import LoggingConfig
+    from ironsbot.services.ai.resources import AiResources
 
 MARKER_PATH = Path("data/seer/render_crash_marker.json")
 LOG_TAIL_BYTES = 16 * 1024
@@ -54,8 +54,7 @@ def _clear_marker() -> None:
         logger.opt(exception=True).warning("failed to clear render crash marker")
 
 
-def _read_log_tail() -> str:
-    log_config = get_app_config().runtime.logging
+def _read_log_tail(log_config: LoggingConfig) -> str:
     if not log_config.file_enabled:
         return "文件日志未启用。"
 
@@ -122,13 +121,16 @@ def render_crash_marker(
         _clear_marker()
 
 
-async def report_previous_render_crash() -> None:
+async def report_previous_render_crash(
+    resources: AiResources,
+    log_config: LoggingConfig,
+) -> None:
     marker = _read_marker()
     if marker is None:
         return
 
     _clear_marker()
-    log_tail = _read_log_tail()
+    log_tail = _read_log_tail(log_config)
     notice = _truncate_notice(
         "⚠️ 机器人上次可能在精灵信息渲染时异常退出。\n"
         "这类崩溃通常发生在 Chromium/htmlkit/native 渲染层，"
@@ -137,7 +139,7 @@ async def report_previous_render_crash() -> None:
         f"【最近日志】\n{log_tail}"
     )
     key = "seer-render-crash-" + str(marker.get("started_at", "unknown"))
-    await notify_superusers_once(
+    await resources.notify_admin_once(
         key,
         notice,
         subscription_key="render_crash_notice",

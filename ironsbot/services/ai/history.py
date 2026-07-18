@@ -1,11 +1,9 @@
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
 from ironsbot.config.models.ai import AiConfig
+from ironsbot.services.ai.resources import AiResources
 
 HistoryMessage = dict[str, str]
-
-_HISTORY: dict[str, list[HistoryMessage]] = {}
-
 
 def history_key(event: MessageEvent) -> str:
     if isinstance(event, GroupMessageEvent):
@@ -67,17 +65,17 @@ def format_memory(memory: list[HistoryMessage]) -> str:
     return "\n".join(lines)
 
 
-def get_history(key: str) -> list[HistoryMessage]:
-    return _HISTORY.get(key, [])
+def get_history(resources: AiResources, key: str) -> list[HistoryMessage]:
+    return resources.history.get(key, [])
 
 
-def append_turn(config: AiConfig, key: str, prompt: str, reply: str) -> None:
-    history = get_history(key)
-    _HISTORY[key] = trim_history(
+def append_turn(resources: AiResources, key: str, prompt: str, reply: str) -> None:
+    history = get_history(resources, key)
+    resources.history[key] = trim_history(
         [
-            *trim_history(history, config.history_turns),
+            *trim_history(history, resources.config.history_turns),
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": reply},
         ],
-        config.history_turns,
+        resources.config.history_turns,
     )

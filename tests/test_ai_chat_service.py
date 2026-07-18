@@ -20,6 +20,7 @@ except ValueError:
 service = pytest.importorskip("ironsbot.services.ai.chat")
 constants = pytest.importorskip("ironsbot.services.ai.constants")
 ai_client = pytest.importorskip("ironsbot.services.ai.client")
+ai_resources_module = pytest.importorskip("ironsbot.services.ai.resources")
 source_context = pytest.importorskip("ironsbot.services.ai.source_context")
 
 
@@ -139,3 +140,17 @@ def test_ai_client_notice_appends_source_context() -> None:
     )
 
     assert message == "AI聊天接口异常。\n\n触发来源：\n群：456"
+
+
+def test_ai_admin_notice_is_limited_by_key(monkeypatch: MonkeyPatch) -> None:
+    sent: list[str] = []
+
+    async def fake_send(message: str, **_kwargs: object) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr(ai_resources_module, "send_admin_notice", fake_send)
+    resources = _ai_resources()
+    asyncio.run(resources.notify_admin_once("same", "first"))
+    asyncio.run(resources.notify_admin_once("same", "second"))
+
+    assert sent == ["first"]

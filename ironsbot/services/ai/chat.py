@@ -52,7 +52,7 @@ def build_ai_chat_context(
     key: str | None = None,
 ) -> AiChatContext:
     chat_key = key or get_ai_chat_key(event)
-    history = get_history(chat_key)
+    history = get_history(resources, chat_key)
     memory = get_user_memory(
         resources.config,
         event,
@@ -77,7 +77,7 @@ def record_successful_ai_reply(
     context: AiChatContext,
     reply: str,
 ) -> None:
-    append_turn(resources.config, context.key, context.prompt, reply)
+    append_turn(resources, context.key, context.prompt, reply)
     append_user_memory(
         resources.config,
         event,

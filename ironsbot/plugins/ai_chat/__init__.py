@@ -16,13 +16,8 @@ from ironsbot.services.ai.chat import (
     is_ai_error_reply,
     record_successful_ai_reply,
 )
-from ironsbot.services.ai.client import (
-    AI_CHAT_ERROR_ACTION_NAME,
-    AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-    call_ai_chat,
-)
+from ironsbot.services.ai.client import call_ai_chat
 from ironsbot.services.ai.mentions import mentions_bot
-from ironsbot.services.ai.notifier import notify_superusers_once
 from ironsbot.services.ai.permissions import is_allowed, is_reserved_private_command
 from ironsbot.services.ai.resources import AiResources
 from ironsbot.services.ai.source_context import (
@@ -94,15 +89,13 @@ async def _run_ai_chat(
     source_context = await build_notice_source(event, prompt, resources, bot=bot)
 
     if not resources.api_key:
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             "missing_api_key",
             append_ai_notice_source_context(
                 "AI聊天还没有配置 API Key。\n"
                 "请在 Unraid 容器变量或 .env.prod 中设置 AI_KEY。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         await _finish_admin_notice_or_silent(
             matcher,
@@ -146,7 +139,7 @@ async def _run_ai_chat(
         raise
     except httpx.TimeoutException:
         logger.warning("AI chat API timed out")
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             "timeout",
             append_ai_notice_source_context(
                 "AI聊天接口响应超时。\n"
@@ -155,8 +148,6 @@ async def _run_ai_chat(
                 "请检查网络或适当调大 ai.timeout。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         await _finish_admin_notice_or_silent(
             matcher,
@@ -165,7 +156,7 @@ async def _run_ai_chat(
         )
     except Exception as e:  # noqa: BLE001
         logger.error(f"AI chat failed: {e}")
-        await notify_superusers_once(
+        await resources.notify_admin_once(
             "unexpected",
             append_ai_notice_source_context(
                 "AI聊天处理失败。\n"
@@ -173,8 +164,6 @@ async def _run_ai_chat(
                 "请查看容器日志确认具体原因。",
                 source_context,
             ),
-            subscription_key=AI_CHAT_ERROR_SUBSCRIPTION_KEY,
-            action_name=AI_CHAT_ERROR_ACTION_NAME,
         )
         await _finish_admin_notice_or_silent(
             matcher,

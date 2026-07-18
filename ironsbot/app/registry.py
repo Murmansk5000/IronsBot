@@ -348,14 +348,6 @@ async def _send_startup_notice(
     await send_startup_notice(bot, service, config)
 
 
-async def _report_render_crash(_bot: Bot) -> None:
-    from ironsbot.services.seer.render_crash_report import (
-        report_previous_render_crash,
-    )
-
-    await report_previous_render_crash()
-
-
 async def _team_audit_on_connect(
     bot: Bot,
     config: TeamAuditWelcomeConfig,
@@ -404,6 +396,14 @@ def build_plugin_registry(
         tuple(config.seer.team_resource.commands),
         config.seer.team_resource.query_timeout_seconds,
     )
+
+    async def report_render_crash(_bot: Bot) -> None:
+        from ironsbot.services.seer.render_crash_report import (
+            report_previous_render_crash,
+        )
+
+        await report_previous_render_crash(ai_resources, runtime_config.logging)
+
     push_time_refresher = partial(
         _refresh_push_time_jobs,
         activity_service=activity_service,
@@ -754,7 +754,7 @@ def build_plugin_registry(
                     ("local_rank_jobs", partial(_register_local_rank_jobs, headless)),
                     ("rank_page_jobs", partial(_register_rank_page_jobs, headless)),
                 ),
-                first_bot_connect=(("render_crash_report", _report_render_crash),),
+                first_bot_connect=(("render_crash_report", report_render_crash),),
             ),
         ),
         PluginDefinition(
