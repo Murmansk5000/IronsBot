@@ -1,6 +1,8 @@
+from typing import cast
+
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from pytest import MonkeyPatch
 
 from ironsbot.app.command_cooldown_manifest import (
@@ -161,12 +163,12 @@ async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies(
 
     assert team_resource_subscription._at_user_ids_from_event(event) == (234,)
     assert await team_resource_subscription.team_resource_manage_matcher.rule(
-        None,
+        cast("Bot", None),
         event,
         {},
     )
     assert not await team_resource_subscription.team_resource_manage_matcher.rule(
-        None,
+        cast("Bot", None),
         replied_event,
         {},
     )

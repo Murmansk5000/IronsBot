@@ -1,6 +1,7 @@
 import asyncio
+from typing import cast
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
 
 from ironsbot.utils.rule import NoAt, no_reply
 from tests.helpers.onebot_events import group_message_event
@@ -60,8 +61,9 @@ def test_no_reply_can_allow_mentions_but_blocks_reply_messages() -> None:
         reply_sender_user_id=456,
     )
 
-    assert not asyncio.run(no_reply()(None, mentioned_event, {}))
+    bot = cast("Bot", None)
+    assert not asyncio.run(no_reply()(bot, mentioned_event, {}))
 
     rule = no_reply(allow_at=True)
-    assert asyncio.run(rule(None, mentioned_event, {}))
-    assert not asyncio.run(rule(None, replied_event, {}))
+    assert asyncio.run(rule(bot, mentioned_event, {}))
+    assert not asyncio.run(rule(bot, replied_event, {}))
