@@ -266,7 +266,10 @@ def build_plugin_registry(  # noqa: PLR0913
             id="seer_data",
             features=frozenset(),
             help=None,
-            install=install_seer_data,
+            install=partial(
+                install_seer_data,
+                config=runtime_config.data_sync,
+            ),
         ),
         PluginDefinition(
             id="headless_seer",

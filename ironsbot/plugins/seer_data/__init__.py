@@ -1,39 +1,39 @@
 # SPDX-License-Identifier: MIT
-import httpx
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from nonebot import logger
 
-from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.runtime import RemoteBuildConfig
-from ironsbot.integrations.db_sync.models import GetFingerprintFn
 from ironsbot.integrations.db_sync.registry import (
     register_database,
     register_local_database,
 )
-from ironsbot.runtime.matchers import MatcherRegistry
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
 
+if TYPE_CHECKING:
+    import httpx
 
-def _register(  # noqa: PLR0913
-    name: str,
-    sync_url: str,
-    interval: int,
-    local_path: str,
-    get_fingerprint: GetFingerprintFn | None = None,
-    remote_build: RemoteBuildConfig | None = None,
-) -> None:
-    if sync_url:
+    from ironsbot.config.models.runtime import DataSourceConfig, DataSyncConfig
+    from ironsbot.integrations.db_sync.models import GetFingerprintFn
+    from ironsbot.runtime.matchers import MatcherRegistry
+
+
+
+def _register_source(name: str, source: DataSourceConfig) -> None:
+    if source.url:
         register_database(
             name,
-            sync_url=sync_url,
-            sync_interval_minutes=interval,
-            get_fingerprint=get_fingerprint,
-            local_path=local_path,
-            remote_build=remote_build,
+            sync_url=source.url,
+            sync_interval_minutes=source.interval_minutes,
+            get_fingerprint=_fingerprint_getter(source.fingerprint_url),
+            local_path=source.local_path,
+            remote_build=source.remote_build,
         )
     else:
-        register_local_database(name, file_path=local_path)
+        register_local_database(name, file_path=source.local_path)
 
 
 def _fingerprint_getter(url: str) -> GetFingerprintFn | None:
@@ -47,22 +47,9 @@ def _fingerprint_getter(url: str) -> GetFingerprintFn | None:
     return _get_fingerprint
 
 
-def _register_source(name: str) -> None:
-    source = get_app_config().runtime.data_sync.sources.get(name)
-    if source is None:
-        logger.warning(f"数据源 '{name}' 未在 runtime.data_sync.sources 中配置")
-        return
-
-    _register(
-        name,
-        source.url,
-        source.interval_minutes,
-        source.local_path,
-        _fingerprint_getter(source.fingerprint_url),
-        source.remote_build,
-    )
-
-
-def install(_registry: MatcherRegistry) -> None:
-    _register_source(_SEERAPI_DB)
-    _register_source(_ALIAS_DB)
+def install(_registry: MatcherRegistry, config: DataSyncConfig) -> None:
+    for name in (_SEERAPI_DB, _ALIAS_DB):
+        if source := config.sources.get(name):
+            _register_source(name, source)
+        else:
+            logger.warning(f"数据源 '{name}' 未在 runtime.data_sync.sources 中配置")
