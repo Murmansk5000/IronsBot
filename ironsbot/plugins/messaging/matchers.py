@@ -11,7 +11,7 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -124,7 +124,7 @@ def install(
         block=True,
     )
     subscription_matcher.handle()(
-        partial(
+        bind_async(
             handle_push_subscription_menu,
             messaging=messaging,
         )

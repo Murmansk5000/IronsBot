@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
     from nonebot.matcher import Matcher
 
-os.environ["IRONSBOT_CONFIG"] = str(
+os.environ["APP_CONFIG_PATH"] = str(
     Path(__file__).resolve().parents[1] / "config.example.toml"
 )
 

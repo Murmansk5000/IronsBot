@@ -7,13 +7,14 @@ from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from functools import partial
 from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.exception import MockApiException
 from nonebot.log import logger
+
+from ironsbot.runtime.matchers import bind_async
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -494,5 +495,5 @@ async def _finalize_group_send_api(
 def install_outbound_rate_limit_hooks(
     service: GroupOutboundRateLimitService,
 ) -> None:
-    Bot.on_calling_api(partial(_check_group_send_api, service))
-    Bot.on_called_api(partial(_finalize_group_send_api, service))
+    Bot.on_calling_api(bind_async(_check_group_send_api, service))
+    Bot.on_called_api(bind_async(_finalize_group_send_api, service))

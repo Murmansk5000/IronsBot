@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.rule import Rule
 
 from ironsbot.core.commands import parse_confirmation
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
 from ironsbot.runtime.rules import no_reply
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
 
 
-async def _is_team_resource_query(
+def _is_team_resource_query(
     event: MessageEvent,
     *,
     service: TeamResourceService,
@@ -31,7 +30,7 @@ async def _is_team_resource_query(
     )
 
 
-async def _is_team_resource_manage(
+def _is_team_resource_manage(
     event: MessageEvent,
     *,
     service: TeamResourceService,
@@ -43,7 +42,7 @@ async def _is_team_resource_manage(
     )
 
 
-async def _is_team_resource_prompt_choice(
+def _is_team_resource_prompt_choice(
     event: MessageEvent,
     *,
     service: TeamResourceService,
@@ -153,14 +152,14 @@ def install(
     registry: MatcherRegistry,
     service: TeamResourceService,
 ) -> None:
-    async def is_manage(event: MessageEvent) -> bool:
-        return await _is_team_resource_manage(event, service=service)
+    def is_manage(event: MessageEvent) -> bool:
+        return _is_team_resource_manage(event, service=service)
 
-    async def is_prompt_choice(event: MessageEvent) -> bool:
-        return await _is_team_resource_prompt_choice(event, service=service)
+    def is_prompt_choice(event: MessageEvent) -> bool:
+        return _is_team_resource_prompt_choice(event, service=service)
 
-    async def is_query(event: MessageEvent) -> bool:
-        return await _is_team_resource_query(event, service=service)
+    def is_query(event: MessageEvent) -> bool:
+        return _is_team_resource_query(event, service=service)
 
     priority = registry.priority("team_resource_subscription")
     manage_matcher = registry.on_message(
@@ -170,7 +169,7 @@ def install(
         block=True,
     )
     manage_matcher.append_handler(
-        partial(handle_team_resource_manage, service=service)
+        bind_async(handle_team_resource_manage, service=service)
     )
 
     prompt_matcher = registry.on_message(
@@ -182,7 +181,7 @@ def install(
         block=True,
     )
     prompt_matcher.append_handler(
-        partial(handle_team_resource_prompt_choice, service=service)
+        bind_async(handle_team_resource_prompt_choice, service=service)
     )
 
     query_matcher = registry.on_message(
@@ -191,7 +190,7 @@ def install(
         priority=priority,
         block=True,
     )
-    query_matcher.append_handler(partial(handle_team_resource, service=service))
+    query_matcher.append_handler(bind_async(handle_team_resource, service=service))
 
 
 def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
