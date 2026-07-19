@@ -40,6 +40,7 @@ class Feature(str, Enum):
     SEER_MINTMARK = "seer_mintmark"
     SEER_PEAK = "seer_peak"
     SEER_PET = "seer_pet"
+    SEER_PET_CONFIG = "seer_pet_config"
     SEER_PLAYER = "seer_player"
     SEER_RANK = "seer_rank"
     SEER_TEAM = "seer_team"
@@ -66,6 +67,7 @@ SEER_FEATURES: Final[frozenset[str]] = frozenset(
         "seer_player",
         "seer_team",
         "seer_pet",
+        "seer_pet_config",
         "seer_mintmark",
         "seer_equipment",
         "seer_type",

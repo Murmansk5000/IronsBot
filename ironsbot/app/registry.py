@@ -111,6 +111,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     resources: ApplicationResources,
     scheduler: SchedulerFacade,
 ) -> tuple[PluginDefinition, ...]:
+    from ironsbot.custom_plugins.pet_config_reply import (
+        plugin_definition as pet_config_reply_definition,
+    )
     from ironsbot.plugins.about import install as install_about
     from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
@@ -158,6 +161,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
     seer_resources = resources.seer
+    pet_config_service = resources.pet_config
     ai_service = resources.ai
     data_sync_service = resources.data_sync
     docker_update_service = resources.docker_update
@@ -550,6 +554,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     ),
                 ),
             ),
+        ),
+        pet_config_reply_definition(
+            service=pet_config_service,
+            features=features,
+            config=config.seer.pet_config,
         ),
         PluginDefinition(
             id="seer_query",

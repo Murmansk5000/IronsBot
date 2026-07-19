@@ -21,14 +21,34 @@
             {% if skill.is_fifth and skill.is_advanced %}
             <span class="sk-badge b-adv">觉醒</span>
             {% endif %}
-            {% if skill.activation_item %}
-            <span class="sk-badge b-spc">激活道具: {{ skill.activation_item }}</span>
-            {% endif %}
             {% if skill.friend_bonus %}
             <span class="sk-badge b-spc">伙伴加成</span>
             {% endif %}
         </div>
     </div>
+    {% if skill.activation_item %}
+    <div class="sk-activation-item">
+        {% if skill.activation_item.icon %}
+        <img class="sk-activation-item-icon" src="{{ skill.activation_item.icon }}" />
+        {% endif %}
+        <div class="sk-activation-item-content">
+            <div class="sk-activation-item-name">
+                <span>激活道具</span>{{ skill.activation_item.name }}
+            </div>
+            {% for price in skill.activation_item.prices %}
+            <div class="sk-activation-item-price">
+                {{ price.source_name }}：
+                {% if price.currency_icon %}
+                <img class="sk-activation-currency-icon" src="{{ price.currency_icon }}" />
+                {% endif %}
+                {{ price.currency_name }} × {{ price.amount }}
+                {% if price.item_quantity > 1 %}（兑换{{ price.item_quantity }}个）{% endif %}
+                {% if price.purchase_limit is not none %}（限购{{ price.purchase_limit }}次）{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     <div class="sk-stats">
         威力: <strong>{{ skill.power }}</strong>
         &nbsp;&nbsp;|&nbsp;&nbsp; PP: <strong>{{ skill.max_pp }}</strong>

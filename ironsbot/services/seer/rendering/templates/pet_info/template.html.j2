@@ -233,6 +233,43 @@
             color: #e0f0ff;
         }
 
+        .special-effects {
+            display: grid;
+            gap: 8px;
+        }
+
+        .special-effect {
+            padding: 10px 12px;
+            background-color: rgba(20, 56, 104, 0.7);
+            border-left: 3px solid #60e0ff;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .special-effect-head {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .special-effect-name {
+            color: #60e0ff;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .special-effect-sources {
+            color: #a8c9ed;
+            font-size: 13px;
+        }
+
+        .special-effect-desc {
+            margin-top: 4px;
+            color: #e0f0ff;
+            font-size: 16px;
+            line-height: 1.55;
+        }
+
         /* ========== 刻印卡片 ========== */
         .mm-item {
             background-color: #2a5a9a;
@@ -479,6 +516,25 @@
                             {% endif %}
                         </div>
                         {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if special_effects %}
+                    <div class="section">
+                        <div class="sec-title">专属效果</div>
+                        <div class="special-effects">
+                            {% for effect in special_effects %}
+                            <div class="special-effect">
+                                <div class="special-effect-head">
+                                    <span class="special-effect-name">{{ effect.name }}</span>
+                                    <span class="special-effect-sources">{{ effect.sources | join("、") }}</span>
+                                </div>
+                                {% if effect.desc %}
+                                <div class="special-effect-desc">{{ effect.desc }}</div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                     {% endif %}
 
