@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    MessageEvent,
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply
@@ -17,10 +21,6 @@ from ironsbot.services.seer.team import TeamQueryActor
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
-
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.team import SeerTeamQueryService
 
@@ -70,7 +70,7 @@ def install(group: SeerMatcherGroup) -> None:
             prefixes=("战队", "查询战队信息"),
             suffixes=(),
         )
-        & Rule(partial(_capture_team_ids, service))
+        & Rule(bind(_capture_team_ids, service))
         & no_reply(),
         priority=group.matcher_priority("seer_team"),
     )

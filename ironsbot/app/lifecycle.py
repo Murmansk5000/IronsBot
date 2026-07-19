@@ -6,12 +6,14 @@ from dataclasses import dataclass, field
 from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from nonebot.adapters.onebot.v11 import (
+    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
+)
 from nonebot.log import logger
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
-    from nonebot.adapters.onebot.v11 import Bot
     from nonebot.internal.driver import Driver
 
     from ironsbot.runtime.plugins import (

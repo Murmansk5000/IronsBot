@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.help import (
@@ -13,15 +14,12 @@ from ironsbot.core.help import (
     PET_CONFIG_UNAVAILABLE_TEXT,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
 from ironsbot.runtime.onebot_context import build_notice_source, mentions_bot
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
@@ -146,7 +144,7 @@ def install(
 
     direct_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
-        rule=Rule(partial(_capture_ai_prompt, features=features)),
+        rule=Rule(bind(_capture_ai_prompt, features=features)),
         priority=registry.priority("ai_chat"),
         block=True,
     )
@@ -154,7 +152,7 @@ def install(
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat"),
-        rule=Rule(partial(_capture_group_ai_prompt, features=features)),
+        rule=Rule(bind(_capture_group_ai_prompt, features=features)),
         priority=registry.pre_command_priority("ai_group_at"),
         block=True,
     )

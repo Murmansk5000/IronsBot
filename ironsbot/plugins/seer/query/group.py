@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 
 from ironsbot.runtime.feature_policy import event_has_feature
@@ -11,7 +12,6 @@ from ironsbot.runtime.feature_policy import event_has_feature
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from nonebot.adapters import Event
     from nonebot.matcher import Matcher
 
     from ironsbot.core.features import FeatureService

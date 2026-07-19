@@ -7,6 +7,8 @@ from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.runtime.conversations import (
     enter_event_reply_conversation,
@@ -35,9 +37,6 @@ from .query_rules import not_rank_query
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"

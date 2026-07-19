@@ -3,14 +3,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
+
 from ironsbot.runtime.permissions import can_manage_conversation_event
 from ironsbot.runtime.replies import finish_event_reply, message_event_target
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
-
     from ironsbot.core.features import FeatureService
     from ironsbot.services.bilibili.targets import BiliTargetService
 

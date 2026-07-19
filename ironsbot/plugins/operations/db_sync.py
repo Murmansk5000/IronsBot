@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
@@ -12,10 +17,6 @@ from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-
     from ironsbot.services.operations.data_sync import DataSyncService
 
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
