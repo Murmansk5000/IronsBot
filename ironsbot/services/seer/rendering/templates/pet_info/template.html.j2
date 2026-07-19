@@ -209,40 +209,17 @@
             image-rendering: auto;
         }
 
-        .sm-glossaries {
-            margin-top: 12px;
-            padding: 10px;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .sm-glossary {
-            font-size: 17px;
-            line-height: 1.6;
-            padding: 4px 0;
-        }
-
-        .sm-glossary-name {
-            color: #60e0ff;
-            font-weight: bold;
-            margin-right: 4px;
-        }
-
-        .sm-glossary-desc {
-            color: #e0f0ff;
-        }
-
         .special-effects {
             display: grid;
             gap: 8px;
         }
 
         .special-effect {
-            padding: 10px 12px;
-            background-color: rgba(20, 56, 104, 0.7);
-            border-left: 3px solid #60e0ff;
+            background-color: #2a5a9a;
+            padding: 15px;
+            border-left: 4px solid #ffffff;
             border-radius: 0 4px 4px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         .special-effect-head {
@@ -504,16 +481,6 @@
                             </div>
                             {% endif %}
                             <div class="sm-desc">{{ sm.desc }}</div>
-                            {% if sm.glossaries %}
-                            <div class="sm-glossaries">
-                                {% for g in sm.glossaries %}
-                                <div class="sm-glossary">
-                                    <span class="sm-glossary-name">{{ g.name }}:</span>
-                                    <span class="sm-glossary-desc">{{ g.desc }}</span>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>

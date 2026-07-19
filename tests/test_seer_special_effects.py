@@ -8,7 +8,10 @@ from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.services.seer.rendering.custom_pet_info import _extract_special_effects
+from ironsbot.services.seer.rendering.custom_pet_info import (
+    _extract_soulmark,
+    _extract_special_effects,
+)
 
 
 def _skill(
@@ -65,6 +68,58 @@ def test_special_effects_merge_soulmark_and_skill_sources() -> None:
     ]
 
 
+def test_special_effects_use_official_descriptions_when_pet_glossary_is_missing(
+) -> None:
+    pet = SimpleNamespace(
+        glossary_entry=[],
+        soulmark=[],
+        skill_links=[
+            SimpleNamespace(
+                skill=_skill(
+                    "黄泉妖偈",
+                    "[color=#f35555]冥妖之悼[/color][color=#f35555]幽迹之秘[/color]",
+                )
+            )
+        ],
+    )
+
+    effects = _extract_special_effects(
+        cast("Any", pet),
+        {
+            "冥妖之悼": "自身芳华寂灭先制+1。",
+            "幽迹之秘": "自身幽冥鬼甲先制+1。",
+        },
+    )
+
+    assert effects == [
+        {
+            "name": "冥妖之悼",
+            "desc": "自身芳华寂灭先制+1。",
+            "sources": ["技能·黄泉妖偈"],
+        },
+        {
+            "name": "幽迹之秘",
+            "desc": "自身幽冥鬼甲先制+1。",
+            "sources": ["技能·黄泉妖偈"],
+        },
+    ]
+
+
+def test_soulmark_does_not_repeat_glossary_descriptions() -> None:
+    soulmark = SimpleNamespace(
+        analyze_desc="[color=#f35555]蜃楼[/color]",
+        desc="蜃楼",
+        intensified=False,
+        is_adv=False,
+        pve_effective=False,
+        tag=[],
+    )
+
+    rendered = _extract_soulmark([cast("Any", soulmark)])
+
+    assert "glossaries" not in rendered[0]
+
+
 def test_special_effect_template_shows_name_source_and_description() -> None:
     environment = Environment(
         loader=FileSystemLoader([CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH])
@@ -111,3 +166,9 @@ def test_special_effect_template_shows_name_source_and_description() -> None:
     assert "蜃楼" in html
     assert "魂印、技能·潮汐回响" in html
     assert "使对手进入蜃楼状态。" in html
+    special_effect_css = html.split(".special-effect {", maxsplit=1)[1].split(
+        "}", maxsplit=1
+    )[0]
+    assert "background-color: #2a5a9a;" in special_effect_css
+    assert "border-left: 4px solid #ffffff;" in special_effect_css
+    assert ".sm-glossaries" not in html

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class ItemExchangePrice:
     source_name: str
+    item_name: str
     item_quantity: int
     currency_item_id: int
     currency_name: str
@@ -44,17 +45,41 @@ def load_item_exchange_prices(
     if not normalized_item_ids:
         return {}
 
+    has_item_name = False
+    try:
+        columns = session.execute(
+            text(f"PRAGMA table_info({ITEM_EXCHANGE_PRICE_TABLE})")
+        ).all()
+        has_item_name = any(
+            str(
+                getattr(row, "name", None)
+                or row._mapping.get("name", "")
+            )
+            == "item_name"
+            for row in columns
+        )
+    except SQLAlchemyError:
+        pass
+
+    item_name_expression = (
+        "COALESCE(NULLIF(item.name, ''), NULLIF(exchange_price.item_name, ''), '')"
+        if has_item_name
+        else "COALESCE(item.name, '')"
+    )
     statement = text(
         f"""
         SELECT
             exchange_price.item_id,
             exchange_price.source_name,
+            {item_name_expression} AS item_name,
             exchange_price.item_quantity,
             exchange_price.currency_item_id,
             COALESCE(currency.name, '') AS currency_name,
             exchange_price.amount,
             exchange_price.purchase_limit
         FROM {ITEM_EXCHANGE_PRICE_TABLE} AS exchange_price
+        LEFT JOIN item AS item
+            ON item.id = exchange_price.item_id
         LEFT JOIN item AS currency
             ON currency.id = exchange_price.currency_item_id
         WHERE exchange_price.item_id IN :item_ids
@@ -95,6 +120,7 @@ def load_item_exchange_prices(
         prices.append(
             ItemExchangePrice(
                 source_name=str(mapping["source_name"] or "兑换"),
+                item_name=str(mapping["item_name"] or "").strip(),
                 item_quantity=int(mapping["item_quantity"] or 1),
                 currency_item_id=currency_item_id,
                 currency_name=currency_name or f"道具{currency_item_id}",

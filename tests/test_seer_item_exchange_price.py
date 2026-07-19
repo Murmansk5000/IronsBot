@@ -31,6 +31,7 @@ def _session_with_exchange_prices() -> Session:
                     source_name TEXT NOT NULL,
                     source_entry_id INTEGER NOT NULL,
                     item_id INTEGER NOT NULL,
+                    item_name TEXT NOT NULL,
                     item_quantity INTEGER NOT NULL,
                     currency_item_id INTEGER NOT NULL,
                     amount INTEGER NOT NULL,
@@ -57,6 +58,7 @@ def _session_with_exchange_prices() -> Session:
                     source_name,
                     source_entry_id,
                     item_id,
+                    item_name,
                     item_quantity,
                     currency_item_id,
                     amount,
@@ -70,6 +72,7 @@ def _session_with_exchange_prices() -> Session:
                     '战令商店',
                     1005,
                     1728296,
+                    '双源魂蒂',
                     1,
                     1726710,
                     2000,
@@ -89,6 +92,7 @@ def test_load_item_exchange_prices_reads_currency_name_and_limit() -> None:
         prices = load_item_exchange_prices(session, [ACTIVATION_ITEM_ID])
 
     assert prices[ACTIVATION_ITEM_ID][0].source_name == "战令商店"
+    assert prices[ACTIVATION_ITEM_ID][0].item_name == "双源魂蒂"
     assert prices[ACTIVATION_ITEM_ID][0].currency_name == "共鸣锚点"
     assert prices[ACTIVATION_ITEM_ID][0].amount == EXCHANGE_PRICE
     assert prices[ACTIVATION_ITEM_ID][0].purchase_limit == PURCHASE_LIMIT
@@ -104,6 +108,7 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
                     source_name,
                     source_entry_id,
                     item_id,
+                    item_name,
                     item_quantity,
                     currency_item_id,
                     amount,
@@ -117,6 +122,7 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
                     '过期商店',
                     1,
                     1728296,
+                    '',
                     1,
                     1726710,
                     1,

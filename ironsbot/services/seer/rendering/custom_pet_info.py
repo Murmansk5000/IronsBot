@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
 from collections.abc import Callable, Mapping
-from typing import Any, Literal, NamedTuple, TypedDict
+from typing import Any, Literal, TypedDict
 
 from seerapi_models import MintmarkORM, PetORM, SkillInPetORM, SoulmarkORM
 from seerapi_models.mintmark import PetMintmarkLink, SkillMintmarkLink
@@ -9,6 +9,7 @@ from sqlalchemy.orm import object_session
 from sqlmodel import col, select
 
 from ironsbot.services.ai.analysis_parser import AnalyzeDescParser
+from ironsbot.services.seer.effect_description import load_effect_descriptions
 from ironsbot.services.seer.images import (
     SeerImageSource,
     fetch_optional_image,
@@ -81,18 +82,12 @@ class SkillDict(TypedDict):
     hide_effect_desc: str | None
 
 
-class GlossaryDict(NamedTuple):
-    name: str
-    desc: str
-
-
 class SoulmarkDict(TypedDict):
     desc: str
     intensified: bool
     is_adv: bool
     pve_effective: bool | None
     tags: list[str]
-    glossaries: set[GlossaryDict]
     icon_id: int | None
     icon: str | None
 
@@ -115,12 +110,8 @@ def _extract_skill(
         }
         for e in skill.skill_effect
     ]
-    skill_activation_item = skill_in_pet.skill_activation_item
-    activation_item = (
-        activation_items.get(skill_activation_item.id)
-        if skill_activation_item
-        else None
-    )
+    activation_item_id = int(skill_in_pet.skill_activation_item_id or 0)
+    activation_item = activation_items.get(activation_item_id)
     hide_effect_desc = skill.hide_effect.description if skill.hide_effect else None
     result = SkillDict(
         id=skill.id,
@@ -164,7 +155,12 @@ def _build_activation_items(
     session: Any,
 ) -> dict[int, ActivationItemDict]:
     result: dict[int, ActivationItemDict] = {}
+    activation_item_ids: set[int] = set()
     for skill_link in pet.skill_links:
+        item_id = int(skill_link.skill_activation_item_id or 0)
+        if item_id <= 0:
+            continue
+        activation_item_ids.add(item_id)
         item = skill_link.skill_activation_item
         if item is None:
             continue
@@ -178,9 +174,23 @@ def _build_activation_items(
             ),
         )
 
-    prices_by_item = load_item_exchange_prices(session, result)
+    prices_by_item = load_item_exchange_prices(session, activation_item_ids)
     for item_id, prices in prices_by_item.items():
-        activation_item = result[item_id]
+        activation_item = result.get(item_id)
+        if activation_item is None:
+            item_name = next(
+                (price.item_name for price in prices if price.item_name),
+                "",
+            )
+            if not item_name:
+                continue
+            activation_item = ActivationItemDict(
+                id=item_id,
+                name=item_name,
+                icon=None,
+                prices=[],
+            )
+            result[item_id] = activation_item
         activation_item["prices"] = [
             ActivationItemPriceDict(
                 source_name=price.source_name,
@@ -227,7 +237,7 @@ async def _load_activation_item_icons(
             price["currency_icon"] = icons.get(price["currency_item_id"])
 
 
-def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[SoulmarkDict]:
+def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
     for sm in soulmarks:
         result = SoulmarkDict(
@@ -238,19 +248,11 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[Soulmar
             is_adv=sm.is_adv,
             pve_effective=sm.pve_effective,
             tags=[t.name for t in sm.tag] if sm.tag else [],
-            glossaries=set(),
             icon_id=None,
             icon=None,
         )
 
         results.append(result)
-
-    for i, sm in enumerate(reversed(results)):
-        for glossary in pet.glossary_entry:
-            if glossary.name not in sm["desc"] and i != 0:
-                continue
-
-            sm["glossaries"].add(GlossaryDict(name=glossary.name, desc=glossary.desc))
 
     return results
 
@@ -297,22 +299,28 @@ def _red_effect_names(
     return list(dict.fromkeys(names))
 
 
-def _extract_special_effects(pet: PetORM) -> list[SpecialEffectDict]:
+def _extract_special_effects(
+    pet: PetORM,
+    official_descriptions: Mapping[str, str] | None = None,
+) -> list[SpecialEffectDict]:
     """Collect red-highlighted named effects from soulmarks and skills."""
-    glossary_descs = {
+    known_descriptions = dict(official_descriptions or {})
+    glossary_descriptions = {
         glossary.name: glossary.desc
         for glossary in pet.glossary_entry
-        if glossary.name
+        if glossary.name and glossary.desc
     }
+    # Pet-linked glossary entries are more specific than a global EffectDes row.
+    known_descriptions.update(glossary_descriptions)
     effects_by_name: dict[str, SpecialEffectDict] = {}
 
     def add(description: str | None, source: str) -> None:
-        for name in _red_effect_names(description, glossary_descs):
+        for name in _red_effect_names(description, known_descriptions):
             effect = effects_by_name.setdefault(
                 name,
                 SpecialEffectDict(
                     name=name,
-                    desc=glossary_descs.get(name),
+                    desc=known_descriptions.get(name),
                     sources=[],
                 ),
             )
@@ -358,7 +366,7 @@ async def render_custom_pet_info(
     pet: PetORM,
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
-    cached = cache.get("custom_pet_info_v3", str(pet.id))
+    cached = cache.get("custom_pet_info_v4", str(pet.id))
     if cached is not None:
         return cached
 
@@ -372,8 +380,11 @@ async def render_custom_pet_info(
     if session is None:
         raise RuntimeError
     activation_items = _build_activation_items(pet, session)
-    soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark, pet)
-    special_effects = _extract_special_effects(pet)
+    soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark)
+    special_effects = _extract_special_effects(
+        pet,
+        load_effect_descriptions(session),
+    )
     if pet.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
@@ -382,7 +393,6 @@ async def render_custom_pet_info(
                 "is_adv": False,
                 "pve_effective": None,
                 "tags": [],
-                "glossaries": set(),
                 "icon_id": None,
                 "icon": None,
             }
@@ -499,5 +509,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v3", str(pet.id), result)
+    cache.put("custom_pet_info_v4", str(pet.id), result)
     return result
