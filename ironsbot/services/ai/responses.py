@@ -2,10 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
-
-if TYPE_CHECKING:
-    import httpx
+from typing import Literal
 
 HTTP_BAD_REQUEST = 400
 HTTP_PAYMENT_REQUIRED = 402
@@ -57,55 +54,46 @@ def ai_api_error_title(status_code: int) -> str:
     return "接口返回异常"
 
 
-def parse_ai_response(response: httpx.Response) -> AiResponseResult:
-    if response.status_code >= HTTP_BAD_REQUEST:
+def parse_ai_response(
+    status_code: int,
+    data: object,
+    *,
+    raw_text: str = "",
+    valid_json: bool = True,
+) -> AiResponseResult:
+    if status_code >= HTTP_BAD_REQUEST:
         return AiResponseResult(
-            status_code=response.status_code,
+            status_code=status_code,
             error_kind="http",
-            error_title=ai_api_error_title(response.status_code),
-            error_detail=_extract_error_detail(response),
+            error_title=ai_api_error_title(status_code),
+            error_detail=_extract_error_detail(data, raw_text),
         )
 
-    try:
-        data: object = response.json()
-    except ValueError:
+    if not valid_json:
         return AiResponseResult(
-            status_code=response.status_code,
+            status_code=status_code,
             error_kind="invalid_json",
             error_title="接口响应不是有效 JSON",
-            error_detail=response.text[:300],
+            error_detail=raw_text[:300],
         )
 
     reply = extract_ai_reply(data)
     if not reply:
         return AiResponseResult(
-            status_code=response.status_code,
+            status_code=status_code,
             error_kind="empty_reply",
             error_title="接口返回空内容",
             error_detail="choices[0].message.content 缺失或为空",
         )
 
-    return AiResponseResult(status_code=response.status_code, reply=reply)
+    return AiResponseResult(status_code=status_code, reply=reply)
 
 
-def _extract_error_detail(response: httpx.Response) -> str:
-    try:
-        data: object = response.json()
-    except ValueError:
-        return response.text[:300]
-
+def _extract_error_detail(data: object, raw_text: str) -> str:
     if isinstance(data, dict):
         error = data.get("error")
         if isinstance(error, dict):
             message = error.get("message") or error.get("code") or str(error)
             return str(message)[:300]
-    return str(data)[:300]
-
-
-__all__ = [
-    "AiResponseErrorKind",
-    "AiResponseResult",
-    "ai_api_error_title",
-    "extract_ai_reply",
-    "parse_ai_response",
-]
+        return str(data)[:300]
+    return raw_text[:300]

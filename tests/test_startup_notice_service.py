@@ -1,70 +1,38 @@
-import sys
-from dataclasses import dataclass
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-
-_SERVICE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "plugins"
-    / "startup_notice"
-    / "service.py"
-)
-_SPEC = spec_from_file_location("startup_notice_service_for_test", _SERVICE_PATH)
-assert _SPEC is not None and _SPEC.loader is not None
-_SERVICE = module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _SERVICE
-_SPEC.loader.exec_module(_SERVICE)
-StartupNoticeService = _SERVICE.StartupNoticeService
-AdminNoticeTargets = _SERVICE.AdminNoticeTargets
+from ironsbot.services.operations.startup import StartupNoticeService
+from tests.helpers.runtime import build_test_runtime
 
 
-@dataclass
-class Config:
-    enabled: bool = True
+def _service() -> StartupNoticeService:
+    return StartupNoticeService(build_test_runtime().admin_notices)
 
 
 def test_startup_notice_service_respects_enabled_and_busy_state() -> None:
-    service = StartupNoticeService()
+    service = _service()
 
-    assert not service.should_send(Config(enabled=False))
-    assert service.should_send(Config())
+    assert not service.should_send(enabled=False)
+    assert service.should_send(enabled=True)
 
     service.begin_send()
-    assert not service.should_send(Config())
-
-
-def test_startup_notice_service_resolves_targets() -> None:
-    service = StartupNoticeService(
-        target_loader=lambda: AdminNoticeTargets(
-            private_user_ids=[1, 3],
-            group_ids=[9],
-        ),
-    )
-
-    targets = service.get_targets()
-
-    assert targets.private_user_ids == [1, 3]
-    assert targets.group_ids == [9]
-    assert not targets.is_empty
+    assert not service.should_send(enabled=True)
 
 
 def test_startup_notice_service_resets_sending_after_failed_send() -> None:
-    service = StartupNoticeService()
+    service = _service()
 
     service.begin_send()
     service.mark_result([])
     service.finish_send()
 
-    assert not service.state.sent
-    assert not service.state.sending
+    assert not service.sent
+    assert not service.sending
 
 
 def test_startup_notice_service_marks_successful_send() -> None:
-    service = StartupNoticeService()
+    service = _service()
 
     service.begin_send()
     service.mark_result([123])
     service.finish_send()
 
-    assert service.state.sent
+    assert service.sent
+    assert not service.sending

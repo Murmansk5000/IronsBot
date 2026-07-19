@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
-
-from nonebot.log import logger
 
 from .models import ActivityInfo
 from .offer_notice import offer_blocks, offer_end_time, offer_window_from_blocks
@@ -16,6 +15,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+_LOGGER = logging.getLogger(__name__)
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -45,6 +45,8 @@ def parse_datetime(value: Any) -> datetime | None:
 def build_active_activity_infos(
     rows: Iterable[Mapping[str, Any]],
     now: datetime,
+    *,
+    notice_text: str = "",
 ) -> list[ActivityInfo]:
     activities: list[ActivityInfo] = []
     for row in rows:
@@ -64,16 +66,18 @@ def build_active_activity_infos(
             sort_order=int(row.get("sort_order") or 0),
         )
         try:
-            activity_offer_blocks = offer_blocks(activity, now)
+            activity_offer_blocks = offer_blocks(activity, notice_text)
             offer_window = offer_window_from_blocks(activity_offer_blocks)
             activity_offer_end_time = offer_end_time(
                 activity,
                 activity_offer_blocks,
             )
         except Exception:  # noqa: BLE001
-            logger.opt(exception=True).warning(
-                "activity reminder offer parsing failed for "
-                f"activity {activity.activity_id}: {activity.name}"
+            _LOGGER.warning(
+                "activity reminder offer parsing failed for activity %s: %s",
+                activity.activity_id,
+                activity.name,
+                exc_info=True,
             )
             offer_window = None
             activity_offer_end_time = None

@@ -102,7 +102,8 @@ services:
 | `server_status` | 开服查询与管理员服务器状态指令。 |
 | `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
 | `ai_chat` | AI 聊天。 |
-| `ai_intent` | AI 意图分析与动作分发；战队推荐和审核群信息由其战队动作处理。 |
+| `ai_intent` | AI 意图分析，并把命中的意图分发给对应功能。 |
+| `team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
 | `scheduled_restart` | 每日定时重启机器人进程。 |
 
 仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/plugin_manifest.py` 显式加载用户适配器、数据库同步、无头登录、HTTP 客户端和赛尔号数据等基础设施。
@@ -129,12 +130,35 @@ HEADLESS_SEER_PASSWORD=
 示例 TOML：
 
 ```toml
-[feature]
-group_aliases = { admin = 123456789, xinghen = 987654321 }
-user_aliases = { owner = 1234567890 }
-group_policy = { admin = ["admin_notice"], xinghen = ["seer", "image", "rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_chat", "ai_intent", "fire_manual"] }
-user_policy = { owner = ["all"] }
-superuser_bypass = true
+# 当前正式权限结构的新示例；以下标识值为虚构值。
+# 本段仅授予帮助与查询权限，不启用推送或管理权限。
+[features]
+superuser_bypass = false
+
+[features.group_aliases]
+admin = 10001
+xinghen = 10002
+
+[features.user_aliases]
+owner = 20001
+
+[features.group_policy]
+admin = [
+    "help",
+    "bili_query",
+    "seer_player",
+]
+xinghen = [
+    "help",
+    "bili_query",
+    "seer_player",
+]
+
+[features.user_policy]
+owner = [
+    "help",
+    "bili_query",
+]
 
 [bilibili.push]
 groups = { xinghen = { accounts = [], mode = "full" } }

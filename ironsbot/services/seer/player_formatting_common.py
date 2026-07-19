@@ -145,22 +145,3 @@ def format_local_rank_suffix(
     if text.startswith("样本"):
         text = f"{label}{text.removeprefix('样本')}"
     return f"（{text}）"
-
-
-__all__ = [
-    "METRIC_SEPARATOR",
-    "PEAK_RANK_NAMES",
-    "filter_blank_lines",
-    "format_local_rank_suffix",
-    "format_login_timeline_lines",
-    "format_metric_line",
-    "format_online_text",
-    "format_peak_rank_text",
-    "format_player_identity",
-    "format_rank_star_compact",
-    "format_team_text",
-    "format_vip",
-    "format_win_rate",
-    "join_metric_parts",
-    "sample_rank_text",
-]

@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, MutableMapping
 
-from nonebot.log import logger
-
-from ironsbot.config.models.runtime import RemoteBuildConfig, RemoteBuildStepConfig
+from ironsbot.config.models.operations import RemoteBuildConfig, RemoteBuildStepConfig
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 
 FORCE_INPUT_OVERRIDES = {
@@ -17,6 +16,7 @@ FORCE_INPUT_OVERRIDES = {
     ("Murmansk-Seer/api-data", "main.yml"): {"force": True},
     ("Murmansk-Seer/seerapi", "build-ironsbot-data-db.yml"): {"force": True},
 }
+logger = logging.getLogger(__name__)
 
 TriggerWorkflowFn = Callable[
     [RemoteBuildStepConfig],
@@ -102,10 +102,10 @@ async def run_remote_build(  # noqa: PLR0913
     if not token:
         results[name] = remote_build_failure(
             config=config,
-            message="缺少 GITHUB_WORKFLOW_TOKEN，未触发远程构建",
+            message="缺少 IRONSBOT_GITHUB_TOKEN，未触发远程构建",
         )
         logger.warning(
-            f"数据库 '{name}' 远程构建已启用，但未配置 GITHUB_WORKFLOW_TOKEN"
+            f"数据库 '{name}' 远程构建已启用，但未配置 IRONSBOT_GITHUB_TOKEN"
         )
         return False
 
@@ -130,8 +130,8 @@ async def run_remote_build(  # noqa: PLR0913
         )
         try:
             result = await trigger_workflow(step)
-        except Exception as e:  # noqa: BLE001
-            logger.opt(exception=True).error(
+        except Exception as e:
+            logger.exception(
                 f"数据库 '{name}' 远程构建步骤请求失败: {step.display_name}"
             )
             result = remote_build_failure(
@@ -163,12 +163,3 @@ async def run_remote_build(  # noqa: PLR0913
 
     logger.info(f"数据库 '{name}' 远程构建流水线成功，共 {len(steps)} 步")
     return True
-
-
-__all__ = [
-    "configured_remote_build_steps",
-    "format_exception_message",
-    "remote_build_failure",
-    "run_remote_build",
-    "workflow_page",
-]

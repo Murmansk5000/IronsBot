@@ -212,7 +212,7 @@ def run_pytest() -> int:
             "tests/test_feature_service.py",
             "tests/test_feature_visibility.py",
             "tests/test_team_resource_config.py",
-            "tests/test_manifest_import_hygiene.py",
+            "tests/test_plugin_import_hygiene.py",
         ),
     )
 

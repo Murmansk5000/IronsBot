@@ -23,14 +23,7 @@ services:
     env_file:
       - .env.prod
     environment:
-      # Runtime settings
-      ENVIRONMENT: "prod"
-      DRIVER: "~fastapi+~httpx"
-      HOST: "0.0.0.0"
-      PORT: "8080"
-      LOG_LEVEL: "INFO"
-      COMMAND_START: '["/",""]'
-      APP_CONFIG_PATH: "/config/ironsbot.toml"
+      IRONSBOT_CONFIG: "/config/ironsbot.toml"
     logging:
       driver: "json-file"
       options:

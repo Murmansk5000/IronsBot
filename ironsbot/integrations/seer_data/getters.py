@@ -1,18 +1,14 @@
 # SPDX-License-Identifier: MIT
-# ruff: noqa: N802
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import logging
+from typing import TYPE_CHECKING
 
-from nonebot import logger
-from nonebot.params import Depends
 from seerapi_models import (
     BattleEffectORM,
     ElementTypeORM,
     EquipORM,
-    ErrorCodeORM,
     GemCategoryORM,
-    GemORM,
     MintmarkClassCategoryORM,
     MintmarkORM,
     PetORM,
@@ -23,22 +19,23 @@ from seerapi_models import (
 )
 from sqlmodel import and_, or_, select
 
-from .mintmark_series_resolvers import (
-    MintmarkSeriesOrdinalResolver,
-    MintmarkSeriesTypeResolver,
-)
+from ironsbot.services.seer.data import SEERAPI_DB
+
+from .mintmark_series_resolvers import MintmarkSeriesResolver
 from .normalization import strip_special as _strip_special
 from .orm import (
-    GemAliasORM,
     MintmarkAliasORM,
     MintmarkClassAliasORM,
     PetAliasORM,
 )
 from .resolvers import AliasResolver, Getter, IdResolver, NameResolver
-from .sessions import _SEERAPI_DB, AllSessions
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from ironsbot.services.seer.data import SessionMap
+
+logger = logging.getLogger(__name__)
 
 PetDataGetter = Getter(
     PetORM,
@@ -47,24 +44,17 @@ PetDataGetter = Getter(
     AliasResolver(PetORM, PetAliasORM),
 )
 
-
-def GetPetData() -> Any:
-    return Depends(PetDataGetter)
-
-
-MintmarkDataGetter = Getter(
-    MintmarkORM,
-    IdResolver(MintmarkORM),
-    NameResolver(MintmarkORM),
-    AliasResolver(MintmarkORM, MintmarkAliasORM),
-    MintmarkSeriesOrdinalResolver(),
-    MintmarkSeriesTypeResolver(),
-)
-
-
-def GetMintmarkData() -> Any:
-    return Depends(MintmarkDataGetter)
-
+def build_mintmark_data_getter(
+    *,
+    merge_connected: bool,
+) -> Getter[MintmarkORM]:
+    return Getter(
+        MintmarkORM,
+        IdResolver(MintmarkORM),
+        NameResolver(MintmarkORM),
+        AliasResolver(MintmarkORM, MintmarkAliasORM),
+        MintmarkSeriesResolver(merge_connected=merge_connected),
+    )
 
 MintmarkClassDataGetter = Getter(
     MintmarkClassCategoryORM,
@@ -73,29 +63,11 @@ MintmarkClassDataGetter = Getter(
     AliasResolver(MintmarkClassCategoryORM, MintmarkClassAliasORM),
 )
 
-
-def GetMintmarkClassData() -> Any:
-    return Depends(MintmarkClassDataGetter)
-
-
 PetSkinDataGetter = Getter(
     PetSkinORM,
     IdResolver(PetSkinORM),
     NameResolver(PetSkinORM),
 )
-
-
-def GetPetSkinData() -> Any:
-    return Depends(PetSkinDataGetter)
-
-
-GemDataGetter = Getter(
-    GemORM,
-    IdResolver(GemORM),
-    NameResolver(GemORM),
-    AliasResolver(GemORM, GemAliasORM),
-)
-
 
 GemCategoryDataGetter = Getter(
     GemCategoryORM,
@@ -103,21 +75,11 @@ GemCategoryDataGetter = Getter(
     NameResolver(GemCategoryORM),
 )
 
-
-def GetGemCategoryData() -> Any:
-    return Depends(GemCategoryDataGetter)
-
-
 SuitDataGetter = Getter(
     SuitORM,
     IdResolver(SuitORM),
     NameResolver(SuitORM),
 )
-
-
-def GetSuitData() -> Any:
-    return Depends(SuitDataGetter)
-
 
 EquipDataGetter = Getter(
     EquipORM,
@@ -125,27 +87,11 @@ EquipDataGetter = Getter(
     NameResolver(EquipORM),
 )
 
-
-def GetEquipData() -> Any:
-    return Depends(EquipDataGetter)
-
-
 TitleDataGetter = Getter(
     TitlePartORM,
     IdResolver(TitlePartORM),
     NameResolver(TitlePartORM),
 )
-
-
-def GetTitleData() -> Any:
-    return Depends(TitleDataGetter)
-
-
-ErrorCodeGetter = Getter(
-    ErrorCodeORM,
-    IdResolver(ErrorCodeORM),
-)
-
 
 class TypeCombinationResolver:
     """将用户输入拆分为单属性名，再按 ID 组合查询 TypeCombinationORM。
@@ -155,10 +101,10 @@ class TypeCombinationResolver:
 
     __slots__ = ("db_name",)
 
-    def __init__(self, *, db_name: str = _SEERAPI_DB) -> None:
+    def __init__(self, *, db_name: str = SEERAPI_DB) -> None:
         self.db_name = db_name
 
-    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[TypeCombinationORM]:
+    def __call__(self, sessions: SessionMap, arg: str) -> Iterable[TypeCombinationORM]:
         session = sessions.get(self.db_name)
         if session is None:
             logger.warning("TypeCombinationResolver: 未找到数据库会话")
@@ -219,17 +165,8 @@ TypeCombinationDataGetter = Getter(
     TypeCombinationResolver(),
 )
 
-
-def GetTypeCombinationData() -> Any:
-    return Depends(TypeCombinationDataGetter)
-
-
 BattleEffectDataGetter = Getter(
     BattleEffectORM,
     IdResolver(BattleEffectORM),
     NameResolver(BattleEffectORM),
 )
-
-
-def GetBattleEffectData() -> Any:
-    return Depends(BattleEffectDataGetter)

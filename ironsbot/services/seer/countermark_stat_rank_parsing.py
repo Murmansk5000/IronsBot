@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from ironsbot.shared.command_text import normalize_command_text
+from ironsbot.core.commands import normalize_command_text
 
 from .countermark_stat_rank_models import (
     CountermarkStatRankCommand,

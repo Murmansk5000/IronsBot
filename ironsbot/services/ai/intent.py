@@ -1,27 +1,19 @@
+from __future__ import annotations
+
 import re
+from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
-)
-
-from ironsbot.config.loader import get_app_config
-from ironsbot.config.models.ai import (
-    AiConfig,
-    AiIntentAction,
-    resolve_configured_actions,
-)
-from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.shared.command_text import (
+from ironsbot.core.commands import (
     command_text_matches,
     normalize_command_text,
 )
-from ironsbot.shared.features import (
-    group_has_feature,
-    is_group_feature_allowed,
-    is_private_feature_allowed,
-)
-from ironsbot.shared.promotions import FIRE_MANUAL_INTENT_FEATURE
+from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ironsbot.core.features import FeatureService
+    from ironsbot.core.messaging import AiIntentAction
 
 FIRE_MANUAL_ANNOUNCEMENT_MARKERS = (
     "发布",
@@ -70,18 +62,6 @@ class TemplateContext(dict[str, str]):
         return "{" + key + "}"
 
 
-def get_ai_intent_config() -> AiConfig:
-    return get_app_config().ai
-
-
-def get_team_resource_config() -> TeamResourceConfig:
-    return get_app_config().seer.team_resource
-
-
-def get_configured_actions() -> list[AiIntentAction]:
-    return resolve_configured_actions(get_ai_intent_config())
-
-
 def contains_any_keyword(text: str, keywords: list[str]) -> bool:
     normalized = normalize_command_text(text)
     return any(
@@ -126,10 +106,14 @@ def passes_action_prefilter(text: str, action: AiIntentAction) -> bool:
     return True
 
 
-def excluded_by_command(text: str, action: AiIntentAction) -> bool:
+def excluded_by_command(
+    text: str,
+    action: AiIntentAction,
+    team_resource_commands: Sequence[str],
+) -> bool:
     exclude_commands = list(action.exclude_commands)
     if action.action == "team_resource":
-        exclude_commands.extend(get_team_resource_config().commands)
+        exclude_commands.extend(team_resource_commands)
 
     return bool(exclude_commands) and command_text_matches(text, exclude_commands)
 
@@ -140,28 +124,37 @@ def excluded_by_context(text: str, action: AiIntentAction) -> bool:
     return False
 
 
-def is_action_allowed(event: MessageEvent, action: AiIntentAction) -> bool:
-    if isinstance(event, GroupMessageEvent):
+def is_action_allowed(
+    features: FeatureService,
+    user_id: int,
+    group_id: int | None,
+    action: AiIntentAction,
+) -> bool:
+    if group_id is not None:
         if action.feature == FIRE_MANUAL_INTENT_FEATURE:
-            return group_has_feature(event.group_id, action.feature)
-        return is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
+            return features.group_has_feature(group_id, action.feature)
+        return features.is_group_feature_allowed(
+            user_id,
+            group_id,
             action.feature,
         )
 
-    return is_private_feature_allowed(event.user_id, action.feature)
+    return features.is_private_feature_allowed(user_id, action.feature)
 
 
-def is_ai_intent_allowed(event: MessageEvent) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
+def is_ai_intent_allowed(
+    features: FeatureService,
+    user_id: int,
+    group_id: int | None,
+) -> bool:
+    if group_id is not None:
+        return features.is_group_feature_allowed(
+            user_id,
+            group_id,
             "ai_intent",
         )
 
-    return is_private_feature_allowed(event.user_id, "ai_intent")
+    return features.is_private_feature_allowed(user_id, "ai_intent")
 
 
 def format_action_template(action: AiIntentAction, template: str, text: str) -> str:
