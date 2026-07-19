@@ -28,6 +28,18 @@ _SECRET_ENV_PATHS = (
 )
 
 
+class ConfigFileNotFoundError(FileNotFoundError):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        super().__init__(
+            "未找到 IronsBot 配置文件："
+            f"{path}\n"
+            "请创建该文件（可参考 config.example.toml），并通过 "
+            f"{CONFIG_ENV} 指向它。Docker/Unraid 默认路径为 "
+            "/config/ironsbot.toml。"
+        )
+
+
 def _inject_secret(
     data: dict[str, Any],
     *,
@@ -65,6 +77,8 @@ def load_settings(
         if path is not None
         else values.get(CONFIG_ENV, DEFAULT_CONFIG_PATH)
     )
+    if not resolved_path.exists():
+        raise ConfigFileNotFoundError(resolved_path)
     with resolved_path.open("rb") as file:
         data = tomllib.load(file)
 

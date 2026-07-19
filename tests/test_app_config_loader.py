@@ -7,7 +7,7 @@ from types import ModuleType
 import pytest
 from pydantic import ValidationError
 
-from ironsbot.config.loader import CONFIG_ENV, load_settings
+from ironsbot.config.loader import CONFIG_ENV, ConfigFileNotFoundError, load_settings
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
@@ -462,9 +462,20 @@ def test_rank_page_refresh_active_window_requires_start_and_end() -> None:
 
 def test_missing_app_config_fails_without_mutating_disk(tmp_path: Path) -> None:
     config_path = tmp_path / "config" / "ironsbot.toml"
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ConfigFileNotFoundError, match="未找到 IronsBot 配置文件"):
         load_settings(config_path, env={})
     assert not config_path.exists()
+
+
+def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None:
+    config_path = tmp_path / "config" / "ironsbot.toml"
+
+    with pytest.raises(ConfigFileNotFoundError) as exc_info:
+        load_settings(config_path, env={})
+
+    assert str(config_path) in str(exc_info.value)
+    assert CONFIG_ENV in str(exc_info.value)
+    assert "config.example.toml" in str(exc_info.value)
 
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
