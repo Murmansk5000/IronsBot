@@ -9,10 +9,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.core.help import (
-    DIRECT_COMMAND_HELP_HINT_TEXT,
-    PET_CONFIG_UNAVAILABLE_TEXT,
-)
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
 from ironsbot.runtime.onebot_context import build_notice_source, mentions_bot
@@ -67,10 +64,8 @@ def _should_guard_non_ai_group_mention(
 
 
 def _build_guard_message(event: MessageEvent) -> str:
-    message = DIRECT_COMMAND_HELP_HINT_TEXT
-    if "配置" in event.get_plaintext():
-        message += f"\n{PET_CONFIG_UNAVAILABLE_TEXT}"
-    return message
+    del event
+    return DIRECT_COMMAND_HELP_HINT_TEXT
 
 
 def _capture_ai_prompt(

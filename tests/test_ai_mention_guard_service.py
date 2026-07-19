@@ -1,10 +1,7 @@
 from pytest import MonkeyPatch
 
 from ironsbot.core.features import FeatureConfig, FeatureService
-from ironsbot.core.help import (
-    DIRECT_COMMAND_HELP_HINT_TEXT,
-    PET_CONFIG_UNAVAILABLE_TEXT,
-)
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.plugins import ai
 from ironsbot.plugins.ai import (
     _build_guard_message,
@@ -31,9 +28,9 @@ def test_guard_message_uses_shared_hint() -> None:
     )
 
 
-def test_guard_message_appends_config_notice() -> None:
+def test_guard_message_does_not_special_case_config() -> None:
     assert _build_guard_message(group_message_event("@bot 谱尼配置")) == (
-        f"{DIRECT_COMMAND_HELP_HINT_TEXT}\n{PET_CONFIG_UNAVAILABLE_TEXT}"
+        DIRECT_COMMAND_HELP_HINT_TEXT
     )
 
 

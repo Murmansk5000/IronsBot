@@ -81,6 +81,7 @@ class MatcherPriorityConfig(BaseModel):
     db_sync: int = Field(default=80, ge=0)
     team_audit: int = Field(default=90, ge=0)
     seer_mintmark: int = Field(default=100, ge=0)
+    seer_pet_config: int = Field(default=109, ge=0)
     seer_pet: int = Field(default=110, ge=0)
     seer_query: int = Field(default=120, ge=0)
     ai_chat: int = Field(default=200, ge=0)

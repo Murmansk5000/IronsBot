@@ -181,6 +181,7 @@ def _assert_default_matcher_priorities(
     assert matcher_priority.sendpic < matcher_priority.seer_pet
     assert matcher_priority.sendpic < matcher_priority.seer_mintmark
     assert matcher_priority.seer_pet > matcher_priority.seer_rank
+    assert matcher_priority.seer_pet_config < matcher_priority.seer_pet
     assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
     priorities = matcher_priority.model_dump()
     non_negative_priorities = [value for value in priorities.values() if value >= 0]
@@ -303,6 +304,13 @@ def test_example_config_parses() -> None:
         "force": False,
     }
     assert remote_build_steps[4].inputs == {"force": False}
+
+
+def test_example_config_pet_config_defaults() -> None:
+    config = load_settings(ROOT / "config.example.toml")
+
+    assert config.seer.pet_config.enabled
+    assert config.seer.pet_config.image_dir == Path("data/seer/pet_configs")
     assert config.features.help.ignored_plugins == []
 
 
