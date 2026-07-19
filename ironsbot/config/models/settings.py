@@ -10,6 +10,7 @@ from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
+from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import NormalizedIntList, csv_items, json_array
@@ -81,7 +82,7 @@ class MatcherPriorityConfig(BaseModel):
     db_sync: int = Field(default=80, ge=0)
     team_audit: int = Field(default=90, ge=0)
     seer_mintmark: int = Field(default=100, ge=0)
-    seer_pet_config: int = Field(default=109, ge=0)
+    pet_config: int = Field(default=109, ge=0)
     seer_pet: int = Field(default=110, ge=0)
     seer_query: int = Field(default=120, ge=0)
     ai_chat: int = Field(default=200, ge=0)
@@ -184,5 +185,6 @@ class Settings(BaseModel):
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
     bilibili: BiliConfig = Field(default_factory=BiliConfig)
     messaging: MessageConfig = Field(default_factory=MessageConfig)
+    pet_config: PetConfigConfig = Field(default_factory=PetConfigConfig)
     seer: SeerConfig = Field(default_factory=SeerConfig)
     operations: OperationsConfig = Field(default_factory=OperationsConfig)

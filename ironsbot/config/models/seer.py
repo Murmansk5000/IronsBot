@@ -381,13 +381,6 @@ class RenderConfig(BaseModel):
     cache_max_size_mb: int = Field(default=200, gt=0)
 
 
-class PetConfigImageConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    image_dir: Path = Path("data/seer/pet_configs")
-
-
 class SeasonCountdownConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -419,7 +412,4 @@ class SeerConfig(BaseModel):
     local_rank: LocalRankConfig = Field(default_factory=LocalRankConfig)
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
-    pet_config: PetConfigImageConfig = Field(
-        default_factory=PetConfigImageConfig
-    )
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)

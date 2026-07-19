@@ -89,8 +89,8 @@ def test_plugin_definitions_own_feature_visibility() -> None:
     assert DEFINITIONS["team_resource"].features == frozenset(
         {Feature.TEAM_RESOURCE_SUBSCRIPTION}
     )
-    assert DEFINITIONS["pet_config_reply"].features == frozenset(
-        {Feature.SEER_PET_CONFIG}
+    assert DEFINITIONS["pet_config"].features == frozenset(
+        {Feature.PET_CONFIG}
     )
     assert DEFINITIONS["fire_manual_ad"].features == frozenset(
         {Feature.FIRE_MANUAL_AD}
@@ -121,8 +121,15 @@ def test_seer_query_visible_when_any_seer_subfeature_allowed() -> None:
 
 def test_pet_config_visible_when_enabled_for_group() -> None:
     assert _visible(
-        "pet_config_reply",
-        settings=_settings(allowed_features=("seer_pet_config",)),
+        "pet_config",
+        settings=_settings(allowed_features=("pet_config",)),
+    )
+
+
+def test_pet_config_is_not_enabled_by_seer_bundle() -> None:
+    assert not _visible(
+        "pet_config",
+        settings=_settings(allowed_features=("seer",)),
     )
 
 

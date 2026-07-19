@@ -9,8 +9,7 @@ from ironsbot.plugins.seer.query.commands.query_rules import (
     not_fixed_image_command,
     not_rank_query,
 )
-from ironsbot.plugins.seer.query.group import seer_feature_rule
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_has_feature, feature_rule
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
@@ -18,26 +17,26 @@ from ironsbot.runtime.rules import no_reply, startswith_or_endswith
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.config.models.seer import PetConfigImageConfig
+    from ironsbot.config.models.pet_config import PetConfigConfig
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.seer.pet_config import PetConfigQueryService
+    from ironsbot.services.pet_config import PetConfigQueryService
 
 
 def plugin_definition(
     *,
     service: PetConfigQueryService,
     features: FeatureService,
-    config: PetConfigImageConfig,
+    config: PetConfigConfig,
 ) -> PluginDefinition:
     return PluginDefinition(
-        id="pet_config_reply",
-        features=frozenset({Feature.SEER_PET_CONFIG}),
+        id="pet_config",
+        features=frozenset({Feature.PET_CONFIG}),
         help=HelpEntry(
             name="精灵配置",
             description="按精灵名、别名或序号发送本地收录的配置图",
             usage="雷伊配置 / 配置雷伊 / 4923配置",
-            group="seer",
-            order=15,
+            group="other",
+            order=10,
             visible=partial(
                 _is_visible,
                 features=features,
@@ -54,12 +53,12 @@ def plugin_definition(
 
 
 def _is_visible(
-    event: Event,
+    event: "Event",
     *,
     features: FeatureService,
     enabled: bool,
 ) -> bool:
-    return enabled and event_has_feature(features, event, "seer_pet_config")
+    return enabled and event_has_feature(features, event, Feature.PET_CONFIG.value)
 
 
 def install(
@@ -77,8 +76,8 @@ def install(
     )
 
     matcher = registry.on_message(
-        policy=CommandPolicy.command("seer_pet_config"),
-        rule=seer_feature_rule(features, "seer_pet_config")
+        policy=CommandPolicy.command("pet_config"),
+        rule=feature_rule(features, Feature.PET_CONFIG.value)
         & startswith_or_endswith(
             prefixes=("精灵配置", "配置"),
             suffixes=("配置",),
@@ -86,7 +85,7 @@ def install(
         & not_rank_query
         & not_fixed_image_command
         & no_reply(),
-        priority=registry.priority("seer_pet_config"),
+        priority=registry.priority("pet_config"),
         block=True,
     )
     matcher.append_handler(
