@@ -10,7 +10,10 @@ from seerapi_models.mintmark import MintmarkMaxAttrORM, UniversalPartORM
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.config.models.seer import MintmarkQueryConfig
+from ironsbot.integrations.db_registry import DatabaseManager
+from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.services.seer import mintmark as mintmark_module
+from ironsbot.services.seer.data import SEERAPI_DB
 from ironsbot.services.seer.mintmark import (
     MintmarkQueryService,
     MintmarkQueryView,
@@ -41,10 +44,10 @@ class FakeData:
     def mintmark_query(
         self,
         _arg: str,
-    ) -> Iterator[tuple[tuple[Any, ...], tuple[Any, ...], tuple[Any, ...]]]:
+    ) -> Iterator[tuple[Any, ...]]:
         self.session_active = True
         try:
-            yield self.mintmarks, (), ()
+            yield self.mintmarks
         finally:
             self.session_active = False
 
@@ -257,3 +260,85 @@ def test_connected_mintmarks_remain_separate_when_merge_disabled() -> None:
     ).startswith(
         "41606，关联45001"
     )
+
+
+@pytest.mark.asyncio
+async def test_mintmark_series_query_preloads_connected_relationships() -> None:
+    databases = DatabaseManager()
+    databases.register(SEERAPI_DB)
+    engine = databases.get_engine(SEERAPI_DB)
+    assert engine is not None
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(MintmarkClassCategoryORM(id=100, name="十周年系列"))
+        session.add_all(
+            (
+                MintmarkORM(
+                    id=OLD_MINTMARK_ID,
+                    name="十年·筑梦",
+                    desc="",
+                    type_id=3,
+                    rarity_id=0,
+                ),
+                MintmarkORM(
+                    id=NEW_MINTMARK_ID,
+                    name="十年·筑梦",
+                    desc="",
+                    type_id=3,
+                    rarity_id=0,
+                ),
+                UniversalPartORM(
+                    mintmark_id=OLD_MINTMARK_ID,
+                    mintmark_class_id=100,
+                    max_attr_value=MintmarkMaxAttrORM(
+                        atk=32,
+                        def_=0,
+                        sp_atk=0,
+                        sp_def=0,
+                        spd=45,
+                        hp=0,
+                    ),
+                ),
+                UniversalPartORM(
+                    mintmark_id=NEW_MINTMARK_ID,
+                    mintmark_class_id=100,
+                    connect_id=OLD_MINTMARK_ID,
+                    max_attr_value=MintmarkMaxAttrORM(
+                        atk=32,
+                        def_=0,
+                        sp_atk=0,
+                        sp_def=0,
+                        spd=45,
+                        hp=0,
+                    ),
+                ),
+            )
+        )
+        session.commit()
+
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    with data.mintmark_query("十年") as mintmarks:
+        assert [mintmark.id for mintmark in mintmarks] == [
+            OLD_MINTMARK_ID,
+            NEW_MINTMARK_ID,
+        ]
+        loaded = mintmarks
+
+    views = build_mintmark_views(loaded, merge_connected=True)
+
+    assert len(views) == 1
+    assert views[0].mintmark.id == NEW_MINTMARK_ID
+    assert views[0].related_ids == (OLD_MINTMARK_ID,)
+
+    service = MintmarkQueryService(
+        data,
+        cast("SeerImageSource", FakeImages()),
+        merge_connected=True,
+    )
+    search_result = await service.search_mintmark("十年")
+    selection_result = await service.select_mintmark(OLD_MINTMARK_ID)
+
+    for result in (search_result, selection_result):
+        assert result.reply is not None
+        assert result.reply.image == b"image:45001"
+        assert "45001、41606" in result.reply.text

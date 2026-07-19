@@ -71,19 +71,9 @@ class MintmarkQueryService:
     async def search_mintmark(self, arg: str) -> QueryResult[int]:
         if not arg.strip():
             return QueryResult()
-        with self._data.mintmark_query(arg) as values:
-            mintmarks, classes, custom_series = values
-            resolved = (
-                custom_series
-                or mintmarks
-                + tuple(
-                    part.mintmark
-                    for item in classes
-                    for part in item.mintmark
-                )
-            )
+        with self._data.mintmark_query(arg) as mintmarks:
             views = build_mintmark_views(
-                resolved,
+                mintmarks,
                 merge_connected=self._merge_connected,
             )
             if not views:
@@ -111,8 +101,8 @@ class MintmarkQueryService:
         return QueryResult(reply=await self._build_reply(reply_data))
 
     async def select_mintmark(self, mintmark_id: int) -> QueryResult[object]:
-        with self._data.get(self._data.mintmark, mintmark_id) as mintmark:
-            if mintmark is None:
+        with self._data.mintmark_query(str(mintmark_id)) as mintmarks:
+            if not mintmarks:
                 return QueryResult(
                     message=(
                         f"❌未找到刻印 {mintmark_id}"
@@ -120,7 +110,7 @@ class MintmarkQueryService:
                     )
                 )
             views = build_mintmark_views(
-                (mintmark,),
+                mintmarks,
                 merge_connected=self._merge_connected,
             )
             if not views:
