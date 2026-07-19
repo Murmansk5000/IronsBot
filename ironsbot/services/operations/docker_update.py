@@ -69,16 +69,6 @@ class DockerUpdateService:
             )
         return container_name, result
 
-    async def startup_notice(self) -> str | None:
-        if not self._config.check_on_startup:
-            return None
-        container_name, result = await self.run_update()
-        return format_docker_update_reply(
-            container_name=container_name,
-            image=str(self._config.image),
-            result=result,
-        )
-
     async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
         if not bool(self._config.check_on_restart):
             return await self._prepare_restart_without_image_check()

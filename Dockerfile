@@ -41,4 +41,5 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheel -r /wheel/requirem
     && rm -rf /wheel
 COPY . /app/
 
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["python", "-m", "ironsbot"]

@@ -23,6 +23,9 @@ from ironsbot.runtime.replies import (
 )
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from ironsbot.services.operations.docker_preflight import (
+    consume_docker_startup_preflight_notice,
+)
 from ironsbot.services.seer.rank_usage import build_rank_help_message
 
 if TYPE_CHECKING:
@@ -234,11 +237,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features,
         )
 
-    async def start_docker_update() -> None:
+    def start_docker_update() -> None:
         startup_notice_service.add(
             "startup_docker_update",
             "startup docker update notice",
-            await docker_update_service.startup_notice(),
+            consume_docker_startup_preflight_notice(),
         )
 
     async def start_data_sync() -> None:

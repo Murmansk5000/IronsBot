@@ -308,45 +308,6 @@ def test_docker_update_runtime_is_registered_before_data_sync() -> None:
     assert names.index("docker_update") < names.index("db_sync")
 
 
-def test_startup_docker_update_disabled() -> None:
-    notice = asyncio.run(
-        build_docker_service(
-            DockerUpdateConfig(check_on_startup=False)
-        ).startup_notice()
-    )
-
-    assert notice is None
-
-
-def test_startup_docker_update_records_notice(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
-        return (
-            "ironsbot-prod",
-            DockerUpdateResult(ok=True, updater_container_id="abcdef123456"),
-        )
-
-    config = DockerUpdateConfig(
-        check_on_startup=True,
-        container_name="ironsbot",
-        image="murmansk5000/ironsbot:latest",
-        docker_socket_path="/var/run/docker.sock",
-        watchtower_image="containrrr/watchtower:latest",
-        watchtower_docker_api_version="1.40",
-        timeout_seconds=300.0,
-    )
-    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
-
-    notice = asyncio.run(
-        build_docker_service(config).startup_notice()
-    )
-
-    assert notice is not None
-    assert "ironsbot-prod" in notice
-    assert "Docker 自更新任务已启动" in notice
-
-
 def test_docker_service_without_restart_check_uses_process_without_socket() -> None:
     service = build_docker_service(
         DockerUpdateConfig(check_on_restart=False)
