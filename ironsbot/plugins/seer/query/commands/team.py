@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 TEAM_IDS_KEY = "_team_ids"
 
 
-async def _capture_team_ids(
+def _capture_team_ids(
     service: SeerTeamQueryService,
     state: T_State,
 ) -> bool:
@@ -75,5 +75,5 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_team"),
     )
     matcher.append_handler(
-        partial(_handle_team_query, service, group.features)
+        bind_async(_handle_team_query, service, group.features)
     )

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING, cast
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.runtime.matchers import enter_prompt_loop
+from ironsbot.runtime.matchers import bind_async, enter_prompt_loop
 from ironsbot.runtime.replies import message_event_target
 from ironsbot.services.messaging.service import (  # noqa: TC001
     MessagingService,
@@ -57,7 +56,7 @@ async def handle_push_subscription_menu(
     await enter_prompt_loop(
         matcher,
         handlers=[
-            partial(
+            bind_async(
                 handle_push_subscription_select,
                 messaging=messaging,
             )
