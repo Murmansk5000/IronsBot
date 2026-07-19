@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 import httpx
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.runtime import RemoteBuildStepConfig
+    from ironsbot.config.models.operations import RemoteBuildStepConfig
 
 GITHUB_API_BASE_URL = "https://api.github.com"
 RUN_MATCH_WINDOW_SECONDS = 30
@@ -288,10 +288,3 @@ async def trigger_and_wait_workflow(
     finally:
         if owned_client is not None:
             await owned_client.aclose()
-
-
-__all__ = [
-    "GitHubActionsClientError",
-    "WorkflowRunResult",
-    "trigger_and_wait_workflow",
-]

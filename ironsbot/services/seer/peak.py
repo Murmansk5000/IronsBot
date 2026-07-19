@@ -1,0 +1,403 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
+from enum import Enum
+from functools import partial
+from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, cast
+
+from seerapi_models import (
+    PeakExpertPoolORM,
+    PeakPoolORM,
+    PeakPoolVoteORM,
+    PeakSeasonORM,
+)
+from sqlmodel import Session, select
+
+from ironsbot.core import time
+from ironsbot.services.operations.headless_errors import (
+    ClientNotInitializedError,
+    DisconnectedError,
+    NotLoggedInError,
+)
+from ironsbot.services.seer.rank_peak import datetime_to_sub_key
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from seerapi_models.pet import PetORM
+
+    from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.rank_models import RankEntry
+
+
+@dataclass(slots=True)
+class PeakItemData:
+    id: int
+    count: int
+    win: int
+    ban_count: int | None = None
+
+    @property
+    def win_rate(self) -> float:
+        if self.count == 0:
+            return 0
+        return round(self.win / self.count * 100, 2)
+
+
+class PeakType(Enum):
+    STANDARD = 1
+    WILD = 2
+    EXPERT = 3
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPetPeriod:
+    category: str
+    start_time: datetime
+    end_time: datetime
+    sub_key: int
+
+
+def load_peak_pools(
+    session: Session,
+    *,
+    expert: bool,
+) -> tuple[PeakPoolORM | PeakExpertPoolORM, ...]:
+    model = PeakExpertPoolORM if expert else PeakPoolORM
+    return tuple(session.exec(select(model)).all())
+
+
+def load_peak_votes(session: Session) -> tuple[PeakPoolVoteORM, ...]:
+    return tuple(session.exec(select(PeakPoolVoteORM)).all())
+
+
+def load_peak_pet_period(
+    session: Session,
+    *,
+    monthly: bool,
+) -> PeakPetPeriod | None:
+    if monthly:
+        pool = session.exec(select(PeakExpertPoolORM)).first()
+        if pool is None:
+            return None
+        return PeakPetPeriod(
+            category="月",
+            start_time=pool.start_time,
+            end_time=pool.end_time,
+            sub_key=datetime_to_sub_key(pool.start_time) + 1000000000,
+        )
+
+    season = session.get(PeakSeasonORM, 1)
+    if season is None:
+        return None
+    return PeakPetPeriod(
+        category="总",
+        start_time=season.start_time,
+        end_time=season.end_time,
+        sub_key=datetime_to_sub_key(season.start_time),
+    )
+
+
+class PeakGame(Protocol):
+    async def get_limit_pool_vote(self, sub_key: int) -> list[RankEntry]: ...
+
+    async def get_semi_limit_pool_vote(self, sub_key: int) -> list[RankEntry]: ...
+
+    async def get_peak_suit_rank(
+        self,
+        sub_key: int,
+        peak_type: PeakType,
+    ) -> list[PeakItemData]: ...
+
+    async def get_peak_title_rank(
+        self,
+        sub_key: int,
+        peak_type: PeakType,
+    ) -> list[PeakItemData]: ...
+
+    async def get_peak_pet_rank(
+        self,
+        sub_key: int,
+        peak_type: PeakType,
+    ) -> tuple[list[PeakItemData], list[RankEntry]]: ...
+
+
+PEAK_TYPE_NAME_MAP = {
+    PeakType.STANDARD: "竞技",
+    PeakType.WILD: "狂野",
+    PeakType.EXPERT: "专家",
+}
+
+PEAK_PET_KEY_MAP = {
+    PeakType.STANDARD: (177, 93, 94),
+    PeakType.WILD: (185, 184, 183),
+    PeakType.EXPERT: (202, 201, 200),
+}
+
+PEAK_SUIT_KEY_MAP = {
+    PeakType.STANDARD: (173, 174),
+    PeakType.WILD: (186, 187),
+    PeakType.EXPERT: (203, 204),
+}
+
+PEAK_TITLE_KEY_MAP = {
+    PeakType.STANDARD: (175, 176),
+    PeakType.WILD: (188, 189),
+    PeakType.EXPERT: (205, 206),
+}
+
+LIMIT_POOL_VOTE_COUNT = 2
+SEMI_LIMIT_POOL_VOTE_COUNT = 3
+ProgressReporter = Callable[[str], Awaitable[None]]
+PeakPoolRenderer = Callable[
+    [tuple[PeakPoolORM | PeakExpertPoolORM, ...], str],
+    Awaitable[bytes],
+]
+
+
+class PeakVoteRank(TypedDict):
+    items: list[RankEntry]
+    title: str
+    pets: list[PetORM]
+
+
+PeakVoteRenderer = Callable[[list[PeakVoteRank]], Awaitable[bytes]]
+
+
+class PeakPetRenderer(Protocol):
+    async def __call__(
+        self,
+        *,
+        title: str,
+        pick_items: list[PeakItemData],
+        ban_items: list[RankEntry],
+        pet_map: dict[int, PetORM],
+    ) -> bytes: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PeakQueryResult:
+    text: str = ""
+    image: bytes | None = None
+    message: str = ""
+
+
+def normalize_peak_vote_time(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=time.TZ_CN)
+    return value.astimezone(time.TZ_CN)
+
+
+def sort_peak_pool_votes_by_time(
+    pools: Iterable[PeakPoolVoteORM],
+) -> list[PeakPoolVoteORM]:
+    now = time.now(tz=time.TZ_CN)
+    return sorted(
+        pools,
+        key=lambda item: abs(
+            (normalize_peak_vote_time(item.start_time) - now).total_seconds()
+        ),
+    )
+
+
+def parse_peak_type(command: str) -> tuple[str, PeakType]:
+    if "专家" in command:
+        peak_type = PeakType.EXPERT
+    elif "狂野" in command:
+        peak_type = PeakType.WILD
+    elif "竞技" in command:
+        peak_type = PeakType.STANDARD
+    else:
+        msg = f"无法从命令 {command} 中获取巅峰类型"
+        raise ValueError(msg)
+    return PEAK_TYPE_NAME_MAP[peak_type], peak_type
+
+
+class PeakQueryService:
+    def __init__(
+        self,
+        data: SeerDataAccess,
+        headless: HeadlessService,
+        render_pool: PeakPoolRenderer,
+        render_vote: PeakVoteRenderer,
+        render_pet: PeakPetRenderer,
+    ) -> None:
+        self._data = data
+        self._headless = headless
+        self._render_pool = render_pool
+        self._render_vote = render_vote
+        self._render_pet = render_pet
+
+    async def pool(
+        self,
+        *,
+        expert: bool,
+        progress: ProgressReporter,
+    ) -> PeakQueryResult:
+        with self._data.query(
+            partial(load_peak_pools, expert=expert)
+        ) as pools:
+            label = "专家禁用池" if expert else "竞技池"
+            if not pools:
+                return PeakQueryResult(
+                    message=(
+                        f"❌找不到{label}数据。"
+                        "（这是一个bug，请反馈给开发者）"
+                    )
+                )
+            await progress("正在生成图片...")
+            start_time = pools[0].start_time.strftime("%Y-%m-%d")
+            end_time = pools[0].end_time.strftime("%Y-%m-%d")
+            image = await self._render_pool(
+                pools,
+                f"{label} / {start_time} ~ {end_time}",
+            )
+        return PeakQueryResult(image=image)
+
+    async def vote(
+        self,
+        progress: ProgressReporter,
+    ) -> PeakQueryResult:
+        game, error = self._game()
+        if game is None:
+            return PeakQueryResult(message=error)
+        with self._data.query(load_peak_votes) as votes:
+            pools: list[PeakVoteRank] = []
+            now = time.now(tz=time.TZ_CN)
+            for vote in sort_peak_pool_votes_by_time(votes):
+                title = f"限{vote.count}池票选"
+                start_time = normalize_peak_vote_time(vote.start_time)
+                end_time = normalize_peak_vote_time(vote.end_time)
+                if start_time > now:
+                    title += " / 票选未开始"
+                elif end_time < now:
+                    title += " / 票选已结束"
+                else:
+                    title += (
+                        f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
+                        f"{end_time:%Y-%m-%d}"
+                    )
+                if vote.count == LIMIT_POOL_VOTE_COUNT:
+                    rank = await game.get_limit_pool_vote(vote.subkey)
+                elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
+                    rank = await game.get_semi_limit_pool_vote(vote.subkey)
+                else:
+                    continue
+                pools.append(
+                    {"items": rank, "title": title, "pets": vote.pet}
+                )
+            if not pools:
+                return PeakQueryResult(message="❌找不到票选数据。")
+            await progress("正在生成图片...")
+            image = await self._render_vote(pools)
+        return PeakQueryResult(image=image)
+
+    async def item_rank(
+        self,
+        command: str,
+        *,
+        kind: Literal["套装", "称号"],
+    ) -> PeakQueryResult:
+        game, error = self._game()
+        if game is None:
+            return PeakQueryResult(message=error)
+        name, peak_type = parse_peak_type(command)
+        with self._data.query(
+            partial(load_peak_pet_period, monthly=False)
+        ) as period:
+            if period is None:
+                return PeakQueryResult(
+                    message="❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
+                )
+            if kind == "套装":
+                rank_data = await game.get_peak_suit_rank(
+                    period.sub_key,
+                    peak_type,
+                )
+                getter = self._data.suit
+            else:
+                rank_data = await game.get_peak_title_rank(
+                    period.sub_key,
+                    peak_type,
+                )
+                getter = self._data.title
+            if not rank_data:
+                return PeakQueryResult(message=f"❌找不到{kind}榜数据。")
+            with self._data.get_many(
+                getter,
+                {item.id for item in rank_data},
+            ) as models:
+                lines: list[str] = []
+                for index, item in enumerate(rank_data, 1):
+                    model = models.get(item.id)
+                    item_name = "" if model is None else model.name
+                    lines.append(
+                        f"{index}. {item_name}"
+                        f" | 出场 {item.count}"
+                        f" | 胜场 {item.win}"
+                        f" | 胜率 {item.win_rate}%"
+                    )
+        timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
+        return PeakQueryResult(
+            text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines)
+        )
+
+    async def pet_rank(
+        self,
+        command: str,
+        progress: ProgressReporter,
+    ) -> PeakQueryResult:
+        game, error = self._game()
+        if game is None:
+            return PeakQueryResult(message=error)
+        name, peak_type = parse_peak_type(command)
+        monthly = "月" in command
+        with self._data.query(
+            partial(load_peak_pet_period, monthly=monthly)
+        ) as period:
+            if period is None:
+                return PeakQueryResult(
+                    message=(
+                        "❌找不到专家禁用池数据。"
+                        "（这是一个bug，请反馈给开发者）"
+                        if monthly
+                        else "❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
+                    )
+                )
+            pick_rank, ban_rank = await game.get_peak_pet_rank(
+                period.sub_key,
+                peak_type,
+            )
+            pick_rank = pick_rank[:20]
+            ban_rank = ban_rank[:20]
+            if not pick_rank:
+                return PeakQueryResult(message="❌找不到精灵榜数据。")
+            with self._data.get_many(
+                self._data.pet,
+                {item.id for item in (*pick_rank, *ban_rank)},
+            ) as pet_map:
+                await progress("正在生成图片...")
+                image = await self._render_pet(
+                    title=(
+                        f"{name}精灵{period.category}榜<br>"
+                        f"{period.start_time:%Y-%m-%d} ~ "
+                        f"{period.end_time:%Y-%m-%d}"
+                    ),
+                    pick_items=pick_rank,
+                    ban_items=ban_rank,
+                    pet_map=pet_map,
+                )
+        return PeakQueryResult(image=image)
+
+    def _game(self) -> tuple[PeakGame | None, str]:
+        try:
+            return cast("PeakGame", self._headless.get_game()), ""
+        except ClientNotInitializedError:
+            return None, "❌ 无头客户端尚未初始化，无法使用此命令"
+        except NotLoggedInError:
+            return None, "❌ 无头客户端尚未登录，无法使用此命令"
+        except DisconnectedError:
+            return None, "❌ 无头客户端连接已断开，正在尝试重连，请稍后再试"

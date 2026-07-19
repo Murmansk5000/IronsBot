@@ -1,18 +1,15 @@
+from __future__ import annotations
+
 import asyncio
-from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
-from pytest import MonkeyPatch
+from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from tests.helpers.bilibili import build_test_bilibili_service
 
-from ironsbot.plugins.bilibili import runtime as bili_runtime
+if TYPE_CHECKING:
+    from pathlib import Path
 
-
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[Callable[[], object]] = []
-
-    def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
-        self.startup_handlers.append(handler)
-        return handler
+    from ironsbot.services.operations.scheduler import Scheduler
 
 
 class FakeScheduler:
@@ -23,42 +20,40 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
-def test_bilibili_monitor_runtime_setup_registers_startup_once(
-    monkeypatch: MonkeyPatch,
+async def _ignore_auth_invalid(_reason: str) -> None:
+    return None
+
+
+async def _ignore_push(
+    _item: dict[str, object],
+    _pub_ts: int,
+    _author_mid: int,
+    _targets: object,
 ) -> None:
-    registered_state = False
-    registered_checks: list[tuple[str, object]] = []
-    monkeypatch.setitem(
-        bili_runtime._bilibili_monitor_runtime_state,
-        "registered",
-        registered_state,
-    )
-    monkeypatch.setattr(
-        bili_runtime,
-        "register_startup_check",
-        lambda name, check: registered_checks.append((name, check)),
-    )
-    driver = FakeDriver()
-    scheduler = object()
-
-    bili_runtime._setup_bilibili_monitor_runtime(driver, scheduler)
-    bili_runtime._setup_bilibili_monitor_runtime(driver, scheduler)
-
-    assert len(driver.startup_handlers) == 1
-    assert registered_checks == [("bilibili_monitor", bili_runtime._startup_check)]
+    return None
 
 
-def test_register_bili_auto_check_job_uses_standard_scheduler_fields() -> None:
+def test_bili_monitor_service_registers_standard_scheduler_job(
+    tmp_path: Path,
+) -> None:
     scheduler = FakeScheduler()
+    service = build_test_bilibili_service(tmp_path)
+    monitor = BilibiliMonitorService(
+        service,
+        _ignore_auth_invalid,
+        _ignore_push,
+    )
 
-    asyncio.run(bili_runtime.register_bili_auto_check_job(scheduler))
+    asyncio.run(
+        monitor.register_job(cast("Scheduler", scheduler))
+    )
 
-    assert scheduler.jobs == [
-        {
-            "func": bili_runtime.auto_check_job,
-            "trigger": "interval",
-            "id": "bilibili_monitor_auto_check",
-            "replace_existing": True,
-            "minutes": 1,
-        }
-    ]
+    job = scheduler.jobs[0]
+    func = job.pop("func")
+    assert func == monitor.check
+    assert job == {
+        "trigger": "interval",
+        "id": "bilibili_monitor_auto_check",
+        "replace_existing": True,
+        "minutes": 1,
+    }

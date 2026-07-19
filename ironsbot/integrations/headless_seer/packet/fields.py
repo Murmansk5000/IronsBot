@@ -211,10 +211,6 @@ class BooleanType(BinaryTag):
     format_str: ClassVar[str] = "?"
 
 
-class Byte(int, BinaryTag):
-    format_str: ClassVar[str] = "b"
-
-
 class ShortType(int, BinaryTag):
     format_str: ClassVar[str] = "h"
 

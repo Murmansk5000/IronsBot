@@ -1,14 +1,10 @@
+import logging
 import re
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timezone
-from typing import Any, Literal
-
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
-from nonebot.log import logger
+from typing import Any
 
 MIN_DYNAMIC_TEXT_LENGTH = 15
-MAX_DYNAMIC_CONTENT_CHARS = 500
-DynamicRenderMode = Literal["full", "link"]
+logger = logging.getLogger(__name__)
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -196,7 +192,7 @@ def dynamic_suppression_reason(
     return ""
 
 
-def _image_urls(item: dict[str, Any]) -> list[str]:
+def dynamic_image_urls(item: dict[str, Any]) -> list[str]:
     image_urls: list[str] = []
     module_dynamic = _mapping(_mapping(item.get("modules")).get("module_dynamic"))
     major = _mapping(module_dynamic.get("major"))
@@ -219,50 +215,3 @@ def _image_urls(item: dict[str, Any]) -> list[str]:
             image_urls.append(str(cover))
 
     return image_urls
-
-
-def parse_single_item(
-    item: dict[str, Any],
-    pub_ts: int,
-    *,
-    menu_mode: bool = False,
-    mode: DynamicRenderMode = "full",
-) -> Message | None:
-    try:
-        time_str = datetime.fromtimestamp(
-            pub_ts,
-            tz=timezone.utc,
-        ).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        author_label = item_author_label(item)
-        tag = "B站点播详情" if menu_mode else "B站动态更新"
-        url = dynamic_url(item)
-
-        message = Message()
-        message += MessageSegment.text(
-            f"🔔 【{tag}】\n"
-            f"👤 账号：{author_label}\n"
-            f"⏰ 发布时间: {time_str}\n\n"
-        )
-
-        if mode == "full":
-            content = dynamic_content(item)
-            short_content = (
-                content[:MAX_DYNAMIC_CONTENT_CHARS] + "..."
-                if len(content) > MAX_DYNAMIC_CONTENT_CHARS
-                else content
-            )
-            message += MessageSegment.text(f"{short_content}\n")
-
-            for image_url in _image_urls(item):
-                sanitized_url = image_url.strip().rstrip("]")
-                if sanitized_url:
-                    message += MessageSegment.image(sanitized_url)
-                    message += MessageSegment.text("\n")
-
-        message += MessageSegment.text(f"传送门: {url}")
-
-    except (TypeError, ValueError, KeyError) as e:
-        logger.error(f"failed to parse Bilibili dynamic: {e}")
-        return None
-
-    return message

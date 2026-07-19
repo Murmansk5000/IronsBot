@@ -3,10 +3,28 @@ from typing import ClassVar
 
 from pytest import MonkeyPatch
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.headless_seer import client as client_module
 from ironsbot.integrations.headless_seer.client import ClientManager
+from ironsbot.services.operations.headless import HeadlessLoginRequest
 
 EXPECTED_REPLACEMENT_COUNT = 2
+
+
+async def _unused_state_notifier(**_kwargs: object) -> None:
+    return
+
+
+LOGIN_REQUEST = HeadlessLoginRequest(
+    123456,
+    "password",
+    "https://example.invalid",
+    None,
+    0,
+    5.0,
+    120.0,
+    _unused_state_notifier,
+)
 
 
 class _FakeSeerGame:
@@ -46,15 +64,11 @@ def test_client_manager_serializes_and_reuses_concurrent_login(
     async def run() -> None:
         _reset_fake_game()
         monkeypatch.setattr(client_module, "SeerGame", _FakeSeerGame)
-        manager = ClientManager()
+        manager = ClientManager(TaskOwner().create)
 
-        first_task = asyncio.create_task(
-            manager.login(123456, "password", "https://example.invalid")
-        )
+        first_task = asyncio.create_task(manager.login(LOGIN_REQUEST))
         await _FakeSeerGame.login_started.wait()
-        second_task = asyncio.create_task(
-            manager.login(123456, "password", "https://example.invalid")
-        )
+        second_task = asyncio.create_task(manager.login(LOGIN_REQUEST))
         await asyncio.sleep(0)
 
         assert len(_FakeSeerGame.instances) == 1
@@ -73,21 +87,13 @@ def test_client_manager_stops_disconnected_client_before_replacement(
     async def run() -> None:
         _reset_fake_game()
         monkeypatch.setattr(client_module, "SeerGame", _FakeSeerGame)
-        manager = ClientManager()
+        manager = ClientManager(TaskOwner().create)
         _FakeSeerGame.login_release.set()
 
-        first = await manager.login(
-            123456,
-            "password",
-            "https://example.invalid",
-        )
+        first = await manager.login(LOGIN_REQUEST)
         first_fake = _FakeSeerGame.instances[0]
         first_fake.is_logged_in = False
-        second = await manager.login(
-            123456,
-            "password",
-            "https://example.invalid",
-        )
+        second = await manager.login(LOGIN_REQUEST)
 
         assert first is not second
         assert first_fake.logout_calls == 1

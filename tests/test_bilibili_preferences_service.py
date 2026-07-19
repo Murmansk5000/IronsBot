@@ -1,8 +1,10 @@
 import sqlite3
 from pathlib import Path
 
+from ironsbot.integrations.storage.bilibili_preferences import (
+    SqliteBiliPushPreferenceStore,
+)
 from ironsbot.services.bilibili.preferences import (
-    BiliPushPreferenceStore,
     bili_push_subscription_key,
     normalize_push_mode_text,
 )
@@ -12,7 +14,7 @@ def test_bili_push_preference_store_sets_gets_and_clears_mode(
     tmp_path: Path,
 ) -> None:
     db_path = tmp_path / "bili_preferences.sqlite"
-    store = BiliPushPreferenceStore(db_path)
+    store = SqliteBiliPushPreferenceStore(db_path)
 
     assert store.get_mode("group", 1001, 123456) is None
 

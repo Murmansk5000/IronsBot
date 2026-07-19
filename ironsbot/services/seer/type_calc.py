@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """属性克制倍率计算（纯计算逻辑，不涉及命令注册或渲染）。"""
 
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from seerapi_models import ElementTypeORM
 from seerapi_models.element_type import ElementTypeRelationORM, TypeCombinationORM
 from sqlmodel import Session, select
 
@@ -12,6 +18,19 @@ _IMMUNE = 0
 
 RelationMap = dict[tuple[int, int], float]
 """(攻击方单属性ID, 防守方单属性ID) → 克制倍率。"""
+_MAX_CUSTOM_TYPES = 2
+_CUSTOM_SEPARATOR_TRANSLATION = str.maketrans(
+    {"\uff0b": "+", "\uff0f": "/", "\uff5c": "|", "，": ",", "、": ","}
+)
+_CUSTOM_TYPE_SPLIT_PATTERN = re.compile(r"[+,/|\s]+")
+
+
+@dataclass(frozen=True, slots=True)
+class TypeMatchup:
+    target: TypeCombinationORM
+    attack_table: list[tuple[TypeCombinationORM, float]]
+    defense_table: list[tuple[TypeCombinationORM, float]]
+    cache_key: str
 
 
 def _load_relations(session: Session) -> RelationMap:
@@ -89,44 +108,89 @@ def _calc_multiplier(
     return (c1 + c2) / 2
 
 
-# ── 公开 API ──────────────────────────────────────────────
-
-
-def calc_type_multiplier(
+def load_type_matchup(
     session: Session,
-    attacker: TypeCombinationORM,
-    defender: TypeCombinationORM,
-) -> float:
-    """计算攻击方属性组合对防守方属性组合的克制倍率。"""
+    *,
+    target: TypeCombinationORM,
+    cache_key: str | None = None,
+) -> TypeMatchup:
     table = _load_relations(session)
-    return _calc_multiplier(table, attacker, defender)
-
-
-def calc_attack_table(
-    session: Session,
-    attacker: TypeCombinationORM,
-) -> list[tuple[TypeCombinationORM, float]]:
-    """计算指定属性组合进攻所有属性组合的克制倍率表。
-
-    返回 [(防守方属性组合, 克制倍率), ...]。
-    """
-    table = _load_relations(session)
-    all_combos: list[TypeCombinationORM] = list(
-        session.exec(select(TypeCombinationORM)).all()
+    combinations = list(session.exec(select(TypeCombinationORM)).all())
+    return TypeMatchup(
+        target=target,
+        attack_table=[
+            (combo, _calc_multiplier(table, target, combo))
+            for combo in combinations
+        ],
+        defense_table=[
+            (combo, _calc_multiplier(table, combo, target))
+            for combo in combinations
+        ],
+        cache_key=cache_key or str(target.id),
     )
-    return [(combo, _calc_multiplier(table, attacker, combo)) for combo in all_combos]
 
 
-def calc_defense_table(
+def load_type_matchup_by_id(
     session: Session,
-    defender: TypeCombinationORM,
-) -> list[tuple[TypeCombinationORM, float]]:
-    """计算所有属性组合进攻指定属性组合的克制倍率表。
+    *,
+    type_id: int,
+) -> TypeMatchup | None:
+    target = session.get(TypeCombinationORM, type_id)
+    return None if target is None else load_type_matchup(session, target=target)
 
-    返回 [(攻击方属性组合, 克制倍率), ...]。
-    """
-    table = _load_relations(session)
-    all_combos: list[TypeCombinationORM] = list(
-        session.exec(select(TypeCombinationORM)).all()
+
+def load_custom_type_matchup(
+    session: Session,
+    *,
+    arg: str,
+) -> TypeMatchup | None:
+    all_types = session.exec(select(ElementTypeORM)).all()
+    name_to_type = {element.name: element for element in all_types}
+    type_names = _split_custom_type_names(arg, set(name_to_type))
+    if type_names is None:
+        return None
+
+    elements = [name_to_type[name] for name in type_names]
+    secondary_id = elements[1].id if len(elements) == _MAX_CUSTOM_TYPES else None
+    custom_name = "".join(element.name for element in elements)
+    target = TypeCombinationORM(
+        id=-1,
+        name=f"{custom_name}（DIY 属性）",
+        name_en="custom",
+        primary_id=elements[0].id,
+        secondary_id=secondary_id,
     )
-    return [(combo, _calc_multiplier(table, combo, defender)) for combo in all_combos]
+    ids = sorted(element.id for element in elements)
+    return load_type_matchup(
+        session,
+        target=target,
+        cache_key="custom_type_matchup_" + "_".join(map(str, ids)),
+    )
+
+
+def _split_custom_type_names(
+    arg: str,
+    all_names: set[str],
+) -> tuple[str, ...] | None:
+    normalized = arg.translate(_CUSTOM_SEPARATOR_TRANSLATION).strip()
+    if not normalized:
+        return None
+
+    parts = tuple(part for part in _CUSTOM_TYPE_SPLIT_PATTERN.split(normalized) if part)
+    if len(parts) == 1:
+        token = parts[0]
+        if token in all_names:
+            return (token,)
+        candidates = [
+            (token[:index], token[index:])
+            for index in range(1, len(token))
+            if token[:index] in all_names and token[index:] in all_names
+        ]
+        return candidates[0] if len(candidates) == 1 else None
+    if (
+        len(parts) == _MAX_CUSTOM_TYPES
+        and parts[0] != parts[1]
+        and all(part in all_names for part in parts)
+    ):
+        return parts
+    return None

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
@@ -31,11 +32,6 @@ _RANK_HINTS = (
     "段位",
 )
 
-
-def normalize_query_text(text: str) -> str:
-    return "".join(text.split()).lower()
-
-
 def is_rank_query_text(text: str) -> bool:
     """Return whether text should be handled by rank commands, not fuzzy lookup."""
     if parse_rank_list_command(text) is not None:
@@ -44,10 +40,7 @@ def is_rank_query_text(text: str) -> bool:
     if parse_countermark_stat_rank_command(text) is not None:
         return True
 
-    normalized = normalize_query_text(text)
+    normalized = normalize_command_text(text)
     return normalized.endswith(_RANK_SUFFIXES) and any(
         hint in normalized for hint in _RANK_HINTS
     )
-
-
-__all__ = ["is_rank_query_text", "normalize_query_text"]

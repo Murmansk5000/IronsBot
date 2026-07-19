@@ -41,6 +41,3 @@ def format_local_rank_message(  # noqa: PLR0913
         for entry in entries
     )
     return "\n".join(lines)
-
-
-__all__ = ["format_local_rank_message"]

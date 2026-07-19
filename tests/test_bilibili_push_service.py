@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Any
 
 from ironsbot.services.bilibili.push import (
@@ -12,11 +11,6 @@ from ironsbot.services.bilibili.push import (
 AUTHOR_UID = 1310714247
 OLD_TS = 100
 NEW_TS = 150
-
-
-@dataclass(frozen=True, slots=True)
-class FakeTargets:
-    has_targets: bool
 
 
 def _item(*, text: str = "这是一条测试动态") -> dict[str, Any]:
@@ -122,10 +116,10 @@ def test_decide_dynamic_push_before_targets_handles_skip_and_suppression() -> No
 
 def test_decide_dynamic_push_after_targets_handles_target_statuses() -> None:
     assert (
-        decide_dynamic_push_after_targets(FakeTargets(has_targets=False)).status
+        decide_dynamic_push_after_targets(has_targets=False).status
         == "no_targets"
     )
 
-    decision = decide_dynamic_push_after_targets(FakeTargets(has_targets=True))
+    decision = decide_dynamic_push_after_targets(has_targets=True)
     assert decision.should_push
     assert decision.status == "push"

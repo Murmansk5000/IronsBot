@@ -24,10 +24,6 @@ def _ensure_nonebot_initialized() -> None:
             "ironsbot.plugins.messaging.push_subscription_handlers",
             ["handle_push_subscription_menu", "handle_push_subscription_select"],
         ),
-        (
-            "ironsbot.plugins.messaging.push_time_handlers",
-            ["handle_push_time_menu", "handle_push_time_select"],
-        ),
     ],
 )
 def test_prompt_handler_annotations_resolve_at_runtime(
@@ -35,7 +31,7 @@ def test_prompt_handler_annotations_resolve_at_runtime(
     module_name: str,
     handler_names: list[str],
 ) -> None:
-    monkeypatch.setenv("APP_CONFIG_PATH", "config.example.toml")
+    monkeypatch.setenv("IRONSBOT_CONFIG", "config.example.toml")
     _ensure_nonebot_initialized()
 
     module = import_module(module_name)
