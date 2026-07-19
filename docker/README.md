@@ -249,12 +249,12 @@ Feature names are used in `[features.group_policy]` and
 | feature | Meaning |
 | --- | --- |
 | `all` | Most features except `admin_notice`; admin notices are explicit. |
-| `query` | Common query bundle: Seer queries, image replies, Seer ranks, Bilibili query, activity query, server status query. |
+| `query` | Common query bundle: Seer queries, local pet config images, image replies, Seer ranks, Bilibili query, activity query, server status query. |
 | `seer` | All Seer query sub-features. |
 | `seer_player` | Mimi ID/player info, collection/peak/Autocard follow-up replies. |
 | `seer_team` | Team ID query. |
 | `seer_pet` | Pet, skill, soul mark, illustration, and skin queries. |
-| `seer_pet_config` | Local pet configuration image query by pet name, alias, or ID. |
+| `pet_config` | Local pet configuration image query by pet name, alias, or ID; independent of the `seer` bundle. |
 | `seer_mintmark` | Mintmark, mintmark series, gem, and mintmark stat ranks. |
 | `seer_equipment` | Suit, equipment part, and title queries. |
 | `seer_type` | Type matchup and abnormal status queries. |

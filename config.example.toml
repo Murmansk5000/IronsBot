@@ -9,13 +9,14 @@
 #    先给群号、QQ 号起短名字，后面策略里都用这些短名字。
 # 2. [features.group_policy] / [features.user_policy]
 #    决定每个群、每个私聊用户能使用哪些功能。
-# 3. [bilibili]、[messaging]、[seer.*]、[operations.*]
-#    分别配置 B 站推送、固定文本/退订/红包提醒、赛尔查询、运行时同步/日志/重启等行为。
+# 3. [bilibili]、[messaging]、[pet_config]、[seer.*]、[operations.*]
+#    分别配置 B 站推送、固定文本/退订/红包提醒、精灵配置图、赛尔查询、运行时同步/日志/重启等行为。
 #
 # 常用 feature key：
 # - seer：开启全部赛尔查询子功能。
-# - seer_pet / seer_pet_config / seer_mintmark / seer_player / seer_rank / seer_autocard：
-#   只开放精灵资料、精灵配置图、刻印、米米号、榜单、群星牌等单项赛尔功能。
+# - seer_pet / seer_mintmark / seer_player / seer_rank / seer_autocard：
+#   只开放精灵资料、刻印、米米号、榜单、群星牌等单项赛尔功能。
+# - pet_config：本地精灵配置图查询，独立于 seer 功能包。
 # - image：图片发送；meeting：会议回复。
 # - bili_query / bili_push：B 站动态查询 / 推送。
 # - web_activity_link / web_activity_push：游戏外签到链接查询 / 定时提醒。
@@ -90,7 +91,7 @@ team_audit = 90
 # EN: Broad fuzzy Seer matchers are intentionally late.
 # ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢“技能石”等固定图片/文本指令。
 seer_mintmark = 100
-seer_pet_config = 109
+pet_config = 109
 seer_pet = 110
 seer_query = 120
 ai_chat = 200
@@ -148,10 +149,10 @@ user_a = 2345678901
 # Default: empty table
 # EN: Group feature allowlist. Feature bundles include all, query, seer, bili,
 # seer_activity, server_status, text, text_push, and message. Seer sub-features:
-# seer_player, seer_team, seer_pet, seer_pet_config, seer_mintmark, seer_equipment, seer_type,
+# seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
 # seer_peak, seer_autocard, seer_rank, seer_data.
 # ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询功能组合；
-# 也可只开放 seer_pet、seer_pet_config、seer_mintmark、seer_player 等子功能。
+# 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能；pet_config 需单独开启。
 # 如果某个群不想开放精灵/刻印这类宽泛匹配功能，就不要写 seer，
 # 改写 seer_player、seer_rank、seer_autocard 等精细子功能。
 # 游戏内每周活动使用 seer_activity_query / seer_activity_push；
@@ -164,7 +165,7 @@ user_a = 2345678901
 # 具体推送项可在 TD 菜单里分别退订。
 # 超级管理员是否绕过这些限制，由 [features].superuser_bypass 控制。
 # Example:
-# example = ["seer_pet", "seer_pet_config", "seer_mintmark", "seer_autocard", "team_resource_subscription"]
+# example = ["seer_pet", "pet_config", "seer_mintmark", "seer_autocard", "team_resource_subscription"]
 
 [features.user_policy]
 # Default: empty table
@@ -919,14 +920,16 @@ resource_message = "出来买资源，别逼我求你😡"
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
 
-[seer.pet_config]
+[pet_config]
 # Default: true; EN: Enable local pet configuration image replies. ZH: 启用本地精灵配置图查询。
 enabled = true
-# Default: "data/seer/pet_configs"
-# EN: Directory for manually maintained config images. Name each file with the pet ID,
-# for example 4923.png. PNG, WEBP, JPG, and JPEG are supported.
-# ZH: 手动维护的精灵配置图目录。图片文件名写精灵序号，例如 4923.png；支持 PNG、WEBP、JPG、JPEG。
-image_dir = "data/seer/pet_configs"
+# Default: "data/pet_configs"
+# EN: Directory for manually maintained config images. It is created automatically
+# when missing. Name each file with the pet ID, for example 4923.png. PNG, WEBP,
+# JPG, and JPEG are supported.
+# ZH: 手动维护的精灵配置图目录；不存在时启动会自动创建。图片文件名写精灵序号，
+# 例如 4923.png；支持 PNG、WEBP、JPG、JPEG。
+image_dir = "data/pet_configs"
 
 [operations.data_sync]
 # 数据同步分两层：

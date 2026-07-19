@@ -97,6 +97,7 @@ from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
+from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -105,7 +106,6 @@ from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.peak import PeakQueryService
-from ironsbot.services.seer.pet_config import PetConfigQueryService
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_service import (
     PlayerDetailService,
@@ -429,7 +429,7 @@ def build_application(settings: Settings) -> Application:
     )
     pet_config = PetConfigQueryService(
         seer_database,
-        FilePetConfigImageStore(settings.seer.pet_config.image_dir),
+        FilePetConfigImageStore(settings.pet_config.image_dir),
     )
     local_rank = LocalRankService(
         SqliteLocalRankRepository(

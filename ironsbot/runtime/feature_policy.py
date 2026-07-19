@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
+from nonebot.rule import Rule
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -48,3 +50,12 @@ def event_is_feature_allowed(
     if isinstance(event, PrivateMessageEvent):
         return features.is_private_feature_allowed(event.user_id, feature)
     return False
+
+
+def feature_rule(features: FeaturePolicy, feature: str) -> Rule:
+    """Create a generic event rule for a feature-policy key."""
+
+    async def _is_feature_allowed(event: Event) -> bool:
+        return event_has_feature(features, event, feature)
+
+    return Rule(_is_feature_allowed)

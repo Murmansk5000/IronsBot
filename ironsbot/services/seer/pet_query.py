@@ -83,34 +83,36 @@ class PetQueryService:
     async def search_info(self, arg: str) -> QueryResult[int]:
         with self._data.resolve(self._data.pet, arg) as values:
             pets = tuple(values)
-        if not arg.strip() or not pets:
-            return QueryResult()
-        if len(pets) == 1:
-            return QueryResult(reply=await self._build_info_reply(pets[0]))
-        if len(pets) > PET_PROMPT_MAX_ITEMS:
-            exact = next(
-                (
-                    pet
-                    for pet in pets
-                    if len(arg) == 1 and pet.name == arg
-                ),
-                None,
-            )
-            if exact is not None:
+            if not arg.strip() or not pets:
+                return QueryResult()
+            if len(pets) == 1:
                 return QueryResult(
-                    reply=await self._build_info_reply(exact)
+                    reply=await self._build_info_reply(pets[0])
+                )
+            if len(pets) > PET_PROMPT_MAX_ITEMS:
+                exact = next(
+                    (
+                        pet
+                        for pet in pets
+                        if len(arg) == 1 and pet.name == arg
+                    ),
+                    None,
+                )
+                if exact is not None:
+                    return QueryResult(
+                        reply=await self._build_info_reply(exact)
+                    )
+                return QueryResult(
+                    message=(
+                        f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
+                    )
                 )
             return QueryResult(
-                message=(
-                    f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
+                choices=tuple(
+                    QueryChoice(str(pet.name), str(pet.id), int(pet.id))
+                    for pet in pets
                 )
             )
-        return QueryResult(
-            choices=tuple(
-                QueryChoice(str(pet.name), str(pet.id), int(pet.id))
-                for pet in pets
-            )
-        )
 
     async def select_info(self, pet_id: int) -> QueryResult[object]:
         with self._data.get(self._data.pet, pet_id) as pet:
@@ -121,7 +123,7 @@ class PetQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
-        return QueryResult(reply=await self._build_info_reply(pet))
+            return QueryResult(reply=await self._build_info_reply(pet))
 
     async def _build_image_reply(
         self,

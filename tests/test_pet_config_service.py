@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.services.seer.pet_config import PetConfigQueryService
+from ironsbot.services.pet_config import PetConfigQueryService
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
