@@ -41,4 +41,4 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheel -r /wheel/requirem
     && rm -rf /wheel
 COPY . /app/
 
-CMD ["python", "bot.py"]
+CMD ["python", "-m", "ironsbot"]

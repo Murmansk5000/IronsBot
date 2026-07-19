@@ -12,11 +12,11 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.shared.messaging import (
+from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
 )
-from ironsbot.utils.rule import no_reply
+from ironsbot.runtime.rules import no_reply
 
 from .matcher_rules import (
     GROUP_ACTION_KEY,
@@ -30,12 +30,13 @@ from .push_subscription_handlers import handle_push_subscription_menu
 from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
+    from ironsbot.services.messaging.service import MessagingService
+
     from .push_time_handlers import RefreshPushTimeJobs
-    from .runtime_service import MessagingResources
 
 
 def _message_subscription_priority(registry: MatcherRegistry) -> int:
-    return max(registry.priority("message_commands", 4) - 1, 0)
+    return max(registry.priority("message_commands") - 1, 0)
 
 
 async def handle_private_command(
@@ -84,7 +85,7 @@ def _action_command_id(
 def install(
     registry: MatcherRegistry,
     refresh_push_time_jobs: RefreshPushTimeJobs,
-    messaging: MessagingResources,
+    messaging: MessagingService,
 ) -> None:
     private_matcher = registry.on_message(
         policy=CommandPolicy.command(
@@ -94,11 +95,10 @@ def install(
             partial(
                 match_private_command,
                 messaging=messaging,
-                actions=messaging.config.private_commands,
             )
         )
         & no_reply(),
-        priority=registry.priority("message_commands", 4),
+        priority=registry.priority("message_commands"),
         block=True,
     )
     private_matcher.append_handler(handle_private_command)
@@ -110,7 +110,7 @@ def install(
         rule=Rule(
             partial(
                 match_push_subscription_command,
-                config=messaging.config.push_unsubscribe,
+                messaging=messaging,
             )
         )
         & no_reply(),
@@ -144,11 +144,10 @@ def install(
             partial(
                 match_group_command,
                 messaging=messaging,
-                actions=messaging.config.group_commands,
             )
         )
         & no_reply(),
-        priority=registry.priority("message_commands", 4),
+        priority=registry.priority("message_commands"),
         block=True,
     )
     group_matcher.append_handler(handle_group_command)

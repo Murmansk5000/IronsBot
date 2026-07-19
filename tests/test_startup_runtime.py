@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING, cast
 
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.runtime import StartupConfig
-from ironsbot.plugins.startup_notice import runtime as startup_notice_runtime
-from ironsbot.services.startup_notice import StartupNoticeService
-from ironsbot.shared.messaging.admin_notice import AdminNoticeService
-from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
+from ironsbot.config.models.operations import StartupConfig
+from ironsbot.core.messaging import MessageTarget, TargetSendSummary
+from ironsbot.plugins.operations import startup as startup_notice_runtime
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.operations.startup import StartupNoticeService
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:

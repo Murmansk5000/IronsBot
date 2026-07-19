@@ -14,13 +14,6 @@ class RankPositionTextStyle:
 
 
 GLOBAL_RANK_POSITION_STYLE = RankPositionTextStyle()
-RANK_LOOKUP_POSITION_STYLE = RankPositionTextStyle(
-    ranked_prefix="第 ",
-    ranked_suffix=" 名",
-    unranked_prefix="前 ",
-    unranked_suffix=" 名未上榜",
-    include_zero_limit=True,
-)
 GLOBAL_RANK_MISS_POSITION_STYLE = RankPositionTextStyle(
     unranked_prefix="前 ",
     unranked_suffix=" 名未上榜",
@@ -43,12 +36,3 @@ def format_rank_position_text(
         return f"{style.unranked_prefix}{result.searched_limit}{style.unranked_suffix}"
 
     return ""
-
-
-__all__ = [
-    "GLOBAL_RANK_MISS_POSITION_STYLE",
-    "GLOBAL_RANK_POSITION_STYLE",
-    "RANK_LOOKUP_POSITION_STYLE",
-    "RankPositionTextStyle",
-    "format_rank_position_text",
-]

@@ -1,21 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TypedDict
 
-from nonebot_plugin_htmlkit import template_to_pic
 from seerapi_models.element_type import TypeCombinationORM
-from sqlalchemy.orm import object_session
 
-from ironsbot.integrations.seer_data.image import ElementTypeImageGetter
+from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.render_paths import TYPE_MATCHUP_TEMPLATE_PATH
-from ironsbot.services.seer.type_calc import calc_attack_table, calc_defense_table
-from ironsbot.utils.image import to_data_uri
+from ironsbot.services.seer.type_calc import TypeMatchup
 
-if TYPE_CHECKING:
-    from sqlmodel import Session
-
-TEMPLATE_PATH = TYPE_MATCHUP_TEMPLATE_PATH
+from . import HtmlTemplateRenderer
 
 GRID_COLUMNS = 10
 CELL_SIZE = 72
@@ -37,6 +31,7 @@ def _is_custom_type_combination(target: TypeCombinationORM) -> bool:
 
 
 async def _resolve_custom_target_icons(
+    images: SeerImageSource,
     target: TypeCombinationORM,
     *,
     target_icon_data_uri: str | None,
@@ -46,25 +41,25 @@ async def _resolve_custom_target_icons(
     if target.secondary_id is None:
         if target_icon_data_uri is not None:
             return target_icon_data_uri, None
-        primary_bytes = await ElementTypeImageGetter.get_bytes(str(target.primary_id))
+        primary_bytes = await images.fetch("element_type", str(target.primary_id))
         return to_data_uri(primary_bytes), None
 
     if target_icon_data_uri is not None and target_icon_secondary_data_uri is not None:
         return target_icon_data_uri, target_icon_secondary_data_uri
 
     primary_bytes, secondary_bytes = await asyncio.gather(
-        ElementTypeImageGetter.get_bytes(str(target.primary_id)),
-        ElementTypeImageGetter.get_bytes(str(target.secondary_id)),
+        images.fetch("element_type", str(target.primary_id)),
+        images.fetch("element_type", str(target.secondary_id)),
     )
     return to_data_uri(primary_bytes), to_data_uri(secondary_bytes)
 
 
 async def render_type_matchup(  # noqa: PLR0913
     cache: RenderCache,
-    target: TypeCombinationORM,
+    images: SeerImageSource,
+    render_html: HtmlTemplateRenderer,
+    matchup: TypeMatchup,
     *,
-    session: "Session | None" = None,
-    cache_key: str | None = None,
     target_icon_data_uri: str | None = None,
     target_icon_secondary_data_uri: str | None = None,
 ) -> bytes:
@@ -72,29 +67,21 @@ async def render_type_matchup(  # noqa: PLR0913
 
     包含攻击效果和被攻击效果两个区域，支持自定义属性组合渲染。
     """
-    resolved_cache_key = cache_key if cache_key is not None else str(target.id)
-    cached = cache.get("type_matchup", resolved_cache_key)
+    cached = cache.get("type_matchup", matchup.cache_key)
     if cached is not None:
         return cached
 
-    resolved_session = session
-    if resolved_session is None:
-        resolved_session = cast("Session | None", object_session(target))
-    if resolved_session is None:
-        raise RuntimeError
-
-    attack_table = calc_attack_table(resolved_session, target)
-    defense_table = calc_defense_table(resolved_session, target)
+    target = matchup.target
 
     all_combo_ids: dict[int, None] = {}
-    for combo, _ in attack_table:
+    for combo, _ in matchup.attack_table:
         all_combo_ids.setdefault(combo.id, None)
-    for combo, _ in defense_table:
+    for combo, _ in matchup.defense_table:
         all_combo_ids.setdefault(combo.id, None)
 
     id_list = list(all_combo_ids)
     icon_bytes_list = await asyncio.gather(
-        *(ElementTypeImageGetter.get_bytes(str(cid)) for cid in id_list)
+        *(images.fetch("element_type", str(cid)) for cid in id_list)
     )
     icon_map: dict[int, str] = {
         cid: to_data_uri(data)
@@ -103,6 +90,7 @@ async def render_type_matchup(  # noqa: PLR0913
     type_icon_secondary: str | None = None
     if _is_custom_type_combination(target):
         target_icon_data_uri, type_icon_secondary = await _resolve_custom_target_icons(
+            images,
             target,
             target_icon_data_uri=target_icon_data_uri,
             target_icon_secondary_data_uri=target_icon_secondary_data_uri,
@@ -112,13 +100,13 @@ async def render_type_matchup(  # noqa: PLR0913
             target_icon_data_uri = icon_map.get(target.id)
         if target_icon_data_uri is None:
             target_icon_data_uri = to_data_uri(
-                await ElementTypeImageGetter.get_bytes(str(target.id))
+                await images.fetch("element_type", str(target.id))
             )
 
     attack_items: list[MatchupItemDict] = sorted(
         [
             {"icon": icon_map[combo.id], "name": combo.name, "multiplier": mult}
-            for combo, mult in attack_table
+            for combo, mult in matchup.attack_table
         ],
         key=lambda x: x["multiplier"],
         reverse=True,
@@ -126,14 +114,14 @@ async def render_type_matchup(  # noqa: PLR0913
     defense_items: list[MatchupItemDict] = sorted(
         [
             {"icon": icon_map[combo.id], "name": combo.name, "multiplier": mult}
-            for combo, mult in defense_table
+            for combo, mult in matchup.defense_table
         ],
         key=lambda x: x["multiplier"],
         reverse=True,
     )
 
-    result = await template_to_pic(
-        template_path=TEMPLATE_PATH,
+    result = await render_html(
+        template_path=TYPE_MATCHUP_TEMPLATE_PATH,
         template_name="template.html.j2",
         templates={
             "type_name": target.name,
@@ -147,5 +135,5 @@ async def render_type_matchup(  # noqa: PLR0913
         max_width=MAX_WIDTH,
         allow_refit=False,
     )
-    cache.put("type_matchup", resolved_cache_key, result)
+    cache.put("type_matchup", matchup.cache_key, result)
     return result

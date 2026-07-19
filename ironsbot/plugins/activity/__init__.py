@@ -1,28 +1,27 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING
 
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
+from ironsbot.runtime.feature_policy import event_has_feature
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.rules import no_reply
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
     is_soon_ending_seer_activity_text,
 )
-from ironsbot.shared.features.visibility import event_has_feature
-from ironsbot.shared.messaging import finish_event_reply
-from ironsbot.utils.rule import no_reply
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.matcher import Matcher
 
+    from ironsbot.core.features import FeatureService
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.shared.features import FeatureService
 
 
 async def _is_current_seer_activity_command(event: Event) -> bool:
@@ -45,7 +44,7 @@ def install(
         await finish_event_reply(
             matcher,
             event,
-            await asyncio.to_thread(service.build_current_message),
+            await service.build_current_message(),
         )
 
     async def handle_soon_ending(
@@ -55,17 +54,14 @@ def install(
         await finish_event_reply(
             matcher,
             event,
-            await asyncio.to_thread(
-                service.build_current_message,
-                soon_only=True,
-            ),
+            await service.build_current_message(soon_only=True),
         )
 
     current_matcher = registry.on_message(
         policy=CommandPolicy.command("seer_activity_current"),
         rule=Rule(_is_current_seer_activity_command) & no_reply(),
         permission=SUPERUSER,
-        priority=registry.priority("activity", 5),
+        priority=registry.priority("activity"),
         block=True,
     )
     current_matcher.append_handler(handle_current)
@@ -81,7 +77,7 @@ def install(
             & Rule(_is_soon_ending_seer_activity_command)
             & no_reply()
         ),
-        priority=registry.priority("activity", 5),
+        priority=registry.priority("activity"),
         block=True,
     )
     ending_matcher.append_handler(handle_soon_ending)

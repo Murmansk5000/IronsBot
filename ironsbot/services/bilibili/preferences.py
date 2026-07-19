@@ -1,37 +1,38 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import TYPE_CHECKING, Literal
-
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
-    import sqlite3
-    from contextlib import AbstractContextManager
-
-    from ironsbot.config.models.bilibili import BiliPushMode
-    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
+    from ironsbot.core.bilibili import BiliPushMode
+    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
 BiliRuntimePushMode = Literal["full", "link"]
 INVALID_PUSH_MODE_ERROR = "push mode must be content/full, link, or default"
-BILI_PUSH_PREFERENCE_SCHEMA = (
-    "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
-    "target_type TEXT NOT NULL, "
-    "target_id INTEGER NOT NULL, "
-    "uid INTEGER NOT NULL, "
-    "mode TEXT NOT NULL, "
-    "updated_at TEXT NOT NULL, "
-    "PRIMARY KEY (target_type, target_id, uid)"
-    ")",
-    "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
-    "ON bili_push_preferences (uid, target_type, target_id)",
-)
-BILI_PUSH_PREFERENCE_MIGRATIONS = (
-    SqliteMigration(1, BILI_PUSH_PREFERENCE_SCHEMA),
-)
+
+
+class BiliPushPreferenceStore(Protocol):
+    def get_mode(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+    ) -> BiliRuntimePushMode | None: ...
+
+    def set_mode(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        mode: BiliRuntimePushMode,
+    ) -> None: ...
+
+    def clear_mode(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+    ) -> None: ...
 
 
 def bili_push_subscription_key(uid: int) -> str:
@@ -39,9 +40,7 @@ def bili_push_subscription_key(uid: int) -> str:
 
 
 def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
-    if label:
-        return f"B站动态：{label}"
-    return f"B站动态：{int(uid)}"
+    return f"B站动态：{label or int(uid)}"
 
 
 def normalize_push_mode_text(raw_mode: str) -> BiliRuntimePushMode | None:
@@ -61,84 +60,3 @@ def push_mode_label(mode: BiliPushMode | None) -> str:
     if mode == "link":
         return "链接"
     return "默认"
-
-
-@dataclass(frozen=True, slots=True)
-class BiliPushPreference:
-    target_type: PushTargetType
-    target_id: int
-    uid: int
-    mode: BiliRuntimePushMode
-    updated_at: str
-
-
-class BiliPushPreferenceStore:
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-
-    def get_mode(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        uid: int,
-    ) -> BiliRuntimePushMode | None:
-        with self._connect() as con:
-            row = con.execute(
-                "SELECT mode FROM bili_push_preferences "
-                "WHERE target_type = ? AND target_id = ? AND uid = ?",
-                (target_type, int(target_id), int(uid)),
-            ).fetchone()
-        if row is None:
-            return None
-        mode = str(row[0])
-        if mode == "full":
-            return mode
-        if mode == "link":
-            return mode
-        return None
-
-    def set_mode(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        uid: int,
-        mode: BiliRuntimePushMode,
-    ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as con:
-            con.execute(
-                "INSERT OR REPLACE INTO bili_push_preferences "
-                "(target_type, target_id, uid, mode, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (target_type, int(target_id), int(uid), mode, now),
-            )
-
-    def clear_mode(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        uid: int,
-    ) -> None:
-        with self._connect() as con:
-            con.execute(
-                "DELETE FROM bili_push_preferences "
-                "WHERE target_type = ? AND target_id = ? AND uid = ?",
-                (target_type, int(target_id), int(uid)),
-            )
-
-    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
-        return SqliteDatabase(
-            self.path,
-            migrations=BILI_PUSH_PREFERENCE_MIGRATIONS,
-        ).connect()
-
-
-__all__ = [
-    "BILI_PUSH_SUBSCRIPTION_PREFIX",
-    "BiliPushPreference",
-    "BiliPushPreferenceStore",
-    "bili_push_subscription_key",
-    "bili_push_subscription_label",
-    "normalize_push_mode_text",
-    "push_mode_label",
-]

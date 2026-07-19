@@ -1,23 +1,9 @@
-from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.services.seer import query_usage
-from ironsbot.shared.features import FeatureService
-from tests.helpers.onebot_events import group_message_event
-
-
-def _features(*allowed: str) -> FeatureService:
-    return FeatureService(
-        FeatureConfig(
-            group_policy={"456": list(allowed)},
-            superuser_bypass=False,
-        ),
-        frozenset(),
-    )
 
 
 def test_seer_query_usage_message_only_lists_allowed_sections() -> None:
     message = query_usage.build_seer_query_usage_message(
-        _features("seer_player", "seer_rank"),
-        group_message_event(),
+        {"seer_player", "seer_rank"}.__contains__,
     )
 
     assert "【玩家】" in message
@@ -31,6 +17,5 @@ def test_seer_query_usage_message_only_lists_allowed_sections() -> None:
 
 def test_seer_query_usage_message_reports_no_available_sections() -> None:
     assert query_usage.build_seer_query_usage_message(
-        _features(),
-        group_message_event(),
+        set().__contains__,
     ) == "当前会话没有可用的赛尔号查询子功能。"

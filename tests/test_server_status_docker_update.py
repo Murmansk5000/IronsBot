@@ -11,35 +11,40 @@ if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
-from ironsbot.app.composition import build_application_lifecycle
-from ironsbot.config.models.runtime import DockerUpdateConfig
-from ironsbot.plugins.server_status import runtime as docker_update_runtime
-from ironsbot.plugins.server_status.docker_update_client import (
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.config.models.operations import DockerUpdateConfig
+from ironsbot.integrations.docker.client import (
+    DockerClient,
     create_watchtower_container,
     ensure_watchtower_image,
     pull_docker_image,
     split_docker_image,
 )
-from ironsbot.plugins.server_status.docker_update_formatting import (
+from ironsbot.services.operations.docker_formatting import (
     format_docker_image_created,
     format_docker_update_reply,
 )
-from ironsbot.plugins.server_status.docker_update_models import (
+from ironsbot.services.operations.docker_models import (
     DockerUpdateResult,
     WatchtowerUpdateOptions,
 )
-from ironsbot.plugins.server_status.restart import (
-    DockerSelfUpdateService,
-    RestartService,
-)
+from ironsbot.services.operations.docker_update import DockerUpdateService
 from tests.helpers.plugin_registry import build_test_plugin_registry
+
+
+async def noop_restart_process() -> None:
+    return None
+
+
+def build_docker_service(config: DockerUpdateConfig) -> DockerUpdateService:
+    return DockerUpdateService(config, DockerClient(), noop_restart_process)
 
 
 def test_split_docker_image_with_tag() -> None:
@@ -239,7 +244,7 @@ def test_target_image_pull_retries_transient_registry_eof(
         sleep_delays.append(delay)
 
     monkeypatch.setattr(
-        "ironsbot.plugins.server_status.docker_update_client.asyncio.sleep",
+        "ironsbot.integrations.docker.client.asyncio.sleep",
         fake_sleep,
     )
 
@@ -293,9 +298,10 @@ def test_target_image_pull_retries_transient_registry_eof(
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    lifecycle = build_application_lifecycle(
+    lifecycle = ApplicationLifecycle.from_plugins(
         cast("Driver", object()),
         build_test_plugin_registry(),
+        task_owner=TaskOwner(),
     )
     names = [name for name, _hook in lifecycle.startup_hooks]
 
@@ -304,9 +310,9 @@ def test_docker_update_runtime_is_registered_before_data_sync() -> None:
 
 def test_startup_docker_update_disabled() -> None:
     notice = asyncio.run(
-        docker_update_runtime.start_docker_update(
+        build_docker_service(
             DockerUpdateConfig(check_on_startup=False)
-        )
+        ).startup_notice()
     )
 
     assert notice is None
@@ -330,17 +336,21 @@ def test_startup_docker_update_records_notice(
         watchtower_docker_api_version="1.40",
         timeout_seconds=300.0,
     )
-    monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
 
-    notice = asyncio.run(docker_update_runtime.start_docker_update(config))
+    notice = asyncio.run(
+        build_docker_service(config).startup_notice()
+    )
 
     assert notice is not None
     assert "ironsbot-prod" in notice
     assert "Docker 自更新任务已启动" in notice
 
 
-def test_restart_service_without_restart_check_uses_process_without_socket() -> None:
-    service = RestartService(DockerUpdateConfig(check_on_restart=False))
+def test_docker_service_without_restart_check_uses_process_without_socket() -> None:
+    service = build_docker_service(
+        DockerUpdateConfig(check_on_restart=False)
+    )
 
     message, restart_action = asyncio.run(service.prepare_manual_restart())
 
@@ -348,12 +358,12 @@ def test_restart_service_without_restart_check_uses_process_without_socket() -> 
     assert "正在重启机器人进程" in message
 
 
-def test_restart_service_without_restart_check_uses_docker_socket(
+def test_docker_service_without_restart_check_uses_docker_socket(
     tmp_path: Path,
 ) -> None:
     socket_path = tmp_path / "docker.sock"
     socket_path.touch()
-    service = RestartService(
+    service = build_docker_service(
         DockerUpdateConfig(
             check_on_restart=False,
             docker_socket_path=str(socket_path),
@@ -367,14 +377,14 @@ def test_restart_service_without_restart_check_uses_docker_socket(
     assert "未启用重启前镜像检查" in message
 
 
-def test_restart_service_missing_socket_continues_restart(
+def test_docker_service_missing_socket_continues_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
         return "ironsbot", DockerUpdateResult(ok=False, missing_socket=True)
 
-    monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
-    service = RestartService(
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
+    service = build_docker_service(
         DockerUpdateConfig(
             check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
@@ -387,14 +397,14 @@ def test_restart_service_missing_socket_continues_restart(
     assert "跳过镜像检查并继续普通进程重启" in message
 
 
-def test_restart_service_up_to_date_continues_restart(
+def test_docker_service_up_to_date_continues_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
         return "ironsbot", DockerUpdateResult(ok=True, up_to_date=True)
 
-    monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
-    service = RestartService(
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
+    service = build_docker_service(
         DockerUpdateConfig(
             check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
@@ -407,7 +417,7 @@ def test_restart_service_up_to_date_continues_restart(
     assert "镜像已是最新，正在重启当前容器" in message
 
 
-def test_restart_service_started_update_skips_extra_restart(
+def test_docker_service_started_update_skips_extra_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
@@ -416,8 +426,8 @@ def test_restart_service_started_update_skips_extra_restart(
             updater_container_id="abcdef123456",
         )
 
-    monkeypatch.setattr(DockerSelfUpdateService, "run", fake_run)
-    service = RestartService(
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
+    service = build_docker_service(
         DockerUpdateConfig(
             check_on_restart=True,
             image="murmansk5000/ironsbot:latest",

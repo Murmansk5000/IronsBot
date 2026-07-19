@@ -2,6 +2,7 @@
 import dataclasses
 import struct
 from dataclasses import dataclass
+from functools import cache
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,9 +13,6 @@ from .fields import is_binary
 
 if TYPE_CHECKING:
     from .fields import BinaryTag, SizeGetter
-
-
-_validated_classes: set[type] = set()
 
 
 @dataclass_transform()
@@ -39,9 +37,8 @@ class Serializable:
         return (None, *flatten_annotated(field.type))[-1]
 
     @classmethod
+    @cache
     def _validate_fields(cls) -> None:
-        if cls in _validated_classes:
-            return
         fields = dataclasses.fields(cls)
         rest_field: str | None = None
         for field in fields:
@@ -53,7 +50,6 @@ class Serializable:
             tag = Serializable._resolve_tag(field)
             if is_binary(tag) and getattr(tag, "rest", False):
                 rest_field = field.name
-        _validated_classes.add(cls)
 
     @staticmethod
     def _resolve_elem_tag(elem_cls: Any) -> Any:

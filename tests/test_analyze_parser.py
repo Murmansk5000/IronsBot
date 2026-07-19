@@ -1,4 +1,4 @@
-from ironsbot.utils.analyze_parser import (
+from ironsbot.services.ai.analysis_parser import (
     AnalyzeDescParser,
     DescLine,
 )

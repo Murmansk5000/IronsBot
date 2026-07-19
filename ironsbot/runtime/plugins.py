@@ -3,19 +3,21 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 if TYPE_CHECKING:
+    from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.core.features import Feature
     from ironsbot.runtime.matchers import MatcherRegistry
 
-AsyncHook: TypeAlias = Callable[[], Awaitable[None]]
-BotHook: TypeAlias = Callable[["Bot"], Awaitable[None]]
-NamedAsyncHook: TypeAlias = tuple[str, AsyncHook]
-NamedBotHook: TypeAlias = tuple[str, BotHook]
-HelpVisibility = Literal["default", "always", "hidden"]
+HookResult: TypeAlias = Awaitable[None] | None
+LifecycleHook: TypeAlias = Callable[[], HookResult]
+BotLifecycleHook: TypeAlias = Callable[["Bot"], HookResult]
+NamedLifecycleHook: TypeAlias = tuple[str, LifecycleHook]
+NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
+HelpVisibility: TypeAlias = Callable[["Event"], bool]
 PluginInstall: TypeAlias = Callable[["MatcherRegistry"], None]
 
 
@@ -26,35 +28,22 @@ class HelpEntry:
     usage: str
     group: str
     order: int
-    visibility: HelpVisibility = "default"
+    visible: HelpVisibility | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class PluginHooks:
-    startup: tuple[NamedAsyncHook, ...] = ()
-    shutdown: tuple[NamedAsyncHook, ...] = ()
-    first_bot_connect: tuple[NamedBotHook, ...] = ()
-    bot_connect: tuple[NamedBotHook, ...] = ()
-    bot_disconnect: tuple[NamedBotHook, ...] = ()
+    startup: tuple[NamedLifecycleHook, ...] = ()
+    shutdown: tuple[NamedLifecycleHook, ...] = ()
+    first_bot_connect: tuple[NamedBotLifecycleHook, ...] = ()
+    bot_connect: tuple[NamedBotLifecycleHook, ...] = ()
+    bot_disconnect: tuple[NamedBotLifecycleHook, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class PluginDefinition:
     id: str
-    features: frozenset[Feature]
-    help: HelpEntry | None
-    install: PluginInstall
+    features: frozenset[Feature] = frozenset()
+    help: HelpEntry | None = None
+    install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
-
-
-__all__ = [
-    "AsyncHook",
-    "BotHook",
-    "HelpEntry",
-    "HelpVisibility",
-    "NamedAsyncHook",
-    "NamedBotHook",
-    "PluginDefinition",
-    "PluginHooks",
-    "PluginInstall",
-]

@@ -4,16 +4,17 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from datetime import datetime
+from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from nonebot.log import logger
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ironsbot.config.models.runtime import LoggingConfig
-    from ironsbot.services.ai.resources import AiResources
+    from ironsbot.config.models.settings import LoggingConfig
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
+
+logger = getLogger(__name__)
 
 MARKER_PATH = Path("data/seer/render_crash_marker.json")
 LOG_TAIL_BYTES = 16 * 1024
@@ -41,7 +42,7 @@ def _read_marker() -> dict[str, Any] | None:
         raw = MARKER_PATH.read_text(encoding="utf-8")
         data = json.loads(raw)
     except (OSError, json.JSONDecodeError):
-        logger.opt(exception=True).warning("failed to read render crash marker")
+        logger.exception("failed to read render crash marker")
         return {"raw": "渲染崩溃标记存在，但内容读取失败"}
 
     return data if isinstance(data, dict) else {"raw": raw}
@@ -51,26 +52,25 @@ def _clear_marker() -> None:
     try:
         MARKER_PATH.unlink(missing_ok=True)
     except OSError:
-        logger.opt(exception=True).warning("failed to clear render crash marker")
+        logger.exception("failed to clear render crash marker")
 
 
-def _read_log_tail(log_config: LoggingConfig) -> str:
+def _read_log_tail(log_config: LoggingConfig, log_path: Path) -> str:
     if not log_config.file_enabled:
         return "文件日志未启用。"
 
-    path = Path(log_config.file_path)
-    if not path.exists():
-        return f"日志文件不存在：{path}"
+    if not log_path.exists():
+        return f"日志文件不存在：{log_path}"
 
     try:
-        with path.open("rb") as file:
+        with log_path.open("rb") as file:
             file.seek(0, 2)
             size = file.tell()
             file.seek(max(0, size - LOG_TAIL_BYTES))
             raw = file.read().decode("utf-8", errors="replace")
     except OSError:
-        logger.opt(exception=True).warning("failed to read render crash log tail")
-        return f"日志读取失败：{path}"
+        logger.exception("failed to read render crash log tail")
+        return f"日志读取失败：{log_path}"
 
     lines = raw.splitlines()[-LOG_TAIL_LINES:]
     return "\n".join(lines)
@@ -122,15 +122,16 @@ def render_crash_marker(
 
 
 async def report_previous_render_crash(
-    resources: AiResources,
+    admin_notices: AdminNoticeService,
     log_config: LoggingConfig,
+    log_path: Path,
 ) -> None:
     marker = _read_marker()
     if marker is None:
         return
 
     _clear_marker()
-    log_tail = _read_log_tail(log_config)
+    log_tail = _read_log_tail(log_config, log_path)
     notice = _truncate_notice(
         "⚠️ 机器人上次可能在精灵信息渲染时异常退出。\n"
         "这类崩溃通常发生在 Chromium/htmlkit/native 渲染层，"
@@ -138,16 +139,8 @@ async def report_previous_render_crash(
         f"【崩溃前任务】\n{_format_marker(marker)}\n\n"
         f"【最近日志】\n{log_tail}"
     )
-    key = "seer-render-crash-" + str(marker.get("started_at", "unknown"))
-    await resources.notify_admin_once(
-        key,
+    await admin_notices.send(
         notice,
         subscription_key="render_crash_notice",
         action_name="render crash notice",
     )
-
-
-__all__ = [
-    "render_crash_marker",
-    "report_previous_render_crash",
-]

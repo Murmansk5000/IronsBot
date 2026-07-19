@@ -1,4 +1,4 @@
-from ironsbot.services.startup_notice import StartupNoticeService
+from ironsbot.services.operations.startup import StartupNoticeService
 from tests.helpers.runtime import build_test_runtime
 
 

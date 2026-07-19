@@ -119,11 +119,3 @@ def format_season_countdown(
 
     lines.extend(("", _format_window(load_autocard_season_window(config), now=now)))
     return "\n".join(lines)
-
-
-__all__ = [
-    "SeasonWindow",
-    "format_season_countdown",
-    "load_autocard_season_window",
-    "load_peak_season_window",
-]

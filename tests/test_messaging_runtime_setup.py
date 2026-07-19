@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import os
 from dataclasses import dataclass, replace
@@ -5,54 +7,55 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import nonebot
-from pytest import MonkeyPatch
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
-from ironsbot.app.composition import refresh_push_time_jobs
 from ironsbot.config.models.activity import ActivityConfig
-from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.message import (
+from ironsbot.config.models.messaging import (
     GroupScheduledMessageAction,
     MessageConfig,
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
 )
+from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
-from ironsbot.plugins.messaging import matcher_rules, runtime
-from ironsbot.plugins.messaging import schedules as message_schedules
-from ironsbot.plugins.messaging.push_subscription import (
-    build_messaging_push_subscription_menu_prompt,
+from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.integrations.storage.push_subscriptions import (
+    PushPreferencePruneResult,
+    PushUnsubscribeStore,
 )
-from ironsbot.plugins.messaging.push_time import PushTimeOption
-from ironsbot.plugins.messaging.runtime_service import MessagingResources
-from ironsbot.shared.messaging.push_subscription_models import (
+from ironsbot.plugins.messaging import matcher_rules
+from ironsbot.services.messaging import schedules as message_schedules
+from ironsbot.services.messaging.push_time import PushTimeOption
+from ironsbot.services.messaging.service import MessagingService
+from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
-)
-from ironsbot.shared.messaging.push_subscription_store import (
-    PushPreferencePruneResult,
-    PushUnsubscribeStore,
 )
 from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from pytest import MonkeyPatch
+
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FakeJob:
     id: str
 
@@ -93,26 +96,31 @@ class FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, object]] = []
 
-    def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> FakeJob:
         job_id = kwargs.get("id")
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
+        return FakeJob(id=str(job_id))
 
-    def get_jobs(self) -> list[FakeJob]:
+    def get_jobs(self) -> Sequence[FakeJob]:
         return [FakeJob(id=str(job["id"])) for job in self.jobs]
 
     def remove_job(self, job_id: str) -> None:
         self.jobs = [job for job in self.jobs if job.get("id") != job_id]
 
 
-def _messaging_resources(
+def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     data_path: Path,
     *,
     group_schedules: list[GroupScheduledMessageAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
-) -> MessagingResources:
+    store: PushUnsubscribeStore | None = None,
+    extra_push_options: (
+        Callable[[PushTargetType, int], list[PushSubscriptionOption]] | None
+    ) = None,
+) -> MessagingService:
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
         group_schedules=group_schedules or [],
@@ -124,14 +132,13 @@ def _messaging_resources(
         ),
         superuser_ids=superusers,
     )
-    return MessagingResources(
+    return MessagingService(
         config,
         ActivityConfig(),
-        PushUnsubscribeStore(data_path),
+        store or PushUnsubscribeStore(data_path),
         resources.features,
-        resources.priority,
         resources.delivery,
-        lambda _target_type, _target_id: [],
+        extra_push_options or (lambda _target_type, _target_id: []),
     )
 
 
@@ -151,10 +158,11 @@ def _group_event(
 
 def test_messaging_startup_prunes_preferences_before_registering_jobs(
     monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     calls: list[str] = []
 
-    def fake_prune(_messaging: MessagingResources) -> PushPreferencePruneResult:
+    def fake_prune(_messaging: MessagingService) -> PushPreferencePruneResult:
         calls.append("prune")
         return PushPreferencePruneResult(
             unsubscriptions_deleted=2,
@@ -162,18 +170,17 @@ def test_messaging_startup_prunes_preferences_before_registering_jobs(
         )
 
     async def fake_register(
+        _messaging: MessagingService,
         _scheduler: object,
-        _messaging: MessagingResources,
     ) -> None:
         calls.append("register")
 
-    monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
-    monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
+    monkeypatch.setattr(MessagingService, "_prune_stale_preferences", fake_prune)
+    monkeypatch.setattr(MessagingService, "register_schedules", fake_register)
 
     asyncio.run(
-        runtime.start_messaging(
-            object(),
-            _messaging_resources(Path("unused.sqlite")),
+        _messaging_resources(tmp_path / "unsubscribe.sqlite").start(
+            FakeScheduler(),
         )
     )
 
@@ -182,26 +189,26 @@ def test_messaging_startup_prunes_preferences_before_registering_jobs(
 
 def test_messaging_startup_continues_when_preference_cleanup_fails(
     monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     calls: list[str] = []
 
-    def fake_prune(_messaging: MessagingResources) -> PushPreferencePruneResult:
+    def fake_prune(_messaging: MessagingService) -> PushPreferencePruneResult:
         calls.append("prune")
         raise RuntimeError
 
     async def fake_register(
+        _messaging: MessagingService,
         _scheduler: object,
-        _messaging: MessagingResources,
     ) -> None:
         calls.append("register")
 
-    monkeypatch.setattr(runtime, "prune_stale_push_preferences", fake_prune)
-    monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
+    monkeypatch.setattr(MessagingService, "_prune_stale_preferences", fake_prune)
+    monkeypatch.setattr(MessagingService, "register_schedules", fake_register)
 
     asyncio.run(
-        runtime.start_messaging(
-            object(),
-            _messaging_resources(Path("unused.sqlite")),
+        _messaging_resources(tmp_path / "unsubscribe.sqlite").start(
+            FakeScheduler(),
         )
     )
 
@@ -210,12 +217,13 @@ def test_messaging_startup_continues_when_preference_cleanup_fails(
 
 def test_push_time_refresh_uses_explicit_job_owner(
     monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     calls: list[tuple[str, object]] = []
 
     async def fake_register(
+        _messaging: MessagingService,
         scheduler: object,
-        _messaging: MessagingResources,
     ) -> None:
         calls.append(("message", scheduler))
 
@@ -223,39 +231,43 @@ def test_push_time_refresh_uses_explicit_job_owner(
         async def schedule_reminders(self, scheduler: object) -> None:
             calls.append(("activity", scheduler))
 
-    scheduler = object()
+    scheduler = FakeScheduler()
     activity_service = cast("ActivityService", FakeActivityService())
-    messaging = _messaging_resources(Path("unused.sqlite"))
-    monkeypatch.setattr(message_schedules, "register_message_schedules", fake_register)
+    messaging = _messaging_resources(tmp_path / "unsubscribe.sqlite")
+    monkeypatch.setattr(MessagingService, "register_schedules", fake_register)
     option = PushTimeOption("test", "测试", "test", CRON_TIME_PREFERENCE, "", "")
     for preference_type in (
         CRON_TIME_PREFERENCE,
         ACTIVITY_LEAD_HOURS_PREFERENCE,
     ):
         asyncio.run(
-            refresh_push_time_jobs(
+            messaging.refresh_push_time_jobs(
                 replace(option, preference_type=preference_type),
                 scheduler=scheduler,
                 activity_service=activity_service,
-                messaging=messaging,
             )
         )
 
     assert calls == [("message", scheduler), ("activity", scheduler)]
 
 
-def test_push_subscription_menu_prompt_marks_current_state() -> None:
-    prompt = build_messaging_push_subscription_menu_prompt(
+def test_push_subscription_menu_prompt_marks_current_state(tmp_path: Path) -> None:
+    options = [
+        PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
+        PushSubscriptionOption(
+            "startup_data_sync",
+            "启动数据同步通知",
+            "admin_notice",
+            unsubscribed=True,
+        ),
+    ]
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        extra_push_options=lambda _target_type, _target_id: options,
+    )
+    _, prompt = messaging.subscription_menu(
         "private",
-        [
-            PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
-            PushSubscriptionOption(
-                "startup_data_sync",
-                "启动数据同步通知",
-                "admin_notice",
-                unsubscribed=True,
-            ),
-        ],
+        1001,
     )
 
     assert "请选择要切换的私聊推送订阅：" in prompt
@@ -264,12 +276,17 @@ def test_push_subscription_menu_prompt_marks_current_state() -> None:
     assert "输入序号切换" in prompt
 
 
-def test_push_subscription_menu_prompt_can_be_read_only() -> None:
-    prompt = build_messaging_push_subscription_menu_prompt(
+def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
+    options = [
+        PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
+    ]
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        extra_push_options=lambda _target_type, _target_id: options,
+    )
+    _, prompt = messaging.subscription_menu(
         "group",
-        [
-            PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
-        ],
+        1001,
         read_only=True,
     )
 
@@ -279,32 +296,38 @@ def test_push_subscription_menu_prompt_can_be_read_only() -> None:
     assert "输入序号切换" not in prompt
 
 
-def test_group_push_subscription_command_allows_superuser_member() -> None:
+def test_group_push_subscription_command_allows_superuser_member(
+    tmp_path: Path,
+) -> None:
     assert asyncio.run(
         matcher_rules.match_push_subscription_command(
             _group_event(),
             {},
-            config=PushUnsubscribeConfig(),
+            messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
         )
     )
 
 
-def test_group_push_subscription_command_allows_regular_member_to_view() -> None:
+def test_group_push_subscription_command_allows_regular_member_to_view(
+    tmp_path: Path,
+) -> None:
     assert asyncio.run(
         matcher_rules.match_push_subscription_command(
             _group_event(),
             {},
-            config=PushUnsubscribeConfig(),
+            messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
         )
     )
 
 
-def test_group_push_subscription_management_command_matches_regular_member() -> None:
+def test_group_push_subscription_management_command_matches_regular_member(
+    tmp_path: Path,
+) -> None:
     assert asyncio.run(
         matcher_rules.match_push_subscription_command(
             _group_event("推送管理", user_id=3003),
             {},
-            config=PushUnsubscribeConfig(),
+            messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
         )
     )
 
@@ -331,11 +354,7 @@ def test_scheduled_messages_append_fire_manual_ad(
             message = limiter(message, group_ids[0])  # type: ignore[operator]
         sent.append((message, kwargs))
 
-    monkeypatch.setattr(
-        message_schedules,
-        "send_broadcast_message",
-        fake_send_broadcast_message,
-    )
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_private_schedule(
             _private_schedule("私聊定时"),
@@ -381,11 +400,7 @@ def test_private_schedule_passes_subscription_key(
     ) -> None:
         sent.append((message, kwargs))
 
-    monkeypatch.setattr(
-        message_schedules,
-        "send_broadcast_message",
-        fake_send_broadcast_message,
-    )
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_private_schedule(
             _private_schedule("私聊定时"),
@@ -403,14 +418,16 @@ def test_group_schedule_skips_default_time_for_overridden_group(
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
     data_path = tmp_path / "unsubscribe.sqlite"
+    store = PushUnsubscribeStore(data_path)
     messaging = _messaging_resources(
         data_path,
         group_policy={
             "1001": ["text_push"],
             "1002": ["text_push"],
         },
+        store=store,
     )
-    messaging.store.set_time_preference(
+    store.set_time_preference(
         "group",
         1001,
         "daily",
@@ -425,11 +442,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
     ) -> None:
         sent.append((message, kwargs))
 
-    monkeypatch.setattr(
-        message_schedules,
-        "send_broadcast_message",
-        fake_send_broadcast_message,
-    )
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_group_schedule(
             _group_schedule("group push", at_user_ids=[], schedule_id="daily"),

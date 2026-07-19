@@ -46,8 +46,8 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
 - `IronsBot Logs`: `/mnt/user/appdata/ironsbot/logs` -> `/app/logs`
 - `Docker Socket`: `/var/run/docker.sock` -> `/var/run/docker.sock`，用于镜像检查、容器重启和自更新
-- `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 一致
-- `SUPERUSERS`: 超级管理员 QQ，例如 `["1234567890"]`
+- `IRONSBOT_ONEBOT_TOKEN`: 与 NapCat 反向 WebSocket token 一致
+- `[bot].superusers`: 在 `/config/ironsbot.toml` 中填写超级管理员 QQ 列表
 
 NapCat 反向 WebSocket：
 
@@ -66,25 +66,25 @@ WebSocket 都连接到同一个 IronsBot 地址。普通查询由收到事件的
 B站、活动、定时消息、开服与管理通知等主动推送可以按群或用户选择发送机器人：
 
 ```toml
-[runtime.bot_routing]
+[messaging.bot_routing]
 enabled = true
 default_bot = "main_bot"
 
-[runtime.bot_routing.bot_aliases]
+[messaging.bot_routing.bot_aliases]
 main_bot = 111111111
 backup_bot = 222222222
 
-[runtime.bot_routing.groups]
+[messaging.bot_routing.groups]
 group_a = "main_bot"
 group_b = "backup_bot"
 
-[runtime.bot_routing.users]
+[messaging.bot_routing.users]
 owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-`group_a/group_b` 和 `owner/user_a` 分别引用 `[feature.group_aliases]`、
-`[feature.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会先回退
+`group_a/group_b` 和 `owner/user_a` 分别引用 `[features.group_aliases]`、
+`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会先回退
 到 `default_bot`，再回退到任意在线 OneBot 机器人，并记录 warning。第一版只控制
 主动发送，不过滤接收事件；同一个群放入多个机器人时，它们仍可能同时收到并响应。
 
@@ -104,17 +104,14 @@ services:
       # 可选但推荐：默认会检查镜像；挂载后 /重启机器人 和 /更新镜像 可重启/更新容器。
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      ENVIRONMENT: "prod"
-      HOST: "0.0.0.0"
-      PORT: "8080"
-      APP_CONFIG_PATH: "/config/ironsbot.toml"
-      ONEBOT_ACCESS_TOKEN: "change-me"
-      SUPERUSERS: '["1234567890"]'
+      IRONSBOT_CONFIG: "/config/ironsbot.toml"
+      IRONSBOT_ONEBOT_TOKEN: "change-me"
     restart: always
 ```
 
-首次启动时，如果 `./ironsbot-config/ironsbot.toml` 不存在，IronsBot 会自动从镜像内的
-`/app/config.example.toml` 复制一份示例配置。启动后请先修改这份 TOML，再正式使用。
+启动前先根据 [config.example.toml](config.example.toml) 创建
+`./ironsbot-config/ironsbot.toml`。配置缺失或包含旧字段时会直接阻止启动，不会自动
+生成、修复或兼容旧结构。
 完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
@@ -130,48 +127,38 @@ services:
 
 ## 插件架构
 
-用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
+用户功能集中在 `ironsbot/plugins`。仓库不会扫描目录或维护平行 manifest；
+`python -m ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
+`ironsbot/app/registry.py` 中唯一的 `PluginDefinition` 注册表安装命令入口、
+外部依赖和生命周期钩子。
 
-| 插件 | 作用 |
-| --- | --- |
-| `seer.query` | 自定义赛尔号查询、榜单、群星牌、活动相关入口。 |
-| `help` | 按当前群/私聊权限显示可用功能。 |
-| `about` | 新版关于页。 |
-| `sendpic` | 固定关键词发图。 |
-| `messaging` | 通用文本回复、定时消息、事件回复和批量发送。 |
-| `bilibili` | B站动态监控与点播，支持账号级 TD 退订和账号级推送模式覆盖。 |
-| `meeting` | 腾讯会议回复。 |
-| `team_resource_subscription` | 战队资源订阅、群内订阅战队查询与低资源提醒。 |
-| `activity` | 当前活动、快结束活动和活动结束提醒。 |
-| `server_status` | 开服查询与管理员服务器状态指令。 |
-| `headless_seer_notice` | 无头登录状态检查、重连和通知。 |
-| `ai_chat` | AI 聊天。 |
-| `ai_intent` | AI 意图分析，并把命中的意图分发给对应功能。 |
-| `ai_intent_team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
-| `scheduled_restart` | 每日定时重启机器人进程。 |
-
-仓库不会扫描插件目录整目录加载；`bot.py` 委托 `ironsbot/app/bootstrap.py`，并按 `ironsbot/app/registry.py` 中唯一的 `PluginDefinition` 注册表显式安装外部依赖、命令入口和生命周期钩子。
+- 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
+- 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
+- 推送：B站动态、游戏活动、开服状态和战队资源。
+- AI：聊天、提及保护、意图识别和模板动作。
+- 运维：数据同步、无头登录、启动通知、定时重启和 Docker 更新。
 
 ## 配置方式
 
-行为配置写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
+行为与部署配置都写在 TOML 文件里，并通过 `IRONSBOT_CONFIG` 指向它。环境变量只保留：
 
-- secrets：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、可选 `SENDPIC_CNB_TOKEN`
-- credentials：`HEADLESS_SEER_USER_ID`、`HEADLESS_SEER_PASSWORD`
-- deployment runtime：`ENVIRONMENT`、`DRIVER`、`HOST`、`PORT`、`LOG_LEVEL`、`COMMAND_START`、`SUPERUSERS`、`APP_CONFIG_PATH`
+- 配置位置：`IRONSBOT_CONFIG`
+- 密钥：`IRONSBOT_ONEBOT_TOKEN`、`IRONSBOT_AI_KEY`、`IRONSBOT_SEER_USER_ID`、
+  `IRONSBOT_SEER_PASSWORD`、`IRONSBOT_SENDPIC_TOKEN`、`IRONSBOT_GITHUB_TOKEN`
 
 示例环境变量：
 
 ```env
-APP_CONFIG_PATH=/config/ironsbot.toml
-ONEBOT_ACCESS_TOKEN=change-me
-SUPERUSERS=["1234567890"]
-AI_KEY=
-HEADLESS_SEER_USER_ID=
-HEADLESS_SEER_PASSWORD=
+IRONSBOT_CONFIG=/config/ironsbot.toml
+IRONSBOT_ONEBOT_TOKEN=change-me
+IRONSBOT_AI_KEY=
+IRONSBOT_SEER_USER_ID=
+IRONSBOT_SEER_PASSWORD=
+IRONSBOT_SENDPIC_TOKEN=
+IRONSBOT_GITHUB_TOKEN=
 ```
 
-`APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
+`IRONSBOT_CONFIG` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
 Desktop 可以把任意可写目录挂载到 `/config`：
 
@@ -179,40 +166,33 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 <你的 Windows 配置目录>\ironsbot.toml -> /config/ironsbot.toml
 ```
 
-如果这个文件不存在，首次启动会自动按 [config.example.toml](config.example.toml)
-创建一份。已有文件不会被覆盖。若你把 `/config` 挂成只读，需要先手动创建
-`ironsbot.toml`，或首次启动时改成可写挂载。
+该文件必须在启动前存在，可直接以 [config.example.toml](config.example.toml) 为模板。
+程序只读并严格校验配置，不会修改磁盘上的 TOML。真实 env 文件包含密钥，不纳入仓库；
+使用 Docker Compose 时可参考 [.env.example](.env.example) 手动创建。
 
-自动创建 `ironsbot.toml` 时，IronsBot 还会在同目录生成
-`ironsbot.env.example`。它只是环境变量示例，真实的 `ironsbot.env.prod`
-不会自动创建，因为里面需要填写 OneBot token、超级管理员、AI key 和无头账号等密钥。
-如果使用 Docker Compose 的 `env_file`，请复制示例并手动填写后再引用。
-
-如果没有设置 `APP_CONFIG_PATH`，IronsBot 会默认读取当前工作目录的
-`config/ironsbot.toml`；这个文件不存在时也会自动从 `config.example.toml`
-创建。也就是说，无论 Windows、Linux、macOS、Docker 还是源码运行，只要程序能
-找到示例配置且目标目录可写，缺少 TOML 时都会自动生成一份。日志默认写入当前工作
-目录的 `logs/`，运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载
+如果没有设置 `IRONSBOT_CONFIG`，IronsBot 会默认读取当前工作目录的
+`config/ironsbot.toml`；文件不存在会立即报错。日志默认写入当前工作目录的 `logs/`，
+运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载
 `/app/logs`，启用文件日志后完整日志和错误日志都能在宿主机上直接查看。
 
 示例 TOML：
 
 ```toml
-[feature]
+[features]
 superuser_bypass = true
 
-[feature.group_aliases]
+[features.group_aliases]
 admin = 123456789
 example = 987654321
 
-[feature.user_aliases]
+[features.user_aliases]
 owner = 1234567890
 
-[feature.group_policy]
+[features.group_policy]
 admin = ["admin_notice"]
 example = ["seer", "image", "seer_rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_intent_team_recommend", "ai_chat", "ai_intent", "fire_manual_ad", "ai_intent_fire_manual"]
 
-[feature.user_policy]
+[features.user_policy]
 owner = ["all"]
 
 [bilibili.accounts]
@@ -259,8 +239,8 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 [config.example.toml](config.example.toml) 是当前唯一权威示例；升级时应直接删除
 旧字段并使用当前结构，不会保留旧字段兼容或静默忽略逻辑。
 
-帮助提示与未开启 AI 群的 @ 提示共用 `[runtime.help]` 的两项限流配置。
-用户命令冷却统一放在 `[runtime.command_cooldown]`：同一 QQ 的同一语义命令
+帮助提示与未开启 AI 群的 @ 提示共用 `[features.help]` 的两项限流配置。
+用户命令冷却统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
 跨群、私聊和多个机器人账号共用冷却，不同语义命令互不影响。成功、失败、
 超时和异常都会在命令结束后进入相同冷却；超级管理员绕过。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、
@@ -270,7 +250,7 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 `message_private.<id>` / `message_group.<id>`，AI 意图使用
 `ai_intent.<action_id>`；对应 `id` 必须稳定且不可为空。
 
-群消息发送额度使用 `[message.outbound_rate_limit].windows` 的多个精确滑动窗口。
+群消息发送额度使用 `[messaging.outbound_rate_limit].windows` 的多个精确滑动窗口。
 任一窗口达到上限都会抑制后续普通回复；主动推送可以在每群独立 FIFO 队列中
 短暂等待，私聊和启用 `admin_notice` 的管理群不计入群额度。
 
@@ -330,7 +310,7 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 - 皮肤价格、渲染缓存等运行数据
 
 超级管理员发送 `/更新数据` 时，IronsBot 会先按
-`[runtime.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
 GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
@@ -339,19 +319,19 @@ GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例
 4. `Murmansk-Seer/api-data`：用 Solaris 构建 SeerAPI 基础 SQLite。
 5. `Murmansk-Seer/seerapi`：合并基础库、官方 ConfigPackage 补充表和自定义表，发布 IronsBot 运行库。
 
-启用远程构建时，环境变量需要填写 `GITHUB_WORKFLOW_TOKEN`。默认情况下，启动同步和定时同步只下载
+启用远程构建时，环境变量需要填写 `IRONSBOT_GITHUB_TOKEN`。默认情况下，启动同步和定时同步只下载
 已有 release，不触发 Actions，避免容器启动过慢或频繁消耗 GitHub Actions。启动同步默认开启；
 如不希望开机下载 release，可设置：
 
 ```toml
-[runtime.data_sync]
+[operations.data_sync]
 on_startup = false
 ```
 
 若希望开机时近似执行一次 `/更新数据`，可同时设置：
 
 ```toml
-[runtime.data_sync]
+[operations.data_sync]
 on_startup = true
 startup_trigger_remote_build = true
 ```
@@ -375,7 +355,7 @@ Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket �
 TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 
 ```toml
-[runtime.docker_update]
+[operations.docker_update]
 check_on_startup = true
 check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
@@ -388,14 +368,14 @@ watchtower_docker_api_version = "1.40"
 如果不想让机器人自然启动时检查镜像，可改为：
 
 ```toml
-[runtime.docker_update]
+[operations.docker_update]
 check_on_startup = false
 ```
 
 如果不想让手动 `/重启机器人` 或 `/更新镜像` 时检查镜像，可改为：
 
 ```toml
-[runtime.docker_update]
+[operations.docker_update]
 check_on_restart = false
 ```
 
@@ -434,7 +414,7 @@ GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不�
 
 - 小型 bug 修复：手动 port 到当前架构，或在确认冲突范围后单独 cherry-pick。
 - 数据和别名更新：进入 SeerAPI / alias SQLite 数据构建流程，不在 bot 仓库恢复旧 CSV。
-- 精灵查询、渲染、协议能力：通过 `vendor` 边界或 `services` 层吸收，不恢复原版用户入口。
+- 精灵查询、渲染、协议能力：按 `services` / `integrations` 边界吸收，不恢复原版用户入口。
 - 上游结构性重构：默认不跟随，除非它修复了当前项目里的具体问题。
 
 也就是说，上游现在是参考源和补丁来源，不是可以直接同步的主线。
@@ -444,7 +424,7 @@ GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不�
 ```powershell
 uv sync --group dev
 uv run python scripts/check_repo.py
-uv run python bot.py
+uv run python -m ironsbot
 ```
 
 如果 Windows 终端中文显示异常，可以在当前 PowerShell 会话里先执行：

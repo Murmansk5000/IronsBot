@@ -3,22 +3,21 @@ import pytest
 from ironsbot.config.models.ai import (
     DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_FIRE_MANUAL_INTENT,
-    DEFAULT_JOIN_TEAM_MESSAGE,
     UNKNOWN_AI_ACTION_ERROR,
     AiConfig,
-    AiIntentAction,
-    resolve_configured_actions,
 )
 from ironsbot.core.messaging import (
+    DEFAULT_JOIN_TEAM_MESSAGE,
     FIRE_MANUAL_LINK_MESSAGE,
     FIRE_MANUAL_URL,
+    AiIntentAction,
 )
 
 DEFAULT_AI_ACTION_COUNT = 2
 
 
 def test_default_ai_actions_include_team_recommend_and_fire_manual() -> None:
-    actions = resolve_configured_actions(AiConfig())
+    actions = list(AiConfig().intent_actions.values())
 
     assert len(actions) == DEFAULT_AI_ACTION_COUNT
     action = actions[0]
@@ -49,7 +48,7 @@ def test_admin_notice_defaults_live_in_ai_config() -> None:
 
 
 def test_configured_actions_override_builtin_actions_by_id() -> None:
-    actions = resolve_configured_actions(
+    actions = list(
         AiConfig(
             intent_actions={
                 "team_recommend": AiIntentAction(
@@ -57,7 +56,7 @@ def test_configured_actions_override_builtin_actions_by_id() -> None:
                     message="自定义战队回复",
                 )
             }
-        )
+        ).intent_actions.values()
     )
 
     assert [action.id for action in actions] == ["team_recommend", "fire_manual"]
@@ -66,8 +65,10 @@ def test_configured_actions_override_builtin_actions_by_id() -> None:
 
 
 def test_default_actions_can_be_disabled_explicitly() -> None:
-    actions = resolve_configured_actions(
-        AiConfig(intent_actions={"fire_manual": AiIntentAction(enabled=False)})
+    actions = list(
+        AiConfig(
+            intent_actions={"fire_manual": AiIntentAction(enabled=False)}
+        ).intent_actions.values()
     )
 
     manual_action = next(

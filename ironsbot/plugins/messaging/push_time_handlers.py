@@ -8,9 +8,14 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.shared.messaging import message_event_target
-from ironsbot.shared.messaging.push_subscription_models import PushTargetType
-from ironsbot.utils.matcher import enter_prompt_loop
+from ironsbot.runtime.matchers import enter_prompt_loop
+from ironsbot.runtime.replies import message_event_target
+from ironsbot.services.messaging.push_time import (
+    PushTimeOption,
+    build_push_time_menu_prompt,
+    normalize_push_time_input,
+    push_time_value_prompt,
+)
 
 from .push_management_runtime import (
     PUSH_TIME_FLOW,
@@ -18,20 +23,10 @@ from .push_management_runtime import (
     PUSH_TIME_SELECTED_KEY,
     PUSH_TIME_TARGET_ID_KEY,
 )
-from .push_time import (
-    PushTimeOption,
-    build_push_time_menu_prompt,
-    build_push_time_options,
-    normalize_push_time_input,
-    push_time_value_prompt,
-)
 
 if TYPE_CHECKING:
-    from ironsbot.shared.messaging.push_subscription_store import (
-        PushUnsubscribeStore,
-    )
-
-    from .runtime_service import MessagingResources
+    from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 RefreshPushTimeJobs = Callable[[PushTimeOption], Awaitable[None]]
 
@@ -42,27 +37,21 @@ class PushTimeValueContext:
     target_type: PushTargetType
     target_id: int
     refresh_push_time_jobs: RefreshPushTimeJobs
-    store: PushUnsubscribeStore
-    options_for: BuildPushTimeOptions
+    messaging: MessagingService
 
 
 PushTimeHandler = Callable[[Matcher, MessageEvent, T_State], Awaitable[None]]
-BuildPushTimeOptions = Callable[[PushTargetType, int], list[PushTimeOption]]
 
 
 def build_push_time_menu_handler(
     refresh_push_time_jobs: RefreshPushTimeJobs,
-    messaging: MessagingResources,
+    messaging: MessagingService,
 ) -> PushTimeHandler:
     def options_for(
         target_type: PushTargetType,
         target_id: int,
     ) -> list[PushTimeOption]:
-        return build_push_time_options(
-            target_type,
-            target_id,
-            messaging=messaging,
-        )
+        return messaging.push_time_options(target_type, target_id)
 
     async def handle_push_time_menu(
         matcher: Matcher,
@@ -81,7 +70,7 @@ def build_push_time_menu_handler(
         await enter_prompt_loop(
             matcher,
             handlers=[handle_push_time_select],
-            rule=PUSH_TIME_FLOW.rule(session_id, version, target_type),
+            rule=PUSH_TIME_FLOW.rule(state, session_id, version, target_type),
             prompt=build_push_time_menu_prompt(target_type, options),
         )
 
@@ -120,8 +109,7 @@ def build_push_time_menu_handler(
                 target_type=target_type,
                 target_id=target_id,
                 refresh_push_time_jobs=refresh_push_time_jobs,
-                store=messaging.store,
-                options_for=options_for,
+                messaging=messaging,
             ),
         )
 
@@ -179,27 +167,19 @@ async def _handle_push_time_value(
         await PUSH_TIME_FLOW.reject(matcher, state, str(e), selection=False)
         return
 
-    if normalized is None:
-        context.store.clear_time_preference(
-            context.target_type,
-            context.target_id,
-            option.key,
-            option.preference_type,
-        )
-        result_message = f"已恢复默认：{option.label}。"
-    else:
-        context.store.set_time_preference(
-            context.target_type,
-            context.target_id,
-            option.key,
-            option.preference_type,
-            normalized,
-        )
-        result_message = f"已设置：{option.label} -> {normalized}。"
+    result_message = context.messaging.update_push_time(
+        target_type=context.target_type,
+        target_id=context.target_id,
+        option=option,
+        value=normalized,
+    )
 
     await context.refresh_push_time_jobs(option)
     state.pop(PUSH_TIME_SELECTED_KEY, None)
-    refreshed_options = context.options_for(context.target_type, context.target_id)
+    refreshed_options = context.messaging.push_time_options(
+        context.target_type,
+        context.target_id,
+    )
     state[PUSH_TIME_OPTIONS_KEY] = refreshed_options
     prompt = (
         f"{result_message}\n\n"

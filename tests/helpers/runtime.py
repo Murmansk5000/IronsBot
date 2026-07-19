@@ -2,40 +2,49 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.message import (
+from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.config.models.messaging import (
+    BotRoutingConfig,
+    CommandCooldownConfig,
     OutboundRateLimitConfig,
     PushUnsubscribeConfig,
 )
-from ironsbot.config.models.runtime import (
-    BotRoutingConfig,
-    CommandCooldownConfig,
-    MatcherPriorityConfig,
+from ironsbot.config.models.settings import MatcherPriorityConfig
+from ironsbot.core.features import (
+    FeatureConfig,
+    FeatureService,
     SuperuserPriorityConfig,
 )
-from ironsbot.runtime.matchers import MatcherRegistry
-from ironsbot.services.admin_priority import AdminPriorityService
-from ironsbot.shared.features import FeatureService
-from ironsbot.shared.messaging.admin_notice import AdminNoticeService
-from ironsbot.shared.messaging.bot_router import BotRouter
-from ironsbot.shared.messaging.command_cooldown import CommandCooldownService
-from ironsbot.shared.messaging.outbound_rate_limit import (
+from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
 )
-from ironsbot.shared.messaging.senders import DeliveryResources
+from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
+from ironsbot.runtime.priority import AdminPriorityService
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
 
 @dataclass(frozen=True, slots=True)
 class TestRuntime:
     features: FeatureService
-    delivery: DeliveryResources
+    delivery: OneBotDelivery
     admin_notices: AdminNoticeService
     priority: AdminPriorityService
     cooldown: CommandCooldownService
     matcher_priorities: MatcherPriorityConfig
+    prompt_sessions: PromptSessionManager
+    tasks: TaskOwner
 
     def matcher_registry(self) -> MatcherRegistry:
-        return MatcherRegistry(self.cooldown, self.matcher_priorities)
+        return MatcherRegistry(
+            self.cooldown,
+            self.matcher_priorities,
+            before_reply_send=self.priority.wait,
+            prompt_session_manager=self.prompt_sessions,
+        )
 
 
 def build_test_runtime(  # noqa: PLR0913
@@ -53,17 +62,21 @@ def build_test_runtime(  # noqa: PLR0913
         resolved_feature_config,
         frozenset(superuser_ids),
     )
-    delivery = DeliveryResources(
+    push_config = push_unsubscribe or PushUnsubscribeConfig()
+    tasks = TaskOwner()
+    delivery = OneBotDelivery(
         GroupOutboundRateLimitService(
             outbound_config or OutboundRateLimitConfig(),
             features,
+            tasks.create,
         ),
-        push_unsubscribe or PushUnsubscribeConfig(),
+        push_config,
         BotRouter(
             BotRoutingConfig(),
             resolved_feature_config.group_aliases,
             resolved_feature_config.user_aliases,
         ),
+        PushUnsubscribeStore(push_config.data_path),
     )
     return TestRuntime(
         features=features,
@@ -78,4 +91,6 @@ def build_test_runtime(  # noqa: PLR0913
             features,
         ),
         matcher_priorities=matcher_priority_config or MatcherPriorityConfig(),
+        prompt_sessions=PromptSessionManager(),
+        tasks=tasks,
     )

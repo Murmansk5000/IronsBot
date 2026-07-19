@@ -29,10 +29,3 @@ class ActivityConfig(BaseModel):
     @classmethod
     def coerce_int_list(cls, value: object) -> object:
         return positive_int_list(value)
-
-
-__all__ = [
-    "DEFAULT_ACTIVITY_MESSAGE",
-    "DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS",
-    "ActivityConfig",
-]

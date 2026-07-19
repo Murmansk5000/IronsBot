@@ -62,6 +62,7 @@ except RuntimeError as e:
         raise
 
 from ironsbot.config.models.seer import RankQueryConfig
+from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.services.seer.rank import RankPageCache, RankService
 from ironsbot.services.seer.rank_models import RankPageResult
 from ironsbot.services.seer.rank_page_cache_models import (
@@ -151,7 +152,15 @@ def _build_rank(
         score_search_tie_page_limit=score_search_tie_page_limit,
     )
     cache = FakeRankPageCache()
-    return RankService(config, cast("RankPageCache", cache)), cache
+    return (
+        RankService(
+            config,
+            cast("RankPageCache", cache),
+            lambda: None,
+            fetch_rank_page,
+        ),
+        cache,
+    )
 
 
 def test_score_rank_lookup_uses_rank_limit_not_online_limit(

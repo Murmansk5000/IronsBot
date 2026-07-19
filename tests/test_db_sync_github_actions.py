@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-from ironsbot.config.models.runtime import RemoteBuildConfig
+from ironsbot.config.models.operations import RemoteBuildConfig
 from ironsbot.integrations.db_sync.github_actions import (
     GitHubActionsClientError,
     WorkflowRunResult,

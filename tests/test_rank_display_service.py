@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from ironsbot.config.models.seer import RankQueryConfig
+from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.services.seer.rank_display import RankDisplayService
 
 GROUP_ID = 987654321
@@ -18,10 +19,21 @@ def _rank_config(tmp_path: Path) -> RankQueryConfig:
     )
 
 
+def _service(
+    config: RankQueryConfig,
+    aliases: dict[str, int],
+) -> RankDisplayService:
+    return RankDisplayService(
+        config,
+        aliases,
+        SqliteRankDisplayStore(config.display_limit_path),
+    )
+
+
 def test_rank_display_limit_prefers_stored_group_limit(
     tmp_path: Path,
 ) -> None:
-    service = RankDisplayService(_rank_config(tmp_path), {})
+    service = _service(_rank_config(tmp_path), {})
 
     service.set_group_limit(
         group_id=GROUP_ID,
@@ -38,6 +50,6 @@ def test_rank_display_limit_uses_configured_alias(
     rank_config = _rank_config(tmp_path).model_copy(
         update={"display_limits": {"example": ALIAS_LIMIT}}
     )
-    service = RankDisplayService(rank_config, {"example": GROUP_ID})
+    service = _service(rank_config, {"example": GROUP_ID})
 
     assert service.limit_for_group(GROUP_ID) == ALIAS_LIMIT

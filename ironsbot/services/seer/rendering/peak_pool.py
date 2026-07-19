@@ -5,17 +5,11 @@ import asyncio
 import hashlib
 from typing import TYPE_CHECKING, TypedDict
 
-from nonebot_plugin_htmlkit import template_to_pic
-
-from ironsbot.integrations.seer_data.image import (
-    ElementTypeImageGetter,
-    PetHeadImageGetter,
-)
+from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_paths import (
     PEAK_POOL_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.utils.image import to_data_uri
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -24,8 +18,7 @@ if TYPE_CHECKING:
 
     from ironsbot.services.seer.render_cache import RenderCache
 
-TEMPLATE_PATH = PEAK_POOL_TEMPLATE_PATH
-SHARED_PATH = SHARED_TEMPLATE_PATH
+    from . import HtmlTemplateRenderer
 
 CELL_WIDTH = 100 + 2 * 2  # pet-cell width + border
 CELL_GAP = 10
@@ -57,6 +50,8 @@ def _peak_pool_cache_key(
 
 async def render_peak_pool(
     cache: RenderCache,
+    images: SeerImageSource,
+    render_html: HtmlTemplateRenderer,
     pools: Sequence[PeakPoolORM | PeakExpertPoolORM],
     pool_type: str,
 ) -> bytes:
@@ -78,8 +73,8 @@ async def render_peak_pool(
     type_id_list = list(unique_type_ids)
 
     results = await asyncio.gather(
-        *(PetHeadImageGetter.get_bytes(rid) for rid in rid_list),
-        *(ElementTypeImageGetter.get_bytes(str(tid)) for tid in type_id_list),
+        *(images.fetch("pet_head", rid) for rid in rid_list),
+        *(images.fetch("element_type", str(tid)) for tid in type_id_list),
     )
 
     head_bytes_list = results[: len(rid_list)]
@@ -118,8 +113,8 @@ async def render_peak_pool(
     grid_width = cols * CELL_WIDTH + (cols - 1) * CELL_GAP
     max_width = grid_width + POOL_OVERHEAD + CONTAINER_PADDING
 
-    result = await template_to_pic(
-        template_path=[TEMPLATE_PATH, SHARED_PATH],
+    result = await render_html(
+        template_path=[PEAK_POOL_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
         templates={
             "pools": pool_dicts,

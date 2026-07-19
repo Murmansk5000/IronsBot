@@ -7,44 +7,30 @@ from types import ModuleType
 import pytest
 from pydantic import ValidationError
 
-from ironsbot.config.loader import (
-    CONFIG_EXAMPLE_PATH_ENV,
-    ENV_EXAMPLE_PATH_ENV,
-    load_app_config,
-    load_credentials_config,
-    load_deployment_config,
-    load_secrets_config,
-    parse_toml_file,
-)
-from ironsbot.config.models.app import AppConfig
-from ironsbot.config.models.bilibili import DEFAULT_BILI_ACCOUNT_UID
-from ironsbot.config.models.deployment import DeploymentConfig
-from ironsbot.config.models.message import (
+from ironsbot.config.loader import CONFIG_ENV, load_settings
+from ironsbot.config.models.messaging import (
+    BotRoutingConfig,
+    CommandCooldownConfig,
+    CommandMessageAction,
     GroupScheduledMessageAction,
     MessageConfig,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
-    PrivateCommandMessageAction,
     PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
+    TeamAuditWelcomeConfig,
 )
-from ironsbot.config.models.runtime import (
-    BotRoutingConfig,
-    CommandCooldownConfig,
-    DockerUpdateConfig,
-    MatcherPriorityConfig,
-)
-from ironsbot.config.models.secrets import CredentialsConfig, SecretsConfig
+from ironsbot.config.models.operations import DockerUpdateConfig
 from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
     TeamResourceConfig,
 )
+from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
+from ironsbot.core.bilibili import DEFAULT_BILI_ACCOUNT_UID
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
-DEPLOYMENT_PORT = 9090
-SUPERUSER_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -79,7 +65,6 @@ PUBLIC_TEXT_PATHS = (
     *ACTIVE_CONFIG_SURFACE_PATHS,
     ROOT / "README.md",
     ROOT / "docker" / "README.md",
-    ROOT / "ironsbot" / "plugins" / "seer_data" / "__init__.py",
 )
 STALE_ACTIVE_CONFIG_PATTERNS = (
     r"\buid_modes\b",
@@ -145,8 +130,8 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
 
 
-def _assert_example_bot_routing(config: AppConfig) -> None:
-    routing = config.runtime.bot_routing
+def _assert_example_bot_routing(config: Settings) -> None:
+    routing = config.messaging.bot_routing
     assert not routing.enabled
     assert routing.default_bot == "main_bot"
     assert routing.bot_aliases == {
@@ -163,10 +148,9 @@ def _assert_example_bot_routing(config: AppConfig) -> None:
     }
 
 
-def _assert_default_team_audit_welcome(config: AppConfig) -> None:
-    team_audit = config.message.team_audit_welcome
+def _assert_default_team_audit_welcome(config: Settings) -> None:
+    team_audit = config.messaging.team_audit_welcome
     assert not team_audit.enabled
-    assert team_audit.feature == "team_audit"
     assert "米米号" in team_audit.message
     assert team_audit.followup_enabled
     assert team_audit.followup_after_hours == DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS
@@ -178,6 +162,12 @@ def _assert_default_team_audit_welcome(config: AppConfig) -> None:
     )
     assert "仍然还在审核群" in team_audit.final_followup_message
     assert team_audit.followup_cache_path == "data/team_audit_welcome/pending.sqlite"
+
+
+@pytest.mark.parametrize("field", ["feature", "groups"])
+def test_team_audit_rejects_removed_target_fields(field: str) -> None:
+    with pytest.raises(ValidationError):
+        TeamAuditWelcomeConfig.model_validate({field: "team_audit"})
 
 
 def _assert_default_matcher_priorities(
@@ -230,14 +220,14 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
 
 
 def test_example_config_parses() -> None:
-    config = load_app_config(ROOT / "config.example.toml")
+    config = load_settings(ROOT / "config.example.toml")
 
-    assert config.feature.superuser_bypass
-    assert config.feature.group_aliases == {
+    assert config.features.superuser_bypass
+    assert config.features.group_aliases == {
         "group_a": 987654321,
         "group_b": 876543210,
     }
-    assert config.feature.user_aliases == {
+    assert config.features.user_aliases == {
         "owner": 1234567890,
         "user_a": 2345678901,
     }
@@ -251,11 +241,11 @@ def test_example_config_parses() -> None:
     assert config.bilibili.push.modes == {"seer": "full"}
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
-    assert config.message.meeting.commands == ["开播", "会议"]
-    _assert_default_push_unsubscribe(config.message.push_unsubscribe)
-    assert config.message.red_packet_notice.enabled
+    assert config.messaging.meeting.commands == ["开播", "会议"]
+    _assert_default_push_unsubscribe(config.messaging.push_unsubscribe)
+    assert config.messaging.red_packet_notice.enabled
     assert (
-        config.message.red_packet_notice.cooldown_seconds
+        config.messaging.red_packet_notice.cooldown_seconds
         == DEFAULT_RED_PACKET_NOTICE_COOLDOWN
     )
     _assert_default_team_audit_welcome(config)
@@ -272,18 +262,18 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
-    assert config.runtime.data_sync.on_startup
+    assert config.operations.data_sync.on_startup
     _assert_example_bot_routing(config)
-    assert not config.runtime.data_sync.startup_trigger_remote_build
-    assert config.runtime.data_sync.sources["seerapi"].local_path
-    assert config.runtime.data_sync.sources["seerapi"].remote_build.enabled
-    _assert_default_docker_update(config.runtime.docker_update)
-    assert not config.runtime.logging.file_enabled
-    assert config.runtime.logging.file_path == "logs/ironsbot.log"
-    assert not config.runtime.logging.error_file_enabled
-    assert config.runtime.logging.error_file_path == "logs/ironsbot.error.log"
-    _assert_default_matcher_priorities(config.runtime.matcher_priority)
-    remote_build_steps = config.runtime.data_sync.sources[
+    assert not config.operations.data_sync.startup_trigger_remote_build
+    assert config.operations.data_sync.sources["seerapi"].local_path
+    assert config.operations.data_sync.sources["seerapi"].remote_build.enabled
+    _assert_default_docker_update(config.operations.docker_update)
+    assert not config.bot.logging.file_enabled
+    assert config.paths.log_file == Path("logs/ironsbot.log")
+    assert not config.bot.logging.error_file_enabled
+    assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
+    _assert_default_matcher_priorities(config.bot.matcher_priority)
+    remote_build_steps = config.operations.data_sync.sources[
         "seerapi"
     ].remote_build.steps
     assert [step.name for step in remote_build_steps] == [
@@ -313,11 +303,11 @@ def test_example_config_parses() -> None:
         "force": False,
     }
     assert remote_build_steps[4].inputs == {"force": False}
-    assert config.runtime.help.ignored_plugins == []
+    assert config.features.help.ignored_plugins == []
 
 
 def test_example_config_has_no_unknown_fields() -> None:
-    AppConfig.model_validate(parse_toml_file(ROOT / "config.example.toml"))
+    assert isinstance(load_settings(ROOT / "config.example.toml", env={}), Settings)
 
 
 def test_scheduled_push_requires_stable_id() -> None:
@@ -360,7 +350,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action requires a non-empty id",
     ):
-        PrivateCommandMessageAction(
+        CommandMessageAction(
             commands=["hello"],
             message="world",
         )
@@ -369,7 +359,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action id may only contain",
     ):
-        PrivateCommandMessageAction(
+        CommandMessageAction(
             id="daily reminder",
             commands=["hello"],
             message="world",
@@ -418,7 +408,7 @@ def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
 def test_bot_routing_config_rejects_unknown_bot_alias() -> None:
     with pytest.raises(
         ValidationError,
-        match=r"runtime\.bot_routing\.groups\.group_a",
+        match=r"messaging\.bot_routing\.groups\.group_a",
     ):
         BotRoutingConfig(
             enabled=True,
@@ -470,40 +460,17 @@ def test_rank_page_refresh_active_window_requires_start_and_end() -> None:
         RankPageRefreshConfig(active_start="07:30")
 
 
-def test_missing_app_config_is_created_from_example(tmp_path: Path) -> None:
+def test_missing_app_config_fails_without_mutating_disk(tmp_path: Path) -> None:
     config_path = tmp_path / "config" / "ironsbot.toml"
-    config = load_app_config(
-        config_path,
-        env={
-            CONFIG_EXAMPLE_PATH_ENV: str(ROOT / "config.example.toml"),
-            ENV_EXAMPLE_PATH_ENV: str(ROOT / ".env.example"),
-        },
+    with pytest.raises(FileNotFoundError):
+        load_settings(config_path, env={})
+    assert not config_path.exists()
+
+
+def test_config_path_is_selected_by_single_environment_variable() -> None:
+    config = load_settings(
+        env={CONFIG_ENV: str(ROOT / "config.example.toml")}
     )
-
-    assert config_path.exists()
-    env_example_path = tmp_path / "config" / "ironsbot.env.example"
-    assert env_example_path.exists()
-    assert config.ai.model == "deepseek-v4-pro"
-    assert "SPDX-License-Identifier" in config_path.read_text(encoding="utf-8")
-    assert "ONEBOT_ACCESS_TOKEN" in env_example_path.read_text(encoding="utf-8")
-
-
-def test_default_app_config_is_created_when_path_env_is_missing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.chdir(tmp_path)
-
-    config = load_app_config(
-        env={
-            CONFIG_EXAMPLE_PATH_ENV: str(ROOT / "config.example.toml"),
-            ENV_EXAMPLE_PATH_ENV: str(ROOT / ".env.example"),
-        },
-    )
-
-    config_path = tmp_path / "config" / "ironsbot.toml"
-    assert config_path.exists()
-    assert (tmp_path / "config" / "ironsbot.env.example").exists()
     assert config.ai.model == "deepseek-v4-pro"
 
 
@@ -513,7 +480,7 @@ def test_unknown_app_config_fields_are_rejected_with_exact_path(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[message.group_commands]]
+[[messaging.group_commands]]
 id = "hello"
 commands = ["hello"]
 message = "world"
@@ -524,11 +491,11 @@ unknown_command_field = true
     )
 
     with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+        load_settings(config_path)
 
     assert (
         exc_info.value.errors()[0]["loc"]
-        == ("message", "group_commands", 0, "unknown_command_field")
+        == ("messaging", "group_commands", 0, "unknown_command_field")
     )
 
 
@@ -538,17 +505,17 @@ def test_unregistered_feature_policy_is_rejected_with_exact_path(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[feature.group_policy]
+[features.group_policy]
 main = ["seer_player", "rank"]
 """.strip(),
         encoding="utf-8",
     )
 
     with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+        load_settings(config_path)
 
-    assert exc_info.value.errors()[0]["loc"] == ("feature",)
-    assert "feature.group_policy.main[1]=rank" in str(exc_info.value)
+    assert exc_info.value.errors()[0]["loc"] == ("features",)
+    assert "features.group_policy.main[1]=rank" in str(exc_info.value)
 
 
 def test_unknown_bilibili_account_is_rejected_with_exact_path(
@@ -564,7 +531,7 @@ accounts = ["missing_account"]
     )
 
     with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+        load_settings(config_path)
 
     assert exc_info.value.errors()[0]["loc"] == ("bilibili",)
     assert (
@@ -585,7 +552,7 @@ sections = ["basic", "unknown_section"]
     )
 
     with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+        load_settings(config_path)
 
     assert exc_info.value.errors()[0]["loc"] == ("seer", "player", "sections")
     assert "seer.player.sections contains unknown section(s)" in str(exc_info.value)
@@ -601,7 +568,7 @@ path = "data/custom-player-bindings.sqlite"
         encoding="utf-8",
     )
 
-    config = load_app_config(config_path)
+    config = load_settings(config_path)
 
     assert config.seer.player.binding.path == Path(
         "data/custom-player-bindings.sqlite"
@@ -622,7 +589,7 @@ message = "hello"
     )
 
     with pytest.raises(ValidationError) as exc_info:
-        load_app_config(config_path)
+        load_settings(config_path)
 
     assert exc_info.value.errors()[0]["loc"] == ("ai",)
     assert "ai.intent_actions.custom_action:" in str(exc_info.value)
@@ -640,17 +607,7 @@ display_limit = "not an integer"
     )
 
     with pytest.raises(ValidationError):
-        load_app_config(config_path)
-
-
-def test_dev_and_prod_configs_parse() -> None:
-    assert load_app_config(ROOT / "config.dev.toml").feature.group_aliases == {}
-    assert load_app_config(ROOT / "config.prod.toml").runtime.data_sync.on_startup
-    assert (
-        not load_app_config(ROOT / "config.prod.toml")
-        .runtime.data_sync
-        .startup_trigger_remote_build
-    )
+        load_settings(config_path)
 
 
 def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
@@ -665,55 +622,46 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
     assert config.default_at_users == ["owner", "1234567890"]
 
 
-def test_env_secrets_credentials_and_deployment_are_separate() -> None:
+def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     env = {
-        "ONEBOT_ACCESS_TOKEN": "token",
-        "AI_KEY": "sk-test",
-        "SENDPIC_CNB_TOKEN": "cnb-token",
-        "GITHUB_WORKFLOW_TOKEN": "gh-token",
-        "HEADLESS_SEER_USER_ID": str(HEADLESS_USER_ID),
-        "HEADLESS_SEER_PASSWORD": "md5",
-        "ENVIRONMENT": "dev",
-        "PORT": str(DEPLOYMENT_PORT),
-        "COMMAND_START": '["/",""]',
-        "SUPERUSERS": f"[{SUPERUSER_ID}]",
+        "IRONSBOT_ONEBOT_TOKEN": "token",
+        "IRONSBOT_AI_KEY": "sk-test",
+        "IRONSBOT_SENDPIC_TOKEN": "cnb-token",
+        "IRONSBOT_GITHUB_TOKEN": "gh-token",
+        "IRONSBOT_SEER_USER_ID": str(HEADLESS_USER_ID),
+        "IRONSBOT_SEER_PASSWORD": "md5",
     }
 
-    secrets = load_secrets_config(env)
-    credentials = load_credentials_config(env)
-    deployment = load_deployment_config(env)
+    settings = load_settings(ROOT / "config.example.toml", env=env)
 
-    assert isinstance(secrets, SecretsConfig)
-    assert isinstance(credentials, CredentialsConfig)
-    assert isinstance(deployment, DeploymentConfig)
-    assert secrets.ai_key == "sk-test"
-    assert secrets.github_workflow_token == "gh-token"
-    assert credentials.headless_seer_user_id == HEADLESS_USER_ID
-    assert deployment.port == DEPLOYMENT_PORT
-    assert deployment.command_start == ["/", ""]
-    assert deployment.superusers == [SUPERUSER_ID]
+    assert settings.bot.onebot_token == "token"
+    assert settings.ai.api_key == "sk-test"
+    assert settings.messaging.sendpic.cnb_token == "cnb-token"
+    assert settings.operations.data_sync.github_token == "gh-token"
+    assert settings.operations.headless.user_id == HEADLESS_USER_ID
+    assert settings.operations.headless.password == "md5"
 
 
 def test_app_config_defaults_cover_runtime_services() -> None:
-    app_config = load_app_config(ROOT / "config.example.toml")
+    app_config = load_settings(ROOT / "config.example.toml")
 
     assert app_config.ai.model == "deepseek-v4-pro"
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (
-        app_config.runtime.help.hint_max_per_window
+        app_config.features.help.hint_max_per_window
         == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
     assert app_config.activity.lead_hours == [11, 1]
-    assert "seerapi" in app_config.runtime.data_sync.sources
+    assert "seerapi" in app_config.operations.data_sync.sources
     assert (
-        app_config.message.outbound_rate_limit.windows[0].max_messages
+        app_config.messaging.outbound_rate_limit.windows[0].max_messages
         == DEFAULT_OUTBOUND_MAX_MESSAGES
     )
-    assert app_config.message.meeting.commands == ["开播", "会议"]
-    assert "aliases" in app_config.runtime.data_sync.sources
-    assert app_config.runtime.priority.enabled
-    assert app_config.seer.render.cache_dir == Path("render_cache")
+    assert app_config.messaging.meeting.commands == ["开播", "会议"]
+    assert "aliases" in app_config.operations.data_sync.sources
+    assert app_config.features.priority.enabled
+    assert app_config.paths.render_cache == Path("render_cache")
     assert (
         app_config.seer.render.cache_max_size_mb
         == DEFAULT_RENDER_CACHE_MAX_SIZE_MB

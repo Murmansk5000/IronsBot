@@ -1,9 +1,10 @@
 from pathlib import Path
 from typing import Any
 
-from ironsbot.services.bilibili.dynamic_history import (
-    BiliDynamicHistoryStore,
+from ironsbot.integrations.storage.bilibili_history import (
+    SqliteBiliDynamicHistoryStore,
 )
+from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
 from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 
 AUTHOR_UID = 1310714247
@@ -34,7 +35,7 @@ def _dynamic_item(
 
 
 def test_save_dynamic_history_snapshot_persists_fields(tmp_path: Path) -> None:
-    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
     item = {"id_str": "dynamic-1"}
     snapshot = DynamicHistorySnapshot(
         item=item,
@@ -62,10 +63,11 @@ def test_save_dynamic_history_snapshot_persists_fields(tmp_path: Path) -> None:
 def test_save_target_dynamic_history_builds_and_saves_snapshots(
     tmp_path: Path,
 ) -> None:
-    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
     pattern = "恭喜.*奖励"
 
-    saved_count = history.save_target_dynamics(
+    saved_count = save_target_dynamics(
+        history,
         [
             (PUB_TS, _dynamic_item()),
             (PUB_TS, {"id_str": "missing-author"}),

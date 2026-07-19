@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -45,7 +46,7 @@ class ActivityService:
     config: ActivityConfig
     cache: ActivityInfoCache
     load_rows: Callable[[], list[Mapping[str, Any]]]
-    load_notice_text: Callable[[datetime], str]
+    load_notice_text: Callable[[datetime], Awaitable[str]]
     cache_ttl: timedelta
     soon_ending_threshold: timedelta
     filter_unsent: Callable[[list[ActivityReminder]], list[ActivityReminder]]
@@ -56,7 +57,7 @@ class ActivityService:
     broadcast: Callable[[ActivityReminderDelivery], Awaitable[bool]]
     now: Callable[[], datetime]
 
-    def active_activity_infos(self, now: datetime) -> list[ActivityInfo]:
+    async def active_activity_infos(self, now: datetime) -> list[ActivityInfo]:
         if self.cache.expires_at is not None and self.cache.expires_at > now:
             return [
                 activity
@@ -68,22 +69,26 @@ class ActivityService:
                 )
             ]
 
+        rows, notice_text = await asyncio.gather(
+            asyncio.to_thread(self.load_rows),
+            self.load_notice_text(now),
+        )
         activities = build_active_activity_infos(
-            self.load_rows(),
+            rows,
             now,
-            notice_text=self.load_notice_text(now),
+            notice_text=notice_text,
         )
         self.cache.items = activities
         self.cache.expires_at = now + self.cache_ttl
         return list(activities)
 
-    def soon_ending_activity_infos(
+    async def soon_ending_activity_infos(
         self,
         now: datetime,
     ) -> list[ActivityInfo]:
         activities = [
             activity
-            for activity in self.active_activity_infos(now)
+            for activity in await self.active_activity_infos(now)
             if activity_is_soon_ending(
                 activity,
                 now,
@@ -103,7 +108,7 @@ class ActivityService:
             ),
         )
 
-    def build_current_message(
+    async def build_current_message(
         self,
         *,
         limit: int | None = None,
@@ -111,9 +116,9 @@ class ActivityService:
     ) -> str:
         now = self.now()
         activities = (
-            self.soon_ending_activity_infos(now)
+            await self.soon_ending_activity_infos(now)
             if soon_only
-            else self.active_activity_infos(now)
+            else await self.active_activity_infos(now)
         )
         if not activities:
             return (
@@ -159,7 +164,7 @@ class ActivityService:
         valid = filter_reminders_before_send(
             reminders,
             now=now,
-            current_activities=self.soon_ending_activity_infos(now),
+            current_activities=await self.soon_ending_activity_infos(now),
             dispatch_tolerance=REMINDER_DISPATCH_TOLERANCE,
             soon_ending_threshold=self.soon_ending_threshold,
         )
@@ -190,7 +195,7 @@ class ActivityService:
             now = self.now()
             reminders = self.filter_unsent(
                 build_scheduled_reminders(
-                    self.soon_ending_activity_infos(now),
+                    await self.soon_ending_activity_infos(now),
                     now,
                     lead_hours=self._configured_lead_hours(),
                     grace=timedelta(minutes=self.config.grace_minutes),

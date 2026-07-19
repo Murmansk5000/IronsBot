@@ -2,27 +2,31 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
 
 ACTIVITY_REQUIRED_COLUMNS = frozenset(
     {"id", "name", "end_time", "is_show", "sort_order"}
 )
-_logged_warnings: set[str] = set()
 _LOGGER = logging.getLogger(__name__)
 
 
-def _warn_activity_data_unavailable(key: str, reason: str) -> None:
-    if key in _logged_warnings:
+def _warn_activity_data_unavailable(
+    logged_warnings: set[str],
+    key: str,
+    reason: str,
+) -> None:
+    if key in logged_warnings:
         return
 
     _LOGGER.warning("activity reminder skipped: %s", reason)
-    _logged_warnings.add(key)
+    logged_warnings.add(key)
 
 
 def _activity_table_columns(session: Any) -> set[str]:
@@ -30,25 +34,25 @@ def _activity_table_columns(session: Any) -> set[str]:
     return {str(row["name"]) for row in rows if row.get("name") is not None}
 
 
-def load_activity_rows(
-    session_provider: Callable[[str], Any | None],
+def _load_activity_rows(
+    session: Any | None,
+    logged_warnings: set[str],
     *,
-    database_name: str,
     only_shown: bool,
 ) -> list[Mapping[str, Any]]:
-    gen = session_provider(database_name)
-    if gen is None:
+    if session is None:
         _warn_activity_data_unavailable(
+            logged_warnings,
             "missing_session",
             "SeerAPI database not ready",
         )
         return []
 
     try:
-        session = next(gen)
         columns = _activity_table_columns(session)
         if not columns:
             _warn_activity_data_unavailable(
+                logged_warnings,
                 "missing_table",
                 (
                     "activity table missing in SeerAPI database; run /更新数据 "
@@ -61,6 +65,7 @@ def load_activity_rows(
         missing_columns = ACTIVITY_REQUIRED_COLUMNS - columns
         if missing_columns:
             _warn_activity_data_unavailable(
+                logged_warnings,
                 "invalid_schema",
                 (
                     "activity table schema is missing columns: "
@@ -112,15 +117,30 @@ def load_activity_rows(
     except OperationalError as e:
         _LOGGER.debug("activity reminder query failed", exc_info=True)
         _warn_activity_data_unavailable(
+            logged_warnings,
             "query_failed",
             f"activity table query failed: {e.__class__.__name__}",
         )
         return []
-    finally:
-        gen.close()
 
-    _logged_warnings.discard("missing_session")
-    _logged_warnings.discard("missing_table")
-    _logged_warnings.discard("invalid_schema")
-    _logged_warnings.discard("query_failed")
+    logged_warnings.difference_update(
+        {"missing_session", "missing_table", "invalid_schema", "query_failed"}
+    )
     return list(rows)
+
+
+@dataclass(slots=True)
+class ActivityRepository:
+    _logged_warnings: set[str] = field(default_factory=set)
+
+    def load(
+        self,
+        session: Any | None,
+        *,
+        only_shown: bool,
+    ) -> list[Mapping[str, Any]]:
+        return _load_activity_rows(
+            session,
+            self._logged_warnings,
+            only_shown=only_shown,
+        )

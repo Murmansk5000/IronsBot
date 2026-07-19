@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -46,11 +47,14 @@ def _service(
     async def broadcast(_delivery: ActivityReminderDelivery) -> bool:
         return True
 
+    async def load_notice_text(_now: datetime) -> str:
+        return ""
+
     return ActivityService(
         config=ActivityConfig(),
         cache=ActivityInfoCache(),
         load_rows=load_rows or (lambda: rows),
-        load_notice_text=lambda _now: "",
+        load_notice_text=load_notice_text,
         cache_ttl=cache_ttl,
         soon_ending_threshold=timedelta(days=7),
         filter_unsent=lambda reminders: reminders,
@@ -77,8 +81,11 @@ def test_active_activity_infos_reuses_cache_and_filters_against_now() -> None:
         load_rows=load_rows,
     )
 
-    assert [item.activity_id for item in service.active_activity_infos(dt(11))] == [1]
-    assert service.active_activity_infos(dt(12, 11)) == []
+    first = asyncio.run(service.active_activity_infos(dt(11)))
+    second = asyncio.run(service.active_activity_infos(dt(12, 11)))
+
+    assert [item.activity_id for item in first] == [1]
+    assert second == []
     assert calls == 1
 
 
@@ -91,7 +98,7 @@ def test_build_current_message_renders_and_limits_activities() -> None:
         now=dt(11),
     )
 
-    message = service.build_current_message(limit=1)
+    message = asyncio.run(service.build_current_message(limit=1))
 
     assert "📅【当前活动】" in message
     assert "1. 银河斗技场：06-01 10:00 ~ 06-12 10:00 | 剩余：1天" in message
@@ -102,6 +109,6 @@ def test_build_current_message_handles_empty_soon_ending_list() -> None:
     service = _service([], now=dt(11))
 
     assert (
-        service.build_current_message(soon_only=True)
+        asyncio.run(service.build_current_message(soon_only=True))
         == EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
     )

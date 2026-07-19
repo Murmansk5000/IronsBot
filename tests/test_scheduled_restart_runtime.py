@@ -1,7 +1,5 @@
-from ironsbot.config.models.runtime import RestartConfig
-from ironsbot.plugins.scheduled_restart import (
-    runtime as scheduled_restart_runtime,
-)
+from ironsbot.config.models.operations import RestartConfig
+from ironsbot.plugins.operations import restart as scheduled_restart_runtime
 
 
 class FakeScheduler:
@@ -14,6 +12,10 @@ class FakeScheduler:
 
 def test_register_restart_job_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
+
+    async def restart_process() -> None:
+        return
+
     config = RestartConfig.model_validate(
         {
             "enabled": True,
@@ -22,7 +24,12 @@ def test_register_restart_job_uses_standard_scheduler_fields() -> None:
         }
     )
 
-    scheduled_restart_runtime.register_restart_jobs(scheduler, config)
+    scheduled_restart_runtime.register_restart_jobs(
+        scheduler,
+        restart_times=tuple(config.parsed_restart_times),
+        grace_seconds=config.grace_seconds,
+        restart_process=restart_process,
+    )
 
     assert scheduler.jobs == [
         {
@@ -30,7 +37,7 @@ def test_register_restart_job_uses_standard_scheduler_fields() -> None:
             "trigger": "cron",
             "id": "scheduled_bot_restart:04:30",
             "replace_existing": True,
-            "args": ["04:30", config],
+            "args": ["04:30", 0.0, restart_process],
             "hour": 4,
             "minute": 30,
             "second": 0,

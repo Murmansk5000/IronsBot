@@ -1,20 +1,19 @@
+from __future__ import annotations
+
 import re
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
-)
-
-from ironsbot.config.models.ai import (
-    AiIntentAction,
-)
 from ironsbot.core.commands import (
     command_text_matches,
     normalize_command_text,
 )
 from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
-from ironsbot.shared.features import FeatureService
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ironsbot.core.features import FeatureService
+    from ironsbot.core.messaging import AiIntentAction
 
 FIRE_MANUAL_ANNOUNCEMENT_MARKERS = (
     "发布",
@@ -127,33 +126,35 @@ def excluded_by_context(text: str, action: AiIntentAction) -> bool:
 
 def is_action_allowed(
     features: FeatureService,
-    event: MessageEvent,
+    user_id: int,
+    group_id: int | None,
     action: AiIntentAction,
 ) -> bool:
-    if isinstance(event, GroupMessageEvent):
+    if group_id is not None:
         if action.feature == FIRE_MANUAL_INTENT_FEATURE:
-            return features.group_has_feature(event.group_id, action.feature)
+            return features.group_has_feature(group_id, action.feature)
         return features.is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
+            user_id,
+            group_id,
             action.feature,
         )
 
-    return features.is_private_feature_allowed(event.user_id, action.feature)
+    return features.is_private_feature_allowed(user_id, action.feature)
 
 
 def is_ai_intent_allowed(
     features: FeatureService,
-    event: MessageEvent,
+    user_id: int,
+    group_id: int | None,
 ) -> bool:
-    if isinstance(event, GroupMessageEvent):
+    if group_id is not None:
         return features.is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
+            user_id,
+            group_id,
             "ai_intent",
         )
 
-    return features.is_private_feature_allowed(event.user_id, "ai_intent")
+    return features.is_private_feature_allowed(user_id, "ai_intent")
 
 
 def format_action_template(action: AiIntentAction, template: str, text: str) -> str:

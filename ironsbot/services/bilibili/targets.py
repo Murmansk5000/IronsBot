@@ -1,29 +1,29 @@
 from dataclasses import dataclass, field
 
-from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
-    PrivateMessageEvent,
-)
-
-from ironsbot.config.models.bilibili import (
+from ironsbot.core.bilibili import (
     BiliConfig,
     BiliPushMode,
     BiliPushTargetConfig,
 )
-from ironsbot.services.bilibili.accounts import account_uid
+from ironsbot.core.features import FeatureService
+from ironsbot.services.bilibili.accounts import (
+    account_display_label,
+    account_nickname,
+    account_uid,
+    bili_accounts,
+    resolve_account_reference,
+)
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
     bili_push_subscription_key,
     bili_push_subscription_label,
+    normalize_push_mode_text,
+    push_mode_label,
 )
-from ironsbot.shared.features import FeatureService
-from ironsbot.shared.messaging.push_subscription_models import (
+from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
+    PushSubscriptionRepository,
     PushTargetType,
-)
-from ironsbot.shared.messaging.push_subscription_store import (
-    PushUnsubscribeStore,
 )
 
 
@@ -176,7 +176,7 @@ class BiliTargetService:
     config: BiliConfig
     features: FeatureService
     preferences: BiliPushPreferenceStore
-    unsubscribe_store: PushUnsubscribeStore
+    unsubscribe_store: PushSubscriptionRepository
 
     def configured_group_rules(self) -> dict[int, BiliTargetRule]:
         return _resolve_group_rules(self.features, self.config)
@@ -226,13 +226,6 @@ class BiliTargetService:
                 return sorted(rule.uids)
             return []
         return self.monitored_uids() if self.features.is_superuser(user_id) else []
-
-    def query_uids_for_event(self, event: MessageEvent) -> list[int]:
-        if isinstance(event, GroupMessageEvent):
-            return self.query_uids_for_group(event.user_id, event.group_id)
-        if isinstance(event, PrivateMessageEvent):
-            return self.query_uids_for_private(event.user_id)
-        return []
 
     def _rules(self, target_type: PushTargetType) -> dict[int, BiliTargetRule]:
         return (
@@ -299,6 +292,91 @@ class BiliTargetService:
             for uid in sorted(rule.uids)
         ]
 
+    def account_summary(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> str:
+        accounts = bili_accounts(self.config)
+        lines = [
+            "📺【B站账号】",
+            "账号库："
+            + "、".join(
+                (
+                    f"{nickname}（{uid}）"
+                    if (nickname := account_nickname(name, self.config))
+                    else f"{name}={uid}"
+                )
+                for name, uid in accounts.items()
+            ),
+        ]
+        rule = self.target_rule(target_type, target_id)
+        if rule is None:
+            lines.append("当前会话未开启 B站推送。")
+            return "\n".join(lines)
+
+        unsubscribed = self.unsubscribe_store.target_unsubscribed_keys(
+            target_type,
+            target_id,
+        )
+        lines.append("当前订阅：")
+        for account in sorted(rule.accounts):
+            uid = accounts[account]
+            mode = self.mode_for_account(target_type, target_id, account)
+            td_text = (
+                "，已 TD"
+                if bili_push_subscription_key(uid) in unsubscribed
+                else ""
+            )
+            lines.append(
+                f"- {account_display_label(account, self.config, uid=uid)}："
+                f"{push_mode_label(mode)}{td_text}"
+            )
+        lines.append(
+            "群主/管理员可发送：B站推送模式 <账号昵称> <内容|链接|默认>"
+        )
+        return "\n".join(lines)
+
+    def update_push_mode(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        account_ref: str,
+        raw_mode: str,
+    ) -> str:
+        if not account_ref.strip() or not raw_mode.strip():
+            return _push_mode_usage()
+
+        account = resolve_account_reference(account_ref, self.config)
+        uid = account_uid(account, self.config) if account is not None else None
+        if account is None or uid is None:
+            return f"❌ 未知 B站账号：{account_ref}\n可发送“B站账号”查看账号库。"
+
+        rule = self.target_rule(target_type, target_id)
+        if self.mode_for_account(target_type, target_id, account) is None:
+            return f"❌ 当前会话没有订阅 B站账号：{account_ref}。"
+        if rule is None or account not in rule.accounts:
+            return _push_mode_usage()
+
+        try:
+            mode = normalize_push_mode_text(raw_mode)
+        except ValueError:
+            return _push_mode_usage()
+
+        if mode is None:
+            self.preferences.clear_mode(target_type, target_id, uid)
+        else:
+            self.preferences.set_mode(target_type, target_id, uid, mode)
+
+        effective_mode = self.mode_for_account(target_type, target_id, account)
+        scope = "当前群" if target_type == "group" else "当前私聊"
+        account_text = account_display_label(account, self.config, uid=uid)
+        return (
+            f"已设置{scope} B站账号 {account_text}推送模式："
+            f"{push_mode_label(mode)}。\n"
+            f"当前生效模式：{push_mode_label(effective_mode)}。"
+        )
+
     def push_targets_for_uid(self, uid: int) -> BiliPushTargets:
         full_group_ids: list[int] = []
         link_group_ids: list[int] = []
@@ -324,3 +402,12 @@ class BiliTargetService:
             full_user_ids=_unique_ints(full_user_ids),
             link_user_ids=_unique_ints(link_user_ids),
         )
+
+
+def _push_mode_usage() -> str:
+    return (
+        "用法：B站推送模式 <账号昵称> <内容|链接|默认>\n"
+        "例：B站推送模式 赛尔号官方 链接\n"
+        "例：B站推送模式 火火 内容\n"
+        "例：B站推送模式 火火 默认"
+    )

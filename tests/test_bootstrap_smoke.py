@@ -11,8 +11,7 @@ def test_application_bootstrap_smoke() -> None:
     script = """
 import os
 
-os.environ["APP_CONFIG_PATH"] = "config.example.toml"
-os.environ["LOG_LEVEL"] = "CRITICAL"
+os.environ["IRONSBOT_CONFIG"] = "config.example.toml"
 
 from nonebot.log import logger
 

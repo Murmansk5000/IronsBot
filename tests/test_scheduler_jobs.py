@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from ironsbot.integrations.scheduler.jobs import JobRegistry
+from ironsbot.services.operations.scheduler import JobRegistry
 
 
-@dataclass(frozen=True)
+@dataclass
 class FakeJob:
     id: str
 
@@ -15,10 +15,10 @@ class FakeScheduler:
         self.added_jobs: list[dict[str, object]] = []
         self.removed: list[str] = []
 
-    def add_job(self, func: object, trigger: str, **kwargs: object) -> object:
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> FakeJob:
         job = {"func": func, "trigger": trigger, **kwargs}
         self.added_jobs.append(job)
-        return job
+        return FakeJob(str(kwargs["id"]))
 
     def get_jobs(self) -> list[FakeJob]:
         return self.jobs
@@ -45,7 +45,7 @@ def test_job_registry_scopes_job_ids_and_prefix_removal() -> None:
     )
     removed = registry.remove_by_prefix(exclude={"startup_scan"})
 
-    assert job["id"] == "activity_reminder_startup_scan"
+    assert job.id == "activity_reminder_startup_scan"
     assert removed == 1
     assert scheduler.removed == ["activity_reminder_1h_123"]
 
@@ -60,12 +60,19 @@ def test_job_registry_replace_all_clears_prefix_before_registering() -> None:
     )
     registry = JobRegistry(scheduler, prefix="message_action_")
 
-    def register_jobs(active_registry: JobRegistry) -> object:
+    def register_jobs(active_registry: JobRegistry) -> FakeJob:
         return active_registry.add("task", "cron", job_id="new", minute=0)
 
     job = registry.replace_all(register_jobs, exclude={"keep"})
 
-    assert isinstance(job, dict)
     assert scheduler.removed == ["message_action_old"]
-    assert job["id"] == "message_action_new"
-    assert scheduler.added_jobs == [job]
+    assert job.id == "message_action_new"
+    assert scheduler.added_jobs == [
+        {
+            "func": "task",
+            "trigger": "cron",
+            "id": "message_action_new",
+            "replace_existing": True,
+            "minute": 0,
+        }
+    ]

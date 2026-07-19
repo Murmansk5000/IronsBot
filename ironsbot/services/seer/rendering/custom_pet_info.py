@@ -3,33 +3,22 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, Literal, NamedTuple, TypedDict
 
-from nonebot_plugin_htmlkit import template_to_pic
 from seerapi_models import MintmarkORM, PetORM, SkillInPetORM, SoulmarkORM
 from seerapi_models.mintmark import PetMintmarkLink, SkillMintmarkLink
 from sqlalchemy.orm import object_session
 from sqlmodel import col, select
 
-from ironsbot.integrations.seer_data.image import (
-    ElementTypeImageGetter,
-    MintmarkBodyImageGetter,
-    PetBodyImageGetter,
-    PetHeadImageGetter,
-)
+from ironsbot.services.ai.analysis_parser import AnalyzeDescParser
+from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.utils.analyze_parser import AnalyzeDescParser
-from ironsbot.utils.image import to_data_uri
 
-TEMPLATE_PATH = CUSTOM_PET_INFO_TEMPLATE_PATH
-SHARED_PATH = SHARED_TEMPLATE_PATH
-GENDER_ICON_PATH = PET_INFO_IMAGES_PATH
+from . import HtmlTemplateRenderer
 
-STAT_BAR_MAX_WIDTH = 120
-STAT_MAX_VALUE = 200
 SPECIAL_SOULMARK_PET_ID = 2500
 HIDDEN_SKILL_ID = 19002
 _ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
@@ -174,13 +163,18 @@ def _pet_introduction(pet: PetORM) -> str:
 
 
 def _gender_icon_data_uri(gender_id: int) -> str:
-    icon_path = GENDER_ICON_PATH / f"{gender_id}.png"
+    icon_path = PET_INFO_IMAGES_PATH / f"{gender_id}.png"
     if not icon_path.exists():
-        icon_path = GENDER_ICON_PATH / "0.png"
+        icon_path = PET_INFO_IMAGES_PATH / "0.png"
     return to_data_uri(icon_path.read_bytes())
 
 
-async def render_custom_pet_info(cache: RenderCache, pet: PetORM) -> bytes:
+async def render_custom_pet_info(
+    cache: RenderCache,
+    images: SeerImageSource,
+    render_html: HtmlTemplateRenderer,
+    pet: PetORM,
+) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     cached = cache.get("custom_pet_info", str(pet.id))
     if cached is not None:
@@ -260,11 +254,11 @@ async def render_custom_pet_info(cache: RenderCache, pet: PetORM) -> bytes:
         pet_body_bytes,
         *rest_results,
     ) = await asyncio.gather(
-        PetHeadImageGetter.get_bytes(str(pet.resource_id)),
-        PetBodyImageGetter.get_bytes(str(pet.resource_id)),
-        *(ElementTypeImageGetter.get_bytes(str(tid)) for tid in type_ids),
-        ElementTypeImageGetter.get_bytes("prop"),
-        *(MintmarkBodyImageGetter.get_bytes(str(mm.id)) for mm in mintmarks),
+        images.fetch("pet_head", str(pet.resource_id)),
+        images.fetch("pet_body", str(pet.resource_id)),
+        *(images.fetch("element_type", str(tid)) for tid in type_ids),
+        images.fetch("element_type", "prop"),
+        *(images.fetch("mintmark", str(mm.id)) for mm in mintmarks),
     )
 
     type_icon_count = len(type_ids) + 1  # +1 for "prop"
@@ -290,8 +284,8 @@ async def render_custom_pet_info(cache: RenderCache, pet: PetORM) -> bytes:
         for mm, icon_bytes in zip(mintmarks, mm_icon_results, strict=True)
     ]
 
-    result = await template_to_pic(
-        template_path=[TEMPLATE_PATH, SHARED_PATH],
+    result = await render_html(
+        template_path=[CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
         templates={
             "pet_name": pet.name,

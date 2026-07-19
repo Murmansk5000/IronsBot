@@ -1,9 +1,11 @@
+import asyncio
 from pathlib import Path
 
-from pytest import MonkeyPatch
-
+from ironsbot.core.features import FeatureConfig
+from ironsbot.integrations.storage.bilibili_history import (
+    SqliteBiliDynamicHistoryStore,
+)
 from ironsbot.services.bilibili.dynamic_history import (
-    BiliDynamicHistoryStore,
     DynamicHistoryRecord,
 )
 from ironsbot.services.bilibili.menu import (
@@ -12,6 +14,8 @@ from ironsbot.services.bilibili.menu import (
     dynamic_record_ids,
     select_cached_dynamic_id,
 )
+from ironsbot.services.bilibili.service import BiliFeedResponse
+from tests.helpers.bilibili import build_test_bilibili_service
 
 
 def _record(
@@ -34,7 +38,7 @@ def _record(
 
 
 def _save_record(
-    history: BiliDynamicHistoryStore,
+    history: SqliteBiliDynamicHistoryStore,
     record: DynamicHistoryRecord,
 ) -> None:
     history.save_item(
@@ -69,7 +73,7 @@ def test_dynamic_record_ids_returns_cached_ids() -> None:
 
 def test_select_cached_dynamic_id_handles_statuses() -> None:
     ok = select_cached_dynamic_id(["a", "b"], "2")
-    assert ok.is_ok
+    assert ok.status == "ok"
     assert ok.dynamic_id == "b"
     expected_count = 2
     assert ok.available_count == expected_count
@@ -85,7 +89,7 @@ def test_select_cached_dynamic_id_handles_statuses() -> None:
 def test_build_dynamic_detail_for_selection_renders_record(
     tmp_path: Path,
 ) -> None:
-    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
     _save_record(history, _record("dynamic-1"))
 
     result = build_dynamic_detail_for_selection(
@@ -94,16 +98,16 @@ def test_build_dynamic_detail_for_selection_renders_record(
         "1",
     )
 
-    assert result.is_ok
-    assert result.message is not None
+    assert result.status == "ok"
+    assert result.record is not None
     assert result.available_count == 1
-    assert "传送门: https://t.bilibili.com/dynamic-1" in str(result.message)
+    assert result.record.dynamic_id == "dynamic-1"
 
 
 def test_build_dynamic_detail_for_selection_handles_missing_record(
     tmp_path: Path,
 ) -> None:
-    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
     result = build_dynamic_detail_for_selection(
         history,
         ["dynamic-1"],
@@ -111,25 +115,47 @@ def test_build_dynamic_detail_for_selection_handles_missing_record(
     )
 
     assert result.status == "missing"
-    assert result.message is None
+    assert result.record is None
 
 
-def test_build_dynamic_detail_for_selection_handles_parse_failure(
-    monkeypatch: MonkeyPatch,
+def test_bilibili_service_owns_dynamic_query_and_history(
     tmp_path: Path,
 ) -> None:
-    history = BiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
-    _save_record(history, _record("dynamic-1"))
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.menu.parse_single_item",
-        lambda *_args, **_kwargs: None,
+    service = build_test_bilibili_service(
+        tmp_path,
+        feature_config=FeatureConfig(
+            group_policy={"1001": ["bili_query"]},
+        ),
     )
+    item = {
+        "id_str": "dynamic-1",
+        "modules": {
+            "module_author": {
+                "mid": 1310714247,
+                "name": "赛尔号",
+                "pub_ts": 1781004683,
+            },
+            "module_dynamic": {
+                "major": {
+                    "opus": {
+                        "summary": {"text": "测试动态"},
+                        "pics": [],
+                    }
+                }
+            },
+        },
+    }
 
-    result = build_dynamic_detail_for_selection(
-        history,
-        ["dynamic-1"],
-        "1",
-    )
+    async def fetch_feed(_cookie: str) -> BiliFeedResponse:
+        return BiliFeedResponse(
+            status_code=200,
+            data={"code": 0, "data": {"items": [item]}},
+        )
 
-    assert result.status == "parse_failed"
-    assert result.message is None
+    service.fetch_feed = fetch_feed
+    result = asyncio.run(service.query_dynamic_menu("group", 1001, 2001))
+
+    assert result.status == "ok"
+    assert result.dynamic_ids == ("dynamic-1",)
+    assert "赛尔号发布了一条动态" in result.prompt
+    assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"

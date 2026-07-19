@@ -4,13 +4,11 @@ from typing import TYPE_CHECKING, cast
 
 import nonebot
 
-from ironsbot.app.composition import build_headless_service
-from ironsbot.config.loader import clear_app_config_cache
-from ironsbot.config.models.app import AppConfig
+from ironsbot.config.models.settings import Settings
+from ironsbot.integrations.headless_seer.client import ClientManager
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
-clear_app_config_cache()
+os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
@@ -23,14 +21,14 @@ except RuntimeError as e:
     if "Plugin already exists" not in str(e):
         raise
 
-from ironsbot.config.models.secrets import CredentialsConfig
 from ironsbot.config.models.seer import (
     LocalRankConfig,
     PlayerQueryConfig,
     RankPageRefreshConfig,
 )
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
-from ironsbot.plugins.seer.query import runtime as seer_runtime
+from ironsbot.plugins.seer import runtime as seer_runtime
+from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from tests.helpers.runtime import build_test_runtime
@@ -38,11 +36,12 @@ from tests.helpers.runtime import build_test_runtime
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank import RankService
 
-TEST_CONFIG = AppConfig()
-TEST_RUNTIME = build_test_runtime(feature_config=TEST_CONFIG.feature)
-HEADLESS = build_headless_service(
-    TEST_CONFIG.runtime,
-    CredentialsConfig(),
+TEST_CONFIG = Settings()
+TEST_RUNTIME = build_test_runtime(feature_config=TEST_CONFIG.features)
+HEADLESS = HeadlessService(
+    ClientManager(TEST_RUNTIME.tasks.create),
+    TEST_CONFIG.operations.headless,
+    TEST_CONFIG.operations.headless_notice,
     TEST_RUNTIME.admin_notices,
 )
 RANK = cast("RankService", object())

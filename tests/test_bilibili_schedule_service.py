@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from ironsbot.config.models.bilibili import BiliIntervalWindow, BiliPollingConfig
+from ironsbot.core.bilibili import BiliIntervalWindow, BiliPollingConfig
 from ironsbot.services.bilibili.schedule import (
     AutoCheckState,
     auto_check_due,

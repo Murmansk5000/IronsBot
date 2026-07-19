@@ -6,15 +6,17 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.rule import Rule
 
-from ironsbot.shared.features.visibility import event_has_feature
+from ironsbot.runtime.feature_policy import event_has_feature
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from nonebot.adapters import Event
     from nonebot.matcher import Matcher
 
+    from ironsbot.core.features import FeatureService
     from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
     from ironsbot.services.seer.resources import SeerQueryResources
-    from ironsbot.shared.features import FeatureService
 
 
 def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
@@ -28,6 +30,8 @@ def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
 class SeerMatcherGroup:
     registry: MatcherRegistry
     resources: SeerQueryResources
+    features: FeatureService
+    release_priority: Callable[[dict[str, Any]], Awaitable[None]]
 
     def on_message(
         self,
@@ -53,16 +57,11 @@ class SeerMatcherGroup:
             **self._with_defaults(kwargs),
         )
 
-    def matcher_priority(self, feature: str, fallback: int | None = None) -> int:
-        return self.registry.priority(
-            feature,
-            fallback
-            if fallback is not None
-            else self.registry.priority("seer_query", 90),
-        )
+    def matcher_priority(self, feature: str) -> int:
+        return self.registry.priority(feature)
 
     def _with_defaults(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         options = dict(kwargs)
         options.setdefault("block", True)
-        options.setdefault("priority", self.registry.priority("seer_query", 2))
+        options.setdefault("priority", self.registry.priority("seer_query"))
         return options

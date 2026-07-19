@@ -9,57 +9,27 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.core.commands import command_text_matches
-from ironsbot.shared.permissions import can_manage_group_event
-
-from .push_management_runtime import (
-    PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS,
-    PUSH_TIME_COMMANDS,
-)
-from .runtime_service import find_command_action
+from ironsbot.runtime.permissions import can_manage_group_event
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from ironsbot.config.models.message import (
-        GroupCommandMessageAction,
-        PrivateCommandMessageAction,
-        PushUnsubscribeConfig,
-    )
-    from ironsbot.plugins.messaging.runtime_service import MessagingResources
+    from ironsbot.services.messaging.service import MessagingService
 
 PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
-
-
-def private_action_allowed(
-    messaging: MessagingResources,
-    event: PrivateMessageEvent,
-    action: PrivateCommandMessageAction,
-) -> bool:
-    return messaging.features.is_private_feature_allowed(
-        event.user_id,
-        action.feature,
-    )
 
 
 async def match_private_command(
     event: MessageEvent,
     state: T_State,
     *,
-    messaging: MessagingResources,
-    actions: Sequence[PrivateCommandMessageAction],
+    messaging: MessagingService,
 ) -> bool:
     if not isinstance(event, PrivateMessageEvent):
         return False
 
-    text = event.get_plaintext()
-    action = find_command_action(
-        text,
-        actions,
-        is_allowed=lambda candidate: private_action_allowed(
-            messaging, event, candidate
-        ),
+    action = messaging.match_private_action(
+        event.get_plaintext(),
+        event.user_id,
     )
     if action is not None:
         state[PRIVATE_ACTION_KEY] = action
@@ -72,21 +42,15 @@ async def match_group_command(
     event: MessageEvent,
     state: T_State,
     *,
-    messaging: MessagingResources,
-    actions: Sequence[GroupCommandMessageAction],
+    messaging: MessagingService,
 ) -> bool:
     if not isinstance(event, GroupMessageEvent):
         return False
 
-    text = event.get_plaintext()
-    action = find_command_action(
-        text,
-        actions,
-        is_allowed=lambda candidate: messaging.features.is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            candidate.feature,
-        ),
+    action = messaging.match_group_action(
+        event.get_plaintext(),
+        user_id=event.user_id,
+        group_id=event.group_id,
     )
     if action is not None:
         state[GROUP_ACTION_KEY] = action
@@ -96,35 +60,30 @@ async def match_group_command(
 
 
 def is_group_push_subscription_manager(
-    messaging: MessagingResources,
+    messaging: MessagingService,
     event: GroupMessageEvent,
 ) -> bool:
-    return can_manage_group_event(messaging.features, event)
+    return can_manage_group_event(messaging, event)
 
 
 async def match_push_subscription_command(
     event: MessageEvent,
     state: T_State,
     *,
-    config: PushUnsubscribeConfig,
+    messaging: MessagingService,
 ) -> bool:
     del state
     if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
 
-    text = event.get_plaintext()
-    if command_text_matches(text, PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS):
-        return True
-    if command_text_matches(text, config.commands):
-        return True
-    return command_text_matches(text, config.restore_commands)
+    return messaging.matches_subscription_command(event.get_plaintext())
 
 
 async def match_push_time_command(
     event: MessageEvent,
     state: T_State,
     *,
-    messaging: MessagingResources,
+    messaging: MessagingService,
 ) -> bool:
     del state
     if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
@@ -133,4 +92,4 @@ async def match_push_time_command(
         messaging, event
     ):
         return False
-    return command_text_matches(event.get_plaintext(), PUSH_TIME_COMMANDS)
+    return messaging.matches_push_time_command(event.get_plaintext())

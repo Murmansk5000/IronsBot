@@ -1,98 +1,153 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
+
+import pytest
+
+from ironsbot.config.models.seer import TeamQueryConfig
 from ironsbot.services.seer.team import (
-    format_team_generic_error_message,
-    format_team_info,
-    format_team_socket_error_message,
-    format_team_timeout_message,
-    format_team_unavailable_message,
+    SeerTeamQueryService,
+    TeamQueryActor,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.team.resource import TeamResourceService
 
 TEAM_ID = 123456
 
 
 @dataclass(frozen=True)
 class TeamInfo:
-    name: str
-    team_id: int
-    leader: int
-    member_count: int
-    new_team_level: int
-    exp: int
-    score: int
-    super_core_num: int
-    last_pay_time: int
-    tech_center_level: int
-    bonus_center_level: int
-    res_center_level: int
-    total_boss_dmg: int
-    interest: int
-    join_flag: int
-    visit_flag: int
-    team_func_disalbed: int
-    drawing_uint: int
-    logo_bg: int
-    logo_icon: int
-    logo_color: int
-    txt_color: int
-    logo_word: str
-    slogan: str
-    notice: str
+    name: str = "测试战队"
+    team_id: int = TEAM_ID
+    leader: int = 654321
+    member_count: int = 42
+    new_team_level: int = 9
+    score: int = 777
+    tech_center_level: int = 3
+    bonus_center_level: int = 4
+    res_center_level: int = 5
+    total_boss_dmg: int = 9999
+    interest: int = 1
+    join_flag: int = 2
+    visit_flag: int = 3
+    team_func_disalbed: int = 0
+    drawing_uint: int = 123
+    logo_bg: int = 11
+    logo_icon: int = 22
+    logo_color: int = 33
+    txt_color: int = 44
+    logo_word: str = "T"
+    slogan: str = "一起冲"
+    notice: str = "今晚集合"
 
 
-def _team_info() -> TeamInfo:
-    return TeamInfo(
-        name="测试战队",
-        team_id=123456,
-        leader=654321,
-        member_count=42,
-        new_team_level=9,
-        exp=8888,
-        score=777,
-        super_core_num=6,
-        last_pay_time=946684800,
-        tech_center_level=3,
-        bonus_center_level=4,
-        res_center_level=5,
-        total_boss_dmg=9999,
-        interest=1,
-        join_flag=2,
-        visit_flag=3,
-        team_func_disalbed=0,
-        drawing_uint=123,
-        logo_bg=11,
-        logo_icon=22,
-        logo_color=33,
-        txt_color=44,
-        logo_word="T",
-        slogan="一起冲",
-        notice="今晚集合",
+class FakeOperations:
+    @contextmanager
+    def track(self, *_args: object, **_kwargs: object) -> Iterator[None]:
+        yield
+
+
+class FakeGame:
+    user_id = 10001
+    operations = FakeOperations()
+
+    def __init__(self, result: TeamInfo | Exception) -> None:
+        self._result = result
+
+    async def get_team_info(self, _team_id: int) -> TeamInfo:
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+class FakeHeadless:
+    def __init__(self, result: TeamInfo | Exception) -> None:
+        self.game = FakeGame(result)
+        self.available = False
+
+    def get_game(self) -> FakeGame:
+        return self.game
+
+    async def mark_available(self, **_kwargs: object) -> None:
+        self.available = True
+
+    async def mark_unavailable(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+class FakeTeamResource:
+    def __init__(self) -> None:
+        self.offered = False
+
+    def offer_subscription(self, **_kwargs: object) -> str:
+        self.offered = True
+        return "订阅提示"
+
+
+def _service(
+    result: TeamInfo | Exception = TeamInfo(),
+) -> tuple[SeerTeamQueryService, FakeHeadless, FakeTeamResource]:
+    headless = FakeHeadless(result)
+    team_resource = FakeTeamResource()
+    service = SeerTeamQueryService(
+        TeamQueryConfig(sections=["basic", "resource"]),
+        cast("HeadlessService", headless),
+        lambda _code: None,
+        cast("TeamResourceService", team_resource),
     )
+    return service, headless, team_resource
 
 
-def test_format_team_info_respects_enabled_sections() -> None:
-    message = format_team_info(_team_info(), {"basic", "resource"})
+def test_team_service_parses_unique_valid_ids() -> None:
+    service, _headless, _resource = _service()
+
+    assert service.parse_team_ids(
+        "战队123456 99 123456 2000000001 654321"
+    ) == (123456, 654321)
+
+
+@pytest.mark.asyncio
+async def test_team_service_queries_and_formats_enabled_sections() -> None:
+    service, headless, resource = _service()
+
+    message = await service.query(
+        (TEAM_ID,),
+        TeamQueryActor(user_id=1, group_id=None, can_manage=False),
+    )
 
     assert "【战队信息：测试战队】" in message
     assert "战队ID：123456" in message
     assert "战队等级：9" in message
     assert "战队资源：777" in message
-    assert "最近缴纳时间" not in message
     assert "【设施等级】" not in message
-    assert "【文本】" not in message
+    assert headless.available
+    assert not resource.offered
 
 
-def test_team_error_messages_include_team_id_and_reason() -> None:
-    assert "战队 123456 暂时查不了" in format_team_unavailable_message(TEAM_ID)
-    assert (
-        format_team_timeout_message(TEAM_ID)
-        == "❌ 战队 123456 查询超时，请稍后再试。"
+@pytest.mark.asyncio
+async def test_team_service_adds_subscription_prompt_for_group_manager() -> None:
+    service, _headless, resource = _service()
+
+    message = await service.query(
+        (TEAM_ID,),
+        TeamQueryActor(user_id=1, group_id=456, can_manage=True),
     )
-    assert (
-        format_team_socket_error_message(TEAM_ID, "连接断开")
-        == "❌ 战队 123456 连接断开"
-    )
-    assert (
-        format_team_generic_error_message(TEAM_ID, "boom")
-        == "❌ 战队 123456 查询失败：boom"
-    )
+
+    assert message.endswith("订阅提示")
+    assert resource.offered
+
+
+@pytest.mark.asyncio
+async def test_team_service_formats_timeout() -> None:
+    service, _headless, _resource = _service(TimeoutError())
+
+    assert await service.query(
+        (TEAM_ID,),
+        TeamQueryActor(user_id=1, group_id=None, can_manage=False),
+    ) == "❌ 战队 123456 查询超时，请稍后再试。"

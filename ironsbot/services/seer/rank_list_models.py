@@ -185,23 +185,3 @@ LOCAL_RANKS: dict[str, LocalRankSpec] = {
         "样本巅峰总场次榜", "peak_total_matches", season_limited=True
     ),
 }
-
-
-__all__ = [
-    "BATCH_CACHE_PREFIXES",
-    "GLOBAL_RANKS",
-    "LOCAL_RANKS",
-    "MAX_CACHE_INTERVALS_SHOWN",
-    "RANK_LIST_MAX_SIZE",
-    "RANK_LIST_SIZE",
-    "RANK_PAGE_CACHE_REFRESH_PREFIXES",
-    "RANK_PAGE_CACHE_STATUS_PREFIXES",
-    "GlobalRankSpec",
-    "LocalRankSpec",
-    "RankCacheBatchCommand",
-    "RankListCommand",
-    "RankPageCacheRefreshCommand",
-    "RankPageCacheStatusCommand",
-    "RankPlayerCommand",
-    "RankScoreCommand",
-]

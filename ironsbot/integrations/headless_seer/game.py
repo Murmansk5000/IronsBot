@@ -4,66 +4,51 @@ import json
 import logging
 import random
 import time
-from typing import NamedTuple, Protocol, overload
+from typing import NamedTuple, overload
 
 import httpx
 
-from ironsbot.integrations.headless_seer.activity import (
-    format_recent_headless_operation,
-)
+from ironsbot.core.tasks import TaskSpawner
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
-from ironsbot.integrations.headless_seer.core import SeerConnect, SeerEncryptConnect
-from ironsbot.integrations.headless_seer.exception import ClientNotInitializedError
-from ironsbot.integrations.headless_seer.packets import (
+from ironsbot.integrations.headless_seer.core.connect import (
+    SeerConnect,
+    SeerEncryptConnect,
+)
+from ironsbot.integrations.headless_seer.packets.head import HeadInfo
+from ironsbot.integrations.headless_seer.packets.login import SessionPackct
+from ironsbot.integrations.headless_seer.packets.peak import (
     DailyRankList,
     DailyRankParam,
-    HeadInfo,
+)
+from ironsbot.integrations.headless_seer.packets.team import SimpleTeamInfo
+from ironsbot.integrations.headless_seer.packets.user import (
     MoreInfo,
     OnLineInfo,
-    SessionPackct,
-    SimpleTeamInfo,
     UserInfo,
-)
-from ironsbot.integrations.headless_seer.peak import (
-    PEAK_PET_KEY_MAP,
-    PEAK_SUIT_KEY_MAP,
-    PEAK_TITLE_KEY_MAP,
-    PEAK_TYPE_NAME_MAP,
-    PeakItemData,
-    PeakType,
 )
 from ironsbot.integrations.headless_seer.type_hint import (
     CommandID,
     SocketRecvPacketBody,
     T_Deserializable,
 )
+from ironsbot.services.operations.headless import HeadlessStateNotifier
+from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
+from ironsbot.services.operations.headless_errors import ClientNotInitializedError
+from ironsbot.services.seer.peak import (
+    PEAK_PET_KEY_MAP,
+    PEAK_SUIT_KEY_MAP,
+    PEAK_TITLE_KEY_MAP,
+    PeakItemData,
+    PeakType,
+)
+from ironsbot.services.seer.rank_models import RankEntry
 
-__all__ = [
-    "PEAK_PET_KEY_MAP",
-    "PEAK_SUIT_KEY_MAP",
-    "PEAK_TITLE_KEY_MAP",
-    "PEAK_TYPE_NAME_MAP",
-    "PeakItemData",
-    "PeakType",
-    "SeerGame",
-]
 logger = logging.getLogger(__name__)
 
 
 class Address(NamedTuple):
     host: str
     port: int
-
-
-class HeadlessStateNotifier(Protocol):
-    async def __call__(
-        self,
-        *,
-        connected: bool,
-        reason: str,
-        source: str,
-        user_id: int | None,
-    ) -> None: ...
 
 
 def _merge_win_and_count_rank(
@@ -84,6 +69,13 @@ def _merge_win_and_count_rank(
     return sorted(items, key=lambda x: x.count, reverse=True)
 
 
+def _rank_entries(body: DailyRankList) -> list[RankEntry]:
+    return [
+        RankEntry(id=item.id, nick=item.nick, score=item.score)
+        for item in body.rank_list
+    ]
+
+
 class SeerGame:
     def __init__(
         self,
@@ -96,6 +88,8 @@ class SeerGame:
         reconnect_delay: float = 5.0,
         reconnect_delay_max: float = 120.0,
         state_notifier: HeadlessStateNotifier | None = None,
+        operations: HeadlessOperationTracker,
+        spawn: TaskSpawner,
     ) -> None:
         self.user_id = user_id
         self._password: str = password
@@ -110,6 +104,8 @@ class SeerGame:
         self._shutdown_requested = False
         self._login_server_url: str = login_server_url
         self._state_notifier = state_notifier
+        self.operations = operations
+        self._spawn = spawn
 
     @property
     def is_logged_in(self) -> bool:
@@ -170,7 +166,7 @@ class SeerGame:
                 raise RuntimeError("服务器正在维护")
 
             address = await self._fetch_login_server_addr(self._login_server_url)
-            login_client = await SeerConnect.new_client(*address)
+            login_client = await SeerConnect.new_client(*address, spawn=self._spawn)
 
             try:
                 _head, svr_list_info = await login_client.send_and_wait(
@@ -206,6 +202,7 @@ class SeerGame:
 
             impl = SeerEncryptConnect(
                 asyncio.get_running_loop(),
+                spawn=self._spawn,
                 heartbeat_interval=self._heartbeat_interval,
                 on_heartbeat=self._send_heartbeat,
                 on_disconnect=self._handle_disconnect,
@@ -246,7 +243,7 @@ class SeerGame:
         self._is_logged_in = False
         if self._shutdown_requested:
             return
-        operation = format_recent_headless_operation()
+        operation = self.operations.format_recent()
         reason = "连接已断开"
         if operation:
             reason = f"{reason}\n疑似触发操作：{operation}"
@@ -285,7 +282,10 @@ class SeerGame:
         if self._reconnect_task is not None and not self._reconnect_task.done():
             logger.debug(f"{self.user_id}：重连任务已在运行，跳过")
             return
-        self._reconnect_task = asyncio.create_task(self._auto_reconnect())
+        self._reconnect_task = self._spawn(
+            self._auto_reconnect(),
+            name=f"headless-reconnect-{self.user_id}",
+        )
 
     async def _auto_reconnect(self) -> None:
         """带指数退避的游戏级自动重连，重新执行完整登录流程。
@@ -354,21 +354,21 @@ class SeerGame:
         _head, body = await self.send_and_wait(COMMAND_ID.GET_MORE_USER_INFO, user_id)
         return body
 
-    async def get_limit_pool_vote(self, sub_key: int) -> DailyRankList:
+    async def get_limit_pool_vote(self, sub_key: int) -> list[RankEntry]:
         """获取巅峰限制池投票排行榜信息。"""
         _head, body = await self.send_and_wait(
             COMMAND_ID.GET_DAILY_RANK_INFO,
             DailyRankParam(key=191, sub_key=sub_key, start=0, end=19),
         )
-        return body
+        return _rank_entries(body)
 
-    async def get_semi_limit_pool_vote(self, sub_key: int) -> DailyRankList:
+    async def get_semi_limit_pool_vote(self, sub_key: int) -> list[RankEntry]:
         """获取巅峰准限制池投票排行榜信息。"""
         _head, body = await self.send_and_wait(
             COMMAND_ID.GET_DAILY_RANK_INFO,
             DailyRankParam(key=192, sub_key=sub_key, start=0, end=29),
         )
-        return body
+        return _rank_entries(body)
 
     async def get_peak_suit_rank(
         self, sub_key: int, peak_type: PeakType
@@ -404,7 +404,7 @@ class SeerGame:
 
     async def get_peak_pet_rank(
         self, sub_key: int, peak_type: PeakType
-    ) -> tuple[list[PeakItemData], DailyRankList]:
+    ) -> tuple[list[PeakItemData], list[RankEntry]]:
         key_1, key_2, key_3 = PEAK_PET_KEY_MAP[peak_type]
         win_body, count_body, ban_body = await asyncio.gather(
             self.send_and_wait(
@@ -422,7 +422,7 @@ class SeerGame:
         )
         return (
             _merge_win_and_count_rank(win_body[1], count_body[1], length=20),
-            ban_body[1],
+            _rank_entries(ban_body[1]),
         )
 
     async def get_user_online_info(self, user_id: int) -> OnLineInfo | None:

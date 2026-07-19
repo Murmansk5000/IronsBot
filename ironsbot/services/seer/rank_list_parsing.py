@@ -24,15 +24,6 @@ from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
 
 MAX_PLAYER_ID = 2_000_000_000
 
-__all__ = [
-    "parse_rank_cache_batch_command",
-    "parse_rank_list_command",
-    "parse_rank_page_cache_refresh_command",
-    "parse_rank_page_cache_status_command",
-    "parse_rank_player_command",
-    "parse_rank_score_command",
-    "with_admin_prefix",
-]
 
 
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:

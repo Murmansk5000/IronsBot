@@ -8,8 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.headless_seer.activity import headless_operation
-from ironsbot.integrations.headless_seer.exception import (
+from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
     SocketRecvError,
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
-    from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
 
@@ -69,7 +68,7 @@ class RankPageRefreshService:
 
     async def refresh(
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         rank_keys: Sequence[str] | None = None,
     ) -> RankPageRefreshResult:
         if self._lock.locked():
@@ -91,7 +90,7 @@ class RankPageRefreshService:
 
     async def _refresh_unlocked(
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         rank_keys: Sequence[str] | None,
     ) -> RankPageRefreshResult:
         targets = self.preview(rank_keys)
@@ -107,7 +106,7 @@ class RankPageRefreshService:
             if index > 0:
                 await self._sleep_between_requests()
             try:
-                with headless_operation(
+                with game.operations.track(
                     "后台刷榜缓存",
                     (
                         f"{target.rank_key} {target.start_rank}-{target.end_rank}名"

@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
-from ironsbot.core.commands import string_list
+from ironsbot.core.commands import NormalizedStringList, string_list
 from ironsbot.core.time import normalized_daily_times
 
 if TYPE_CHECKING:
@@ -37,7 +44,7 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "text",
 )
 RANK_PAGE_REFRESH_TIME_ERROR = (
-    "APP_CONFIG.seer.rank.page_refresh.times must contain daily HH:MM times"
+    "seer.rank.page_refresh.times must contain daily HH:MM times"
 )
 RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR = (
     "seer.rank.page_refresh.interval_offset_minutes must be smaller than "
@@ -47,13 +54,13 @@ RANK_PAGE_REFRESH_PAGES_PER_RUN_MIN_ERROR = (
     "seer.rank.page_refresh.pages_per_run_min must not be greater than pages_per_run"
 )
 RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR = (
-    "APP_CONFIG.seer.rank.page_refresh active_start/active_end must be HH:MM times"
+    "seer.rank.page_refresh active_start/active_end must be HH:MM times"
 )
 RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
     "seer.rank.page_refresh.active_start and active_end must be configured together"
 )
 TEAM_RESOURCE_TIME_ERROR = (
-    "APP_CONFIG.seer.team_resource.times must contain daily HH:MM times"
+    "seer.team_resource.times must contain daily HH:MM times"
 )
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
     "01:15",
@@ -125,15 +132,21 @@ def _validate_sqlite_path(value: Path) -> Path:
     return value
 
 
+SQLitePath = Annotated[Path, AfterValidator(_validate_sqlite_path)]
+
+
+def _normalize_int_mapping(value: object) -> object:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        return value
+    return {str(key).strip(): int(number) for key, number in value.items()}
+
+
 class PlayerBindingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: Path = Path("data/seer/player_bindings.sqlite")
-
-    @field_validator("path")
-    @classmethod
-    def validate_sqlite_path(cls, value: Path) -> Path:
-        return _validate_sqlite_path(value)
+    path: SQLitePath = Path("data/seer/player_bindings.sqlite")
 
 
 class PlayerQueryConfig(BaseModel):
@@ -210,7 +223,7 @@ class RankPageRefreshConfig(BaseModel):
     times: list[str] = Field(
         default_factory=lambda: list(DEFAULT_RANK_PAGE_REFRESH_TIMES)
     )
-    rank_keys: list[str] = Field(
+    rank_keys: NormalizedStringList = Field(
         default_factory=lambda: list(DEFAULT_RANK_PAGE_REFRESH_KEYS)
     )
     refresh_stale_after_hours: int = Field(default=24, ge=0)
@@ -236,19 +249,10 @@ class RankPageRefreshConfig(BaseModel):
             error_message=RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR,
         )[0]
 
-    @field_validator("rank_keys", mode="before")
-    @classmethod
-    def normalize_rank_keys(cls, value: object) -> object:
-        return string_list(value)
-
     @field_validator("target_limits", mode="before")
     @classmethod
     def normalize_target_limits(cls, value: object) -> object:
-        if value is None:
-            return {}
-        if not isinstance(value, dict):
-            return value
-        return {str(key).strip(): int(limit) for key, limit in value.items()}
+        return _normalize_int_mapping(value)
 
     @field_validator("target_limits")
     @classmethod
@@ -258,11 +262,7 @@ class RankPageRefreshConfig(BaseModel):
     @field_validator("score_cutoffs", mode="before")
     @classmethod
     def normalize_score_cutoffs(cls, value: object) -> object:
-        if value is None:
-            return {}
-        if not isinstance(value, dict):
-            return value
-        return {str(key).strip(): int(score) for key, score in value.items()}
+        return _normalize_int_mapping(value)
 
     @field_validator("score_cutoffs")
     @classmethod
@@ -296,13 +296,13 @@ class RankQueryConfig(BaseModel):
         le=MAX_RANK_DISPLAY_LIMIT,
     )
     display_limits: dict[str, int] = Field(default_factory=dict)
-    display_limit_path: Path = Path("data/seer/rank_display_limits.sqlite")
+    display_limit_path: SQLitePath = Path("data/seer/rank_display_limits.sqlite")
     page_cache: bool = True
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
     score_search_probe_limit: int = Field(default=32, ge=1)
     score_search_tie_page_limit: int = Field(default=5, ge=1)
-    page_cache_path: Path = Path("data/seer/rank_page_cache.sqlite")
+    page_cache_path: SQLitePath = Path("data/seer/rank_page_cache.sqlite")
     peak_subkey: int | None = Field(default=None, ge=0)
     page_refresh: RankPageRefreshConfig = Field(
         default_factory=RankPageRefreshConfig
@@ -318,11 +318,7 @@ class RankQueryConfig(BaseModel):
     @field_validator("display_limits", mode="before")
     @classmethod
     def normalize_display_limits(cls, value: object) -> object:
-        if value is None:
-            return {}
-        if not isinstance(value, dict):
-            return value
-        return {str(key).strip(): int(limit) for key, limit in value.items()}
+        return _normalize_int_mapping(value)
 
     @field_validator("display_limits")
     @classmethod
@@ -342,12 +338,6 @@ class RankQueryConfig(BaseModel):
         }
         return self
 
-    @field_validator("page_cache_path", "display_limit_path")
-    @classmethod
-    def validate_sqlite_cache_path(cls, value: Path) -> Path:
-        return _validate_sqlite_path(value)
-
-
 class LocalRankConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -360,12 +350,7 @@ class LocalRankConfig(BaseModel):
     refresh_limit: int = Field(default=300, ge=1)
     refresh_max_age_hours: int = Field(default=24, ge=0)
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
-    path: Path = Path("data/seer/player_query_cache.sqlite")
-
-    @field_validator("path")
-    @classmethod
-    def validate_sqlite_cache_path(cls, value: Path) -> Path:
-        return _validate_sqlite_path(value)
+    path: SQLitePath = Path("data/seer/player_query_cache.sqlite")
 
 
 class TeamResourceConfig(BaseModel):
@@ -373,10 +358,12 @@ class TeamResourceConfig(BaseModel):
 
     enabled: bool = True
     times: list[str] = Field(default_factory=list)
-    commands: list[str] = Field(default_factory=lambda: ["战队"])
-    subscription_path: Path = Path("data/seer/team_resource_subscriptions.sqlite")
+    commands: NormalizedStringList = Field(default_factory=lambda: ["战队"])
+    subscription_path: SQLitePath = Path(
+        "data/seer/team_resource_subscriptions.sqlite"
+    )
     default_threshold: int = Field(default=1000, ge=0)
-    default_at_users: list[str] = Field(default_factory=list)
+    default_at_users: NormalizedStringList = Field(default_factory=list)
     query_timeout_seconds: int = Field(default=20, gt=0)
     resource_line: str = (
         "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
@@ -388,26 +375,9 @@ class TeamResourceConfig(BaseModel):
     def normalize_times(cls, value: object) -> object:
         return normalized_daily_times(value, error_message=TEAM_RESOURCE_TIME_ERROR)
 
-    @field_validator("commands", mode="before")
-    @classmethod
-    def normalize_commands(cls, value: object) -> object:
-        return string_list(value)
-
-    @field_validator("subscription_path")
-    @classmethod
-    def validate_subscription_path(cls, value: Path) -> Path:
-        return _validate_sqlite_path(value)
-
-    @field_validator("default_at_users", mode="before")
-    @classmethod
-    def normalize_default_at_users(cls, value: object) -> object:
-        return string_list(value)
-
-
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cache_dir: Path = Path("render_cache")
     cache_max_size_mb: int = Field(default=200, gt=0)
 
 
@@ -443,22 +413,3 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
-
-
-__all__ = [
-    "PLAYER_SECTION_KEYS",
-    "RANK_PAGE_REFRESH_TIME_ERROR",
-    "TEAM_RESOURCE_TIME_ERROR",
-    "TEAM_SECTION_KEYS",
-    "LocalRankConfig",
-    "MintmarkQueryConfig",
-    "PlayerBindingConfig",
-    "PlayerQueryConfig",
-    "RankPageRefreshConfig",
-    "RankQueryConfig",
-    "RenderConfig",
-    "SeasonCountdownConfig",
-    "SeerConfig",
-    "TeamQueryConfig",
-    "TeamResourceConfig",
-]

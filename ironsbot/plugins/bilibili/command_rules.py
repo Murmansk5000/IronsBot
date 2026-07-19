@@ -7,11 +7,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
-from ironsbot.services.bilibili.permissions import (
-    is_dynamic_query_allowed,
-    is_dynamic_update_allowed,
-)
-from ironsbot.shared.features.visibility import event_has_feature
+from ironsbot.runtime.feature_policy import event_has_feature
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
@@ -19,7 +15,7 @@ from .account_commands import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.shared.features import FeatureService
+    from ironsbot.core.features import FeatureService
 
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
@@ -32,7 +28,7 @@ async def is_dynamic_menu_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
-    if not is_dynamic_query_allowed(features, event):
+    if not event_has_feature(features, event, "bili_query"):
         return False
 
     return command_text_matches(
@@ -55,7 +51,7 @@ async def is_update_dynamic_command(
     ):
         return False
 
-    return is_dynamic_update_allowed(features, event)
+    return features.is_superuser(event.user_id)
 
 
 async def is_bili_account_command(
@@ -63,7 +59,7 @@ async def is_bili_account_command(
     event: MessageEvent,
 ) -> bool:
     if not (
-        is_dynamic_query_allowed(features, event)
+        event_has_feature(features, event, "bili_query")
         or event_has_feature(features, event, "bili_push")
     ):
         return False

@@ -1,6 +1,10 @@
-from dataclasses import dataclass
-from typing import Any, cast
+from __future__ import annotations
 
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
+
+from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
 )
@@ -12,6 +16,11 @@ from ironsbot.services.seer.countermark_stat_rank_models import (
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ironsbot.services.seer.data import SeerDataAccess
 
 ATTACK_VALUE = 42.0
 TOTAL_VALUE = 66.5
@@ -31,6 +40,12 @@ class FakeMintmark:
 @dataclass(frozen=True)
 class FakeAttrs:
     total: float
+
+
+class FakeRankData:
+    @contextmanager
+    def query(self, _operation: object) -> Iterator[object]:
+        yield ({}, [])
 
 
 def _rank_item(
@@ -253,3 +268,13 @@ def test_build_countermark_message_renders_stat_combinations() -> None:
 
     assert "💮【2角刻印双防体力榜】（截至2026-06-12 09:30:00）" in message
     assert "1. 厚重刻印（1003） 双防体力57 | 总和66.5 | 限定 | 2角" in message
+
+
+def test_countermark_service_owns_query_and_formatting() -> None:
+    service = CountermarkStatRankService(
+        cast("SeerDataAccess", FakeRankData())
+    )
+
+    assert "刻印数值榜需要指定属性" in service.query(
+        CountermarkStatRankCommand(stat=None, scope="all")
+    )

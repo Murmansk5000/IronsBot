@@ -1,24 +1,25 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import nonebot
 
-from ironsbot.config.models.bilibili import (
+from ironsbot.core.bilibili import (
     DEFAULT_BILI_ACCOUNT_UID,
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_MODES,
     BiliConfig,
     BiliStorageConfig,
 )
-from ironsbot.config.models.feature import FeatureConfig
+from ironsbot.core.features import FeatureConfig, FeatureService
+from ironsbot.integrations.storage.bilibili_preferences import (
+    SqliteBiliPushPreferenceStore,
+)
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.bilibili import accounts
 from ironsbot.services.bilibili.preferences import (
-    BiliPushPreferenceStore,
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
-from ironsbot.shared.features import FeatureService
-from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
 
 try:
     nonebot.get_driver()
@@ -54,7 +55,7 @@ def _target_service(
     return BiliTargetService(
         config,
         features,
-        BiliPushPreferenceStore(data_dir / "preferences.sqlite"),
+        SqliteBiliPushPreferenceStore(data_dir / "preferences.sqlite"),
         PushUnsubscribeStore(data_dir / "unsubscribe.sqlite"),
     )
 
@@ -287,7 +288,7 @@ def test_bili_push_subscription_options_are_per_uid(
         "B站动态：赛尔号官方（1310714247）",
     ]
 
-    service.unsubscribe_store.unsubscribe_target(
+    cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
         "group",
         987654321,
         bili_push_subscription_key(375750254),
@@ -322,3 +323,30 @@ def test_bili_push_subscription_options_use_rule_nicknames(
         "B站动态：火火（375750254）",
         "B站动态：赛尔号官方（1310714247）",
     ]
+
+
+def test_bili_account_summary_and_push_mode_update_use_target_service(
+    tmp_path: Path,
+) -> None:
+    config = _bili_config(
+        accounts={"fire": {"uid": FIRE_BILI_UID, "nickname": "火火"}},
+        push={"groups": {"987654321": {"accounts": ["fire"]}}},
+    )
+    service = _target_service(
+        config,
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
+    )
+
+    summary = service.account_summary("group", 987654321)
+    assert f"火火（{FIRE_BILI_UID}）" in summary
+    assert "当前订阅：" in summary
+
+    result = service.update_push_mode(
+        "group",
+        987654321,
+        "火火",
+        "链接",
+    )
+    assert "推送模式：链接" in result
+    assert service.mode_for_uid("group", 987654321, FIRE_BILI_UID) == "link"

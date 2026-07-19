@@ -2,26 +2,19 @@
 import asyncio
 from typing import TYPE_CHECKING, TypedDict
 
-from nonebot_plugin_htmlkit import template_to_pic
-
 from ironsbot.core import time
-from ironsbot.integrations.seer_data.image import (
-    ElementTypeImageGetter,
-    PetHeadImageGetter,
-)
+from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_paths import (
     PEAK_POOL_VOTE_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.utils.image import to_data_uri
+
+from . import HtmlTemplateRenderer
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
-    from ironsbot.integrations.headless_seer.packets.peak import DailyRankList
-
-TEMPLATE_PATH = PEAK_POOL_VOTE_TEMPLATE_PATH
-SHARED_PATH = SHARED_TEMPLATE_PATH
+    from ironsbot.services.seer.rank_models import RankEntry
 
 TABLE_WIDTH = 400
 CONTAINER_PADDING = 20 * 2
@@ -42,12 +35,16 @@ class VotePoolDict(TypedDict):
 
 
 class VotePoolInput(TypedDict):
-    content: "DailyRankList"
+    items: "list[RankEntry]"
     title: str
     pets: "list[PetORM]"
 
 
-async def render_peak_pool_vote(pools: list[VotePoolInput]) -> bytes:
+async def render_peak_pool_vote(
+    images: SeerImageSource,
+    render_html: HtmlTemplateRenderer,
+    pools: list[VotePoolInput],
+) -> bytes:
     """渲染巅峰池票选结果图片，返回 PNG 图片字节"""
     pet_map: dict[int, "PetORM"] = {}
     unique_rids: dict[str, None] = {}
@@ -63,8 +60,8 @@ async def render_peak_pool_vote(pools: list[VotePoolInput]) -> bytes:
     type_id_list = list(unique_type_ids)
 
     results = await asyncio.gather(
-        *(PetHeadImageGetter.get_bytes(rid) for rid in rid_list),
-        *(ElementTypeImageGetter.get_bytes(str(tid)) for tid in type_id_list),
+        *(images.fetch("pet_head", rid) for rid in rid_list),
+        *(images.fetch("element_type", str(tid)) for tid in type_id_list),
     )
 
     head_bytes_list = results[: len(rid_list)]
@@ -81,9 +78,8 @@ async def render_peak_pool_vote(pools: list[VotePoolInput]) -> bytes:
 
     pool_dicts: list[VotePoolDict] = []
     for pool in pools:
-        rank_list = pool["content"].rank_list
         ranks: list[VoteRankDict] = []
-        for i, info in enumerate(rank_list, 1):
+        for i, info in enumerate(pool["items"], 1):
             pet = pet_map.get(info.id)
             if pet is not None:
                 head_img = head_data_uris[str(pet.resource_id)]
@@ -110,8 +106,8 @@ async def render_peak_pool_vote(pools: list[VotePoolInput]) -> bytes:
             }
         )
 
-    return await template_to_pic(
-        template_path=[TEMPLATE_PATH, SHARED_PATH],
+    return await render_html(
+        template_path=[PEAK_POOL_VOTE_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
         templates={
             "pools": pool_dicts,

@@ -6,7 +6,7 @@ from typing import cast
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.internal.driver import Driver
 
-from ironsbot.app.lifecycle import ApplicationLifecycle
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 
 
 class FakeDriver:
@@ -61,10 +61,10 @@ def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
     assert len(driver.bot_disconnect_handlers) == 1
 
 
-def test_lifecycle_runs_startup_in_order_and_shutdown_in_reverse() -> None:
+def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:
     calls: list[str] = []
 
-    async def first() -> None:
+    def first() -> None:
         calls.append("first")
 
     async def second() -> None:
@@ -80,6 +80,35 @@ def test_lifecycle_runs_startup_in_order_and_shutdown_in_reverse() -> None:
     asyncio.run(lifecycle.shutdown())
 
     assert calls == ["first", "second", "second", "first"]
+
+
+def test_lifecycle_cancels_tasks_before_resources() -> None:
+    async def run() -> None:
+        calls: list[str] = []
+        owner = TaskOwner()
+
+        async def background() -> None:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                calls.append("task")
+
+        def close_resource() -> None:
+            calls.append("resource")
+
+        task = owner.create(background(), name="test-background")
+        await asyncio.sleep(0)
+        lifecycle = ApplicationLifecycle(
+            fake_driver(),
+            task_owner=owner,
+            resource_shutdown_hooks=(("resource", close_resource),),
+        )
+        await lifecycle.shutdown()
+
+        assert task.cancelled()
+        assert calls == ["task", "resource"]
+
+    asyncio.run(run())
 
 
 def test_lifecycle_isolates_hook_failure() -> None:

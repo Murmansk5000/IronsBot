@@ -1,7 +1,6 @@
-from collections.abc import Iterator
 from typing import Any
 
-from ironsbot.services.activity.repository import load_activity_rows
+from ironsbot.services.activity.repository import ActivityRepository
 
 
 class FakeResult:
@@ -34,8 +33,8 @@ class FakeSession:
         return FakeResult(self.rows)
 
 
-def _provider(session: FakeSession) -> Iterator[FakeSession]:
-    yield session
+def _load(session: FakeSession | None, *, only_shown: bool) -> list[Any]:
+    return ActivityRepository().load(session, only_shown=only_shown)
 
 
 def test_load_activity_rows_queries_expected_columns() -> None:
@@ -53,9 +52,8 @@ def test_load_activity_rows_queries_expected_columns() -> None:
         ],
     )
 
-    rows = load_activity_rows(
-        lambda _database_name: _provider(session),
-        database_name="seerapi",
+    rows = _load(
+        session,
         only_shown=True,
     )
 
@@ -70,9 +68,8 @@ def test_load_activity_rows_allows_hidden_rows_when_requested() -> None:
         rows=[],
     )
 
-    load_activity_rows(
-        lambda _database_name: _provider(session),
-        database_name="seerapi",
+    _load(
+        session,
         only_shown=False,
     )
 
@@ -82,9 +79,8 @@ def test_load_activity_rows_allows_hidden_rows_when_requested() -> None:
 
 def test_load_activity_rows_returns_empty_for_missing_session() -> None:
     assert (
-        load_activity_rows(
-            lambda _database_name: None,
-            database_name="seerapi",
+        _load(
+            None,
             only_shown=True,
         )
         == []
@@ -95,9 +91,8 @@ def test_load_activity_rows_returns_empty_for_invalid_schema() -> None:
     session = FakeSession(columns=["id", "name"], rows=[])
 
     assert (
-        load_activity_rows(
-            lambda _database_name: _provider(session),
-            database_name="seerapi",
+        _load(
+            session,
             only_shown=True,
         )
         == []

@@ -1,28 +1,22 @@
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 import nonebot
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
-from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.core.features import Feature
-from ironsbot.plugins.help import visibility
-from ironsbot.shared.features import FeatureService
-from tests.helpers.config import StubMessageAction, stub_app_config
+from ironsbot.config.models.messaging import GroupCommandMessageAction
+from ironsbot.config.models.settings import Settings
+from ironsbot.core.features import Feature, FeatureConfig, FeatureService
+from ironsbot.plugins.help.menu import visible_help_entries
 from tests.helpers.onebot_events import group_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
-
-if TYPE_CHECKING:
-    from ironsbot.config.models.app import AppConfig
 
 DEFINITIONS = {
     definition.id: definition
@@ -38,40 +32,52 @@ def _group_event(text: str = "帮助"):
     )
 
 
-def _config(
+def _settings(
     *,
+    allowed_features: tuple[str, ...] = (),
+    ai_key_configured: bool = True,
     ai_intent_enabled: bool = True,
     team_resource_enabled: bool = True,
-    group_actions: list[StubMessageAction] | None = None,
-):
-    return stub_app_config(
-        ai_intent_enabled=ai_intent_enabled,
-        team_resource_config=TeamResourceConfig(enabled=team_resource_enabled),
-        group_actions=group_actions,
+    messaging_enabled: bool = False,
+) -> Settings:
+    settings = Settings(
+        features=FeatureConfig(
+            group_policy={"4": list(allowed_features)},
+            superuser_bypass=False,
+        )
     )
+    settings.ai.api_key = "test-key" if ai_key_configured else ""
+    settings.ai.intent_actions_enabled = ai_intent_enabled
+    settings.seer.team_resource.enabled = team_resource_enabled
+    if messaging_enabled:
+        settings.messaging.group_commands = [
+            GroupCommandMessageAction(
+                id="test_message",
+                commands=["测试消息"],
+                feature="text",
+                message="测试回复",
+            )
+        ]
+    return settings
 
 
 def _visible(
     plugin_id: str,
     *,
-    allowed_features: tuple[str, ...] = (),
-    config: object | None = None,
-    ai_key_configured: bool = True,
+    settings: Settings | None = None,
 ) -> bool:
+    settings = settings or _settings()
     features = FeatureService(
-        FeatureConfig(
-            group_policy={"4": list(allowed_features)},
-            superuser_bypass=False,
-        ),
-        frozenset(),
+        settings.features,
+        frozenset(settings.bot.superusers),
     )
-    return visibility.plugin_visible_for_event(
-        DEFINITIONS[plugin_id],
+    entries = visible_help_entries(
+        build_test_plugin_registry(settings),
         _group_event(),
         features=features,
-        config=cast("AppConfig", config or _config()),
-        ai_key_configured=ai_key_configured,
+        ignored_plugins=tuple(settings.features.help.ignored_plugins),
     )
+    return plugin_id in {entry.key for entry in entries}
 
 
 def test_always_visible_help_is_shown() -> None:
@@ -96,24 +102,33 @@ def test_plugin_definitions_own_feature_visibility() -> None:
 
 
 def test_feature_visibility_uses_feature_service() -> None:
-    assert _visible("seer_query", allowed_features=("seer",))
+    assert _visible(
+        "seer_query",
+        settings=_settings(allowed_features=("seer",)),
+    )
     assert not _visible("rank_help")
 
 
 def test_seer_query_visible_when_any_seer_subfeature_allowed() -> None:
-    assert _visible("seer_query", allowed_features=("seer_pet",))
+    assert _visible(
+        "seer_query",
+        settings=_settings(allowed_features=("seer_pet",)),
+    )
 
 
 def test_rank_help_visible_when_seer_rank_allowed() -> None:
-    assert _visible("rank_help", allowed_features=("seer_rank",))
+    assert _visible(
+        "rank_help",
+        settings=_settings(allowed_features=("seer_rank",)),
+    )
 
 
 def test_messaging_visibility_reads_app_config() -> None:
     assert _visible(
         "messaging",
-        allowed_features=("text",),
-        config=_config(
-            group_actions=[StubMessageAction(enabled=True, feature="text")]
+        settings=_settings(
+            allowed_features=("text",),
+            messaging_enabled=True,
         ),
     )
 
@@ -121,8 +136,17 @@ def test_messaging_visibility_reads_app_config() -> None:
 def test_ai_intent_visibility_requires_key_and_feature() -> None:
     assert _visible(
         "ai_intent",
-        allowed_features=("ai_intent",),
-        config=_config(ai_intent_enabled=True),
+        settings=_settings(
+            allowed_features=("ai_intent",),
+            ai_intent_enabled=True,
+        ),
+    )
+    assert not _visible(
+        "ai_intent",
+        settings=_settings(
+            allowed_features=("ai_intent",),
+            ai_key_configured=False,
+        ),
     )
     assert not _visible("team_audit")
 
@@ -130,12 +154,16 @@ def test_ai_intent_visibility_requires_key_and_feature() -> None:
 def test_team_resource_visibility_reads_app_config() -> None:
     assert _visible(
         "team_resource",
-        allowed_features=("team_resource_subscription",),
-        config=_config(team_resource_enabled=True),
+        settings=_settings(
+            allowed_features=("team_resource_subscription",),
+            team_resource_enabled=True,
+        ),
     )
 
     assert not _visible(
         "team_resource",
-        allowed_features=("team_resource_subscription",),
-        config=_config(team_resource_enabled=False),
+        settings=_settings(
+            allowed_features=("team_resource_subscription",),
+            team_resource_enabled=False,
+        ),
     )

@@ -7,8 +7,11 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.shared.messaging import message_event_target
-from ironsbot.utils.matcher import enter_prompt_loop
+from ironsbot.runtime.matchers import enter_prompt_loop
+from ironsbot.runtime.replies import message_event_target
+from ironsbot.services.messaging.service import (  # noqa: TC001
+    MessagingService,
+)
 
 from .matcher_rules import is_group_push_subscription_manager
 from .push_management_runtime import (
@@ -16,16 +19,9 @@ from .push_management_runtime import (
     PUSH_SUBSCRIPTION_OPTIONS_KEY,
     PUSH_SUBSCRIPTION_TARGET_ID_KEY,
 )
-from .push_subscription import (
-    build_messaging_push_subscription_menu_prompt,
-    build_messaging_push_subscription_options,
-)
-from .runtime_service import (  # noqa: TC001 - NoneBot resolves handler annotations
-    MessagingResources,
-)
 
 if TYPE_CHECKING:
-    from ironsbot.shared.messaging.push_subscription_models import (
+    from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionOption,
         PushTargetType,
     )
@@ -36,16 +32,16 @@ async def handle_push_subscription_menu(
     event: MessageEvent,
     state: T_State,
     *,
-    messaging: MessagingResources,
+    messaging: MessagingService,
 ) -> None:
     target_type, target_id, _ = message_event_target(event)
     read_only = isinstance(event, GroupMessageEvent) and not (
         is_group_push_subscription_manager(messaging, event)
     )
-    options = build_messaging_push_subscription_options(
+    options, prompt = messaging.subscription_menu(
         target_type,
         target_id,
-        messaging=messaging,
+        read_only=read_only,
     )
     if not options:
         await matcher.finish("当前没有可管理的推送订阅。")
@@ -67,15 +63,12 @@ async def handle_push_subscription_menu(
             )
         ],
         rule=PUSH_SUBSCRIPTION_FLOW.rule(
+            state,
             session_id,
             version,
             target_type,
         ),
-        prompt=build_messaging_push_subscription_menu_prompt(
-            target_type,
-            options,
-            read_only=read_only,
-        ),
+        prompt=prompt,
     )
 
 
@@ -84,7 +77,7 @@ async def handle_push_subscription_select(
     event: MessageEvent,
     state: T_State,
     *,
-    messaging: MessagingResources,
+    messaging: MessagingService,
 ) -> None:
     raw_options = state.get(PUSH_SUBSCRIPTION_OPTIONS_KEY)
     if not isinstance(raw_options, list):
@@ -113,9 +106,9 @@ async def handle_push_subscription_select(
         not isinstance(event, GroupMessageEvent)
         or not is_group_push_subscription_manager(messaging, event)
     ):
-        menu_prompt = build_messaging_push_subscription_menu_prompt(
+        _, menu_prompt = messaging.subscription_menu(
             target_type,
-            options,
+            target_id,
             read_only=True,
         )
         prompt = (
@@ -124,27 +117,15 @@ async def handle_push_subscription_select(
         )
         await PUSH_SUBSCRIPTION_FLOW.reject(matcher, state, prompt)
 
-    if messaging.store.is_target_unsubscribed(target_type, target_id, option.key):
-        messaging.store.restore_target(target_type, target_id, option.key)
-        result_message = f"已恢复订阅：{option.label}。"
-    else:
-        messaging.store.unsubscribe_target(
-            target_type,
-            target_id,
-            option.key,
-            option.feature,
-        )
-        result_message = f"已退订：{option.label}。"
-
-    refreshed_options = build_messaging_push_subscription_options(
+    result_message = messaging.toggle_subscription(
         target_type,
         target_id,
-        messaging=messaging,
+        option,
+    )
+    refreshed_options, menu_prompt = messaging.subscription_menu(
+        target_type,
+        target_id,
     )
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options
-    menu_prompt = build_messaging_push_subscription_menu_prompt(
-        target_type,
-        refreshed_options,
-    )
     prompt = f"{result_message}\n\n{menu_prompt}"
     await PUSH_SUBSCRIPTION_FLOW.reject(matcher, state, prompt)

@@ -1,2 +1,1 @@
 """Activity reminder domain services."""
-

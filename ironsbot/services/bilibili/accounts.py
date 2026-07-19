@@ -1,4 +1,4 @@
-from ironsbot.config.models.bilibili import BiliConfig
+from ironsbot.core.bilibili import BiliConfig
 
 
 def bili_accounts(config: BiliConfig) -> dict[str, int]:

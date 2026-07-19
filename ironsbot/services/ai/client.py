@@ -1,93 +1,19 @@
-import httpx
-from nonebot.log import logger
+# SPDX-License-Identifier: MIT
+from __future__ import annotations
 
-from ironsbot.services.ai.constants import EMPTY_REPLY, REQUEST_FAILED_REPLY
-from ironsbot.services.ai.history import HistoryMessage, build_messages
-from ironsbot.services.ai.resources import AiResources
-from ironsbot.services.ai.responses import parse_ai_response
-from ironsbot.services.ai.source_context import append_ai_notice_source_context
+from typing import TYPE_CHECKING, Protocol
 
-
-def _truncate_reply(text: str, max_chars: int) -> str:
-    if len(text) <= max_chars:
-        return text
-
-    return text[:max_chars].rstrip() + "\n\n（回复过长，已截断）"
+if TYPE_CHECKING:
+    from ironsbot.services.ai.history import HistoryMessage
+    from ironsbot.services.ai.responses import AiResponseResult
 
 
-async def call_ai_chat(
-    resources: AiResources,
-    prompt: str,
-    history: list[HistoryMessage],
-    memory: list[HistoryMessage] | None = None,
-    *,
-    source_context: str | None = None,
-) -> str:
-    config = resources.config
-    payload = {
-        "model": config.model,
-        "messages": build_messages(config, history, prompt, memory),
-        "temperature": config.temperature,
-        "max_tokens": config.max_tokens,
-        "stream": False,
-        "thinking": {
-            "type": (
-                "enabled"
-                if config.thinking
-                else "disabled"
-            )
-        },
-    }
-    headers = {
-        "Authorization": f"Bearer {resources.api_key}",
-        "Content-Type": "application/json",
-    }
+class AiRequestTimeoutError(TimeoutError):
+    pass
 
-    async with httpx.AsyncClient(
-        timeout=config.timeout,
-        follow_redirects=True,
-    ) as client:
-        response = await client.post(
-            f"{config.base_url}/chat/completions",
-            headers=headers,
-            json=payload,
-        )
 
-    result = parse_ai_response(response)
-    if not result.ok and result.error_kind != "empty_reply":
-        logger.warning(
-            "AI chat API failed: "
-            f"HTTP {result.status_code}, {result.error_detail}"
-        )
-        await resources.notify_admin_once(
-            (
-                f"http_{result.status_code}"
-                if result.error_kind == "http"
-                else str(result.error_kind)
-            ),
-            append_ai_notice_source_context(
-                "AI聊天接口异常。\n"
-                f"类型：{result.error_title}\n"
-                f"HTTP：{result.status_code}\n"
-                f"模型：{config.model}\n"
-                f"接口：{config.base_url}\n"
-                f"详情：{result.error_detail}\n"
-                "请检查 AI_KEY、账户额度、模型名和网络连接。",
-                source_context,
-            ),
-        )
-        return REQUEST_FAILED_REPLY
-
-    if result.error_kind == "empty_reply":
-        await resources.notify_admin_once(
-            "empty_reply",
-            append_ai_notice_source_context(
-                "AI聊天接口返回了空内容。\n"
-                f"模型：{config.model}\n"
-                "请检查模型配置或稍后重试。",
-                source_context,
-            ),
-        )
-        return EMPTY_REPLY
-
-    return _truncate_reply(result.reply, config.max_reply_chars)
+class AiCompletionClient(Protocol):
+    async def complete(
+        self,
+        messages: list[HistoryMessage],
+    ) -> AiResponseResult: ...

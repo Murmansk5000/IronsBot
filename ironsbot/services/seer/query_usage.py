@@ -4,12 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.shared.features.visibility import event_has_feature
-
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-
-    from ironsbot.shared.features import FeatureService
+    from collections.abc import Callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,13 +101,12 @@ SEER_QUERY_USAGE_SECTIONS = (
 
 
 def build_seer_query_usage_message(
-    features: FeatureService,
-    event: Event,
+    feature_is_visible: Callable[[str], bool],
 ) -> str:
     sections = [
         section
         for section in SEER_QUERY_USAGE_SECTIONS
-        if event_has_feature(features, event, section.feature)
+        if feature_is_visible(section.feature)
     ]
     if not sections:
         return "当前会话没有可用的赛尔号查询子功能。"

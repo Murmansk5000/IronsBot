@@ -2,17 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-from ironsbot.shared.selection_menu import (
+from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from nonebot.adapters.onebot.v11 import Message
 
     from ironsbot.services.bilibili.dynamic_history import (
         BiliDynamicHistoryStore,
@@ -28,7 +26,12 @@ DynamicDetailStatus = Literal[
     "invalid",
     "out_of_range",
     "missing",
-    "parse_failed",
+]
+DynamicMenuStatus = Literal[
+    "ok",
+    "no_accounts",
+    "auth_invalid",
+    "no_history",
 ]
 
 
@@ -38,32 +41,19 @@ class DynamicSelection:
     dynamic_id: str = ""
     available_count: int = 0
 
-    @property
-    def is_ok(self) -> bool:
-        return self.status == "ok"
-
 
 @dataclass(frozen=True, slots=True)
 class DynamicDetailSelection:
     status: DynamicDetailStatus
-    message: Message | None = None
+    record: DynamicHistoryRecord | None = None
     available_count: int = 0
 
-    @property
-    def is_ok(self) -> bool:
-        return self.status == "ok"
 
-
-def parse_single_item(
-    item: dict[str, Any],
-    pub_ts: int,
-    *,
-    menu_mode: bool = False,
-    mode: Literal["full", "link"] = "full",
-) -> Message | None:
-    from ironsbot.services.bilibili.parser import parse_single_item as parse
-
-    return parse(item, pub_ts, menu_mode=menu_mode, mode=mode)
+@dataclass(frozen=True, slots=True)
+class DynamicMenuResult:
+    status: DynamicMenuStatus
+    dynamic_ids: tuple[str, ...] = ()
+    prompt: str = ""
 
 
 def build_dynamic_menu_text(records: Sequence[DynamicHistoryRecord]) -> str:
@@ -132,7 +122,7 @@ def build_dynamic_detail_for_selection(
     raw_text: str,
 ) -> DynamicDetailSelection:
     selection = select_cached_dynamic_id(cached_ids, raw_text)
-    if not selection.is_ok:
+    if selection.status != "ok":
         return DynamicDetailSelection(
             status=selection.status,
             available_count=selection.available_count,
@@ -145,20 +135,8 @@ def build_dynamic_detail_for_selection(
             available_count=selection.available_count,
         )
 
-    message = parse_single_item(
-        record.item,
-        record.pub_ts,
-        menu_mode=True,
-        mode="full",
-    )
-    if message is None:
-        return DynamicDetailSelection(
-            status="parse_failed",
-            available_count=selection.available_count,
-        )
-
     return DynamicDetailSelection(
         status="ok",
-        message=message,
+        record=record,
         available_count=selection.available_count,
     )

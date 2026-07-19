@@ -1,79 +1,68 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from nonebot.adapters import Event  # noqa: TC002
-from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
-from nonebot.matcher import Matcher  # noqa: TC002
-from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002
+from functools import partial
+from typing import TYPE_CHECKING
 
-from ironsbot.integrations.seer_data.sessions import SeerAPISession  # noqa: TC001
+from nonebot.rule import Rule
+
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.services.seer.countermark_stat_rank_messages import (
-    build_countermark_stat_rank_message,
-)
-from ironsbot.services.seer.countermark_stat_rank_models import (  # noqa: TC001
-    CountermarkStatRankCommand,
-)
-from ironsbot.services.seer.countermark_stat_rank_parsing import (
-    parse_countermark_stat_rank_command,
-)
-from ironsbot.services.seer.countermark_stat_rank_ranking import (
-    collect_countermark_rank_items,
-)
-from ironsbot.services.seer.countermark_stat_rank_repository import (
-    MISSING_MINTMARK_QUALITY_MESSAGE,
-    load_mintmark_quality_session,
-    load_mintmarks,
-)
-from ironsbot.shared.messaging import finish_event_reply
-from ironsbot.utils.rule import no_reply
+from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.rules import no_reply
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+    from nonebot.adapters.onebot.v11 import MessageEvent
+    from nonebot.matcher import Matcher
+    from nonebot.typing import T_State
+
+    from ironsbot.services.seer.countermark_stat_rank import (
+        CountermarkStatRankService,
+    )
+    from ironsbot.services.seer.countermark_stat_rank_models import (
+        CountermarkStatRankCommand,
+    )
 
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
 
-async def _is_countermark_stat_rank_command(event: Event, state: T_State) -> bool:
-    command = parse_countermark_stat_rank_command(event.get_plaintext())
+async def _match_command(
+    service: CountermarkStatRankService,
+    event: Event,
+    state: T_State,
+) -> bool:
+    command = service.parse_command(event.get_plaintext())
     if command is None:
         return False
-
     state[COUNTERMARK_STAT_RANK_KEY] = command
     return True
 
 
-async def handle_countermark_stat_rank(
+async def _handle_command(
+    service: CountermarkStatRankService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    session: SeerAPISession,
 ) -> None:
     command: CountermarkStatRankCommand = state[COUNTERMARK_STAT_RANK_KEY]
-    quality_map = load_mintmark_quality_session(session)
-    if command.angle_count is not None and not quality_map:
-        await finish_event_reply(
-            matcher,
-            event,
-            MISSING_MINTMARK_QUALITY_MESSAGE,
-        )
-        return
-
-    mintmarks = load_mintmarks(session)
-    items = collect_countermark_rank_items(mintmarks, command, quality_map)
-    await finish_event_reply(
-        matcher,
-        event,
-        build_countermark_stat_rank_message(command, items),
-    )
+    try:
+        reply = service.query(command)
+    except DataUnavailableError:
+        reply = DATABASE_UNAVAILABLE_MESSAGE
+    await finish_event_reply(matcher, event, reply)
 
 
 def install(group: SeerMatcherGroup) -> None:
+    service = group.resources.countermark_rank
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_countermark_stat_rank"),
-        rule=seer_feature_rule(group.resources.features, "seer_mintmark")
-        & Rule(_is_countermark_stat_rank_command)
+        rule=seer_feature_rule(group.features, "seer_mintmark")
+        & Rule(partial(_match_command, service))
         & no_reply(),
         priority=group.matcher_priority("seer_mintmark"),
     )
-    matcher.append_handler(handle_countermark_stat_rank)
+    matcher.append_handler(partial(_handle_command, service))

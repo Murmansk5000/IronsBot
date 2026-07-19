@@ -3,6 +3,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+@dataclass(frozen=True, slots=True)
+class RankEntry:
+    id: int
+    nick: str
+    score: int
+
+
 @dataclass(slots=True)
 class RankLookupResult:
     title: str
@@ -143,17 +150,3 @@ class PeakSeasonRankSummary:
             wild=RankLookupResult(title="狂野赛季榜", score_name="段位分"),
             expert=RankLookupResult(title="专家赛季榜", score_name="专家积分"),
         )
-
-
-__all__ = [
-    "BookBreakdownSummary",
-    "PeakSeasonRankSummary",
-    "PlayerRankSummary",
-    "RankLookupResult",
-    "RankPageResult",
-    "RankScoreGap",
-    "RankScoreMissProof",
-    "RankScoreSearchItem",
-    "RankScoreSearchResult",
-    "RankSummaryProgress",
-]

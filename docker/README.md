@@ -4,9 +4,9 @@
 
 # IronsBot Docker Image
 
-Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer game information queries, with explicit plugin loading and Unraid deployment templates.
+Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer queries and Unraid deployment.
 
-This image is built from [Murmansk5000/IronsBot](https://github.com/Murmansk5000/IronsBot). User-facing features are loaded from the manifest, while upstream-derived code is retained only where it is needed as data, rendering, protocol, or infrastructure code.
+The single `PluginDefinition` registry installs user features and lifecycle hooks. Upstream-derived code is retained only where it is still required for data, rendering, or protocol support.
 
 ## Images
 
@@ -35,25 +35,15 @@ Recent changes are tracked in the GitHub commit history and in the Unraid templa
 
 ## Included Plugins
 
-- `seer.query`: bound-player shortcuts, Seer player/pet/mintmark queries, ranks, Autocard, activity, and data tools.
-- `help`: show only features enabled for the current group or private user.
-- `about`: show current IronsBot project information.
-- `sendpic`: reply with fixed local images by command keywords.
-- `messaging`: generic private/group command replies, scheduled messages, and push unsubscribe management.
-- `bilibili`: monitor Bilibili dynamic updates and send them to configured groups/users.
-- `activity`: query in-game activities and send ending-soon reminders.
-- `server_status`: query open-server status, restart the bot, and optionally check/update the Docker image.
-- `startup_notice`: send separate startup, Docker update, and startup data sync notices.
-- `team_resource_subscription`: team resource subscriptions and low-resource reminders.
-- `team_audit_welcome`: dedicated team audit group join prompt and 24-hour follow-up.
-- `fire_manual_ad`: Fire manual link appended to proactive pushes.
-- `ai_intent_fire_manual`: AI intent action for explicit Fire manual link requests.
-- `ai_chat`: chat with DeepSeek/OpenAI-compatible APIs through mentions or authorized private messages.
-- `ai_intent`: classify configured intent actions, then dispatch to the enabled action feature.
-- `ai_intent_team_recommend`: send configured team recommendation or audit group info after AI intent classification.
-- `scheduled_restart`: restart the bot container at configured daily times from APP_CONFIG.
+- Seer player, team, pet, mintmark, equipment, type, peak, Autocard, and rank queries.
+- Fixed and scheduled messages, fixed images, meeting replies, help, and push controls.
+- Bilibili monitoring, activity reminders, open-server notices, and team workflows.
+- AI chat, mention protection, intent recognition, and configured template actions.
+- Data sync, headless login, startup notices, scheduled restarts, and Docker updates.
 
-Behavior values such as group IDs, user IDs, team IDs, meeting numbers, feature policies, Bilibili subscriptions, and private reply text belong in a mounted TOML config file. Environment variables are reserved for secrets, credentials, and deployment runtime knobs. They are intentionally not baked into the image.
+Behavior and runtime values belong in a mounted TOML config file. Environment
+variables are reserved for the config path and secrets. They are intentionally
+not baked into the image.
 
 ## Quick Start With Docker Compose
 
@@ -74,12 +64,8 @@ services:
       # restart/update the current container when this socket is mounted.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      ENVIRONMENT: "prod"
-      HOST: "0.0.0.0"
-      PORT: "8080"
-      APP_CONFIG_PATH: "/config/ironsbot.toml"
-      ONEBOT_ACCESS_TOKEN: "change-me"
-      SUPERUSERS: '["1234567890"]'
+      IRONSBOT_CONFIG: "/config/ironsbot.toml"
+      IRONSBOT_ONEBOT_TOKEN: "change-me"
     restart: always
 
   napcat:
@@ -100,9 +86,11 @@ services:
     restart: always
 ```
 
-On first startup, if `./ironsbot-config/ironsbot.toml` does not exist, IronsBot
-copies `/app/config.example.toml` to that path automatically. Edit the generated
-file before production use. Existing config files are never overwritten.
+Before starting the container, create
+`./ironsbot-config/ironsbot.toml` from
+[`config.example.toml`](../config.example.toml) and set
+`[bot].superusers`. IronsBot strictly validates this file and exits if it is
+missing or contains obsolete fields. It never creates or rewrites the file.
 
 On Windows Docker Desktop, the left side of the volume is a Windows directory.
 Choose any writable directory on any drive. For example:
@@ -116,9 +104,8 @@ docker run --name ironsbot `
   -v "${IRONSBOT_HOME}\config:/config" `
   -v "${IRONSBOT_HOME}\data:/app/data" `
   -v "${IRONSBOT_HOME}\logs:/app/logs" `
-  -e APP_CONFIG_PATH=/config/ironsbot.toml `
-  -e ONEBOT_ACCESS_TOKEN=change-me `
-  -e SUPERUSERS='["1234567890"]' `
+  -e IRONSBOT_CONFIG=/config/ironsbot.toml `
+  -e IRONSBOT_ONEBOT_TOKEN=change-me `
   murmansk5000/ironsbot:latest
 ```
 
@@ -127,7 +114,7 @@ In this example, `/config/ironsbot.toml` inside the container is
 
 Optional Docker image check/update: superusers can send `/重启机器人`;
 `/更新镜像` and `/更新Docker` are equivalent commands for the same restart flow.
-By default the generated TOML checks the target image on startup and before
+By default `config.example.toml` checks the target image on startup and before
 manual restart/update commands. When a new image exists, IronsBot starts a
 one-shot Watchtower updater that pulls the latest image and recreates the
 current container. When the image is already current and Docker socket is
@@ -142,11 +129,11 @@ Docker Engine socket into the IronsBot container, for example on Unraid/Linux:
 Without that socket mount, image checks are skipped and the bot continues to run
 normally; manual restart falls back to process restart.
 
-Generated TOML already includes explicit switches for checking the image before
+The example TOML includes explicit switches for checking the image before
 other startup tasks such as data sync and before manual restart commands:
 
 ```toml
-[runtime.docker_update]
+[operations.docker_update]
 check_on_startup = true
 check_on_restart = true
 watchtower_docker_api_version = "1.40"
@@ -166,11 +153,11 @@ reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
 
-User command cooldowns are configured under `[runtime.command_cooldown]`.
+User command cooldowns are configured under `[messaging.command_cooldown]`.
 The key is the QQ user plus a stable semantic command ID, so aliases and
 different parameters of the same operation share one cooldown while unrelated
 operations remain independent. Group output limits are configured under
-`[message.outbound_rate_limit]` as multiple sliding windows. Normal replies are
+`[messaging.outbound_rate_limit]` as multiple sliding windows. Normal replies are
 suppressed immediately after the quota is reached; proactive pushes may wait in
 a short per-group FIFO queue. Private messages and groups enabled for
 `admin_notice` are not counted.
@@ -187,32 +174,32 @@ If NapCat is created separately in Unraid bridge mode, use the Unraid host IP an
 ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 ```
 
-The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
+The reverse WebSocket token must match `IRONSBOT_ONEBOT_TOKEN`.
 
 Multiple NapCat / OneBot v11 clients may connect to the same IronsBot WebSocket
-endpoint. Configure `[runtime.bot_routing]` in `ironsbot.toml` when proactive
+endpoint. Configure `[messaging.bot_routing]` in `ironsbot.toml` when proactive
 messages should use different bot accounts for different groups or users:
 
 ```toml
-[runtime.bot_routing]
+[messaging.bot_routing]
 enabled = true
 default_bot = "main_bot"
 
-[runtime.bot_routing.bot_aliases]
+[messaging.bot_routing.bot_aliases]
 main_bot = 111111111
 backup_bot = 222222222
 
-[runtime.bot_routing.groups]
+[messaging.bot_routing.groups]
 group_a = "main_bot"
 group_b = "backup_bot"
 
-[runtime.bot_routing.users]
+[messaging.bot_routing.users]
 owner = "main_bot"
 user_a = "backup_bot"
 ```
 
-Group and user aliases come from `[feature.group_aliases]` and
-`[feature.user_aliases]`; numeric IDs are also accepted. Replies to incoming
+Group and user aliases come from `[features.group_aliases]` and
+`[features.user_aliases]`; numeric IDs are also accepted. Replies to incoming
 commands keep using the bot that received the event. Bilibili, activity,
 scheduled-message, server-status, startup, and other proactive deliveries use
 the configured route. Routing does not filter incoming events, so avoid placing
@@ -223,46 +210,41 @@ events each OneBot client forwards.
 
 Behavior config is file-based:
 
-- Mount a writable directory to `/config` for first startup, or pre-create
-  `ironsbot.toml` before using a read-only mount.
-- Set `APP_CONFIG_PATH=/config/ironsbot.toml`.
+- Create `ironsbot.toml` from `config.example.toml`, then mount its directory
+  to `/config`.
+- Set `IRONSBOT_CONFIG=/config/ironsbot.toml`.
 - Use `config.example.toml` for all fields, defaults, English descriptions, Chinese descriptions, and examples.
 
-When IronsBot creates a missing `ironsbot.toml`, it also writes
-`ironsbot.env.example` next to it. This is only a sample for secrets and
-runtime environment variables. Real env files such as `ironsbot.env.prod` are
-not created automatically; copy the example, fill your token / superusers /
-keys, and reference it from Compose if you use `env_file`.
-
-If `APP_CONFIG_PATH` is not set, IronsBot falls back to
+If `IRONSBOT_CONFIG` is not set, IronsBot falls back to
 `config/ironsbot.toml` in the current working directory. Missing config files
-are created from `config.example.toml` automatically on any operating system,
-as long as the target directory is writable. Relative `data/` and `logs/`
-paths also live under the current working directory.
+cause startup to fail. IronsBot never mutates the TOML file. Relative `data/`
+and `logs/` paths live under the current working directory.
 
 ```env
-APP_CONFIG_PATH=/config/ironsbot.toml
-ONEBOT_ACCESS_TOKEN=change-me
-SUPERUSERS=["1234567890"]
-AI_KEY=
-HEADLESS_SEER_USER_ID=
-HEADLESS_SEER_PASSWORD=
-SENDPIC_CNB_TOKEN=
+IRONSBOT_CONFIG=/config/ironsbot.toml
+IRONSBOT_ONEBOT_TOKEN=change-me
+IRONSBOT_AI_KEY=
+IRONSBOT_SEER_USER_ID=
+IRONSBOT_SEER_PASSWORD=
+IRONSBOT_SENDPIC_TOKEN=
+IRONSBOT_GITHUB_TOKEN=
 ```
 
 | Variable | Description |
 | --- | --- |
-| `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
-| `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `SUPERUSERS` | NoneBot superuser QQ list, for example `["1234567890"]`. |
-| `AI_KEY` | AI chat API key. |
-| `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
-| `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
-| `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
-| `ENVIRONMENT`, `DRIVER`, `HOST`, `PORT`, `LOG_LEVEL`, `COMMAND_START` | Deployment runtime knobs. |
+| `IRONSBOT_CONFIG` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
+| `IRONSBOT_ONEBOT_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
+| `IRONSBOT_AI_KEY` | AI chat API key. |
+| `IRONSBOT_SEER_USER_ID` | Optional Seer account ID for headless login. |
+| `IRONSBOT_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
+| `IRONSBOT_SENDPIC_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
+| `IRONSBOT_GITHUB_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
-Feature names are used in `[feature.group_policy]` and
-`[feature.user_policy]`:
+Set superusers, listen address, port, command prefixes, and logging under
+`[bot]` in TOML.
+
+Feature names are used in `[features.group_policy]` and
+`[features.user_policy]`:
 
 | feature | Meaning |
 | --- | --- |
@@ -308,21 +290,21 @@ Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.
 
 ```toml
-[feature]
+[features]
 superuser_bypass = true
 
-[feature.group_aliases]
+[features.group_aliases]
 admin = 123456789
 main = 987654321
 
-[feature.user_aliases]
+[features.user_aliases]
 owner = 1234567890
 
-[feature.group_policy]
+[features.group_policy]
 admin = ["admin_notice"]
 main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "ai_intent", "ai_intent_team_recommend", "fire_manual_ad", "ai_intent_fire_manual"]
 
-[feature.user_policy]
+[features.user_policy]
 owner = ["all"]
 
 [bilibili.accounts]
@@ -370,15 +352,15 @@ This is the same kind of output as the built-in `战队<team_id>` query, but the
 Enable the feature and default reminder settings in `ironsbot.toml`:
 
 ```toml
-[feature]
+[features]
 
-[feature.group_aliases]
+[features.group_aliases]
 example = 987654321
 
-[feature.user_aliases]
+[features.user_aliases]
 owner = 1234567890
 
-[feature.group_policy]
+[features.group_policy]
 example = ["team_resource_subscription"]
 
 [seer.team_resource]
@@ -416,7 +398,9 @@ Template URLs:
 https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml
 ```
 
-The Unraid template exposes a minimal variable set and mounts a config directory. Put behavior settings in `/config/ironsbot.toml`; keep only tokens, credentials, and deployment runtime knobs as environment variables.
+The Unraid template exposes a minimal variable set and mounts a config
+directory. Put behavior and runtime settings in `/config/ironsbot.toml`; keep
+only `IRONSBOT_CONFIG` and secret values as environment variables.
 
 ## Privacy Notes
 

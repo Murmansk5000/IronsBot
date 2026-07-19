@@ -2,18 +2,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
-from ironsbot.core.commands import (
-    int_list,
-    json_object,
-    string_list,
-)
+from ironsbot.core.commands import json_object
 from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.core.messaging import (
+    DEFAULT_JOIN_TEAM_INTENT,
+    DEFAULT_JOIN_TEAM_MESSAGE,
+    FIRE_MANUAL_LINK_MESSAGE,
+    AiIntentAction,
+)
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
@@ -26,20 +27,6 @@ DEFAULT_AI_PROMPT = (
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
 )
 DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS = 600.0
-DEFAULT_JOIN_TEAM_INTENT = (
-    "Judge whether the QQ group message means the sender wants to join, apply for, "
-    "or find a Seer team/guild. Answer yes only when the sender is asking to join "
-    "a team, asking whether they can enter the team, or asking for the team info "
-    "for joining. Answer no when the message only queries team data, discusses "
-    "team resources, asks someone to buy resources, or casually mentions teams."
-)
-DEFAULT_JOIN_TEAM_MESSAGE = (
-    "\u70b9\u51fb\u94fe\u63a5\u52a0\u51655\u7ea7\u6218\u961f\u5ba1\u6838\u7fa4\uff1a"
-    "http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&"
-    "k=zZcvC2GF9tB027Kyq04Fl9_7bF-_v8FB&"
-    "authKey=ZTZrJewKretFEap44nIcKtMkF8zpI1nhcR6ok2%2FXM6LNMO%2BE8ZVdYWLvWvwEwVjM&"
-    "noverify=0&group_code=719544559"
-)
 DEFAULT_FIRE_MANUAL_INTENT = (
     "Judge whether the QQ group message explicitly asks for the Fire manual "
     "entry, link, address, URL, download, or where to read it. Answer yes only "
@@ -47,13 +34,6 @@ DEFAULT_FIRE_MANUAL_INTENT = (
     "the message only mentions 手册 or 火火手册, discusses manual content, cites the "
     "manual as a source, asks why it has not updated or cannot open, announces "
     "or shares a manual release/link, or is unrelated to asking for the link."
-)
-DEFAULT_CLASSIFIER_PROMPT = (
-    "You are a strict intent classifier for a QQ bot.\n"
-    "Only output one word: yes or no.\n"
-    "Intent definition: {intent}\n"
-    "Message: {message}\n"
-    "Does the message match the intent?"
 )
 DEFAULT_KEYWORD_INFO_PROMPT = (
     "You are IronsBot, a concise QQ group assistant.\n"
@@ -63,45 +43,6 @@ DEFAULT_KEYWORD_INFO_PROMPT = (
     "Reply briefly and directly. If real-time bot data is needed, say which bot "
     "command or feature should be used instead of inventing data."
 )
-
-
-class AiActionBase(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = ""
-    enabled: bool = True
-    feature: str = "ai_intent"
-    keywords: list[str] = Field(default_factory=list)
-    intent: str = DEFAULT_JOIN_TEAM_INTENT
-    classifier_prompt: str = DEFAULT_CLASSIFIER_PROMPT
-    action: Literal["message", "team_recommend", "team_resource", "ai_reply"] = (
-        "team_recommend"
-    )
-    message: str = ""
-    reply_prompt: str = ""
-    team_ids: list[int] = Field(default_factory=list)
-    include_team_resource_notice: bool = False
-    exclude_commands: list[str] = Field(default_factory=list)
-
-    @field_validator("keywords", "exclude_commands", mode="before")
-    @classmethod
-    def normalize_string_list(cls, value: object) -> object:
-        return string_list(value)
-
-    @field_validator("team_ids", mode="before")
-    @classmethod
-    def normalize_int_list(cls, value: object) -> object:
-        return int_list(value)
-
-    @field_validator("feature")
-    @classmethod
-    def normalize_feature(cls, value: str) -> str:
-        feature = value.strip()
-        return feature or "ai_intent"
-
-
-class AiIntentAction(AiActionBase):
-    pass
 
 
 def builtin_ai_actions() -> dict[str, AiIntentAction]:
@@ -146,6 +87,7 @@ def default_ai_actions() -> dict[str, AiIntentAction]:
 class AiConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    api_key: str = Field(default="", exclude=True, repr=False)
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-pro"
     prompt: str = DEFAULT_AI_PROMPT
@@ -184,7 +126,7 @@ class AiConfig(BaseModel):
             text = value.strip()
             if not text:
                 return default_ai_actions()
-            return json_object(text, name="APP_CONFIG.ai.intent_actions")
+            return json_object(text, name="ai.intent_actions")
 
         return value
 
@@ -260,27 +202,3 @@ def _resolve_action_map(
         resolved[action_id] = resolved_action
 
     return resolved
-
-
-def resolve_configured_actions(config: AiConfig) -> list[AiIntentAction]:
-    return list(config.intent_actions.values())
-
-__all__ = [
-    "AI_REPLY_PROMPT_REQUIRED_ERROR",
-    "DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS",
-    "DEFAULT_AI_PROMPT",
-    "DEFAULT_CLASSIFIER_PROMPT",
-    "DEFAULT_FIRE_MANUAL_INTENT",
-    "DEFAULT_JOIN_TEAM_INTENT",
-    "DEFAULT_JOIN_TEAM_MESSAGE",
-    "DEFAULT_KEYWORD_INFO_PROMPT",
-    "KEYWORDS_REQUIRED_ERROR",
-    "MESSAGE_REQUIRED_ERROR",
-    "UNKNOWN_AI_ACTION_ERROR",
-    "AiActionBase",
-    "AiConfig",
-    "AiIntentAction",
-    "builtin_ai_actions",
-    "default_ai_actions",
-    "resolve_configured_actions",
-]

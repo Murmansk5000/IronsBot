@@ -1,5 +1,5 @@
 from dataclasses import dataclass, replace
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
 
 from ironsbot.services.bilibili.parser import (
     dynamic_brief,
@@ -14,11 +14,6 @@ DynamicPushStatus = Literal[
     "no_targets",
     "push",
 ]
-
-
-class HasPushTargets(Protocol):
-    @property
-    def has_targets(self) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,9 +103,10 @@ def decide_dynamic_push_before_targets(
 
 
 def decide_dynamic_push_after_targets(
-    targets: HasPushTargets,
+    *,
+    has_targets: bool,
 ) -> DynamicPushDecision:
-    if not targets.has_targets:
+    if not has_targets:
         return DynamicPushDecision(status="no_targets")
 
     return DynamicPushDecision(status="push")

@@ -1,42 +1,40 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
+from functools import partial
+from typing import TYPE_CHECKING
+
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
 from nonebot.log import logger
-from nonebot.matcher import Matcher
-from nonebot.params import Depends
-from nonebot.typing import T_State
 
-from ironsbot.integrations.seer_data.sessions import SeerAPISession
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.conversations import (
+    enter_event_reply_conversation,
+    event_conversation_session_id,
+)
+from ironsbot.runtime.matchers import CommandPolicy, get_prompt_session_manager
+from ironsbot.runtime.params import parse_string_arg
+from ironsbot.runtime.replies import finish_event_reply, send_event_reply
+from ironsbot.runtime.rules import no_reply, startswith_or_endswith
 from ironsbot.services.seer.autocard import (
-    AUTOCARD_PROMPT_MAX_ITEMS,
     AUTOCARD_QUERY_PREFIXES,
     AUTOCARD_QUERY_SUFFIXES,
-    AutocardDataset,
+    AutocardEntry,
     AutocardPromptValue,
-    autocard_image_url,
-    build_autocard_prompt_text,
-    build_autocard_prompt_values,
-    extract_autocard_query_arg,
-    find_autocard_card_by_id,
-    find_autocard_role_by_id,
-    format_autocard_entry,
-    load_autocard_dataset,
-    search_autocard_items,
+    AutocardService,
 )
-from ironsbot.shared.messaging import (
-    enter_event_reply_conversation,
-    finish_event_reply,
-    send_event_reply,
-)
-from ironsbot.shared.messaging.conversations import event_conversation_session_id
-from ironsbot.utils.matcher import prompt_session_manager
-from ironsbot.utils.parse_arg import parse_string_arg
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .query_rules import not_rank_query
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from nonebot.matcher import Matcher
+    from nonebot.typing import T_State
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
@@ -46,114 +44,81 @@ def _is_autocard_prompt_reply(event: MessageEvent) -> bool:
     return event.get_plaintext().strip().isdigit()
 
 
-def _invalidate_autocard_prompt(event: MessageEvent) -> None:
-    prompt_session_manager.invalidate(
+def _invalidate_autocard_prompt(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    get_prompt_session_manager(matcher).invalidate(
         event_conversation_session_id(AUTOCARD_PROMPT_NAMESPACE, event)
     )
 
 
-def _build_autocard_reply(
-    dataset: AutocardDataset,
-    kind: str,
-    item: dict[str, object],
-) -> Message:
+def _build_autocard_reply(entry: AutocardEntry, *, image: bool) -> Message:
     message = Message()
-    if image_url := autocard_image_url(kind, item):
-        message += MessageSegment.image(image_url)
-    message += MessageSegment.text(format_autocard_entry(dataset, kind, item))
+    if image and entry.image_url:
+        message += MessageSegment.image(entry.image_url)
+    message += MessageSegment.text(entry.text)
     return message
 
 
-def _build_autocard_text_reply(
-    dataset: AutocardDataset,
-    kind: str,
-    item: dict[str, object],
-) -> Message:
-    return Message(format_autocard_entry(dataset, kind, item))
-
-
-async def _send_autocard_reply(
+async def _reply_with_image_fallback(
     matcher: Matcher,
     event: MessageEvent,
-    dataset: AutocardDataset,
-    kind: str,
-    item: dict[str, object],
+    entry: AutocardEntry,
+    *,
+    finish: bool,
 ) -> None:
+    reply = finish_event_reply if finish else send_event_reply
     try:
-        await send_event_reply(
-            matcher,
-            event,
-            _build_autocard_reply(dataset, kind, item),
-        )
-    except ActionFailed as e:
+        await reply(matcher, event, _build_autocard_reply(entry, image=True))
+    except ActionFailed as error:
         logger.warning(
             "autocard image reply failed, falling back to text: "
             "kind={} id={} name={} error={}",
-            kind,
-            item.get("id"),
-            item.get("name"),
-            e,
+            entry.kind,
+            entry.item_id,
+            entry.name,
+            error,
         )
-        await send_event_reply(
-            matcher,
-            event,
-            _build_autocard_text_reply(dataset, kind, item),
-        )
-
-
-async def _finish_autocard_reply(
-    matcher: Matcher,
-    event: MessageEvent,
-    dataset: AutocardDataset,
-    kind: str,
-    item: dict[str, object],
-) -> None:
-    try:
-        await finish_event_reply(
-            matcher,
-            event,
-            _build_autocard_reply(dataset, kind, item),
-        )
-    except ActionFailed as e:
-        logger.warning(
-            "autocard image finish failed, falling back to text: "
-            "kind={} id={} name={} error={}",
-            kind,
-            item.get("id"),
-            item.get("name"),
-            e,
-        )
-        await finish_event_reply(
-            matcher,
-            event,
-            _build_autocard_text_reply(dataset, kind, item),
-        )
+        await reply(matcher, event, _build_autocard_reply(entry, image=False))
 
 
 async def _enter_autocard_prompt(
+    service: AutocardService,
     matcher: Matcher,
     event: MessageEvent,
-    state: T_State,
-    values: tuple[AutocardPromptValue, ...],
+    values: Sequence[AutocardPromptValue],
     prompt: str | None,
 ) -> None:
-    state[AUTOCARD_PROMPT_STATE_KEY] = values
-    matcher.state[AUTOCARD_PROMPT_STATE_KEY] = values
+    matcher.state[AUTOCARD_PROMPT_STATE_KEY] = tuple(values)
     await enter_event_reply_conversation(
         matcher,
         event,
         namespace=AUTOCARD_PROMPT_NAMESPACE,
-        handlers=[_handle_autocard_prompt_reply],
+        handlers=[partial(_handle_autocard_prompt_reply, service)],
         reply_check=_is_autocard_prompt_reply,
         prompt=prompt,
     )
 
 
+async def _finish_service_error(
+    matcher: Matcher,
+    event: MessageEvent,
+    error: Exception,
+) -> None:
+    message = (
+        DATABASE_UNAVAILABLE_MESSAGE
+        if isinstance(error, DataUnavailableError)
+        else f"❌ 群星牌公开配置获取失败：{error}"
+    )
+    await finish_event_reply(matcher, event, message)
+
+
 async def _handle_autocard_prompt_reply(
+    service: AutocardService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    session: SeerAPISession,
 ) -> None:
     key_text = event.get_plaintext().strip()
     if key_text == "0":
@@ -162,7 +127,6 @@ async def _handle_autocard_prompt_reply(
     values = tuple(state.get(AUTOCARD_PROMPT_STATE_KEY) or ())
     if not values:
         raise FinishedException
-
     index = int(key_text)
     if index < 1 or index > len(values):
         await finish_event_reply(
@@ -171,14 +135,12 @@ async def _handle_autocard_prompt_reply(
             "⚠️ 序号超出范围，已退出群星牌选择",
         )
 
-    value = values[index - 1]
-    dataset = load_autocard_dataset(session)
-    if value.kind == "role":
-        data = find_autocard_role_by_id(dataset, value.item_id)
-    else:
-        data = find_autocard_card_by_id(dataset, value.item_id)
-
-    if data is None:
+    try:
+        entry = service.select(values[index - 1])
+    except (DataUnavailableError, RuntimeError) as error:
+        await _finish_service_error(matcher, event, error)
+        return
+    if entry is None:
         await finish_event_reply(
             matcher,
             event,
@@ -186,62 +148,52 @@ async def _handle_autocard_prompt_reply(
         )
         return
 
-    await _send_autocard_reply(matcher, event, dataset, value.kind, data)
-    await _enter_autocard_prompt(matcher, event, state, values, prompt=None)
+    await _reply_with_image_fallback(
+        matcher,
+        event,
+        entry,
+        finish=False,
+    )
+    await _enter_autocard_prompt(service, matcher, event, values, prompt=None)
 
 
 async def handle_autocard_query(
+    service: AutocardService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
-    session: SeerAPISession,
-    arg: str = Depends(parse_string_arg),
 ) -> None:
-    _invalidate_autocard_prompt(event)
-
-    query = extract_autocard_query_arg(arg)
+    _invalidate_autocard_prompt(matcher, event)
     try:
-        dataset = load_autocard_dataset(session)
-    except Exception as e:  # noqa: BLE001
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 群星牌公开配置获取失败：{e}",
-        )
+        result = service.search(parse_string_arg(state))
+    except (DataUnavailableError, RuntimeError) as error:
+        await _finish_service_error(matcher, event, error)
         return
 
-    matches = search_autocard_items(dataset, query)
-    if not matches:
-        raise FinishedException
-
-    if len(matches) == 1:
-        kind, item = matches[0]
-        await _finish_autocard_reply(matcher, event, dataset, kind, item)
-
-    if len(matches) > AUTOCARD_PROMPT_MAX_ITEMS:
-        message = (
-            f"❌ 群星牌匹配超过 {AUTOCARD_PROMPT_MAX_ITEMS} 个，"
-            "请换更精确的关键词。"
-        )
-        await finish_event_reply(
+    if result.entry is not None:
+        await _reply_with_image_fallback(
             matcher,
             event,
-            message,
+            result.entry,
+            finish=True,
         )
-
+    if result.message:
+        await finish_event_reply(matcher, event, result.message)
+    if not result.prompt_values:
+        raise FinishedException
     await _enter_autocard_prompt(
+        service,
         matcher,
         event,
-        state,
-        build_autocard_prompt_values(matches),
-        prompt=build_autocard_prompt_text(dataset, matches),
+        result.prompt_values,
+        prompt=result.prompt_text,
     )
 
 
 def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_autocard_query"),
-        rule=seer_feature_rule(group.resources.features, "seer_autocard")
+        rule=seer_feature_rule(group.features, "seer_autocard")
         & startswith_or_endswith(
             prefixes=AUTOCARD_QUERY_PREFIXES,
             suffixes=AUTOCARD_QUERY_SUFFIXES,
@@ -250,4 +202,6 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=group.matcher_priority("seer_autocard"),
     )
-    matcher.append_handler(handle_autocard_query)
+    matcher.append_handler(
+        partial(handle_autocard_query, group.resources.autocard)
+    )

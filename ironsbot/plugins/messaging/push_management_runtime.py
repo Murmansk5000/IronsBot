@@ -8,8 +8,8 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.shared.messaging import event_conversation_session_id
-from ironsbot.utils.matcher import prompt_session_manager, reject_with_rule
+from ironsbot.runtime.conversations import event_conversation_session_id
+from ironsbot.runtime.matchers import get_prompt_session_manager, reject_with_rule
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -18,15 +18,13 @@ if TYPE_CHECKING:
     from nonebot.rule import Rule
     from nonebot.typing import T_State
 
-    from ironsbot.shared.messaging.push_subscription_models import PushTargetType
+    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
 PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
-PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
 PUSH_TIME_OPTIONS_KEY = "_message_push_time_options"
 PUSH_TIME_SELECTED_KEY = "_message_push_time_selected"
 PUSH_TIME_TARGET_ID_KEY = "_message_push_time_target_id"
-PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +41,7 @@ class PromptFlow:
         target_type: PushTargetType,
     ) -> tuple[str, int]:
         session_id = event_conversation_session_id(self.namespace, event)
-        version = prompt_session_manager.acquire(session_id)
+        version = get_prompt_session_manager(state).acquire(session_id)
         state[self.session_key] = session_id
         state[self.target_type_key] = target_type
         state[self.version_key] = version
@@ -51,6 +49,7 @@ class PromptFlow:
 
     def rule(
         self,
+        state: T_State,
         session_id: str,
         version: int,
         target_type: PushTargetType,
@@ -72,7 +71,11 @@ class PromptFlow:
                 and (text.isdigit() if selection else bool(text))
             )
 
-        return prompt_session_manager.make_rule(session_id, version, check)
+        return get_prompt_session_manager(state).make_rule(
+            session_id,
+            version,
+            check,
+        )
 
     async def reject(
         self,
@@ -94,6 +97,7 @@ class PromptFlow:
         await reject_with_rule(
             matcher,
             self.rule(
+                state,
                 session_id,
                 version,
                 cast("PushTargetType", target_type),

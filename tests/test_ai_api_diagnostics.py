@@ -3,7 +3,7 @@ import asyncio
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
-from ironsbot.utils.ai_api_diagnostics import (
+from ironsbot.integrations.http.ai import (
     AiApiSettings,
     check_ai_api,
 )
@@ -15,12 +15,13 @@ def test_ai_api_fails_without_key() -> None:
     result = asyncio.run(check_ai_api(AiApiSettings(api_key="")))
 
     assert not result.ok
-    assert result.error == "未配置 AI_KEY"
+    assert result.error == "未配置 IRONSBOT_AI_KEY"
 
 
 def test_ai_api_success(monkeypatch: MonkeyPatch) -> None:
     class FakeResponse:
         status_code = HTTP_OK
+        text = ""
 
         @staticmethod
         def json() -> dict[str, object]:
@@ -48,7 +49,7 @@ def test_ai_api_success(monkeypatch: MonkeyPatch) -> None:
             return FakeResponse()
 
     monkeypatch.setattr(
-        "ironsbot.utils.ai_api_diagnostics.httpx.AsyncClient",
+        "ironsbot.integrations.http.ai.httpx.AsyncClient",
         FakeAsyncClient,
     )
 

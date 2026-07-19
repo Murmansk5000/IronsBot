@@ -252,10 +252,3 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
     result.scanned_count = len(result.items)
     result.fetched_at = max(fetched_times, default=time.time())
     return result
-
-
-__all__ = [
-    "cached_score_candidate_page_starts",
-    "cached_score_miss_boundary",
-    "fetch_rank_score_segment_from_cached_candidates",
-]

@@ -1,12 +1,21 @@
-import pytest
-from pytest import MonkeyPatch
+from collections.abc import Awaitable, Callable
 
-from ironsbot.config.models.ai import AiConfig, AiIntentAction
-from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.services.ai import intent, intent_actions
-from ironsbot.services.ai.resources import AiResources
-from tests.helpers.onebot_events import group_message_event
+import pytest
+
+from ironsbot.config.models.ai import AiConfig
+from ironsbot.core.features import FeatureConfig
+from ironsbot.core.messaging import AiIntentAction
+from ironsbot.services.ai import intent
+from ironsbot.services.ai.history import HistoryMessage
+from ironsbot.services.ai.responses import AiResponseResult
+from ironsbot.services.ai.service import AiService
+from tests.helpers.ai import FakeAiCompletionClient
 from tests.helpers.runtime import build_test_runtime
+
+CompletionRequester = Callable[
+    [AiConfig, list[HistoryMessage]],
+    Awaitable[AiResponseResult],
+]
 
 
 def test_intent_reply_yes_parser_accepts_short_yes_forms() -> None:
@@ -39,30 +48,27 @@ def test_intent_keyword_match_normalizes_text() -> None:
     assert intent.contains_any_keyword("我要 加 战队", ["加战队"])
 
 
-def test_fire_manual_announcement_or_share_is_not_request() -> None:
-    text = "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict"
-    action = AiIntentAction(
-        id="manual",
+def _manual_action() -> AiIntentAction:
+    return AiIntentAction(
+        id="fire_manual",
         feature="ai_intent_fire_manual",
         keywords=["手册"],
         action="message",
         message="ok",
         intent="manual",
     )
+
+
+def test_fire_manual_announcement_or_share_is_not_request() -> None:
+    text = "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict"
+    action = _manual_action()
 
     assert intent.contains_any_keyword(text, action.keywords)
     assert intent.excluded_by_context(text, action)
 
 
 def test_fire_manual_request_is_not_context_excluded() -> None:
-    action = AiIntentAction(
-        id="manual",
-        feature="ai_intent_fire_manual",
-        keywords=["手册"],
-        action="message",
-        message="ok",
-        intent="manual",
-    )
+    action = _manual_action()
 
     assert not intent.excluded_by_context("手册在哪", action)
     assert not intent.excluded_by_context("求火火手册链接", action)
@@ -96,14 +102,6 @@ def test_fire_manual_strong_request_prefilter_rejects_weak_mentions() -> None:
 
 
 def test_fire_manual_action_prefilter_is_feature_specific() -> None:
-    manual_action = AiIntentAction(
-        id="manual",
-        feature="ai_intent_fire_manual",
-        keywords=["手册"],
-        action="message",
-        message="ok",
-        intent="manual",
-    )
     team_action = AiIntentAction(
         id="team",
         feature="ai_intent",
@@ -113,89 +111,77 @@ def test_fire_manual_action_prefilter_is_feature_specific() -> None:
         intent="team",
     )
 
-    assert not intent.passes_action_prefilter("火火手册", manual_action)
-    assert intent.passes_action_prefilter("求火火手册", manual_action)
+    assert not intent.passes_action_prefilter("火火手册", _manual_action())
+    assert intent.passes_action_prefilter("求火火手册", _manual_action())
     assert intent.passes_action_prefilter("战队", team_action)
 
 
-def test_fire_manual_action_requires_group_feature() -> None:
-    event = group_message_event(
-        "手册在哪",
-        user_id=2,
-        group_id=4,
-    )
-    action = AiIntentAction(
-        id="manual",
-        feature="ai_intent_fire_manual",
-        keywords=["手册"],
-        action="message",
-        message="ok",
-        intent="manual",
-    )
-    resources = _resources(action, "ai_intent")
-
-    assert not intent.is_action_allowed(resources.features, event, action)
-
-
-def _group_event(text: str):
-    return group_message_event(
-        text,
-        user_id=2,
-        group_id=4,
-    )
-
-
-def _resources(
+def _runtime(
     action: AiIntentAction,
     *allowed_features: str,
-) -> AiResources:
+):
     enabled = allowed_features or ("ai_intent", action.feature)
-    runtime = build_test_runtime(
+    return build_test_runtime(
         feature_config=FeatureConfig(
             group_policy={"4": list(dict.fromkeys(enabled))},
             superuser_bypass=False,
         )
     )
-    return AiResources(
-        AiConfig(intent_actions={action.id: action}),
+
+
+async def _yes_completion(
+    _config: AiConfig,
+    _messages: list[HistoryMessage],
+) -> AiResponseResult:
+    return AiResponseResult(status_code=200, reply="yes")
+
+
+def _service(
+    action: AiIntentAction,
+    *allowed_features: str,
+    request_completion: CompletionRequester = _yes_completion,
+) -> AiService:
+    config = AiConfig(
+        api_key="key",
+        memory=False,
+        intent_actions={action.id: action},
+    )
+    runtime = _runtime(action, *allowed_features)
+    return AiService(
+        config,
         runtime.features,
         runtime.admin_notices,
-        "key",
-        {},
         ("战队",),
-        20,
+        FakeAiCompletionClient(config, request_completion),
     )
+
+
+def test_fire_manual_action_requires_group_feature() -> None:
+    action = _manual_action()
+    runtime = _runtime(action, "ai_intent")
+
+    assert not intent.is_action_allowed(runtime.features, 2, 4, action)
 
 
 @pytest.mark.asyncio
-async def test_fire_manual_weak_intent_does_not_call_ai(
-    monkeypatch: MonkeyPatch,
-) -> None:
+async def test_fire_manual_weak_intent_does_not_call_ai() -> None:
     called = False
-    action = AiIntentAction(
-        id="fire_manual",
-        feature="ai_intent_fire_manual",
-        keywords=["手册"],
-        action="message",
-        message="ok",
-        intent="manual",
-    )
 
-    async def fake_call_ai_chat(
-        _resources: AiResources,
-        _prompt: str,
-        _history: list[object],
-        **_kwargs: object,
-    ) -> str:
+    async def request_completion(
+        _config: AiConfig,
+        _messages: list[HistoryMessage],
+    ) -> AiResponseResult:
         nonlocal called
         called = True
-        return "yes"
+        return AiResponseResult(status_code=200, reply="yes")
 
-    monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
-
-    matched = await intent_actions.classify_ai_intent_action(
-        _resources(action),
-        _group_event("我是抄火火手册里面说的。")
+    matched = await _service(
+        _manual_action(),
+        request_completion=request_completion,
+    ).classify_intent(
+        "我是抄火火手册里面说的。",
+        user_id=2,
+        group_id=4,
     )
 
     assert matched is None
@@ -203,34 +189,33 @@ async def test_fire_manual_weak_intent_does_not_call_ai(
 
 
 @pytest.mark.asyncio
-async def test_ai_intent_feature_gate_blocks_action_specific_feature(
-    monkeypatch: MonkeyPatch,
-) -> None:
+async def test_ai_intent_feature_gate_blocks_action_specific_feature() -> None:
     called = False
     action = AiIntentAction(
         id="team_recommend",
         feature="ai_intent_team_recommend",
-        keywords=["鎴橀槦"],
+        keywords=["战队"],
         action="team_recommend",
         message="ok",
         intent="team",
     )
 
-    async def fake_call_ai_chat(
-        _resources: AiResources,
-        _prompt: str,
-        _history: list[object],
-        **_kwargs: object,
-    ) -> str:
+    async def request_completion(
+        _config: AiConfig,
+        _messages: list[HistoryMessage],
+    ) -> AiResponseResult:
         nonlocal called
         called = True
-        return "yes"
+        return AiResponseResult(status_code=200, reply="yes")
 
-    monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
-
-    matched = await intent_actions.classify_ai_intent_action(
-        _resources(action, action.feature),
-        _group_event("鎴橀槦")
+    matched = await _service(
+        action,
+        action.feature,
+        request_completion=request_completion,
+    ).classify_intent(
+        "战队",
+        user_id=2,
+        group_id=4,
     )
 
     assert matched is None
@@ -238,33 +223,24 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature(
 
 
 @pytest.mark.asyncio
-async def test_fire_manual_strong_intent_calls_ai_and_matches(
-    monkeypatch: MonkeyPatch,
-) -> None:
+async def test_fire_manual_strong_intent_calls_ai_and_matches() -> None:
     prompts: list[str] = []
-    action = AiIntentAction(
-        id="fire_manual",
-        feature="ai_intent_fire_manual",
-        keywords=["手册"],
-        action="message",
-        message="ok",
-        intent="manual",
-    )
 
-    async def fake_call_ai_chat(
-        _resources: AiResources,
-        prompt: str,
-        _history: list[object],
-        **_kwargs: object,
-    ) -> str:
-        prompts.append(prompt)
-        return "yes"
+    async def request_completion(
+        _config: AiConfig,
+        messages: list[HistoryMessage],
+    ) -> AiResponseResult:
+        prompts.append(messages[-1]["content"])
+        return AiResponseResult(status_code=200, reply="yes")
 
-    monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
-
-    matched = await intent_actions.classify_ai_intent_action(
-        _resources(action),
-        _group_event("求火火手册链接")
+    action = _manual_action()
+    matched = await _service(
+        action,
+        request_completion=request_completion,
+    ).classify_intent(
+        "求火火手册链接",
+        user_id=2,
+        group_id=4,
     )
 
     assert matched == action
@@ -272,31 +248,20 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches(
 
 
 @pytest.mark.asyncio
-async def test_fire_manual_strong_intent_respects_ai_no(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    action = AiIntentAction(
-        id="fire_manual",
-        feature="ai_intent_fire_manual",
-        keywords=["手册"],
-        action="message",
-        message="ok",
-        intent="manual",
-    )
+async def test_fire_manual_strong_intent_respects_ai_no() -> None:
+    async def request_completion(
+        _config: AiConfig,
+        _messages: list[HistoryMessage],
+    ) -> AiResponseResult:
+        return AiResponseResult(status_code=200, reply="no")
 
-    async def fake_call_ai_chat(
-        _resources: AiResources,
-        _prompt: str,
-        _history: list[object],
-        **_kwargs: object,
-    ) -> str:
-        return "no"
-
-    monkeypatch.setattr(intent_actions, "call_ai_chat", fake_call_ai_chat)
-
-    matched = await intent_actions.classify_ai_intent_action(
-        _resources(action),
-        _group_event("求火火手册链接")
+    matched = await _service(
+        _manual_action(),
+        request_completion=request_completion,
+    ).classify_intent(
+        "求火火手册链接",
+        user_id=2,
+        group_id=4,
     )
 
     assert matched is None
