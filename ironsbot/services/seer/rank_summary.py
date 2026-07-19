@@ -48,11 +48,14 @@ def _record_rank_error(
     if errors is None:
         return
     display_title = _display_rank_title(title)
+    errors.append(f"{display_title}{_format_rank_failure(error)}")
+
+
+def _format_rank_failure(error: Exception) -> str:
     if isinstance(error, TimeoutError):
-        errors.append(f"{display_title}查询超时")
-        return
+        return "查询超时"
     detail = str(error) or type(error).__name__
-    errors.append(f"{display_title}查询失败：{detail}")
+    return f"查询失败：{detail}"
 
 
 async def _safe_find_rank(  # noqa: PLR0913
@@ -79,7 +82,12 @@ async def _safe_find_rank(  # noqa: PLR0913
     except (TimeoutError, OSError) as error:
         _LOGGER.warning("failed to fetch player rank item: %s", label, exc_info=True)
         _record_rank_error(errors, title=title, error=error)
-        return RankLookupResult(title=title, score_name=score_name, score=score)
+        return RankLookupResult(
+            title=title,
+            score_name=score_name,
+            score=score,
+            failure=_format_rank_failure(error),
+        )
 
 
 async def _safe_find_pet_kind_rank(  # noqa: PLR0913
@@ -109,6 +117,7 @@ async def _safe_find_pet_kind_rank(  # noqa: PLR0913
             title=title,
             score_name="精灵",
             score=pet_kind_count,
+            failure=_format_rank_failure(error),
         )
 
 

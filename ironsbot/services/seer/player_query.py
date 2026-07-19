@@ -215,7 +215,7 @@ async def safe_player_extra(  # noqa: PLR0913
     label: str,
     awaitable: Awaitable[Any],
     default: Any,
-    extra_errors: list[str],
+    extra_errors: list[str] | None,
     *,
     on_error: Callable[[str, Exception], None] | None = None,
     timeout_seconds: float | None = None,
@@ -229,9 +229,10 @@ async def safe_player_extra(  # noqa: PLR0913
         error_label = error_label_factory() if error_label_factory else label
         if on_error is not None:
             on_error(error_label, error)
-        extra_errors.append(
-            f"{error_label}失败：{_format_player_extra_error(error)}"
-        )
+        if extra_errors is not None:
+            extra_errors.append(
+                f"{error_label}失败：{format_player_extra_error(error)}"
+            )
         return default
 
 
@@ -240,7 +241,7 @@ async def optional_player_extra(  # noqa: PLR0913
     enabled: bool,  # noqa: FBT001
     awaitable_factory: Callable[[], Awaitable[Any]],
     default: Any,
-    extra_errors: list[str],
+    extra_errors: list[str] | None,
     *,
     on_error: Callable[[str, Exception], None] | None = None,
     timeout_seconds: float | None = None,
@@ -260,7 +261,7 @@ async def optional_player_extra(  # noqa: PLR0913
     )
 
 
-def _format_player_extra_error(error: Exception) -> str:
+def format_player_extra_error(error: Exception) -> str:
     if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
         return "查询超时"
     return str(error) or type(error).__name__

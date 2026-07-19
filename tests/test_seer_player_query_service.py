@@ -17,6 +17,7 @@ from ironsbot.services.seer.player_query import (
     cached_player_detail_message,
     calculate_player_peak_scores,
     extract_player_query_arg,
+    format_player_extra_error,
     optional_player_extra,
     plan_player_detail_fetches,
     plan_player_detail_prompt,
@@ -317,6 +318,35 @@ def test_safe_player_extra_uses_dynamic_error_label() -> None:
     )
     assert extra_errors == ["刻印图鉴榜失败：查询超时"]
     assert logged_labels == ["刻印图鉴榜"]
+
+
+def test_safe_player_extra_can_route_peak_timeout_to_affected_mode() -> None:
+    async def run() -> str:
+        await asyncio.sleep(0.05)
+        return "unused"
+
+    summary = PeakSeasonRankSummary.empty()
+
+    assert (
+        asyncio.run(
+            safe_player_extra(
+                "巅峰赛季榜",
+                run(),
+                "fallback",
+                None,
+                timeout_seconds=0.001,
+                error_label_factory=lambda: "竞技赛季榜",
+                on_error=lambda label, error: summary.mark_failure(
+                    label,
+                    format_player_extra_error(error),
+                ),
+            )
+        )
+        == "fallback"
+    )
+    assert summary.standard.failure == "查询超时"
+    assert summary.wild.failure is None
+    assert summary.expert.failure is None
 
 
 def test_optional_player_extra_skips_disabled_factory() -> None:
