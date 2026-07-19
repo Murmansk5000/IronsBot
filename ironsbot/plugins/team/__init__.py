@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, NoticeEvent
 from nonebot.rule import Rule
+
+from ironsbot.runtime.matchers import bind_async
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from ironsbot.services.team.audit import TeamAuditService
 
 
-async def _is_group_increase(event: NoticeEvent) -> bool:
+def _is_group_increase(event: NoticeEvent) -> bool:
     return isinstance(event, GroupIncreaseNoticeEvent)
 
 
@@ -49,7 +50,7 @@ def install(
         block=False,
     )
     matcher.append_handler(
-        partial(
+        bind_async(
             handle_team_audit_welcome,
             scheduler=scheduler,
             service=service,
