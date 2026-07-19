@@ -46,7 +46,7 @@ ghcr.io/murmansk5000/ironsbot:latest
 - `IronsBot Data`: `/mnt/user/appdata/ironsbot/data` -> `/app/data`
 - `IronsBot Logs`: `/mnt/user/appdata/ironsbot/logs` -> `/app/logs`
 - `Docker Socket`: `/var/run/docker.sock` -> `/var/run/docker.sock`，用于镜像检查、容器重启和自更新
-- `IRONSBOT_ONEBOT_TOKEN`: 与 NapCat 反向 WebSocket token 一致
+- `ONEBOT_ACCESS_TOKEN`: 与 NapCat 反向 WebSocket token 一致
 - `[bot].superusers`: 在 `/config/ironsbot.toml` 中填写超级管理员 QQ 列表
 
 NapCat 反向 WebSocket：
@@ -104,8 +104,8 @@ services:
       # 可选但推荐：默认会检查镜像；挂载后 /重启机器人 和 /更新镜像 可重启/更新容器。
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      IRONSBOT_CONFIG: "/config/ironsbot.toml"
-      IRONSBOT_ONEBOT_TOKEN: "change-me"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
+      ONEBOT_ACCESS_TOKEN: "change-me"
     restart: always
 ```
 
@@ -140,25 +140,25 @@ services:
 
 ## 配置方式
 
-行为与部署配置都写在 TOML 文件里，并通过 `IRONSBOT_CONFIG` 指向它。环境变量只保留：
+行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
-- 配置位置：`IRONSBOT_CONFIG`
-- 密钥：`IRONSBOT_ONEBOT_TOKEN`、`IRONSBOT_AI_KEY`、`IRONSBOT_SEER_USER_ID`、
-  `IRONSBOT_SEER_PASSWORD`、`IRONSBOT_SENDPIC_TOKEN`、`IRONSBOT_GITHUB_TOKEN`
+- 配置位置：`APP_CONFIG_PATH`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
+  `HEADLESS_SEER_PASSWORD`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
 ```env
-IRONSBOT_CONFIG=/config/ironsbot.toml
-IRONSBOT_ONEBOT_TOKEN=change-me
-IRONSBOT_AI_KEY=
-IRONSBOT_SEER_USER_ID=
-IRONSBOT_SEER_PASSWORD=
-IRONSBOT_SENDPIC_TOKEN=
-IRONSBOT_GITHUB_TOKEN=
+APP_CONFIG_PATH=/config/ironsbot.toml
+ONEBOT_ACCESS_TOKEN=change-me
+AI_KEY=
+HEADLESS_SEER_USER_ID=
+HEADLESS_SEER_PASSWORD=
+SENDPIC_CNB_TOKEN=
+GITHUB_WORKFLOW_TOKEN=
 ```
 
-`IRONSBOT_CONFIG` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
+`APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
 Desktop 可以把任意可写目录挂载到 `/config`：
 
@@ -170,7 +170,7 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 程序只读并严格校验配置，不会修改磁盘上的 TOML。真实 env 文件包含密钥，不纳入仓库；
 使用 Docker Compose 时可参考 [.env.example](.env.example) 手动创建。
 
-如果没有设置 `IRONSBOT_CONFIG`，IronsBot 会默认读取当前工作目录的
+如果没有设置 `APP_CONFIG_PATH`，IronsBot 会默认读取当前工作目录的
 `config/ironsbot.toml`；文件不存在会立即报错。日志默认写入当前工作目录的 `logs/`，
 运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载
 `/app/logs`，启用文件日志后完整日志和错误日志都能在宿主机上直接查看。
@@ -319,7 +319,7 @@ GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例
 4. `Murmansk-Seer/api-data`：用 Solaris 构建 SeerAPI 基础 SQLite。
 5. `Murmansk-Seer/seerapi`：合并基础库、官方 ConfigPackage 补充表和自定义表，发布 IronsBot 运行库。
 
-启用远程构建时，环境变量需要填写 `IRONSBOT_GITHUB_TOKEN`。默认情况下，启动同步和定时同步只下载
+启用远程构建时，环境变量需要填写 `GITHUB_WORKFLOW_TOKEN`。默认情况下，启动同步和定时同步只下载
 已有 release，不触发 Actions，避免容器启动过慢或频繁消耗 GitHub Actions。启动同步默认开启；
 如不希望开机下载 release，可设置：
 

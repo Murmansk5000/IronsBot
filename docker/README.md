@@ -64,8 +64,8 @@ services:
       # restart/update the current container when this socket is mounted.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      IRONSBOT_CONFIG: "/config/ironsbot.toml"
-      IRONSBOT_ONEBOT_TOKEN: "change-me"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
+      ONEBOT_ACCESS_TOKEN: "change-me"
     restart: always
 
   napcat:
@@ -104,8 +104,8 @@ docker run --name ironsbot `
   -v "${IRONSBOT_HOME}\config:/config" `
   -v "${IRONSBOT_HOME}\data:/app/data" `
   -v "${IRONSBOT_HOME}\logs:/app/logs" `
-  -e IRONSBOT_CONFIG=/config/ironsbot.toml `
-  -e IRONSBOT_ONEBOT_TOKEN=change-me `
+  -e APP_CONFIG_PATH=/config/ironsbot.toml `
+  -e ONEBOT_ACCESS_TOKEN=change-me `
   murmansk5000/ironsbot:latest
 ```
 
@@ -174,7 +174,7 @@ If NapCat is created separately in Unraid bridge mode, use the Unraid host IP an
 ws://UNRAID_SERVER_IP:8085/onebot/v11/ws
 ```
 
-The reverse WebSocket token must match `IRONSBOT_ONEBOT_TOKEN`.
+The reverse WebSocket token must match `ONEBOT_ACCESS_TOKEN`.
 
 Multiple NapCat / OneBot v11 clients may connect to the same IronsBot WebSocket
 endpoint. Configure `[messaging.bot_routing]` in `ironsbot.toml` when proactive
@@ -212,33 +212,33 @@ Behavior config is file-based:
 
 - Create `ironsbot.toml` from `config.example.toml`, then mount its directory
   to `/config`.
-- Set `IRONSBOT_CONFIG=/config/ironsbot.toml`.
+- Set `APP_CONFIG_PATH=/config/ironsbot.toml`.
 - Use `config.example.toml` for all fields, defaults, English descriptions, Chinese descriptions, and examples.
 
-If `IRONSBOT_CONFIG` is not set, IronsBot falls back to
+If `APP_CONFIG_PATH` is not set, IronsBot falls back to
 `config/ironsbot.toml` in the current working directory. Missing config files
 cause startup to fail. IronsBot never mutates the TOML file. Relative `data/`
 and `logs/` paths live under the current working directory.
 
 ```env
-IRONSBOT_CONFIG=/config/ironsbot.toml
-IRONSBOT_ONEBOT_TOKEN=change-me
-IRONSBOT_AI_KEY=
-IRONSBOT_SEER_USER_ID=
-IRONSBOT_SEER_PASSWORD=
-IRONSBOT_SENDPIC_TOKEN=
-IRONSBOT_GITHUB_TOKEN=
+APP_CONFIG_PATH=/config/ironsbot.toml
+ONEBOT_ACCESS_TOKEN=change-me
+AI_KEY=
+HEADLESS_SEER_USER_ID=
+HEADLESS_SEER_PASSWORD=
+SENDPIC_CNB_TOKEN=
+GITHUB_WORKFLOW_TOKEN=
 ```
 
 | Variable | Description |
 | --- | --- |
-| `IRONSBOT_CONFIG` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
-| `IRONSBOT_ONEBOT_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `IRONSBOT_AI_KEY` | AI chat API key. |
-| `IRONSBOT_SEER_USER_ID` | Optional Seer account ID for headless login. |
-| `IRONSBOT_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
-| `IRONSBOT_SENDPIC_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
-| `IRONSBOT_GITHUB_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
+| `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
+| `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
+| `AI_KEY` | AI chat API key. |
+| `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
+| `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
+| `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
+| `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
@@ -400,7 +400,7 @@ https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.
 
 The Unraid template exposes a minimal variable set and mounts a config
 directory. Put behavior and runtime settings in `/config/ironsbot.toml`; keep
-only `IRONSBOT_CONFIG` and secret values as environment variables.
+only `APP_CONFIG_PATH` and secret values as environment variables.
 
 ## Privacy Notes
 

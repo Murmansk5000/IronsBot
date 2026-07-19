@@ -290,13 +290,13 @@ Non-secret behavior and deployment values live in TOML. Environment variables
 are limited to the configuration location and secrets:
 
 ```text
-IRONSBOT_CONFIG
-IRONSBOT_ONEBOT_TOKEN
-IRONSBOT_AI_KEY
-IRONSBOT_SEER_USER_ID
-IRONSBOT_SEER_PASSWORD
-IRONSBOT_SENDPIC_TOKEN
-IRONSBOT_GITHUB_TOKEN
+APP_CONFIG_PATH
+ONEBOT_ACCESS_TOKEN
+AI_KEY
+HEADLESS_SEER_USER_ID
+HEADLESS_SEER_PASSWORD
+SENDPIC_CNB_TOKEN
+GITHUB_WORKFLOW_TOKEN
 ```
 
 The loader explicitly maps those variables into the single `Settings` model.

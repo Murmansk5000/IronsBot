@@ -624,12 +624,12 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
 
 def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     env = {
-        "IRONSBOT_ONEBOT_TOKEN": "token",
-        "IRONSBOT_AI_KEY": "sk-test",
-        "IRONSBOT_SENDPIC_TOKEN": "cnb-token",
-        "IRONSBOT_GITHUB_TOKEN": "gh-token",
-        "IRONSBOT_SEER_USER_ID": str(HEADLESS_USER_ID),
-        "IRONSBOT_SEER_PASSWORD": "md5",
+        "ONEBOT_ACCESS_TOKEN": "token",
+        "AI_KEY": "sk-test",
+        "SENDPIC_CNB_TOKEN": "cnb-token",
+        "GITHUB_WORKFLOW_TOKEN": "gh-token",
+        "HEADLESS_SEER_USER_ID": str(HEADLESS_USER_ID),
+        "HEADLESS_SEER_PASSWORD": "md5",
     }
 
     settings = load_settings(ROOT / "config.example.toml", env=env)

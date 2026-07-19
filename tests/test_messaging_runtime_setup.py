@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 import nonebot
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()

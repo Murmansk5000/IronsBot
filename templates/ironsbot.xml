@@ -21,21 +21,21 @@
 Current deployment contract / 当前部署约定:
 - EN: All behavior and runtime settings, including superusers, listen address, command prefixes, and logging, live in /config/ironsbot.toml.
 - ZH: 所有行为与运行设置，包括超级管理员、监听地址、命令前缀和日志，统一写在 /config/ironsbot.toml。
-- EN: Environment variables are limited to IRONSBOT_CONFIG and six secret variables.
-- ZH: 环境变量只保留 IRONSBOT_CONFIG 和六个密钥变量。
+- EN: Environment variables are limited to APP_CONFIG_PATH and six secret variables.
+- ZH: 环境变量只保留 APP_CONFIG_PATH 和六个密钥变量。
 - EN: Missing or obsolete TOML fails startup; no compatibility or automatic repair is provided.
 - ZH: TOML 缺失或包含旧字段时会阻止启动，不提供旧配置兼容或自动修复。
   </Changes>
-  <Config Name="WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="EN: Host port mapped to container port 8080. Point the OneBot reverse WebSocket to this port. ZH: 主机端口映射到容器内 8080，OneBot 反向 WebSocket 连接此端口。" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
+  <Config Name="Host WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="EN: Host port mapped to the fixed container port 8080. Point the OneBot reverse WebSocket to this host port. ZH: WebSocket 主机端口，映射到固定的容器内 8080；OneBot 反向 WebSocket 连接此主机端口。" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="IronsBot Data" Target="/app/data" Default="/mnt/user/appdata/ironsbot/data" Mode="rw" Description="EN: Persistent runtime data, including caches, cookies, and SQLite databases. ZH: 持久化运行数据目录，用于保存缓存、Cookie 和 SQLite 数据库。" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/data</Config>
   <Config Name="IronsBot Logs" Target="/app/logs" Default="/mnt/user/appdata/ironsbot/logs" Mode="rw" Description="EN: Persistent file logs. Configure filenames under paths in TOML. ZH: 持久化日志目录，文件名在 TOML 的 paths 中配置。" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/ironsbot/logs</Config>
   <Config Name="IronsBot Config" Target="/config" Default="/mnt/user/appdata/ironsbot/config" Mode="rw" Description="EN: Directory containing the pre-created ironsbot.toml. IronsBot never generates or repairs it. ZH: 存放预先创建的 ironsbot.toml；程序不会自动生成或修复该文件。" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/config</Config>
   <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="rw" Description="EN: Optional. Enables image checks and container restart/update through Docker API or Watchtower. This grants control over the host Docker engine. ZH: 可选。用于通过 Docker API 或 Watchtower 检查镜像、重启或更新容器；挂载后容器可控制宿主机 Docker。" Type="Path" Display="advanced" Required="false" Mask="false">/var/run/docker.sock</Config>
-  <Config Name="IronsBot Config Path" Target="IRONSBOT_CONFIG" Default="/config/ironsbot.toml" Mode="" Description="EN: Required path to the strict TOML config. ZH: 必填，严格 TOML 配置文件路径。" Type="Variable" Display="always" Required="true" Mask="false">/config/ironsbot.toml</Config>
-  <Config Name="OneBot Access Token" Target="IRONSBOT_ONEBOT_TOKEN" Default="" Mode="" Description="EN: OneBot connection token; it must match NapCat. ZH: OneBot 连接令牌，必须与 NapCat 一致。" Type="Variable" Display="always" Required="true" Mask="true" />
-  <Config Name="Headless Seer User ID" Target="IRONSBOT_SEER_USER_ID" Default="" Mode="" Description="EN: Optional Seer account ID for headless login. ZH: 可选，无头登录使用的米米号。" Type="Variable" Display="always" Required="false" Mask="false" />
-  <Config Name="Headless Seer Password" Target="IRONSBOT_SEER_PASSWORD" Default="" Mode="" Description="EN: Optional Seer password MD5 for headless login. ZH: 可选，无头登录使用的密码 MD5。" Type="Variable" Display="always" Required="false" Mask="true" />
-  <Config Name="AI Chat API Key" Target="IRONSBOT_AI_KEY" Default="" Mode="" Description="EN: Optional OpenAI-compatible API key. ZH: 可选，OpenAI 兼容 AI 接口密钥。" Type="Variable" Display="always" Required="false" Mask="true" />
-  <Config Name="SendPic CNB Token" Target="IRONSBOT_SENDPIC_TOKEN" Default="" Mode="" Description="EN: Optional CNB token for configured SendPic repositories. ZH: 可选，SendPic 使用 CNB 仓库时的访问令牌。" Type="Variable" Display="advanced" Required="false" Mask="true" />
-  <Config Name="GitHub Workflow Token" Target="IRONSBOT_GITHUB_TOKEN" Default="" Mode="" Description="EN: Optional token for operations.data_sync remote builds. ZH: 可选，operations.data_sync 远程构建使用的 GitHub Token。" Type="Variable" Display="advanced" Required="false" Mask="true" />
+  <Config Name="IronsBot Config Path" Target="APP_CONFIG_PATH" Default="/config/ironsbot.toml" Mode="" Description="EN: Required path to the strict TOML config. ZH: 必填，严格 TOML 配置文件路径。" Type="Variable" Display="always" Required="true" Mask="false">/config/ironsbot.toml</Config>
+  <Config Name="OneBot Access Token" Target="ONEBOT_ACCESS_TOKEN" Default="" Mode="" Description="EN: OneBot connection token; it must match NapCat. ZH: OneBot 连接令牌，必须与 NapCat 一致。" Type="Variable" Display="always" Required="true" Mask="true" />
+  <Config Name="Headless Seer User ID" Target="HEADLESS_SEER_USER_ID" Default="" Mode="" Description="EN: Optional Seer account ID for headless login. ZH: 可选，无头登录使用的米米号。" Type="Variable" Display="always" Required="false" Mask="false" />
+  <Config Name="Headless Seer Password" Target="HEADLESS_SEER_PASSWORD" Default="" Mode="" Description="EN: Optional Seer password MD5 for headless login. ZH: 可选，无头登录使用的密码 MD5。" Type="Variable" Display="always" Required="false" Mask="true" />
+  <Config Name="AI Chat API Key" Target="AI_KEY" Default="" Mode="" Description="EN: Optional OpenAI-compatible API key. ZH: 可选，OpenAI 兼容 AI 接口密钥。" Type="Variable" Display="always" Required="false" Mask="true" />
+  <Config Name="SendPic CNB Token" Target="SENDPIC_CNB_TOKEN" Default="" Mode="" Description="EN: Optional CNB token for configured SendPic repositories. ZH: 可选，SendPic 使用 CNB 仓库时的访问令牌。" Type="Variable" Display="advanced" Required="false" Mask="true" />
+  <Config Name="GitHub Workflow Token" Target="GITHUB_WORKFLOW_TOKEN" Default="" Mode="" Description="EN: Optional token for operations.data_sync remote builds. ZH: 可选，operations.data_sync 远程构建使用的 GitHub Token。" Type="Variable" Display="advanced" Required="false" Mask="true" />
 </Container>

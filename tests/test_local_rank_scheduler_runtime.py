@@ -8,7 +8,7 @@ from ironsbot.config.models.settings import Settings
 from ironsbot.integrations.headless_seer.client import ClientManager
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
+os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()

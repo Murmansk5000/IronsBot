@@ -23,7 +23,7 @@ services:
     env_file:
       - .env.prod
     environment:
-      IRONSBOT_CONFIG: "/config/ironsbot.toml"
+      APP_CONFIG_PATH: "/config/ironsbot.toml"
     logging:
       driver: "json-file"
       options:
