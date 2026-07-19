@@ -1,18 +1,156 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
 from seerapi_models import MintmarkClassCategoryORM, MintmarkORM
 from seerapi_models.mintmark import MintmarkMaxAttrORM, UniversalPartORM
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.config.models.seer import MintmarkQueryConfig
+from ironsbot.services.seer import mintmark as mintmark_module
 from ironsbot.services.seer.mintmark import (
+    MintmarkQueryService,
+    MintmarkQueryView,
     build_mintmark_views,
     format_mintmark_choice_description,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.images import SeerImageSource
+
 NEW_MINTMARK_ID = 45001
 OLD_MINTMARK_ID = 41606
 
+
+class FakeData:
+    mintmark = object()
+    gem_category = object()
+
+    def __init__(self) -> None:
+        self.mintmarks: tuple[Any, ...] = ()
+        self.categories: tuple[Any, ...] = ()
+        self.session_active = False
+
+    @contextmanager
+    def mintmark_query(
+        self,
+        _arg: str,
+    ) -> Iterator[tuple[tuple[Any, ...], tuple[Any, ...], tuple[Any, ...]]]:
+        self.session_active = True
+        try:
+            yield self.mintmarks, (), ()
+        finally:
+            self.session_active = False
+
+    @contextmanager
+    def resolve(
+        self,
+        _getter: object,
+        _arg: str,
+    ) -> Iterator[tuple[Any, ...]]:
+        self.session_active = True
+        try:
+            yield self.categories
+        finally:
+            self.session_active = False
+
+
+class FakeImages:
+    async def fetch(
+        self,
+        kind: object,
+        key: str,
+        *,
+        fallback: bool = True,
+    ) -> bytes:
+        assert kind == "mintmark"
+        assert fallback is False
+        return f"image:{key}".encode()
+
+
+def _service(data: FakeData) -> MintmarkQueryService:
+    return MintmarkQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FakeImages()),
+        merge_connected=True,
+    )
+
 def test_mintmark_query_config_merges_connected_by_default() -> None:
     assert MintmarkQueryConfig().merge_connected is True
+
+
+@pytest.mark.asyncio
+async def test_mintmark_formats_relationships_before_session_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = FakeData()
+    mintmark = SimpleNamespace(id=45001, name="十年·筑梦")
+    data.mintmarks = (mintmark,)
+
+    def build_views(
+        _mintmarks: Any,
+        *,
+        merge_connected: bool,
+    ) -> tuple[MintmarkQueryView, ...]:
+        assert merge_connected
+        return (MintmarkQueryView(cast("MintmarkORM", mintmark)),)
+
+    def format_details(
+        _view: MintmarkQueryView,
+        *,
+        merge_connected: bool,
+    ) -> str:
+        assert merge_connected
+        assert data.session_active
+        return "会话内格式化"
+
+    monkeypatch.setattr(mintmark_module, "build_mintmark_views", build_views)
+    monkeypatch.setattr(
+        mintmark_module,
+        "_format_mintmark_details",
+        format_details,
+    )
+
+    result = await _service(data).search_mintmark("十年")
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:45001"
+    assert result.reply.text == "会话内格式化"
+    assert data.session_active is False
+
+
+@pytest.mark.asyncio
+async def test_gem_formats_relationships_before_session_closes() -> None:
+    data = FakeData()
+
+    class SessionBoundGemCategory:
+        id = 1
+        name = "绝命"
+        generation_id = 1
+
+        @property
+        def gem(self) -> list[Any]:
+            assert data.session_active
+            return [
+                SimpleNamespace(
+                    level=1,
+                    skill_effect_in_use=[SimpleNamespace(info="附加伤害")],
+                )
+            ]
+
+    data.categories = (SessionBoundGemCategory(),)
+
+    result = await _service(data).search_gem("绝命")
+
+    assert result.reply is not None
+    assert "附加伤害" in result.reply.text
+    assert data.session_active is False
 
 
 def _connected_mintmark_session() -> Session:

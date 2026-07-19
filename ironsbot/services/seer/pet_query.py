@@ -50,7 +50,7 @@ class PetQueryService:
     ) -> QueryResult[PetImageSelection]:
         with self._data.pet_and_skins(arg) as values:
             pets, skins = values
-        choices = self._image_choices(pets, skins)
+            choices = self._image_choices(pets, skins)
         if not arg.strip() or not choices:
             return QueryResult()
         if len(choices) == 1:

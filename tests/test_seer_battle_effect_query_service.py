@@ -20,6 +20,7 @@ class FakeData:
 
     def __init__(self) -> None:
         self.effects: tuple[Any, ...] = ()
+        self.session_active = False
 
     @contextmanager
     def resolve(
@@ -27,7 +28,11 @@ class FakeData:
         _getter: object,
         _arg: str,
     ) -> Iterator[tuple[Any, ...]]:
-        yield self.effects
+        self.session_active = True
+        try:
+            yield self.effects
+        finally:
+            self.session_active = False
 
     @contextmanager
     def get(
@@ -35,10 +40,14 @@ class FakeData:
         _getter: object,
         effect_id: int,
     ) -> Iterator[Any | None]:
-        yield next(
-            (effect for effect in self.effects if effect.id == effect_id),
-            None,
-        )
+        self.session_active = True
+        try:
+            yield next(
+                (effect for effect in self.effects if effect.id == effect_id),
+                None,
+            )
+        finally:
+            self.session_active = False
 
 
 class FakeImages:
@@ -64,6 +73,24 @@ def _effect(effect_id: int, name: str) -> Any:
     )
 
 
+class SessionBoundEffect:
+    def __init__(self, data: FakeData) -> None:
+        self.id = 1
+        self.name = "害怕"
+        self.desc = "无法行动"
+        self._data = data
+
+    @property
+    def type(self) -> list[Any]:
+        assert self._data.session_active
+        return [SimpleNamespace(name="控制")]
+
+    @property
+    def resistance(self) -> Any:
+        assert self._data.session_active
+        return SimpleNamespace(name="害怕")
+
+
 def _service(data: FakeData) -> BattleEffectQueryService:
     return BattleEffectQueryService(
         cast("SeerDataAccess", data),
@@ -86,6 +113,18 @@ async def test_single_battle_effect_returns_formatted_reply() -> None:
         "抗性类型：害怕\n"
         "效果：无法行动"
     )
+
+
+@pytest.mark.asyncio
+async def test_battle_effect_formats_relationships_before_session_closes() -> None:
+    data = FakeData()
+    data.effects = (SessionBoundEffect(data),)
+
+    result = await _service(data).search("害怕")
+
+    assert result.reply is not None
+    assert result.reply.text.endswith("效果：无法行动")
+    assert data.session_active is False
 
 
 @pytest.mark.asyncio

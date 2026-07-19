@@ -44,6 +44,13 @@ class MintmarkQueryView:
         return (self.mintmark.id, *self.related_ids)
 
 
+@dataclass(frozen=True, slots=True)
+class _MintmarkReplyData:
+    mintmark_id: int
+    name: str
+    text: str
+
+
 class UnknownMintmarkTypeError(TypeError):
     def __init__(self, part: object) -> None:
         super().__init__(f"未知的刻印类型: {type(part)}")
@@ -66,40 +73,42 @@ class MintmarkQueryService:
             return QueryResult()
         with self._data.mintmark_query(arg) as values:
             mintmarks, classes, custom_series = values
-        resolved = (
-            custom_series
-            or mintmarks
-            + tuple(
-                part.mintmark
-                for item in classes
-                for part in item.mintmark
-            )
-        )
-        views = build_mintmark_views(
-            resolved,
-            merge_connected=self._merge_connected,
-        )
-        if not views:
-            return QueryResult()
-        if len(views) == 1:
-            return QueryResult(reply=await self._mintmark_reply(views[0]))
-        if len(views) > PROMPT_MAX_ITEMS:
-            return QueryResult(
-                message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
-            )
-        return QueryResult(
-            choices=tuple(
-                QueryChoice(
-                    view.mintmark.name,
-                    format_mintmark_choice_description(
-                        view,
-                        merge_connected=self._merge_connected,
-                    ),
-                    view.mintmark.id,
+            resolved = (
+                custom_series
+                or mintmarks
+                + tuple(
+                    part.mintmark
+                    for item in classes
+                    for part in item.mintmark
                 )
-                for view in views
             )
-        )
+            views = build_mintmark_views(
+                resolved,
+                merge_connected=self._merge_connected,
+            )
+            if not views:
+                return QueryResult()
+            if len(views) == 1:
+                reply_data = self._reply_data(views[0])
+            elif len(views) > PROMPT_MAX_ITEMS:
+                return QueryResult(
+                    message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
+                )
+            else:
+                return QueryResult(
+                    choices=tuple(
+                        QueryChoice(
+                            view.mintmark.name,
+                            format_mintmark_choice_description(
+                                view,
+                                merge_connected=self._merge_connected,
+                            ),
+                            view.mintmark.id,
+                        )
+                        for view in views
+                    )
+                )
+        return QueryResult(reply=await self._build_reply(reply_data))
 
     async def select_mintmark(self, mintmark_id: int) -> QueryResult[object]:
         with self._data.get(self._data.mintmark, mintmark_id) as mintmark:
@@ -110,40 +119,43 @@ class MintmarkQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
-        views = build_mintmark_views(
-            (mintmark,),
-            merge_connected=self._merge_connected,
-        )
-        if not views:
-            return QueryResult(
-                message=(
-                    f"❌未找到刻印 {mintmark_id}"
-                    "（这是一个bug，请反馈给开发者）"
-                )
+            views = build_mintmark_views(
+                (mintmark,),
+                merge_connected=self._merge_connected,
             )
-        return QueryResult(reply=await self._mintmark_reply(views[0]))
+            if not views:
+                return QueryResult(
+                    message=(
+                        f"❌未找到刻印 {mintmark_id}"
+                        "（这是一个bug，请反馈给开发者）"
+                    )
+                )
+            reply_data = self._reply_data(views[0])
+        return QueryResult(reply=await self._build_reply(reply_data))
 
     async def search_gem(self, arg: str) -> QueryResult[int]:
         with self._data.resolve(self._data.gem_category, arg) as values:
             categories = tuple(values)
-        if not categories:
-            return QueryResult()
-        if len(categories) == 1:
-            return QueryResult(reply=_gem_reply(categories[0]))
-        if len(categories) > PROMPT_MAX_ITEMS:
-            return QueryResult(
-                message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
-            )
-        return QueryResult(
-            choices=tuple(
-                QueryChoice(
-                    category.name,
-                    f"{category.generation_id}代",
-                    category.id,
+            if not categories:
+                return QueryResult()
+            if len(categories) == 1:
+                reply = _gem_reply(categories[0])
+            elif len(categories) > PROMPT_MAX_ITEMS:
+                return QueryResult(
+                    message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
                 )
-                for category in categories
-            )
-        )
+            else:
+                return QueryResult(
+                    choices=tuple(
+                        QueryChoice(
+                            category.name,
+                            f"{category.generation_id}代",
+                            category.id,
+                        )
+                        for category in categories
+                    )
+                )
+        return QueryResult(reply=reply)
 
     async def select_gem(self, category_id: int) -> QueryResult[object]:
         with self._data.get(
@@ -157,24 +169,35 @@ class MintmarkQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
-        return QueryResult(reply=_gem_reply(category))
+            reply = _gem_reply(category)
+        return QueryResult(reply=reply)
 
-    async def _mintmark_reply(
+    def _reply_data(
         self,
         view: MintmarkQueryView,
-    ) -> QueryReply:
+    ) -> _MintmarkReplyData:
         mintmark = view.mintmark
-        image = await fetch_optional_image(
-            self._images,
-            "mintmark",
-            str(mintmark.id),
-        )
-        return QueryReply(
-            leading_text=f"💮【{mintmark.name}】\n",
+        return _MintmarkReplyData(
+            mintmark_id=int(mintmark.id),
+            name=str(mintmark.name),
             text=_format_mintmark_details(
                 view,
                 merge_connected=self._merge_connected,
             ),
+        )
+
+    async def _build_reply(
+        self,
+        reply_data: _MintmarkReplyData,
+    ) -> QueryReply:
+        image = await fetch_optional_image(
+            self._images,
+            "mintmark",
+            str(reply_data.mintmark_id),
+        )
+        return QueryReply(
+            leading_text=f"💮【{reply_data.name}】\n",
+            text=reply_data.text,
             image=image.data,
             image_error=image.error,
         )
