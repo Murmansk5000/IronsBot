@@ -142,7 +142,6 @@ class PeakSeasonRankSummary:
     standard: RankLookupResult
     wild: RankLookupResult
     expert: RankLookupResult
-    errors: tuple[str, ...] = ()
 
     @classmethod
     def empty(cls) -> "PeakSeasonRankSummary":

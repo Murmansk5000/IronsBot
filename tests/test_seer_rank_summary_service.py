@@ -114,7 +114,6 @@ async def test_peak_rank_summary_keeps_other_modes_when_one_rank_times_out() -> 
     assert summary.wild.failure == "查询超时"
     assert summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
-    assert summary.errors == ("狂野赛季榜查询超时",)
 
 
 @pytest.mark.asyncio
@@ -137,7 +136,6 @@ async def test_peak_rank_summary_keeps_expert_score_when_expert_times_out() -> N
     assert not summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
     assert summary.expert.failure == "查询超时"
-    assert summary.errors == ("专家赛季榜查询超时",)
 
 
 def test_peak_rank_summary_marks_only_the_failed_mode_when_title_matches() -> None:

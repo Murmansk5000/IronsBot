@@ -132,7 +132,6 @@ async def _find_current_peak_rank(  # noqa: PLR0913
     key: int,
     sub_key: int,
     candidate_score: int | None,
-    errors: list[str],
     progress: RankSummaryProgress | None,
 ) -> RankLookupResult:
     has_candidate_score = candidate_score is not None and candidate_score > 0
@@ -148,7 +147,6 @@ async def _find_current_peak_rank(  # noqa: PLR0913
             key=key,
             sub_key=sub_key,
             target_score=candidate_score,
-            errors=errors,
             progress=progress,
         )
         if result.rank is not None or not result.queried:
@@ -164,7 +162,6 @@ async def _find_current_peak_rank(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         search_limit=None if has_candidate_score else 0,
-        errors=errors,
         progress=progress,
     )
 
@@ -283,7 +280,6 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         return PeakSeasonRankSummary.empty()
 
     summary = PeakSeasonRankSummary.empty()
-    errors: list[str] = []
     summary.standard = await _find_current_peak_rank(
         "standard_peak",
         find_rank,
@@ -294,7 +290,6 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         key=STANDARD_PEAK_USER_RANK_KEY,
         sub_key=current_peak_sub_key,
         candidate_score=standard_score,
-        errors=errors,
         progress=progress,
     )
     summary.wild = await _find_current_peak_rank(
@@ -307,7 +302,6 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         key=WILD_PEAK_USER_RANK_KEY,
         sub_key=current_peak_sub_key,
         candidate_score=wild_score,
-        errors=errors,
         progress=progress,
     )
     summary.expert = await _find_current_peak_rank(
@@ -320,10 +314,8 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         key=EXPERT_PEAK_USER_RANK_KEY,
         sub_key=current_peak_sub_key,
         candidate_score=expert_score,
-        errors=errors,
         progress=progress,
     )
-    summary.errors = tuple(errors)
     return summary
 
 

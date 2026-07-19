@@ -94,6 +94,7 @@ class RankSummary:
 @dataclass(frozen=True)
 class PeakRank:
     rank: int | None
+    failure: str | None = None
 
 
 @dataclass(frozen=True)
@@ -297,6 +298,24 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
     assert "狂野：当前赛季前2000名未确认" in message
 
 
+def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
+    peak = UnityPeak(current_j_rank=4, current_j_star=0)
+    summary = PeakSeasonRankSummary.empty()
+    summary.standard.failure = "查询超时"
+
+    message = format_compact_peak_section(
+        _as_any(peak),
+        summary,
+        _as_any(_LocalSummary()),
+    )
+
+    standard_line = next(
+        line for line in message.splitlines() if line.startswith("竞技：")
+    )
+    assert "赛季榜查询超时" in standard_line
+    assert "赛季榜未上榜" not in standard_line
+
+
 def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
     user_info = UserInfo(
         user_id=PLAYER_ID,
@@ -337,6 +356,8 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     user_info = UserInfo(nick="赛小息")
     more_info = MoreInfo(pet_all_num=321, total_achieve=56)
     unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
+    peak_summary = PeakSeasonRankSummary.empty()
+    peak_summary.standard.failure = "查询超时"
 
     messages = format_player_detail_messages(
         player_id=PLAYER_ID,
@@ -345,7 +366,7 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
         unity_part_one=_as_any(unity_part_one),
         unity_peak=_as_any(_unity_peak()),
         rank_summary=_as_any(_rank_summary()),
-        peak_rank_summary=_as_any(_peak_summary()),
+        peak_rank_summary=peak_summary,
         autocard_rank_summary=_as_any(_autocard_rank_summary()),
         local_rank_summary=_as_any(_LocalSummary("样本第1")),
         empty_local_rank_summary=_as_any(_LocalSummary()),
@@ -355,7 +376,6 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
         show_local_rank=True,
         extra_errors=PlayerDetailErrors(
             collection=["全服排行失败"],
-            peak=["巅峰赛季榜失败"],
             autocard=["群星牌排行失败"],
         ),
     )
@@ -374,8 +394,8 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     assert "全服排行失败" in messages.collection_message
     assert "全服排行失败" not in messages.peak_message
     assert "全服排行失败" not in messages.autocard_message
-    assert "巅峰赛季榜失败" in messages.peak_message
-    assert "巅峰赛季榜失败" not in messages.collection_message
+    assert "赛季榜查询超时" in messages.peak_message
+    assert "【扩展数据提示】" not in messages.peak_message
     assert "群星牌排行失败" in messages.autocard_message
     assert "群星牌排行失败" not in messages.collection_message
 

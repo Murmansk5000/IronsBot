@@ -25,6 +25,7 @@ from ironsbot.services.seer.player_query import (
     PlayerDetailMessages,
     PlayerQuerySectionPlan,
     calculate_player_peak_scores,
+    format_player_extra_error,
     optional_player_extra,
     plan_player_detail_fetches,
     plan_player_query_sections,
@@ -195,6 +196,15 @@ class PlayerDetailService:
             peak_scores = calculate_player_peak_scores(unity_peak)
             rank_progress = RankSummaryProgress()
             peak_progress = RankSummaryProgress()
+            peak_summary_fallback = PeakSeasonRankSummary.empty()
+
+            def record_peak_summary_error(label: str, error: Exception) -> None:
+                self._log_extra_error(label, error)
+                peak_summary_fallback.mark_failure(
+                    label,
+                    format_player_extra_error(error),
+                )
+
             rank_summary, peak_summary, autocard_summary = await asyncio.gather(
                 optional_player_extra(
                     "全服排行",
@@ -230,9 +240,9 @@ class PlayerDetailService:
                         expert_score=peak_scores.expert,
                         progress=peak_progress,
                     ),
-                    PeakSeasonRankSummary.empty(),
-                    extra_errors.peak,
-                    on_error=self._log_extra_error,
+                    peak_summary_fallback,
+                    None,
+                    on_error=record_peak_summary_error,
                     timeout_seconds=timeout_seconds,
                     error_label_factory=lambda: (
                         peak_progress.current_title or "巅峰赛季榜"
@@ -252,7 +262,6 @@ class PlayerDetailService:
                 ),
             )
             extra_errors.collection.extend(rank_summary.errors)
-            extra_errors.peak.extend(peak_summary.errors)
             validated_peak = validate_player_peak_season(
                 unity_peak,
                 peak_scores,
