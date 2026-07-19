@@ -9,7 +9,7 @@ import httpx
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from ironsbot.config.models.runtime import RemoteBuildConfig
+    from ironsbot.config.models.operations import RemoteBuildConfig
 
 GetFingerprintFn = Callable[[httpx.AsyncClient], Awaitable[str]]
 

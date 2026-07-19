@@ -7,8 +7,8 @@ import time
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.services.seer.rank_models import RankEntry
 from ironsbot.services.seer.rank_page_cache_models import (
-    CachedRankItem,
     CachedRankLookup,
     CachedRankPage,
     CachedRankPageSummary,
@@ -126,7 +126,7 @@ class SqliteRankPageCache:
                     return None
                 return CachedRankPage(
                     [
-                        CachedRankItem(int(user_id), str(nick), int(score))
+                        RankEntry(int(user_id), str(nick), int(score))
                         for user_id, nick, score in rows
                     ],
                     fetched_at,

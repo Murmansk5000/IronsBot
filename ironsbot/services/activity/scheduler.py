@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.integrations.scheduler.jobs import JobRegistry
+from ironsbot.services.operations.scheduler import JobRegistry
 
 from .planning import group_by_send_time
 
@@ -26,10 +26,6 @@ def reminder_job_suffix(lead_hours: int, send_time: datetime) -> str:
     return f"{lead_hours}h_{int(send_time.timestamp())}"
 
 
-def activity_job_registry(scheduler: Any) -> JobRegistry:
-    return JobRegistry(scheduler, prefix=REMINDER_JOB_ID_PREFIX)
-
-
 def register_scan_jobs(
     scheduler: Any,
     scan_func: Callable[..., object],
@@ -40,7 +36,7 @@ def register_scan_jobs(
     if not enabled:
         return
 
-    registry = activity_job_registry(scheduler)
+    registry = JobRegistry(scheduler, prefix=REMINDER_JOB_ID_PREFIX)
     registry.add(
         scan_func,
         "date",
@@ -74,7 +70,7 @@ def replace_reminder_jobs(
             grace_minutes=grace_minutes,
         )
 
-    return activity_job_registry(scheduler).replace_all(
+    return JobRegistry(scheduler, prefix=REMINDER_JOB_ID_PREFIX).replace_all(
         register_jobs,
         exclude={STARTUP_SCAN_JOB_SUFFIX, DAILY_SCAN_JOB_SUFFIX},
     )

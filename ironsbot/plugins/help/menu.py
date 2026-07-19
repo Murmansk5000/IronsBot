@@ -4,24 +4,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.query_usage import build_seer_query_usage_message
-from ironsbot.shared.selection_menu import (
+from ironsbot.core.selection import (
     HELP_SELECTION_FOOTER,
     SelectionMenuSection,
     format_selection_menu,
 )
-
-from .visibility import plugin_visible_for_event
+from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.config.models.app import AppConfig
+    from ironsbot.core.features import FeatureService
     from ironsbot.runtime.plugins import PluginDefinition
-    from ironsbot.shared.features import FeatureService
 
 HELP_ENTRIES_KEY = "_help_entries"
-HELP_PLUGIN_NAME = "help"
 HELP_GROUP_ORDER = (
     "core",
     "seer",
@@ -84,12 +81,11 @@ def visible_help_entries(
     event: Event,
     *,
     features: FeatureService,
-    config: AppConfig,
-    ai_key_configured: bool,
+    ignored_plugins: tuple[str, ...],
 ) -> list[HelpMenuEntry]:
     entries: list[HelpMenuEntry] = []
     seen_names: set[str] = set()
-    ignored_names = set(config.runtime.help.ignored_plugins)
+    ignored_names = set(ignored_plugins)
 
     for definition in definitions:
         help_entry = definition.help
@@ -101,12 +97,13 @@ def visible_help_entries(
             or help_entry.name in seen_names
         ):
             continue
-        if not plugin_visible_for_event(
-            definition,
-            event,
-            features=features,
-            config=config,
-            ai_key_configured=ai_key_configured,
+        visible = help_entry.visible
+        if visible is not None:
+            if not visible(event):
+                continue
+        elif not any(
+            event_has_feature(features, event, feature.value)
+            for feature in definition.features
         ):
             continue
 
@@ -163,6 +160,9 @@ def format_plugin_detail(
     features: FeatureService,
 ) -> str:
     if entry.key == "seer_query":
-        return f"📖 {entry.name}\n\n{build_seer_query_usage_message(features, event)}"
+        usage = build_seer_query_usage_message(
+            lambda feature: event_has_feature(features, event, feature)
+        )
+        return f"📖 {entry.name}\n\n{usage}"
 
     return f"📖 {entry.name}\n\n{entry.usage}"

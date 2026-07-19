@@ -2,9 +2,11 @@ import asyncio
 from asyncio import StreamWriter
 from typing import Any, cast
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.headless_seer.core.connect import AbstractSocketConnect
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.integrations.headless_seer.type_hint import CommandID
+from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 
 
 class FakeWriter:
@@ -45,6 +47,7 @@ def test_heartbeat_timeout_marks_connection_lost() -> None:
 
         client = FakeConnect(
             asyncio.get_running_loop(),
+            spawn=TaskOwner().create,
             heartbeat_interval=0,
             on_heartbeat=on_heartbeat,
             on_disconnect=on_disconnect,
@@ -69,6 +72,8 @@ def test_seer_game_heartbeat_uses_self_user_info() -> None:
             123456,
             "password",
             login_server_url="https://example.invalid/unity-ip.txt",
+            operations=HeadlessOperationTracker(),
+            spawn=TaskOwner().create,
         )
 
         async def get_user_info(user_id: int) -> object:

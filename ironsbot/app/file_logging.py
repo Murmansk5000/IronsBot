@@ -1,61 +1,60 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.runtime import LoggingConfig
+    from pathlib import Path
 
-_FILE_LOG_SINK_ID: int | None = None
-_ERROR_FILE_LOG_SINK_ID: int | None = None
+    from ironsbot.config.models.settings import LoggingConfig, PathsConfig
 
 
-def configure_file_logging(config: LoggingConfig) -> int | None:
-    """Attach an optional rotating file sink to the shared NoneBot logger."""
-    global _ERROR_FILE_LOG_SINK_ID, _FILE_LOG_SINK_ID  # noqa: PLW0603
+@dataclass(slots=True)
+class FileLogging:
+    sink_ids: list[int] = field(default_factory=list)
 
-    if not config.file_enabled:
-        return None
+    @classmethod
+    def create(
+        cls,
+        config: LoggingConfig,
+        paths: PathsConfig,
+    ) -> FileLogging:
+        resource = cls()
+        if not config.file_enabled:
+            return resource
 
-    if _FILE_LOG_SINK_ID is not None:
-        return _FILE_LOG_SINK_ID
+        resource._add_sink(paths.log_file, config, level=config.file_level)
+        logger.info(f"file logging enabled: {paths.log_file}")
+        if config.error_file_enabled:
+            resource._add_sink(paths.error_log_file, config, level="ERROR")
+            logger.info(f"error file logging enabled: {paths.error_log_file}")
+        return resource
 
-    log_path = Path(config.file_path)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    def close(self) -> None:
+        while self.sink_ids:
+            logger.remove(self.sink_ids.pop())
 
-    _FILE_LOG_SINK_ID = logger.add(
-        log_path,
-        level=config.file_level,
-        rotation=config.rotation,
-        retention=config.retention,
-        compression=config.compression,
-        encoding="utf-8",
-        enqueue=True,
-        backtrace=True,
-        diagnose=False,
-    )
-    logger.info(f"file logging enabled: {log_path}")
-
-    if config.error_file_enabled:
-        error_log_path = Path(config.error_file_path)
-        error_log_path.parent.mkdir(parents=True, exist_ok=True)
-        _ERROR_FILE_LOG_SINK_ID = logger.add(
-            error_log_path,
-            level="ERROR",
-            rotation=config.rotation,
-            retention=config.retention,
-            compression=config.compression,
-            encoding="utf-8",
-            enqueue=True,
-            backtrace=True,
-            diagnose=False,
+    def _add_sink(
+        self,
+        path: Path,
+        config: LoggingConfig,
+        *,
+        level: str,
+    ) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.sink_ids.append(
+            logger.add(
+                path,
+                level=level,
+                rotation=config.rotation,
+                retention=config.retention,
+                compression=config.compression,
+                encoding="utf-8",
+                enqueue=True,
+                backtrace=True,
+                diagnose=False,
+            )
         )
-        logger.info(f"error file logging enabled: {error_log_path}")
-
-    return _FILE_LOG_SINK_ID
-
-
-__all__ = ["configure_file_logging"]

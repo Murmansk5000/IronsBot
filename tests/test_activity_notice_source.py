@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import httpx
@@ -15,11 +16,16 @@ def test_unity_notice_source_normalizes_and_caches_response() -> None:
             content=b"line 1\\nline 2 &amp; more",
         )
 
-    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
-        source = UnityNoticeSource(client)
-        now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(respond)
+        ) as client:
+            source = UnityNoticeSource(client, timeout_seconds=8)
+            now = datetime(2026, 6, 1, tzinfo=timezone.utc)
 
-        assert source.fetch(now) == "line 1\nline 2 & more"
-        assert source.fetch(now) == "line 1\nline 2 & more"
+            assert await source.fetch(now) == "line 1\nline 2 & more"
+            assert await source.fetch(now) == "line 1\nline 2 & more"
+
+    asyncio.run(run())
 
     assert len(requests) == 1

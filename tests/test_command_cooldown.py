@@ -1,5 +1,5 @@
-from ironsbot.config.models.runtime import CommandCooldownConfig
-from ironsbot.shared.messaging.command_cooldown import CommandCooldownService
+from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from tests.helpers.runtime import build_test_runtime
 
 USER_ID = 100

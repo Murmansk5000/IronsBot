@@ -119,10 +119,16 @@ def format_metric_line(
     local_key: str,
 ) -> str | None:
     value_text = str(value) if value is not None and value >= 0 else "暂无数据"
+    failure = None if rank_result is None else getattr(rank_result, "failure", None)
+    rank_text = (
+        f"全服排行失败：{failure}"
+        if failure
+        else format_rank_position_text(rank_result)
+    )
 
     metric_text = join_metric_parts(
         value_text,
-        format_rank_position_text(rank_result),
+        rank_text,
         sample_rank_text(local_summary, local_key),
     )
     return f"{title}：{metric_text}"
@@ -145,22 +151,3 @@ def format_local_rank_suffix(
     if text.startswith("样本"):
         text = f"{label}{text.removeprefix('样本')}"
     return f"（{text}）"
-
-
-__all__ = [
-    "METRIC_SEPARATOR",
-    "PEAK_RANK_NAMES",
-    "filter_blank_lines",
-    "format_local_rank_suffix",
-    "format_login_timeline_lines",
-    "format_metric_line",
-    "format_online_text",
-    "format_peak_rank_text",
-    "format_player_identity",
-    "format_rank_star_compact",
-    "format_team_text",
-    "format_vip",
-    "format_win_rate",
-    "join_metric_parts",
-    "sample_rank_text",
-]

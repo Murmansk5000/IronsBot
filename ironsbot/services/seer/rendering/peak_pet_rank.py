@@ -2,27 +2,20 @@
 import asyncio
 from typing import TYPE_CHECKING, TypedDict
 
-from nonebot_plugin_htmlkit import template_to_pic
-
 from ironsbot.core import time
-from ironsbot.integrations.seer_data.image import (
-    ElementTypeImageGetter,
-    PetHeadImageGetter,
-)
+from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_paths import (
     PEAK_PET_RANK_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.utils.image import to_data_uri
+
+from . import HtmlTemplateRenderer
 
 if TYPE_CHECKING:
     from seerapi_models.pet import PetORM
 
-    from ironsbot.integrations.headless_seer.packets.peak import DailyRankInfo
-    from ironsbot.integrations.headless_seer.peak import PeakItemData
-
-TEMPLATE_PATH = PEAK_PET_RANK_TEMPLATE_PATH
-SHARED_PATH = SHARED_TEMPLATE_PATH
+    from ironsbot.services.seer.peak import PeakItemData
+    from ironsbot.services.seer.rank_models import RankEntry
 
 TABLE_WIDTH = 580
 CONTAINER_PADDING = 20 * 2
@@ -64,10 +57,12 @@ def _get_pet_info(
     return fallback_name, "", ""
 
 
-async def render_peak_pet_rank(
+async def render_peak_pet_rank(  # noqa: PLR0913
+    images: SeerImageSource,
+    render_html: HtmlTemplateRenderer,
     title: str,
     pick_items: "list[PeakItemData]",
-    ban_items: "list[DailyRankInfo]",
+    ban_items: "list[RankEntry]",
     pet_map: "dict[int, PetORM]",
 ) -> bytes:
     """渲染巅峰精灵榜图片，返回 PNG 图片字节"""
@@ -85,8 +80,8 @@ async def render_peak_pet_rank(
     type_id_list = list(unique_type_ids)
 
     results = await asyncio.gather(
-        *(PetHeadImageGetter.get_bytes(rid) for rid in rid_list),
-        *(ElementTypeImageGetter.get_bytes(str(tid)) for tid in type_id_list),
+        *(images.fetch("pet_head", rid) for rid in rid_list),
+        *(images.fetch("element_type", str(tid)) for tid in type_id_list),
     )
 
     head_bytes_list = results[: len(rid_list)]
@@ -135,8 +130,8 @@ async def render_peak_pet_rank(
             }
         )
 
-    return await template_to_pic(
-        template_path=[TEMPLATE_PATH, SHARED_PATH],
+    return await render_html(
+        template_path=[PEAK_PET_RANK_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
         templates={
             "title": title,

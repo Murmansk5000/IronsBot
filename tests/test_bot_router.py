@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.config.models.runtime import BotRoutingConfig
-from ironsbot.shared.messaging import bot_router
-from ironsbot.shared.messaging.bot_router import BotRouter
-from ironsbot.shared.messaging.targets import MessageTarget
+from ironsbot.config.models.messaging import BotRoutingConfig
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.integrations.onebot import router as bot_router
+from ironsbot.integrations.onebot.router import BotRouter
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -34,7 +34,6 @@ def _patch_router(
     *,
     config: BotRoutingConfig,
     connected: list[FakeBot],
-    legacy_default: FakeBot | None = None,
 ) -> BotRouter:
     monkeypatch.setattr(bot_router, "Bot", FakeBot)
     monkeypatch.setattr(
@@ -42,7 +41,6 @@ def _patch_router(
         "get_bots",
         lambda: {str(bot.self_id): bot for bot in connected},
     )
-    monkeypatch.setattr(bot_router, "get_bot", lambda: legacy_default)
     return BotRouter(
         config,
         {"group_a": 987654321, "group_b": 876543210},
@@ -94,19 +92,14 @@ def test_bot_router_falls_back_to_any_onebot_when_default_is_offline(
     assert router.for_target(MessageTarget("group", 987654321)) is backup_bot
 
 
-def test_bot_router_disabled_uses_legacy_default_bot(
+def test_bot_router_disabled_uses_connected_bot(
     monkeypatch: MonkeyPatch,
 ) -> None:
     main_bot = FakeBot(111111111)
-    backup_bot = FakeBot(222222222)
     router = _patch_router(
         monkeypatch,
         config=_routing_config(enabled=False),
-        connected=[main_bot, backup_bot],
-        legacy_default=backup_bot,
+        connected=[main_bot],
     )
 
-    assert (
-        router.for_target(MessageTarget("group", 987654321))
-        is backup_bot
-    )
+    assert router.for_target(MessageTarget("group", 987654321)) is main_bot

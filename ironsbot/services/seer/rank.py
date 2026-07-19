@@ -1,21 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, replace
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
-from ironsbot.services.seer.rank_fetching import fetch_rank_page_result_from_game
+from ironsbot.services.seer import rank_summary
+from ironsbot.services.seer.rank_constants import (
+    PET_KIND_RANK_ANOMALY_COUNT,
+    PET_KIND_RANK_KEY,
+    PET_KIND_RANK_SUB_KEY,
+    is_pet_kind_rank_anomaly_user,
+)
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
-from ironsbot.services.seer.rank_lookup_service import (
-    RankLookupDependencies,
-)
-from ironsbot.services.seer.rank_lookup_service import (
-    find_pet_kind_rank as find_pet_kind_rank_with_deps,
-)
-from ironsbot.services.seer.rank_lookup_service import (
-    find_rank as find_rank_with_deps,
-)
+from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
 from ironsbot.services.seer.rank_pagination import (
     rank_page_size as configured_page_size,
 )
@@ -25,7 +24,7 @@ from ironsbot.services.seer.rank_pagination import (
 from ironsbot.services.seer.rank_pagination import (
     rank_window_page_starts,
 )
-from ironsbot.services.seer.rank_peak import get_current_peak_sub_key
+from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 from ironsbot.services.seer.rank_position_cache import find_rank_by_cached_position
 from ironsbot.services.seer.rank_range import (
     fetch_rank_range,
@@ -46,34 +45,22 @@ from ironsbot.services.seer.rank_score_search import (
     score_search_tie_page_limit,
 )
 from ironsbot.services.seer.rank_score_segments import (
+    RankScoreSegmentDependencies,
+)
+from ironsbot.services.seer.rank_score_segments import (
     fetch_rank_score_segment as fetch_rank_score_segment_online,
-)
-from ironsbot.services.seer.rank_score_service import (
-    RankScoreServiceDependencies,
-)
-from ironsbot.services.seer.rank_score_service import (
-    fetch_rank_score_segment as fetch_rank_score_segment_with_deps,
-)
-from ironsbot.services.seer.rank_summary import (
-    fetch_autocard_rank_summary as fetch_autocard_rank_summary_with_deps,
-)
-from ironsbot.services.seer.rank_summary import (
-    fetch_peak_season_rank_summary as fetch_peak_season_rank_summary_with_deps,
-)
-from ironsbot.services.seer.rank_summary import (
-    fetch_player_rank_summary as fetch_player_rank_summary_with_deps,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Awaitable, Callable, Sequence
+    from datetime import datetime
 
     from ironsbot.config.models.seer import RankQueryConfig
-    from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.rank_models import (
         PeakSeasonRankSummary,
         PlayerRankSummary,
-        RankLookupResult,
-        RankPageResult,
+        RankEntry,
         RankScoreSearchResult,
         RankSummaryProgress,
     )
@@ -144,15 +131,20 @@ class RankPageCache(Protocol):
 class RankService:
     config: RankQueryConfig
     cache: RankPageCache
+    peak_season_start: Callable[[], datetime | None]
+    fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
 
     def page_size(self) -> int:
-        return configured_page_size(self.config)
+        return configured_page_size(self.config.page_size)
 
     def page_start(self, index: int) -> int:
         return configured_page_start(index, page_size=self.page_size())
 
     def current_peak_sub_key(self) -> int | None:
-        return get_current_peak_sub_key(self.config.peak_subkey)
+        if self.config.peak_subkey is not None:
+            return self.config.peak_subkey
+        start = self.peak_season_start()
+        return None if start is None else datetime_to_sub_key(start)
 
     def resolve_spec(self, spec: GlobalRankSpec) -> GlobalRankSpec:
         if not spec.peak_season_sub_key:
@@ -169,7 +161,7 @@ class RankService:
 
     async def fetch_page_result(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         key: int,
         sub_key: int,
@@ -177,20 +169,37 @@ class RankService:
         end: int,
         use_cache: bool = False,
     ) -> RankPageResult:
-        return await fetch_rank_page_result_from_game(
+        if use_cache:
+            cached = self.cache.page(
+                key=key,
+                sub_key=sub_key,
+                start=start,
+                end=end,
+            )
+            if cached is not None:
+                return RankPageResult(list(cached.items), cached.fetched_at)
+
+        items = await self.fetch_online_page(
             game,
             key=key,
             sub_key=sub_key,
             start=start,
             end=end,
-            use_cache=use_cache,
-            get_cached_page=self.cache.page,
-            save_page=self.cache.save,
         )
+        fetched_at = time.time()
+        self.cache.save(
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=end,
+            items=items,
+            fetched_at=fetched_at,
+        )
+        return RankPageResult(items, fetched_at)
 
     async def fetch_page(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         key: int,
         sub_key: int,
@@ -210,7 +219,7 @@ class RankService:
 
     async def fetch_item(
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         key: int,
         sub_key: int,
@@ -240,7 +249,7 @@ class RankService:
 
     async def fetch_range(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         key: int,
         sub_key: int,
@@ -261,7 +270,7 @@ class RankService:
 
     async def fetch_range_result(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         key: int,
         sub_key: int,
@@ -282,7 +291,7 @@ class RankService:
 
     async def find_rank(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         user_id: int,
         title: str,
@@ -292,37 +301,151 @@ class RankService:
         target_score: int | None = None,
         search_limit: int | None = None,
     ) -> RankLookupResult:
-        return await find_rank_with_deps(
-            game,
-            user_id=user_id,
+        score_target = (
+            target_score
+            if target_score is not None and target_score > 0
+            else None
+        )
+        limit = (
+            self._score_search_limit(search_limit)
+            if score_target is not None
+            else self._online_search_limit(search_limit)
+        )
+        page_size = self.page_size()
+        result = RankLookupResult(
             title=title,
             score_name=score_name,
+            searched_limit=limit,
+            queried=limit > 0,
+        )
+        cached = await find_rank_by_cached_position(
+            game,
+            user_id=user_id,
             key=key,
             sub_key=sub_key,
-            target_score=target_score,
-            search_limit=search_limit,
-            deps=self._lookup_dependencies(),
+            page_size=page_size,
+            result=result,
+            get_cached_rank_item=self.cache.item,
+            rank_window_page_starts=partial(
+                rank_window_page_starts,
+                window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
+            ),
+            fetch_rank_page=self.fetch_page,
+        )
+        if cached is not None or limit <= 0:
+            return cached or result
+        if score_target is not None:
+            return await find_rank_by_score(
+                game,
+                user_id=user_id,
+                key=key,
+                sub_key=sub_key,
+                target_score=score_target,
+                limit=limit,
+                page_size=page_size,
+                result=result,
+                score_search_probe_limit=self._probe_limit,
+                score_search_tie_page_limit=self._tie_page_limit,
+                fetch_rank_item=self.fetch_item,
+                fetch_rank_page=self.fetch_page,
+            )
+        return await find_rank_by_linear_scan(
+            game,
+            user_id=user_id,
+            key=key,
+            sub_key=sub_key,
+            limit=limit,
+            page_size=page_size,
+            result=result,
+            fetch_rank_page=self.fetch_page,
         )
 
     async def find_pet_kind_rank(
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         user_id: int,
         pet_kind_count: int,
         search_limit: int | None,
     ) -> RankLookupResult:
-        return await find_pet_kind_rank_with_deps(
+        real_limit = (
+            self._score_search_limit(search_limit)
+            if pet_kind_count > 0
+            else self._online_search_limit(search_limit)
+        )
+        raw_limit = real_limit + PET_KIND_RANK_ANOMALY_COUNT
+        result = RankLookupResult(
+            title="精灵图鉴",
+            score_name="精灵",
+            score=pet_kind_count or None,
+            searched_limit=real_limit,
+            queried=real_limit > 0,
+        )
+        if is_pet_kind_rank_anomaly_user(user_id):
+            result.rank = 0
+            result.score = result.score or 0
+            return result
+
+        page_size = self.page_size()
+        cached = await find_rank_by_cached_position(
             game,
             user_id=user_id,
-            pet_kind_count=pet_kind_count,
-            search_limit=search_limit,
-            deps=self._lookup_dependencies(),
+            key=PET_KIND_RANK_KEY,
+            sub_key=PET_KIND_RANK_SUB_KEY,
+            page_size=page_size,
+            result=result,
+            get_cached_rank_item=self.cache.item,
+            rank_window_page_starts=partial(
+                rank_window_page_starts,
+                window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
+            ),
+            fetch_rank_page=self.fetch_page,
         )
+        if cached is not None:
+            cached.searched_limit = real_limit
+            if cached.rank is not None:
+                cached.rank = max(
+                    0,
+                    cached.rank - PET_KIND_RANK_ANOMALY_COUNT,
+                )
+            return cached
+        if real_limit <= 0:
+            return result
+
+        if pet_kind_count > 0:
+            result = await find_rank_by_score(
+                game,
+                user_id=user_id,
+                key=PET_KIND_RANK_KEY,
+                sub_key=PET_KIND_RANK_SUB_KEY,
+                target_score=pet_kind_count,
+                limit=raw_limit,
+                page_size=page_size,
+                result=result,
+                score_search_probe_limit=self._probe_limit,
+                score_search_tie_page_limit=self._tie_page_limit,
+                fetch_rank_item=self.fetch_item,
+                fetch_rank_page=self.fetch_page,
+            )
+        else:
+            result = await find_rank_by_linear_scan(
+                game,
+                user_id=user_id,
+                key=PET_KIND_RANK_KEY,
+                sub_key=PET_KIND_RANK_SUB_KEY,
+                limit=raw_limit,
+                page_size=page_size,
+                result=result,
+                fetch_rank_page=self.fetch_page,
+            )
+        result.searched_limit = real_limit
+        if result.rank is not None:
+            result.rank = max(0, result.rank - PET_KIND_RANK_ANOMALY_COUNT)
+        return result
 
     async def fetch_score_segment(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         *,
         key: int,
         sub_key: int,
@@ -334,7 +457,37 @@ class RankService:
         rank_offset: int = 0,
         sample_limit: int | None = None,
     ) -> RankScoreSearchResult:
-        return await fetch_rank_score_segment_with_deps(
+        dependencies = RankScoreSegmentDependencies(
+            score_search_limit=self._score_search_limit,
+            rank_page_size=self.page_size,
+            rank_page_start=self.page_start,
+            cached_score_miss_boundary=partial(
+                cached_score_miss_boundary,
+                get_cache_summary=self.cache.summary,
+                get_cached_score_indexes=self.cache.score_indexes,
+                get_cached_page_result=self.cache.page,
+                score_miss_proof_from_page=score_miss_proof_from_page,
+            ),
+            cached_score_candidate_page_starts=partial(
+                cached_score_candidate_page_starts,
+                rank_page_start=self.page_start,
+                get_cached_score_indexes=self.cache.score_indexes,
+                get_cache_summary=self.cache.summary,
+            ),
+            fetch_cached_candidates=partial(
+                fetch_rank_score_segment_from_cached_candidates,
+                rank_page_size=self.page_size,
+                rank_page_start=self.page_start,
+                score_search_tie_page_limit=self._tie_page_limit,
+                fetch_rank_page_result=self.fetch_page_result,
+            ),
+            score_search_probe_limit=self._probe_limit,
+            score_search_tie_page_limit=self._tie_page_limit,
+            fetch_rank_item=self.fetch_item,
+            fetch_rank_page_result=self.fetch_page_result,
+            score_miss_proof_from_page=score_miss_proof_from_page,
+        )
+        return await fetch_rank_score_segment_online(
             game,
             key=key,
             sub_key=sub_key,
@@ -345,12 +498,12 @@ class RankService:
             start_index=start_index,
             rank_offset=rank_offset,
             sample_limit=sample_limit,
-            deps=self._score_dependencies(),
+            deps=dependencies,
         )
 
     async def fetch_peak_summary(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         user_id: int,
         *,
         standard_score: int | None = None,
@@ -358,7 +511,7 @@ class RankService:
         expert_score: int | None = None,
         progress: RankSummaryProgress | None = None,
     ) -> PeakSeasonRankSummary:
-        return await fetch_peak_season_rank_summary_with_deps(
+        return await rank_summary.fetch_peak_season_rank_summary(
             game,
             user_id,
             standard_score=standard_score,
@@ -371,10 +524,10 @@ class RankService:
 
     async def fetch_autocard_summary(
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         user_id: int,
     ) -> RankLookupResult:
-        return await fetch_autocard_rank_summary_with_deps(
+        return await rank_summary.fetch_autocard_rank_summary(
             game,
             user_id,
             find_rank=self.find_rank,
@@ -382,7 +535,7 @@ class RankService:
 
     async def fetch_player_summary(  # noqa: PLR0913
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         user_id: int,
         *,
         book_score: int | None = None,
@@ -391,7 +544,7 @@ class RankService:
         skin_score: int | None = None,
         progress: RankSummaryProgress | None = None,
     ) -> PlayerRankSummary:
-        return await fetch_player_rank_summary_with_deps(
+        return await rank_summary.fetch_player_rank_summary(
             game,
             user_id,
             book_score=book_score,
@@ -425,75 +578,3 @@ class RankService:
 
     def _tie_page_limit(self) -> int:
         return score_search_tie_page_limit(self.config)
-
-    def _window_page_starts(
-        self,
-        *,
-        center_index: int,
-        page_size: int,
-    ) -> list[int]:
-        return rank_window_page_starts(
-            center_index=center_index,
-            page_size=page_size,
-            window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
-        )
-
-    async def _find_by_cached_position(self, game: SeerGame, **kwargs: Any) -> Any:
-        return await find_rank_by_cached_position(
-            game,
-            **kwargs,
-            get_cached_rank_item=self.cache.item,
-            rank_window_page_starts=self._window_page_starts,
-            fetch_rank_page=self.fetch_page,
-        )
-
-    async def _find_by_score(self, game: SeerGame, **kwargs: Any) -> RankLookupResult:
-        return await find_rank_by_score(
-            game,
-            **kwargs,
-            score_search_probe_limit=self._probe_limit,
-            score_search_tie_page_limit=self._tie_page_limit,
-            fetch_rank_item=self.fetch_item,
-            fetch_rank_page=self.fetch_page,
-        )
-
-    async def _find_by_linear_scan(
-        self,
-        game: SeerGame,
-        **kwargs: Any,
-    ) -> RankLookupResult:
-        return await find_rank_by_linear_scan(
-            game,
-            **kwargs,
-            fetch_rank_page=self.fetch_page,
-        )
-
-    def _lookup_dependencies(self) -> RankLookupDependencies:
-        return RankLookupDependencies(
-            online_search_limit=self._online_search_limit,
-            score_search_limit=self._score_search_limit,
-            page_size=self.page_size,
-            is_pet_kind_rank_anomaly_user=is_pet_kind_rank_anomaly_user,
-            find_rank_by_cached_position=self._find_by_cached_position,
-            find_rank_by_score=self._find_by_score,
-            find_rank_by_linear_scan=self._find_by_linear_scan,
-        )
-
-    def _score_dependencies(self) -> RankScoreServiceDependencies:
-        return RankScoreServiceDependencies(
-            rank_page_size=self.page_size,
-            rank_page_start=self.page_start,
-            score_search_limit=self._score_search_limit,
-            score_search_probe_limit=self._probe_limit,
-            score_search_tie_page_limit=self._tie_page_limit,
-            get_cached_score_indexes=self.cache.score_indexes,
-            get_cache_summary=self.cache.summary,
-            get_cached_page_result=self.cache.page,
-            score_miss_proof_from_page=score_miss_proof_from_page,
-            fetch_cached_candidates_impl=fetch_rank_score_segment_from_cached_candidates,
-            fetch_rank_score_segment_impl=fetch_rank_score_segment_online,
-            cached_score_candidate_page_starts_impl=cached_score_candidate_page_starts,
-            cached_score_miss_boundary_impl=cached_score_miss_boundary,
-            fetch_rank_item=self.fetch_item,
-            fetch_rank_page_result=self.fetch_page_result,
-        )

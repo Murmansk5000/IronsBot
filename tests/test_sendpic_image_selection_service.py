@@ -1,33 +1,16 @@
-import sys
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-
 import pytest
+
+from ironsbot.services.messaging.sendpic import (
+    ImageIndexOutOfRangeError,
+    InvalidImageArgumentError,
+    build_image_file_path,
+    select_image,
+)
 
 SELECTED_INDEX = 2
 RANDOM_INDEX = 3
 MAX_INDEX = 5
 OUT_OF_RANGE_INDEX = 6
-
-_SERVICE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "plugins"
-    / "sendpic"
-    / "image_selection_service.py"
-)
-_SPEC = spec_from_file_location(
-    "sendpic_image_selection_service_for_test",
-    _SERVICE_PATH,
-)
-assert _SPEC is not None and _SPEC.loader is not None
-_SERVICE = module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _SERVICE
-_SPEC.loader.exec_module(_SERVICE)
-ImageIndexOutOfRangeError = _SERVICE.ImageIndexOutOfRangeError
-InvalidImageArgumentError = _SERVICE.InvalidImageArgumentError
-build_image_file_path = _SERVICE.build_image_file_path
-select_image = _SERVICE.select_image
 
 
 def test_select_image_uses_numeric_argument() -> None:

@@ -1,0 +1,1 @@
+"""OneBot transport adapters."""

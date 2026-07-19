@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import httpx
 
 UNITY_NOTICE_URL = "https://unity-notice.61.com/unity_notice/"
+UNITY_NOTICE_HEADERS = {"User-Agent": "IronsBot activity reminder"}
 UNITY_NOTICE_CACHE_TTL = timedelta(minutes=30)
 UNITY_NOTICE_ERROR_TTL = timedelta(minutes=5)
 _LOGGER = logging.getLogger(__name__)
@@ -25,16 +26,21 @@ def normalize_notice_text(text_value: str) -> str:
 
 @dataclass(slots=True)
 class UnityNoticeSource:
-    client: httpx.Client
+    client: httpx.AsyncClient
+    timeout_seconds: float
     text: str = ""
     expires_at: datetime | None = None
 
-    def fetch(self, now: datetime) -> str:
+    async def fetch(self, now: datetime) -> str:
         if self.expires_at is not None and self.expires_at > now:
             return self.text
 
         try:
-            response = self.client.get(UNITY_NOTICE_URL)
+            response = await self.client.get(
+                UNITY_NOTICE_URL,
+                headers=UNITY_NOTICE_HEADERS,
+                timeout=self.timeout_seconds,
+            )
             response.raise_for_status()
         except (OSError, httpx.HTTPError) as exc:
             _LOGGER.warning("activity notice fetch failed: %s", exc)

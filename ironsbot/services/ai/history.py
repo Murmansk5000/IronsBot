@@ -1,15 +1,4 @@
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
-
-from ironsbot.config.models.ai import AiConfig
-from ironsbot.services.ai.resources import AiResources
-
 HistoryMessage = dict[str, str]
-
-def history_key(event: MessageEvent) -> str:
-    if isinstance(event, GroupMessageEvent):
-        return f"group:{event.group_id}:user:{event.user_id}"
-
-    return f"private:{event.user_id}"
 
 
 def trim_history(
@@ -24,7 +13,9 @@ def trim_history(
 
 
 def build_messages(
-    config: AiConfig,
+    *,
+    system_prompt: str,
+    history_turns: int,
     history: list[HistoryMessage],
     prompt: str,
     memory: list[HistoryMessage] | None = None,
@@ -32,7 +23,7 @@ def build_messages(
     messages = [
         {
             "role": "system",
-            "content": config.prompt,
+            "content": system_prompt,
         }
     ]
     memory_text = format_memory(memory or [])
@@ -43,7 +34,7 @@ def build_messages(
                 "content": memory_text,
             }
         )
-    messages.extend(trim_history(history, config.history_turns))
+    messages.extend(trim_history(history, history_turns))
     messages.append({"role": "user", "content": prompt})
     return messages
 
@@ -65,17 +56,19 @@ def format_memory(memory: list[HistoryMessage]) -> str:
     return "\n".join(lines)
 
 
-def get_history(resources: AiResources, key: str) -> list[HistoryMessage]:
-    return resources.history.get(key, [])
-
-
-def append_turn(resources: AiResources, key: str, prompt: str, reply: str) -> None:
-    history = get_history(resources, key)
-    resources.history[key] = trim_history(
+def append_turn(
+    histories: dict[str, list[HistoryMessage]],
+    key: str,
+    prompt: str,
+    reply: str,
+    history_turns: int,
+) -> None:
+    history = histories.get(key, [])
+    histories[key] = trim_history(
         [
-            *trim_history(history, resources.config.history_turns),
+            *trim_history(history, history_turns),
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": reply},
         ],
-        resources.config.history_turns,
+        history_turns,
     )

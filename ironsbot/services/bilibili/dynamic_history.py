@@ -1,31 +1,18 @@
 from __future__ import annotations
 
-import json
-import sqlite3
-import time
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
-from nonebot.log import logger
-
-from ironsbot.integrations.storage.sqlite import (
-    SqliteDatabase,
-    SqliteMigration,
-    ensure_sqlite_columns,
-)
 from ironsbot.services.bilibili.push import (
-    DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from contextlib import AbstractContextManager
-    from pathlib import Path
+
+    from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 
 
-@dataclass(frozen=True, slots=True)
-class DynamicHistoryRecord:
+class DynamicHistoryRecord(NamedTuple):
     dynamic_id: str
     uid: int
     author_name: str
@@ -37,226 +24,12 @@ class DynamicHistoryRecord:
     suppression_reason: str
 
 
-BILI_DYNAMIC_HISTORY_SCHEMA = (
-    """
-    CREATE TABLE IF NOT EXISTS checkpoints (
-        uid INTEGER PRIMARY KEY,
-        pub_ts INTEGER NOT NULL,
-        updated_at REAL NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS dynamics (
-        dynamic_id TEXT PRIMARY KEY,
-        uid INTEGER NOT NULL,
-        author_name TEXT NOT NULL,
-        pub_ts INTEGER NOT NULL,
-        brief TEXT NOT NULL,
-        raw_json TEXT NOT NULL,
-        pushed INTEGER NOT NULL DEFAULT 0,
-        suppressed INTEGER NOT NULL DEFAULT 0,
-        suppression_reason TEXT NOT NULL DEFAULT '',
-        created_at REAL NOT NULL,
-        updated_at REAL NOT NULL
-    )
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_bili_dynamics_uid_time
-    ON dynamics (uid, pub_ts DESC)
-    """,
-)
+class BiliDynamicHistoryStore(Protocol):
+    def get_checkpoints(self) -> dict[int, int]: ...
 
+    def save_checkpoints(self, checkpoints: dict[int, int]) -> None: ...
 
-def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
-    ensure_sqlite_columns(
-        conn,
-        table_name="dynamics",
-        columns={
-            "suppressed": "suppressed INTEGER NOT NULL DEFAULT 0",
-            "suppression_reason": "suppression_reason TEXT NOT NULL DEFAULT ''",
-        },
-    )
-
-
-BILI_DYNAMIC_HISTORY_MIGRATIONS = (
-    SqliteMigration(
-        1,
-        BILI_DYNAMIC_HISTORY_SCHEMA,
-        _ensure_dynamic_columns,
-    ),
-)
-
-
-def _dynamic_id(item: dict) -> str:
-    return str(item.get("id_str") or item.get("id") or "")
-
-
-def _record_from_row(row: sqlite3.Row) -> DynamicHistoryRecord | None:
-    try:
-        raw_item = json.loads(str(row["raw_json"]))
-        if not isinstance(raw_item, dict):
-            return None
-
-        return DynamicHistoryRecord(
-            dynamic_id=str(row["dynamic_id"]),
-            uid=int(row["uid"]),
-            author_name=str(row["author_name"]),
-            pub_ts=int(row["pub_ts"]),
-            brief=str(row["brief"]),
-            item=raw_item,
-            pushed=bool(row["pushed"]),
-            suppressed=bool(row["suppressed"]),
-            suppression_reason=str(row["suppression_reason"] or ""),
-        )
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
-        logger.warning(f"failed to parse Bilibili dynamic history row: {e}")
-        return None
-
-
-@dataclass(frozen=True, slots=True)
-class BiliDynamicHistoryStore:
-    path: str | Path
-    max_items: int
-
-    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
-        return SqliteDatabase(
-            self.path,
-            migrations=BILI_DYNAMIC_HISTORY_MIGRATIONS,
-            row_factory=sqlite3.Row,
-        ).connect()
-
-    def get_checkpoints(self) -> dict[int, int]:
-        try:
-            with self._connect() as conn:
-                rows = conn.execute(
-                    "SELECT uid, pub_ts FROM checkpoints WHERE pub_ts > 0"
-                ).fetchall()
-                return {int(uid): int(pub_ts) for uid, pub_ts in rows}
-        except sqlite3.Error as e:
-            logger.warning(
-                f"failed to read Bilibili checkpoints from SQLite: {e}"
-            )
-            return {}
-
-    def save_checkpoints(self, checkpoints: dict[int, int]) -> None:
-        cleaned = {
-            int(uid): int(pub_time)
-            for uid, pub_time in sorted(checkpoints.items())
-            if int(pub_time) > 0
-        }
-        try:
-            with self._connect() as conn:
-                conn.executemany(
-                    """
-                    REPLACE INTO checkpoints (uid, pub_ts, updated_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    [
-                        (uid, pub_time, time.time())
-                        for uid, pub_time in cleaned.items()
-                    ],
-                )
-        except sqlite3.Error as e:
-            logger.warning(f"failed to write Bilibili checkpoints to SQLite: {e}")
-
-    def save_item(  # noqa: PLR0913
-        self,
-        item: dict,
-        *,
-        pub_ts: int,
-        author_mid: int,
-        author_name: str,
-        brief: str,
-        pushed: bool = False,
-        suppressed: bool = False,
-        suppression_reason: str = "",
-    ) -> None:
-        dynamic_id = _dynamic_id(item) or f"{author_mid}:{pub_ts}"
-        now = time.time()
-        try:
-            raw_json = json.dumps(item, ensure_ascii=False)
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO dynamics (
-                        dynamic_id, uid, author_name, pub_ts, brief,
-                        raw_json, pushed, suppressed, suppression_reason,
-                        created_at, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(dynamic_id) DO UPDATE SET
-                        uid = excluded.uid,
-                        author_name = excluded.author_name,
-                        pub_ts = excluded.pub_ts,
-                        brief = excluded.brief,
-                        raw_json = excluded.raw_json,
-                        pushed = max(dynamics.pushed, excluded.pushed),
-                        suppressed = max(dynamics.suppressed, excluded.suppressed),
-                        suppression_reason = CASE
-                            WHEN excluded.suppression_reason != ''
-                            THEN excluded.suppression_reason
-                            ELSE dynamics.suppression_reason
-                        END,
-                        updated_at = excluded.updated_at
-                    """,
-                    (
-                        dynamic_id,
-                        int(author_mid),
-                        author_name,
-                        int(pub_ts),
-                        brief,
-                        raw_json,
-                        1 if pushed else 0,
-                        1 if suppressed else 0,
-                        suppression_reason,
-                        now,
-                        now,
-                    ),
-                )
-                conn.execute(
-                    """
-                    DELETE FROM dynamics
-                    WHERE dynamic_id IN (
-                        SELECT dynamic_id
-                        FROM dynamics
-                        ORDER BY pub_ts DESC, updated_at DESC
-                        LIMIT -1 OFFSET ?
-                    )
-                    """,
-                    (self.max_items,),
-                )
-        except (sqlite3.Error, TypeError, ValueError) as e:
-            logger.warning(f"failed to save Bilibili dynamic history: {e}")
-
-    def save_snapshot(self, snapshot: DynamicHistorySnapshot) -> None:
-        self.save_item(
-            snapshot.item,
-            pub_ts=snapshot.pub_ts,
-            author_mid=snapshot.author_mid,
-            author_name=snapshot.author_name,
-            brief=snapshot.brief,
-            pushed=snapshot.pushed,
-            suppressed=snapshot.suppressed,
-            suppression_reason=snapshot.suppression_reason,
-        )
-
-    def save_target_dynamics(
-        self,
-        target_dynamics: Iterable[tuple[int, dict[str, Any]]],
-        *,
-        suppress_patterns: list[str],
-    ) -> int:
-        saved_count = 0
-        for pub_ts, item in target_dynamics:
-            snapshot = build_dynamic_history_snapshot_for_item(
-                item,
-                pub_ts=pub_ts,
-                suppress_patterns=suppress_patterns,
-            )
-            if snapshot is not None:
-                self.save_snapshot(snapshot)
-                saved_count += 1
-        return saved_count
+    def save_snapshot(self, snapshot: DynamicHistorySnapshot) -> None: ...
 
     def list(
         self,
@@ -264,53 +37,25 @@ class BiliDynamicHistoryStore:
         limit: int = 10,
         uid: int | None = None,
         uids: Iterable[int] | None = None,
-    ) -> list[DynamicHistoryRecord]:
-        query = (
-            "SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json, "
-            "pushed, suppressed, suppression_reason FROM dynamics"
-        )
-        params: list[int] = []
-        uid_list = (
-            list(dict.fromkeys(int(value) for value in uids if int(value) > 0))
-            if uids is not None
-            else []
-        )
-        if uids is not None and not uid_list:
-            return []
-        if uid_list:
-            query += f" WHERE uid IN ({','.join('?' for _ in uid_list)})"
-            params.extend(uid_list)
-        elif uid is not None:
-            query += " WHERE uid = ?"
-            params.append(int(uid))
-        query += " ORDER BY pub_ts DESC, updated_at DESC LIMIT ?"
-        params.append(int(limit))
+    ) -> list[DynamicHistoryRecord]: ...
 
-        try:
-            with self._connect() as conn:
-                rows = conn.execute(query, params).fetchall()
-        except sqlite3.Error as e:
-            logger.warning(f"failed to list Bilibili dynamic history: {e}")
-            return []
-        return [
-            record
-            for row in rows
-            if (record := _record_from_row(row)) is not None
-        ]
+    def get(self, dynamic_id: str) -> DynamicHistoryRecord | None: ...
 
-    def get(self, dynamic_id: str) -> DynamicHistoryRecord | None:
-        try:
-            with self._connect() as conn:
-                row = conn.execute(
-                    """
-                    SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json,
-                        pushed, suppressed, suppression_reason
-                    FROM dynamics
-                    WHERE dynamic_id = ?
-                    """,
-                    (dynamic_id,),
-                ).fetchone()
-        except sqlite3.Error as e:
-            logger.warning(f"failed to read Bilibili dynamic history item: {e}")
-            return None
-        return _record_from_row(row) if row is not None else None
+
+def save_target_dynamics(
+    store: BiliDynamicHistoryStore,
+    target_dynamics: Iterable[tuple[int, dict[str, Any]]],
+    *,
+    suppress_patterns: list[str],
+) -> int:
+    saved = 0
+    for pub_ts, item in target_dynamics:
+        snapshot = build_dynamic_history_snapshot_for_item(
+            item,
+            pub_ts=pub_ts,
+            suppress_patterns=suppress_patterns,
+        )
+        if snapshot is not None:
+            store.save_snapshot(snapshot)
+            saved += 1
+    return saved

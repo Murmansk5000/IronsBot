@@ -3,7 +3,7 @@ from ironsbot.core.commands import (
     normalize_command_text,
     strip_command_prefix,
 )
-from ironsbot.shared.messaging.text import build_message, render_text
+from ironsbot.runtime.replies import build_message, render_text
 
 
 def test_normalize_command_text_removes_whitespace_and_lowercases() -> None:

@@ -130,7 +130,15 @@ def format_autocard_rank_info(
         if result.score is not None
         else ""
     )
-    if not result.queried:
+    failure = getattr(result, "failure", None)
+    if failure:
+        metric_text = join_metric_parts(
+            "" if result.score is None else f"{result.score}分",
+            f"全服排行失败：{failure}",
+            sample_text,
+        )
+        lines.append(f"群星之巅：{metric_text}")
+    elif not result.queried:
         lines.append("群星之巅：未查询")
     elif result.rank is None:
         if result.score is None:

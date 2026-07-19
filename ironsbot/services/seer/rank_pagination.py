@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from ironsbot.config.models.seer import RankQueryConfig
 
 
-def rank_page_size(config: RankQueryConfig) -> int:
-    configured = int(config.page_size)
+def rank_page_size(configured: int) -> int:
     return max(1, min(configured, 100))
 
 
@@ -21,7 +19,3 @@ def rank_window_page_starts(
     first_page_start = max(0, page_start - window_pages * page_size)
     last_page_start = page_start + window_pages * page_size
     return list(range(first_page_start, last_page_start + 1, page_size))
-
-
-__all__ = ["rank_page_size", "rank_page_start", "rank_window_page_starts"]
-

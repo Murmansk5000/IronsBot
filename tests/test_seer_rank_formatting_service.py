@@ -1,6 +1,5 @@
 from ironsbot.services.seer.rank_formatting import (
     GLOBAL_RANK_MISS_POSITION_STYLE,
-    RANK_LOOKUP_POSITION_STYLE,
     format_rank_position_text,
 )
 from ironsbot.services.seer.rank_models import RankLookupResult
@@ -30,23 +29,6 @@ def test_format_rank_position_text_defaults_to_global_summary() -> None:
             )
         )
         == "全服未进入前2000"
-    )
-
-
-def test_format_rank_position_text_supports_rank_lookup_style() -> None:
-    result = RankLookupResult(
-        title="群星之巅",
-        score_name="群星之巅",
-        searched_limit=2000,
-        queried=True,
-    )
-
-    assert (
-        format_rank_position_text(
-            result,
-            style=RANK_LOOKUP_POSITION_STYLE,
-        )
-        == "前 2000 名未上榜"
     )
 
 

@@ -3,9 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from ironsbot.config.models.ai import AiConfig
-from ironsbot.config.models.runtime import LoggingConfig
-from ironsbot.services.ai.resources import AiResources
+from ironsbot.config.models.settings import LoggingConfig
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.seer import render_crash_report
 from tests.helpers.runtime import build_test_runtime
 
@@ -46,32 +45,28 @@ def test_report_previous_render_crash_notifies_superusers(
     notices: list[tuple[str, str]] = []
 
     async def fake_notify(
-        _resources: AiResources,
-        key: str,
+        _service: AdminNoticeService,
         message: str,
         **_kwargs: object,
     ) -> None:
-        notices.append((key, message))
+        notices.append(("render_crash_notice", message))
 
     monkeypatch.setattr(render_crash_report, "MARKER_PATH", marker_path)
-    monkeypatch.setattr(AiResources, "notify_admin_once", fake_notify)
+    monkeypatch.setattr(AdminNoticeService, "send", fake_notify)
     runtime = build_test_runtime()
-    resources = AiResources(
-        AiConfig(),
-        runtime.features,
-        runtime.admin_notices,
-        "",
-        {},
-        (),
-        20,
-    )
-    logging = LoggingConfig(file_enabled=True, file_path=str(log_path))
+    logging = LoggingConfig(file_enabled=True)
 
-    asyncio.run(render_crash_report.report_previous_render_crash(resources, logging))
+    asyncio.run(
+        render_crash_report.report_previous_render_crash(
+            runtime.admin_notices,
+            logging,
+            log_path,
+        )
+    )
 
     assert not marker_path.exists()
     assert len(notices) == 1
     key, message = notices[0]
-    assert "2026-06-22 12:55:20" in key
+    assert key == "render_crash_notice"
     assert "安瑟伦" in message
     assert "rendering pet info image" in message

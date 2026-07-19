@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ironsbot.core.commands import json_object
-from ironsbot.utils.ai_api_diagnostics import (
+from ironsbot.integrations.http.ai import (
     AiApiSettings,
     check_ai_api,
 )

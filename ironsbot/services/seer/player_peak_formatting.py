@@ -57,7 +57,7 @@ def format_peak_line(  # noqa: PLR0913
     history: str,
     match_count: int,
     win_rate: str,
-    rank: int | None,
+    rank_result: RankLookupResult,
     local_summary: LocalRankSummary,
     score_key: str,
     win_rate_key: str,
@@ -75,9 +75,14 @@ def format_peak_line(  # noqa: PLR0913
             f"胜率{win_rate}"
             f"{format_local_rank_suffix(local_summary, win_rate_key, label='样本胜率')}"
         )
+    failure = rank_result.failure
     rank_text = (
-        f"{format_peak_rank_text(rank)}"
-        f"{format_local_rank_suffix(local_summary, score_key, label='样本段位')}"
+        f"赛季榜{failure}"
+        if failure
+        else (
+            f"{format_peak_rank_text(rank_result.rank)}"
+            f"{format_local_rank_suffix(local_summary, score_key, label='样本段位')}"
+        )
     )
     return (
         f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
@@ -140,7 +145,7 @@ def format_compact_peak_section(
                     if standard_stats_confirmed
                     else ""
                 ),
-                rank=peak_rank_summary.standard.rank,
+                rank_result=peak_rank_summary.standard,
                 local_summary=local_summary,
                 score_key="peak_standard",
                 win_rate_key="peak_standard_win_rate",
@@ -159,7 +164,7 @@ def format_compact_peak_section(
                     if wild_stats_confirmed
                     else ""
                 ),
-                rank=peak_rank_summary.wild.rank,
+                rank_result=peak_rank_summary.wild,
                 local_summary=local_summary,
                 score_key="peak_wild",
                 win_rate_key="peak_wild_win_rate",
@@ -175,7 +180,7 @@ def format_compact_peak_section(
                     if expert_stats_confirmed
                     else ""
                 ),
-                rank=peak_rank_summary.expert.rank,
+                rank_result=peak_rank_summary.expert,
                 local_summary=local_summary,
                 score_key="peak_expert",
                 win_rate_key="peak_expert_win_rate",

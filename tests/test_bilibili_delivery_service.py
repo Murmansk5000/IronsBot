@@ -1,29 +1,35 @@
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
 
-from ironsbot.config.models.feature import FeatureConfig
+from typing import TYPE_CHECKING, Any, cast
+
+from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.plugins.bilibili.delivery import build_dynamic_message
+from ironsbot.runtime.replies import (
+    append_fire_manual_ad_message,
+    append_text_hint,
+)
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
-    append_bili_admin_hint_for_group,
-    build_dynamic_push_deliveries,
+    BilibiliPushDeliveryService,
 )
-from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
+from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ironsbot.core.features import FeatureService
+    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.services.messaging.subscriptions import (
+        PushSubscriptionRepository,
+    )
 
 PUB_TS = 1781004683
 SPLIT_DELIVERY_COUNT = 2
-
-
-@dataclass(frozen=True, slots=True)
-class FakePushTargets:
-    full_group_ids: list[int]
-    link_group_ids: list[int]
-    full_user_ids: list[int]
-    link_user_ids: list[int]
 
 
 def _item(
@@ -52,7 +58,21 @@ def _item(
     }
 
 
-def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
+def _delivery_service(
+    features: FeatureService,
+    subscriptions: PushSubscriptionRepository | None = None,
+) -> BilibiliPushDeliveryService:
+    return BilibiliPushDeliveryService(
+        features,
+        cast("MessageDelivery", object()),
+        subscriptions or cast("PushSubscriptionRepository", object()),
+        build_dynamic_message,
+        append_fire_manual_ad_message,
+        append_text_hint,
+    )
+
+
+def test_delivery_service_plans_full_and_link_targets(
 ) -> None:
     features = build_test_runtime(
         feature_config=FeatureConfig(
@@ -63,11 +83,10 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
         )
     ).features
 
-    deliveries = build_dynamic_push_deliveries(
-        features,
+    deliveries = _delivery_service(features).build_deliveries(
         _item(),
         PUB_TS,
-        FakePushTargets(
+        BiliPushTargets(
             full_group_ids=[1001],
             link_group_ids=[1002],
             full_user_ids=[2001],
@@ -106,17 +125,18 @@ def test_build_dynamic_push_deliveries_renders_full_and_link_targets(
     assert BILI_PUSH_ADMIN_HINT not in link_private_rendered
 
 
-def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
+def test_delivery_service_splits_groups_without_fire_manual_ad(
 ) -> None:
-    deliveries = build_dynamic_push_deliveries(
+    deliveries = _delivery_service(
         build_test_runtime(
             feature_config=FeatureConfig(
                 group_policy={"1001": ["fire_manual_ad"]},
             )
-        ).features,
+        ).features
+    ).build_deliveries(
         _item(),
         PUB_TS,
-        FakePushTargets(
+        BiliPushTargets(
             full_group_ids=[1001, 1002],
             link_group_ids=[],
             full_user_ids=[],
@@ -133,12 +153,13 @@ def test_build_dynamic_push_deliveries_splits_groups_without_fire_manual_ad(
     assert BILI_PUSH_ADMIN_HINT not in str(deliveries[1].message)
 
 
-def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
-    deliveries = build_dynamic_push_deliveries(
-        build_test_runtime().features,
+def test_delivery_service_skips_empty_targets() -> None:
+    deliveries = _delivery_service(
+        build_test_runtime().features
+    ).build_deliveries(
         _item(),
         PUB_TS,
-        FakePushTargets(
+        BiliPushTargets(
             full_group_ids=[],
             link_group_ids=[],
             full_user_ids=[],
@@ -149,17 +170,18 @@ def test_build_dynamic_push_deliveries_skips_empty_targets() -> None:
     assert deliveries == []
 
 
-def test_append_bili_admin_hint_for_group_once_per_day(
+def test_delivery_service_appends_admin_hint_once_per_day(
     tmp_path: Path,
 ) -> None:
     store = PushUnsubscribeStore(
         tmp_path / "push_unsubscriptions.sqlite"
     )
 
-    first = append_bili_admin_hint_for_group(store, "正文", 1001)
-    second = append_bili_admin_hint_for_group(store, "正文2", 1001)
-    other_group = append_bili_admin_hint_for_group(store, "正文3", 1002)
-    private = append_bili_admin_hint_for_group(store, "正文4", None)
+    service = _delivery_service(build_test_runtime().features, store)
+    first = service._append_admin_hint("正文", 1001)
+    second = service._append_admin_hint("正文2", 1001)
+    other_group = service._append_admin_hint("正文3", 1002)
+    private = service._append_admin_hint("正文4", None)
 
     assert first == f"正文\n\n{BILI_PUSH_ADMIN_HINT}"
     assert second == "正文2"

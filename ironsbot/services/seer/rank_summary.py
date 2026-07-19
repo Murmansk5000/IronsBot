@@ -48,11 +48,14 @@ def _record_rank_error(
     if errors is None:
         return
     display_title = _display_rank_title(title)
+    errors.append(f"{display_title}{_format_rank_failure(error)}")
+
+
+def _format_rank_failure(error: Exception) -> str:
     if isinstance(error, TimeoutError):
-        errors.append(f"{display_title}查询超时")
-        return
+        return "查询超时"
     detail = str(error) or type(error).__name__
-    errors.append(f"{display_title}查询失败：{detail}")
+    return f"查询失败：{detail}"
 
 
 async def _safe_find_rank(  # noqa: PLR0913
@@ -79,7 +82,12 @@ async def _safe_find_rank(  # noqa: PLR0913
     except (TimeoutError, OSError) as error:
         _LOGGER.warning("failed to fetch player rank item: %s", label, exc_info=True)
         _record_rank_error(errors, title=title, error=error)
-        return RankLookupResult(title=title, score_name=score_name, score=score)
+        return RankLookupResult(
+            title=title,
+            score_name=score_name,
+            score=score,
+            failure=_format_rank_failure(error),
+        )
 
 
 async def _safe_find_pet_kind_rank(  # noqa: PLR0913
@@ -109,6 +117,7 @@ async def _safe_find_pet_kind_rank(  # noqa: PLR0913
             title=title,
             score_name="精灵",
             score=pet_kind_count,
+            failure=_format_rank_failure(error),
         )
 
 
@@ -123,7 +132,6 @@ async def _find_current_peak_rank(  # noqa: PLR0913
     key: int,
     sub_key: int,
     candidate_score: int | None,
-    errors: list[str],
     progress: RankSummaryProgress | None,
 ) -> RankLookupResult:
     has_candidate_score = candidate_score is not None and candidate_score > 0
@@ -139,7 +147,6 @@ async def _find_current_peak_rank(  # noqa: PLR0913
             key=key,
             sub_key=sub_key,
             target_score=candidate_score,
-            errors=errors,
             progress=progress,
         )
         if result.rank is not None or not result.queried:
@@ -155,7 +162,6 @@ async def _find_current_peak_rank(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         search_limit=None if has_candidate_score else 0,
-        errors=errors,
         progress=progress,
     )
 
@@ -274,7 +280,6 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         return PeakSeasonRankSummary.empty()
 
     summary = PeakSeasonRankSummary.empty()
-    errors: list[str] = []
     summary.standard = await _find_current_peak_rank(
         "standard_peak",
         find_rank,
@@ -285,7 +290,6 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         key=STANDARD_PEAK_USER_RANK_KEY,
         sub_key=current_peak_sub_key,
         candidate_score=standard_score,
-        errors=errors,
         progress=progress,
     )
     summary.wild = await _find_current_peak_rank(
@@ -298,7 +302,6 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         key=WILD_PEAK_USER_RANK_KEY,
         sub_key=current_peak_sub_key,
         candidate_score=wild_score,
-        errors=errors,
         progress=progress,
     )
     summary.expert = await _find_current_peak_rank(
@@ -311,10 +314,8 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         key=EXPERT_PEAK_USER_RANK_KEY,
         sub_key=current_peak_sub_key,
         candidate_score=expert_score,
-        errors=errors,
         progress=progress,
     )
-    summary.errors = tuple(errors)
     return summary
 
 
@@ -393,11 +394,3 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         breakdown=breakdown,
         errors=tuple(errors),
     )
-
-
-__all__ = [
-    "fetch_autocard_rank_summary",
-    "fetch_book_breakdown_summary",
-    "fetch_peak_season_rank_summary",
-    "fetch_player_rank_summary",
-]

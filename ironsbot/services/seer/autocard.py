@@ -9,13 +9,15 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ironsbot.shared.selection_menu import (
+from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.seer_data.sessions import SeerAPISession
+    from sqlmodel import Session
+
+    from ironsbot.services.seer.data import SeerDataAccess
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
@@ -43,7 +45,7 @@ _AUTOCARD_TABLE_QUERIES = {
 
 
 @dataclass(slots=True, frozen=True)
-class AutocardDataset:
+class _AutocardDataset:
     cards: tuple[dict[str, Any], ...]
     roles: tuple[dict[str, Any], ...]
     natures: dict[int, str]
@@ -55,7 +57,65 @@ class AutocardPromptValue:
     item_id: int
 
 
-def extract_autocard_query_arg(arg: str) -> str:
+@dataclass(slots=True, frozen=True)
+class AutocardEntry:
+    kind: str
+    item_id: int
+    name: str
+    text: str
+    image_url: str
+
+
+@dataclass(slots=True, frozen=True)
+class AutocardSearchResult:
+    entry: AutocardEntry | None = None
+    prompt_values: tuple[AutocardPromptValue, ...] = ()
+    prompt_text: str = ""
+    message: str = ""
+
+
+class AutocardService:
+    def __init__(self, data: SeerDataAccess) -> None:
+        self._data = data
+
+    def search(self, arg: str) -> AutocardSearchResult:
+        with self._data.query(_load_autocard_dataset) as dataset:
+            matches = _search_autocard_items(
+                dataset,
+                _extract_autocard_query_arg(arg),
+            )
+        if not matches:
+            return AutocardSearchResult()
+        if len(matches) == 1:
+            kind, item = matches[0]
+            return AutocardSearchResult(entry=_build_entry(dataset, kind, item))
+        if len(matches) > AUTOCARD_PROMPT_MAX_ITEMS:
+            return AutocardSearchResult(
+                message=(
+                    f"❌ 群星牌匹配超过 {AUTOCARD_PROMPT_MAX_ITEMS} 个，"
+                    "请换更精确的关键词。"
+                )
+            )
+        return AutocardSearchResult(
+            prompt_values=_build_autocard_prompt_values(matches),
+            prompt_text=_build_autocard_prompt_text(dataset, matches),
+        )
+
+    def select(self, value: AutocardPromptValue) -> AutocardEntry | None:
+        with self._data.query(_load_autocard_dataset) as dataset:
+            item = (
+                _find_autocard_role_by_id(dataset, value.item_id)
+                if value.kind == "role"
+                else _find_autocard_card_by_id(dataset, value.item_id)
+            )
+        return (
+            None
+            if item is None
+            else _build_entry(dataset, value.kind, item)
+        )
+
+
+def _extract_autocard_query_arg(arg: str) -> str:
     query = arg.strip()
     for prefix in AUTOCARD_QUERY_PREFIXES:
         if query.casefold().startswith(prefix.casefold()):
@@ -70,7 +130,7 @@ def extract_autocard_query_arg(arg: str) -> str:
     return query
 
 
-def load_autocard_dataset(session: SeerAPISession) -> AutocardDataset:
+def _load_autocard_dataset(session: Session) -> _AutocardDataset:
     try:
         cards = _load_json_rows(session, "autocard_card")
         roles = _load_json_rows(session, "autocard_role")
@@ -85,15 +145,15 @@ def load_autocard_dataset(session: SeerAPISession) -> AutocardDataset:
         _int_field(row, "id"): str(_field(row, "name"))
         for row in nature_rows
     }
-    return AutocardDataset(
+    return _AutocardDataset(
         cards=cards,
         roles=roles,
         natures=natures,
     )
 
 
-def find_autocard_card_by_id(
-    dataset: AutocardDataset,
+def _find_autocard_card_by_id(
+    dataset: _AutocardDataset,
     item_id: int,
 ) -> dict[str, Any] | None:
     for item in dataset.cards:
@@ -102,8 +162,8 @@ def find_autocard_card_by_id(
     return None
 
 
-def find_autocard_role_by_id(
-    dataset: AutocardDataset,
+def _find_autocard_role_by_id(
+    dataset: _AutocardDataset,
     item_id: int,
 ) -> dict[str, Any] | None:
     for item in dataset.roles:
@@ -112,15 +172,15 @@ def find_autocard_role_by_id(
     return None
 
 
-def search_autocard_items(
-    dataset: AutocardDataset,
+def _search_autocard_items(
+    dataset: _AutocardDataset,
     query: str,
 ) -> list[tuple[str, dict[str, Any]]]:
     query = query.strip()
     if not query or query.isdigit():
         return []
     if query.startswith("卡") and query[1:].isdigit():
-        card = find_autocard_card_by_id(dataset, int(query[1:]))
+        card = _find_autocard_card_by_id(dataset, int(query[1:]))
         return [("card", card)] if card is not None else []
 
     normalized_query = _normalize_name(query)
@@ -142,8 +202,8 @@ def search_autocard_items(
     ]
 
 
-def format_autocard_entry(
-    dataset: AutocardDataset,
+def _format_autocard_entry(
+    dataset: _AutocardDataset,
     kind: str,
     item: dict[str, Any],
 ) -> str:
@@ -152,7 +212,7 @@ def format_autocard_entry(
     return _format_card(dataset, item)
 
 
-def autocard_image_url(kind: str, item: dict[str, Any]) -> str:
+def _autocard_image_url(kind: str, item: dict[str, Any]) -> str:
     image_name = _autocard_image_name(kind, item)
     if not image_name:
         return ""
@@ -161,7 +221,7 @@ def autocard_image_url(kind: str, item: dict[str, Any]) -> str:
     return f"{_AUTOCARD_ASSET_BASE_URL}/cards/{image_name}.png"
 
 
-def build_autocard_prompt_values(
+def _build_autocard_prompt_values(
     matches: list[tuple[str, dict[str, Any]]],
 ) -> tuple[AutocardPromptValue, ...]:
     return tuple(
@@ -170,8 +230,8 @@ def build_autocard_prompt_values(
     )
 
 
-def build_autocard_prompt_text(
-    dataset: AutocardDataset,
+def _build_autocard_prompt_text(
+    dataset: _AutocardDataset,
     matches: list[tuple[str, dict[str, Any]]],
 ) -> str:
     return format_selection_menu(
@@ -209,7 +269,7 @@ def _clean_text(value: object) -> str:
 
 
 def _load_json_rows(
-    session: SeerAPISession,
+    session: Session,
     table_name: str,
 ) -> tuple[dict[str, Any], ...]:
     query = _AUTOCARD_TABLE_QUERIES[table_name]
@@ -247,13 +307,13 @@ def _autocard_image_name(kind: str, item: dict[str, Any]) -> str:
     return f"card_{image_id}" if image_id > 0 else ""
 
 
-def _nature_name(dataset: AutocardDataset, nature_id: int) -> str:
+def _nature_name(dataset: _AutocardDataset, nature_id: int) -> str:
     if nature_id <= 0:
         return "无"
     return dataset.natures.get(nature_id, f"属性{nature_id}")
 
 
-def _format_card(dataset: AutocardDataset, item: dict[str, Any]) -> str:
+def _format_card(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     type_id = _int_field(item, "type")
     nature_id = _int_field(item, "nature")
@@ -282,7 +342,7 @@ def _format_card(dataset: AutocardDataset, item: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_role(dataset: AutocardDataset, item: dict[str, Any]) -> str:
+def _format_role(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     nature_id = _int_field(item, "nature")
     skill_name = _clean_text(_field(item, "skillName", "skill_name", default=""))
@@ -312,7 +372,7 @@ def _format_role(dataset: AutocardDataset, item: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _prompt_desc(dataset: AutocardDataset, kind: str, item: dict[str, Any]) -> str:
+def _prompt_desc(dataset: _AutocardDataset, kind: str, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     if kind == "role":
         nature = _nature_name(dataset, _int_field(item, "nature"))
@@ -323,4 +383,18 @@ def _prompt_desc(dataset: AutocardDataset, kind: str, item: dict[str, Any]) -> s
     return (
         f"{type_name} {item_id} {_card_variant(item)} "
         f"Lv{_int_field(item, 'level')} {nature}"
+    )
+
+
+def _build_entry(
+    dataset: _AutocardDataset,
+    kind: str,
+    item: dict[str, Any],
+) -> AutocardEntry:
+    return AutocardEntry(
+        kind=kind,
+        item_id=_int_field(item, "id"),
+        name=_entry_name(item),
+        text=_format_autocard_entry(dataset, kind, item),
+        image_url=_autocard_image_url(kind, item),
     )

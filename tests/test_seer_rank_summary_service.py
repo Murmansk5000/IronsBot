@@ -6,7 +6,12 @@ from ironsbot.services.seer.rank_constants import (
     SKIN_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
 )
-from ironsbot.services.seer.rank_models import RankLookupResult, RankSummaryProgress
+from ironsbot.services.seer.rank_models import (
+    PeakSeasonRankSummary,
+    PlayerRankSummary,
+    RankLookupResult,
+    RankSummaryProgress,
+)
 from ironsbot.services.seer.rank_summary import (
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
@@ -107,9 +112,9 @@ async def test_peak_rank_summary_keeps_other_modes_when_one_rank_times_out() -> 
     assert summary.standard.rank == FOUND_RANK
     assert not summary.wild.queried
     assert summary.wild.score == PEAK_SCORE
+    assert summary.wild.failure == "查询超时"
     assert summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
-    assert summary.errors == ("狂野赛季榜查询超时",)
 
 
 @pytest.mark.asyncio
@@ -131,7 +136,38 @@ async def test_peak_rank_summary_keeps_expert_score_when_expert_times_out() -> N
 
     assert not summary.expert.queried
     assert summary.expert.score == EXPERT_SCORE
-    assert summary.errors == ("专家赛季榜查询超时",)
+    assert summary.expert.failure == "查询超时"
+
+
+def test_peak_rank_summary_marks_only_the_failed_mode_when_title_matches() -> None:
+    summary = PeakSeasonRankSummary.empty()
+
+    summary.mark_failure("狂野赛季榜", "查询超时")
+
+    assert summary.standard.failure is None
+    assert summary.wild.failure == "查询超时"
+    assert summary.expert.failure is None
+
+
+def test_player_rank_summary_marks_only_the_failed_metric() -> None:
+    summary = PlayerRankSummary.empty()
+
+    summary.mark_failure("图鉴积分榜", "查询超时")
+
+    assert summary.book.failure == "查询超时"
+    assert summary.achieve.failure is None
+    assert summary.breakdown.pet_kind is not None
+    assert summary.breakdown.pet_kind.failure is None
+
+
+def test_peak_rank_summary_marks_all_modes_when_the_whole_section_fails() -> None:
+    summary = PeakSeasonRankSummary.empty()
+
+    summary.mark_failure("巅峰赛季榜", "查询超时")
+
+    assert summary.standard.failure == "查询超时"
+    assert summary.wild.failure == "查询超时"
+    assert summary.expert.failure == "查询超时"
 
 
 @pytest.mark.asyncio

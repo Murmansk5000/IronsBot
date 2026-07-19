@@ -4,12 +4,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
-from typing import TYPE_CHECKING
+from logging import getLogger
+from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
-from nonebot import logger
-
-from ironsbot.integrations.headless_seer.exception import (
+from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
@@ -17,11 +16,13 @@ from ironsbot.integrations.headless_seer.exception import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ironsbot.config.models.runtime import HeadlessConfig, HeadlessNoticeConfig
-    from ironsbot.config.models.secrets import CredentialsConfig
-    from ironsbot.integrations.headless_seer.client import ClientManager
-    from ironsbot.integrations.headless_seer.game import SeerGame
-    from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+    from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.operations.headless_activity import (
+        HeadlessOperationTracker,
+    )
+
+logger = getLogger(__name__)
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 DAILY_QUIET_START = time(hour=23, minute=55)
@@ -31,6 +32,56 @@ FRIDAY_QUIET_START = time(hour=9, minute=50)
 FRIDAY_QUIET_END = time(hour=15, minute=0)
 MAX_DURATION_PARTS = 2
 HEADLESS_CONFIG_MISSING_MESSAGE = "未配置无头米米号或密码"
+
+
+class HeadlessStateNotifier(Protocol):
+    async def __call__(
+        self,
+        *,
+        connected: bool,
+        reason: str,
+        source: str,
+        user_id: int | None,
+    ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class HeadlessLoginRequest:
+    user_id: int
+    password: str
+    login_server_url: str
+    heartbeat_interval: float | None
+    reconnect_retries: int
+    reconnect_delay: float
+    reconnect_delay_max: float
+    state_notifier: HeadlessStateNotifier
+
+
+class HeadlessGame(Protocol):
+    @property
+    def is_logged_in(self) -> bool: ...
+
+    @property
+    def user_id(self) -> int: ...
+
+    @property
+    def operations(self) -> HeadlessOperationTracker: ...
+
+    async def get_user_info(self, user_id: int) -> Any: ...
+
+    async def get_more_user_info(self, user_id: int) -> Any: ...
+
+    async def get_user_online_info(self, user_id: int) -> Any: ...
+
+    async def get_team_info(self, team_id: int) -> Any: ...
+
+
+class HeadlessClient(Protocol):
+    def get_client(self) -> HeadlessGame: ...
+
+    async def login(self, request: HeadlessLoginRequest) -> HeadlessGame: ...
+
+    def shutdown(self) -> None: ...
 
 
 @dataclass(slots=True)
@@ -73,10 +124,9 @@ def _format_offline_duration(delta: timedelta | None) -> str:
 
 
 class HeadlessService:
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        client: ClientManager,
-        credentials: CredentialsConfig,
+        client: HeadlessClient,
         connection: HeadlessConfig,
         notices: HeadlessNoticeConfig,
         admin_notices: AdminNoticeService,
@@ -84,7 +134,6 @@ class HeadlessService:
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
-        self._credentials = credentials
         self._connection = connection
         self._notices = notices
         self._admin_notices = admin_notices
@@ -95,13 +144,13 @@ class HeadlessService:
     @property
     def configured(self) -> bool:
         return (
-            self._credentials.headless_seer_user_id is not None
-            and bool(self._credentials.headless_seer_password)
+            self._connection.user_id is not None
+            and bool(self._connection.password)
         )
 
     @property
     def user_id_text(self) -> str:
-        return str(self._credentials.headless_seer_user_id or "未配置")
+        return str(self._connection.user_id or "未配置")
 
     @property
     def reconnect_times(self) -> list[str]:
@@ -114,7 +163,7 @@ class HeadlessService:
             return str(error)
         return None
 
-    def get_game(self) -> SeerGame:
+    def get_game(self) -> HeadlessGame:
         return self._client.get_client()
 
     async def login(self) -> int:
@@ -125,20 +174,22 @@ class HeadlessService:
         except (DisconnectedError, NotLoggedInError):
             pass
 
-        user_id = self._credentials.headless_seer_user_id
-        password = self._credentials.headless_seer_password
+        user_id = self._connection.user_id
+        password = self._connection.password
         if user_id is None or not password:
             raise RuntimeError(HEADLESS_CONFIG_MISSING_MESSAGE)
 
         game = await self._client.login(
-            user_id=user_id,
-            password=password,
-            login_server_url=self._connection.login_server_addr,
-            heartbeat_interval=self._connection.heartbeat_interval,
-            reconnect_retries=self._connection.reconnect_retries,
-            reconnect_delay=self._connection.reconnect_delay,
-            reconnect_delay_max=self._connection.reconnect_delay_max,
-            state_notifier=self.mark_game_state,
+            HeadlessLoginRequest(
+                user_id,
+                password,
+                self._connection.login_server_addr,
+                self._connection.heartbeat_interval,
+                self._connection.reconnect_retries,
+                self._connection.reconnect_delay,
+                self._connection.reconnect_delay_max,
+                self.mark_game_state,
+            )
         )
         if not game.is_logged_in:
             raise RuntimeError("登录未完成，已进入自动重连")
@@ -150,8 +201,8 @@ class HeadlessService:
             return
         try:
             await self.login()
-        except Exception:  # noqa: BLE001
-            logger.opt(exception=True).error("无头客户端登录失败")
+        except Exception:
+            logger.exception("无头客户端登录失败")
 
     async def shutdown(self) -> None:
         self._client.shutdown()
@@ -196,9 +247,9 @@ class HeadlessService:
         )
         try:
             user_id = await self.login()
-        except Exception as error:  # noqa: BLE001
-            logger.opt(exception=True).warning(
-                "headless reconnect check failed at {}",
+        except Exception as error:
+            logger.exception(
+                "headless reconnect check failed at %s",
                 scheduled_time,
             )
             await self.mark_unavailable(
@@ -281,7 +332,7 @@ class HeadlessService:
             return
         if in_headless_notice_quiet_window(now):
             logger.info(
-                "headless state notice suppressed by quiet window: {} -> {} ({})",
+                "headless state notice suppressed by quiet window: %s -> %s (%s)",
                 previous,
                 connected,
                 source,

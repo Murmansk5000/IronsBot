@@ -1,13 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ironsbot.config.models.feature import FeatureConfig
 from ironsbot.core.features import (
     FEATURE_BUNDLES,
     FEATURE_KEYS,
     SEER_FEATURES,
+    FeatureConfig,
+    FeatureService,
 )
-from ironsbot.shared.features import FeatureService
 
 
 def test_feature_service_reads_feature_config() -> None:
@@ -64,7 +64,7 @@ def test_removed_rank_feature_is_rejected() -> None:
 
     with pytest.raises(
         ValidationError,
-        match=r"feature.group_policy.main\[0\]=rank",
+        match=r"features.group_policy.main\[0\]=rank",
     ):
         FeatureConfig(group_policy={"main": ["rank"]})
 

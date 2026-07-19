@@ -14,6 +14,7 @@ ironsbot/
   app/
     bootstrap.py
     composition.py
+    file_logging.py
     lifecycle.py
     registry.py
   config/
@@ -22,21 +23,24 @@ ironsbot/
       settings.py
       ai.py
       activity.py
-      bilibili.py
-      features.py
       messaging.py
       operations.py
       seer.py
   core/
+    bilibili.py
+    binary.py
     commands.py
     features.py
+    help.py
     messaging.py
-    permissions.py
+    selection.py
+    tasks.py
     time.py
   integrations/
     db_sync/
     docker/
     headless_seer/
+    htmlkit.py
     http/
     onebot/
     scheduler/
@@ -62,8 +66,17 @@ ironsbot/
     sendpic/
     team/
   runtime/
+    conversations.py
+    feature_policy.py
     matchers.py
+    onebot_context.py
+    params.py
+    permissions.py
     plugins.py
+    priority.py
+    prompts.py
+    replies.py
+    rules.py
 ```
 
 The final package has no `shared`, `utils`, `plugin_catalog`,
@@ -172,7 +185,7 @@ class PluginDefinition:
     id: str
     features: frozenset[Feature]
     help: HelpEntry | None
-    install: Callable[[MatcherRegistry], None]
+    install: Callable[[MatcherRegistry], None] | None = None
     hooks: PluginHooks = PluginHooks()
 ```
 
@@ -199,7 +212,8 @@ There is no second pass that imports matcher objects by string reference.
 
 External NoneBot dependencies are represented by definitions in the same
 ordered registry. Their `install` callable may delegate to NoneBot's external
-plugin loader, but no other code loads plugins.
+plugin loader, but no other code loads plugins. Lifecycle-only definitions
+leave `install` unset instead of using a no-op callable.
 
 ## Service Boundaries
 
@@ -276,13 +290,13 @@ Non-secret behavior and deployment values live in TOML. Environment variables
 are limited to the configuration location and secrets:
 
 ```text
-IRONSBOT_CONFIG
-IRONSBOT_ONEBOT_TOKEN
-IRONSBOT_AI_KEY
-IRONSBOT_SEER_USER_ID
-IRONSBOT_SEER_PASSWORD
-IRONSBOT_SENDPIC_TOKEN
-IRONSBOT_GITHUB_TOKEN
+APP_CONFIG_PATH
+ONEBOT_ACCESS_TOKEN
+AI_KEY
+HEADLESS_SEER_USER_ID
+HEADLESS_SEER_PASSWORD
+SENDPIC_CNB_TOKEN
+GITHUB_WORKFLOW_TOKEN
 ```
 
 The loader explicitly maps those variables into the single `Settings` model.

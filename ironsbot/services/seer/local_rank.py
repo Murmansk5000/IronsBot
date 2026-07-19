@@ -5,7 +5,6 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.integrations.headless_seer.activity import headless_operation
 from ironsbot.services.seer import local_rank_formatting
 from ironsbot.services.seer.local_rank_metrics import (
     LOCAL_METRICS,
@@ -33,7 +32,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
-    from ironsbot.integrations.headless_seer.game import SeerGame
+    from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.local_rank_metrics import MetricSpec
     from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
@@ -218,7 +217,7 @@ class LocalRankService:
 
     async def refresh(
         self,
-        game: SeerGame,
+        game: HeadlessGame,
         player_ids: Sequence[int] | None = None,
     ) -> LocalRankRefreshResult:
         if player_ids is None:
@@ -238,7 +237,7 @@ class LocalRankService:
                 result.skipped_full += 1
                 continue
             try:
-                with headless_operation(
+                with game.operations.track(
                     "本地样本刷新",
                     f"米米号 {player_id}",
                     source="本地样本刷新",
@@ -268,7 +267,7 @@ class LocalRankService:
     async def _refresh_one(
         self,
         *,
-        game: SeerGame,
+        game: HeadlessGame,
         peak_sub_key: int | None,
         player_id: int,
     ) -> None:

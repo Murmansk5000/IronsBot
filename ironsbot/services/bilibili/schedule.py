@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from ironsbot.config.models.bilibili import BiliPollingConfig
+from ironsbot.core.bilibili import BiliPollingConfig
 from ironsbot.core.time import minute_of_day
 
 POLLING_WINDOW_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"

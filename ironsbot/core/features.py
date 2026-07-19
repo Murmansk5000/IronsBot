@@ -1,8 +1,21 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ironsbot.core.commands import (
+    NormalizedStringList,
+    json_object,
+    string_list,
+    unique_items,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 
 class Feature(str, Enum):
@@ -99,12 +112,198 @@ REGISTERED_FEATURE_KEYS: Final[frozenset[str]] = (
     FEATURE_KEYS | frozenset(FEATURE_BUNDLES)
 )
 
-__all__ = [
-    "FEATURE_BUNDLES",
-    "FEATURE_KEYS",
-    "FIRE_MANUAL_AD_FEATURE",
-    "FIRE_MANUAL_INTENT_FEATURE",
-    "REGISTERED_FEATURE_KEYS",
-    "SEER_FEATURES",
-    "Feature",
-]
+POKE_REPLY_REQUIRED_ERROR = (
+    "features.help.poke_replies requires non-empty group refs and messages"
+)
+
+
+def _coerce_int_mapping(value: object) -> dict[str, int]:
+    parsed = json_object(value, name="feature aliases")
+    result: dict[str, int] = {}
+    for raw_key, raw_value in parsed.items():
+        key = str(raw_key).strip()
+        if key:
+            result[key] = int(raw_value)
+    return result
+
+
+def _coerce_policy_mapping(value: object) -> dict[str, list[str]]:
+    parsed = json_object(value, name="feature policy")
+    result: dict[str, list[str]] = {}
+    for raw_key, raw_features in parsed.items():
+        key = str(raw_key).strip()
+        if key:
+            result[key] = string_list(raw_features)
+    return result
+
+
+class HelpConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ignored_plugins: NormalizedStringList = Field(default_factory=list)
+    poke_replies: dict[str, str] = Field(default_factory=dict)
+    poke_user_replies: dict[str, str] = Field(default_factory=dict)
+    hint_window_seconds: float = Field(default=60.0, gt=0)
+    hint_max_per_window: int = Field(default=3, ge=1)
+
+    @field_validator("poke_replies", "poke_user_replies")
+    @classmethod
+    def normalize_poke_replies(cls, value: dict[str, str]) -> dict[str, str]:
+        replies: dict[str, str] = {}
+        for raw_group, raw_message in value.items():
+            group = raw_group.strip()
+            message = raw_message.strip()
+            if not group or not message:
+                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
+            replies[group] = message
+        return replies
+
+
+class SuperuserPriorityConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    wait_timeout_seconds: float = Field(default=300.0, ge=0)
+
+
+class FeatureConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_aliases: dict[str, int] = Field(default_factory=dict)
+    user_aliases: dict[str, int] = Field(default_factory=dict)
+    group_policy: dict[str, list[str]] = Field(default_factory=dict)
+    user_policy: dict[str, list[str]] = Field(default_factory=dict)
+    superuser_bypass: bool = True
+    help: HelpConfig = Field(default_factory=HelpConfig)
+    priority: SuperuserPriorityConfig = Field(
+        default_factory=SuperuserPriorityConfig
+    )
+
+    @field_validator("group_aliases", "user_aliases", mode="before")
+    @classmethod
+    def normalize_aliases(cls, value: object) -> object:
+        return _coerce_int_mapping(value)
+
+    @field_validator("group_policy", "user_policy", mode="before")
+    @classmethod
+    def normalize_policy(cls, value: object) -> object:
+        return _coerce_policy_mapping(value)
+
+    @model_validator(mode="after")
+    def validate_registered_policy_features(self) -> FeatureConfig:
+        invalid: list[str] = []
+        for policy_name, policy in (
+            ("features.group_policy", self.group_policy),
+            ("features.user_policy", self.user_policy),
+        ):
+            for target, features in policy.items():
+                for index, raw_feature in enumerate(features):
+                    feature = raw_feature.strip()
+                    if not feature or feature in REGISTERED_FEATURE_KEYS:
+                        continue
+                    invalid.append(f"{policy_name}.{target}[{index}]={feature}")
+
+        if invalid:
+            raise ValueError(
+                "unregistered feature policy key(s): " + ", ".join(invalid)
+            )
+        return self
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureService:
+    config: FeatureConfig
+    superuser_ids: frozenset[int]
+
+    def is_superuser(self, user_id: int) -> bool:
+        return user_id in self.superuser_ids
+
+    def resolve_group_refs(self, refs: Iterable[object]) -> list[int]:
+        return self._resolve_policy_refs(refs, self.config.group_aliases)
+
+    def resolve_user_refs(self, refs: Iterable[object]) -> list[int]:
+        return self._resolve_policy_refs(refs, self.config.user_aliases)
+
+    def groups_for_feature(self, feature: str) -> list[int]:
+        return self._ids_for_feature(
+            self.config.group_policy,
+            self.config.group_aliases,
+            feature,
+        )
+
+    def users_for_feature(self, feature: str) -> list[int]:
+        return self._ids_for_feature(
+            self.config.user_policy,
+            self.config.user_aliases,
+            feature,
+        )
+
+    def users_with_superusers(self, user_ids: Iterable[int]) -> list[int]:
+        return unique_items([*user_ids, *self.superuser_ids])
+
+    def group_has_feature(self, group_id: int, feature: str) -> bool:
+        return group_id in self.groups_for_feature(feature)
+
+    def is_group_feature_allowed(
+        self,
+        user_id: int,
+        group_id: int,
+        feature: str,
+    ) -> bool:
+        return self.group_has_feature(group_id, feature) or (
+            self.config.superuser_bypass and self.is_superuser(user_id)
+        )
+
+    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool:
+        return user_id in self.users_for_feature(feature) or (
+            self.config.superuser_bypass and self.is_superuser(user_id)
+        )
+
+    def _resolve_policy_refs(
+        self,
+        refs: Iterable[object],
+        aliases: Mapping[str, int],
+    ) -> list[int]:
+        return unique_items(
+            resolved
+            for raw_ref in refs
+            if (resolved := self._resolve_policy_id(str(raw_ref), aliases))
+            is not None
+            and resolved > 0
+        )
+
+    def _ids_for_feature(
+        self,
+        policy: Mapping[str, list[str]],
+        aliases: Mapping[str, int],
+        feature: str,
+    ) -> list[int]:
+        return unique_items(
+            resolved_id
+            for raw_key, features in policy.items()
+            if self._feature_matches(features, feature)
+            if (resolved_id := self._resolve_policy_id(raw_key, aliases)) is not None
+            and resolved_id > 0
+        )
+
+    @staticmethod
+    def _feature_matches(features: Iterable[str], feature: str) -> bool:
+        normalized = {item.strip() for item in features if item.strip()}
+        return feature in normalized or any(
+            feature in FEATURE_BUNDLES.get(item, frozenset()) for item in normalized
+        )
+
+    @staticmethod
+    def _resolve_policy_id(
+        raw_key: str,
+        aliases: Mapping[str, int],
+    ) -> int | None:
+        key = raw_key.strip()
+        if not key:
+            return None
+        if key in aliases:
+            return aliases[key]
+        try:
+            return int(key)
+        except ValueError:
+            return None

@@ -57,10 +57,3 @@ def build_rank_help_message() -> str:
             "/缓存榜单 刻印榜 1-100 / /缓存榜单 图鉴榜 1001-1100",
         ]
     )
-
-
-__all__ = [
-    "RANK_HELP_DETAIL_COMMANDS",
-    "RANK_HELP_ENTRY_COMMANDS",
-    "build_rank_help_message",
-]

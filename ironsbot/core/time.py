@@ -41,7 +41,11 @@ def normalize_daily_time(value: object, *, error_message: str) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
-def daily_time_parts(value: object, *, error_message: str) -> tuple[int, int]:
+def daily_time_parts(
+    value: object,
+    *,
+    error_message: str = "daily time must use HH:MM",
+) -> tuple[int, int]:
     normalized = normalize_daily_time(value, error_message=error_message)
     hour_text, minute_text = normalized.split(":", maxsplit=1)
     return int(hour_text), int(minute_text)

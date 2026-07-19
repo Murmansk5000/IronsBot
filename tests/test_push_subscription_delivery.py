@@ -5,10 +5,9 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Message
 
-from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.shared.messaging import senders
-from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
-from ironsbot.shared.messaging.targets import MessageTarget
+from ironsbot.config.models.messaging import PushUnsubscribeConfig
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -42,8 +41,7 @@ def test_send_target_messages_filters_unsubscribed_push_targets(
     delivery = build_test_runtime(push_unsubscribe=config).delivery
 
     summary = asyncio.run(
-        senders.send_target_messages(
-            delivery,
+        delivery.send_targets(
             [
                 MessageTarget("private", 1001),
                 MessageTarget("private", 1002),
@@ -73,8 +71,7 @@ def test_send_target_messages_does_not_share_mutated_message_between_targets(
     delivery = build_test_runtime(push_unsubscribe=config).delivery
 
     asyncio.run(
-        senders.send_target_messages(
-            delivery,
+        delivery.send_targets(
             [
                 MessageTarget("group", 2001),
                 MessageTarget("private", 1001),
@@ -105,8 +102,7 @@ def test_send_target_messages_appends_subscription_hint_once_per_day(
     delivery = build_test_runtime(push_unsubscribe=config).delivery
 
     asyncio.run(
-        senders.send_target_messages(
-            delivery,
+        delivery.send_targets(
             [MessageTarget("private", 1001), MessageTarget("group", 2001)],
             "第一次",
             bot=bot,
@@ -114,8 +110,7 @@ def test_send_target_messages_appends_subscription_hint_once_per_day(
         )
     )
     asyncio.run(
-        senders.send_target_messages(
-            delivery,
+        delivery.send_targets(
             [MessageTarget("private", 1001), MessageTarget("group", 2001)],
             "第二次",
             bot=bot,
@@ -123,8 +118,7 @@ def test_send_target_messages_appends_subscription_hint_once_per_day(
         )
     )
     asyncio.run(
-        senders.send_target_messages(
-            delivery,
+        delivery.send_targets(
             [MessageTarget("group", 2002)],
             "另一个群",
             bot=bot,

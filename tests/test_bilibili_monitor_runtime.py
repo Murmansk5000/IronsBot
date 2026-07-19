@@ -1,9 +1,15 @@
-import asyncio
-from functools import partial
-from pathlib import Path
+from __future__ import annotations
 
-from ironsbot.plugins.bilibili import runtime as bili_runtime
-from tests.helpers.bilibili import build_test_bilibili_resources
+import asyncio
+from typing import TYPE_CHECKING, cast
+
+from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from tests.helpers.bilibili import build_test_bilibili_service
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ironsbot.services.operations.scheduler import Scheduler
 
 
 class FakeScheduler:
@@ -14,21 +20,37 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
-def test_register_bili_auto_check_job_uses_standard_scheduler_fields(
+async def _ignore_auth_invalid(_reason: str) -> None:
+    return None
+
+
+async def _ignore_push(
+    _item: dict[str, object],
+    _pub_ts: int,
+    _author_mid: int,
+    _targets: object,
+) -> None:
+    return None
+
+
+def test_bili_monitor_service_registers_standard_scheduler_job(
     tmp_path: Path,
 ) -> None:
     scheduler = FakeScheduler()
-    resources = build_test_bilibili_resources(tmp_path)
+    service = build_test_bilibili_service(tmp_path)
+    monitor = BilibiliMonitorService(
+        service,
+        _ignore_auth_invalid,
+        _ignore_push,
+    )
 
     asyncio.run(
-        bili_runtime.register_bili_auto_check_job(scheduler, resources)
+        monitor.register_job(cast("Scheduler", scheduler))
     )
 
     job = scheduler.jobs[0]
     func = job.pop("func")
-    assert isinstance(func, partial)
-    assert func.func is bili_runtime.run_check_logic
-    assert func.args == (resources,)
+    assert func == monitor.check
     assert job == {
         "trigger": "interval",
         "id": "bilibili_monitor_auto_check",

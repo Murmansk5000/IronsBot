@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import hashlib
+import logging
 import os
 import tempfile
 from contextlib import suppress
@@ -8,7 +9,8 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import httpx
-from nonebot.log import logger
+
+logger = logging.getLogger(__name__)
 
 
 def _write_bytes_atomic(file_path: str, content: bytes) -> None:

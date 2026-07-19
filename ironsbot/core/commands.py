@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
-from typing import Any, TypeVar, cast
+from typing import Annotated, Any, TypeVar, cast
+
+from pydantic import BeforeValidator
 
 T = TypeVar("T")
 DEFAULT_COMMAND_PREFIXES = ("/",)
+_CONFIRMATION_REPLIES = frozenset(("是", "yes", "y", "确认", "确定"))
+_DECLINE_REPLIES = frozenset(("否", "no", "n", "取消"))
 
 
 def normalize_command_text(text: str) -> str:
@@ -32,6 +36,15 @@ def command_text_matches(text: str, commands: Iterable[str]) -> bool:
         normalize_command_text(command)
         for command in commands
     }
+
+
+def parse_confirmation(text: str) -> bool | None:
+    normalized = text.strip().casefold()
+    if normalized in _CONFIRMATION_REPLIES:
+        return True
+    if normalized in _DECLINE_REPLIES:
+        return False
+    return None
 
 
 def unique_items(values: Iterable[T]) -> list[T]:
@@ -125,3 +138,12 @@ def int_list(value: object) -> list[int]:
 
 def positive_int_list(value: object) -> list[int]:
     return [item for item in int_list(value) if item > 0]
+
+
+NormalizedStringList = Annotated[list[str], BeforeValidator(string_list)]
+NormalizedStringSet = Annotated[set[str], BeforeValidator(string_list)]
+NormalizedStringFrozenSet = Annotated[
+    frozenset[str],
+    BeforeValidator(string_list),
+]
+NormalizedIntList = Annotated[list[int], BeforeValidator(int_list)]

@@ -31,6 +31,9 @@ def _service(
     async def broadcast(_delivery: ActivityReminderDelivery) -> bool:
         return True
 
+    async def load_notice_text(_now: datetime) -> str:
+        return ""
+
     def mark_sent(
         _reminders: list[ActivityReminder],
         _sent_at: datetime,
@@ -41,7 +44,7 @@ def _service(
         config=config or ActivityConfig(),
         cache=ActivityInfoCache(),
         load_rows=list,
-        load_notice_text=lambda _now: "",
+        load_notice_text=load_notice_text,
         cache_ttl=timedelta(minutes=1),
         soon_ending_threshold=timedelta(days=7),
         filter_unsent=lambda reminders: reminders,

@@ -7,11 +7,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
-from ironsbot.services.bilibili.permissions import (
-    is_dynamic_query_allowed,
-    is_dynamic_update_allowed,
-)
-from ironsbot.shared.features.visibility import event_has_feature
+from ironsbot.runtime.feature_policy import event_has_feature
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
@@ -19,7 +15,7 @@ from .account_commands import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.shared.features import FeatureService
+    from ironsbot.core.features import FeatureService
 
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
@@ -28,11 +24,11 @@ BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
 BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 
 
-async def is_dynamic_menu_command(
+def is_dynamic_menu_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
-    if not is_dynamic_query_allowed(features, event):
+    if not event_has_feature(features, event, "bili_query"):
         return False
 
     return command_text_matches(
@@ -41,7 +37,7 @@ async def is_dynamic_menu_command(
     )
 
 
-async def is_update_dynamic_command(
+def is_update_dynamic_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
@@ -55,15 +51,15 @@ async def is_update_dynamic_command(
     ):
         return False
 
-    return is_dynamic_update_allowed(features, event)
+    return features.is_superuser(event.user_id)
 
 
-async def is_bili_account_command(
+def is_bili_account_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
     if not (
-        is_dynamic_query_allowed(features, event)
+        event_has_feature(features, event, "bili_query")
         or event_has_feature(features, event, "bili_push")
     ):
         return False
@@ -92,7 +88,7 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
     return None
 
 
-async def is_bili_push_mode_command(
+def is_bili_push_mode_command(
     event: MessageEvent,
     state: T_State,
 ) -> bool:

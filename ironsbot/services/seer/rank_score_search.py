@@ -10,10 +10,6 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import RankQueryConfig
 
 
-DEFAULT_SCORE_SEARCH_PROBE_LIMIT = 32
-DEFAULT_SCORE_SEARCH_TIE_PAGE_LIMIT = 5
-
-
 class _ProbeBudgetExhaustedError(RuntimeError):
     pass
 
@@ -227,14 +223,3 @@ def score_search_probe_limit(config: RankQueryConfig, limit: int) -> int:
 
 def score_search_tie_page_limit(config: RankQueryConfig) -> int:
     return config.score_search_tie_page_limit
-
-
-__all__ = [
-    "DEFAULT_SCORE_SEARCH_PROBE_LIMIT",
-    "DEFAULT_SCORE_SEARCH_TIE_PAGE_LIMIT",
-    "DescendingScoreRange",
-    "DescendingScoreSearchLimits",
-    "locate_descending_score_range",
-    "score_search_probe_limit",
-    "score_search_tie_page_limit",
-]

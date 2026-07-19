@@ -1,17 +1,43 @@
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.services.team_resource_subscriptions import (
-    TeamResourceService,
+from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
+)
+from ironsbot.services.team.resource import (
+    TeamResourceService,
     TeamResourceSubscriptionUpdate,
 )
 from tests.helpers.runtime import build_test_runtime
+
+if TYPE_CHECKING:
+    from ironsbot.services.operations.headless import HeadlessService
 
 TEAM_ID = 1234567
 TEAM_RESOURCE_THRESHOLD = 2000
 OWNER_ID = 1234567890
 ADMIN_ID = 2345678901
+UNUSED_HEADLESS = cast("HeadlessService", object())
+
+
+def _service(
+    config: TeamResourceConfig,
+    aliases: dict[str, int],
+) -> tuple[TeamResourceService, TeamResourceSubscriptionStore]:
+    runtime = build_test_runtime()
+    store = TeamResourceSubscriptionStore(config.subscription_path)
+    return (
+        TeamResourceService(
+            config,
+            store,
+            UNUSED_HEADLESS,
+            aliases,
+            runtime.features,
+            runtime.delivery,
+        ),
+        store,
+    )
 
 
 def test_team_resource_subscription_store_is_used_for_group(
@@ -21,15 +47,9 @@ def test_team_resource_subscription_store_is_used_for_group(
         subscription_path=tmp_path / "team_resource.sqlite",
         default_at_users=["owner", "2345678901"],
     )
-    runtime = build_test_runtime()
-    service = TeamResourceService.build(
-        config,
-        {"owner": OWNER_ID},
-        runtime.features,
-        runtime.delivery,
-    )
+    service, store = _service(config, {"owner": OWNER_ID})
 
-    service.store.upsert(
+    store.upsert(
         TeamResourceSubscriptionUpdate(
             group_id=987654321,
             team_id=TEAM_ID,
@@ -40,7 +60,7 @@ def test_team_resource_subscription_store_is_used_for_group(
         )
     )
 
-    subscriptions = service.store.list_group(987654321)
+    subscriptions = store.list_group(987654321)
 
     assert len(subscriptions) == 1
     assert subscriptions[0].team_id == TEAM_ID
@@ -59,16 +79,10 @@ def test_team_resource_disabled_has_no_subscriptions(
         enabled=False,
         subscription_path=tmp_path / "team_resource.sqlite",
     )
-    runtime = build_test_runtime()
-    service = TeamResourceService.build(
-        config,
-        {},
-        runtime.features,
-        runtime.delivery,
-    )
+    service, store = _service(config, {})
 
-    assert not service.config.enabled
-    assert service.store.list_all() == []
+    assert not service.enabled
+    assert store.list_all() == []
 
 
 def test_team_resource_store_tracks_group_prompt_once(tmp_path: Path) -> None:

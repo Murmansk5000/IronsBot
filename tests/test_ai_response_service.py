@@ -1,14 +1,10 @@
-import httpx
-
 from ironsbot.services.ai.responses import parse_ai_response
 
 
 def test_parse_ai_response_extracts_reply() -> None:
     result = parse_ai_response(
-        httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": " OK "}}]},
-        )
+        200,
+        {"choices": [{"message": {"content": " OK "}}]},
     )
 
     assert result.ok
@@ -17,10 +13,8 @@ def test_parse_ai_response_extracts_reply() -> None:
 
 def test_parse_ai_response_extracts_http_error_detail() -> None:
     result = parse_ai_response(
-        httpx.Response(
-            429,
-            json={"error": {"message": "rate limited"}},
-        )
+        429,
+        {"error": {"message": "rate limited"}},
     )
 
     assert not result.ok
@@ -31,11 +25,10 @@ def test_parse_ai_response_extracts_http_error_detail() -> None:
 
 def test_parse_ai_response_rejects_invalid_json() -> None:
     result = parse_ai_response(
-        httpx.Response(
-            200,
-            text="not-json",
-            headers={"content-type": "text/plain"},
-        )
+        200,
+        None,
+        raw_text="not-json",
+        valid_json=False,
     )
 
     assert not result.ok
@@ -44,7 +37,7 @@ def test_parse_ai_response_rejects_invalid_json() -> None:
 
 
 def test_parse_ai_response_rejects_missing_content() -> None:
-    result = parse_ai_response(httpx.Response(200, json={"choices": []}))
+    result = parse_ai_response(200, {"choices": []})
 
     assert not result.ok
     assert result.error_kind == "empty_reply"

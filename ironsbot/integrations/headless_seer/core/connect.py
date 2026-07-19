@@ -12,12 +12,15 @@ from typing import Any, Generic, TypeGuard, TypeVar, overload
 
 from typing_extensions import Self, TypeVarTuple, Unpack
 
+from ironsbot.core.tasks import TaskSpawner
+from ironsbot.services.operations.headless_errors import SocketRecvError
+
 from .. import decrypt
 from ..as3bytearray import AS3ByteArray
 from ..command_id import COMMAND_ID
-from ..exception import SocketRecvError
 from ..packet.packet import Deserializable
 from ..packets.head import HeadInfo
+from ..packets.registry import PACKET_BODY_TYPES
 from ..type_hint import (
     Buffer,
     CommandID,
@@ -26,7 +29,6 @@ from ..type_hint import (
     T_Deserializable,
 )
 from .listener import EventListener
-from .register import packet_register
 
 _T_CommandID = TypeVar("_T_CommandID", bound=CommandID)
 _T_UnpackedType = TypeVarTuple("_T_UnpackedType")
@@ -70,6 +72,7 @@ class AbstractSocketConnect(
         self,
         loop: asyncio.AbstractEventLoop,
         *,
+        spawn: TaskSpawner,
         event_listener: EventListener[_T_CommandID, Unpack[_T_UnpackedType]]
         | None = None,
         heartbeat_interval: float | None = None,
@@ -77,6 +80,7 @@ class AbstractSocketConnect(
         on_disconnect: Callable[[], Coroutine[Any, Any, None]] | None = None,
     ) -> None:
         self._loop = loop
+        self._spawn = spawn
         self._reader: StreamReader = StreamReader(limit=2**16, loop=self._loop)
         self._protocol: ClientReaderProtocol = ClientReaderProtocol(
             self._reader, loop=loop
@@ -140,10 +144,15 @@ class AbstractSocketConnect(
         host: str,
         port: int,
         *,
+        spawn: TaskSpawner,
         event_listener: EventListener[_T_CommandID, Unpack[_T_UnpackedType]]
         | None = None,
     ) -> Self:
-        client = cls(asyncio.get_running_loop(), event_listener=event_listener)
+        client = cls(
+            asyncio.get_running_loop(),
+            spawn=spawn,
+            event_listener=event_listener,
+        )
         await client.connect(host, port)
         return client
 
@@ -212,11 +221,17 @@ class AbstractSocketConnect(
             writer.close()
         self._writer = None
         if not self._intentional_disconnect and self._on_disconnect:
-            self._disconnect_notify_task = asyncio.create_task(self._on_disconnect())
+            self._disconnect_notify_task = self._spawn(
+                self._on_disconnect(),
+                name="headless-disconnect-notify",
+            )
 
     def _start_reader(self) -> None:
         self._stop_reader()
-        self._reader_task = asyncio.create_task(self._read_loop())
+        self._reader_task = self._spawn(
+            self._read_loop(),
+            name="headless-socket-reader",
+        )
 
     def _stop_reader(self) -> None:
         if self._reader_task is not None and not self._reader_task.done():
@@ -261,7 +276,10 @@ class AbstractSocketConnect(
         if self._heartbeat_interval is None or self._on_heartbeat is None:
             return
         self._stop_heartbeat()
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        self._heartbeat_task = self._spawn(
+            self._heartbeat_loop(),
+            name="headless-heartbeat",
+        )
 
     def _stop_heartbeat(self) -> None:
         if self._heartbeat_task is not None and not self._heartbeat_task.done():
@@ -379,7 +397,7 @@ class SeerConnect(AbstractSocketConnect[CommandID, HeadInfo, SocketRecvPacketBod
             raise ValueError(f"无效的命令 ID: {headinfo.cmd_id}")
 
         body_data = data[self.HEAD_LENGTH :]
-        if body_type := packet_register.get(headinfo.cmd_id):
+        if body_type := PACKET_BODY_TYPES.get(headinfo.cmd_id):
             return headinfo, body_type.unpack(body_data)
         return headinfo, AS3ByteArray(body_data)
 
@@ -423,6 +441,7 @@ class SeerEncryptConnect(SeerConnect):
         self,
         loop: asyncio.AbstractEventLoop,
         *,
+        spawn: TaskSpawner,
         event_listener: EventListener[CommandID, HeadInfo, SocketRecvPacketBody]
         | None = None,
         heartbeat_interval: float | None = None,
@@ -431,6 +450,7 @@ class SeerEncryptConnect(SeerConnect):
     ) -> None:
         super().__init__(
             loop,
+            spawn=spawn,
             event_listener=event_listener,
             heartbeat_interval=heartbeat_interval,
             on_heartbeat=on_heartbeat,
@@ -474,7 +494,7 @@ class SeerEncryptConnect(SeerConnect):
             raise SocketRecvError(headinfo, f"请求失败：{headinfo.result}")
 
         body_bytes = data[self.HEAD_LENGTH :]
-        if body_type := packet_register.get(headinfo.cmd_id):
+        if body_type := PACKET_BODY_TYPES.get(headinfo.cmd_id):
             return headinfo, body_type.unpack(body_bytes)
 
         return headinfo, AS3ByteArray(body_bytes)

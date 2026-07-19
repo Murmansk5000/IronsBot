@@ -3,7 +3,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.utils.parse_arg import parse_string_arg
+from ironsbot.runtime.params import parse_string_arg
 
 
 async def has_numeric_command_arg(state: T_State) -> bool:

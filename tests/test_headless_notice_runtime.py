@@ -4,12 +4,11 @@ from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
 
-from ironsbot.app import plugin_runtime
-from ironsbot.config.models.runtime import HeadlessConfig, HeadlessNoticeConfig
-from ironsbot.config.models.secrets import CredentialsConfig
+from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.integrations.headless_seer.client import ClientManager
+from ironsbot.plugins.operations.headless import register_reconnect_jobs
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.operations.headless import HeadlessService
-from ironsbot.shared.messaging.admin_notice import AdminNoticeService
 from tests.helpers.runtime import build_test_runtime
 
 USER_ID = 123456
@@ -28,29 +27,22 @@ def build_service(
     notices: HeadlessNoticeConfig | None = None,
     now: object | None = None,
 ) -> HeadlessService:
+    runtime = build_test_runtime()
     return HeadlessService(
-        ClientManager(),
-        CredentialsConfig(
-            headless_seer_user_id=USER_ID,
-            headless_seer_password="md5",
-        ),
-        HeadlessConfig(),
+        ClientManager(runtime.tasks.create),
+        HeadlessConfig(user_id=USER_ID, password="md5"),
         notices or HeadlessNoticeConfig(),
-        build_test_runtime().admin_notices,
+        runtime.admin_notices,
         now=now,  # type: ignore[arg-type]
     )
 
 
-def test_register_reconnect_checks_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_register_reconnect_checks_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
     service = build_service(
         notices=HeadlessNoticeConfig(reconnect_check_times="00:01,00:02")
     )
-    monkeypatch.setattr(plugin_runtime, "scheduler", lambda: scheduler)
-
-    asyncio.run(plugin_runtime.register_headless_reconnect_jobs(service))
+    register_reconnect_jobs(scheduler, service)
 
     assert scheduler.jobs == [
         {

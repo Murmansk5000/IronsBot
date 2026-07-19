@@ -4,15 +4,17 @@ from typing import TYPE_CHECKING, Any, cast
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
-from ironsbot.plugins import red_packet_notice as red_packet_notice_plugin
-from ironsbot.services.red_packet_notice import (
-    RedPacketNoticeLimiter,
-    build_red_packet_notice_message,
+from ironsbot.plugins.messaging import red_packet as red_packet_notice_plugin
+from ironsbot.plugins.messaging.red_packet import (
     is_red_packet_message,
     is_red_packet_payload,
     summarize_red_packet_message,
 )
-from ironsbot.shared.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.messaging.red_packet import (
+    RedPacketNoticeLimiter,
+    build_red_packet_notice_message,
+)
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:

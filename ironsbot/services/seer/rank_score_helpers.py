@@ -107,11 +107,3 @@ def score_miss_proof_from_page(
             rank_offset=rank_offset,
         ),
     )
-
-
-__all__ = [
-    "rank_score_search_item",
-    "score_gap_from_page",
-    "score_miss_proof_from_page",
-    "score_segment_sample_indexes",
-]

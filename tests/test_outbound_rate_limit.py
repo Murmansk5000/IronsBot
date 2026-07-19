@@ -5,16 +5,15 @@ import asyncio
 import pytest
 from nonebot.exception import MockApiException
 
-from ironsbot.config.models.feature import FeatureConfig
-from ironsbot.config.models.message import (
+from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
 )
-from ironsbot.shared.messaging import outbound_rate_limit
-from ironsbot.shared.messaging.outbound_rate_limit import (
+from ironsbot.core.features import FeatureConfig
+from ironsbot.integrations.onebot import outbound as outbound_rate_limit
+from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     MultiWindowGroupRateLimiter,
-    reset_outbound_rate_limit_state,
     use_preacquired_push_permit,
 )
 from tests.helpers.runtime import build_test_runtime
@@ -212,7 +211,7 @@ def test_api_hook_appends_boundary_notice_and_rolls_back_failure() -> None:
     try:
         asyncio.run(run())
     finally:
-        reset_outbound_rate_limit_state(service)
+        service.reset()
 
 
 def test_api_hook_suppresses_messages_after_group_limit() -> None:
@@ -246,7 +245,7 @@ def test_api_hook_suppresses_messages_after_group_limit() -> None:
     try:
         asyncio.run(run())
     finally:
-        reset_outbound_rate_limit_state(service)
+        service.reset()
 
 
 def test_preacquired_push_permit_is_not_counted_twice() -> None:
@@ -284,4 +283,4 @@ def test_preacquired_push_permit_is_not_counted_twice() -> None:
     try:
         asyncio.run(run())
     finally:
-        reset_outbound_rate_limit_state(service)
+        service.reset()

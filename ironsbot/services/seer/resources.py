@@ -4,27 +4,35 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.seer import SeerConfig
-    from ironsbot.services.admin_priority import AdminPriorityService
-    from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.local_rank import LocalRankService
-    from ironsbot.services.seer.rank import RankService
-    from ironsbot.services.seer.rank_display import RankDisplayService
-    from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
-    from ironsbot.services.seer.render_cache import RenderCache
-    from ironsbot.services.team_resource_subscriptions import TeamResourceService
-    from ironsbot.shared.features import FeatureService
+    from ironsbot.services.seer.autocard import AutocardService
+    from ironsbot.services.seer.battle_effect import BattleEffectQueryService
+    from ironsbot.services.seer.countermark_stat_rank import (
+        CountermarkStatRankService,
+    )
+    from ironsbot.services.seer.data_queries import SeerDataQueryService
+    from ironsbot.services.seer.equipment import EquipmentQueryService
+    from ironsbot.services.seer.mintmark import MintmarkQueryService
+    from ironsbot.services.seer.peak import PeakQueryService
+    from ironsbot.services.seer.pet_query import PetQueryService
+    from ironsbot.services.seer.player_service import PlayerService
+    from ironsbot.services.seer.rank_admin import RankAdminService
+    from ironsbot.services.seer.rank_queries import RankQueryService
+    from ironsbot.services.seer.team import SeerTeamQueryService
+    from ironsbot.services.seer.type_query import TypeQueryService
 
 
 @dataclass(frozen=True, slots=True)
 class SeerQueryResources:
-    config: SeerConfig
-    rank: RankService
-    local_rank: LocalRankService
-    rank_display: RankDisplayService
-    rank_page_refresh: RankPageRefreshService
-    render_cache: RenderCache
-    headless: HeadlessService
-    features: FeatureService
-    priority: AdminPriorityService
-    team_resource: TeamResourceService
+    data_queries: SeerDataQueryService
+    countermark_rank: CountermarkStatRankService
+    autocard: AutocardService
+    team_query: SeerTeamQueryService
+    equipment: EquipmentQueryService
+    type_query: TypeQueryService
+    battle_effect: BattleEffectQueryService
+    pet_query: PetQueryService
+    peak_query: PeakQueryService
+    mintmark: MintmarkQueryService
+    player: PlayerService
+    rank_queries: RankQueryService
+    rank_admin: RankAdminService
