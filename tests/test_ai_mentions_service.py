@@ -1,6 +1,6 @@
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from ironsbot.services.ai.mentions import mentions_bot
+from ironsbot.runtime.onebot_context import mentions_bot
 from tests.helpers.onebot_events import group_at_message_event, group_message_event
 
 BOT_ID = 100

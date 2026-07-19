@@ -1,64 +1,64 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: TC001, TC002
 """Seer data query matchers."""
 
 from __future__ import annotations
 
-from nonebot.adapters import Event
-from nonebot.matcher import Matcher
+from functools import partial
+from typing import TYPE_CHECKING
 
-from ironsbot.utils.rule import no_reply
+from nonebot_plugin_saa import Image, MessageFactory
 
-from ..depends import SeerAPISession
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from . import data_tools
+from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.rules import no_reply
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
-preview_matcher = matcher_group.on_fullmatch(
-    "下周预告",
-    rule=seer_feature_rule("seer_data") & no_reply(),
-    priority=seer_feature_priority("seer_data"),
-)
+from ..group import SeerMatcherGroup, seer_feature_rule
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
-@preview_matcher.handle()
-async def _handle_preview(
-    session: SeerAPISession,
-) -> None:
-    await data_tools.handle_preview(session=session)
+    from nonebot.matcher import Matcher
 
-data_version_matcher = matcher_group.on_fullmatch(
-    "数据版本",
-    rule=seer_feature_rule("seer_data") & no_reply(),
-    priority=seer_feature_priority("seer_data"),
-)
-
-
-@data_version_matcher.handle()
-async def _handle_data_version(
-    matcher: Matcher,
-    session: SeerAPISession,
-) -> None:
-    await data_tools.handle_data_version(
-        matcher=matcher,
-        session=session,
+    from ironsbot.services.seer.data_queries import (
+        DataQueryReply,
+        SeerDataQueryService,
     )
 
 
-season_countdown_matcher = matcher_group.on_fullmatch(
-    ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
-    rule=seer_feature_rule("seer_data") & no_reply(),
-    priority=seer_feature_priority("seer_data"),
-)
-
-
-@season_countdown_matcher.handle()
-async def _handle_season_countdown(
+async def _finish_query(
+    operation: Callable[[], Awaitable[DataQueryReply]],
+    *,
     matcher: Matcher,
-    event: Event,
-    session: SeerAPISession,
 ) -> None:
-    await data_tools.handle_season_countdown(
-        matcher=matcher,
-        event=event,
-        session=session,
+    try:
+        reply: DataQueryReply = await operation()
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    if isinstance(reply, bytes):
+        await MessageFactory(Image(reply)).finish()
+        return
+    await matcher.finish(reply)
+
+
+def install(group: SeerMatcherGroup) -> None:
+    service: SeerDataQueryService = group.resources.data_queries
+    commands = (
+        ("下周预告", "seer_data_preview", service.weekly_preview),
+        ("数据版本", "seer_data_version", service.data_version),
+        (
+            ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
+            "seer_season_countdown",
+            service.season_countdown,
+        ),
     )
+    rule = seer_feature_rule(group.features, "seer_data") & no_reply()
+    for messages, command_id, operation in commands:
+        matcher = group.on_fullmatch(
+            messages,
+            policy=CommandPolicy.command(command_id),
+            rule=rule,
+            priority=group.matcher_priority("seer_data"),
+        )
+        matcher.append_handler(partial(_finish_query, operation))

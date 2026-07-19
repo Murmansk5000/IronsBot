@@ -1,11 +1,18 @@
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
 from ironsbot.services.seer import rank_player_query
+from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
-from ironsbot.services.seer.rank_list_models import RankPlayerCommand
+from ironsbot.services.seer.rank import RankService
+from ironsbot.services.seer.rank_list_models import (
+    GLOBAL_RANKS,
+    GlobalRankSpec,
+    RankPlayerCommand,
+)
 from ironsbot.services.seer.rank_models import RankLookupResult
 
 PLAYER_ID = 123456
@@ -21,10 +28,40 @@ class FakeGame:
         return SimpleNamespace(user_id=user_id, total_achieve=5000)
 
 
+def build_local_rank_stub(
+    *,
+    enabled: bool,
+    summary: LocalRankSummary | None = None,
+) -> tuple[LocalRankService, AsyncMock]:
+    upsert = AsyncMock(return_value=summary or LocalRankSummary())
+    service = cast(
+        "LocalRankService",
+        SimpleNamespace(
+            config=SimpleNamespace(enabled=enabled),
+            upsert_metrics=upsert,
+        ),
+    )
+    return service, upsert
+
+
+def build_rank_stub(
+    find_rank: Any,
+    *,
+    spec: GlobalRankSpec | None = None,
+) -> RankService:
+    return cast(
+        "RankService",
+        SimpleNamespace(
+            find_rank=find_rank,
+            find_pet_kind_rank=AsyncMock(),
+            get_spec=lambda rank_key: spec or GLOBAL_RANKS[rank_key],
+            spec_needs_sub_key=lambda _spec: False,
+        ),
+    )
+
+
 @pytest.mark.asyncio
-async def test_rank_player_query_fetches_only_achievement_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_rank_player_query_fetches_only_achievement_source() -> None:
     captured: dict[str, Any] = {}
 
     async def fake_find_rank(_game: object, **kwargs: Any) -> RankLookupResult:
@@ -38,12 +75,14 @@ async def test_rank_player_query_fetches_only_achievement_source(
             queried=True,
         )
 
-    monkeypatch.setattr(rank_player_query, "find_rank", fake_find_rank)
+    rank = build_rank_stub(fake_find_rank)
+    local_rank, _ = build_local_rank_stub(enabled=False)
 
     message = await rank_player_query.fetch_rank_player_message(
+        rank,
+        local_rank,
         FakeGame(),
         command=RankPlayerCommand(rank_key="成就点数", player_id=PLAYER_ID),
-        local_rank_enabled=False,
     )
 
     assert captured["user_id"] == PLAYER_ID
@@ -57,10 +96,7 @@ async def test_rank_player_query_fetches_only_achievement_source(
 
 @pytest.mark.asyncio
 async def test_rank_player_query_writes_only_current_metric(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict[str, Any] = {}
-
     async def fake_find_rank(_game: object, **_kwargs: Any) -> RankLookupResult:
         return RankLookupResult(
             title="成就点数",
@@ -71,27 +107,29 @@ async def test_rank_player_query_writes_only_current_metric(
             queried=True,
         )
 
-    async def fake_upsert(**kwargs: Any) -> LocalRankSummary:
-        captured.update(kwargs)
-        return LocalRankSummary(sample_ranks={"achievement_score": "样本前10%"})
-
-    monkeypatch.setattr(rank_player_query, "find_rank", fake_find_rank)
-    monkeypatch.setattr(rank_player_query, "upsert_local_rank_metrics", fake_upsert)
-
-    message = await rank_player_query.fetch_rank_player_message(
-        FakeGame(),
-        command=RankPlayerCommand(rank_key="成就点数", player_id=PLAYER_ID),
-        local_rank_enabled=True,
+    rank = build_rank_stub(fake_find_rank)
+    local_rank, upsert = build_local_rank_stub(
+        enabled=True,
+        summary=LocalRankSummary(
+            sample_ranks={"achievement_score": "样本前10%"}
+        ),
     )
 
+    message = await rank_player_query.fetch_rank_player_message(
+        rank,
+        local_rank,
+        FakeGame(),
+        command=RankPlayerCommand(rank_key="成就点数", player_id=PLAYER_ID),
+    )
+
+    assert upsert.await_args is not None
+    captured = upsert.await_args.kwargs
     assert set(captured["current_metrics"]) == {"achievement_score"}
     assert "样本前10%" in message
 
 
 @pytest.mark.asyncio
-async def test_rank_player_query_uses_unknown_score_cache_lookup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_rank_player_query_uses_unknown_score_cache_lookup() -> None:
     captured: dict[str, Any] = {}
 
     async def fake_find_rank(_game: object, **kwargs: Any) -> RankLookupResult:
@@ -105,12 +143,14 @@ async def test_rank_player_query_uses_unknown_score_cache_lookup(
             queried=True,
         )
 
-    monkeypatch.setattr(rank_player_query, "find_rank", fake_find_rank)
+    rank = build_rank_stub(fake_find_rank)
+    local_rank, _ = build_local_rank_stub(enabled=False)
 
     message = await rank_player_query.fetch_rank_player_message(
+        rank,
+        local_rank,
         FakeGame(),
         command=RankPlayerCommand(rank_key="群星牌", player_id=PLAYER_ID),
-        local_rank_enabled=False,
     )
 
     assert captured["target_score"] is None
@@ -122,7 +162,6 @@ async def test_peak_rank_player_query_retries_without_stale_forever_score(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[int | None] = []
-    stored: dict[str, Any] = {}
 
     async def fake_fetch_unity_peak(
         _game: object,
@@ -159,31 +198,28 @@ async def test_peak_rank_player_query_retries_without_stale_forever_score(
             queried=True,
         )
 
-    async def fake_upsert(**kwargs: Any) -> LocalRankSummary:
-        stored.update(kwargs)
-        return LocalRankSummary()
-
     monkeypatch.setattr(rank_player_query, "fetch_unity_peak", fake_fetch_unity_peak)
-    monkeypatch.setattr(rank_player_query, "find_rank", fake_find_rank)
-    monkeypatch.setattr(rank_player_query, "upsert_local_rank_metrics", fake_upsert)
-    monkeypatch.setattr(
-        rank_player_query,
-        "get_global_rank_spec",
-        lambda _key: SimpleNamespace(
+    rank = build_rank_stub(
+        fake_find_rank,
+        spec=GlobalRankSpec(
+            title="竞技段位榜",
             key=20,
             sub_key=20260717,
-            title="竞技段位榜",
             unit="",
             peak_season_sub_key=True,
         ),
     )
+    local_rank, upsert = build_local_rank_stub(enabled=True)
 
     message = await rank_player_query.fetch_rank_player_message(
+        rank,
+        local_rank,
         FakeGame(),
         command=RankPlayerCommand(rank_key="竞技段位", player_id=PLAYER_ID),
-        local_rank_enabled=True,
     )
 
     assert calls == [400000, None]
     assert "竞技段位：王者33星｜全服第9" in message
+    assert upsert.await_args is not None
+    stored = upsert.await_args.kwargs
     assert stored["current_metrics"]["peak_standard"]["value"] == CURRENT_PEAK_SCORE

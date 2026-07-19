@@ -1,25 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
 import asyncio
 import hashlib
-from collections.abc import Sequence
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-from nonebot_plugin_htmlkit import template_to_pic
-from seerapi_models import PeakExpertPoolORM, PeakPoolORM
-
-from ironsbot.integrations.seer_data.image import (
-    ElementTypeImageGetter,
-    PetHeadImageGetter,
-)
-from ironsbot.services.seer.render_cache import render_cache
+from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_paths import (
     PEAK_POOL_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.utils.image import to_data_uri
 
-TEMPLATE_PATH = PEAK_POOL_TEMPLATE_PATH
-SHARED_PATH = SHARED_TEMPLATE_PATH
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from seerapi_models import PeakExpertPoolORM, PeakPoolORM
+
+    from ironsbot.services.seer.render_cache import RenderCache
+
+    from . import HtmlTemplateRenderer
 
 CELL_WIDTH = 100 + 2 * 2  # pet-cell width + border
 CELL_GAP = 10
@@ -50,11 +49,15 @@ def _peak_pool_cache_key(
 
 
 async def render_peak_pool(
-    pools: Sequence[PeakPoolORM | PeakExpertPoolORM], pool_type: str
+    cache: RenderCache,
+    images: SeerImageSource,
+    render_html: HtmlTemplateRenderer,
+    pools: Sequence[PeakPoolORM | PeakExpertPoolORM],
+    pool_type: str,
 ) -> bytes:
     """渲染巅峰池信息卡片图片，返回 PNG 图片字节"""
     content_key = _peak_pool_cache_key(pools, pool_type)
-    cached = render_cache.get("peak_pool", content_key)
+    cached = cache.get("peak_pool", content_key)
     if cached is not None:
         return cached
 
@@ -70,8 +73,8 @@ async def render_peak_pool(
     type_id_list = list(unique_type_ids)
 
     results = await asyncio.gather(
-        *(PetHeadImageGetter.get_bytes(rid) for rid in rid_list),
-        *(ElementTypeImageGetter.get_bytes(str(tid)) for tid in type_id_list),
+        *(images.fetch("pet_head", rid) for rid in rid_list),
+        *(images.fetch("element_type", str(tid)) for tid in type_id_list),
     )
 
     head_bytes_list = results[: len(rid_list)]
@@ -110,8 +113,8 @@ async def render_peak_pool(
     grid_width = cols * CELL_WIDTH + (cols - 1) * CELL_GAP
     max_width = grid_width + POOL_OVERHEAD + CONTAINER_PADDING
 
-    result = await template_to_pic(
-        template_path=[TEMPLATE_PATH, SHARED_PATH],
+    result = await render_html(
+        template_path=[PEAK_POOL_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
         templates={
             "pools": pool_dicts,
@@ -120,5 +123,5 @@ async def render_peak_pool(
         max_width=max_width + 20,
         allow_refit=False,
     )
-    render_cache.put("peak_pool", content_key, result)
+    cache.put("peak_pool", content_key, result)
     return result

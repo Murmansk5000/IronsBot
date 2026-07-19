@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
+
+from ironsbot.services.seer.equipment import EquipmentQueryService
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.images import SeerImageSource
+
+
+class FakeData:
+    suit = object()
+    equip = object()
+    title = object()
+
+    def __init__(self) -> None:
+        self.values: dict[object, tuple[Any, ...]] = {}
+
+    @contextmanager
+    def resolve(
+        self,
+        getter: object,
+        _arg: str,
+    ) -> Iterator[tuple[Any, ...]]:
+        yield self.values.get(getter, ())
+
+    @contextmanager
+    def get(self, getter: object, item_id: int) -> Iterator[Any | None]:
+        yield next(
+            (
+                item
+                for item in self.values.get(getter, ())
+                if int(item.id) == item_id
+            ),
+            None,
+        )
+
+
+class FakeImages:
+    async def fetch(
+        self,
+        _kind: object,
+        key: str,
+        *,
+        fallback: bool = True,
+    ) -> bytes:
+        assert fallback is False
+        return f"image:{key}".encode()
+
+
+def _service(data: FakeData) -> EquipmentQueryService:
+    return EquipmentQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FakeImages()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_title_query_returns_rendered_reply() -> None:
+    data = FakeData()
+    data.values[data.title] = (
+        SimpleNamespace(id=7, name="星际英雄", ability_desc="体力 + 20"),
+    )
+
+    result = await _service(data).search("title", "星际英雄")
+
+    assert result.reply is not None
+    assert result.reply.text == "【星际英雄】\n🆔：7\n效果：体力 + 20"
+    assert result.reply.image == b"image:7"
+
+
+@pytest.mark.asyncio
+async def test_equipment_query_returns_choices_for_multiple_matches() -> None:
+    data = FakeData()
+    data.values[data.suit] = (
+        SimpleNamespace(id=1, name="套装一"),
+        SimpleNamespace(id=2, name="套装二"),
+    )
+
+    result = await _service(data).search("suit", "套装")
+
+    assert [choice.value for choice in result.choices] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_suit_selection_returns_parts_and_bonus() -> None:
+    data = FakeData()
+    part_type = SimpleNamespace(id=0)
+    equip = SimpleNamespace(
+        id=11,
+        name="头盔",
+        part_type=part_type,
+        bonus=SimpleNamespace(desc="攻击 + 5"),
+    )
+    data.values[data.suit] = (
+        SimpleNamespace(
+            id=1,
+            name="勇者套装",
+            equips=[equip],
+            bonus=SimpleNamespace(desc="全属性 + 10"),
+        ),
+    )
+
+    result = await _service(data).select("suit", 1)
+
+    assert result.reply is not None
+    assert "头部：头盔（11）" in result.reply.text
+    assert "套装效果：全属性 + 10" in result.reply.text
+
+
+@pytest.mark.asyncio
+async def test_equipment_selection_reports_missing_item() -> None:
+    result = await _service(FakeData()).select("equip", 99)
+
+    assert result.message == (
+        "❌未找到装备部件 99（这是一个bug，请反馈给开发者）"
+    )

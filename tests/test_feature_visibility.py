@@ -1,15 +1,27 @@
 import os
 from pathlib import Path
 
-from pytest import MonkeyPatch
+import nonebot
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
+os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
 
-from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.plugins.help import visibility
-from tests.helpers.config import StubMessageAction, stub_app_config
+try:
+    nonebot.get_driver()
+except ValueError:
+    nonebot.init()
+
+from ironsbot.config.models.messaging import GroupCommandMessageAction
+from ironsbot.config.models.settings import Settings
+from ironsbot.core.features import Feature, FeatureConfig, FeatureService
+from ironsbot.plugins.help.menu import visible_help_entries
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.plugin_registry import build_test_plugin_registry
+
+DEFINITIONS = {
+    definition.id: definition
+    for definition in build_test_plugin_registry()
+}
 
 
 def _group_event(text: str = "帮助"):
@@ -20,178 +32,138 @@ def _group_event(text: str = "帮助"):
     )
 
 
-def _config(
+def _settings(
     *,
+    allowed_features: tuple[str, ...] = (),
+    ai_key_configured: bool = True,
     ai_intent_enabled: bool = True,
     team_resource_enabled: bool = True,
-    group_actions: list[StubMessageAction] | None = None,
-):
-    return stub_app_config(
-        ai_intent_enabled=ai_intent_enabled,
-        team_resource_config=TeamResourceConfig(enabled=team_resource_enabled),
-        group_actions=group_actions,
+    messaging_enabled: bool = False,
+) -> Settings:
+    settings = Settings(
+        features=FeatureConfig(
+            group_policy={"4": list(allowed_features)},
+            superuser_bypass=False,
+        )
     )
+    settings.ai.api_key = "test-key" if ai_key_configured else ""
+    settings.ai.intent_actions_enabled = ai_intent_enabled
+    settings.seer.team_resource.enabled = team_resource_enabled
+    if messaging_enabled:
+        settings.messaging.group_commands = [
+            GroupCommandMessageAction(
+                id="test_message",
+                commands=["测试消息"],
+                feature="text",
+                message="测试回复",
+            )
+        ]
+    return settings
+
+
+def _visible(
+    plugin_id: str,
+    *,
+    settings: Settings | None = None,
+) -> bool:
+    settings = settings or _settings()
+    features = FeatureService(
+        settings.features,
+        frozenset(settings.bot.superusers),
+    )
+    entries = visible_help_entries(
+        build_test_plugin_registry(settings),
+        _group_event(),
+        features=features,
+        ignored_plugins=tuple(settings.features.help.ignored_plugins),
+    )
+    return plugin_id in {entry.key for entry in entries}
 
 
 def test_always_visible_help_is_shown() -> None:
-    assert visibility.plugin_visible_for_event(
-        "帮助",
-        "ironsbot.plugins.help",
-        _group_event(),
+    assert _visible("help")
+
+
+def test_plugin_definitions_own_feature_visibility() -> None:
+    assert DEFINITIONS["team_audit"].features == frozenset({Feature.TEAM_AUDIT})
+    assert DEFINITIONS["team_resource"].features == frozenset(
+        {Feature.TEAM_RESOURCE_SUBSCRIPTION}
+    )
+    assert DEFINITIONS["fire_manual_ad"].features == frozenset(
+        {Feature.FIRE_MANUAL_AD}
+    )
+    assert DEFINITIONS["ai_intent"].features == frozenset(
+        {
+            Feature.AI_INTENT,
+            Feature.AI_INTENT_TEAM_RECOMMEND,
+            Feature.AI_INTENT_FIRE_MANUAL,
+        }
     )
 
 
-def test_help_visibility_maps_features_to_plugin_modules() -> None:
-    assert visibility.features_for_plugin_module(
-        "ironsbot.plugins.team_audit_welcome"
-    ) == ("team_audit",)
-    assert visibility.features_for_plugin_module(
-        "ironsbot.plugins.team_resource_subscription"
-    ) == ("team_resource_subscription",)
-    assert visibility.features_for_plugin_module("ironsbot.plugins.fire_manual_ad") == (
-        "fire_manual_ad",
+def test_feature_visibility_uses_feature_service() -> None:
+    assert _visible(
+        "seer_query",
+        settings=_settings(allowed_features=("seer",)),
     )
-    assert visibility.features_for_plugin_module("ironsbot.plugins.ai_intent") == (
-        "ai_intent",
-        "ai_intent_team_recommend",
-        "ai_intent_fire_manual",
+    assert not _visible("rank_help")
+
+
+def test_seer_query_visible_when_any_seer_subfeature_allowed() -> None:
+    assert _visible(
+        "seer_query",
+        settings=_settings(allowed_features=("seer_pet",)),
     )
 
 
-def test_feature_module_visibility_uses_feature_service(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        visibility,
-        "feature_visible_for_help",
-        lambda _event, feature: feature == "seer",
-    )
-
-    assert visibility.plugin_visible_for_event(
-        "赛尔号查询",
-        "ironsbot.plugins.seer.query",
-        _group_event(),
-    )
-    assert not visibility.plugin_visible_for_event(
-        "榜单",
-        "ironsbot.plugins.seer.rank_help",
-        _group_event(),
+def test_rank_help_visible_when_seer_rank_allowed() -> None:
+    assert _visible(
+        "rank_help",
+        settings=_settings(allowed_features=("seer_rank",)),
     )
 
 
-def test_seer_query_visible_when_any_seer_subfeature_allowed(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        visibility,
-        "feature_visible_for_help",
-        lambda _event, feature: feature == "seer_pet",
-    )
-
-    assert visibility.plugin_visible_for_event(
-        "赛尔号查询",
-        "ironsbot.plugins.seer.query",
-        _group_event(),
-    )
-
-
-def test_rank_help_visible_when_seer_rank_allowed(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        visibility,
-        "feature_visible_for_help",
-        lambda _event, feature: feature == "seer_rank",
-    )
-
-    assert visibility.plugin_visible_for_event(
-        "榜单",
-        "ironsbot.plugins.seer.rank_help",
-        _group_event(),
-    )
-
-
-def test_messaging_visibility_reads_app_config(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        visibility,
-        "get_app_config",
-        lambda: _config(
-            group_actions=[StubMessageAction(enabled=True, feature="text")]
+def test_messaging_visibility_reads_app_config() -> None:
+    assert _visible(
+        "messaging",
+        settings=_settings(
+            allowed_features=("text",),
+            messaging_enabled=True,
         ),
     )
-    monkeypatch.setattr(
-        visibility,
-        "feature_visible_for_help",
-        lambda _event, feature: feature == "text",
-    )
-
-    assert visibility.plugin_visible_for_event(
-        "文本发送",
-        "ironsbot.plugins.messaging",
-        _group_event(),
-    )
 
 
-def test_ai_intent_visibility_requires_key_and_feature(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        visibility,
-        "_ai_key_configured",
-        lambda: True,
+def test_ai_intent_visibility_requires_key_and_feature() -> None:
+    assert _visible(
+        "ai_intent",
+        settings=_settings(
+            allowed_features=("ai_intent",),
+            ai_intent_enabled=True,
+        ),
     )
-    monkeypatch.setattr(
-        visibility,
-        "get_app_config",
-        lambda: _config(ai_intent_enabled=True),
+    assert not _visible(
+        "ai_intent",
+        settings=_settings(
+            allowed_features=("ai_intent",),
+            ai_key_configured=False,
+        ),
     )
-    monkeypatch.setattr(
-        visibility,
-        "feature_visible_for_help",
-        lambda _event, feature: feature == "ai_intent",
-    )
-
-    assert visibility.plugin_visible_for_event(
-        "AI意图分析",
-        "ironsbot.plugins.ai_intent",
-        _group_event(),
-    )
-    assert not visibility.plugin_visible_for_event(
-        "战队审核入群提示",
-        "ironsbot.plugins.team_audit_welcome",
-        _group_event(),
-    )
+    assert not _visible("team_audit")
 
 
-def test_team_resource_visibility_reads_app_config(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        visibility,
-        "get_app_config",
-        lambda: _config(team_resource_enabled=True),
-    )
-    monkeypatch.setattr(
-        visibility,
-        "feature_visible_for_help",
-        lambda _event, feature: feature == "team_resource_subscription",
+def test_team_resource_visibility_reads_app_config() -> None:
+    assert _visible(
+        "team_resource",
+        settings=_settings(
+            allowed_features=("team_resource_subscription",),
+            team_resource_enabled=True,
+        ),
     )
 
-    assert visibility.plugin_visible_for_event(
-        "战队资源订阅",
-        "ironsbot.plugins.team_resource_subscription",
-        _group_event(),
-    )
-
-    monkeypatch.setattr(
-        visibility,
-        "get_app_config",
-        lambda: _config(team_resource_enabled=False),
-    )
-    assert not visibility.plugin_visible_for_event(
-        "战队资源订阅",
-        "ironsbot.plugins.team_resource_subscription",
-        _group_event(),
+    assert not _visible(
+        "team_resource",
+        settings=_settings(
+            allowed_features=("team_resource_subscription",),
+            team_resource_enabled=False,
+        ),
     )

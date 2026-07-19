@@ -1,97 +1,36 @@
 import asyncio
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.runtime import StartupConfig
-from ironsbot.plugins.startup_notice import runtime as startup_notice_runtime
-from ironsbot.plugins.startup_notice.runtime import (
-    _setup_startup_notice_runtime,
-    _startup_notice_runtime_state,
-    send_startup_notice,
-)
-from ironsbot.shared.messaging.admin_notice import AdminNoticeTargets
-from ironsbot.shared.messaging.targets import MessageTarget, TargetSendSummary
-from ironsbot.shared.plugin_runtime import startup_ready, startup_ready_runtime
-from ironsbot.shared.runtime.startup_notice import StartupNoticePart
+from ironsbot.config.models.operations import StartupConfig
+from ironsbot.core.messaging import MessageTarget, TargetSendSummary
+from ironsbot.plugins.operations import startup as startup_notice_runtime
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.operations.startup import StartupNoticeService
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
 
-class FakeDriver:
-    def __init__(self) -> None:
-        self.bot_connect_handlers: list[Callable[[object], object]] = []
-
-    def on_bot_connect(
-        self,
-        handler: Callable[[object], object],
-    ) -> Callable[[object], object]:
-        self.bot_connect_handlers.append(handler)
-        return handler
-
-
-def test_startup_ready_runtime_setup_registers_bot_connect_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        startup_ready_runtime._startup_ready_runtime_state,
-        "registered",
-        registered_state,
+def _startup_notice_service(
+    *parts: tuple[str, str, str],
+) -> StartupNoticeService:
+    service = StartupNoticeService(
+        build_test_runtime(superuser_ids=(1,)).admin_notices
     )
-    driver = FakeDriver()
-
-    startup_ready_runtime._setup_startup_ready_runtime(driver)
-    startup_ready_runtime._setup_startup_ready_runtime(driver)
-
-    assert driver.bot_connect_handlers == [
-        startup_ready.run_registered_startup_checks
-    ]
-
-
-def test_startup_notice_runtime_setup_registers_bot_connect_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        _startup_notice_runtime_state,
-        "registered",
-        registered_state,
-    )
-    driver = FakeDriver()
-
-    _setup_startup_notice_runtime(driver)
-    _setup_startup_notice_runtime(driver)
-
-    assert driver.bot_connect_handlers == [send_startup_notice]
+    for part in parts:
+        service.add(*part)
+    return service
 
 
 def test_startup_notice_appends_db_sync_notice(
     monkeypatch: MonkeyPatch,
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sent",
-        False,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sending",
-        False,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime,
-        "get_startup_config",
-        lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
-    )
-
-    async def fake_ensure_startup_ready(_bot: object) -> None:
-        return None
-
     async def fake_send_broadcast_message(
+        _service: AdminNoticeService,
         message: object,
         **kwargs: object,
     ) -> TargetSendSummary:
@@ -100,32 +39,24 @@ def test_startup_notice_appends_db_sync_notice(
         return TargetSendSummary([MessageTarget("private", 1)], [])
 
     monkeypatch.setattr(
-        startup_notice_runtime,
-        "ensure_startup_ready",
-        fake_ensure_startup_ready,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service,
-        "target_loader",
-        lambda: AdminNoticeTargets(private_user_ids=[1], group_ids=[]),
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime,
-        "startup_notice_parts",
-        lambda: [
-            StartupNoticePart(
-                subscription_key="startup_data_sync",
-                action_name="startup data sync notice",
-                message="启动数据同步已是最新，无需更新：seerapi, aliases",
-            )
-        ],
-    )
-    monkeypatch.setattr(
-        "ironsbot.shared.messaging.send_broadcast_message",
+        AdminNoticeService,
+        "send",
         fake_send_broadcast_message,
     )
 
-    asyncio.run(startup_notice_runtime.send_startup_notice(cast("Bot", object())))
+    asyncio.run(
+        startup_notice_runtime.send_startup_notice(
+            cast("Bot", object()),
+            _startup_notice_service(
+                (
+                    "startup_data_sync",
+                    "startup data sync notice",
+                    "启动数据同步已是最新，无需更新：seerapi, aliases",
+                ),
+            ),
+            StartupConfig(enabled=True, message="机器人已开启。", delay=0),
+        )
+    )
 
     assert sent_messages == [
         ("机器人已开启。", "startup_notice"),
@@ -140,26 +71,8 @@ def test_startup_notice_appends_docker_update_before_db_sync(
     monkeypatch: MonkeyPatch,
 ) -> None:
     sent_messages: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sent",
-        False,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service.state,
-        "sending",
-        False,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime,
-        "get_startup_config",
-        lambda: StartupConfig(enabled=True, message="机器人已开启。", delay=0),
-    )
-
-    async def fake_ensure_startup_ready(_bot: object) -> None:
-        return None
-
     async def fake_send_broadcast_message(
+        _service: AdminNoticeService,
         message: object,
         **kwargs: object,
     ) -> TargetSendSummary:
@@ -167,37 +80,29 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         return TargetSendSummary([MessageTarget("private", 1)], [])
 
     monkeypatch.setattr(
-        startup_notice_runtime,
-        "ensure_startup_ready",
-        fake_ensure_startup_ready,
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime.startup_notice_service,
-        "target_loader",
-        lambda: AdminNoticeTargets(private_user_ids=[1], group_ids=[]),
-    )
-    monkeypatch.setattr(
-        startup_notice_runtime,
-        "startup_notice_parts",
-        lambda: [
-            StartupNoticePart(
-                subscription_key="startup_docker_update",
-                action_name="startup docker update notice",
-                message="Docker 自更新任务已启动：ironsbot",
-            ),
-            StartupNoticePart(
-                subscription_key="startup_data_sync",
-                action_name="startup data sync notice",
-                message="启动数据同步已是最新，无需更新：seerapi",
-            ),
-        ],
-    )
-    monkeypatch.setattr(
-        "ironsbot.shared.messaging.send_broadcast_message",
+        AdminNoticeService,
+        "send",
         fake_send_broadcast_message,
     )
 
-    asyncio.run(startup_notice_runtime.send_startup_notice(cast("Bot", object())))
+    asyncio.run(
+        startup_notice_runtime.send_startup_notice(
+            cast("Bot", object()),
+            _startup_notice_service(
+                (
+                    "startup_docker_update",
+                    "startup docker update notice",
+                    "Docker 自更新任务已启动：ironsbot",
+                ),
+                (
+                    "startup_data_sync",
+                    "startup data sync notice",
+                    "启动数据同步已是最新，无需更新：seerapi",
+                ),
+            ),
+            StartupConfig(enabled=True, message="机器人已开启。", delay=0),
+        )
+    )
 
     assert sent_messages == [
         ("机器人已开启。", "startup_notice"),

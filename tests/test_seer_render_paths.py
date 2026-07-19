@@ -10,7 +10,6 @@ from ironsbot.services.seer.render_paths import (
     PEAK_POOL_VOTE_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
     SEER_ASSET_TEMPLATES_PATH,
-    SEER_ASSETS_ROOT,
     SHARED_TEMPLATE_PATH,
     TYPE_MATCHUP_TEMPLATE_PATH,
 )
@@ -35,7 +34,6 @@ ACTIVE_RENDER_MODULES = (
 def test_active_seer_template_paths_exist() -> None:
     assert SEER_ASSET_TEMPLATES_PATH.is_dir()
     assert SHARED_TEMPLATE_PATH.is_dir()
-    assert not (SEER_ASSETS_ROOT / "_upstream").exists()
 
     for template_path in TEMPLATE_PATHS:
         assert template_path.is_dir()
@@ -53,7 +51,7 @@ def test_active_seer_render_modules_import_after_bot_bootstrap() -> None:
     module_args = ", ".join(repr(module_name) for module_name in ACTIVE_RENDER_MODULES)
     script = f"""
 import importlib
-import bot
+import ironsbot.__main__
 
 for module_name in ({module_args},):
     importlib.import_module(module_name)
@@ -67,7 +65,7 @@ print("render import ok")
         text=True,
         env={
             **os.environ,
-            "APP_CONFIG_PATH": str(
+            "IRONSBOT_CONFIG": str(
                 Path(__file__).resolve().parents[1] / "config.example.toml"
             ),
         },

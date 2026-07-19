@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer.local_rank_formatting import format_metric_display
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
-from ironsbot.services.seer.local_rank_update import upsert_local_rank_metrics
 from ironsbot.services.seer.player_formatting_common import (
     format_player_identity,
     join_metric_parts,
@@ -14,15 +13,14 @@ from ironsbot.services.seer.player_formatting_common import (
 from ironsbot.services.seer.player_query import calculate_player_peak_scores
 from ironsbot.services.seer.rank_formatting import format_rank_position_text
 from ironsbot.services.seer.rank_list_models import LOCAL_RANKS, RankPlayerCommand
-from ironsbot.services.seer.rank_list_spec_resolution import (
-    get_global_rank_spec,
-    global_rank_spec_needs_sub_key,
-)
-from ironsbot.services.seer.rank_lookup_runtime import find_pet_kind_rank, find_rank
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.sequ_extra import fetch_unity_part_one, fetch_unity_peak
 
 _PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.rank import RankService
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,18 +30,20 @@ class RankPlayerScore:
 
 
 async def fetch_rank_player_message(
+    rank: RankService,
+    local_rank: LocalRankService,
     game: Any,
     *,
     command: RankPlayerCommand,
-    local_rank_enabled: bool,
 ) -> str:
-    spec = get_global_rank_spec(command.rank_key)
-    if global_rank_spec_needs_sub_key(spec):
+    spec = rank.get_spec(command.rank_key)
+    if rank.spec_needs_sub_key(spec):
         return "❌找不到当前巅峰赛季数据。"
 
     user_info = await game.get_user_info(command.player_id)
     target = await _fetch_player_score(game, command)
     result = await _find_player_rank(
+        rank,
         game,
         command=command,
         target=target,
@@ -53,7 +53,7 @@ async def fetch_rank_player_message(
         unit=spec.unit,
     )
     if command.rank_key in _PEAK_KEYS and result.rank is None and result.queried:
-        result = await find_rank(
+        result = await rank.find_rank(
             game,
             user_id=command.player_id,
             title=spec.title.removesuffix("榜"),
@@ -77,7 +77,7 @@ async def fetch_rank_player_message(
     metric_key = LOCAL_RANKS[command.rank_key].metric_key
     display = _format_score(metric_key, score, spec.unit)
     local_summary = await _update_sample_metric(
-        enabled=local_rank_enabled,
+        local_rank,
         player_id=command.player_id,
         nick=str(user_info.nick),
         metric_key=metric_key,
@@ -129,6 +129,7 @@ async def _fetch_player_score(
 
 
 async def _find_player_rank(  # noqa: PLR0913
+    rank: RankService,
     game: Any,
     *,
     command: RankPlayerCommand,
@@ -141,13 +142,13 @@ async def _find_player_rank(  # noqa: PLR0913
     if target.known and target.value is None:
         return RankLookupResult(title=title, score_name=unit)
     if command.rank_key == "精灵图鉴" and target.value is not None:
-        return await find_pet_kind_rank(
+        return await rank.find_pet_kind_rank(
             game,
             user_id=command.player_id,
             pet_kind_count=target.value,
             search_limit=None,
         )
-    return await find_rank(
+    return await rank.find_rank(
         game,
         user_id=command.player_id,
         title=title.removesuffix("榜"),
@@ -167,8 +168,8 @@ def _format_score(metric_key: str, score: int | None, unit: str) -> str:
 
 
 async def _update_sample_metric(  # noqa: PLR0913
+    local_rank: LocalRankService,
     *,
-    enabled: bool,
     player_id: int,
     nick: str,
     metric_key: str,
@@ -177,7 +178,7 @@ async def _update_sample_metric(  # noqa: PLR0913
     season_sub_key: int | None,
     clear_when_missing: bool = False,
 ) -> LocalRankSummary:
-    if not enabled:
+    if not local_rank.config.enabled:
         return LocalRankSummary()
     clear_metric_keys = (
         frozenset((metric_key,))
@@ -186,7 +187,7 @@ async def _update_sample_metric(  # noqa: PLR0913
     )
     if score is None and not clear_metric_keys:
         return LocalRankSummary()
-    return await upsert_local_rank_metrics(
+    return await local_rank.upsert_metrics(
         player_id=player_id,
         nick=nick,
         current_metrics=(
@@ -203,6 +204,3 @@ async def _update_sample_metric(  # noqa: PLR0913
         peak_sub_key=season_sub_key,
         clear_metric_keys=clear_metric_keys,
     )
-
-
-__all__ = ["RankPlayerScore", "fetch_rank_player_message"]

@@ -1,161 +1,171 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: TC001, TC002
 """Peak query matchers."""
 
 from __future__ import annotations
 
-from typing import Annotated
+from functools import partial
+from typing import TYPE_CHECKING, Literal
 
-from nonebot.matcher import Matcher
-from nonebot.params import Depends, Fullmatch
-from seerapi_models import PeakExpertPoolORM, PeakPoolORM
+from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.integrations.headless_seer.game import SeerGame
-from ironsbot.integrations.seer_data.sessions import AllSessions
-from ironsbot.utils.rule import no_reply
+from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.rules import no_reply
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
-from ..depends import GameClient, SeerAPISession
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from . import peak_handlers
+from ..group import SeerMatcherGroup, seer_feature_rule
 
-peak_pool_matcher = matcher_group.on_fullmatch(
-    ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+    from nonebot.matcher import Matcher
 
-
-@peak_pool_matcher.handle()
-async def _handle_peak_pool(
-    matcher: Matcher,
-    pools: list[PeakPoolORM] = Depends(peak_handlers.get_standard_limit_pool),
-) -> None:
-    await peak_handlers.handle_peak_pool(
-        matcher=matcher,
-        pools=pools,
+    from ironsbot.services.seer.peak import (
+        PeakQueryResult,
+        PeakQueryService,
     )
 
 
-peak_expert_pool_matcher = matcher_group.on_fullmatch(
-    ("专家池", "巅峰专家池", "专家禁用池"),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
+async def _report_progress(matcher: Matcher, message: str) -> None:
+    await matcher.send(message)
 
 
-@peak_expert_pool_matcher.handle()
-async def _handle_peak_expert_pool(
+async def _finish_result(
+    result: PeakQueryResult,
     matcher: Matcher,
-    pools: list[PeakExpertPoolORM] = Depends(peak_handlers.get_expert_ban_pool),
 ) -> None:
-    await peak_handlers.handle_peak_expert_pool(
-        matcher=matcher,
-        pools=pools,
+    if result.message:
+        await matcher.finish(result.message)
+        return
+    if result.text:
+        await matcher.finish(result.text)
+        return
+    if result.image is not None:
+        await MessageFactory(Image(result.image)).finish(at_sender=False)
+
+
+async def _handle_pool(
+    service: PeakQueryService,
+    matcher: Matcher,
+    *,
+    expert: bool,
+) -> None:
+    try:
+        result = await service.pool(
+            expert=expert,
+            progress=partial(_report_progress, matcher),
+        )
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_vote(
+    service: PeakQueryService,
+    matcher: Matcher,
+) -> None:
+    try:
+        result = await service.vote(partial(_report_progress, matcher))
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_item_rank(
+    service: PeakQueryService,
+    matcher: Matcher,
+    event: Event,
+    *,
+    kind: Literal["套装", "称号"],
+) -> None:
+    try:
+        result = await service.item_rank(
+            event.get_plaintext(),
+            kind=kind,
+        )
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_pet_rank(
+    service: PeakQueryService,
+    matcher: Matcher,
+    event: Event,
+) -> None:
+    try:
+        result = await service.pet_rank(
+            event.get_plaintext(),
+            partial(_report_progress, matcher),
+        )
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+def install(group: SeerMatcherGroup) -> None:
+    service = group.resources.peak_query
+    rule = seer_feature_rule(group.features, "seer_peak") & no_reply()
+    priority = group.matcher_priority("seer_peak")
+
+    pool = group.on_fullmatch(
+        ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
+        policy=CommandPolicy.command("seer_peak_pool"),
+        rule=rule,
+        priority=priority,
+    )
+    pool.append_handler(partial(_handle_pool, service, expert=False))
+
+    expert_pool = group.on_fullmatch(
+        ("专家池", "巅峰专家池", "专家禁用池"),
+        policy=CommandPolicy.command("seer_peak_expert_pool"),
+        rule=rule,
+        priority=priority,
+    )
+    expert_pool.append_handler(partial(_handle_pool, service, expert=True))
+
+    vote = group.on_fullmatch(
+        ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
+        policy=CommandPolicy.command("seer_peak_vote"),
+        rule=rule,
+        priority=priority,
+    )
+    vote.append_handler(partial(_handle_vote, service))
+
+    suit = group.on_fullmatch(
+        ("竞技套装榜", "狂野套装榜", "专家套装榜"),
+        policy=CommandPolicy.command("seer_peak_suit_rank"),
+        rule=rule,
+        priority=priority,
+    )
+    suit.append_handler(
+        partial(_handle_item_rank, service, kind="套装")
     )
 
-
-peak_vote_matcher = matcher_group.on_fullmatch(
-    ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
-
-
-@peak_vote_matcher.handle()
-async def _handle_peak_vote(
-    matcher: Matcher,
-    session: SeerAPISession,
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_peak_vote(
-        matcher=matcher,
-        session=session,
-        game=game,
+    title = group.on_fullmatch(
+        ("竞技称号榜", "狂野称号榜", "专家称号榜"),
+        policy=CommandPolicy.command("seer_peak_title_rank"),
+        rule=rule,
+        priority=priority,
+    )
+    title.append_handler(
+        partial(_handle_item_rank, service, kind="称号")
     )
 
-
-peak_suit_matcher = matcher_group.on_fullmatch(
-    ("竞技套装榜", "狂野套装榜", "专家套装榜"),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
-
-
-@peak_suit_matcher.handle()
-async def _handle_peak_suit(
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    sessions: AllSessions,
-    type_selection: peak_handlers.PeakTypeSelection = Depends(
-        peak_handlers.get_peak_type
-    ),
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_peak_suit(
-        matcher=matcher,
-        seerapi_session=seerapi_session,
-        sessions=sessions,
-        type_selection=type_selection,
-        game=game,
+    pet = group.on_fullmatch(
+        (
+            "竞技精灵月榜",
+            "狂野精灵月榜",
+            "专家精灵月榜",
+            "竞技精灵总榜",
+            "狂野精灵总榜",
+            "专家精灵总榜",
+        ),
+        policy=CommandPolicy.command("seer_peak_pet_rank"),
+        rule=rule,
+        priority=priority,
     )
-
-
-peak_title_matcher = matcher_group.on_fullmatch(
-    ("竞技称号榜", "狂野称号榜", "专家称号榜"),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
-
-
-@peak_title_matcher.handle()
-async def _handle_peak_title(
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    sessions: AllSessions,
-    type_selection: peak_handlers.PeakTypeSelection = Depends(
-        peak_handlers.get_peak_type
-    ),
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_title(
-        matcher=matcher,
-        seerapi_session=seerapi_session,
-        sessions=sessions,
-        type_selection=type_selection,
-        game=game,
-    )
-
-
-peak_pet_matcher = matcher_group.on_fullmatch(
-    (
-        "竞技精灵月榜",
-        "狂野精灵月榜",
-        "专家精灵月榜",
-        "竞技精灵总榜",
-        "狂野精灵总榜",
-        "专家精灵总榜",
-    ),
-    rule=seer_feature_rule("seer_peak") & no_reply(),
-    priority=seer_feature_priority("seer_peak"),
-)
-
-
-@peak_pet_matcher.handle()
-async def _handle_peak_pet(  # noqa: PLR0913
-    matcher: Matcher,
-    seerapi_session: SeerAPISession,
-    command: Annotated[str, Fullmatch()],
-    type_selection: peak_handlers.PeakTypeSelection = Depends(
-        peak_handlers.get_peak_type
-    ),
-    expert_pools: list[PeakExpertPoolORM] = Depends(peak_handlers.get_expert_ban_pool),
-    game: SeerGame = GameClient,
-) -> None:
-    await peak_handlers.handle_peak_pet(
-        matcher=matcher,
-        seerapi_session=seerapi_session,
-        command=command,
-        type_selection=type_selection,
-        expert_pools=expert_pools,
-        game=game,
-    )
+    pet.append_handler(partial(_handle_pet_rank, service))

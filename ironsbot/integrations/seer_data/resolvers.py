@@ -1,24 +1,30 @@
 # SPDX-License-Identifier: MIT
 # ruff: noqa: TRY003
-from collections.abc import Iterable
-from typing import Any, Generic, Protocol, TypeVar
+from __future__ import annotations
 
-from nonebot import logger
-from nonebot.params import Depends
+import logging
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
+
 from seerapi_models.build_model import BaseResModel
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, func, select
 
-from ironsbot.utils.parse_arg import parse_string_arg
+from ironsbot.services.seer.data import ALIAS_DB, SEERAPI_DB
 
 from .normalization import IGNORED_CHARS as _IGNORED_CHARS
 from .normalization import strip_special as _strip_special
-from .orm import BaseAliasORM
-from .sessions import _ALIAS_DB, _SEERAPI_DB, AllSessions
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from ironsbot.services.seer.data import SessionMap
+
+    from .orm import BaseAliasORM
 
 _T_Model = TypeVar("_T_Model", bound=BaseResModel)
 _T_Model_co = TypeVar("_T_Model_co", bound=BaseResModel, covariant=True)
+logger = logging.getLogger(__name__)
 
 
 def _col_strip_special(column: Any) -> Any:
@@ -32,7 +38,7 @@ def _col_strip_special(column: Any) -> Any:
 class Resolver(Protocol[_T_Model_co]):
     """从用户输入解析出匹配的模型对象。"""
 
-    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[_T_Model_co]: ...
+    def __call__(self, sessions: SessionMap, arg: str) -> Iterable[_T_Model_co]: ...
 
 
 class IdResolver(Generic[_T_Model]):
@@ -40,7 +46,7 @@ class IdResolver(Generic[_T_Model]):
 
     __slots__ = ("db_name", "model")
 
-    def __init__(self, model: type[_T_Model], *, db_name: str = _SEERAPI_DB) -> None:
+    def __init__(self, model: type[_T_Model], *, db_name: str = SEERAPI_DB) -> None:
         self.model = model
         self.db_name = db_name
 
@@ -50,7 +56,7 @@ class IdResolver(Generic[_T_Model]):
             f"db_name={self.db_name!r})"
         )
 
-    def __call__(self, sessions: AllSessions, arg: str) -> tuple[_T_Model] | tuple[()]:
+    def __call__(self, sessions: SessionMap, arg: str) -> tuple[_T_Model] | tuple[()]:
         if not arg.isdigit():
             return ()
         session = sessions.get(self.db_name)
@@ -70,7 +76,7 @@ class NameResolver(Generic[_T_Model]):
         self,
         model: type[_T_Model],
         *,
-        db_name: str = _SEERAPI_DB,
+        db_name: str = SEERAPI_DB,
         name_column: str = "name",
     ) -> None:
         if not hasattr(model, name_column):
@@ -90,7 +96,7 @@ class NameResolver(Generic[_T_Model]):
             ")"
         )
 
-    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[_T_Model]:
+    def __call__(self, sessions: SessionMap, arg: str) -> Iterable[_T_Model]:
         session = sessions.get(self.db_name)
         if session is None:
             logger.warning(f"{self!r}: 未找到数据库会话")
@@ -113,8 +119,8 @@ class AliasResolver(Generic[_T_Model]):
         model: type[_T_Model],
         alias_model: type[BaseAliasORM],
         *,
-        alias_db: str = _ALIAS_DB,
-        data_db: str = _SEERAPI_DB,
+        alias_db: str = ALIAS_DB,
+        data_db: str = SEERAPI_DB,
     ) -> None:
         self.model = model
         self.alias_model = alias_model
@@ -131,7 +137,7 @@ class AliasResolver(Generic[_T_Model]):
             ")"
         )
 
-    def __call__(self, sessions: AllSessions, arg: str) -> Iterable[_T_Model]:
+    def __call__(self, sessions: SessionMap, arg: str) -> Iterable[_T_Model]:
         alias_session = sessions.get(self.alias_db)
         if alias_session is None:
             logger.warning(f"{self!r}: 未找到别名数据库会话")
@@ -146,8 +152,8 @@ class AliasResolver(Generic[_T_Model]):
             )
             aliases = alias_session.exec(statement).all()
             ids = {alias.target_id for alias in aliases}
-        except OperationalError as e:
-            logger.error(f"AliasResolver error: {e}")
+        except OperationalError:
+            logger.exception("AliasResolver failed")
             return ()
 
         if not ids:
@@ -174,7 +180,9 @@ class Getter(Generic[_T_Model]):
         return session.get(self.model, id_)
 
     def __call__(
-        self, sessions: AllSessions, arg: str = Depends(parse_string_arg)
+        self,
+        sessions: SessionMap,
+        arg: str,
     ) -> tuple[_T_Model, ...]:
         if not arg:
             return ()
@@ -185,24 +193,3 @@ class Getter(Generic[_T_Model]):
                 seen.setdefault(obj.id, obj)
 
         return tuple(seen.values())
-
-    def __or__(self, other: "Getter[_T_Model]") -> "Getter[_T_Model]":
-        if not isinstance(other, Getter):
-            raise TypeError(f"Cannot combine Getter with {type(other)}")
-        return Getter(self.model, *self.resolvers, *other.resolvers)
-
-
-def from_id_get_name(
-    getter: Getter[_T_Model],
-    _id: int,
-    *,
-    sessions: AllSessions,
-) -> str:
-    if not (objs := getter(sessions, str(_id))):
-        return ""
-
-    obj = objs[0]
-    if (name := getattr(obj, "name", None)) is None:
-        raise ValueError(f"Model {getter.model.resource_name()} has no name attribute")
-
-    return name

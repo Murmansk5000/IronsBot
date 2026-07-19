@@ -2,19 +2,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from pytest import MonkeyPatch
-
-from ironsbot.config.models.seer import RankQueryConfig
-from ironsbot.services.seer import rank_page_cache_policy
-from ironsbot.services.seer.rank_page_cache_queries import (
-    get_cached_rank_item,
-    get_cached_rank_item_by_index,
-    get_cached_rank_page_result,
-    get_rank_page_cache_summary,
-)
-from ironsbot.services.seer.rank_page_cache_writer import (
-    save_rank_page,
-)
+from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 
 MOVED_RANK_INDEX = 100
 MOVED_SCORE = 1001
@@ -32,34 +20,29 @@ class RankItem:
     score: int
 
 
-def _patch_rank_cache_config(monkeypatch: MonkeyPatch, cache_path: Path) -> None:
-    monkeypatch.setattr(
-        rank_page_cache_policy,
-        "get_rank_query_config",
-        lambda: RankQueryConfig(
-            page_cache=True,
-            page_cache_path=cache_path,
-            page_cache_ttl_seconds=3600,
-            allow_stale_cache=True,
-        ),
+def build_cache(path: Path) -> SqliteRankPageCache:
+    return SqliteRankPageCache(
+        path,
+        enabled=True,
+        ttl_seconds=3600,
+        allow_stale=True,
     )
 
 
 def test_save_rank_page_deduplicates_user_within_same_rank(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    _patch_rank_cache_config(monkeypatch, cache_path)
+    cache = build_cache(cache_path)
 
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=0,
         end=99,
         items=[RankItem(id=100, nick="旧名", score=999)],
     )
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=100,
@@ -67,13 +50,13 @@ def test_save_rank_page_deduplicates_user_within_same_rank(
         items=[RankItem(id=100, nick="新名", score=1001)],
     )
 
-    cached = get_cached_rank_item(key=1, sub_key=2, user_id=100)
+    cached = cache.item(key=1, sub_key=2, user_id=100)
     assert cached is not None
     assert cached.rank_index == MOVED_RANK_INDEX
     assert cached.nick == "新名"
     assert cached.score == MOVED_SCORE
 
-    summaries = get_rank_page_cache_summary(key=1, sub_key=2)
+    summaries = cache.summary(key=1, sub_key=2)
     actual = [
         (
             page.start_index,
@@ -92,13 +75,12 @@ def test_save_rank_page_deduplicates_user_within_same_rank(
 
 
 def test_rank_page_cache_uses_player_rank_fact_schema(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    _patch_rank_cache_config(monkeypatch, cache_path)
+    cache = build_cache(cache_path)
 
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=0,
@@ -120,13 +102,12 @@ def test_rank_page_cache_uses_player_rank_fact_schema(
 
 
 def test_save_rank_page_replaces_overlapping_ranges(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    _patch_rank_cache_config(monkeypatch, cache_path)
+    cache = build_cache(cache_path)
 
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=0,
@@ -137,7 +118,7 @@ def test_save_rank_page_replaces_overlapping_ranges(
         ],
         fetched_at=FETCHED_AT,
     )
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=OVERLAP_LOOKUP_INDEX,
@@ -146,10 +127,10 @@ def test_save_rank_page_replaces_overlapping_ranges(
         fetched_at=FETCHED_AT + 60,
     )
 
-    assert get_cached_rank_item(key=1, sub_key=2, user_id=1014) is None
-    assert get_cached_rank_item(key=1, sub_key=2, user_id=1000) is None
+    assert cache.item(key=1, sub_key=2, user_id=1014) is None
+    assert cache.item(key=1, sub_key=2, user_id=1000) is None
 
-    cached = get_cached_rank_item_by_index(
+    cached = cache.item_by_index(
         key=1,
         sub_key=2,
         rank_index=OVERLAP_LOOKUP_INDEX,
@@ -158,20 +139,19 @@ def test_save_rank_page_replaces_overlapping_ranges(
     assert cached.id == OVERLAP_NEW_USER_ID
     assert cached.rank_index == OVERLAP_LOOKUP_INDEX
 
-    summaries = get_rank_page_cache_summary(key=1, sub_key=2)
+    summaries = cache.summary(key=1, sub_key=2)
     assert [(page.start_index, page.end_index) for page in summaries] == [
         (OVERLAP_LOOKUP_INDEX, OVERLAP_LOOKUP_INDEX),
     ]
 
 
 def test_cached_rank_page_result_preserves_fetched_at(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    _patch_rank_cache_config(monkeypatch, cache_path)
+    cache = build_cache(cache_path)
 
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=0,
@@ -180,7 +160,7 @@ def test_cached_rank_page_result_preserves_fetched_at(
         fetched_at=FETCHED_AT,
     )
 
-    cached = get_cached_rank_page_result(key=1, sub_key=2, start=0, end=0)
+    cached = cache.page(key=1, sub_key=2, start=0, end=0)
 
     assert cached is not None
     assert cached.fetched_at == FETCHED_AT
@@ -188,13 +168,12 @@ def test_cached_rank_page_result_preserves_fetched_at(
 
 
 def test_cached_rank_item_by_index_reads_containing_page(
-    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     cache_path = tmp_path / "rank_page_cache.sqlite"
-    _patch_rank_cache_config(monkeypatch, cache_path)
+    cache = build_cache(cache_path)
 
-    save_rank_page(
+    cache.save(
         key=1,
         sub_key=2,
         start=100,
@@ -206,7 +185,7 @@ def test_cached_rank_item_by_index_reads_containing_page(
         fetched_at=FETCHED_AT,
     )
 
-    cached = get_cached_rank_item_by_index(
+    cached = cache.item_by_index(
         key=1,
         sub_key=2,
         rank_index=CACHED_PAGE_LOOKUP_INDEX,

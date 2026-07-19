@@ -2,32 +2,31 @@ from pathlib import Path
 
 import pytest
 
+from ironsbot.core.commands import parse_confirmation
+from ironsbot.integrations.storage.player_bindings import (
+    SqlitePlayerBindingStore,
+)
 from ironsbot.services.seer.player_binding import (
-    bind_player,
-    decline_player_binding,
-    get_player_binding,
-    parse_binding_choice,
     parse_player_binding_target,
     player_binding_offer_message,
-    unbind_player,
 )
 
 _PLAYER_ID = 123456
 
 
 @pytest.mark.parametrize("text", ["是", "yes", "YES", " y ", "确认", "确定"])
-def test_parse_binding_choice_accepts_yes_replies(text: str) -> None:
-    assert parse_binding_choice(text) is True
+def test_parse_confirmation_accepts_yes_replies(text: str) -> None:
+    assert parse_confirmation(text) is True
 
 
 @pytest.mark.parametrize("text", ["否", "no", "NO", " n ", "取消"])
-def test_parse_binding_choice_accepts_no_replies(text: str) -> None:
-    assert parse_binding_choice(text) is False
+def test_parse_confirmation_accepts_no_replies(text: str) -> None:
+    assert parse_confirmation(text) is False
 
 
 @pytest.mark.parametrize("text", ["", "绑定", "不绑定", "也许", "yes please"])
-def test_parse_binding_choice_requires_exact_reply(text: str) -> None:
-    assert parse_binding_choice(text) is None
+def test_parse_confirmation_requires_exact_reply(text: str) -> None:
+    assert parse_confirmation(text) is None
 
 
 @pytest.mark.parametrize(
@@ -55,33 +54,34 @@ def test_player_binding_offer_only_displays_short_reply_choices() -> None:
 
 def test_player_binding_lifecycle(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "bindings.sqlite"
+    store = SqlitePlayerBindingStore(path)
 
-    initial = get_player_binding(path, 10001)
+    initial = store.get(10001)
     assert initial.player_id is None
     assert initial.choice_completed is False
 
-    bind_player(
-        path,
+    store.bind(
         qq_user_id=10001,
         player_id=_PLAYER_ID,
         player_nick="测试玩家",
     )
-    bound = get_player_binding(path, 10001)
+    bound = store.get(10001)
     assert bound.player_id == _PLAYER_ID
     assert bound.player_nick == "测试玩家"
     assert bound.choice_completed is True
 
-    assert unbind_player(path, qq_user_id=10001) is True
-    unbound = get_player_binding(path, 10001)
+    assert store.unbind(qq_user_id=10001) is True
+    unbound = store.get(10001)
     assert unbound.player_id is None
     assert unbound.choice_completed is True
-    assert unbind_player(path, qq_user_id=10001) is False
+    assert store.unbind(qq_user_id=10001) is False
 
 
 def test_declining_binding_completes_first_choice(tmp_path: Path) -> None:
     path = tmp_path / "bindings.sqlite"
-    decline_player_binding(path, qq_user_id=10002)
+    store = SqlitePlayerBindingStore(path)
+    store.decline(qq_user_id=10002)
 
-    state = get_player_binding(path, 10002)
+    state = store.get(10002)
     assert state.player_id is None
     assert state.choice_completed is True

@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
+
+from .rank_list_formatting import now_text as current_time_text
 
 if TYPE_CHECKING:
     from .countermark_stat_rank_models import (
@@ -37,7 +38,7 @@ def build_countermark_stat_rank_message(
             f"六角刻印{command.stat.title}榜 或 2角刻印{command.stat.title}榜"
         )
 
-    timestamp = _now_text() if now_text is None else now_text
+    timestamp = current_time_text() if now_text is None else now_text
     lines = [
         f"💮【{scope_text}{command.stat.title}榜】（截至{timestamp}）",
         f"范围：{scope_text} | 展示前 {min(RANK_LIST_SIZE, len(items))} 名",
@@ -47,11 +48,6 @@ def build_countermark_stat_rank_message(
         for index, item in enumerate(items[:RANK_LIST_SIZE], start=1)
     )
     return "\n".join(lines)
-
-
-def _now_text() -> str:
-    now = datetime.now(timezone(timedelta(hours=8)))
-    return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _scope_text(command: CountermarkStatRankCommand) -> str:
