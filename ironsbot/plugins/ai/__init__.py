@@ -75,7 +75,7 @@ def _build_guard_message(event: MessageEvent) -> str:
     return message
 
 
-async def _capture_ai_prompt(
+def _capture_ai_prompt(
     event: MessageEvent,
     state: T_State,
     features: FeatureService,
@@ -97,12 +97,12 @@ async def _capture_ai_prompt(
     return True
 
 
-async def _capture_group_ai_prompt(
+def _capture_group_ai_prompt(
     event: GroupMessageEvent,
     state: T_State,
     features: FeatureService,
 ) -> bool:
-    return await _capture_ai_prompt(event, state, features)
+    return _capture_ai_prompt(event, state, features)
 
 
 def install(

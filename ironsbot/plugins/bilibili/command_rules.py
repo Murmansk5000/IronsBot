@@ -24,7 +24,7 @@ BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
 BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 
 
-async def is_dynamic_menu_command(
+def is_dynamic_menu_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
@@ -37,7 +37,7 @@ async def is_dynamic_menu_command(
     )
 
 
-async def is_update_dynamic_command(
+def is_update_dynamic_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
@@ -54,7 +54,7 @@ async def is_update_dynamic_command(
     return features.is_superuser(event.user_id)
 
 
-async def is_bili_account_command(
+def is_bili_account_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
@@ -88,7 +88,7 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
     return None
 
 
-async def is_bili_push_mode_command(
+def is_bili_push_mode_command(
     event: MessageEvent,
     state: T_State,
 ) -> bool:

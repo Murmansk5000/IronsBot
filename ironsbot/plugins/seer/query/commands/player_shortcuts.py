@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.player_shortcuts import (
@@ -65,5 +64,5 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     matcher.append_handler(
-        partial(handle_player_shortcut, group.resources.player)
+        bind_async(handle_player_shortcut, group.resources.player)
     )

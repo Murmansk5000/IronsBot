@@ -8,7 +8,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     PriorityRelease = Callable[[dict[str, object]], Awaitable[None]]
 
 
-async def _is_rank_list_command(
+def _is_rank_list_command(
     service: RankQueryService,
     event: Event,
     state: T_State,
@@ -66,7 +66,7 @@ async def _is_rank_list_command(
     return True
 
 
-async def _store_command(
+def _store_command(
     parser: Callable[[str], object | None],
     state_key: str,
     event: Event,
@@ -244,7 +244,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=feature_rule,
         priority=group.matcher_priority("seer_rank_help"),
     )
-    help_matcher.append_handler(partial(_handle_help, query))
+    help_matcher.append_handler(bind_async(_handle_help, query))
 
     list_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_list"),
@@ -252,7 +252,7 @@ def install(group: SeerMatcherGroup) -> None:
         & Rule(partial(_is_rank_list_command, query)),
         priority=priority,
     )
-    list_matcher.append_handler(partial(_handle_list, query))
+    list_matcher.append_handler(bind_async(_handle_list, query))
 
     player_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_player"),
@@ -266,7 +266,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         priority=priority,
     )
-    player_matcher.append_handler(partial(_handle_player, query))
+    player_matcher.append_handler(bind_async(_handle_player, query))
 
     score_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_score"),
@@ -280,7 +280,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         priority=priority,
     )
-    score_matcher.append_handler(partial(_handle_score, query))
+    score_matcher.append_handler(bind_async(_handle_score, query))
 
     cache_status = group.on_fullmatch(
         with_admin_prefix(("样本情况", "样本状态")),
@@ -289,7 +289,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    cache_status.append_handler(partial(_handle_cache_status, admin))
+    cache_status.append_handler(bind_async(_handle_cache_status, admin))
 
     cache_refresh = group.on_fullmatch(
         with_admin_prefix(("刷新样本",)),
@@ -299,7 +299,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     cache_refresh.append_handler(
-        partial(
+        bind_async(
             _handle_cache_refresh,
             admin,
             group.release_priority,
@@ -320,7 +320,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     cache_batch.append_handler(
-        partial(_handle_cache_batch, admin, group.release_priority)
+        bind_async(_handle_cache_batch, admin, group.release_priority)
     )
 
     page_overview = group.on_fullmatch(
@@ -330,7 +330,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    page_overview.append_handler(partial(_handle_page_overview, admin))
+    page_overview.append_handler(bind_async(_handle_page_overview, admin))
 
     page_status = group.on_message(
         policy=CommandPolicy.command("seer_rank_page_cache_status"),
@@ -345,7 +345,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    page_status.append_handler(partial(_handle_page_status, admin))
+    page_status.append_handler(bind_async(_handle_page_status, admin))
 
     page_refresh = group.on_message(
         policy=CommandPolicy.command("seer_rank_page_cache_refresh"),
@@ -361,7 +361,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     page_refresh.append_handler(
-        partial(_handle_page_refresh, admin, group.release_priority)
+        bind_async(_handle_page_refresh, admin, group.release_priority)
     )
 
     display_limit = group.on_message(
@@ -377,5 +377,5 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     display_limit.append_handler(
-        partial(_handle_display_limit, query, group.features)
+        bind_async(_handle_display_limit, query, group.features)
     )

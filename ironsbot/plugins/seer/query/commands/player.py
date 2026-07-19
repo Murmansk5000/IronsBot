@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, no_reply
 from ironsbot.services.seer.player_binding import parse_player_binding_target
@@ -115,7 +114,7 @@ async def handle_player(
             matcher,
             event,
             namespace=PLAYER_BINDING_NAMESPACE,
-            handlers=[partial(handle_player_binding_choice, service)],
+            handlers=[bind_async(handle_player_binding_choice, service)],
             reply_check=lambda reply: (
                 parse_confirmation(reply.get_plaintext()) is not None
             ),
@@ -229,7 +228,7 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     binding_matcher.append_handler(
-        partial(handle_player_binding_command, service)
+        bind_async(handle_player_binding_command, service)
     )
 
     unbind_matcher = group.on_fullmatch(
@@ -239,7 +238,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    unbind_matcher.append_handler(partial(handle_player_unbind, service))
+    unbind_matcher.append_handler(bind_async(handle_player_unbind, service))
 
     group.on_message(
         policy=CommandPolicy.exempt("silent invalid player query blocker"),
@@ -258,5 +257,5 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    query_matcher.append_handler(partial(validate_player_id, service))
-    query_matcher.append_handler(partial(handle_player, service))
+    query_matcher.append_handler(bind_async(validate_player_id, service))
+    query_matcher.append_handler(bind_async(handle_player, service))

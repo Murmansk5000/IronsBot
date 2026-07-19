@@ -299,36 +299,30 @@ def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
 def test_group_push_subscription_command_allows_superuser_member(
     tmp_path: Path,
 ) -> None:
-    assert asyncio.run(
-        matcher_rules.match_push_subscription_command(
-            _group_event(),
-            {},
-            messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
-        )
+    assert matcher_rules.match_push_subscription_command(
+        _group_event(),
+        {},
+        messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
     )
 
 
 def test_group_push_subscription_command_allows_regular_member_to_view(
     tmp_path: Path,
 ) -> None:
-    assert asyncio.run(
-        matcher_rules.match_push_subscription_command(
-            _group_event(),
-            {},
-            messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
-        )
+    assert matcher_rules.match_push_subscription_command(
+        _group_event(),
+        {},
+        messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
     )
 
 
 def test_group_push_subscription_management_command_matches_regular_member(
     tmp_path: Path,
 ) -> None:
-    assert asyncio.run(
-        matcher_rules.match_push_subscription_command(
-            _group_event("推送管理", user_id=3003),
-            {},
-            messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
-        )
+    assert matcher_rules.match_push_subscription_command(
+        _group_event("推送管理", user_id=3003),
+        {},
+        messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
     )
 
 

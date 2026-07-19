@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeAlias
+from functools import partial
+from typing import Any, Protocol, TypeAlias, TypeVar, cast
 
 from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -23,6 +24,27 @@ REPLY_BEFORE_SEND_STATE_KEY = "_ironsbot_reply_before_send"
 PROMPT_SESSION_MANAGER_STATE_KEY = "_ironsbot_prompt_session_manager"
 _COMMAND_COOLDOWN_TOKEN_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
+T = TypeVar("T")
+
+
+class _AsyncPartial(partial):
+    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        result: Awaitable[Any] = super().__call__(*args, **kwargs)
+        return await result
+
+
+def bind_async(
+    func: Callable[..., Awaitable[T]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> Callable[..., Awaitable[T]]:
+    """Bind arguments while keeping the callable visibly asynchronous."""
+
+    return cast(
+        "Callable[..., Awaitable[T]]",
+        _AsyncPartial(func, *args, **kwargs),
+    )
 
 
 class CooldownDecision(Protocol):

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from functools import partial
 from typing import TYPE_CHECKING, cast
 
 from nonebot import logger
@@ -18,6 +17,7 @@ from ironsbot.runtime.conversations import (
     command_reply_check,
     enter_event_reply_conversation,
 )
+from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.replies import (
     finish_event_reply,
     send_event_reply,
@@ -160,7 +160,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
         matcher,
         event,
         namespace=PLAYER_DETAIL_NAMESPACE,
-        handlers=[partial(handle_player_detail_reply, spawn)],
+        handlers=[bind_async(handle_player_detail_reply, spawn)],
         reply_check=command_reply_check(prompt_plan.commands),
         prompt=player_message,
     )
@@ -289,7 +289,7 @@ async def _continue_player_detail_conversation(
         matcher,
         event,
         namespace=PLAYER_DETAIL_NAMESPACE,
-        handlers=[partial(handle_player_detail_reply, spawn)],
+        handlers=[bind_async(handle_player_detail_reply, spawn)],
         reply_check=command_reply_check(commands),
         prompt=prompt,
     )

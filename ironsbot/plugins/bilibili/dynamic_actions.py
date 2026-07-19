@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from functools import partial
 
 from nonebot.adapters.onebot.v11 import (
     Message,
@@ -11,6 +10,7 @@ from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
 from ironsbot.runtime.conversations import enter_event_reply_conversation
+from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.replies import (
     finish_event_reply,
     message_event_target,
@@ -35,7 +35,7 @@ async def wait_dynamic_select(
         matcher,
         event,
         namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-        handlers=[partial(handle_dynamic_select_action, service=service)],
+        handlers=[bind_async(handle_dynamic_select_action, service=service)],
         reply_check=is_dynamic_select_reply,
     )
 
@@ -78,7 +78,7 @@ async def handle_dynamic_menu_action(
             matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[partial(handle_dynamic_select_action, service=service)],
+            handlers=[bind_async(handle_dynamic_select_action, service=service)],
             reply_check=is_dynamic_select_reply,
             prompt=Message(result.prompt),
         )

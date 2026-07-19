@@ -18,7 +18,7 @@ PRIVATE_ACTION_KEY = "_message_action_private"
 GROUP_ACTION_KEY = "_message_action_group"
 
 
-async def match_private_command(
+def match_private_command(
     event: MessageEvent,
     state: T_State,
     *,
@@ -38,7 +38,7 @@ async def match_private_command(
     return False
 
 
-async def match_group_command(
+def match_group_command(
     event: MessageEvent,
     state: T_State,
     *,
@@ -66,7 +66,7 @@ def is_group_push_subscription_manager(
     return can_manage_group_event(messaging, event)
 
 
-async def match_push_subscription_command(
+def match_push_subscription_command(
     event: MessageEvent,
     state: T_State,
     *,
@@ -79,7 +79,7 @@ async def match_push_subscription_command(
     return messaging.matches_subscription_command(event.get_plaintext())
 
 
-async def match_push_time_command(
+def match_push_time_command(
     event: MessageEvent,
     state: T_State,
     *,
