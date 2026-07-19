@@ -196,7 +196,19 @@ class PlayerDetailService:
             peak_scores = calculate_player_peak_scores(unity_peak)
             rank_progress = RankSummaryProgress()
             peak_progress = RankSummaryProgress()
+            rank_summary_fallback = PlayerRankSummary.empty()
             peak_summary_fallback = PeakSeasonRankSummary.empty()
+            autocard_summary_fallback = RankLookupResult(
+                title="群星之巅榜",
+                score_name="分",
+            )
+
+            def record_rank_summary_error(label: str, error: Exception) -> None:
+                self._log_extra_error(label, error)
+                rank_summary_fallback.mark_failure(
+                    label,
+                    format_player_extra_error(error),
+                )
 
             def record_peak_summary_error(label: str, error: Exception) -> None:
                 self._log_extra_error(label, error)
@@ -204,6 +216,13 @@ class PlayerDetailService:
                     label,
                     format_player_extra_error(error),
                 )
+
+            def record_autocard_summary_error(
+                label: str,
+                error: Exception,
+            ) -> None:
+                self._log_extra_error(label, error)
+                autocard_summary_fallback.failure = format_player_extra_error(error)
 
             rank_summary, peak_summary, autocard_summary = await asyncio.gather(
                 optional_player_extra(
@@ -221,9 +240,9 @@ class PlayerDetailService:
                         skin_score=unity_part_one.skin_num,
                         progress=rank_progress,
                     ),
-                    PlayerRankSummary.empty(),
-                    extra_errors.collection,
-                    on_error=self._log_extra_error,
+                    rank_summary_fallback,
+                    None,
+                    on_error=record_rank_summary_error,
                     timeout_seconds=timeout_seconds,
                     error_label_factory=lambda: (
                         rank_progress.current_title or "全服排行"
@@ -255,13 +274,12 @@ class PlayerDetailService:
                         game,
                         player_id,
                     ),
-                    RankLookupResult(title="群星之巅榜", score_name="分"),
-                    extra_errors.autocard,
-                    on_error=self._log_extra_error,
+                    autocard_summary_fallback,
+                    None,
+                    on_error=record_autocard_summary_error,
                     timeout_seconds=timeout_seconds,
                 ),
             )
-            extra_errors.collection.extend(rank_summary.errors)
             validated_peak = validate_player_peak_season(
                 unity_peak,
                 peak_scores,

@@ -8,6 +8,7 @@ from ironsbot.services.seer.rank_constants import (
 )
 from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
+    PlayerRankSummary,
     RankLookupResult,
     RankSummaryProgress,
 )
@@ -146,6 +147,17 @@ def test_peak_rank_summary_marks_only_the_failed_mode_when_title_matches() -> No
     assert summary.standard.failure is None
     assert summary.wild.failure == "查询超时"
     assert summary.expert.failure is None
+
+
+def test_player_rank_summary_marks_only_the_failed_metric() -> None:
+    summary = PlayerRankSummary.empty()
+
+    summary.mark_failure("图鉴积分榜", "查询超时")
+
+    assert summary.book.failure == "查询超时"
+    assert summary.achieve.failure is None
+    assert summary.breakdown.pet_kind is not None
+    assert summary.breakdown.pet_kind.failure is None
 
 
 def test_peak_rank_summary_marks_all_modes_when_the_whole_section_fails() -> None:

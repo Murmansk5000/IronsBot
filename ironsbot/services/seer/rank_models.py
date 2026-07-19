@@ -136,6 +136,26 @@ class PlayerRankSummary:
             breakdown=BookBreakdownSummary.empty(),
         )
 
+    def mark_failure(self, title: str, failure: str) -> None:
+        results = (
+            self.book,
+            self.achieve,
+            self.breakdown.pet_kind,
+            self.breakdown.skin,
+            self.breakdown.countermark,
+            self.breakdown.outfit_suit,
+            self.breakdown.outfit_part,
+            self.breakdown.mount,
+        )
+        present_results = tuple(result for result in results if result is not None)
+        matching_results = tuple(
+            result
+            for result in present_results
+            if title in {result.title, f"{result.title}榜"}
+        )
+        for result in matching_results or present_results:
+            result.failure = failure
+
 
 @dataclass(slots=True)
 class PeakSeasonRankSummary:

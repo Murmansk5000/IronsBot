@@ -119,10 +119,16 @@ def format_metric_line(
     local_key: str,
 ) -> str | None:
     value_text = str(value) if value is not None and value >= 0 else "暂无数据"
+    failure = None if rank_result is None else getattr(rank_result, "failure", None)
+    rank_text = (
+        f"全服排行失败：{failure}"
+        if failure
+        else format_rank_position_text(rank_result)
+    )
 
     metric_text = join_metric_parts(
         value_text,
-        format_rank_position_text(rank_result),
+        rank_text,
         sample_rank_text(local_summary, local_key),
     )
     return f"{title}：{metric_text}"

@@ -22,6 +22,7 @@ from ironsbot.services.seer.player_peak_formatting import (
 from ironsbot.services.seer.player_query import PlayerDetailErrors
 from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
+    PlayerRankSummary,
     RankLookupResult,
 )
 
@@ -398,6 +399,44 @@ def test_format_player_detail_messages_builds_collection_and_peak() -> None:
     assert "【扩展数据提示】" not in messages.peak_message
     assert "群星牌排行失败" in messages.autocard_message
     assert "群星牌排行失败" not in messages.collection_message
+
+
+def test_format_player_detail_messages_show_rank_failures_on_affected_lines() -> None:
+    user_info = UserInfo(nick="赛小息")
+    more_info = MoreInfo(pet_all_num=321, total_achieve=56)
+    unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
+    rank_summary = PlayerRankSummary.empty()
+    rank_summary.book.score = 1234
+    rank_summary.book.failure = "查询超时"
+    autocard_summary = RankLookupResult(
+        title="群星之巅榜",
+        score_name="分",
+        score=3456,
+        failure="查询超时",
+    )
+
+    messages = format_player_detail_messages(
+        player_id=PLAYER_ID,
+        user_info=user_info,
+        more_info=more_info,
+        unity_part_one=_as_any(unity_part_one),
+        unity_peak=_as_any(_unity_peak()),
+        rank_summary=rank_summary,
+        peak_rank_summary=PeakSeasonRankSummary.empty(),
+        autocard_rank_summary=autocard_summary,
+        local_rank_summary=_as_any(_LocalSummary()),
+        empty_local_rank_summary=_as_any(_LocalSummary()),
+        has_collection=True,
+        needs_peak_section=False,
+        has_autocard_rank=True,
+        show_local_rank=False,
+        extra_errors=PlayerDetailErrors(),
+    )
+
+    assert "图鉴积分：1234｜全服排行失败：查询超时" in messages.collection_message
+    assert "群星之巅：3456分｜全服排行失败：查询超时" in messages.autocard_message
+    assert "【扩展数据提示】" not in messages.collection_message
+    assert "【扩展数据提示】" not in messages.autocard_message
 
 
 def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
