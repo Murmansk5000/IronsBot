@@ -1,24 +1,33 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 
 import nonebot
 import pytest
 from pytest import MonkeyPatch
 
+from ironsbot.config.models.ai import AiConfig
+from ironsbot.core.features import FeatureConfig
+from ironsbot.services.ai.history import HistoryMessage
+from ironsbot.services.ai.responses import AiResponseResult
+from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from tests.helpers.ai import FakeAiCompletionClient
 from tests.helpers.onebot_events import group_message_event
+from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 456
 USER_ID = 123
-
+CompletionRequester = Callable[
+    [AiConfig, list[HistoryMessage]],
+    Awaitable[AiResponseResult],
+]
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
-service = pytest.importorskip("ironsbot.services.ai.chat")
-constants = pytest.importorskip("ironsbot.services.ai.constants")
-ai_client = pytest.importorskip("ironsbot.services.ai.client")
-source_context = pytest.importorskip("ironsbot.services.ai.source_context")
+onebot_context = pytest.importorskip("ironsbot.runtime.onebot_context")
 
 
 class FakeBot:
@@ -32,45 +41,97 @@ class FakeBot:
         return {"group_id": group_id, "group_name": "示例群"}
 
 
-def test_can_show_admin_notice_for_superuser(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(service, "is_superuser", lambda user_id: user_id == USER_ID)
-    monkeypatch.setattr(service, "group_has_feature", lambda *_args: False)
+async def _successful_completion(
+    _config: AiConfig,
+    _messages: list[HistoryMessage],
+) -> AiResponseResult:
+    return AiResponseResult(status_code=200, reply="正常回复")
 
-    assert service.can_show_admin_notice(
-        group_message_event(user_id=USER_ID, group_id=GROUP_ID)
+
+def _ai_service(
+    *,
+    admin_groups: tuple[int, ...] = (),
+    superusers: tuple[int, ...] = (),
+    request_completion: CompletionRequester = _successful_completion,
+) -> AiService:
+    config = AiConfig(api_key="test-key", memory=False)
+    runtime = build_test_runtime(
+        feature_config=FeatureConfig(
+            group_policy={
+                str(group_id): ["admin_notice"] for group_id in admin_groups
+            },
+        ),
+        superuser_ids=superusers,
+    )
+    return AiService(
+        config,
+        runtime.features,
+        runtime.admin_notices,
+        ("战队",),
+        FakeAiCompletionClient(config, request_completion),
     )
 
 
-def test_can_show_admin_notice_for_admin_notice_group(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(service, "is_superuser", lambda _user_id: False)
-    monkeypatch.setattr(
-        service,
-        "group_has_feature",
-        lambda group_id, feature: group_id == GROUP_ID and feature == "admin_notice",
-    )
-
-    assert service.can_show_admin_notice(
-        group_message_event(user_id=USER_ID, group_id=GROUP_ID)
+async def _failed_completion(
+    _config: AiConfig,
+    _messages: list[HistoryMessage],
+) -> AiResponseResult:
+    return AiResponseResult(
+        status_code=500,
+        error_kind="http",
+        error_title="接口返回异常",
+        error_detail="boom",
     )
 
 
-def test_can_hide_admin_notice_for_regular_group(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(service, "is_superuser", lambda _user_id: False)
-    monkeypatch.setattr(service, "group_has_feature", lambda *_args: False)
+@pytest.mark.asyncio
+async def test_ai_error_is_visible_to_superuser() -> None:
+    service = _ai_service(
+        superusers=(USER_ID,),
+        request_completion=_failed_completion,
+    )
 
-    assert not service.can_show_admin_notice(
-        group_message_event(user_id=USER_ID, group_id=GROUP_ID)
+    assert (
+        await service.chat_reply(
+            user_id=USER_ID,
+            group_id=GROUP_ID,
+            prompt="hello",
+        )
+        == REQUEST_FAILED_REPLY
     )
 
 
-def test_ai_error_reply_detection() -> None:
-    assert service.is_ai_error_reply(constants.REQUEST_FAILED_REPLY)
-    assert service.is_ai_error_reply(constants.EMPTY_REPLY)
-    assert not service.is_ai_error_reply("正常回复")
+@pytest.mark.asyncio
+async def test_ai_error_is_visible_in_admin_notice_group() -> None:
+    service = _ai_service(
+        admin_groups=(GROUP_ID,),
+        request_completion=_failed_completion,
+    )
+
+    assert (
+        await service.chat_reply(
+            user_id=USER_ID,
+            group_id=GROUP_ID,
+            prompt="hello",
+        )
+        == REQUEST_FAILED_REPLY
+    )
+
+
+@pytest.mark.asyncio
+async def test_ai_error_is_silent_in_regular_group() -> None:
+    service = _ai_service(
+        request_completion=_failed_completion,
+    )
+
+    assert (
+        await service.chat_reply(
+            user_id=USER_ID,
+            group_id=GROUP_ID,
+            prompt="hello",
+        )
+        is None
+    )
 
 
 def test_ai_notice_source_context_includes_group_user_and_message() -> None:
@@ -83,7 +144,12 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
     )
 
     source = asyncio.run(
-        source_context.build_ai_notice_source_context(event, "你好", bot=FakeBot())
+        onebot_context.build_notice_source(
+            event,
+            "你好",
+            {},
+            bot=FakeBot(),
+        )
     )
 
     assert f"群：示例群（{GROUP_ID}）" in source
@@ -92,9 +158,7 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
     assert "消息：你好" in source
 
 
-def test_ai_notice_source_context_falls_back_to_group_alias(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_ai_notice_source_context_falls_back_to_group_alias() -> None:
     event = group_message_event("hello", group_id=GROUP_ID)
 
     async def fail_group_info(**_kwargs: object) -> dict[str, object]:
@@ -103,16 +167,11 @@ def test_ai_notice_source_context_falls_back_to_group_alias(
     class FailingBot:
         get_group_info = staticmethod(fail_group_info)
 
-    monkeypatch.setattr(
-        source_context,
-        "_configured_group_alias",
-        lambda group_id: "example" if group_id == GROUP_ID else "",
-    )
-
     source = asyncio.run(
-        source_context.build_ai_notice_source_context(
+        onebot_context.build_notice_source(
             event,
             "你好",
+            {"example": GROUP_ID},
             bot=FailingBot(),
         )
     )
@@ -120,10 +179,30 @@ def test_ai_notice_source_context_falls_back_to_group_alias(
     assert f"群：example（{GROUP_ID}）" in source
 
 
-def test_ai_client_notice_appends_source_context() -> None:
-    message = source_context.append_ai_notice_source_context(
-        "AI聊天接口异常。",
-        "群：456",
-    )
+@pytest.mark.asyncio
+async def test_ai_admin_notice_includes_source_and_is_limited(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    sent: list[str] = []
 
-    assert message == "AI聊天接口异常。\n\n触发来源：\n群：456"
+    async def fake_send(
+        _service: AdminNoticeService,
+        message: str,
+        **_kwargs: object,
+    ) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr(AdminNoticeService, "send", fake_send)
+    service = _ai_service(
+        request_completion=_failed_completion,
+    )
+    for _ in range(2):
+        await service.chat_reply(
+            user_id=USER_ID,
+            group_id=GROUP_ID,
+            prompt="hello",
+            source_context="群：456",
+        )
+
+    assert len(sent) == 1
+    assert "触发来源：\n群：456" in sent[0]

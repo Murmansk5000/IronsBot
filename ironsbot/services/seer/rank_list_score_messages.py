@@ -14,8 +14,6 @@ from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_score,
 )
 
-__all__ = ["format_global_rank_score_message"]
-
 
 def format_global_rank_score_message(
     spec: GlobalRankSpec,

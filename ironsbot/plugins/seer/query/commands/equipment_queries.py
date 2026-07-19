@@ -1,108 +1,63 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ruff: noqa: TC002
 """Equipment query matchers."""
 
 from __future__ import annotations
 
-from nonebot.adapters import Event
-from nonebot.matcher import Matcher
-from nonebot.typing import T_State
-from seerapi_models import EquipORM, SuitORM, TitlePartORM
+from functools import partial
+from typing import TYPE_CHECKING
 
-from ironsbot.integrations.seer_data.getters import (
-    GetEquipData,
-    GetSuitData,
-    GetTitleData,
-)
-from ironsbot.utils.rule import no_reply, startswith_or_endswith
+from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.rules import no_reply, startswith_or_endswith
 
-from ..group import matcher_group, seer_feature_priority, seer_feature_rule
-from . import equipment_handlers
+from ..group import SeerMatcherGroup, seer_feature_rule
+from ..query_conversation import make_query_handler
 from .query_rules import not_rank_query
 
-suit_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_equipment")
-    & startswith_or_endswith(
-        ("套装", "查询套装信息"),
-        suffixes="套装",
-    )
-    & not_rank_query
-    & no_reply(),
-    priority=seer_feature_priority("seer_equipment"),
-)
+if TYPE_CHECKING:
+    from ironsbot.services.seer.equipment import EquipmentKind
 
 
-@suit_matcher.handle()
-async def _handle_suit(
-    matcher: Matcher,
-    state: T_State,
-    event: Event,
-    suits: tuple[
-        SuitORM,
+def install(group: SeerMatcherGroup) -> None:
+    service = group.resources.equipment
+    commands: tuple[
+        tuple[EquipmentKind, str, tuple[str, ...], str, str],
         ...,
-    ] = GetSuitData(),
-) -> None:
-    await equipment_handlers.handle_suit(
-        matcher=matcher,
-        state=state,
-        event=event,
-        suits=suits,
+    ] = (
+        (
+            "suit",
+            "seer_suit_query",
+            ("套装", "查询套装信息"),
+            "套装",
+            "请问你想查询的套装是……",
+        ),
+        (
+            "equip",
+            "seer_equipment_query",
+            ("部件", "查询部件信息"),
+            "部件",
+            "请问你想查询的装备部件是……",
+        ),
+        (
+            "title",
+            "seer_title_query",
+            ("称号", "查询称号信息"),
+            "称号",
+            "请问你想查询的称号是……",
+        ),
     )
-
-equip_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_equipment")
-    & startswith_or_endswith(
-        ("部件", "查询部件信息"),
-        suffixes="部件",
-    )
-    & not_rank_query
-    & no_reply(),
-    priority=seer_feature_priority("seer_equipment"),
-)
-
-
-@equip_matcher.handle()
-async def _handle_equip(
-    matcher: Matcher,
-    state: T_State,
-    event: Event,
-    equips: tuple[
-        EquipORM,
-        ...,
-    ] = GetEquipData(),
-) -> None:
-    await equipment_handlers.handle_equip(
-        matcher=matcher,
-        state=state,
-        event=event,
-        equips=equips,
-    )
-
-title_matcher = matcher_group.on_message(
-    rule=seer_feature_rule("seer_equipment")
-    & startswith_or_endswith(
-        ("称号", "查询称号信息"),
-        suffixes="称号",
-    )
-    & not_rank_query
-    & no_reply(),
-    priority=seer_feature_priority("seer_equipment"),
-)
-
-
-@title_matcher.handle()
-async def _handle_title(
-    matcher: Matcher,
-    state: T_State,
-    event: Event,
-    titles: tuple[
-        TitlePartORM,
-        ...,
-    ] = GetTitleData(),
-) -> None:
-    await equipment_handlers.handle_title(
-        matcher=matcher,
-        state=state,
-        event=event,
-        titles=titles,
-    )
+    for kind, command_id, prefixes, suffix, prompt_title in commands:
+        matcher = group.on_message(
+            policy=CommandPolicy.command(command_id),
+            rule=seer_feature_rule(group.features, "seer_equipment")
+            & startswith_or_endswith(prefixes, suffixes=suffix)
+            & not_rank_query
+            & no_reply(),
+            priority=group.matcher_priority("seer_equipment"),
+        )
+        matcher.append_handler(
+            make_query_handler(
+                partial(service.search, kind),
+                partial(service.select, kind),
+                prompt_title,
+            )
+        )

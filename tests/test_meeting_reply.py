@@ -1,64 +1,18 @@
-from dataclasses import dataclass
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
-
-from tests.helpers.onebot_events import group_message_event, private_message_event
-
-_SERVICE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "plugins"
-    / "meeting"
-    / "service.py"
-)
-_SPEC = spec_from_file_location("meeting_service_for_test", _SERVICE_PATH)
-assert _SPEC is not None and _SPEC.loader is not None
-_SERVICE = module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_SERVICE)
-build_meeting_reply = _SERVICE.build_meeting_reply
-is_meeting_command_event = _SERVICE.is_meeting_command_event
-
-
-@dataclass
-class MeetingConfig:
-    number: str
-    commands: tuple[str, ...] = ("会议",)
-    template: str = (
-        "腾讯会议\n"
-        "腾讯会议号：{meeting_number}\n"
-        "点击链接直接加入：{meeting_url}"
-    )
-
-
-def _group_event(text: str = "会议"):
-    return group_message_event(
-        text,
-        user_id=2,
-        group_id=4,
-    )
-
-
-def _private_event(text: str = "会议"):
-    return private_message_event(
-        text,
-        user_id=2,
-    )
+from ironsbot.services.messaging.meeting import build_meeting_reply
 
 
 def test_build_meeting_reply_returns_none_without_number() -> None:
-    assert build_meeting_reply(MeetingConfig(number="")) is None
+    assert build_meeting_reply("", "{meeting_number}") is None
 
 
 def test_build_meeting_reply_formats_tencent_meeting_number() -> None:
     reply = build_meeting_reply(
-        MeetingConfig(
-            number="6638682008",
-            template=(
-                "会议号：{meeting_number}\n"
-                "数字：{meeting_digits}\n"
-                "链接：{meeting_url}"
-            ),
-        )
+        "6638682008",
+        (
+            "会议号：{meeting_number}\n"
+            "数字：{meeting_digits}\n"
+            "链接：{meeting_url}"
+        ),
     )
 
     assert reply == (
@@ -66,27 +20,3 @@ def test_build_meeting_reply_formats_tencent_meeting_number() -> None:
         "数字：6638682008\n"
         "链接：https://meeting.tencent.com/p/6638682008"
     )
-
-
-def test_is_meeting_command_event_requires_group_feature() -> None:
-    matched = is_meeting_command_event(
-        _group_event(),
-        MeetingConfig(number="6638682008"),
-        is_group_allowed=lambda *_args: False,
-        is_private_allowed=lambda *_args: True,
-        command_matches=lambda text, commands: text in commands,
-    )
-
-    assert not matched
-
-
-def test_is_meeting_command_event_allows_private_command() -> None:
-    matched = is_meeting_command_event(
-        _private_event(),
-        MeetingConfig(number="6638682008"),
-        is_group_allowed=lambda *_args: False,
-        is_private_allowed=lambda *_args: True,
-        command_matches=lambda text, commands: text in commands,
-    )
-
-    assert matched

@@ -8,30 +8,6 @@ from ironsbot.integrations.headless_seer.packet.packet import Deserializable
 from ..as3bytearray import AS3ByteArray
 
 
-class MainLoginPacket(Deserializable):
-    password: Annotated[str, f.Unicode[32]]
-    tmcid: f.UInt
-    game_id: f.UInt
-    _: f.UInt
-    img_id: Annotated[AS3ByteArray, f.Char[16]]
-    img_by: Annotated[AS3ByteArray, f.Char[6]]
-    top_left_tmcid: Annotated[AS3ByteArray, f.Char[64]]
-    channel: f.UInt
-    device_id: Annotated[str, f.Unicode[16]]
-
-
-# class SoUserInfo(BasePacket, Deserializable):
-#     user_id: f.UInt
-#     password: str = f.string_field(maxlen=8)
-#     nick_name: str = f.string_field()
-#     color: f.UInt
-#     texture: f.UInt
-#     clothes: Annotated[tuple[int, ...], f.Array[f.UInt, 5]]
-#     custom_id: str = f.string_field()
-#     last_user_id: f.UInt = 1
-#     otherlogintype: Annotated[Literal[0, 1, 2, 3], f.UInt] = 0
-
-
 class SessionPackct(Deserializable):
     session: Annotated[bytes, f.Char[16]]
     _: f.UInt = 0

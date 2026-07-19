@@ -44,8 +44,3 @@ async def find_rank_by_cached_position(  # noqa: PLR0913
             break
 
     return None
-
-
-__all__ = [
-    "find_rank_by_cached_position",
-]

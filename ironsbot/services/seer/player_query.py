@@ -5,6 +5,8 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
+from ironsbot.services.seer.rank_peak import build_peak_rating_score
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, MutableMapping
     from typing import Any
@@ -262,12 +264,6 @@ def _format_player_extra_error(error: Exception) -> str:
     if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
         return "查询超时"
     return str(error) or type(error).__name__
-
-
-def build_peak_rating_score(rank: int, star: int) -> int | None:
-    if rank <= 0 and star <= 0:
-        return None
-    return rank * 100000 + star
 
 
 def resolve_player_detail_reply(text_value: str) -> PlayerDetailReplyRequest | None:

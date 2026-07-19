@@ -1,44 +1,45 @@
 import asyncio
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 from pytest import MonkeyPatch
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.seer import RankPageRefreshConfig
-from ironsbot.integrations.headless_seer.activity import (
-    format_recent_headless_operation,
-    headless_operation,
-    reset_headless_operation_state,
-)
 from ironsbot.integrations.headless_seer.game import SeerGame
+from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer import rank_page_refresh
 from ironsbot.services.seer.rank_list_models import GlobalRankSpec
 from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
 
+if TYPE_CHECKING:
+    from ironsbot.services.seer.rank import RankService
+
 
 def test_headless_operation_context_keeps_recent_operation() -> None:
-    reset_headless_operation_state()
+    operations = HeadlessOperationTracker()
 
-    with headless_operation(
+    with operations.track(
         "后台刷榜缓存",
         "群星牌 1-100名",
         source="后台刷榜缓存",
         background=True,
     ):
         assert (
-            format_recent_headless_operation()
+            operations.format_recent()
             == "后台刷榜缓存：群星牌 1-100名（后台操作）"
         )
 
     assert (
-        format_recent_headless_operation()
+        operations.format_recent()
         == "后台刷榜缓存：群星牌 1-100名（后台操作）"
     )
-    reset_headless_operation_state()
-    assert format_recent_headless_operation() == ""
+    assert operations.format_recent(now=float("inf")) == ""
 
 
 def test_headless_disconnect_notice_includes_recent_operation() -> None:
     async def run() -> None:
-        reset_headless_operation_state()
+        operations = HeadlessOperationTracker()
         notices: list[tuple[bool, str, str, int | None]] = []
 
         async def notifier(
@@ -55,9 +56,11 @@ def test_headless_disconnect_notice_includes_recent_operation() -> None:
             "password",
             login_server_url="https://example.invalid/unity-ip.txt",
             state_notifier=notifier,
+            operations=operations,
+            spawn=TaskOwner().create,
         )
 
-        with headless_operation(
+        with operations.track(
             "后台刷榜缓存",
             "图鉴积分 101-200名",
             source="后台刷榜缓存",
@@ -99,6 +102,8 @@ def test_intentional_logout_does_not_notify_or_reconnect() -> None:
             login_server_url="https://example.invalid/unity-ip.txt",
             reconnect_retries=-1,
             state_notifier=notifier,
+            operations=HeadlessOperationTracker(),
+            spawn=TaskOwner().create,
         )
 
         game.logout()
@@ -127,28 +132,32 @@ def test_rank_page_refresh_enters_backoff_after_connection_failure(
         async def fail_fetch(*_args: object, **_kwargs: object) -> list[object]:
             raise TimeoutError
 
-        monkeypatch.setattr(
-            rank_page_refresh,
-            "get_rank_page_refresh_config",
-            lambda: RankPageRefreshConfig(
+        rank = cast(
+            "RankService",
+            type("FailingRank", (), {"fetch_range": fail_fetch})(),
+        )
+        service = rank_page_refresh.RankPageRefreshService(
+            RankPageRefreshConfig(
                 pages_per_run=1,
                 pages_per_run_min=1,
             ),
+            rank,
         )
         monkeypatch.setattr(
-            rank_page_refresh,
-            "preview_rank_page_refresh_targets",
-            lambda _rank_keys=None: [target],
+            rank_page_refresh.RankPageRefreshService,
+            "preview",
+            lambda _self, _rank_keys=None: [target],
         )
-        monkeypatch.setattr(rank_page_refresh, "get_game_client", object)
-        monkeypatch.setattr(rank_page_refresh, "fetch_daily_rank_page", fail_fetch)
-        rank_page_refresh._rank_page_refresh_state.backoff_until = 0
+        game = cast(
+            "SeerGame",
+            SimpleNamespace(operations=HeadlessOperationTracker()),
+        )
 
-        result = await rank_page_refresh.refresh_rank_page_cache()
+        result = await service.refresh(game)
         assert result.failed == 1
-        assert rank_page_refresh._rank_page_refresh_backoff_remaining() > 0
+        assert service.backoff_remaining() > 0
 
-        skipped = await rank_page_refresh.refresh_rank_page_cache()
+        skipped = await service.refresh(game)
         assert skipped.total == 0
 
     asyncio.run(run())

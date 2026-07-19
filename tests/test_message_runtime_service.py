@@ -1,34 +1,21 @@
-import sys
 from dataclasses import dataclass
-from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
 
-_SERVICE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "ironsbot"
-    / "plugins"
-    / "messaging"
-    / "runtime_service.py"
+from ironsbot.core.commands import command_text_matches
+from ironsbot.services.messaging.service import (
+    build_schedule_job_id,
+    build_schedule_trigger_kwargs,
+    find_command_action,
 )
-_SPEC = spec_from_file_location("message_runtime_service_for_test", _SERVICE_PATH)
-assert _SPEC is not None and _SPEC.loader is not None
-_SERVICE = module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _SERVICE
-_SPEC.loader.exec_module(_SERVICE)
-build_schedule_job_id = _SERVICE.build_schedule_job_id
-build_schedule_trigger_kwargs = _SERVICE.build_schedule_trigger_kwargs
-command_text_matches = _SERVICE.command_text_matches
-find_command_action = _SERVICE.find_command_action
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FakeCommandAction:
     enabled: bool
     commands: list[str]
     feature: str = "text"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FakeScheduleAction:
     hour: int
     minute: int
@@ -54,10 +41,10 @@ def test_find_command_action_skips_disabled_and_disallowed() -> None:
 
 def test_build_schedule_job_id_sanitizes_raw_id() -> None:
     assert build_schedule_job_id("group_schedule", 3, "活动 链接!") == (
-        "message_action_group_schedule_3"
+        "group_schedule_3"
     )
     assert build_schedule_job_id("private_schedule", 2, "") == (
-        "message_action_private_schedule_task_2"
+        "private_schedule_task_2"
     )
 
 

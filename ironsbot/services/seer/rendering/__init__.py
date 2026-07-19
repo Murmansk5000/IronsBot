@@ -1,14 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from .custom_pet_info import render_custom_pet_info
-from .peak_pet_rank import render_peak_pet_rank
-from .peak_pool import render_peak_pool
-from .peak_pool_vote import render_peak_pool_vote
-from .type_matchup import render_type_matchup
+from collections.abc import Mapping, Sequence
+from os import PathLike
+from typing import Any, Protocol, TypeAlias
 
-__all__ = [
-    "render_custom_pet_info",
-    "render_peak_pet_rank",
-    "render_peak_pool",
-    "render_peak_pool_vote",
-    "render_type_matchup",
-]
+TemplatePath: TypeAlias = (
+    str | PathLike[str] | Sequence[str | PathLike[str]]
+)
+
+
+class HtmlTemplateRenderer(Protocol):
+    async def __call__(
+        self,
+        template_path: TemplatePath,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes: ...

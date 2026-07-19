@@ -2,18 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-
-@dataclass(frozen=True, slots=True)
-class CachedRankItem:
-    id: int
-    nick: str
-    score: int
+if TYPE_CHECKING:
+    from ironsbot.services.seer.rank_models import RankEntry
 
 
 @dataclass(frozen=True, slots=True)
 class CachedRankPage:
-    items: list[CachedRankItem]
+    items: list[RankEntry]
     fetched_at: float
 
 
@@ -38,11 +35,3 @@ class CachedRankPageSummary:
     max_score: int | None = None
     is_stale: bool = False
     is_partial: bool = False
-
-
-__all__ = [
-    "CachedRankItem",
-    "CachedRankLookup",
-    "CachedRankPage",
-    "CachedRankPageSummary",
-]

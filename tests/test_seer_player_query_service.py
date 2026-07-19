@@ -14,7 +14,6 @@ from ironsbot.services.seer.player_query import (
     PlayerDetailReplyRequest,
     PlayerPeakScores,
     PlayerQuerySectionPlan,
-    build_peak_rating_score,
     cached_player_detail_message,
     calculate_player_peak_scores,
     extract_player_query_arg,
@@ -41,6 +40,7 @@ from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
     RankLookupResult,
 )
+from ironsbot.services.seer.rank_peak import build_peak_rating_score
 from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
 EXPERT_MATCH_COUNT = 113

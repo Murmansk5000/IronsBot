@@ -63,9 +63,3 @@ async def fetch_rank_range(
 
     result = await fetch_rank_range_result(game, **kwargs)
     return result.items
-
-
-__all__ = [
-    "fetch_rank_range",
-    "fetch_rank_range_result",
-]

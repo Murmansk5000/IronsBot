@@ -6,7 +6,6 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.seer import SeasonCountdownConfig
 from ironsbot.services.seer import season_countdown
-from tests.helpers.config import stub_app_config
 
 CHINA_TZ = season_countdown.CHINA_TZ
 
@@ -34,16 +33,10 @@ class FakeSession:
 def test_format_season_countdown_uses_peak_season(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        season_countdown,
-        "get_app_config",
-        lambda: stub_app_config(
-            season_config=SeasonCountdownConfig(
-                autocard_name="群星牌赛季",
-                autocard_start_time=None,
-                autocard_end_time=None,
-            )
-        ),
+    config = SeasonCountdownConfig(
+        autocard_name="群星牌赛季",
+        autocard_start_time=None,
+        autocard_end_time=None,
     )
     monkeypatch.setattr(
         season_countdown,
@@ -55,7 +48,7 @@ def test_format_season_countdown_uses_peak_season(
         end_time=datetime(2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ),
     )
 
-    message = season_countdown.format_season_countdown(FakeSession(peak))
+    message = season_countdown.format_season_countdown(FakeSession(peak), config)
 
     assert "巅峰圣战赛季：2026-04-17 10:00 ~ 2026-07-17 10:00" in message
     assert "状态：进行中，剩余 18天22小时0分钟" in message
@@ -65,19 +58,13 @@ def test_format_season_countdown_uses_peak_season(
 def test_format_season_countdown_uses_configured_autocard_time(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        season_countdown,
-        "get_app_config",
-        lambda: stub_app_config(
-            season_config=SeasonCountdownConfig(
-                autocard_name="群星牌S1赛季",
-                autocard_start_time=datetime(
-                    2026, 6, 20, 10, 0, 0, tzinfo=CHINA_TZ
-                ),
-                autocard_end_time=datetime(
-                    2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ
-                ),
-            )
+    config = SeasonCountdownConfig(
+        autocard_name="群星牌S1赛季",
+        autocard_start_time=datetime(
+            2026, 6, 20, 10, 0, 0, tzinfo=CHINA_TZ
+        ),
+        autocard_end_time=datetime(
+            2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ
         ),
     )
     monkeypatch.setattr(
@@ -86,7 +73,7 @@ def test_format_season_countdown_uses_configured_autocard_time(
         FakeDateTime,
     )
 
-    message = season_countdown.format_season_countdown(FakeSession(None))
+    message = season_countdown.format_season_countdown(FakeSession(None), config)
 
     assert "巅峰圣战赛季：未找到赛季数据" in message
     assert "群星牌S1赛季：2026-06-20 10:00 ~ 2026-07-17 10:00" in message

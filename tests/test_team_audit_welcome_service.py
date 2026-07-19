@@ -1,82 +1,59 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ironsbot.services.team_audit_welcome import (
-    clear_team_audit_pending_reminder,
-    get_team_audit_pending_reminder,
-    list_team_audit_pending_reminders,
-    record_team_audit_pending_reminder,
-)
+from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
+from ironsbot.services.team.audit import TeamAuditPendingReminder
 
 GROUP_ID = 123
 USER_ID = 456
-FOLLOWUP_DELAY_HOURS = 24
-FINAL_FOLLOWUP_DELAY_HOURS = 48
 FIRST_FOLLOWUP_STEP = 1
 FINAL_FOLLOWUP_STEP = 2
 
 
+def _reminder(
+    joined_at: datetime,
+    *,
+    delay_hours: float = 24,
+    step: int = FIRST_FOLLOWUP_STEP,
+) -> TeamAuditPendingReminder:
+    return TeamAuditPendingReminder(
+        GROUP_ID,
+        USER_ID,
+        joined_at,
+        joined_at + timedelta(hours=delay_hours),
+        step,
+    )
+
+
 def test_team_audit_pending_reminder_roundtrip(tmp_path: Path) -> None:
-    cache_path = tmp_path / "team_audit" / "pending.sqlite"
+    store = SqliteTeamAuditReminderStore(
+        tmp_path / "team_audit" / "pending.sqlite"
+    )
     joined_at = datetime(2026, 6, 26, 1, 0, tzinfo=timezone.utc)
+    reminder = _reminder(joined_at)
 
-    reminder = record_team_audit_pending_reminder(
-        cache_path,
-        group_id=GROUP_ID,
-        user_id=USER_ID,
-        joined_at=joined_at,
-        delay_hours=FOLLOWUP_DELAY_HOURS,
-    )
+    store.save(reminder)
 
-    assert reminder.group_id == GROUP_ID
-    assert reminder.user_id == USER_ID
-    assert reminder.joined_at == joined_at
-    assert reminder.remind_at.isoformat() == "2026-06-27T01:00:00+00:00"
-    assert reminder.step == FIRST_FOLLOWUP_STEP
-    assert (
-        get_team_audit_pending_reminder(
-            cache_path,
-            group_id=GROUP_ID,
-            user_id=USER_ID,
-        )
-        == reminder
-    )
-    assert list_team_audit_pending_reminders(cache_path) == [reminder]
+    assert store.get(GROUP_ID, USER_ID) == reminder
+    assert store.list_all() == [reminder]
 
 
 def test_team_audit_pending_reminder_upsert_and_clear(tmp_path: Path) -> None:
-    cache_path = tmp_path / "pending.sqlite"
-    first_joined_at = datetime(2026, 6, 26, 1, 0, tzinfo=timezone.utc)
-    second_joined_at = datetime(2026, 6, 26, 2, 0, tzinfo=timezone.utc)
-
-    record_team_audit_pending_reminder(
-        cache_path,
-        group_id=GROUP_ID,
-        user_id=USER_ID,
-        joined_at=first_joined_at,
-        delay_hours=FOLLOWUP_DELAY_HOURS,
-    )
-    updated = record_team_audit_pending_reminder(
-        cache_path,
-        group_id=GROUP_ID,
-        user_id=USER_ID,
-        joined_at=second_joined_at,
-        delay_hours=FINAL_FOLLOWUP_DELAY_HOURS,
+    store = SqliteTeamAuditReminderStore(tmp_path / "pending.sqlite")
+    first = _reminder(datetime(2026, 6, 26, 1, 0, tzinfo=timezone.utc))
+    updated = _reminder(
+        datetime(2026, 6, 26, 2, 0, tzinfo=timezone.utc),
+        delay_hours=48,
         step=FINAL_FOLLOWUP_STEP,
     )
 
-    assert updated.step == FINAL_FOLLOWUP_STEP
-    assert updated.remind_at.isoformat() == "2026-06-28T02:00:00+00:00"
-    assert list_team_audit_pending_reminders(cache_path) == [updated]
+    store.save(first)
+    store.save(updated)
 
-    clear_team_audit_pending_reminder(
-        cache_path,
-        group_id=GROUP_ID,
-        user_id=USER_ID,
-    )
-
-    assert list_team_audit_pending_reminders(cache_path) == []
+    assert store.list_all() == [updated]
+    store.clear(GROUP_ID, USER_ID)
+    assert store.list_all() == []
 
 
 def test_team_audit_pending_reminder_migrates_old_schema(tmp_path: Path) -> None:
@@ -105,7 +82,7 @@ def test_team_audit_pending_reminder_migrates_old_schema(tmp_path: Path) -> None
             (GROUP_ID, USER_ID, joined_at, remind_at),
         )
 
-    reminders = list_team_audit_pending_reminders(cache_path)
+    reminders = SqliteTeamAuditReminderStore(cache_path).list_all()
 
     assert len(reminders) == 1
     assert reminders[0].step == FIRST_FOLLOWUP_STEP

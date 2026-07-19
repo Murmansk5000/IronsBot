@@ -1,35 +1,40 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
+from ironsbot.core.messaging import TargetSendSummary
 from ironsbot.plugins.bilibili import auth
-from ironsbot.shared.messaging.targets import TargetSendSummary
+from ironsbot.services.bilibili.auth import LoginQrMessageParts
+from ironsbot.services.bilibili.login import BiliLoginNotice
+from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot, Message
+    from nonebot.adapters.onebot.v11 import Message
 
 
 @pytest.mark.asyncio
-async def test_bili_login_default_notice_uses_admin_notice(
+async def test_bili_login_notice_uses_admin_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sent: dict[str, object] = {}
 
     async def fake_send_admin_notice(
+        _service: AdminNoticeService,
         message: str | Message,
         **kwargs: object,
     ) -> TargetSendSummary:
         sent.update(message=str(message), **kwargs)
         return TargetSendSummary([], [])
 
-    monkeypatch.setattr(auth, "send_admin_notice", fake_send_admin_notice)
+    monkeypatch.setattr(AdminNoticeService, "send", fake_send_admin_notice)
 
-    await auth._send_private_to_superusers(
-        "请重新登录 B站。",
-        bot=cast("Bot", object()),
+    await auth.send_bili_login_notice(
+        build_test_runtime().admin_notices,
+        BiliLoginNotice("请重新登录 B站。"),
     )
 
     assert sent["message"] == "请重新登录 B站。"
@@ -37,30 +42,18 @@ async def test_bili_login_default_notice_uses_admin_notice(
     assert sent["subscription_key"] == "bili_login_notice"
 
 
-@pytest.mark.asyncio
-async def test_bili_login_explicit_user_notice_stays_private(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sent: dict[str, object] = {}
-
-    async def fake_send_broadcast_message(
-        message: str | Message,
-        **kwargs: object,
-    ) -> TargetSendSummary:
-        sent.update(message=str(message), **kwargs)
-        return TargetSendSummary([], [])
-
-    monkeypatch.setattr(
-        "ironsbot.shared.messaging.send_broadcast_message",
-        fake_send_broadcast_message,
+def test_bili_login_qrcode_notice_renders_onebot_message() -> None:
+    message = auth.build_bili_login_message(
+        BiliLoginNotice(
+            "请重新登录 B站。\n",
+            LoginQrMessageParts(
+                tip_text="请扫码",
+                image_base64="encoded",
+            ),
+        )
     )
 
-    await auth._send_private_to_superusers(
-        "Cookie 已刷新。",
-        bot=cast("Bot", object()),
-        user_ids=[1001],
-    )
-
-    assert sent["message"] == "Cookie 已刷新。"
-    assert sent["private_user_ids"] == [1001]
-    assert "group_ids" not in sent
+    rendered = str(message)
+    assert rendered.startswith("请重新登录 B站。")
+    assert "base64://encoded" in rendered
+    assert rendered.endswith("请扫码")

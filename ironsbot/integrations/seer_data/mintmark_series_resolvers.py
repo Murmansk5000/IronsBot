@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING, Any, cast
 
-from nonebot import logger
 from seerapi_models import MintmarkClassCategoryORM, MintmarkORM
 from seerapi_models.mintmark import UniversalPartORM
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import select
-
-from ironsbot.config.loader import get_app_config
 
 from .normalization import normalize_key
 from .orm import MintmarkClassAliasORM, MintmarkSeriesMemberORM
@@ -40,6 +38,7 @@ _SERIES_ORDINAL_SELECTORS = {
 }
 _EQUAL_DUAL_ATTACK_HP_ORDINAL = 9
 _EQUAL_DUAL_ATTACK_SPEED_ORDINAL = 10
+logger = logging.getLogger(__name__)
 
 
 def _is_valid_series_ordinal_prefix(prefix: str) -> bool:
@@ -318,24 +317,27 @@ def resolve_custom_mintmark_series(
     )
 
 
-class MintmarkSeriesOrdinalResolver:
-    """Resolve inputs like ``九霄05`` or ``k1405`` to a mintmark in a series."""
+class MintmarkSeriesResolver:
+    """Resolve ordinal and stat-type queries within a mintmark class."""
 
-    __slots__ = ("alias_db", "data_db")
+    __slots__ = ("alias_db", "data_db", "merge_connected")
 
     def __init__(
         self,
         *,
+        merge_connected: bool,
         alias_db: str = _ALIAS_DB,
         data_db: str = _SEERAPI_DB,
     ) -> None:
         self.alias_db = alias_db
         self.data_db = data_db
+        self.merge_connected = merge_connected
 
     def __repr__(self) -> str:
         return (
-            "MintmarkSeriesOrdinalResolver("
-            f"alias_db={self.alias_db!r}, data_db={self.data_db!r})"
+            "MintmarkSeriesResolver("
+            f"alias_db={self.alias_db!r}, data_db={self.data_db!r}, "
+            f"merge_connected={self.merge_connected!r})"
         )
 
     def __call__(
@@ -344,11 +346,18 @@ class MintmarkSeriesOrdinalResolver:
         arg: str,
     ) -> Iterable[MintmarkORM]:
         parsed = _parse_series_ordinal_arg(arg)
-        if parsed is None:
-            return ()
-
-        raw_prefix, ordinal = parsed
-        class_ids = self._resolve_class_ids(sessions, raw_prefix)
+        ordinal: int | None = None
+        type_query = ""
+        if parsed is not None:
+            raw_prefix, ordinal = parsed
+            class_ids = self._resolve_class_ids(sessions, raw_prefix)
+        else:
+            class_ids = []
+            for raw_prefix, candidate_type_query in _iter_series_type_splits(arg):
+                class_ids = self._resolve_class_ids(sessions, raw_prefix)
+                if class_ids:
+                    type_query = candidate_type_query
+                    break
         if not class_ids:
             return ()
 
@@ -357,30 +366,45 @@ class MintmarkSeriesOrdinalResolver:
             logger.warning(f"{self!r}: 未找到数据数据库会话")
             return ()
 
-        merge_connected = get_app_config().seer.mintmark.merge_connected
+        type_results: list[MintmarkORM] = []
         for class_id in class_ids:
-            on_clause = cast("Any", UniversalPartORM.mintmark_id == MintmarkORM.id)
-            order_column = cast("Any", MintmarkORM.id)
-            statement = (
-                select(MintmarkORM)
-                .join(
-                    UniversalPartORM,
-                    on_clause,
+            mintmarks = self._load_class_mintmarks(data_session, class_id)
+            if ordinal is not None:
+                if result := _select_series_ordinal_mintmarks(mintmarks, ordinal):
+                    return result
+                continue
+            type_results.extend(
+                mintmark
+                for mintmark in mintmarks
+                if _mintmark_type_matches(
+                    _mintmark_type_description(mintmark),
+                    type_query,
                 )
-                .where(UniversalPartORM.mintmark_class_id == class_id)
-                .order_by(order_column)
             )
-            mintmarks = list(data_session.exec(statement).all())
-            if merge_connected:
-                mintmarks = [
-                    mintmark
-                    for mintmark in mintmarks
-                    if not mintmark.connected_universal_parts
-                ]
-            if result := _select_series_ordinal_mintmarks(mintmarks, ordinal):
-                return result
 
-        return ()
+        return tuple(type_results)
+
+    def _load_class_mintmarks(
+        self,
+        data_session: SQLModelSession,
+        class_id: int,
+    ) -> list[MintmarkORM]:
+        on_clause = cast("Any", UniversalPartORM.mintmark_id == MintmarkORM.id)
+        order_column = cast("Any", MintmarkORM.id)
+        statement = (
+            select(MintmarkORM)
+            .join(UniversalPartORM, on_clause)
+            .where(UniversalPartORM.mintmark_class_id == class_id)
+            .order_by(order_column)
+        )
+        mintmarks = list(data_session.exec(statement).all())
+        if not self.merge_connected:
+            return mintmarks
+        return [
+            mintmark
+            for mintmark in mintmarks
+            if not mintmark.connected_universal_parts
+        ]
 
     def _resolve_class_ids(
         self,
@@ -413,8 +437,8 @@ class MintmarkSeriesOrdinalResolver:
 
         try:
             aliases = alias_session.exec(select(MintmarkClassAliasORM)).all()
-        except OperationalError as e:
-            logger.error(f"MintmarkSeriesOrdinalResolver error: {e}")
+        except OperationalError:
+            logger.exception("MintmarkSeriesResolver failed to load aliases")
             return _resolve_unique_partial_mintmark_class_id(classes, normalized_prefix)
 
         class_ids.extend(
@@ -427,81 +451,3 @@ class MintmarkSeriesOrdinalResolver:
             classes,
             normalized_prefix,
         )
-
-
-class MintmarkSeriesTypeResolver:
-    """Resolve inputs like ``九霄盾`` or ``k14特攻`` to mintmarks in a series."""
-
-    __slots__ = ("alias_db", "data_db")
-
-    def __init__(
-        self,
-        *,
-        alias_db: str = _ALIAS_DB,
-        data_db: str = _SEERAPI_DB,
-    ) -> None:
-        self.alias_db = alias_db
-        self.data_db = data_db
-
-    def __repr__(self) -> str:
-        return (
-            "MintmarkSeriesTypeResolver("
-            f"alias_db={self.alias_db!r}, data_db={self.data_db!r})"
-        )
-
-    def __call__(
-        self,
-        sessions: dict[str, SQLModelSession],
-        arg: str,
-    ) -> Iterable[MintmarkORM]:
-        class_ids: list[int] = []
-        type_query = ""
-        ordinal_resolver = MintmarkSeriesOrdinalResolver(
-            alias_db=self.alias_db,
-            data_db=self.data_db,
-        )
-        for raw_prefix, candidate_type_query in _iter_series_type_splits(arg):
-            class_ids = ordinal_resolver._resolve_class_ids(sessions, raw_prefix)
-            if class_ids:
-                type_query = candidate_type_query
-                break
-
-        if not class_ids:
-            return ()
-
-        data_session = sessions.get(self.data_db)
-        if data_session is None:
-            logger.warning(f"{self!r}: 未找到数据数据库会话")
-            return ()
-
-        merge_connected = get_app_config().seer.mintmark.merge_connected
-        result: list[MintmarkORM] = []
-        for class_id in class_ids:
-            on_clause = cast("Any", UniversalPartORM.mintmark_id == MintmarkORM.id)
-            order_column = cast("Any", MintmarkORM.id)
-            statement = (
-                select(MintmarkORM)
-                .join(
-                    UniversalPartORM,
-                    on_clause,
-                )
-                .where(UniversalPartORM.mintmark_class_id == class_id)
-                .order_by(order_column)
-            )
-            mintmarks = list(data_session.exec(statement).all())
-            if merge_connected:
-                mintmarks = [
-                    mintmark
-                    for mintmark in mintmarks
-                    if not mintmark.connected_universal_parts
-                ]
-            result.extend(
-                mintmark
-                for mintmark in mintmarks
-                if _mintmark_type_matches(
-                    _mintmark_type_description(mintmark),
-                    type_query,
-                )
-            )
-
-        return tuple(result)

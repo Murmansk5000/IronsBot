@@ -17,17 +17,13 @@ def test_database_manager_loads_sqlite_file_into_memory(tmp_path: Path) -> None:
 
     engine = manager.get_engine("unit")
     assert engine is not None
-    session_gen = manager.get_session("unit")
-    assert session_gen is not None
-    try:
-        session = next(session_gen)
+    with manager.session("unit") as session:
+        assert session is not None
         row = (
             session.connection()
             .execute(text("SELECT name FROM sample WHERE id = 1"))
             .scalar_one()
         )
-    finally:
-        session_gen.close()
-        engine.dispose()
+    manager.close()
 
     assert row == "alpha"

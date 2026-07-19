@@ -59,10 +59,3 @@ def format_global_rank_message(
         for index, item in enumerate(items)
     )
     return "\n".join(lines)
-
-
-__all__ = [
-    "format_global_rank_line",
-    "format_global_rank_message",
-    "format_global_rank_score",
-]

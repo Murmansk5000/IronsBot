@@ -1,15 +1,14 @@
 import os
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import nonebot
-from pytest import MonkeyPatch
 
-from ironsbot.config.loader import clear_app_config_cache
+from ironsbot.config.models.settings import Settings
+from ironsbot.integrations.headless_seer.client import ClientManager
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
-clear_app_config_cache()
+os.environ["IRONSBOT_CONFIG"] = str(ROOT / "config.example.toml")
 
 try:
     nonebot.get_driver()
@@ -24,19 +23,28 @@ except RuntimeError as e:
 
 from ironsbot.config.models.seer import (
     LocalRankConfig,
+    PlayerQueryConfig,
     RankPageRefreshConfig,
-    RankQueryConfig,
 )
-from ironsbot.plugins.seer.query import runtime as seer_runtime
+from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
+from ironsbot.plugins.seer import runtime as seer_runtime
+from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.seer.local_rank import LocalRankService
+from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
+from tests.helpers.runtime import build_test_runtime
 
+if TYPE_CHECKING:
+    from ironsbot.services.seer.rank import RankService
 
-class FakeDriver:
-    def __init__(self) -> None:
-        self.startup_handlers: list[Callable[[], object]] = []
-
-    def on_startup(self, handler: Callable[[], object]) -> Callable[[], object]:
-        self.startup_handlers.append(handler)
-        return handler
+TEST_CONFIG = Settings()
+TEST_RUNTIME = build_test_runtime(feature_config=TEST_CONFIG.features)
+HEADLESS = HeadlessService(
+    ClientManager(TEST_RUNTIME.tasks.create),
+    TEST_CONFIG.operations.headless,
+    TEST_CONFIG.operations.headless_notice,
+    TEST_RUNTIME.admin_notices,
+)
+RANK = cast("RankService", object())
 
 
 class FakeScheduler:
@@ -47,35 +55,23 @@ class FakeScheduler:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
 
 
-def test_local_rank_scheduler_runtime_setup_registers_startup_once(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    registered_state = False
-    monkeypatch.setitem(
-        seer_runtime._local_rank_scheduler_runtime_state,
-        "registered",
-        registered_state,
-    )
-    driver = FakeDriver()
-    scheduler = object()
-
-    seer_runtime._setup_local_rank_scheduler_runtime(driver, scheduler)
-    seer_runtime._setup_local_rank_scheduler_runtime(driver, scheduler)
-
-    assert len(driver.startup_handlers) == 1
-
-
 def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        seer_runtime,
-        "get_local_rank_config",
-        lambda: LocalRankConfig(refresh_hour=3, refresh_minute=30),
+    config = LocalRankConfig(
+        path=tmp_path / "local-rank.sqlite",
+        refresh_hour=3,
+        refresh_minute=30,
+    )
+    service = LocalRankService(
+        SqliteLocalRankRepository(config.path, config.max_players),
+        config,
+        PlayerQueryConfig(),
+        RANK,
     )
 
-    seer_runtime.register_local_rank_refresh_job(scheduler)
+    seer_runtime.register_local_rank_refresh_job(scheduler, HEADLESS, service)
 
     assert scheduler.jobs == [
         {
@@ -83,6 +79,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_local_rank_refresh",
             "replace_existing": True,
+            "args": [HEADLESS, service],
             "hour": 3,
             "minute": 30,
         }
@@ -90,24 +87,18 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
 
 
 def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
-    monkeypatch: MonkeyPatch,
 ) -> None:
     scheduler = FakeScheduler()
-    monkeypatch.setattr(
-        seer_runtime,
-        "get_rank_query_config",
-        lambda: RankQueryConfig(
-            page_refresh=RankPageRefreshConfig(
-                enabled=True,
-                interval_minutes=15,
-                interval_offset_minutes=4,
-                schedule_jitter_seconds=240,
-                times=["01:15"],
-            )
-        ),
+    config = RankPageRefreshConfig(
+        enabled=True,
+        interval_minutes=15,
+        interval_offset_minutes=4,
+        schedule_jitter_seconds=240,
+        times=["01:15"],
     )
+    service = RankPageRefreshService(config, RANK)
 
-    seer_runtime.register_rank_page_refresh_jobs(scheduler)
+    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS, service)
 
     assert scheduler.jobs == [
         {
@@ -115,6 +106,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_interval",
             "replace_existing": True,
+            "args": [HEADLESS, service],
             "minute": "4/15",
             "jitter": 240,
         },
@@ -123,6 +115,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "trigger": "cron",
             "id": "seer_rank_page_refresh_0115",
             "replace_existing": True,
+            "args": [HEADLESS, service],
             "hour": 1,
             "minute": 15,
             "jitter": 240,

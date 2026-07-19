@@ -13,7 +13,7 @@ from sqlmodel import select
 from .value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.seer_data.sessions import SeerAPISession
+    from sqlmodel import Session
 
 MINTMARK_QUALITY_QUERY = text("SELECT mintmark_id, quality FROM mintmark_quality")
 MISSING_MINTMARK_QUALITY_MESSAGE = (
@@ -21,7 +21,7 @@ MISSING_MINTMARK_QUALITY_MESSAGE = (
 )
 
 
-def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
+def load_mintmark_quality_session(session: Session) -> dict[int, int]:
     try:
         rows = session.execute(MINTMARK_QUALITY_QUERY).all()
     except SQLAlchemyError:
@@ -41,7 +41,7 @@ def load_mintmark_quality_session(session: SeerAPISession) -> dict[int, int]:
     return quality_map
 
 
-def load_mintmarks(session: SeerAPISession) -> list[MintmarkORM]:
+def load_mintmarks(session: Session) -> list[MintmarkORM]:
     statement = select(MintmarkORM).options(
         selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
             cast("Any", AbilityPartORM.max_attr_value)
@@ -61,3 +61,9 @@ def load_mintmarks(session: SeerAPISession) -> list[MintmarkORM]:
         ),
     )
     return list(session.exec(statement).all())
+
+
+def load_countermark_rank_data(
+    session: Session,
+) -> tuple[dict[int, int], list[MintmarkORM]]:
+    return load_mintmark_quality_session(session), load_mintmarks(session)

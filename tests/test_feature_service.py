@@ -1,20 +1,16 @@
 import pytest
 from pydantic import ValidationError
-from pytest import MonkeyPatch
 
-from ironsbot.config.models.feature import (
-    FEATURE_ALIASES,
-    KNOWN_FEATURES,
+from ironsbot.core.features import (
+    FEATURE_BUNDLES,
+    FEATURE_KEYS,
     SEER_FEATURES,
     FeatureConfig,
+    FeatureService,
 )
-from ironsbot.shared.features import service
-from tests.helpers.config import stub_app_config
 
 
-def test_feature_service_reads_app_config_feature(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_feature_service_reads_feature_config() -> None:
     feature_config = FeatureConfig(
         group_aliases={"main": 123},
         user_aliases={"owner": 456},
@@ -22,40 +18,24 @@ def test_feature_service_reads_app_config_feature(
         user_policy={"owner": ["ai_chat"]},
         superuser_bypass=False,
     )
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: stub_app_config(feature_config=feature_config),
-    )
-
-    feature_service = service.FeatureService()
+    feature_service = FeatureService(feature_config, frozenset())
 
     assert feature_service.groups_for_feature("seer") == [123]
     assert feature_service.users_for_feature("ai_chat") == [456]
-    assert set(feature_service.resolve_group_policy(123)) == SEER_FEATURES
-    assert feature_service.resolve_user_policy(456) == ["ai_chat"]
     assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 
-def test_feature_service_reads_query_alias(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    assert "query" in FEATURE_ALIASES
-    assert "custom" not in FEATURE_ALIASES
+def test_feature_service_reads_query_bundle() -> None:
+    assert "query" in FEATURE_BUNDLES
+    assert "custom" not in FEATURE_BUNDLES
 
     feature_config = FeatureConfig(
         group_aliases={"main": 123},
         group_policy={"main": ["query"]},
         superuser_bypass=False,
     )
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: stub_app_config(feature_config=feature_config),
-    )
-
-    feature_service = service.FeatureService()
+    feature_service = FeatureService(feature_config, frozenset())
 
     assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert feature_service.is_group_feature_allowed(999, 123, "seer_rank")
@@ -64,57 +44,41 @@ def test_feature_service_reads_query_alias(
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 
-def test_seer_alias_enables_all_seer_subfeatures(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    assert FEATURE_ALIASES["seer"] == SEER_FEATURES
+def test_seer_bundle_enables_all_seer_subfeatures() -> None:
+    assert FEATURE_BUNDLES["seer"] == SEER_FEATURES
 
     feature_config = FeatureConfig(
         group_aliases={"main": 123},
         group_policy={"main": ["seer"]},
         superuser_bypass=False,
     )
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: stub_app_config(feature_config=feature_config),
-    )
-
-    feature_service = service.FeatureService()
+    feature_service = FeatureService(feature_config, frozenset())
 
     for feature in SEER_FEATURES:
         assert feature_service.is_group_feature_allowed(999, 123, feature)
 
 
-def test_rank_feature_alias_is_rejected() -> None:
-    assert "rank" not in KNOWN_FEATURES
-    assert "rank" not in FEATURE_ALIASES
+def test_removed_rank_feature_is_rejected() -> None:
+    assert "rank" not in FEATURE_KEYS
+    assert "rank" not in FEATURE_BUNDLES
 
     with pytest.raises(
         ValidationError,
-        match=r"feature.group_policy.main\[0\]=rank",
+        match=r"features.group_policy.main\[0\]=rank",
     ):
         FeatureConfig(group_policy={"main": ["rank"]})
 
 
-def test_all_feature_alias_does_not_include_admin_notice(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    assert "all" in FEATURE_ALIASES
-    assert "admin_notice" not in FEATURE_ALIASES["all"]
+def test_all_feature_bundle_does_not_include_admin_notice() -> None:
+    assert "all" in FEATURE_BUNDLES
+    assert "admin_notice" not in FEATURE_BUNDLES["all"]
 
     feature_config = FeatureConfig(
         group_aliases={"main": 123},
         group_policy={"main": ["all"]},
         superuser_bypass=False,
     )
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: stub_app_config(feature_config=feature_config),
-    )
-
-    feature_service = service.FeatureService()
+    feature_service = FeatureService(feature_config, frozenset())
 
     assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert feature_service.is_group_feature_allowed(999, 123, "fire_manual_ad")
@@ -124,18 +88,18 @@ def test_all_feature_alias_does_not_include_admin_notice(
 
 
 def test_team_audit_feature_is_registered() -> None:
-    assert "team_audit" in FEATURE_ALIASES["message"]
+    assert "team_audit" in FEATURE_BUNDLES["message"]
 
 
 def test_team_resource_feature_is_registered() -> None:
-    assert "team_resource_subscription" in FEATURE_ALIASES["message"]
-    assert "team_resource_subscription" in FEATURE_ALIASES["all"]
+    assert "team_resource_subscription" in FEATURE_BUNDLES["message"]
+    assert "team_resource_subscription" in FEATURE_BUNDLES["all"]
 
 
 def test_fire_manual_feature_is_registered() -> None:
-    assert "fire_manual_ad" in FEATURE_ALIASES["all"]
-    assert "ai_intent_fire_manual" in FEATURE_ALIASES["all"]
+    assert "fire_manual_ad" in FEATURE_BUNDLES["all"]
+    assert "ai_intent_fire_manual" in FEATURE_BUNDLES["all"]
 
 
 def test_team_recommend_feature_is_registered() -> None:
-    assert "ai_intent_team_recommend" in FEATURE_ALIASES["all"]
+    assert "ai_intent_team_recommend" in FEATURE_BUNDLES["all"]

@@ -3,11 +3,9 @@ import asyncio
 from typing import Any
 
 import httpx
-import nonebot
 
-nonebot.init()
-
-from ironsbot.utils.image import GetImage
+from ironsbot.integrations.http.clients import HttpClients
+from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 
 
 class _ConcurrentDetectingClient(httpx.AsyncClient):
@@ -30,11 +28,19 @@ class _ConcurrentDetectingClient(httpx.AsyncClient):
 
 
 async def _fetch_many_images() -> int:
-    client = _ConcurrentDetectingClient()
-    getter = GetImage("https://example.invalid/{}.png", client_getter=lambda: client)
-
-    await asyncio.gather(*(getter.get_bytes(str(i)) for i in range(8)))
-    return client.max_in_flight
+    cache = _ConcurrentDetectingClient()
+    clients = HttpClients(cache=cache)
+    images = HttpSeerImageSource(clients)
+    try:
+        await asyncio.gather(
+            *(
+                images.fetch("pet_body", str(i), fallback=False)
+                for i in range(8)
+            )
+        )
+        return cache.max_in_flight
+    finally:
+        await clients.close()
 
 
 def test_image_fetches_are_serialized_for_shared_cache_client() -> None:

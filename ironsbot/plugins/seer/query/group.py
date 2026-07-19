@@ -1,26 +1,67 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot import MatcherGroup
-from nonebot.adapters import Event
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
 from nonebot.rule import Rule
 
-from ironsbot.shared.features import is_event_feature_allowed
-from ironsbot.shared.matcher_priority import get_matcher_priority
+from ironsbot.runtime.feature_policy import event_has_feature
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from nonebot.adapters import Event
+    from nonebot.matcher import Matcher
+
+    from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 
-def seer_feature_rule(feature: str) -> Rule:
+def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
     async def _is_feature_allowed(event: Event) -> bool:
-        return is_event_feature_allowed(event, feature)
+        return event_has_feature(features, event, feature)
 
     return Rule(_is_feature_allowed)
 
 
-def seer_feature_priority(feature: str, fallback: int | None = None) -> int:
-    if fallback is None:
-        fallback = get_matcher_priority("seer_query", 90)
-    return get_matcher_priority(feature, fallback)
+@dataclass(frozen=True, slots=True)
+class SeerMatcherGroup:
+    registry: MatcherRegistry
+    resources: SeerQueryResources
+    features: FeatureService
+    release_priority: Callable[[dict[str, Any]], Awaitable[None]]
 
+    def on_message(
+        self,
+        *,
+        policy: CommandPolicy,
+        **kwargs: Any,
+    ) -> type[Matcher]:
+        return self.registry.on_message(
+            policy=policy,
+            **self._with_defaults(kwargs),
+        )
 
-matcher_group = MatcherGroup(
-    block=True,
-    priority=get_matcher_priority("seer_query", 2),
-)
+    def on_fullmatch(
+        self,
+        msg: str | tuple[str, ...],
+        *,
+        policy: CommandPolicy,
+        **kwargs: Any,
+    ) -> type[Matcher]:
+        return self.registry.on_fullmatch(
+            msg,
+            policy=policy,
+            **self._with_defaults(kwargs),
+        )
+
+    def matcher_priority(self, feature: str) -> int:
+        return self.registry.priority(feature)
+
+    def _with_defaults(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        options = dict(kwargs)
+        options.setdefault("block", True)
+        options.setdefault("priority", self.registry.priority("seer_query"))
+        return options

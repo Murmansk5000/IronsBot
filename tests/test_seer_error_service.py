@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ironsbot.integrations.headless_seer.exception import (
+from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
     SocketRecvError,
 )

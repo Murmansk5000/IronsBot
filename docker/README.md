@@ -139,12 +139,35 @@ SENDPIC_CNB_TOKEN=
 Common feature names include `all`, `query`, `seer`, `image`, `rank`, `meeting`, `text`, `text_push`, `bili_query`, `bili_push`, `seer_activity_query`, `seer_activity_push`, `server_status_query`, `server_status_push`, `team_resource_subscription`, `ai_chat`, `ai_intent`, `fire_manual`, and `admin_notice`. `fire_manual` controls the "手册" AI intent and Fire manual links appended to proactive pushes. `admin_notice` is only for startup and error notices, and is intentionally not included by `all`. Message actions may use feature names such as `web_activity_link`, `web_activity_push`, or `seerinfo`.
 
 ```toml
-[feature]
-group_aliases = { admin = 123456789, main = 987654321 }
-user_aliases = { owner = 1234567890 }
-group_policy = { admin = ["admin_notice"], main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_chat", "fire_manual"] }
-user_policy = { owner = ["all"] }
-superuser_bypass = true
+# 当前正式权限结构的新示例；以下标识值为虚构值。
+# 本段仅授予帮助与查询权限，不启用推送或管理权限。
+[features]
+superuser_bypass = false
+
+[features.group_aliases]
+admin = 10001
+main = 10002
+
+[features.user_aliases]
+owner = 20001
+
+[features.group_policy]
+admin = [
+    "help",
+    "bili_query",
+    "seer_player",
+]
+main = [
+    "help",
+    "bili_query",
+    "seer_player",
+]
+
+[features.user_policy]
+owner = [
+    "help",
+    "bili_query",
+]
 
 [bilibili.push]
 groups = { main = { accounts = [], mode = "full" } }
@@ -166,10 +189,29 @@ This is the same kind of output as the built-in `战队<team_id>` query, but the
 Configure it in `ironsbot.toml`:
 
 ```toml
-[feature]
-group_aliases = { xinghen = 987654321 }
-user_aliases = { owner = 1234567890 }
-group_policy = { xinghen = ["team_resource_subscription"] }
+# 当前正式权限结构的新示例；以下标识值为虚构值。
+# 本段仅授予帮助与查询权限，不启用推送或管理权限。
+[features]
+superuser_bypass = false
+
+[features.group_aliases]
+xinghen = 10001
+
+[features.user_aliases]
+owner = 20001
+
+[features.group_policy]
+xinghen = [
+    "help",
+    "bili_query",
+    "seer_player",
+]
+
+[features.user_policy]
+owner = [
+    "help",
+    "bili_query",
+]
 
 [seer.team_resource]
 times = ["23:00"]

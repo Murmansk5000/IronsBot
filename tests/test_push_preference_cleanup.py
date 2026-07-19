@@ -1,21 +1,26 @@
-from dataclasses import dataclass
-from pathlib import Path
+from __future__ import annotations
 
-from pytest import MonkeyPatch
+import asyncio
+from typing import TYPE_CHECKING, cast
 
-from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.plugins.messaging import preference_cleanup
-from ironsbot.plugins.messaging.push_time import PushTimeOption
-from ironsbot.shared.messaging.push_subscription_models import (
-    CRON_TIME_PREFERENCE,
-    PushSubscriptionOption,
+from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.messaging import (
+    GroupScheduledMessageAction,
+    MessageConfig,
+    PushUnsubscribeConfig,
 )
-from ironsbot.shared.messaging.push_subscription_store import PushUnsubscribeStore
+from ironsbot.core.features import FeatureConfig
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.messaging.service import MessagingService
+from ironsbot.services.messaging.subscriptions import CRON_TIME_PREFERENCE
+from tests.helpers.runtime import build_test_runtime
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-@dataclass(frozen=True, slots=True)
-class FakeMessageConfig:
-    push_unsubscribe: PushUnsubscribeConfig
+    from pytest import MonkeyPatch
+
+    from ironsbot.services.operations.scheduler import Scheduler
 
 
 def test_cleanup_uses_current_subscription_and_time_catalogs(
@@ -41,40 +46,41 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         "21:30",
     )
 
+    async def skip_schedule_registration(
+        _messaging: MessagingService,
+        _scheduler: Scheduler,
+    ) -> None:
+        return None
+
     monkeypatch.setattr(
-        preference_cleanup,
-        "get_message_config",
-        lambda: FakeMessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path))
+        MessagingService,
+        "register_schedules",
+        skip_schedule_registration,
+    )
+
+    runtime = build_test_runtime(
+        feature_config=FeatureConfig(group_policy={"2001": ["text_push"]})
+    )
+    messaging = MessagingService(
+        MessageConfig(
+            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
+            group_schedules=[
+                GroupScheduledMessageAction(
+                    id="daily",
+                    message="每日提醒",
+                    hour=23,
+                    minute=0,
+                )
+            ],
         ),
+        ActivityConfig(),
+        store,
+        runtime.features,
+        runtime.delivery,
+        lambda _target_type, _target_id: [],
     )
-    monkeypatch.setattr(
-        preference_cleanup,
-        "build_messaging_push_subscription_options",
-        lambda *_args, **_kwargs: [
-            PushSubscriptionOption("daily", "每日提醒", "text_push")
-        ],
-    )
-    monkeypatch.setattr(
-        preference_cleanup,
-        "build_push_time_options",
-        lambda *_args, **_kwargs: [
-            PushTimeOption(
-                key="daily",
-                label="每日提醒",
-                feature="text_push",
-                preference_type=CRON_TIME_PREFERENCE,
-                default_value="23:00",
-                current_value="22:30",
-                overridden=True,
-            )
-        ],
-    )
+    asyncio.run(messaging.start(cast("Scheduler", object())))
 
-    result = preference_cleanup.prune_stale_push_preferences()
-
-    assert result.unsubscriptions_deleted == 1
-    assert result.time_preferences_deleted == 1
     assert store.target_unsubscribed_keys("group", 2001) == {"daily"}
     assert (
         store.get_time_preference(

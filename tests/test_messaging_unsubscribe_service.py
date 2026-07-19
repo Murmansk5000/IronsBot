@@ -2,25 +2,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from nonebot.adapters.onebot.v11 import Message
 
-from ironsbot.config.models.message import PushUnsubscribeConfig
-from ironsbot.shared.messaging.push_subscription_models import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
-    BUILTIN_PUSH_OPTIONS,
-    CRON_TIME_PREFERENCE,
-    PushSubscriptionOption,
-)
-from ironsbot.shared.messaging.push_subscription_store import (
+from ironsbot.integrations.storage.push_subscriptions import (
     PushUnsubscribeStore,
 )
-from ironsbot.shared.messaging.push_subscriptions import (
-    append_push_unsubscribe_hint,
+from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
     group_schedule_label,
     private_schedule_key,
     private_schedule_label,
+)
+from ironsbot.services.messaging.subscriptions import (
+    ACTIVITY_LEAD_HOURS_PREFERENCE,
+    BUILTIN_PUSH_OPTIONS,
+    CRON_TIME_PREFERENCE,
+    PushSubscriptionOption,
 )
 
 EXPECTED_PRUNED_UNSUBSCRIPTIONS = 2
@@ -91,36 +88,6 @@ def test_builtin_push_options_split_startup_admin_notices() -> None:
     assert labels["render_crash_notice"] == "精灵渲染崩溃通知"
     assert labels["red_packet_notice"] == "红包提醒"
     assert labels["admin_notice"] == "其他管理通知"
-
-
-def test_append_push_unsubscribe_hint_is_last_line() -> None:
-    config = PushUnsubscribeConfig(
-        hint="回复 TD 可退订。",
-        group_hint="管理员发送 TD 可退订。",
-    )
-
-    assert append_push_unsubscribe_hint(
-        "正文\n\n广告",
-        config,
-        target_type="private",
-    ) == (
-        "正文\n\n广告\n\n回复 TD 可退订。"
-    )
-    assert append_push_unsubscribe_hint(
-        "正文\n\n回复 TD 可退订。",
-        config,
-        target_type="private",
-    ) == "正文\n\n回复 TD 可退订。"
-    assert (
-        str(
-            append_push_unsubscribe_hint(
-                Message("正文"),
-                config,
-                target_type="group",
-            )
-        )
-        == "正文\n\n管理员发送 TD 可退订。"
-    )
 
 
 def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:

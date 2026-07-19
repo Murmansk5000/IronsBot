@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: MIT
-from collections.abc import Generator
-from contextlib import ExitStack
-from typing import Final
+import logging
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 
-from nonebot.log import logger
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import create_engine
 
-from ironsbot.shared.sqlite import open_sqlite
+from ironsbot.integrations.storage.sqlite import SqliteDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
@@ -46,7 +47,7 @@ class DatabaseManager:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
 
-        with open_sqlite(file_path, pragmas=False) as source:
+        with SqliteDatabase(file_path, pragmas=False).connect() as source:
             raw_conn = new_engine.raw_connection()
             try:
                 source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
@@ -59,31 +60,24 @@ class DatabaseManager:
             old_engine.dispose()
         logger.debug(f"已从文件导入数据到内存数据库 '{name}'")
 
-    def get_session(self, name: str) -> Generator[SQLModelSession, None, None] | None:
-        """获取指定数据库的会话生成器。"""
+    @contextmanager
+    def session(self, name: str) -> Iterator[SQLModelSession | None]:
         engine = self.get_engine(name)
         if engine is None:
-            return None
+            yield None
+            return
+        with SQLModelSession(engine) as session:
+            yield session
 
-        def _gen() -> Generator[SQLModelSession, None, None]:
-            with SQLModelSession(engine) as session:
-                yield session
-
-        return _gen()
-
-    def get_all_sessions(
-        self,
-    ) -> Generator[dict[str, SQLModelSession], None, None]:
-        """创建所有已注册数据库的会话并通过单一生成器返回。
-
-        使用 ExitStack 确保所有会话在生成器退出时统一关闭。
-        """
+    @contextmanager
+    def all_sessions(self) -> Iterator[dict[str, SQLModelSession]]:
         with ExitStack() as stack:
-            sessions = {
+            yield {
                 name: stack.enter_context(SQLModelSession(engine))
                 for name, engine in self._engines.items()
             }
-            yield sessions
 
-
-db_manager: Final[DatabaseManager] = DatabaseManager()
+    def close(self) -> None:
+        for engine in self._engines.values():
+            engine.dispose()
+        self._engines.clear()

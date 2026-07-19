@@ -1,106 +1,99 @@
-from collections.abc import AsyncGenerator, Callable
-from pathlib import Path
-from typing import cast
-
-from nonebot import MatcherGroup, logger
 from nonebot.adapters import Bot, Message, MessageTemplate
+from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
-from nonebot.params import CommandArg, Depends
+from nonebot.params import CommandArg
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
-from ironsbot.shared.features import is_event_feature_allowed
-from ironsbot.shared.messaging.command_cooldown import register_command_matcher
-from ironsbot.utils.rule import no_reply
-
-from .backend import ImageBackend
-from .backends import CnbBackend, LocalBackend
-from .config import (
-    PicConfig,
-    enabled_pic_configs,
-    get_sendpic_cnb_repo,
-    get_sendpic_cnb_token,
-    get_sendpic_config,
-    get_sendpic_local_root,
-    pic_id_is_enabled,
-)
-from .image_selection_service import (
+from ironsbot.core.features import FeatureService
+from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS, PicConfig
+from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.rules import no_reply
+from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     InvalidImageArgumentError,
-    build_image_file_path,
-    select_image,
+    SendpicService,
 )
 
-matcher_group = MatcherGroup()
+FIXED_IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
 
 
-def get_cnb_backend(
-    token: str, repo: str
-) -> Callable[[], AsyncGenerator[ImageBackend, None]]:
-    async def _inner() -> AsyncGenerator[ImageBackend, None]:
-        async with CnbBackend(token, repo=repo) as cnb:
-            yield cnb
+def install_fixed_images(
+    registry: MatcherRegistry,
+    service: SendpicService,
+    features: FeatureService,
+) -> None:
+    for command, filename in FIXED_IMAGE_COMMANDS.items():
+        matcher = registry.on_fullmatch(
+            command,
+            policy=CommandPolicy.command(f"sendpic_fixed.{command}"),
+            rule=Rule(lambda event: event_has_feature(features, event, "image"))
+            & no_reply(),
+            priority=registry.priority("sendpic"),
+            block=True,
+        )
 
-    return _inner
+        async def _handle(
+            matcher: Matcher,
+            event: MessageEvent,
+            filename: str = filename,
+        ) -> None:
+            data = await service.fixed_image(filename)
+            if data is None:
+                await finish_event_reply(
+                    matcher,
+                    event,
+                    FIXED_IMAGE_MISSING_MESSAGE,
+                )
+                return
+            await finish_event_reply(
+                matcher,
+                event,
+                MessageSegment.image(data),
+            )
 
-
-def get_local_backend(
-    root_path: Path,
-) -> Callable[[], AsyncGenerator[ImageBackend, None]]:
-    async def _inner() -> AsyncGenerator[ImageBackend, None]:
-        async with LocalBackend(root_path) as local:
-            yield local
-
-    return _inner
+        matcher.append_handler(_handle)
 
 
 def create_image_command(
-    group: MatcherGroup,
+    registry: MatcherRegistry,
     config: PicConfig,
-    backend_factory: Callable[..., AsyncGenerator[ImageBackend, None]],
-) -> type[Matcher] | None:
+    service: SendpicService,
+    features: FeatureService,
+) -> type[Matcher]:
     """根据配置创建一个「随机/指定索引 + 图床后端」的命令。"""
-    if not pic_id_is_enabled(get_sendpic_config(), config.id):
-        logger.warning(
-            f"图片类型【{config.id}】未启用，命令【{config.command}】将不会生效"
-        )
-
-    matcher = group.on_command(
+    matcher = registry.on_command(
         config.command,
+        policy=CommandPolicy.command(f"sendpic.{config.id}"),
         aliases=set(config.aliases),
-        rule=Rule(lambda event: is_event_feature_allowed(event, "image")) & no_reply(),
+        rule=Rule(lambda event: event_has_feature(features, event, "image"))
+        & no_reply(),
     )
-    register_command_matcher(matcher, f"sendpic.{config.id}")
     template = config.message_template
 
     async def _handler(
         m: Matcher,
         bot: Bot,
         arg: Message = CommandArg(),
-        backend: ImageBackend = Depends(backend_factory),
     ) -> None:
-        max_index = await backend.count(config.image_dir)
         arg_str = arg.extract_plain_text()
         try:
-            selection = select_image(arg_str, max_index)
+            result = await service.fetch(config, arg_str)
         except InvalidImageArgumentError:
             raise FinishedException from None
         except ImageIndexOutOfRangeError as e:
             await m.finish(str(e))
 
-        file_path = build_image_file_path(
-            config.image_dir,
-            config.image_filename_template,
-            selection.index,
-        )
-        image = Image(await backend.get_file(file_path))
+        image = Image(result.data)
         await m.finish(
             MessageTemplate(template).format(
                 command=config.command,
-                random_text=selection.random_text,
-                index=selection.index,
-                total=max_index,
+                random_text=result.random_text,
+                index=result.index,
+                total=result.total,
                 image=await image.build(bot),
             )
         )
@@ -109,15 +102,11 @@ def create_image_command(
     return matcher
 
 
-for _cmd in enabled_pic_configs(get_sendpic_config()):
-    if _cmd.backend == "cnb":
-        backend_factory = get_cnb_backend(
-            cast("str", get_sendpic_cnb_token()),
-            cast("str", get_sendpic_cnb_repo()),
-        )
-    elif _cmd.backend == "local":
-        backend_factory = get_local_backend(get_sendpic_local_root())
-    else:
-        raise ValueError(f"不支持的图床类型：{_cmd.backend}")
-
-    create_image_command(matcher_group, _cmd, backend_factory)
+def install(
+    registry: MatcherRegistry,
+    service: SendpicService,
+    features: FeatureService,
+) -> None:
+    install_fixed_images(registry, service, features)
+    for command in service.commands:
+        create_image_command(registry, command, service, features)
