@@ -154,6 +154,13 @@ class TestBatchClose:
 
 
 class TestColoredTexts:
+    def test_parser_collects_colored_texts_case_insensitively(self):
+        parser = AnalyzeDescParser(
+            "[color=#F35555]蜃楼[/color]|[color=#f35555]天烬海[/color]"
+        )
+
+        assert parser.colored_texts("#f35555") == ["蜃楼", "天烬海"]
+
     def test_red_names_in_line1(self):
         parser = AnalyzeDescParser(DESC)
         line1 = parser.lines[1]

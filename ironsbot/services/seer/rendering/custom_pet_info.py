@@ -29,6 +29,7 @@ HIDDEN_SKILL_ID = 19002
 _ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
     "#f35555": lambda t: f'<b style="color:#60e0ff">{t}</b>',
 }
+_SPECIAL_EFFECT_COLOR = "#f35555"
 
 
 class MintMarkDict(TypedDict):
@@ -94,6 +95,12 @@ class SoulmarkDict(TypedDict):
     glossaries: set[GlossaryDict]
     icon_id: int | None
     icon: str | None
+
+
+class SpecialEffectDict(TypedDict):
+    name: str
+    desc: str | None
+    sources: list[str]
 
 
 def _extract_skill(
@@ -248,6 +255,87 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[Soulmar
     return results
 
 
+def _red_effect_names(
+    description: str | None,
+    known_names: Mapping[str, str],
+) -> list[str]:
+    if not description:
+        return []
+
+    names: list[str] = []
+    for colored_text in AnalyzeDescParser(description).colored_texts(
+        _SPECIAL_EFFECT_COLOR
+    ):
+        text = colored_text.strip()
+        if not text:
+            continue
+
+        # The parser intentionally merges adjacent segments with the same
+        # color. Split a merged red span back into its known glossary terms
+        # before falling back to the raw text.
+        candidates = sorted(
+            (
+                (text.find(name), name)
+                for name in known_names
+                if name and name in text
+            ),
+            key=lambda item: (item[0], -len(item[1])),
+        )
+        matched_ranges: list[tuple[int, int]] = []
+        matched_names: list[str] = []
+        for start, name in candidates:
+            end = start + len(name)
+            if any(
+                start < other_end and other_start < end
+                for other_start, other_end in matched_ranges
+            ):
+                continue
+            matched_ranges.append((start, end))
+            matched_names.append(name)
+        names.extend(matched_names or [text])
+
+    return list(dict.fromkeys(names))
+
+
+def _extract_special_effects(pet: PetORM) -> list[SpecialEffectDict]:
+    """Collect red-highlighted named effects from soulmarks and skills."""
+    glossary_descs = {
+        glossary.name: glossary.desc
+        for glossary in pet.glossary_entry
+        if glossary.name
+    }
+    effects_by_name: dict[str, SpecialEffectDict] = {}
+
+    def add(description: str | None, source: str) -> None:
+        for name in _red_effect_names(description, glossary_descs):
+            effect = effects_by_name.setdefault(
+                name,
+                SpecialEffectDict(
+                    name=name,
+                    desc=glossary_descs.get(name),
+                    sources=[],
+                ),
+            )
+            if source not in effect["sources"]:
+                effect["sources"].append(source)
+
+    for soulmark in pet.soulmark:
+        add(soulmark.analyze_desc or soulmark.desc, "魂印")
+
+    for skill_link in pet.skill_links:
+        skill = skill_link.skill
+        if skill.id == HIDDEN_SKILL_ID:
+            continue
+        source = f"技能·{skill.name}"
+        add(skill.info, source)
+        for effect in (*skill.skill_effect, *skill.friend_skill_effect):
+            add(getattr(effect, "analyze_info", None) or effect.info, source)
+        if skill.hide_effect:
+            add(skill.hide_effect.description, source)
+
+    return list(effects_by_name.values())
+
+
 def _pet_introduction(pet: PetORM) -> str:
     encyclopedia = pet.encyclopedia
     if encyclopedia is None:
@@ -270,7 +358,7 @@ async def render_custom_pet_info(
     pet: PetORM,
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
-    cached = cache.get("custom_pet_info_v2", str(pet.id))
+    cached = cache.get("custom_pet_info_v3", str(pet.id))
     if cached is not None:
         return cached
 
@@ -285,6 +373,7 @@ async def render_custom_pet_info(
         raise RuntimeError
     activation_items = _build_activation_items(pet, session)
     soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark, pet)
+    special_effects = _extract_special_effects(pet)
     if pet.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
@@ -400,6 +489,7 @@ async def render_custom_pet_info(
             "stats": stats,
             "advance_stats": advance_stats,
             "soulmarks": soulmarks,
+            "special_effects": special_effects,
             "skill_marks": skill_marks,
             "fifth_skills": fifth_skills[::-1],
             "advanced_skills": advanced_skills[::-1],
@@ -409,5 +499,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v2", str(pet.id), result)
+    cache.put("custom_pet_info_v3", str(pet.id), result)
     return result

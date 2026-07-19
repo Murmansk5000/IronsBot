@@ -48,7 +48,15 @@ class DescLine:
 
     def colored_texts(self, color: str) -> list[str]:
         """返回该行中包含指定颜色的所有文本"""
-        return [seg.text for seg in self.segments if color in seg.colors]
+        normalized_color = color.casefold()
+        return [
+            seg.text
+            for seg in self.segments
+            if any(
+                segment_color.casefold() == normalized_color
+                for segment_color in seg.colors
+            )
+        ]
 
     def to_html(
         self,
@@ -157,6 +165,18 @@ class AnalyzeDescParser:
     def colors(self) -> set[str]:
         """描述中出现的所有颜色值"""
         return {c for line in self.lines for seg in line.segments for c in seg.colors}
+
+    def colored_texts(self, color: str) -> list[str]:
+        """Return all text segments which carry the requested color.
+
+        Color matching is case-insensitive because Unity descriptions are not
+        consistent about the capitalization of hexadecimal color tags.
+        """
+        return [
+            text
+            for line in self.lines
+            for text in line.colored_texts(color)
+        ]
 
     def to_plain_text(self, line_separator: str = "\n") -> str:
         """将完整描述转为不带任何标签的纯文本。"""
