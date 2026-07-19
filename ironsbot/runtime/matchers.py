@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from asyncio import get_running_loop
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Protocol, TypeAlias, TypeVar, cast
+from secrets import token_urlsafe
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeAlias, TypeVar, cast
 
 from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -17,11 +19,16 @@ from nonebot.plugin import on_command, on_fullmatch, on_message, on_notice
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+if TYPE_CHECKING:
+    from asyncio import TimerHandle
+    from datetime import timedelta
+
 ReplyBeforeSend = Callable[[Event | None], Awaitable[None]]
 CommandIdResolver = Callable[[MessageEvent, T_State], str | None]
 CommandIdSource = str | CommandIdResolver
 REPLY_BEFORE_SEND_STATE_KEY = "_ironsbot_reply_before_send"
 PROMPT_SESSION_MANAGER_STATE_KEY = "_ironsbot_prompt_session_manager"
+TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
 _COMMAND_COOLDOWN_TOKEN_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 T = TypeVar("T")
@@ -74,7 +81,15 @@ class PromptSessionManagerMissingError(RuntimeError):
     pass
 
 
+@dataclass(slots=True)
+class _TemporaryMatcherState:
+    state: T_State
+    expiry_handle: TimerHandle
+
+
 class PromptSessionManager:
+    _temporary_matcher_states: ClassVar[dict[str, _TemporaryMatcherState]] = {}
+
     def __init__(self) -> None:
         self._versions: dict[str, int] = {}
 
@@ -99,6 +114,37 @@ class PromptSessionManager:
             )
 
         return Rule(check)
+
+    @classmethod
+    def store_temporary_matcher_state(
+        cls,
+        state: T_State,
+        *,
+        expires_after: timedelta,
+    ) -> str:
+        token = token_urlsafe(18)
+        expiry_handle = get_running_loop().call_later(
+            max(expires_after.total_seconds(), 0),
+            cls._discard_temporary_matcher_state,
+            token,
+        )
+        cls._temporary_matcher_states[token] = _TemporaryMatcherState(
+            state=state,
+            expiry_handle=expiry_handle,
+        )
+        return token
+
+    @classmethod
+    def take_temporary_matcher_state(cls, token: str) -> T_State | None:
+        stored = cls._temporary_matcher_states.pop(token, None)
+        if stored is None:
+            return None
+        stored.expiry_handle.cancel()
+        return stored.state
+
+    @classmethod
+    def _discard_temporary_matcher_state(cls, token: str) -> None:
+        cls._temporary_matcher_states.pop(token, None)
 
 
 def get_prompt_session_manager(
@@ -149,20 +195,43 @@ async def _create_temp_matcher(
     bot = current_bot.get()
     event = current_event.get()
     permission = await matcher.update_permission(bot, event)
+    token = PromptSessionManager.store_temporary_matcher_state(
+        matcher.state,
+        expires_after=bot.config.session_expire_timeout,
+    )
+    temporary_handlers = [
+        _restore_temporary_matcher_state,
+        *(handlers if handlers is not None else matcher.remain_handlers),
+    ]
     matcher.__class__.new(
         "message",
         rule,
         permission,
-        handlers if handlers is not None else matcher.remain_handlers,
+        temporary_handlers,
         temp=True,
         priority=0,
         block=True,
         source=matcher.__class__._source,
         expire_time=bot.config.session_expire_timeout,
-        default_state=matcher.state,
+        default_state={TEMP_MATCHER_STATE_TOKEN_KEY: token},
         default_type_updater=matcher.__class__._default_type_updater,
         default_permission_updater=matcher.__class__._default_permission_updater,
     )
+
+
+async def _restore_temporary_matcher_state(state: T_State) -> None:
+    token = state.pop(TEMP_MATCHER_STATE_TOKEN_KEY, None)
+    if not isinstance(token, str):
+        raise FinishedException
+
+    saved_state = PromptSessionManager.take_temporary_matcher_state(token)
+    if saved_state is None:
+        raise FinishedException
+
+    incoming_state = dict(state)
+    state.clear()
+    state.update(saved_state)
+    state.update(incoming_state)
 
 
 class CommandPolicyError(ValueError):
