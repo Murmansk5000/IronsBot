@@ -84,8 +84,9 @@ async def validate_player_id(
             await finish_event_reply(
                 matcher,
                 event,
-                "尚未设置默认米米号，请先发送“米米号+数字”查询。\n"
-                "首次成功查询后可以选择是否设为默认米米号。",
+                "尚未设置默认米米号。可发送“绑定米米号12345”直接绑定，"
+                "或先发送“米米号+数字”查询。\n"
+                "首次成功查询后也可以选择是否设为默认米米号。",
             )
             return
     state[PLAYER_ID_KEY] = player_id
