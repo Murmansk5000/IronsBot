@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from seerapi_models import MintmarkORM
     from seerapi_models.common import SixAttributes
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +23,8 @@ class CountermarkStatRankCommand:
 
 @dataclass(frozen=True, slots=True)
 class CountermarkStatRankItem:
-    mintmark: MintmarkORM
+    mintmark_id: int
+    mintmark_name: str
     attrs: SixAttributes
     value: float
     total: float
