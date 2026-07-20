@@ -51,6 +51,9 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
+from ironsbot.integrations.storage.pet_config_images import (
+    FilePetConfigImageStore,
+)
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -94,6 +97,7 @@ from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
+from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -166,6 +170,7 @@ class ApplicationResources:
     local_rank: LocalRankService
     rank_page_refresh: RankPageRefreshService
     seer: SeerQueryResources
+    pet_config: PetConfigQueryService
     ai: AiService
     data_sync: DataSyncService
     docker_update: DockerUpdateService
@@ -422,6 +427,10 @@ def build_application(settings: Settings) -> Application:
     player_bindings = SqlitePlayerBindingStore(
         settings.seer.player.binding.path
     )
+    pet_config = PetConfigQueryService(
+        seer_database,
+        FilePetConfigImageStore(settings.pet_config.image_dir),
+    )
     local_rank = LocalRankService(
         SqliteLocalRankRepository(
             settings.seer.local_rank.path,
@@ -589,6 +598,7 @@ def build_application(settings: Settings) -> Application:
         local_rank=local_rank,
         rank_page_refresh=rank_page_refresh,
         seer=seer,
+        pet_config=pet_config,
         ai=ai,
         data_sync=data_sync,
         docker_update=docker_update,

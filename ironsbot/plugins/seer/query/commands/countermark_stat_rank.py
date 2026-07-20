@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.data import DataUnavailableError
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
 
-async def _match_command(
+def _match_command(
     service: CountermarkStatRankService,
     event: Event,
     state: T_State,
@@ -65,4 +65,4 @@ def install(group: SeerMatcherGroup) -> None:
         & no_reply(),
         priority=group.matcher_priority("seer_mintmark"),
     )
-    matcher.append_handler(partial(_handle_command, service))
+    matcher.append_handler(bind_async(_handle_command, service))

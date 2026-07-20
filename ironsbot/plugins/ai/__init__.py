@@ -7,10 +7,7 @@ from nonebot.exception import FinishedException
 from nonebot.rule import Rule
 
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.core.help import (
-    DIRECT_COMMAND_HELP_HINT_TEXT,
-    PET_CONFIG_UNAVAILABLE_TEXT,
-)
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import build_notice_source, mentions_bot
@@ -65,13 +62,6 @@ def _should_guard_non_ai_group_mention(
         and mentions_bot(event)
         and not event_is_feature_allowed(features, event, "ai_chat")
     )
-
-
-def _build_guard_message(event: MessageEvent) -> str:
-    message = DIRECT_COMMAND_HELP_HINT_TEXT
-    if "配置" in event.get_plaintext():
-        message += f"\n{PET_CONFIG_UNAVAILABLE_TEXT}"
-    return message
 
 
 async def _capture_ai_prompt(
@@ -165,7 +155,7 @@ def install(
     ) -> None:
         if not help_hint.can_send(event.group_id):
             return
-        await finish_event_reply(matcher, event, _build_guard_message(event))
+        await finish_event_reply(matcher, event, DIRECT_COMMAND_HELP_HINT_TEXT)
 
     mention_guard = registry.on_message(
         policy=CommandPolicy.command("ai_mention_guard"),

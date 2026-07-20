@@ -2,13 +2,13 @@
 # Production behavior config template. Mount a copy as /config/ironsbot.toml.
 # Secrets stay in environment variables.
 
-[features]
+[feature]
 group_aliases = {}
 user_aliases = {}
 group_policy = {}
 user_policy = {}
 superuser_bypass = true
 
-[operations.data_sync]
+[runtime.data_sync]
 on_startup = false
 interval_enabled = true

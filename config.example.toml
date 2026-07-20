@@ -43,6 +43,7 @@ activity = 70
 db_sync = 80
 team_audit = 90
 seer_mintmark = 100
+pet_config = 109
 seer_pet = 110
 seer_query = 120
 ai_chat = 200
