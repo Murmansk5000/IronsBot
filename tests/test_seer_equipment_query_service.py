@@ -22,6 +22,7 @@ class FakeData:
 
     def __init__(self) -> None:
         self.values: dict[object, tuple[Any, ...]] = {}
+        self.session_active = False
 
     @contextmanager
     def resolve(
@@ -29,18 +30,26 @@ class FakeData:
         getter: object,
         _arg: str,
     ) -> Iterator[tuple[Any, ...]]:
-        yield self.values.get(getter, ())
+        self.session_active = True
+        try:
+            yield self.values.get(getter, ())
+        finally:
+            self.session_active = False
 
     @contextmanager
     def get(self, getter: object, item_id: int) -> Iterator[Any | None]:
-        yield next(
-            (
-                item
-                for item in self.values.get(getter, ())
-                if int(item.id) == item_id
-            ),
-            None,
-        )
+        self.session_active = True
+        try:
+            yield next(
+                (
+                    item
+                    for item in self.values.get(getter, ())
+                    if int(item.id) == item_id
+                ),
+                None,
+            )
+        finally:
+            self.session_active = False
 
 
 class FakeImages:
@@ -60,6 +69,31 @@ def _service(data: FakeData) -> EquipmentQueryService:
         cast("SeerDataAccess", data),
         cast("SeerImageSource", FakeImages()),
     )
+
+
+class SessionBoundSuit:
+    id = 1
+    name = "勇者套装"
+
+    def __init__(self, data: FakeData) -> None:
+        self._data = data
+
+    @property
+    def equips(self) -> list[Any]:
+        assert self._data.session_active
+        return [
+            SimpleNamespace(
+                id=11,
+                name="头盔",
+                part_type=SimpleNamespace(id=0),
+                bonus=SimpleNamespace(desc="攻击 + 5"),
+            )
+        ]
+
+    @property
+    def bonus(self) -> Any:
+        assert self._data.session_active
+        return SimpleNamespace(desc="全属性 + 10")
 
 
 @pytest.mark.asyncio
@@ -113,6 +147,18 @@ async def test_suit_selection_returns_parts_and_bonus() -> None:
     assert result.reply is not None
     assert "头部：头盔（11）" in result.reply.text
     assert "套装效果：全属性 + 10" in result.reply.text
+
+
+@pytest.mark.asyncio
+async def test_equipment_formats_relationships_before_session_closes() -> None:
+    data = FakeData()
+    data.values[data.suit] = (SessionBoundSuit(data),)
+
+    result = await _service(data).select("suit", 1)
+
+    assert result.reply is not None
+    assert "头部：头盔（11）" in result.reply.text
+    assert data.session_active is False
 
 
 @pytest.mark.asyncio
