@@ -148,8 +148,7 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
         items=tuple(sections),
         footer=(
             f"{HELP_SELECTION_FOOTER}\n"
-            "⚠️ 请直接发送指令；回复机器人消息不会触发功能。\n"
-            "🧩 此机器人无法查询精灵配置；没有收录配置图片，也没有人维护配置收集。"
+            "⚠️ 请直接发送指令；回复机器人消息不会触发功能。"
         ),
     )
 

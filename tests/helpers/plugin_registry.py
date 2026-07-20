@@ -102,6 +102,10 @@ def build_test_plugin_registry(
             ),
             local_rank=object(),
             rank_page_refresh=object(),
+            pet_config=SimpleNamespace(
+                search=_noop_query,
+                select=_noop_query,
+            ),
             seer=SimpleNamespace(
                 data_queries=SimpleNamespace(
                     weekly_preview=_noop_query,

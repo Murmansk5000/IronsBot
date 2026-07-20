@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
@@ -70,7 +70,7 @@ def install(
         policy=CommandPolicy.command("seer_activity_ending"),
         rule=(
             Rule(
-                lambda event: event_has_feature(
+                lambda event: event_is_feature_allowed(
                     features, event, "seer_activity_query"
                 )
             )
