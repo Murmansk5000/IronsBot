@@ -521,10 +521,12 @@ enabled = true
 cooldown_seconds = 60.0
 
 [messaging.outbound_rate_limit]
-# Default: true
+# Default: false
 # EN: Limit outgoing bot messages in each non-admin group.
 # ZH: 分别限制每个非管理群中的机器人出站消息频率。
-enabled = true
+# EN: Disabled by default. Set true to enforce the windows below.
+# ZH: 默认关闭；设为 true 后才会按下面的窗口限制群消息。
+enabled = false
 # EN: Exact sliding windows checked atomically; any full window blocks the send.
 # ZH: 同时检查的精确滑动窗口；任一窗口已满都会阻止发送。
 windows = [
@@ -661,27 +663,29 @@ owner = "main_bot"
 user_a = "backup_bot"
 
 [messaging.command_cooldown]
-# Default: true
+# Default: false
 # EN: Share cooldowns by QQ user and semantic command across groups and bots.
 # ZH: 按 QQ 用户和语义命令跨群、跨机器人共享冷却。
-enabled = true
-# Default: 60.0
-# EN: Default cooldown after a command finishes, regardless of its outcome.
-# ZH: 命令结束后的默认冷却秒数，不区分成功、失败、超时或异常。
-default_seconds = 60.0
+# EN: Disabled by default. Set true to enforce the windows below.
+# ZH: 默认关闭；设为 true 后才会按下面的窗口限制用户命令。
+enabled = false
+# EN: Per-QQ and per-semantic-command sliding windows. Every window must allow a request.
+# ZH: 同一 QQ、同一语义命令的滑动窗口额度；所有窗口都未满时才允许执行。
+windows = [
+  { window_seconds = 60.0, max_requests = 3 },
+  { window_seconds = 300.0, max_requests = 5 },
+]
 cooldown_message = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
 in_progress_message = "该命令正在处理中，请等待当前操作完成。"
 
 [messaging.command_cooldown.commands]
-# EN: Optional semantic-command overrides; set a value to 0 to disable it.
-# ZH: 可按语义命令覆盖冷却秒数；设为 0 可关闭该命令的冷却。
-# ai_chat = 30.0
-# server_status_query = 20.0
-# seer_player = 60.0
-# seer_player_collection = 60.0
-# seer_player_peak = 60.0
-# seer_player_autocard = 60.0
-# seer_rank_score = 0.0
+# EN: Optional per-command window overrides. An empty list disables limits for that command.
+# ZH: 可按语义命令覆盖窗口；空列表表示不限制该命令。
+# seer_player = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
+# seer_player_collection = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
+# seer_player_peak = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
+# seer_player_autocard = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
+# seer_rank_score = []
 
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。

@@ -153,11 +153,13 @@ reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
 
-User command cooldowns are configured under `[messaging.command_cooldown]`.
+User command limits are configured under `[messaging.command_cooldown]`.
 The key is the QQ user plus a stable semantic command ID, so aliases and
-different parameters of the same operation share one cooldown while unrelated
-operations remain independent. Group output limits are configured under
-`[messaging.outbound_rate_limit]` as multiple sliding windows. Normal replies are
+different parameters of the same operation share exact sliding-window quotas
+while unrelated operations remain independent. Command limits are disabled by default;
+set `enabled = true` to use the built-in three requests per 60 seconds and five per
+300 seconds windows. Group output limits are also disabled by default and are configured
+under `[messaging.outbound_rate_limit]` as multiple sliding windows once enabled. Normal replies are
 suppressed immediately after the quota is reached; proactive pushes may wait in
 a short per-group FIFO queue. Private messages and groups enabled for
 `admin_notice` are not counted.

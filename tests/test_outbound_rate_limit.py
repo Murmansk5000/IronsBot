@@ -56,6 +56,13 @@ def _service(
     ).delivery.outbound
 
 
+def test_outbound_rate_limit_is_disabled_by_default() -> None:
+    service = build_test_runtime().delivery.outbound
+
+    assert service.acquire_reply(GROUP_ID, now=0).allowed
+    assert service.acquire_reply(GROUP_ID, now=1).allowed
+
+
 def test_multi_window_rate_limit_checks_and_records_atomically() -> None:
     limiter = MultiWindowGroupRateLimiter()
     windows = _windows((10.0, 2), (100.0, 3))
