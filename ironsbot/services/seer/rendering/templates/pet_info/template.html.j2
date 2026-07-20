@@ -209,6 +209,38 @@
             image-rendering: auto;
         }
 
+        .partner-name {
+            color: #60e0ff;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .partner-line {
+            color: #e0f0ff;
+            font-size: 16px;
+            line-height: 1.65;
+            margin-top: 5px;
+        }
+
+        .partner-label {
+            color: #a8c9ed;
+            font-weight: bold;
+        }
+
+        .partner-item-icon {
+            width: 25px;
+            height: 25px;
+            vertical-align: middle;
+            margin: 0 4px;
+        }
+
+        .partner-price {
+            color: #a8c9ed;
+            font-size: 14px;
+            margin-left: 6px;
+        }
+
         .special-effects {
             display: grid;
             gap: 8px;
@@ -450,10 +482,10 @@
                         </div>
                     </div>
 
-                    {% if soulmarks %}
+                    {% if base_soulmarks %}
                     <div class="section">
                         <div class="sec-title">魂印</div>
-                        {% for sm in soulmarks %}
+                        {% for sm in base_soulmarks %}
                         <div class="sm-item">
                             {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
                             <div class="sm-tags">
@@ -473,6 +505,84 @@
                                 <span class="tag t-npve">PVE无效</span>
                                 {% endif %}
                                 -->
+                            </div>
+                            {% endif %}
+                            {% if sm.icon %}
+                            <div class="sm-icon-row">
+                                <img class="sm-icon" src="{{ sm.icon }}" />
+                            </div>
+                            {% endif %}
+                            <div class="sm-desc">{{ sm.desc }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if pet_partner %}
+                    <div class="section">
+                        <div class="sec-title">契约羁绊</div>
+                        <div class="sm-item">
+                            <div class="partner-name">{{ pet_partner.name }}</div>
+                            <div class="partner-line">
+                                <span class="partner-label">开启消耗：</span>
+                                {% if pet_partner.cost_item.icon %}
+                                <img class="partner-item-icon" src="{{ pet_partner.cost_item.icon }}" />
+                                {% endif %}
+                                {{ pet_partner.cost_item.name }} × {{ pet_partner.cost_item.quantity }}
+                            </div>
+                            <div class="partner-line">
+                                <span class="partner-label">羁绊伙伴：</span>{{ pet_partner.member_names | join("、") }}
+                            </div>
+                            {% if pet_partner.has_soulmark_upgrade %}
+                            <div class="partner-line">
+                                <span class="partner-label">开启效果：</span>强化魂印
+                            </div>
+                            {% endif %}
+                            {% if pet_partner.skill %}
+                            <div class="partner-line">
+                                <span class="partner-label">羁绊新增技能：</span>{{ pet_partner.skill.name }}
+                            </div>
+                            {% if pet_partner.skill.activation_item %}
+                            <div class="partner-line">
+                                <span class="partner-label">技能开启道具：</span>
+                                {% if pet_partner.skill.activation_item.icon %}
+                                <img class="partner-item-icon" src="{{ pet_partner.skill.activation_item.icon }}" />
+                                {% endif %}
+                                {{ pet_partner.skill.activation_item.name }} × {{ pet_partner.skill.activation_item.quantity }}
+                            </div>
+                            {% for price in pet_partner.skill.activation_item.prices %}
+                            <div class="partner-price">
+                                {{ price.source_name }}：
+                                {% if price.currency_icon %}
+                                <img class="partner-item-icon" src="{{ price.currency_icon }}" />
+                                {% endif %}
+                                {{ price.currency_name }} × {{ price.amount }}
+                                {% if price.item_quantity > 1 %}（兑换{{ price.item_quantity }}个）{% endif %}
+                                {% if price.purchase_limit is not none %}（限购{{ price.purchase_limit }}次）{% endif %}
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if upgraded_soulmarks %}
+                    <div class="section">
+                        <div class="sec-title">升级后魂印</div>
+                        {% for sm in upgraded_soulmarks %}
+                        <div class="sm-item">
+                            {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
+                            <div class="sm-tags">
+                                {% for t in sm.tags %}
+                                <span class="tag">{{ t }}</span>
+                                {% endfor %}
+                                {% if sm.intensified %}
+                                <span class="tag t-str">强化</span>
+                                {% endif %}
+                                {% if sm.is_adv %}
+                                <span class="tag t-adv">觉醒</span>
+                                {% endif %}
                             </div>
                             {% endif %}
                             {% if sm.icon %}

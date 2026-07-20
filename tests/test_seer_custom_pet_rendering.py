@@ -1,0 +1,270 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
+from pytest import MonkeyPatch
+
+from ironsbot.services.seer.pet_partner import (
+    PetPartner,
+    PetPartnerMember,
+    PetPartnerSkill,
+    PetPartnerSkillItem,
+)
+from ironsbot.services.seer.rendering import custom_pet_info
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ironsbot.services.seer.rendering import TemplatePath
+
+
+class _Stats:
+    def to_model(self) -> _Stats:
+        return self
+
+    def round(self) -> _Stats:
+        return self
+
+    def model_dump(self) -> dict[str, int]:
+        return {
+            "atk": 1,
+            "def_": 1,
+            "sp_atk": 1,
+            "sp_def": 1,
+            "spd": 1,
+            "hp": 1,
+            "total": 6,
+        }
+
+
+class _GuardedPet:
+    def __init__(self, after_await: dict[str, bool]) -> None:
+        self._after_await = after_await
+        self.id = 1
+        self.name = "测试精灵"
+        self.resource_id = 1001
+        self.gender = SimpleNamespace(id=0)
+        self.type = SimpleNamespace(id=1, name="普通")
+        self.encyclopedia = None
+        self.base_stats = _Stats()
+        self.advance = None
+        self.skill_links: list[Any] = []
+        self.soulmark: list[Any] = []
+        self.glossary_entry: list[Any] = []
+
+    def __getattribute__(self, name: str) -> Any:
+        guarded = {
+            "gender",
+            "type",
+            "encyclopedia",
+            "base_stats",
+            "advance",
+            "skill_links",
+            "soulmark",
+            "glossary_entry",
+        }
+        if (
+            name in guarded
+            and object.__getattribute__(self, "_after_await")["started"]
+        ):
+            raise AssertionError
+        return object.__getattribute__(self, name)
+
+
+class _GuardedMintmark:
+    def __init__(self, after_await: dict[str, bool]) -> None:
+        self._after_await = after_await
+        self.id = 2001
+        self.name = "测试刻印"
+        self.desc = ""
+        self._skills = [SimpleNamespace(name="不存在的技能")]
+
+    @property
+    def skill(self) -> list[Any]:
+        if self._after_await["started"]:
+            raise AssertionError
+        return self._skills
+
+
+class _Session:
+    def __init__(self, mintmarks: list[Any]) -> None:
+        self._mintmarks = mintmarks
+
+    def execute(self, _statement: object) -> _Session:
+        return self
+
+    def scalars(self) -> _Session:
+        return self
+
+    def all(self) -> list[Any]:
+        return self._mintmarks
+
+
+class _Cache:
+    def get(self, _category: str, _content_key: str) -> None:
+        return None
+
+    def put(self, _category: str, _content_key: str, _data: bytes) -> None:
+        return None
+
+
+class _Images:
+    def __init__(self, after_await: dict[str, bool]) -> None:
+        self._after_await = after_await
+
+    async def fetch(self, _kind: str, _key: str, **_kwargs: object) -> bytes:
+        self._after_await["started"] = True
+        return b"image"
+
+
+@pytest.mark.asyncio
+async def test_pet_render_snapshots_lazy_relationships_before_image_fetch(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    after_await = {"started": False}
+    pet = _GuardedPet(after_await)
+    mintmark = _GuardedMintmark(after_await)
+    captured: dict[str, object] = {}
+
+    async def render_html(
+        template_path: TemplatePath,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        _ = (template_path, template_name, max_width, allow_refit)
+        captured["templates"] = templates
+        return b"rendered"
+
+    monkeypatch.setattr(
+        custom_pet_info,
+        "object_session",
+        lambda _pet: _Session([mintmark]),
+    )
+    monkeypatch.setattr(
+        custom_pet_info,
+        "load_effect_descriptions",
+        lambda _session: {},
+    )
+    monkeypatch.setattr(
+        custom_pet_info,
+        "load_pet_partner",
+        lambda _session, _pet_id: None,
+    )
+    monkeypatch.setattr(
+        custom_pet_info,
+        "_gender_icon_data_uri",
+        lambda _gender_id: "gender",
+    )
+
+    result = await custom_pet_info.render_custom_pet_info(
+        cast("Any", _Cache()),
+        cast("Any", _Images(after_await)),
+        render_html,
+        cast("Any", pet),
+    )
+
+    assert result == b"rendered"
+    templates = cast("dict[str, object]", captured["templates"])
+    assert templates["pet_name"] == "测试精灵"
+    assert templates["skill_marks"] == [
+        {
+            "id": 2001,
+            "name": "测试刻印",
+            "desc": "",
+            "icon": "data:image/png;base64,aW1hZ2U=",
+            "skills": [],
+        }
+    ]
+    assert templates["pet_partner"] is None
+
+
+def test_build_pet_partner_keeps_skill_activation_item_separate_from_reward(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    partner = PetPartner(
+        group_id=15,
+        name="源初之夜",
+        cost_item_id=1722827,
+        cost_item_name="契约徽章",
+        cost_item_quantity=8,
+        members=(
+            PetPartnerMember(pet_id=4329, name="夜魔之神"),
+            PetPartnerMember(pet_id=3491, name="魔灵王"),
+        ),
+        before_description="强化前魂印",
+        after_description="强化后魂印",
+        skill=PetPartnerSkill(
+            skill_id=36696,
+            name="至暗·无量空邃",
+            activation_item=PetPartnerSkillItem(
+                item_id=1725370,
+                name="梦夜之源",
+                quantity=1,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        custom_pet_info,
+        "load_item_exchange_prices",
+        lambda _session, _item_ids: {},
+    )
+
+    rendered = custom_pet_info._build_pet_partner(partner, object())
+
+    assert rendered is not None
+    assert rendered["cost_item"] == {
+        "id": 1722827,
+        "name": "契约徽章",
+        "quantity": 8,
+        "icon": None,
+        "prices": [],
+    }
+    assert rendered["skill"] == {
+        "id": 36696,
+        "name": "至暗·无量空邃",
+        "activation_item": {
+            "id": 1725370,
+            "name": "梦夜之源",
+            "quantity": 1,
+            "icon": None,
+            "prices": [],
+        },
+    }
+
+
+def test_partition_soulmarks_places_partner_upgrade_without_duplication() -> None:
+    partner = PetPartner(
+        group_id=15,
+        name="源初之夜",
+        cost_item_id=1722827,
+        cost_item_name="契约徽章",
+        cost_item_quantity=8,
+        members=(),
+        before_description="强化前魂印",
+        after_description="强化后魂印",
+        skill=None,
+    )
+    base_soulmark = {
+        "desc": "强化前魂印",
+        "intensified": False,
+        "is_adv": False,
+        "pve_effective": None,
+        "tags": [],
+        "icon_id": None,
+        "icon": None,
+    }
+    upgraded_soulmark = {**base_soulmark, "desc": "强化后魂印"}
+
+    base, upgraded = custom_pet_info._partition_soulmarks(
+        [base_soulmark, upgraded_soulmark],
+        partner,
+    )
+
+    assert base == [base_soulmark]
+    assert upgraded == [upgraded_soulmark]
