@@ -7,7 +7,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
@@ -28,7 +28,7 @@ def is_dynamic_menu_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
-    if not event_has_feature(features, event, "bili_query"):
+    if not event_is_feature_allowed(features, event, "bili_query"):
         return False
 
     return command_text_matches(
@@ -59,8 +59,8 @@ def is_bili_account_command(
     event: MessageEvent,
 ) -> bool:
     if not (
-        event_has_feature(features, event, "bili_query")
-        or event_has_feature(features, event, "bili_push")
+        event_is_feature_allowed(features, event, "bili_query")
+        or event_is_feature_allowed(features, event, "bili_push")
     ):
         return False
 

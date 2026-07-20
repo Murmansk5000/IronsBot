@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.replies import finish_event_reply
 
 if TYPE_CHECKING:
@@ -38,7 +38,11 @@ async def handle_normal_status(
     broadcast: OpenBroadcast,
     service: ServerStatusService,
 ) -> None:
-    if not event_has_feature(broadcast.features, event, "server_status_query"):
+    if not event_is_feature_allowed(
+        broadcast.features,
+        event,
+        "server_status_query",
+    ):
         logger.info(
             "normal server status command ignored: "
             "server_status_query feature not allowed"
