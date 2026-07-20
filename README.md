@@ -242,9 +242,12 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 旧字段并使用当前结构，不会保留旧字段兼容或静默忽略逻辑。
 
 帮助提示与未开启 AI 群的 @ 提示共用 `[features.help]` 的两项限流配置。
-用户命令冷却统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
-跨群、私聊和多个机器人账号共用冷却，不同语义命令互不影响。成功、失败、
-超时和异常都会在命令结束后进入相同冷却；超级管理员绕过。
+用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
+跨群、私聊和多个机器人账号共用多个精确滑动窗口，不同语义命令互不影响。
+默认关闭；显式设置 `enabled = true` 后，内置窗口是 `60 秒 3 次` 与 `300 秒 5 次`。
+成功、失败、超时和异常都会在命令结束后计入相同窗口，超级管理员绕过。玩家基础查询、收集、巅峰、群星牌分别使用
+`seer_player`、`seer_player_collection`、`seer_player_peak`、`seer_player_autocard`
+四个独立额度，可在 `commands` 中单独覆盖。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、
 `seer_player_peak`、`seer_player_autocard`、`seer_team`、
 `seer_rank_list`、`seer_rank_player`、`seer_rank_score`、
@@ -252,7 +255,8 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 `message_private.<id>` / `message_group.<id>`，AI 意图使用
 `ai_intent.<action_id>`；对应 `id` 必须稳定且不可为空。
 
-群消息发送额度使用 `[messaging.outbound_rate_limit].windows` 的多个精确滑动窗口。
+群消息发送额度默认关闭；显式设置 `[messaging.outbound_rate_limit].enabled = true` 后，使用
+`[messaging.outbound_rate_limit].windows` 的多个精确滑动窗口。
 任一窗口达到上限都会抑制后续普通回复；主动推送可以在每群独立 FIFO 队列中
 短暂等待，私聊和启用 `admin_notice` 的管理群不计入群额度。
 

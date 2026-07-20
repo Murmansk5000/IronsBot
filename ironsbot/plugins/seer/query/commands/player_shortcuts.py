@@ -20,6 +20,7 @@ from ironsbot.services.seer.player_shortcuts import (
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
+from .player import prompt_for_unbound_player_id
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_service import PlayerService
@@ -42,6 +43,9 @@ async def handle_player_shortcut(
     state: T_State,
 ) -> None:
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
+    if command.player_id is None and service.default_player_id(event.user_id) is None:
+        await prompt_for_unbound_player_id(service, matcher, event)
+        return
     message = await service.shortcut(command, event.user_id)
     await finish_event_reply(matcher, event, message)
 

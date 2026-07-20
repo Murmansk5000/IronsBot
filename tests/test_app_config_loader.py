@@ -11,6 +11,7 @@ from ironsbot.config.loader import CONFIG_ENV, ConfigFileNotFoundError, load_set
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
+    CommandCooldownWindowConfig,
     CommandMessageAction,
     GroupScheduledMessageAction,
     MessageConfig,
@@ -400,6 +401,23 @@ def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
         CommandCooldownConfig(cooldown_message="{unknown}")
 
 
+def test_command_cooldown_requires_distinct_default_windows() -> None:
+    window = CommandCooldownWindowConfig(
+        window_seconds=60,
+        max_requests=3,
+    )
+    with pytest.raises(
+        ValidationError,
+        match=r"command_cooldown\.windows must not be empty",
+    ):
+        CommandCooldownConfig(windows=[])
+    with pytest.raises(
+        ValidationError,
+        match=r"contains duplicate window_seconds",
+    ):
+        CommandCooldownConfig(windows=[window, window])
+
+
 def test_bot_routing_config_accepts_aliases_and_numeric_bot_ids() -> None:
     config = BotRoutingConfig(
         enabled=True,
@@ -672,6 +690,8 @@ def test_app_config_defaults_cover_runtime_services() -> None:
         == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
     assert app_config.activity.lead_hours == [11, 1]
+    assert not app_config.messaging.command_cooldown.enabled
+    assert not app_config.messaging.outbound_rate_limit.enabled
     assert "seerapi" in app_config.operations.data_sync.sources
     assert (
         app_config.messaging.outbound_rate_limit.windows[0].max_messages
