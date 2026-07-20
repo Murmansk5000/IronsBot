@@ -46,7 +46,8 @@ def collect_countermark_rank_items(
 
         result.append(
             CountermarkStatRankItem(
-                mintmark=mintmark,
+                mintmark_id=int(mintmark.id),
+                mintmark_name=str(mintmark.name),
                 attrs=attrs,
                 value=value,
                 total=float(attrs.total),
@@ -60,7 +61,7 @@ def collect_countermark_rank_items(
         key=lambda item: (
             item.value,
             item.total,
-            -item.mintmark.id,
+            -item.mintmark_id,
         ),
         reverse=True,
     )
