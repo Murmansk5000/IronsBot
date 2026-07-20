@@ -18,7 +18,10 @@ from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, no_reply
 from ironsbot.services.seer.player_binding import parse_player_binding_target
 from ironsbot.services.seer.player_query import extract_player_query_arg
-from ironsbot.services.seer.player_service import PendingPlayerQuery
+from ironsbot.services.seer.player_service import (
+    PendingPlayerQuery,
+    PlayerQueryResult,
+)
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ._args import parse_numeric_id
@@ -28,6 +31,7 @@ from .player_context import (
     PLAYER_BINDING_PENDING_KEY,
     PLAYER_ID_KEY,
     PLAYER_QUERY_IS_EXPLICIT_KEY,
+    PLAYER_UNBOUND_ENTRY_NAMESPACE,
 )
 from .player_detail_conversation import send_player_info_with_detail_prompt
 
@@ -35,6 +39,36 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_service import PlayerService
 
 _MAX_PLAYER_ID = 2_000_000_000
+
+
+def _unbound_player_entry_prompt(error: str = "") -> str:
+    prompt = (
+        "尚未设置默认米米号。请直接发送米米号数字（例如 123456）查询，"
+        "也可发送“米米号123456”查询或“绑定米米号123456”直接绑定。\n"
+        "首次成功查询后，机器人会询问是否设为默认米米号。"
+    )
+    return f"{error}\n\n{prompt}" if error else prompt
+
+
+def _is_unbound_player_id_reply(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip().isdigit()
+
+
+async def prompt_for_unbound_player_id(
+    service: PlayerService,
+    matcher: Matcher,
+    event: MessageEvent,
+    *,
+    error: str = "",
+) -> None:
+    await enter_event_reply_conversation(
+        matcher,
+        event,
+        namespace=PLAYER_UNBOUND_ENTRY_NAMESPACE,
+        handlers=[bind_async(handle_unbound_player_id_entry, service)],
+        reply_check=_is_unbound_player_id_reply,
+        prompt=_unbound_player_entry_prompt(error),
+    )
 
 
 async def _is_player_id_query(event: Event, state: T_State) -> bool:
@@ -81,12 +115,10 @@ async def validate_player_id(
     else:
         player_id = service.default_player_id(event.user_id)
         if player_id is None:
-            await finish_event_reply(
+            await prompt_for_unbound_player_id(
+                service,
                 matcher,
                 event,
-                "尚未设置默认米米号。可发送“绑定米米号12345”直接绑定，"
-                "或先发送“米米号+数字”查询。\n"
-                "首次成功查询后也可以选择是否设为默认米米号。",
             )
             return
     state[PLAYER_ID_KEY] = player_id
@@ -104,6 +136,61 @@ async def handle_player(
         qq_user_id=event.user_id,
         explicit=explicit,
     )
+    await _handle_player_query_result(
+        service,
+        matcher,
+        event,
+        state,
+        result,
+    )
+
+
+async def handle_unbound_player_id_entry(
+    service: PlayerService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    raw_player_id = event.get_plaintext().strip()
+    player_id = int(raw_player_id)
+    if not 1 <= player_id <= _MAX_PLAYER_ID:
+        await prompt_for_unbound_player_id(
+            service,
+            matcher,
+            event,
+            error="❌ 米米号无效，请输入纯数字米米号。",
+        )
+        return
+
+    result = await service.query(
+        player_id,
+        qq_user_id=event.user_id,
+        explicit=True,
+    )
+    if result.message:
+        await prompt_for_unbound_player_id(
+            service,
+            matcher,
+            event,
+            error=result.message,
+        )
+        return
+    await _handle_player_query_result(
+        service,
+        matcher,
+        event,
+        state,
+        result,
+    )
+
+
+async def _handle_player_query_result(
+    service: PlayerService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    result: PlayerQueryResult,
+) -> None:
     if result.message:
         await finish_event_reply(matcher, event, result.message)
         return
