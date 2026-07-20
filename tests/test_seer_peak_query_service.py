@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from datetime import datetime
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import pytest
 
 from ironsbot.core import time
 from ironsbot.services.operations.headless_errors import DisconnectedError
+from ironsbot.services.seer import peak
 from ironsbot.services.seer.peak import (
     PeakItemData,
     PeakPetSnapshot,
@@ -226,6 +228,108 @@ async def test_peak_vote_snapshots_pets_before_headless_requests() -> None:
             type_id=4,
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_peak_vote_fetches_only_active_pools(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    current_time = datetime(2026, 7, 20, 19, 0, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
+
+    data = FakeData()
+    data.query_result = (
+        SimpleNamespace(
+            id=1,
+            count=2,
+            subkey=101,
+            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+            end_time=datetime(2026, 7, 2, tzinfo=time.TZ_CN),
+            pet=[],
+        ),
+        SimpleNamespace(
+            id=2,
+            count=2,
+            subkey=202,
+            start_time=datetime(2026, 7, 20, 18, 0, tzinfo=time.TZ_CN),
+            end_time=datetime(2026, 7, 20, 20, 0, tzinfo=time.TZ_CN),
+            pet=[],
+        ),
+        SimpleNamespace(
+            id=3,
+            count=2,
+            subkey=303,
+            start_time=datetime(2026, 7, 21, tzinfo=time.TZ_CN),
+            end_time=datetime(2026, 7, 22, tzinfo=time.TZ_CN),
+            pet=[],
+        ),
+    )
+    called_subkeys: list[int] = []
+    rendered: dict[str, Any] = {}
+
+    class FakeGame:
+        async def get_limit_pool_vote(self, sub_key: int) -> list[RankEntry]:
+            called_subkeys.append(sub_key)
+            return []
+
+    async def report(_message: str) -> None:
+        return None
+
+    result = await _service(data, FakeHeadless(FakeGame()), rendered).vote(report)
+
+    assert result.image == b"vote"
+    assert called_subkeys == [202]
+    assert len(rendered["vote"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_peak_vote_reports_render_timeout(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(peak, "PEAK_VOTE_RENDER_TIMEOUT_SECONDS", 0.01)
+    current_time = datetime(2026, 7, 20, 19, 0, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
+
+    data = FakeData()
+    data.query_result = (
+        SimpleNamespace(
+            id=1,
+            count=2,
+            subkey=101,
+            start_time=datetime(2026, 7, 20, 18, 0, tzinfo=time.TZ_CN),
+            end_time=datetime(2026, 7, 20, 20, 0, tzinfo=time.TZ_CN),
+            pet=[],
+        ),
+    )
+
+    class FakeGame:
+        async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
+            return []
+
+    async def render_vote(_pools: list[Any]) -> bytes:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def render_pool(_pools: Any, _title: str) -> bytes:
+        return b"pool"
+
+    async def render_pet(**_kwargs: Any) -> bytes:
+        return b"pet"
+
+    async def report(_message: str) -> None:
+        return None
+
+    service = PeakQueryService(
+        cast("SeerDataAccess", data),
+        cast("HeadlessService", FakeHeadless(FakeGame())),
+        cast("PeakPoolRenderer", render_pool),
+        cast("PeakVoteRenderer", render_vote),
+        cast("PeakPetRenderer", render_pet),
+    )
+
+    result = await service.vote(report)
+
+    assert result.message == "❌巅峰投票图片生成超时，请稍后再试。"
 
 
 @pytest.mark.asyncio
