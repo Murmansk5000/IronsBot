@@ -61,6 +61,35 @@ class PeakPetPeriod:
     sub_key: int
 
 
+@dataclass(frozen=True, slots=True)
+class PeakPetSnapshot:
+    """The pet fields peak renderers need after the database session closes."""
+
+    id: int
+    name: str
+    resource_id: int
+    type_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPoolSnapshot:
+    id: int
+    count: int
+    start_time: datetime
+    end_time: datetime
+    pets: tuple[PeakPetSnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PeakVoteSnapshot:
+    id: int
+    count: int
+    subkey: int
+    start_time: datetime
+    end_time: datetime
+    pets: tuple[PeakPetSnapshot, ...]
+
+
 def load_peak_pools(
     session: Session,
     *,
@@ -72,6 +101,55 @@ def load_peak_pools(
 
 def load_peak_votes(session: Session) -> tuple[PeakPoolVoteORM, ...]:
     return tuple(session.exec(select(PeakPoolVoteORM)).all())
+
+
+def snapshot_peak_pools(
+    pools: Iterable[PeakPoolORM | PeakExpertPoolORM],
+) -> tuple[PeakPoolSnapshot, ...]:
+    return tuple(
+        PeakPoolSnapshot(
+            id=int(pool.id),
+            count=int(pool.count),
+            start_time=pool.start_time,
+            end_time=pool.end_time,
+            pets=tuple(_snapshot_peak_pet(pet) for pet in pool.pet),
+        )
+        for pool in pools
+    )
+
+
+def snapshot_peak_votes(
+    votes: Iterable[PeakPoolVoteORM],
+) -> tuple[PeakVoteSnapshot, ...]:
+    return tuple(
+        PeakVoteSnapshot(
+            id=int(vote.id),
+            count=int(vote.count),
+            subkey=int(vote.subkey),
+            start_time=vote.start_time,
+            end_time=vote.end_time,
+            pets=tuple(_snapshot_peak_pet(pet) for pet in vote.pet),
+        )
+        for vote in votes
+    )
+
+
+def snapshot_peak_pet_map(
+    pets: dict[int, PetORM],
+) -> dict[int, PeakPetSnapshot]:
+    return {
+        int(pet_id): _snapshot_peak_pet(pet)
+        for pet_id, pet in pets.items()
+    }
+
+
+def _snapshot_peak_pet(pet: PetORM) -> PeakPetSnapshot:
+    return PeakPetSnapshot(
+        id=int(pet.id),
+        name=str(pet.name),
+        resource_id=int(pet.resource_id),
+        type_id=int(pet.type.id),
+    )
 
 
 def load_peak_pet_period(
@@ -153,7 +231,7 @@ LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
 ProgressReporter = Callable[[str], Awaitable[None]]
 PeakPoolRenderer = Callable[
-    [tuple[PeakPoolORM | PeakExpertPoolORM, ...], str],
+    [tuple[PeakPoolSnapshot, ...], str],
     Awaitable[bytes],
 ]
 
@@ -161,7 +239,7 @@ PeakPoolRenderer = Callable[
 class PeakVoteRank(TypedDict):
     items: list[RankEntry]
     title: str
-    pets: list[PetORM]
+    pets: list[PeakPetSnapshot]
 
 
 PeakVoteRenderer = Callable[[list[PeakVoteRank]], Awaitable[bytes]]
@@ -174,7 +252,7 @@ class PeakPetRenderer(Protocol):
         title: str,
         pick_items: list[PeakItemData],
         ban_items: list[RankEntry],
-        pet_map: dict[int, PetORM],
+        pet_map: dict[int, PeakPetSnapshot],
     ) -> bytes: ...
 
 
@@ -192,8 +270,8 @@ def normalize_peak_vote_time(value: datetime) -> datetime:
 
 
 def sort_peak_pool_votes_by_time(
-    pools: Iterable[PeakPoolVoteORM],
-) -> list[PeakPoolVoteORM]:
+    pools: Iterable[PeakVoteSnapshot],
+) -> list[PeakVoteSnapshot]:
     now = time.now(tz=time.TZ_CN)
     return sorted(
         pools,
@@ -239,22 +317,23 @@ class PeakQueryService:
     ) -> PeakQueryResult:
         with self._data.query(
             partial(load_peak_pools, expert=expert)
-        ) as pools:
-            label = "专家禁用池" if expert else "竞技池"
-            if not pools:
-                return PeakQueryResult(
-                    message=(
-                        f"❌找不到{label}数据。"
-                        "（这是一个bug，请反馈给开发者）"
-                    )
+        ) as database_pools:
+            pools = snapshot_peak_pools(database_pools)
+        label = "专家禁用池" if expert else "竞技池"
+        if not pools:
+            return PeakQueryResult(
+                message=(
+                    f"❌找不到{label}数据。"
+                    "（这是一个bug，请反馈给开发者）"
                 )
-            await progress("正在生成图片...")
-            start_time = pools[0].start_time.strftime("%Y-%m-%d")
-            end_time = pools[0].end_time.strftime("%Y-%m-%d")
-            image = await self._render_pool(
-                pools,
-                f"{label} / {start_time} ~ {end_time}",
             )
+        await progress("正在生成图片...")
+        start_time = pools[0].start_time.strftime("%Y-%m-%d")
+        end_time = pools[0].end_time.strftime("%Y-%m-%d")
+        image = await self._render_pool(
+            pools,
+            f"{label} / {start_time} ~ {end_time}",
+        )
         return PeakQueryResult(image=image)
 
     async def vote(
@@ -264,35 +343,36 @@ class PeakQueryService:
         game, error = self._game()
         if game is None:
             return PeakQueryResult(message=error)
-        with self._data.query(load_peak_votes) as votes:
-            pools: list[PeakVoteRank] = []
-            now = time.now(tz=time.TZ_CN)
-            for vote in sort_peak_pool_votes_by_time(votes):
-                title = f"限{vote.count}池票选"
-                start_time = normalize_peak_vote_time(vote.start_time)
-                end_time = normalize_peak_vote_time(vote.end_time)
-                if start_time > now:
-                    title += " / 票选未开始"
-                elif end_time < now:
-                    title += " / 票选已结束"
-                else:
-                    title += (
-                        f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
-                        f"{end_time:%Y-%m-%d}"
-                    )
-                if vote.count == LIMIT_POOL_VOTE_COUNT:
-                    rank = await game.get_limit_pool_vote(vote.subkey)
-                elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
-                    rank = await game.get_semi_limit_pool_vote(vote.subkey)
-                else:
-                    continue
-                pools.append(
-                    {"items": rank, "title": title, "pets": vote.pet}
+        with self._data.query(load_peak_votes) as database_votes:
+            votes = snapshot_peak_votes(database_votes)
+        pools: list[PeakVoteRank] = []
+        now = time.now(tz=time.TZ_CN)
+        for vote in sort_peak_pool_votes_by_time(votes):
+            title = f"限{vote.count}池票选"
+            start_time = normalize_peak_vote_time(vote.start_time)
+            end_time = normalize_peak_vote_time(vote.end_time)
+            if start_time > now:
+                title += " / 票选未开始"
+            elif end_time < now:
+                title += " / 票选已结束"
+            else:
+                title += (
+                    f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
+                    f"{end_time:%Y-%m-%d}"
                 )
-            if not pools:
-                return PeakQueryResult(message="❌找不到票选数据。")
-            await progress("正在生成图片...")
-            image = await self._render_vote(pools)
+            if vote.count == LIMIT_POOL_VOTE_COUNT:
+                rank = await game.get_limit_pool_vote(vote.subkey)
+            elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
+                rank = await game.get_semi_limit_pool_vote(vote.subkey)
+            else:
+                continue
+            pools.append(
+                {"items": rank, "title": title, "pets": list(vote.pets)}
+            )
+        if not pools:
+            return PeakQueryResult(message="❌找不到票选数据。")
+        await progress("正在生成图片...")
+        image = await self._render_vote(pools)
         return PeakQueryResult(image=image)
 
     async def item_rank(
@@ -307,39 +387,40 @@ class PeakQueryService:
         name, peak_type = parse_peak_type(command)
         with self._data.query(
             partial(load_peak_pet_period, monthly=False)
-        ) as period:
-            if period is None:
-                return PeakQueryResult(
-                    message="❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
+        ) as database_period:
+            period = database_period
+        if period is None:
+            return PeakQueryResult(
+                message="❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
+            )
+        if kind == "套装":
+            rank_data = await game.get_peak_suit_rank(
+                period.sub_key,
+                peak_type,
+            )
+            getter = self._data.suit
+        else:
+            rank_data = await game.get_peak_title_rank(
+                period.sub_key,
+                peak_type,
+            )
+            getter = self._data.title
+        if not rank_data:
+            return PeakQueryResult(message=f"❌找不到{kind}榜数据。")
+        with self._data.get_many(
+            getter,
+            {item.id for item in rank_data},
+        ) as models:
+            lines: list[str] = []
+            for index, item in enumerate(rank_data, 1):
+                model = models.get(item.id)
+                item_name = "" if model is None else model.name
+                lines.append(
+                    f"{index}. {item_name}"
+                    f" | 出场 {item.count}"
+                    f" | 胜场 {item.win}"
+                    f" | 胜率 {item.win_rate}%"
                 )
-            if kind == "套装":
-                rank_data = await game.get_peak_suit_rank(
-                    period.sub_key,
-                    peak_type,
-                )
-                getter = self._data.suit
-            else:
-                rank_data = await game.get_peak_title_rank(
-                    period.sub_key,
-                    peak_type,
-                )
-                getter = self._data.title
-            if not rank_data:
-                return PeakQueryResult(message=f"❌找不到{kind}榜数据。")
-            with self._data.get_many(
-                getter,
-                {item.id for item in rank_data},
-            ) as models:
-                lines: list[str] = []
-                for index, item in enumerate(rank_data, 1):
-                    model = models.get(item.id)
-                    item_name = "" if model is None else model.name
-                    lines.append(
-                        f"{index}. {item_name}"
-                        f" | 出场 {item.count}"
-                        f" | 胜场 {item.win}"
-                        f" | 胜率 {item.win_rate}%"
-                    )
         timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
         return PeakQueryResult(
             text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines)
@@ -357,39 +438,41 @@ class PeakQueryService:
         monthly = "月" in command
         with self._data.query(
             partial(load_peak_pet_period, monthly=monthly)
-        ) as period:
-            if period is None:
-                return PeakQueryResult(
-                    message=(
-                        "❌找不到专家禁用池数据。"
-                        "（这是一个bug，请反馈给开发者）"
-                        if monthly
-                        else "❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
-                    )
+        ) as database_period:
+            period = database_period
+        if period is None:
+            return PeakQueryResult(
+                message=(
+                    "❌找不到专家禁用池数据。"
+                    "（这是一个bug，请反馈给开发者）"
+                    if monthly
+                    else "❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
                 )
-            pick_rank, ban_rank = await game.get_peak_pet_rank(
-                period.sub_key,
-                peak_type,
             )
-            pick_rank = pick_rank[:20]
-            ban_rank = ban_rank[:20]
-            if not pick_rank:
-                return PeakQueryResult(message="❌找不到精灵榜数据。")
-            with self._data.get_many(
-                self._data.pet,
-                {item.id for item in (*pick_rank, *ban_rank)},
-            ) as pet_map:
-                await progress("正在生成图片...")
-                image = await self._render_pet(
-                    title=(
-                        f"{name}精灵{period.category}榜<br>"
-                        f"{period.start_time:%Y-%m-%d} ~ "
-                        f"{period.end_time:%Y-%m-%d}"
-                    ),
-                    pick_items=pick_rank,
-                    ban_items=ban_rank,
-                    pet_map=pet_map,
-                )
+        pick_rank, ban_rank = await game.get_peak_pet_rank(
+            period.sub_key,
+            peak_type,
+        )
+        pick_rank = pick_rank[:20]
+        ban_rank = ban_rank[:20]
+        if not pick_rank:
+            return PeakQueryResult(message="❌找不到精灵榜数据。")
+        with self._data.get_many(
+            self._data.pet,
+            {item.id for item in (*pick_rank, *ban_rank)},
+        ) as database_pets:
+            pet_map = snapshot_peak_pet_map(database_pets)
+        await progress("正在生成图片...")
+        image = await self._render_pet(
+            title=(
+                f"{name}精灵{period.category}榜<br>"
+                f"{period.start_time:%Y-%m-%d} ~ "
+                f"{period.end_time:%Y-%m-%d}"
+            ),
+            pick_items=pick_rank,
+            ban_items=ban_rank,
+            pet_map=pet_map,
+        )
         return PeakQueryResult(image=image)
 
     def _game(self) -> tuple[PeakGame | None, str]:

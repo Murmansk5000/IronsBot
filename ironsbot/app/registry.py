@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.plugins.operations.status.command_text import SERVER_STATUS_USAGE
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginDefinition,
@@ -73,7 +73,7 @@ def _feature_help_visible(
     return (
         enabled
         and (not group_only or isinstance(event, GroupMessageEvent))
-        and event_has_feature(features, event, feature)
+        and event_is_feature_allowed(features, event, feature)
     )
 
 
@@ -100,7 +100,7 @@ def _messaging_help_visible(
         return False
     return any(
         action.enabled
-        and event_has_feature(features, event, action.feature)
+        and event_is_feature_allowed(features, event, action.feature)
         for action in actions
     )
 

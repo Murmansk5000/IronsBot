@@ -8,7 +8,7 @@ from nonebot_plugin_saa import Image
 
 from ironsbot.core.features import FeatureService
 from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS, PicConfig
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
@@ -30,7 +30,9 @@ def install_fixed_images(
         matcher = registry.on_fullmatch(
             command,
             policy=CommandPolicy.command(f"sendpic_fixed.{command}"),
-            rule=Rule(lambda event: event_has_feature(features, event, "image"))
+            rule=Rule(
+                lambda event: event_is_feature_allowed(features, event, "image")
+            )
             & no_reply(),
             priority=registry.priority("sendpic"),
             block=True,
@@ -69,7 +71,9 @@ def create_image_command(
         config.command,
         policy=CommandPolicy.command(f"sendpic.{config.id}"),
         aliases=set(config.aliases),
-        rule=Rule(lambda event: event_has_feature(features, event, "image"))
+        rule=Rule(
+            lambda event: event_is_feature_allowed(features, event, "image")
+        )
         & no_reply(),
     )
     template = config.message_template

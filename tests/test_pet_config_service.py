@@ -49,6 +49,41 @@ class FakeImages:
         return self.images.get(pet_id)
 
 
+class SessionBoundPet:
+    def __init__(self, pet_id: int, name: str) -> None:
+        self._session_open = True
+        self._id = pet_id
+        self._name = name
+
+    @property
+    def id(self) -> int:
+        if not self._session_open:
+            raise AssertionError
+        return self._id
+
+    @property
+    def name(self) -> str:
+        if not self._session_open:
+            raise AssertionError
+        return self._name
+
+
+class ClosingData(FakeData):
+    @contextmanager
+    def resolve(
+        self,
+        _getter: object,
+        arg: str,
+    ) -> Iterator[tuple[Any, ...]]:
+        self.resolve_args.append(arg)
+        try:
+            yield self.pets
+        finally:
+            for pet in self.pets:
+                if isinstance(pet, SessionBoundPet):
+                    pet._session_open = False
+
+
 def _pet(pet_id: int, name: str) -> Any:
     return SimpleNamespace(id=pet_id, name=name)
 
@@ -81,6 +116,17 @@ async def test_known_pet_without_local_config_reports_missing_image() -> None:
 
     assert result.reply is not None
     assert result.reply.text == "❌暂未收录精灵 莫缇（4923）的配置图。"
+
+
+@pytest.mark.asyncio
+async def test_pet_config_snapshots_pet_before_data_session_closes() -> None:
+    data = ClosingData()
+    data.pets = (SessionBoundPet(4923, "莫缇"),)
+
+    result = await _service(data, FakeImages({4923: b"config"})).search("莫缇")
+
+    assert result.reply is not None
+    assert result.reply.image == b"config"
 
 
 @pytest.mark.asyncio

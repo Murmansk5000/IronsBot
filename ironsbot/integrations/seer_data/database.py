@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from seerapi_models import ApiMetadataORM, ErrorCodeORM, PeakSeasonORM
-from sqlmodel import select
+from seerapi_models import ApiMetadataORM, ErrorCodeORM, MintmarkORM, PeakSeasonORM
+from seerapi_models.mintmark import AbilityPartORM, UniversalPartORM
+from sqlalchemy.orm import selectinload
+from sqlmodel import col, or_, select
 
 from ironsbot.services.seer.data import (
     SEERAPI_DB,
@@ -31,15 +33,11 @@ from .getters import (
 from .mintmark_series_resolvers import resolve_custom_mintmark_series
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
     from datetime import datetime
 
-    from seerapi_models import (
-        MintmarkClassCategoryORM,
-        MintmarkORM,
-        PetORM,
-        PetSkinORM,
-    )
+    from seerapi_models import PetORM, PetSkinORM
+    from sqlmodel import Session as SQLModelSession
 
     from ironsbot.integrations.db_registry import DatabaseManager
 
@@ -127,21 +125,26 @@ class SeerDatabase:
     def mintmark_query(
         self,
         arg: str,
-    ) -> Iterator[
-        tuple[
-            tuple[MintmarkORM, ...],
-            tuple[MintmarkClassCategoryORM, ...],
-            tuple[MintmarkORM, ...],
-        ]
-    ]:
+    ) -> Iterator[tuple[MintmarkORM, ...]]:
         with self._databases.all_sessions() as sessions:
-            if SEERAPI_DB not in sessions:
+            session = sessions.get(SEERAPI_DB)
+            if session is None:
                 raise DataUnavailableError
-            yield (
-                self.mintmark(sessions, arg),
-                self.mintmark_class(sessions, arg),
-                self.custom_mintmark_series(sessions, arg),
-            )
+            custom_series = self.custom_mintmark_series(sessions, arg)
+            if custom_series:
+                mintmark_ids = tuple(mintmark.id for mintmark in custom_series)
+            else:
+                direct = self.mintmark(sessions, arg)
+                classes = self.mintmark_class(sessions, arg)
+                class_ids = {mintmark_class.id for mintmark_class in classes}
+                class_member_ids = _mintmark_class_member_ids(
+                    session,
+                    class_ids,
+                )
+                mintmark_ids = (*(
+                    mintmark.id for mintmark in direct
+                ), *class_member_ids)
+            yield _load_mintmark_details(session, mintmark_ids)
 
     def error_message(self, result_code: int) -> str | None:
         try:
@@ -175,3 +178,97 @@ class SeerDatabase:
         except Exception:  # noqa: BLE001
             logger.debug("failed to query Seer database version", exc_info=True)
         return UNKNOWN_VERSION
+
+
+def _mintmark_class_member_ids(
+    session: SQLModelSession,
+    class_ids: set[int],
+) -> tuple[int, ...]:
+    if not class_ids:
+        return ()
+    statement = select(UniversalPartORM.mintmark_id).where(
+        col(UniversalPartORM.mintmark_class_id).in_(class_ids)
+    ).order_by(col(UniversalPartORM.mintmark_id))
+    return tuple(session.exec(statement).all())
+
+
+def _load_mintmark_details(
+    session: SQLModelSession,
+    mintmark_ids: Iterable[int],
+) -> tuple[MintmarkORM, ...]:
+    requested_ids = tuple(
+        dict.fromkeys(int(mintmark_id) for mintmark_id in mintmark_ids)
+    )
+    if not requested_ids:
+        return ()
+
+    connected_ids = _collect_connected_mintmark_ids(session, requested_ids)
+    statement = select(MintmarkORM).where(
+        col(MintmarkORM.id).in_(connected_ids)
+    ).options(
+        selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
+            cast("Any", AbilityPartORM.max_attr_value)
+        ),
+        selectinload(cast("Any", MintmarkORM.skill_part)),
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.base_attr_value)
+        ),
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.max_attr_value)
+        ),
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.extra_attr_value)
+        ),
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.mintmark_class)
+        ),
+        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+            cast("Any", UniversalPartORM.connect)
+        ),
+        selectinload(cast("Any", MintmarkORM.connected_universal_parts)).selectinload(
+            cast("Any", UniversalPartORM.mintmark)
+        ),
+        selectinload(cast("Any", MintmarkORM.pet)),
+        selectinload(cast("Any", MintmarkORM.skill)),
+    )
+    loaded = {mintmark.id: mintmark for mintmark in session.exec(statement).all()}
+    return tuple(
+        mintmark
+        for mintmark_id in requested_ids
+        if (mintmark := loaded.get(mintmark_id)) is not None
+    )
+
+
+def _collect_connected_mintmark_ids(
+    session: SQLModelSession,
+    mintmark_ids: Iterable[int],
+) -> set[int]:
+    result = {int(mintmark_id) for mintmark_id in mintmark_ids}
+    pending = set(result)
+    while pending:
+        related_ids = _connected_mintmark_neighbor_ids(session, pending)
+        pending = related_ids - result
+        result.update(pending)
+    return result
+
+
+def _connected_mintmark_neighbor_ids(
+    session: SQLModelSession,
+    mintmark_ids: set[int],
+) -> set[int]:
+    statement = select(
+        UniversalPartORM.mintmark_id,
+        UniversalPartORM.connect_id,
+    ).where(
+        or_(
+            col(UniversalPartORM.mintmark_id).in_(mintmark_ids),
+            col(UniversalPartORM.connect_id).in_(mintmark_ids),
+        )
+    )
+    related_ids: set[int] = set()
+    for mintmark_id, connected_id in session.exec(statement).all():
+        if mintmark_id is not None:
+            related_ids.add(int(mintmark_id))
+        if connected_id is not None:
+            related_ids.add(int(connected_id))
+    return related_ids

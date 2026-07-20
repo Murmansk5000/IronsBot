@@ -11,6 +11,8 @@ from ironsbot.core import time
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer.peak import (
     PeakItemData,
+    PeakPetSnapshot,
+    PeakPoolSnapshot,
     PeakQueryService,
 )
 
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
         PeakPoolRenderer,
         PeakVoteRenderer,
     )
+    from ironsbot.services.seer.rank_models import RankEntry
 
 
 class FakeData:
@@ -36,10 +39,16 @@ class FakeData:
     def __init__(self) -> None:
         self.query_result: Any = None
         self.models: dict[int, Any] = {}
+        self.query_open = False
+        self.get_many_open = False
 
     @contextmanager
     def query(self, _operation: object) -> Iterator[Any]:
-        yield self.query_result
+        self.query_open = True
+        try:
+            yield self.query_result
+        finally:
+            self.query_open = False
 
     @contextmanager
     def get_many(
@@ -47,7 +56,11 @@ class FakeData:
         _getter: object,
         _ids: set[int],
     ) -> Iterator[dict[int, Any]]:
-        yield self.models
+        self.get_many_open = True
+        try:
+            yield self.models
+        finally:
+            self.get_many_open = False
 
 
 class FakeHeadless:
@@ -68,10 +81,12 @@ def _service(
 ) -> PeakQueryService:
     async def render_pool(pools: Any, title: str) -> bytes:
         rendered["pool"] = (pools, title)
+        rendered["pool_session_open"] = data.query_open
         return b"pool"
 
     async def render_vote(pools: Any) -> bytes:
         rendered["vote"] = pools
+        rendered["vote_session_open"] = data.query_open
         return b"vote"
 
     async def render_pet(**kwargs: Any) -> bytes:
@@ -92,8 +107,11 @@ async def test_peak_pool_query_renders_with_progress() -> None:
     data = FakeData()
     data.query_result = (
         SimpleNamespace(
+            id=1,
+            count=2,
             start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
             end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+            pet=[],
         ),
     )
     rendered: dict[str, Any] = {}
@@ -109,7 +127,105 @@ async def test_peak_pool_query_renders_with_progress() -> None:
 
     assert result.image == b"pool"
     assert progress == ["正在生成图片..."]
+    assert rendered["pool_session_open"] is False
     assert rendered["pool"][1] == "竞技池 / 2026-07-01 ~ 2026-07-31"
+    assert rendered["pool"][0] == (
+        PeakPoolSnapshot(
+            id=1,
+            count=2,
+            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+            end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+            pets=(),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
+    data = FakeData()
+    data.query_result = SimpleNamespace(
+        category="总",
+        start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+        end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+        sub_key=1,
+    )
+    data.models = {
+        7: SimpleNamespace(
+            id=7,
+            name="雷伊",
+            resource_id=1007,
+            type=SimpleNamespace(id=4),
+        )
+    }
+    rendered: dict[str, Any] = {}
+
+    class FakeGame:
+        async def get_peak_pet_rank(
+            self,
+            _sub_key: int,
+            _peak_type: object,
+        ) -> tuple[list[PeakItemData], list[RankEntry]]:
+            return [PeakItemData(id=7, count=10, win=6)], []
+
+    async def report(_message: str) -> None:
+        return None
+
+    service = _service(data, FakeHeadless(FakeGame()), rendered)
+    result = await service.pet_rank("竞技精灵总榜", report)
+
+    assert result.image == b"pet"
+    assert data.get_many_open is False
+    assert rendered["pet"]["pet_map"] == {
+        7: PeakPetSnapshot(
+            id=7,
+            name="雷伊",
+            resource_id=1007,
+            type_id=4,
+        )
+    }
+
+
+@pytest.mark.asyncio
+async def test_peak_vote_snapshots_pets_before_headless_requests() -> None:
+    data = FakeData()
+    data.query_result = (
+        SimpleNamespace(
+            id=1,
+            count=2,
+            subkey=99,
+            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+            end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+            pet=[
+                SimpleNamespace(
+                    id=7,
+                    name="雷伊",
+                    resource_id=1007,
+                    type=SimpleNamespace(id=4),
+                )
+            ],
+        ),
+    )
+    rendered: dict[str, Any] = {}
+
+    class FakeGame:
+        async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
+            return []
+
+    async def report(_message: str) -> None:
+        return None
+
+    result = await _service(data, FakeHeadless(FakeGame()), rendered).vote(report)
+
+    assert result.image == b"vote"
+    assert rendered["vote_session_open"] is False
+    assert rendered["vote"][0]["pets"] == [
+        PeakPetSnapshot(
+            id=7,
+            name="雷伊",
+            resource_id=1007,
+            type_id=4,
+        )
+    ]
 
 
 @pytest.mark.asyncio

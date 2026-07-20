@@ -3,7 +3,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
 from ironsbot.core.features import FeatureService
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.rank_usage import (
@@ -20,7 +20,9 @@ def install(registry: MatcherRegistry, features: FeatureService) -> None:
     matcher = registry.on_fullmatch(
         RANK_HELP_ENTRY_COMMANDS,
         policy=CommandPolicy.command("seer_rank_help"),
-        rule=Rule(lambda event: event_has_feature(features, event, "seer_rank"))
+        rule=Rule(
+            lambda event: event_is_feature_allowed(features, event, "seer_rank")
+        )
         & no_reply(),
         priority=registry.priority("seer_rank_help"),
         block=True,

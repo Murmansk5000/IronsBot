@@ -34,7 +34,11 @@ class FakeData:
         self,
         _arg: str,
     ) -> Iterator[tuple[tuple[Any, ...], tuple[Any, ...]]]:
-        yield self.pets, self.skins
+        self.session_active = True
+        try:
+            yield self.pets, self.skins
+        finally:
+            self.session_active = False
 
     @contextmanager
     def resolve(
@@ -100,6 +104,20 @@ class SessionBoundPet:
         return object()
 
 
+class SessionBoundImagePet:
+    id = 1
+    name = "精灵"
+    resource_id = 1
+
+    def __init__(self, data: FakeData) -> None:
+        self._data = data
+
+    @property
+    def skins(self) -> list[Any]:
+        assert self._data.session_active
+        return []
+
+
 def _service(
     data: FakeData,
     rendered: list[Any] | None = None,
@@ -143,6 +161,18 @@ async def test_pet_image_query_returns_deduplicated_choices() -> None:
         ("精灵", 1, False),
         ("皮肤", 101, True),
     ]
+
+
+@pytest.mark.asyncio
+async def test_pet_image_choices_are_built_before_session_closes() -> None:
+    data = FakeData()
+    data.pets = (SessionBoundImagePet(data),)
+
+    result = await _service(data).search_image("精灵")
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:1"
+    assert data.session_active is False
 
 
 @pytest.mark.asyncio

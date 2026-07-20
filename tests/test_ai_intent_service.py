@@ -119,13 +119,16 @@ def test_fire_manual_action_prefilter_is_feature_specific() -> None:
 def _runtime(
     action: AiIntentAction,
     *allowed_features: str,
+    superuser_bypass: bool = False,
+    superuser_ids: tuple[int, ...] = (),
 ):
     enabled = allowed_features or ("ai_intent", action.feature)
     return build_test_runtime(
         feature_config=FeatureConfig(
             group_policy={"4": list(dict.fromkeys(enabled))},
-            superuser_bypass=False,
-        )
+            superuser_bypass=superuser_bypass,
+        ),
+        superuser_ids=superuser_ids,
     )
 
 
@@ -161,6 +164,18 @@ def test_fire_manual_action_requires_group_feature() -> None:
     runtime = _runtime(action, "ai_intent")
 
     assert not intent.is_action_allowed(runtime.features, 2, 4, action)
+
+
+def test_fire_manual_action_allows_superuser_bypass() -> None:
+    action = _manual_action()
+    runtime = _runtime(
+        action,
+        "ai_intent",
+        superuser_bypass=True,
+        superuser_ids=(2,),
+    )
+
+    assert intent.is_action_allowed(runtime.features, 2, 4, action)
 
 
 @pytest.mark.asyncio

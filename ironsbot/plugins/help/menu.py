@@ -9,7 +9,7 @@ from ironsbot.core.selection import (
     SelectionMenuSection,
     format_selection_menu,
 )
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 
 if TYPE_CHECKING:
@@ -102,7 +102,7 @@ def visible_help_entries(
             if not visible(event):
                 continue
         elif not any(
-            event_has_feature(features, event, feature.value)
+            event_is_feature_allowed(features, event, feature.value)
             for feature in definition.features
         ):
             continue
@@ -160,7 +160,7 @@ def format_plugin_detail(
 ) -> str:
     if entry.key == "seer_query":
         usage = build_seer_query_usage_message(
-            lambda feature: event_has_feature(features, event, feature)
+            lambda feature: event_is_feature_allowed(features, event, feature)
         )
         return f"📖 {entry.name}\n\n{usage}"
 

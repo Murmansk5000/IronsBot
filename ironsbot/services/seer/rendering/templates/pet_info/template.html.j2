@@ -209,40 +209,24 @@
             image-rendering: auto;
         }
 
-        .sm-glossaries {
-            margin-top: 12px;
-            padding: 10px;
-            background-color: rgba(0, 0, 0, 0.2);
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .sm-glossary {
-            font-size: 17px;
-            line-height: 1.6;
-            padding: 4px 0;
-        }
-
-        .sm-glossary-name {
-            color: #60e0ff;
-            font-weight: bold;
-            margin-right: 4px;
-        }
-
-        .sm-glossary-desc {
-            color: #e0f0ff;
-        }
-
         .special-effects {
             display: grid;
             gap: 8px;
         }
 
         .special-effect {
-            padding: 10px 12px;
-            background-color: rgba(20, 56, 104, 0.7);
-            border-left: 3px solid #60e0ff;
+            background-color: #2a5a9a;
+            padding: 15px;
+            border-left: 4px solid #ffffff;
             border-radius: 0 4px 4px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .sm-upgrade-title {
+            color: #60e0ff;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
         }
 
         .special-effect-head {
@@ -473,10 +457,10 @@
                         </div>
                     </div>
 
-                    {% if soulmarks %}
+                    {% if base_soulmarks or upgraded_soulmarks %}
                     <div class="section">
                         <div class="sec-title">魂印</div>
-                        {% for sm in soulmarks %}
+                        {% for sm in base_soulmarks %}
                         <div class="sm-item">
                             {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
                             <div class="sm-tags">
@@ -504,16 +488,66 @@
                             </div>
                             {% endif %}
                             <div class="sm-desc">{{ sm.desc }}</div>
-                            {% if sm.glossaries %}
-                            <div class="sm-glossaries">
-                                {% for g in sm.glossaries %}
-                                <div class="sm-glossary">
-                                    <span class="sm-glossary-name">{{ g.name }}:</span>
-                                    <span class="sm-glossary-desc">{{ g.desc }}</span>
+                        </div>
+                        {% endfor %}
+
+                        {% for sm in upgraded_soulmarks %}
+                        <div class="sm-item">
+                            {% if pet_partner and loop.first %}
+                            <div class="sm-upgrade-title">{{ pet_partner.name }}</div>
+                        <div class="sk-activation-item">
+                            {% if pet_partner.cost_item.icon %}
+                            <img class="sk-activation-item-icon" src="{{ pet_partner.cost_item.icon }}" />
+                            {% endif %}
+                            <div class="sk-activation-item-content">
+                                <div class="sk-activation-item-name">
+                                    <span>开启消耗</span>{{ pet_partner.cost_item.name }}{% if pet_partner.cost_item.quantity > 1 %} × {{ pet_partner.cost_item.quantity }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% if pet_partner.skill and pet_partner.skill.activation_item %}
+                        <div class="sk-activation-item">
+                            {% if pet_partner.skill.activation_item.icon %}
+                            <img class="sk-activation-item-icon" src="{{ pet_partner.skill.activation_item.icon }}" />
+                            {% endif %}
+                            <div class="sk-activation-item-content">
+                                <div class="sk-activation-item-name">
+                                    <span>技能开启道具</span>{{ pet_partner.skill.activation_item.name }}{% if pet_partner.skill.activation_item.quantity > 1 %} × {{ pet_partner.skill.activation_item.quantity }}{% endif %}
+                                </div>
+                                {% for price in pet_partner.skill.activation_item.prices %}
+                                <div class="sk-activation-item-price">
+                                    {{ price.source_name }}：
+                                    {% if price.currency_icon %}
+                                    <img class="sk-activation-currency-icon" src="{{ price.currency_icon }}" />
+                                    {% endif %}
+                                    {{ price.currency_name }} × {{ price.amount }}
+                                    {% if price.item_quantity > 1 %}（兑换{{ price.item_quantity }}个）{% endif %}
+                                    {% if price.purchase_limit is not none %}（限购{{ price.purchase_limit }}次）{% endif %}
                                 </div>
                                 {% endfor %}
                             </div>
+                        </div>
+                        {% endif %}
                             {% endif %}
+                            {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
+                            <div class="sm-tags">
+                                {% for t in sm.tags %}
+                                <span class="tag">{{ t }}</span>
+                                {% endfor %}
+                                {% if sm.intensified %}
+                                <span class="tag t-str">强化</span>
+                                {% endif %}
+                                {% if sm.is_adv %}
+                                <span class="tag t-adv">觉醒</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            {% if sm.icon %}
+                            <div class="sm-icon-row">
+                                <img class="sm-icon" src="{{ sm.icon }}" />
+                            </div>
+                            {% endif %}
+                            <div class="sm-desc">{{ sm.desc }}</div>
                         </div>
                         {% endfor %}
                     </div>

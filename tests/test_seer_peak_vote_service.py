@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
-    from seerapi_models import PeakPoolVoteORM
 
 from ironsbot.core import time
 from ironsbot.services.seer import peak
@@ -24,16 +22,14 @@ def _naive_datetime(year: int, month: int, day: int, hour: int) -> datetime:
     ).replace(tzinfo=None)
 
 
-def _vote(*, vote_id: int, start_time: datetime) -> PeakPoolVoteORM:
-    return cast(
-        "PeakPoolVoteORM",
-        SimpleNamespace(
-            id=vote_id,
-            start_time=start_time,
-            end_time=start_time,
-            count=2,
-            subkey=vote_id,
-        ),
+def _vote(*, vote_id: int, start_time: datetime) -> peak.PeakVoteSnapshot:
+    return peak.PeakVoteSnapshot(
+        id=vote_id,
+        start_time=start_time,
+        end_time=start_time,
+        count=2,
+        subkey=vote_id,
+        pets=(),
     )
 
 

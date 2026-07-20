@@ -16,6 +16,8 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover - exercised on Python 3.10 in deployment
     import tomli as tomllib
 
+TOMLDecodeError = tomllib.TOMLDecodeError
+
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 _SECRET_ENV_PATHS = (

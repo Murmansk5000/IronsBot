@@ -442,8 +442,8 @@ class PlayerService:
         player_id = command.player_id or self.default_player_id(qq_user_id)
         if player_id is None:
             return (
-                "尚未设置默认米米号，请发送“米米号+数字”查询，"
-                "或直接在本指令后填写米米号。"
+                "尚未设置默认米米号。可发送“绑定米米号12345”直接绑定，"
+                "或发送“米米号+数字”查询；也可直接在本指令后填写米米号。"
             )
         try:
             game = self._headless.get_game()

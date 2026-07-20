@@ -57,6 +57,7 @@ def build_test_plugin_registry(
     config = settings or Settings()
     runtime = build_test_runtime(
         feature_config=config.features,
+        superuser_ids=tuple(config.bot.superusers),
     )
     headless = HeadlessService(
         ClientManager(runtime.tasks.create),

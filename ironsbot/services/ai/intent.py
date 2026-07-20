@@ -131,8 +131,6 @@ def is_action_allowed(
     action: AiIntentAction,
 ) -> bool:
     if group_id is not None:
-        if action.feature == FIRE_MANUAL_INTENT_FEATURE:
-            return features.group_has_feature(group_id, action.feature)
         return features.is_group_feature_allowed(
             user_id,
             group_id,

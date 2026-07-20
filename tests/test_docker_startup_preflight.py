@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from ironsbot.app.docker_preflight import (
+    STARTUP_PREFLIGHT_TIMEOUT_SECONDS,
+    startup_preflight_config,
+)
 from ironsbot.config.models.operations import DockerUpdateConfig
 from ironsbot.services.operations.docker_models import DockerUpdateResult
 from ironsbot.services.operations.docker_preflight import (
@@ -12,6 +16,8 @@ from ironsbot.services.operations.docker_preflight import (
     DockerStartupPreflightStore,
     consume_docker_startup_preflight_notice,
 )
+
+MANUAL_DOCKER_TIMEOUT_SECONDS = 300.0
 
 
 class FakeUpdateRunner:
@@ -160,3 +166,14 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert 'CMD ["python", "-m", "ironsbot"]' in dockerfile
     assert "python -m ironsbot.app.docker_preflight" in entrypoint
     assert 'exec "$@"' in entrypoint
+
+
+def test_startup_preflight_timeout_is_shorter_than_manual_update_timeout() -> None:
+    config = DockerUpdateConfig(timeout_seconds=MANUAL_DOCKER_TIMEOUT_SECONDS)
+
+    assert config.timeout_seconds > STARTUP_PREFLIGHT_TIMEOUT_SECONDS
+    assert (
+        startup_preflight_config(config).timeout_seconds
+        == STARTUP_PREFLIGHT_TIMEOUT_SECONDS
+    )
+    assert config.timeout_seconds == MANUAL_DOCKER_TIMEOUT_SECONDS

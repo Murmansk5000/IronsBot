@@ -1,4 +1,7 @@
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -10,6 +13,8 @@ from ironsbot.services.seer.player_binding import (
     parse_player_binding_target,
     player_binding_offer_message,
 )
+from ironsbot.services.seer.player_service import PlayerService
+from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 
 _PLAYER_ID = 123456
 
@@ -50,6 +55,31 @@ def test_player_binding_offer_only_displays_short_reply_choices() -> None:
     assert "yes" not in message
     assert "no" not in message
     assert "确认 / 确定" not in message
+
+
+class _UnboundPlayerBindingStore:
+    def get(self, _qq_user_id: int) -> SimpleNamespace:
+        return SimpleNamespace(player_id=None)
+
+
+def test_shortcut_without_a_default_player_mentions_direct_binding() -> None:
+    service = PlayerService(
+        config=cast("Any", None),
+        headless=cast("Any", None),
+        bindings=cast("Any", _UnboundPlayerBindingStore()),
+        error_message=cast("Any", None),
+        details=cast("Any", None),
+    )
+
+    message = asyncio.run(
+        service.shortcut(
+            PlayerShortcutCommand(kind="peak", player_id=None),
+            qq_user_id=10001,
+        )
+    )
+
+    assert "绑定米米号12345" in message
+    assert "米米号+数字" in message
 
 
 def test_player_binding_lifecycle(tmp_path: Path) -> None:
