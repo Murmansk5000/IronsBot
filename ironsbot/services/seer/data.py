@@ -115,10 +115,4 @@ class SeerDataAccess(Protocol):
     def mintmark_query(
         self,
         arg: str,
-    ) -> AbstractContextManager[
-        tuple[
-            tuple["MintmarkORM", ...],
-            tuple["MintmarkClassCategoryORM", ...],
-            tuple["MintmarkORM", ...],
-        ]
-    ]: ...
+    ) -> AbstractContextManager[tuple["MintmarkORM", ...]]: ...

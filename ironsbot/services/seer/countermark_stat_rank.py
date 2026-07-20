@@ -35,9 +35,14 @@ class CountermarkStatRankService:
     def query(self, command: CountermarkStatRankCommand) -> str:
         with self._data.query(load_countermark_rank_data) as rank_data:
             quality_map, mintmarks = rank_data
-        if command.angle_count is not None and not quality_map:
-            return MISSING_MINTMARK_QUALITY_MESSAGE
+            if command.angle_count is not None and not quality_map:
+                return MISSING_MINTMARK_QUALITY_MESSAGE
+            items = collect_countermark_rank_items(
+                mintmarks,
+                command,
+                quality_map,
+            )
         return build_countermark_stat_rank_message(
             command,
-            collect_countermark_rank_items(mintmarks, command, quality_map),
+            items,
         )

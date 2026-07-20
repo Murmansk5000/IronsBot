@@ -18,6 +18,7 @@ class RankLookupResult:
     score: int | None = None
     searched_limit: int = 0
     queried: bool = False
+    failure: str | None = None
 
 
 @dataclass(slots=True)
@@ -135,13 +136,32 @@ class PlayerRankSummary:
             breakdown=BookBreakdownSummary.empty(),
         )
 
+    def mark_failure(self, title: str, failure: str) -> None:
+        results = (
+            self.book,
+            self.achieve,
+            self.breakdown.pet_kind,
+            self.breakdown.skin,
+            self.breakdown.countermark,
+            self.breakdown.outfit_suit,
+            self.breakdown.outfit_part,
+            self.breakdown.mount,
+        )
+        present_results = tuple(result for result in results if result is not None)
+        matching_results = tuple(
+            result
+            for result in present_results
+            if title in {result.title, f"{result.title}榜"}
+        )
+        for result in matching_results or present_results:
+            result.failure = failure
+
 
 @dataclass(slots=True)
 class PeakSeasonRankSummary:
     standard: RankLookupResult
     wild: RankLookupResult
     expert: RankLookupResult
-    errors: tuple[str, ...] = ()
 
     @classmethod
     def empty(cls) -> "PeakSeasonRankSummary":
@@ -150,3 +170,9 @@ class PeakSeasonRankSummary:
             wild=RankLookupResult(title="狂野赛季榜", score_name="段位分"),
             expert=RankLookupResult(title="专家赛季榜", score_name="专家积分"),
         )
+
+    def mark_failure(self, title: str, failure: str) -> None:
+        results = (self.standard, self.wild, self.expert)
+        matching_results = tuple(result for result in results if result.title == title)
+        for result in matching_results or results:
+            result.failure = failure
