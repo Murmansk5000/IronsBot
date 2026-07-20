@@ -65,7 +65,7 @@ print("render import ok")
         text=True,
         env={
             **os.environ,
-            "IRONSBOT_CONFIG": str(
+            "APP_CONFIG_PATH": str(
                 Path(__file__).resolve().parents[1] / "config.example.toml"
             ),
         },

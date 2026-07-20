@@ -192,7 +192,7 @@ at_users = ["owner"]
 - 皮肤价格、渲染缓存等运行数据
 
 超级管理员发送 `/更新数据` 时，IronsBot 会先按
-`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+`[runtime.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
 GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk5000/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出 JSON。

@@ -31,6 +31,7 @@ class Feature(str, Enum):
     HELP = "help"
     IMAGE = "image"
     MEETING = "meeting"
+    PET_CONFIG = "pet_config"
     SEER = "seer"
     SEER_ACTIVITY_PUSH = "seer_activity_push"
     SEER_ACTIVITY_QUERY = "seer_activity_query"
@@ -81,6 +82,7 @@ FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
     "seer": SEER_FEATURES,
     "query": frozenset(
         {
+            "pet_config",
             *SEER_FEATURES,
             "image",
             "bili_query",

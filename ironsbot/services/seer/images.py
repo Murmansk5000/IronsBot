@@ -9,6 +9,7 @@ ImageKind = Literal[
     "battle_effect",
     "element_type",
     "equip",
+    "item",
     "mintmark",
     "pet_body",
     "pet_head",

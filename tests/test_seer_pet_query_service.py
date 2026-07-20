@@ -27,13 +27,18 @@ class FakeData:
         self.pets: tuple[Any, ...] = ()
         self.skins: tuple[Any, ...] = ()
         self.skin_details: Any | None = None
+        self.session_active = False
 
     @contextmanager
     def pet_and_skins(
         self,
         _arg: str,
     ) -> Iterator[tuple[tuple[Any, ...], tuple[Any, ...]]]:
-        yield self.pets, self.skins
+        self.session_active = True
+        try:
+            yield self.pets, self.skins
+        finally:
+            self.session_active = False
 
     @contextmanager
     def resolve(
@@ -41,7 +46,11 @@ class FakeData:
         _getter: object,
         _arg: str,
     ) -> Iterator[tuple[Any, ...]]:
-        yield self.pets
+        self.session_active = True
+        try:
+            yield self.pets
+        finally:
+            self.session_active = False
 
     @contextmanager
     def get(
@@ -49,7 +58,11 @@ class FakeData:
         _getter: object,
         pet_id: int,
     ) -> Iterator[Any | None]:
-        yield next((pet for pet in self.pets if pet.id == pet_id), None)
+        self.session_active = True
+        try:
+            yield next((pet for pet in self.pets if pet.id == pet_id), None)
+        finally:
+            self.session_active = False
 
     @contextmanager
     def query(self, _operation: object) -> Iterator[Any | None]:
@@ -76,6 +89,33 @@ def _pet(pet_id: int, name: str) -> Any:
         resource_id=pet_id,
         skins=[],
     )
+
+
+class SessionBoundPet:
+    def __init__(self, data: FakeData) -> None:
+        self.id = 1
+        self.name = "精灵"
+        self.resource_id = 1
+        self._data = data
+
+    @property
+    def base_stats(self) -> object:
+        assert self._data.session_active
+        return object()
+
+
+class SessionBoundImagePet:
+    id = 1
+    name = "精灵"
+    resource_id = 1
+
+    def __init__(self, data: FakeData) -> None:
+        self._data = data
+
+    @property
+    def skins(self) -> list[Any]:
+        assert self._data.session_active
+        return []
 
 
 def _service(
@@ -124,6 +164,18 @@ async def test_pet_image_query_returns_deduplicated_choices() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pet_image_choices_are_built_before_session_closes() -> None:
+    data = FakeData()
+    data.pets = (SessionBoundImagePet(data),)
+
+    result = await _service(data).search_image("精灵")
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:1"
+    assert data.session_active is False
+
+
+@pytest.mark.asyncio
 async def test_pet_image_selection_includes_skin_details() -> None:
     data = FakeData()
     data.skin_details = SimpleNamespace(
@@ -160,6 +212,52 @@ async def test_single_pet_info_query_renders_image() -> None:
     assert result.reply is not None
     assert result.reply.image == b"rendered:1"
     assert rendered == [pet]
+
+
+@pytest.mark.asyncio
+async def test_pet_info_query_renders_before_data_session_closes() -> None:
+    data = FakeData()
+    pet = SessionBoundPet(data)
+    data.pets = (pet,)
+
+    async def render(session_bound_pet: PetORM) -> bytes:
+        _ = session_bound_pet.base_stats
+        return b"rendered"
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FakeImages()),
+        render,
+    )
+
+    result = await service.search_info("精灵")
+
+    assert result.reply is not None
+    assert result.reply.image == b"rendered"
+    assert data.session_active is False
+
+
+@pytest.mark.asyncio
+async def test_pet_info_selection_renders_before_data_session_closes() -> None:
+    data = FakeData()
+    pet = SessionBoundPet(data)
+    data.pets = (pet,)
+
+    async def render(session_bound_pet: PetORM) -> bytes:
+        _ = session_bound_pet.base_stats
+        return b"rendered"
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FakeImages()),
+        render,
+    )
+
+    result = await service.select_info(pet.id)
+
+    assert result.reply is not None
+    assert result.reply.image == b"rendered"
+    assert data.session_active is False
 
 
 @pytest.mark.asyncio

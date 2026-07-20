@@ -25,6 +25,18 @@ _URLS: dict[ImageKind, tuple[str, ...]] = {
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
         "newseer/assets/art/ui/assets/item/cloth/prev/{}.png",
     ),
+    "item": (
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/item/doodle/icon/{}.png",
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/item/petitem/icon/{}.png",
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/item/skillstone/icon/{}.png",
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/item/throw/icon/{}.png",
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/item/userinfo/icon/{}.png",
+    ),
     "mintmark": (
         "https://newseer.61.com/web/countermark/icon/{}.png",
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"

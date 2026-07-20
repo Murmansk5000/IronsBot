@@ -84,6 +84,52 @@
     border-radius: 4px;
 }
 
+.sk-activation-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background-color: rgba(20, 45, 82, 0.72);
+    border-left: 3px solid #ffc060;
+    color: #e8f4ff;
+}
+
+.sk-activation-item-icon {
+    width: 42px;
+    height: 42px;
+    object-fit: contain;
+}
+
+.sk-activation-item-content {
+    min-width: 0;
+}
+
+.sk-activation-item-name {
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.sk-activation-item-name span {
+    margin-right: 8px;
+    color: #ffc060;
+}
+
+.sk-activation-item-price {
+    margin-top: 3px;
+    font-size: 14px;
+    color: #c8dcef;
+}
+
+.sk-activation-currency-icon {
+    width: 18px;
+    height: 18px;
+    margin: 0 3px;
+    vertical-align: -4px;
+    object-fit: contain;
+}
+
 .sk-desc {
     font-size: 14px;
     color: #a0c0e0;

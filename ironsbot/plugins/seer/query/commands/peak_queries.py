@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 
 from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -117,7 +117,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pool.append_handler(partial(_handle_pool, service, expert=False))
+    pool.append_handler(bind_async(_handle_pool, service, expert=False))
 
     expert_pool = group.on_fullmatch(
         ("专家池", "巅峰专家池", "专家禁用池"),
@@ -125,7 +125,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    expert_pool.append_handler(partial(_handle_pool, service, expert=True))
+    expert_pool.append_handler(bind_async(_handle_pool, service, expert=True))
 
     vote = group.on_fullmatch(
         ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
@@ -133,7 +133,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    vote.append_handler(partial(_handle_vote, service))
+    vote.append_handler(bind_async(_handle_vote, service))
 
     suit = group.on_fullmatch(
         ("竞技套装榜", "狂野套装榜", "专家套装榜"),
@@ -142,7 +142,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     suit.append_handler(
-        partial(_handle_item_rank, service, kind="套装")
+        bind_async(_handle_item_rank, service, kind="套装")
     )
 
     title = group.on_fullmatch(
@@ -152,7 +152,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     title.append_handler(
-        partial(_handle_item_rank, service, kind="称号")
+        bind_async(_handle_item_rank, service, kind="称号")
     )
 
     pet = group.on_fullmatch(
@@ -168,4 +168,4 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pet.append_handler(partial(_handle_pet_rank, service))
+    pet.append_handler(bind_async(_handle_pet_rank, service))

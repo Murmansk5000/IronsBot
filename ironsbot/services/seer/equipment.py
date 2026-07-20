@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ironsbot.services.seer.formatting import format_sub_lines
@@ -30,6 +31,13 @@ EQUIP_PART_TYPE_MAP = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class _EquipmentReplyData:
+    kind: EquipmentKind
+    item_id: int
+    text: str
+
+
 class EquipmentQueryService:
     def __init__(
         self,
@@ -47,26 +55,26 @@ class EquipmentQueryService:
         getter = self._getter(kind)
         with self._data.resolve(getter, arg) as values:
             items = tuple(values)
-        if not items:
-            return QueryResult()
-        if len(items) == 1:
-            return QueryResult(
-                reply=await self._build_reply(kind, items[0])
-            )
-        if len(items) > PROMPT_MAX_ITEMS:
-            return QueryResult(
-                message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
-            )
-        return QueryResult(
-            choices=tuple(
-                QueryChoice(
-                    name=str(item.name),
-                    description=str(item.id),
-                    value=int(item.id),
+            if not items:
+                return QueryResult()
+            if len(items) == 1:
+                reply_data = self._reply_data(kind, items[0])
+            elif len(items) > PROMPT_MAX_ITEMS:
+                return QueryResult(
+                    message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
                 )
-                for item in items
-            ),
-        )
+            else:
+                return QueryResult(
+                    choices=tuple(
+                        QueryChoice(
+                            name=str(item.name),
+                            description=str(item.id),
+                            value=int(item.id),
+                        )
+                        for item in items
+                    ),
+                )
+        return QueryResult(reply=await self._build_reply(reply_data))
 
     async def select(
         self,
@@ -81,8 +89,9 @@ class EquipmentQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
+            reply_data = self._reply_data(kind, item)
         return QueryResult(
-            reply=await self._build_reply(kind, item)
+            reply=await self._build_reply(reply_data)
         )
 
     def _getter(self, kind: EquipmentKind) -> DataGetter[Any]:
@@ -95,11 +104,11 @@ class EquipmentQueryService:
             }[kind],
         )
 
-    async def _build_reply(
+    def _reply_data(
         self,
         kind: EquipmentKind,
         item: Any,
-    ) -> QueryReply:
+    ) -> _EquipmentReplyData:
         text = (
             self._format_suit(cast("SuitORM", item))
             if kind == "suit"
@@ -107,13 +116,23 @@ class EquipmentQueryService:
             if kind == "equip"
             else self._format_title(cast("TitlePartORM", item))
         )
+        return _EquipmentReplyData(
+            kind=kind,
+            item_id=int(item.id),
+            text=text,
+        )
+
+    async def _build_reply(
+        self,
+        reply_data: _EquipmentReplyData,
+    ) -> QueryReply:
         image = await fetch_optional_image(
             self._images,
-            kind,
-            str(item.id),
+            reply_data.kind,
+            str(reply_data.item_id),
         )
         return QueryReply(
-            text=text,
+            text=reply_data.text,
             image=image.data,
             image_error=image.error,
         )

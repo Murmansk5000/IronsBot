@@ -79,7 +79,7 @@ class TypeQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
-        return await self._render_matchup(matchup)
+            return await self._render_matchup(matchup)
 
     async def _render_matchup(self, matchup: TypeMatchup) -> QueryResult[int]:
         if _contains_normal_type(matchup.target):
