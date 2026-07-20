@@ -66,7 +66,7 @@ def _format_item_line(
     class_text = f" | {item.class_name}" if item.class_name else ""
     angle_text = f" | {item.angle_count}角" if item.angle_count else ""
     return (
-        f"{index}. {item.mintmark.name}（{item.mintmark.id}）"
+        f"{index}. {item.mintmark_name}（{item.mintmark_id}）"
         f" {stat.title}{_format_number(item.value)}"
         f" | 总和{_format_number(item.total)}"
         f"{class_text}"

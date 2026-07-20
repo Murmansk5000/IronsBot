@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from ironsbot.services.seer import countermark_stat_rank as countermark_module
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
@@ -32,20 +33,21 @@ SHIELD_HP_VALUE = 57.0
 
 
 @dataclass(frozen=True)
-class FakeMintmark:
-    id: int
-    name: str
-
-
-@dataclass(frozen=True)
 class FakeAttrs:
     total: float
 
 
 class FakeRankData:
+    def __init__(self) -> None:
+        self.session_active = False
+
     @contextmanager
     def query(self, _operation: object) -> Iterator[object]:
-        yield ({}, [])
+        self.session_active = True
+        try:
+            yield ({}, [])
+        finally:
+            self.session_active = False
 
 
 def _rank_item(
@@ -56,7 +58,8 @@ def _rank_item(
     angle_count: int,
 ) -> CountermarkStatRankItem:
     return CountermarkStatRankItem(
-        mintmark=cast("Any", FakeMintmark(id=mintmark_id, name=name)),
+        mintmark_id=mintmark_id,
+        mintmark_name=name,
         attrs=cast("Any", FakeAttrs(total=TOTAL_VALUE)),
         value=value,
         total=TOTAL_VALUE,
@@ -278,3 +281,32 @@ def test_countermark_service_owns_query_and_formatting() -> None:
     assert "刻印数值榜需要指定属性" in service.query(
         CountermarkStatRankCommand(stat=None, scope="all")
     )
+
+
+def test_countermark_service_formats_snapshots_after_session_closes(
+    monkeypatch: Any,
+) -> None:
+    data = FakeRankData()
+    item = _rank_item(
+        mintmark_id=1001,
+        name="怒火刻印",
+        value=ATTACK_VALUE,
+        angle_count=FIVE_ANGLE_COUNT,
+    )
+
+    def collect(
+        _mintmarks: list[Any],
+        _command: CountermarkStatRankCommand,
+        _quality_map: dict[int, int],
+    ) -> list[CountermarkStatRankItem]:
+        assert data.session_active
+        return [item]
+
+    monkeypatch.setattr(countermark_module, "collect_countermark_rank_items", collect)
+
+    message = CountermarkStatRankService(cast("SeerDataAccess", data)).query(
+        CountermarkStatRankCommand(stat=StatSpec("atk", "物攻"), scope="all")
+    )
+
+    assert data.session_active is False
+    assert "怒火刻印（1001）" in message
