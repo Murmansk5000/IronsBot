@@ -310,3 +310,32 @@ def test_partition_soulmarks_uses_official_upgrade_link_before_text_matching() -
 
     assert base == [base_soulmark]
     assert upgraded == [upgraded_soulmark]
+
+
+def test_extract_soulmark_orders_unlinked_4354_variants_old_to_new() -> None:
+    newer = SimpleNamespace(
+        id=2079,
+        analyze_desc="new soulmark",
+        desc="",
+        intensified=False,
+        intensified_to_id=None,
+        is_adv=False,
+        pve_effective=False,
+        tag=[],
+    )
+    older = SimpleNamespace(
+        id=1578,
+        analyze_desc="old soulmark",
+        desc="",
+        intensified=False,
+        intensified_to_id=None,
+        is_adv=False,
+        pve_effective=False,
+        tag=[],
+    )
+
+    soulmarks = custom_pet_info._extract_soulmark(
+        [cast("Any", newer), cast("Any", older)]
+    )
+
+    assert [soulmark["id"] for soulmark in soulmarks] == [1578, 2079]

@@ -106,6 +106,75 @@ def test_special_effects_use_official_descriptions_when_pet_glossary_is_missing(
     ]
 
 
+def test_special_effects_include_pet_linked_effectdes_entries_for_4032() -> None:
+    effect_descriptions = (
+        ("地葬秘法", "为自身附加200点护盾和200点护罩。"),
+        ("瀚海秘法", "附加200点固定伤害并恢复等量体力。"),
+        ("混沌秘法", "使对手随机1个技能的PP值归零。"),
+        ("幻境秘法", "下回合攻击必定打出致命一击。"),
+        ("天玄秘法", "下回合免疫大于400的攻击伤害。"),
+        ("时空秘法", "下回合攻击技能先制+1。"),
+    )
+    pet = SimpleNamespace(
+        glossary_entry=[
+            SimpleNamespace(name=name, desc=description)
+            for name, description in effect_descriptions
+        ],
+        soulmark=[
+            SimpleNamespace(
+                analyze_desc="每个战斗阶段结束时随机领悟六大界神的一个秘法。",
+                desc="",
+            )
+        ],
+        skill_links=[],
+    )
+
+    effects = _extract_special_effects(cast("Any", pet))
+
+    assert effects == [
+        {
+            "name": name,
+            "desc": description,
+            "sources": ["官方专属词条"],
+        }
+        for name, description in effect_descriptions
+    ]
+
+
+def test_special_effects_do_not_duplicate_4911_effectdes_entries() -> None:
+    pet = SimpleNamespace(
+        glossary_entry=[
+            SimpleNamespace(name="骑士决斗", desc="进入时触发骑士决斗。"),
+            SimpleNamespace(name="骑士决斗·落败", desc="骑士决斗的落败状态。"),
+        ],
+        soulmark=[
+            SimpleNamespace(
+                analyze_desc=(
+                    "[color=#f35555]骑士决斗[/color]"
+                    "[color=#f35555]骑士决斗·落败[/color]"
+                ),
+                desc="",
+            )
+        ],
+        skill_links=[],
+    )
+
+    effects = _extract_special_effects(cast("Any", pet))
+
+    assert effects == [
+        {
+            "name": "骑士决斗",
+            "desc": "进入时触发骑士决斗。",
+            "sources": ["魂印"],
+        },
+        {
+            "name": "骑士决斗·落败",
+            "desc": "骑士决斗的落败状态。",
+            "sources": ["魂印"],
+        },
+    ]
+
+
 def test_soulmark_does_not_repeat_glossary_descriptions() -> None:
     soulmark = SimpleNamespace(
         id=1,

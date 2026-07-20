@@ -391,7 +391,10 @@ async def _load_pet_partner_item_icons(
 
 def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
-    for sm in soulmarks:
+    # The link table has no display-order column. Soulmark IDs are allocated
+    # chronologically, so use them as a stable old-to-new fallback for entries
+    # that have no official upgraded-to relation.
+    for sm in sorted(soulmarks, key=lambda soulmark: int(soulmark.id)):
         result = SoulmarkDict(
             id=int(sm.id),
             desc=AnalyzeDescParser(sm.analyze_desc or sm.desc).to_html(
@@ -527,11 +530,26 @@ def _red_effect_names(
     return list(dict.fromkeys(names))
 
 
+def _add_unseen_pet_linked_effects(
+    effects_by_name: dict[str, SpecialEffectDict],
+    glossary_descriptions: Mapping[str, str],
+) -> None:
+    """Add official pet-specific EffectDes entries absent from rendered text."""
+    for name, description in glossary_descriptions.items():
+        if name in effects_by_name:
+            continue
+        effects_by_name[name] = {
+            "name": name,
+            "desc": description,
+            "sources": ["官方专属词条"],
+        }
+
+
 def _extract_special_effects(
     pet: PetORM,
     official_descriptions: Mapping[str, str] | None = None,
 ) -> list[SpecialEffectDict]:
-    """Collect red-highlighted named effects from soulmarks and skills."""
+    """Collect red-highlighted and pet-linked official named effects."""
     known_descriptions = dict(official_descriptions or {})
     glossary_descriptions = {
         glossary.name: glossary.desc
@@ -568,6 +586,12 @@ def _extract_special_effects(
             add(getattr(effect, "analyze_info", None) or effect.info, source)
         if skill.hide_effect:
             add(skill.hide_effect.description, source)
+
+    # EffectDes entries linked to this pet are official named effects even when
+    # the source soulmark or skill does not mark the name in red. Add only
+    # entries not already discovered above, so a red mention never becomes a
+    # duplicate card or gains a redundant source label.
+    _add_unseen_pet_linked_effects(effects_by_name, glossary_descriptions)
 
     return list(effects_by_name.values())
 
@@ -653,7 +677,7 @@ async def render_custom_pet_info(
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     pet_id = int(pet.id)
-    cached = cache.get("custom_pet_info_v5", str(pet_id))
+    cached = cache.get("custom_pet_info_v6", str(pet_id))
     if cached is not None:
         return cached
 
@@ -811,5 +835,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v5", str(pet_id), result)
+    cache.put("custom_pet_info_v6", str(pet_id), result)
     return result
