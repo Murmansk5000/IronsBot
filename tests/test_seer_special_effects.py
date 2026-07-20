@@ -68,8 +68,9 @@ def test_special_effects_merge_soulmark_and_skill_sources() -> None:
     ]
 
 
-def test_special_effects_use_official_descriptions_when_pet_glossary_is_missing(
-) -> None:
+def test_special_effects_use_official_descriptions_when_pet_glossary_is_missing() -> (
+    None
+):
     pet = SimpleNamespace(
         glossary_entry=[],
         soulmark=[],
@@ -201,7 +202,16 @@ def test_partner_upgrade_template_combines_requirements_and_soulmark() -> None:
             "total": 6,
         },
         advance_stats=None,
-        base_soulmarks=[],
+        base_soulmarks=[
+            {
+                "desc": "基础魂印说明",
+                "intensified": False,
+                "is_adv": False,
+                "pve_effective": None,
+                "tags": [],
+                "icon": None,
+            }
+        ],
         upgraded_soulmarks=[
             {
                 "desc": "强化后的魂印说明",
@@ -252,6 +262,10 @@ def test_partner_upgrade_template_combines_requirements_and_soulmark() -> None:
     )
 
     assert "源初之夜" in html
+    expected_soulmark_count = 2
+    assert html.count('class="sm-item"') == expected_soulmark_count
+    assert html.count('class="sm-upgrade-title"') == 1
+    assert html.index("基础魂印说明") < html.index("源初之夜")
     assert "开启消耗" in html
     assert "契约徽章 × 8" in html
     assert "技能开启道具" in html

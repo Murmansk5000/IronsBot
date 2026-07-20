@@ -222,6 +222,13 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
+        .sm-upgrade-title {
+            color: #60e0ff;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
         .special-effect-head {
             display: flex;
             align-items: baseline;
@@ -450,7 +457,7 @@
                         </div>
                     </div>
 
-                    {% if base_soulmarks %}
+                    {% if base_soulmarks or upgraded_soulmarks %}
                     <div class="section">
                         <div class="sec-title">魂印</div>
                         {% for sm in base_soulmarks %}
@@ -483,13 +490,11 @@
                             <div class="sm-desc">{{ sm.desc }}</div>
                         </div>
                         {% endfor %}
-                    </div>
-                    {% endif %}
 
-                    {% if pet_partner or upgraded_soulmarks %}
-                    <div class="section">
-                        <div class="sec-title">{{ pet_partner.name if pet_partner else "强化魂印" }}</div>
-                        {% if pet_partner %}
+                        {% for sm in upgraded_soulmarks %}
+                        <div class="sm-item">
+                            {% if pet_partner and loop.first %}
+                            <div class="sm-upgrade-title">{{ pet_partner.name }}</div>
                         <div class="sk-activation-item">
                             {% if pet_partner.cost_item.icon %}
                             <img class="sk-activation-item-icon" src="{{ pet_partner.cost_item.icon }}" />
@@ -523,9 +528,7 @@
                             </div>
                         </div>
                         {% endif %}
-                        {% endif %}
-                        {% for sm in upgraded_soulmarks %}
-                        <div class="sm-item">
+                            {% endif %}
                             {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
                             <div class="sm-tags">
                                 {% for t in sm.tags %}

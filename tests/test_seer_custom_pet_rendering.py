@@ -66,10 +66,7 @@ class _GuardedPet:
             "soulmark",
             "glossary_entry",
         }
-        if (
-            name in guarded
-            and object.__getattribute__(self, "_after_await")["started"]
-        ):
+        if name in guarded and object.__getattribute__(self, "_after_await")["started"]:
             raise AssertionError
         return object.__getattribute__(self, name)
 
@@ -239,7 +236,7 @@ def test_build_pet_partner_keeps_skill_activation_item_separate_from_reward(
     }
 
 
-def test_partition_soulmarks_places_partner_upgrade_without_duplication() -> None:
+def test_partition_soulmarks_uses_real_partner_upgrade_without_duplication() -> None:
     partner = PetPartner(
         group_id=15,
         name="源初之夜",
@@ -247,12 +244,12 @@ def test_partition_soulmarks_places_partner_upgrade_without_duplication() -> Non
         cost_item_name="契约徽章",
         cost_item_quantity=8,
         members=(),
-        before_description="强化前魂印",
-        after_description="强化后魂印",
+        before_description="damage=80; status=base",
+        after_description="damage=100; status=upgraded",
         skill=None,
     )
     base_soulmark: custom_pet_info.SoulmarkDict = {
-        "desc": "强化前魂印",
+        "desc": "damage=80; status=base",
         "intensified": False,
         "is_adv": False,
         "pve_effective": None,
@@ -262,7 +259,7 @@ def test_partition_soulmarks_places_partner_upgrade_without_duplication() -> Non
     }
     upgraded_soulmark: custom_pet_info.SoulmarkDict = {
         **base_soulmark,
-        "desc": "强化后魂印",
+        "desc": "damage=100; status=upgraded (boss)",
     }
 
     base, upgraded = custom_pet_info._partition_soulmarks(

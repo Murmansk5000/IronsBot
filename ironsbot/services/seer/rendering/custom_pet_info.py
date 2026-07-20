@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any, Literal, TypedDict
 
 from seerapi_models import MintmarkORM, PetORM, SkillInPetORM, SoulmarkORM
@@ -29,6 +31,8 @@ from . import HtmlTemplateRenderer
 
 SPECIAL_SOULMARK_PET_ID = 2500
 HIDDEN_SKILL_ID = 19002
+PARTNER_UPGRADE_MIN_SIMILARITY = 0.8
+PARTNER_UPGRADE_MIN_DELTA = 0.01
 _ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
     "#f35555": lambda t: f'<b style="color:#60e0ff">{t}</b>',
 }
@@ -363,9 +367,7 @@ async def _load_pet_partner_item_icons(
         items.append(skill["activation_item"])
     item_ids = {item["id"] for item in items}
     item_ids.update(
-        price["currency_item_id"]
-        for item in items
-        for price in item["prices"]
+        price["currency_item_id"] for item in items for price in item["prices"]
     )
     ordered_item_ids = sorted(item_ids)
     results = await asyncio.gather(
@@ -409,35 +411,72 @@ def _partition_soulmarks(
     soulmarks: list[SoulmarkDict],
     partner: PetPartner | None,
 ) -> tuple[list[SoulmarkDict], list[SoulmarkDict]]:
-    partner_after_description = (
-        AnalyzeDescParser(partner.after_description).to_html(_ANALYZE_DESC_STYLES)
-        if partner and partner.after_description
-        else ""
-    )
-    base_soulmarks: list[SoulmarkDict] = []
-    upgraded_soulmarks: list[SoulmarkDict] = []
-    for soulmark in soulmarks:
-        if soulmark["intensified"] or soulmark["desc"] == partner_after_description:
-            upgraded_soulmarks.append(soulmark)
-        else:
-            base_soulmarks.append(soulmark)
-
-    if partner_after_description and not any(
-        soulmark["desc"] == partner_after_description
-        for soulmark in [*base_soulmarks, *upgraded_soulmarks]
-    ):
-        upgraded_soulmarks.append(
-            SoulmarkDict(
-                desc=partner_after_description,
-                intensified=True,
-                is_adv=False,
-                pve_effective=None,
-                tags=[],
-                icon_id=None,
-                icon=None,
-            )
+    upgraded_indexes = {
+        index for index, soulmark in enumerate(soulmarks) if soulmark["intensified"]
+    }
+    if partner is not None:
+        partner_upgrade_index = _find_partner_upgrade_soulmark_index(
+            soulmarks,
+            partner,
         )
-    return base_soulmarks, upgraded_soulmarks
+        if partner_upgrade_index is not None:
+            upgraded_indexes.add(partner_upgrade_index)
+
+    return (
+        [
+            soulmark
+            for index, soulmark in enumerate(soulmarks)
+            if index not in upgraded_indexes
+        ],
+        [
+            soulmark
+            for index, soulmark in enumerate(soulmarks)
+            if index in upgraded_indexes
+        ],
+    )
+
+
+def _find_partner_upgrade_soulmark_index(
+    soulmarks: Sequence[SoulmarkDict],
+    partner: PetPartner,
+) -> int | None:
+    """Locate the real upgraded soulmark instead of rendering partner text again."""
+    after = _normalize_soulmark_text(partner.after_description)
+    before = _normalize_soulmark_text(partner.before_description)
+    if not after:
+        return None
+
+    candidates = [
+        (
+            SequenceMatcher(
+                None, _normalize_soulmark_text(soulmark["desc"]), after
+            ).ratio(),
+            SequenceMatcher(
+                None,
+                _normalize_soulmark_text(soulmark["desc"]),
+                before,
+            ).ratio(),
+            index,
+        )
+        for index, soulmark in enumerate(soulmarks)
+    ]
+    if not candidates:
+        return None
+    after_score, before_score, index = max(
+        candidates,
+        key=lambda candidate: (candidate[0] - candidate[1], candidate[0]),
+    )
+    return (
+        index
+        if after_score >= PARTNER_UPGRADE_MIN_SIMILARITY
+        and after_score > before_score + PARTNER_UPGRADE_MIN_DELTA
+        else None
+    )
+
+
+def _normalize_soulmark_text(value: str | None) -> str:
+    without_markup = re.sub(r"<[^>]+>", "", value or "")
+    return re.sub(r"[\W_]+", "", without_markup).casefold()
 
 
 def _red_effect_names(
@@ -459,11 +498,7 @@ def _red_effect_names(
         # color. Split a merged red span back into its known glossary terms
         # before falling back to the raw text.
         candidates = sorted(
-            (
-                (text.find(name), name)
-                for name in known_names
-                if name and name in text
-            ),
+            ((text.find(name), name) for name in known_names if name and name in text),
             key=lambda item: (item[0], -len(item[1])),
         )
         matched_ranges: list[tuple[int, int]] = []
