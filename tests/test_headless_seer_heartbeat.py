@@ -2,6 +2,8 @@ import asyncio
 from asyncio import StreamWriter
 from typing import Any, cast
 
+import pytest
+
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.headless_seer.core.connect import AbstractSocketConnect
 from ironsbot.integrations.headless_seer.game import SeerGame
@@ -21,11 +23,16 @@ class FakeWriter:
 
 
 class FakeConnect(AbstractSocketConnect[CommandID[Any], object]):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.sent_commands: list[CommandID[Any]] = []
+
     async def send(
         self,
         command_id: CommandID[Any],
         *_body: Any,
     ) -> CommandID[Any]:
+        self.sent_commands.append(command_id)
         return command_id
 
     async def recv_bytes(self) -> bytes:
@@ -89,5 +96,66 @@ def test_seer_game_heartbeat_uses_self_user_info() -> None:
         await game._send_heartbeat()
 
         assert seen_user_ids == [123456]
+
+    asyncio.run(run())
+
+
+def test_same_command_requests_wait_for_the_previous_response() -> None:
+    async def run() -> None:
+        client = FakeConnect(
+            asyncio.get_running_loop(),
+            spawn=TaskOwner().create,
+        )
+        command_id = CommandID[Any](2051)
+
+        first = asyncio.create_task(client.send_and_wait(command_id, timeout=1))
+        await asyncio.sleep(0)
+        second = asyncio.create_task(client.send_and_wait(command_id, timeout=1))
+        await asyncio.sleep(0)
+
+        assert client.sent_commands == [command_id]
+
+        first_response = object()
+        assert client._resolve_pending(command_id, first_response)
+        assert await first == (first_response,)
+
+        expected_send_count = 2
+        for _ in range(10):
+            if len(client.sent_commands) == expected_send_count:
+                break
+            await asyncio.sleep(0)
+        assert client.sent_commands == [command_id] * expected_send_count
+
+        second_response = object()
+        assert client._resolve_pending(command_id, second_response)
+        assert await second == (second_response,)
+
+    asyncio.run(run())
+
+
+def test_request_timeout_resets_connection_and_discards_pending_request() -> None:
+    async def run() -> None:
+        disconnect_called = asyncio.Event()
+
+        async def on_disconnect() -> None:
+            disconnect_called.set()
+
+        client = FakeConnect(
+            asyncio.get_running_loop(),
+            spawn=TaskOwner().create,
+            on_disconnect=on_disconnect,
+        )
+        writer = FakeWriter()
+        client._writer = cast("StreamWriter", writer)
+        command_id = CommandID[Any](2051)
+
+        with pytest.raises(asyncio.TimeoutError):
+            await client.send_and_wait(command_id, timeout=0)
+
+        await asyncio.wait_for(disconnect_called.wait(), timeout=1)
+
+        assert writer.closed
+        assert client._writer is None
+        assert not client._pending_requests
 
     asyncio.run(run())

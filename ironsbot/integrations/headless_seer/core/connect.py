@@ -90,6 +90,7 @@ class AbstractSocketConnect(
         self._pending_requests: defaultdict[
             _T_CommandID, deque[asyncio.Future[tuple[Unpack[_T_UnpackedType]]]]
         ] = defaultdict(deque)
+        self._request_locks: dict[_T_CommandID, asyncio.Lock] = {}
         self._heartbeat_interval = heartbeat_interval
         self._on_heartbeat = on_heartbeat
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -213,6 +214,12 @@ class AbstractSocketConnect(
 
     def _on_connection_lost(self) -> None:
         """读循环正常退出（连接断开）后的清理。"""
+        if (
+            self._writer is None
+            and self._reader_task is None
+            and not self._pending_requests
+        ):
+            return
         self._reader_task = None
         self._stop_heartbeat()
         self._reject_all_pending(ConnectionError("连接已断开"))
@@ -220,7 +227,14 @@ class AbstractSocketConnect(
         if _writer_is_connected(writer):
             writer.close()
         self._writer = None
-        if not self._intentional_disconnect and self._on_disconnect:
+        if (
+            not self._intentional_disconnect
+            and self._on_disconnect
+            and (
+                self._disconnect_notify_task is None
+                or self._disconnect_notify_task.done()
+            )
+        ):
             self._disconnect_notify_task = self._spawn(
                 self._on_disconnect(),
                 name="headless-disconnect-notify",
@@ -295,12 +309,51 @@ class AbstractSocketConnect(
         timeout: float = 10.0,
     ) -> tuple[Unpack[_T_UnpackedType]]:
         """发送封包并等待对应 cmd_id 的响应，FIFO 顺序关联。"""
-        future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]] = (
-            self._loop.create_future()
-        )
-        self._pending_requests[command_id].append(future)
-        await self.send(command_id, *body)
-        return await asyncio.wait_for(future, timeout=timeout)
+        lock = self._request_lock(command_id)
+        async with lock:
+            future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]] = (
+                self._loop.create_future()
+            )
+            self._pending_requests[command_id].append(future)
+            try:
+                await self.send(command_id, *body)
+            except BaseException:
+                self._discard_pending(command_id, future)
+                future.cancel()
+                raise
+
+            try:
+                return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                future.cancel()
+                logger.warning(
+                    "headless request interrupted; reconnecting: command_id=%s",
+                    command_id,
+                )
+                self._on_connection_lost()
+                raise
+
+    def _request_lock(self, command_id: _T_CommandID) -> asyncio.Lock:
+        lock = self._request_locks.get(command_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._request_locks[command_id] = lock
+        return lock
+
+    def _discard_pending(
+        self,
+        command_id: _T_CommandID,
+        future: asyncio.Future[Any],
+    ) -> None:
+        pending = self._pending_requests.get(command_id)
+        if pending is None:
+            return
+        try:
+            pending.remove(future)
+        except ValueError:
+            return
+        if not pending:
+            del self._pending_requests[command_id]
 
     def _pop_pending(self, command_id: _T_CommandID) -> asyncio.Future | None:
         """弹出 pending 队列中的第一个 Future，没有则返回 None。"""

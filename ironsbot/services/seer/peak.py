@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
@@ -229,6 +231,7 @@ PEAK_TITLE_KEY_MAP = {
 
 LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
+PEAK_VOTE_RENDER_TIMEOUT_SECONDS = 45.0
 ProgressReporter = Callable[[str], Awaitable[None]]
 PeakPoolRenderer = Callable[
     [tuple[PeakPoolSnapshot, ...], str],
@@ -243,6 +246,8 @@ class PeakVoteRank(TypedDict):
 
 
 PeakVoteRenderer = Callable[[list[PeakVoteRank]], Awaitable[bytes]]
+
+logger = logging.getLogger(__name__)
 
 
 class PeakPetRenderer(Protocol):
@@ -348,18 +353,15 @@ class PeakQueryService:
         pools: list[PeakVoteRank] = []
         now = time.now(tz=time.TZ_CN)
         for vote in sort_peak_pool_votes_by_time(votes):
-            title = f"限{vote.count}池票选"
             start_time = normalize_peak_vote_time(vote.start_time)
             end_time = normalize_peak_vote_time(vote.end_time)
-            if start_time > now:
-                title += " / 票选未开始"
-            elif end_time < now:
-                title += " / 票选已结束"
-            else:
-                title += (
-                    f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
-                    f"{end_time:%Y-%m-%d}"
-                )
+            if not start_time <= now <= end_time:
+                continue
+            title = (
+                f"限{vote.count}池票选"
+                f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
+                f"{end_time:%Y-%m-%d}"
+            )
             if vote.count == LIMIT_POOL_VOTE_COUNT:
                 rank = await game.get_limit_pool_vote(vote.subkey)
             elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
@@ -370,9 +372,25 @@ class PeakQueryService:
                 {"items": rank, "title": title, "pets": list(vote.pets)}
             )
         if not pools:
-            return PeakQueryResult(message="❌找不到票选数据。")
+            return PeakQueryResult(message="❌当前没有进行中的巅峰投票。")
         await progress("正在生成图片...")
-        image = await self._render_vote(pools)
+        try:
+            image = await asyncio.wait_for(
+                self._render_vote(pools),
+                timeout=PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "peak vote render timed out: pools=%s timeout_seconds=%s",
+                len(pools),
+                PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
+            )
+            return PeakQueryResult(
+                message="❌巅峰投票图片生成超时，请稍后再试。"
+            )
+        except Exception:
+            logger.exception("peak vote render failed: pools=%s", len(pools))
+            return PeakQueryResult(message="❌巅峰投票图片生成失败，请稍后再试。")
         return PeakQueryResult(image=image)
 
     async def item_rank(
