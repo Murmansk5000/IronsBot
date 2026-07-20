@@ -12,9 +12,7 @@ from ironsbot.services.seer.render_paths import (
 from . import HtmlTemplateRenderer
 
 if TYPE_CHECKING:
-    from seerapi_models.pet import PetORM
-
-    from ironsbot.services.seer.peak import PeakItemData
+    from ironsbot.services.seer.peak import PeakItemData, PeakPetSnapshot
     from ironsbot.services.seer.rank_models import RankEntry
 
 TABLE_WIDTH = 580
@@ -42,7 +40,7 @@ class BanRankDict(TypedDict):
 
 
 def _get_pet_info(
-    pet: "PetORM | None",
+    pet: "PeakPetSnapshot | None",
     fallback_name: str,
     head_data_uris: dict[str, str],
     type_data_uris: dict[int, str],
@@ -52,7 +50,7 @@ def _get_pet_info(
         return (
             pet.name,
             head_data_uris.get(str(pet.resource_id), ""),
-            type_data_uris.get(pet.type.id, ""),
+            type_data_uris.get(pet.type_id, ""),
         )
     return fallback_name, "", ""
 
@@ -63,7 +61,7 @@ async def render_peak_pet_rank(  # noqa: PLR0913
     title: str,
     pick_items: "list[PeakItemData]",
     ban_items: "list[RankEntry]",
-    pet_map: "dict[int, PetORM]",
+    pet_map: "dict[int, PeakPetSnapshot]",
 ) -> bytes:
     """渲染巅峰精灵榜图片，返回 PNG 图片字节"""
     unique_rids: dict[str, None] = {}
@@ -74,7 +72,7 @@ async def render_peak_pet_rank(  # noqa: PLR0913
         pet = pet_map.get(pet_id)
         if pet is not None:
             unique_rids.setdefault(str(pet.resource_id), None)
-            unique_type_ids.setdefault(pet.type.id, None)
+            unique_type_ids.setdefault(pet.type_id, None)
 
     rid_list = list(unique_rids)
     type_id_list = list(unique_type_ids)

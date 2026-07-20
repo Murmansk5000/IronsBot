@@ -153,23 +153,26 @@ class PetQueryService:
         )
 
     async def _build_info_reply(self, pet: PetORM) -> QueryReply:
+        pet_id = int(pet.id)
+        pet_name = str(pet.name)
+        resource_id = int(pet.resource_id)
         logger.info(
             "rendering pet info image: pet_id=%s pet_name=%s resource_id=%s",
-            pet.id,
-            pet.name,
-            pet.resource_id,
+            pet_id,
+            pet_name,
+            resource_id,
         )
         with render_crash_marker(
             operation="pet_info_render",
-            pet_id=pet.id,
-            pet_name=pet.name,
-            resource_id=pet.resource_id,
+            pet_id=pet_id,
+            pet_name=pet_name,
+            resource_id=resource_id,
         ):
             image = await self._render_info(pet)
         logger.info(
             "rendered pet info image: pet_id=%s pet_name=%s bytes=%s",
-            pet.id,
-            pet.name,
+            pet_id,
+            pet_name,
             len(image),
         )
         return QueryReply(image=image)

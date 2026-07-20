@@ -2,12 +2,13 @@
 import asyncio
 from typing import TypedDict
 
-from seerapi_models.element_type import TypeCombinationORM
-
 from ironsbot.services.seer.images import SeerImageSource, to_data_uri
 from ironsbot.services.seer.render_cache import RenderCache
 from ironsbot.services.seer.render_paths import TYPE_MATCHUP_TEMPLATE_PATH
-from ironsbot.services.seer.type_calc import TypeMatchup
+from ironsbot.services.seer.type_calc import (
+    TypeCombinationSnapshot,
+    TypeMatchup,
+)
 
 from . import HtmlTemplateRenderer
 
@@ -26,13 +27,13 @@ class MatchupItemDict(TypedDict):
     multiplier: float
 
 
-def _is_custom_type_combination(target: TypeCombinationORM) -> bool:
+def _is_custom_type_combination(target: TypeCombinationSnapshot) -> bool:
     return target.id < 0
 
 
 async def _resolve_custom_target_icons(
     images: SeerImageSource,
-    target: TypeCombinationORM,
+    target: TypeCombinationSnapshot,
     *,
     target_icon_data_uri: str | None,
     target_icon_secondary_data_uri: str | None,

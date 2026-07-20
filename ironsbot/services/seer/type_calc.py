@@ -26,10 +26,20 @@ _CUSTOM_TYPE_SPLIT_PATTERN = re.compile(r"[+,/|\s]+")
 
 
 @dataclass(frozen=True, slots=True)
+class TypeCombinationSnapshot:
+    """The scalar type fields needed after a database query finishes."""
+
+    id: int
+    name: str
+    primary_id: int
+    secondary_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class TypeMatchup:
-    target: TypeCombinationORM
-    attack_table: list[tuple[TypeCombinationORM, float]]
-    defense_table: list[tuple[TypeCombinationORM, float]]
+    target: TypeCombinationSnapshot
+    attack_table: list[tuple[TypeCombinationSnapshot, float]]
+    defense_table: list[tuple[TypeCombinationSnapshot, float]]
     cache_key: str
 
 
@@ -108,6 +118,21 @@ def _calc_multiplier(
     return (c1 + c2) / 2
 
 
+def _snapshot_type_combination(
+    type_combination: TypeCombinationORM,
+) -> TypeCombinationSnapshot:
+    return TypeCombinationSnapshot(
+        id=int(type_combination.id),
+        name=str(type_combination.name),
+        primary_id=int(type_combination.primary_id),
+        secondary_id=(
+            None
+            if type_combination.secondary_id is None
+            else int(type_combination.secondary_id)
+        ),
+    )
+
+
 def load_type_matchup(
     session: Session,
     *,
@@ -116,17 +141,22 @@ def load_type_matchup(
 ) -> TypeMatchup:
     table = _load_relations(session)
     combinations = list(session.exec(select(TypeCombinationORM)).all())
+    snapshots = {
+        int(combination.id): _snapshot_type_combination(combination)
+        for combination in combinations
+    }
+    target_snapshot = _snapshot_type_combination(target)
     return TypeMatchup(
-        target=target,
+        target=target_snapshot,
         attack_table=[
-            (combo, _calc_multiplier(table, target, combo))
+            (snapshots[int(combo.id)], _calc_multiplier(table, target, combo))
             for combo in combinations
         ],
         defense_table=[
-            (combo, _calc_multiplier(table, combo, target))
+            (snapshots[int(combo.id)], _calc_multiplier(table, combo, target))
             for combo in combinations
         ],
-        cache_key=cache_key or str(target.id),
+        cache_key=cache_key or str(target_snapshot.id),
     )
 
 
