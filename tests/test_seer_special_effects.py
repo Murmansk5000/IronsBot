@@ -108,9 +108,11 @@ def test_special_effects_use_official_descriptions_when_pet_glossary_is_missing(
 
 def test_soulmark_does_not_repeat_glossary_descriptions() -> None:
     soulmark = SimpleNamespace(
+        id=1,
         analyze_desc="[color=#f35555]蜃楼[/color]",
         desc="蜃楼",
         intensified=False,
+        intensified_to_id=None,
         is_adv=False,
         pve_effective=False,
         tag=[],

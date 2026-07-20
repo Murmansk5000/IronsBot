@@ -89,8 +89,10 @@ class SkillDict(TypedDict):
 
 
 class SoulmarkDict(TypedDict):
+    id: int
     desc: str
     intensified: bool
+    intensified_to_id: int | None
     is_adv: bool
     pve_effective: bool | None
     tags: list[str]
@@ -391,10 +393,12 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
     for sm in soulmarks:
         result = SoulmarkDict(
+            id=int(sm.id),
             desc=AnalyzeDescParser(sm.analyze_desc or sm.desc).to_html(
                 _ANALYZE_DESC_STYLES
             ),
             intensified=sm.intensified,
+            intensified_to_id=sm.intensified_to_id,
             is_adv=sm.is_adv,
             pve_effective=sm.pve_effective,
             tags=[t.name for t in sm.tag] if sm.tag else [],
@@ -441,6 +445,12 @@ def _find_partner_upgrade_soulmark_index(
     partner: PetPartner,
 ) -> int | None:
     """Locate the real upgraded soulmark instead of rendering partner text again."""
+    indexes_by_id = {soulmark["id"]: index for index, soulmark in enumerate(soulmarks)}
+    for soulmark in soulmarks:
+        upgraded_id = soulmark["intensified_to_id"]
+        if upgraded_id is not None and upgraded_id in indexes_by_id:
+            return indexes_by_id[upgraded_id]
+
     after = _normalize_soulmark_text(partner.after_description)
     before = _normalize_soulmark_text(partner.before_description)
     if not after:
@@ -668,8 +678,10 @@ async def render_custom_pet_info(
     if pet_data.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
+                "id": 0,
                 "desc": "登场首回合所有攻击先制+1同时增加20%暴击率",
                 "intensified": True,
+                "intensified_to_id": None,
                 "is_adv": False,
                 "pve_effective": None,
                 "tags": [],
