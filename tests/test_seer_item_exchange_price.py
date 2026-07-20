@@ -34,6 +34,7 @@ def _session_with_exchange_prices() -> Session:
                     item_name TEXT NOT NULL,
                     item_quantity INTEGER NOT NULL,
                     currency_item_id INTEGER NOT NULL,
+                    currency_name TEXT NOT NULL,
                     amount INTEGER NOT NULL,
                     purchase_limit INTEGER,
                     start_time INTEGER NOT NULL,
@@ -42,12 +43,6 @@ def _session_with_exchange_prices() -> Session:
                     PRIMARY KEY (source_key, source_entry_id)
                 )
                 """
-            )
-        )
-        connection.execute(
-            text(
-                "INSERT INTO item (id, name) "
-                f"VALUES ({CURRENCY_ITEM_ID}, '共鸣锚点')"
             )
         )
         connection.execute(
@@ -61,6 +56,7 @@ def _session_with_exchange_prices() -> Session:
                     item_name,
                     item_quantity,
                     currency_item_id,
+                    currency_name,
                     amount,
                     purchase_limit,
                     start_time,
@@ -75,6 +71,7 @@ def _session_with_exchange_prices() -> Session:
                     '双源魂蒂',
                     1,
                     1726710,
+                    '共鸣锚点',
                     2000,
                     6,
                     0,
@@ -111,6 +108,7 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
                     item_name,
                     item_quantity,
                     currency_item_id,
+                    currency_name,
                     amount,
                     purchase_limit,
                     start_time,
@@ -125,6 +123,7 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
                     '',
                     1,
                     1726710,
+                    '共鸣锚点',
                     1,
                     NULL,
                     1,
@@ -144,3 +143,56 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
 def test_load_item_exchange_prices_allows_an_older_database_without_table() -> None:
     with Session(create_engine("sqlite://")) as session:
         assert load_item_exchange_prices(session, [ACTIVATION_ITEM_ID]) == {}
+
+
+def test_load_item_exchange_prices_names_legacy_special_skill_currency() -> None:
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE item (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE item_exchange_price (
+                    source_key TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_entry_id INTEGER NOT NULL,
+                    item_id INTEGER NOT NULL,
+                    item_name TEXT NOT NULL,
+                    item_quantity INTEGER NOT NULL,
+                    currency_item_id INTEGER NOT NULL,
+                    amount INTEGER NOT NULL,
+                    purchase_limit INTEGER,
+                    start_time INTEGER NOT NULL,
+                    end_time INTEGER NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (source_key, source_entry_id)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO item_exchange_price VALUES (
+                    'special_skill_shop', '追加技能商店', 1,
+                    1727009, '魔灵密卷', 1, 1726992,
+                    400, 1, 0, 0, 0
+                )
+                """
+            )
+        )
+
+    with Session(engine) as session:
+        prices = load_item_exchange_prices(session, [1727009])
+
+    assert prices[1727009][0].source_name == "微光秘境"
+    assert prices[1727009][0].currency_name == "共振晶体"

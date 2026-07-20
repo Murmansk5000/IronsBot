@@ -116,8 +116,6 @@ class PartnerSkillDict(TypedDict):
 
 class PetPartnerDict(TypedDict):
     name: str
-    member_names: list[str]
-    has_soulmark_upgrade: bool
     cost_item: PartnerItemDict
     skill: PartnerSkillDict | None
 
@@ -312,8 +310,6 @@ def _build_pet_partner(
         )
     return PetPartnerDict(
         name=partner.name,
-        member_names=[member.name for member in partner.members],
-        has_soulmark_upgrade=bool(partner.after_description),
         cost_item=requirement(
             partner.cost_item_id,
             partner.cost_item_name,

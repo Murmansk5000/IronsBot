@@ -218,6 +218,7 @@ def test_build_pet_partner_keeps_skill_activation_item_separate_from_reward(
     rendered = custom_pet_info._build_pet_partner(partner, object())
 
     assert rendered is not None
+    assert set(rendered) == {"name", "cost_item", "skill"}
     assert rendered["cost_item"] == {
         "id": 1722827,
         "name": "契约徽章",
@@ -250,7 +251,7 @@ def test_partition_soulmarks_places_partner_upgrade_without_duplication() -> Non
         after_description="强化后魂印",
         skill=None,
     )
-    base_soulmark = {
+    base_soulmark: custom_pet_info.SoulmarkDict = {
         "desc": "强化前魂印",
         "intensified": False,
         "is_adv": False,
@@ -259,7 +260,10 @@ def test_partition_soulmarks_places_partner_upgrade_without_duplication() -> Non
         "icon_id": None,
         "icon": None,
     }
-    upgraded_soulmark = {**base_soulmark, "desc": "强化后魂印"}
+    upgraded_soulmark: custom_pet_info.SoulmarkDict = {
+        **base_soulmark,
+        "desc": "强化后魂印",
+    }
 
     base, upgraded = custom_pet_info._partition_soulmarks(
         [base_soulmark, upgraded_soulmark],

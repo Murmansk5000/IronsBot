@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 
 ITEM_EXCHANGE_PRICE_TABLE = "item_exchange_price"
 MAX_ITEM_EXCHANGE_PRICE_ROWS = 3
+_LEGACY_CURRENCY_NAMES = {
+    1726710: "共鸣锚点",
+    1726992: "共振晶体",
+}
+_SPECIAL_SKILL_SHOP_SOURCE_KEY = "special_skill_shop"
+_SPECIAL_SKILL_SHOP_SOURCE_NAME = "微光秘境"
 logger = logging.getLogger(__name__)
 
 
@@ -45,36 +51,44 @@ def load_item_exchange_prices(
     if not normalized_item_ids:
         return {}
 
-    has_item_name = False
+    column_names: set[str] = set()
     try:
         columns = session.execute(
             text(f"PRAGMA table_info({ITEM_EXCHANGE_PRICE_TABLE})")
         ).all()
-        has_item_name = any(
-            str(
-                getattr(row, "name", None)
-                or row._mapping.get("name", "")
-            )
-            == "item_name"
+        column_names = {
+            str(getattr(row, "name", None) or row._mapping.get("name", ""))
             for row in columns
-        )
+        }
     except SQLAlchemyError:
         pass
 
+    has_item_name = "item_name" in column_names
+    has_currency_name = "currency_name" in column_names
     item_name_expression = (
         "COALESCE(NULLIF(item.name, ''), NULLIF(exchange_price.item_name, ''), '')"
         if has_item_name
         else "COALESCE(item.name, '')"
     )
+    currency_name_expression = (
+        "COALESCE(NULLIF(exchange_price.currency_name, ''), "
+        "NULLIF(currency.name, ''), '')"
+        if has_currency_name
+        else "COALESCE(currency.name, '')"
+    )
     statement = text(
         f"""
         SELECT
             exchange_price.item_id,
-            exchange_price.source_name,
+            CASE
+                WHEN exchange_price.source_key = '{_SPECIAL_SKILL_SHOP_SOURCE_KEY}'
+                    THEN '{_SPECIAL_SKILL_SHOP_SOURCE_NAME}'
+                ELSE exchange_price.source_name
+            END AS source_name,
             {item_name_expression} AS item_name,
             exchange_price.item_quantity,
             exchange_price.currency_item_id,
-            COALESCE(currency.name, '') AS currency_name,
+            {currency_name_expression} AS currency_name,
             exchange_price.amount,
             exchange_price.purchase_limit
         FROM {ITEM_EXCHANGE_PRICE_TABLE} AS exchange_price
@@ -123,7 +137,13 @@ def load_item_exchange_prices(
                 item_name=str(mapping["item_name"] or "").strip(),
                 item_quantity=int(mapping["item_quantity"] or 1),
                 currency_item_id=currency_item_id,
-                currency_name=currency_name or f"道具{currency_item_id}",
+                currency_name=(
+                    currency_name
+                    or _LEGACY_CURRENCY_NAMES.get(
+                        currency_item_id,
+                        f"道具{currency_item_id}",
+                    )
+                ),
                 amount=int(mapping["amount"]),
                 purchase_limit=(
                     int(purchase_limit) if purchase_limit is not None else None
