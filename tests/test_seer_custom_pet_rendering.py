@@ -249,8 +249,10 @@ def test_partition_soulmarks_uses_real_partner_upgrade_without_duplication() -> 
         skill=None,
     )
     base_soulmark: custom_pet_info.SoulmarkDict = {
+        "id": 100,
         "desc": "damage=80; status=base",
         "intensified": False,
+        "intensified_to_id": None,
         "is_adv": False,
         "pve_effective": None,
         "tags": [],
@@ -269,3 +271,71 @@ def test_partition_soulmarks_uses_real_partner_upgrade_without_duplication() -> 
 
     assert base == [base_soulmark]
     assert upgraded == [upgraded_soulmark]
+
+
+def test_partition_soulmarks_uses_official_upgrade_link_before_text_matching() -> None:
+    partner = PetPartner(
+        group_id=15,
+        name="Source Night",
+        cost_item_id=1722827,
+        cost_item_name="Contract Badge",
+        cost_item_quantity=8,
+        members=(),
+        before_description="old description",
+        after_description="new description",
+        skill=None,
+    )
+    base_soulmark: custom_pet_info.SoulmarkDict = {
+        "id": 100,
+        "desc": "old description",
+        "intensified": False,
+        "intensified_to_id": 200,
+        "is_adv": False,
+        "pve_effective": None,
+        "tags": [],
+        "icon_id": None,
+        "icon": None,
+    }
+    upgraded_soulmark: custom_pet_info.SoulmarkDict = {
+        **base_soulmark,
+        "id": 200,
+        "desc": "new description",
+        "intensified_to_id": None,
+    }
+
+    base, upgraded = custom_pet_info._partition_soulmarks(
+        [upgraded_soulmark, base_soulmark],
+        partner,
+    )
+
+    assert base == [base_soulmark]
+    assert upgraded == [upgraded_soulmark]
+
+
+def test_extract_soulmark_orders_unlinked_4354_variants_old_to_new() -> None:
+    newer = SimpleNamespace(
+        id=2079,
+        analyze_desc="new soulmark",
+        desc="",
+        intensified=False,
+        intensified_to_id=None,
+        is_adv=False,
+        pve_effective=False,
+        tag=[],
+    )
+    older = SimpleNamespace(
+        id=1578,
+        analyze_desc="old soulmark",
+        desc="",
+        intensified=False,
+        intensified_to_id=None,
+        is_adv=False,
+        pve_effective=False,
+        tag=[],
+    )
+
+    soulmarks = custom_pet_info._extract_soulmark(
+        [cast("Any", newer), cast("Any", older)]
+    )
+
+    assert [soulmark["id"] for soulmark in soulmarks] == [1578, 2079]

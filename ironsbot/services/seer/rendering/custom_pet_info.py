@@ -89,8 +89,10 @@ class SkillDict(TypedDict):
 
 
 class SoulmarkDict(TypedDict):
+    id: int
     desc: str
     intensified: bool
+    intensified_to_id: int | None
     is_adv: bool
     pve_effective: bool | None
     tags: list[str]
@@ -389,12 +391,17 @@ async def _load_pet_partner_item_icons(
 
 def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
-    for sm in soulmarks:
+    # The link table has no display-order column. Soulmark IDs are allocated
+    # chronologically, so use them as a stable old-to-new fallback for entries
+    # that have no official upgraded-to relation.
+    for sm in sorted(soulmarks, key=lambda soulmark: int(soulmark.id)):
         result = SoulmarkDict(
+            id=int(sm.id),
             desc=AnalyzeDescParser(sm.analyze_desc or sm.desc).to_html(
                 _ANALYZE_DESC_STYLES
             ),
             intensified=sm.intensified,
+            intensified_to_id=sm.intensified_to_id,
             is_adv=sm.is_adv,
             pve_effective=sm.pve_effective,
             tags=[t.name for t in sm.tag] if sm.tag else [],
@@ -441,6 +448,12 @@ def _find_partner_upgrade_soulmark_index(
     partner: PetPartner,
 ) -> int | None:
     """Locate the real upgraded soulmark instead of rendering partner text again."""
+    indexes_by_id = {soulmark["id"]: index for index, soulmark in enumerate(soulmarks)}
+    for soulmark in soulmarks:
+        upgraded_id = soulmark["intensified_to_id"]
+        if upgraded_id is not None and upgraded_id in indexes_by_id:
+            return indexes_by_id[upgraded_id]
+
     after = _normalize_soulmark_text(partner.after_description)
     before = _normalize_soulmark_text(partner.before_description)
     if not after:
@@ -517,11 +530,26 @@ def _red_effect_names(
     return list(dict.fromkeys(names))
 
 
+def _add_unseen_pet_linked_effects(
+    effects_by_name: dict[str, SpecialEffectDict],
+    glossary_descriptions: Mapping[str, str],
+) -> None:
+    """Add official pet-specific EffectDes entries absent from rendered text."""
+    for name, description in glossary_descriptions.items():
+        if name in effects_by_name:
+            continue
+        effects_by_name[name] = {
+            "name": name,
+            "desc": description,
+            "sources": ["官方专属词条"],
+        }
+
+
 def _extract_special_effects(
     pet: PetORM,
     official_descriptions: Mapping[str, str] | None = None,
 ) -> list[SpecialEffectDict]:
-    """Collect red-highlighted named effects from soulmarks and skills."""
+    """Collect red-highlighted and pet-linked official named effects."""
     known_descriptions = dict(official_descriptions or {})
     glossary_descriptions = {
         glossary.name: glossary.desc
@@ -558,6 +586,12 @@ def _extract_special_effects(
             add(getattr(effect, "analyze_info", None) or effect.info, source)
         if skill.hide_effect:
             add(skill.hide_effect.description, source)
+
+    # EffectDes entries linked to this pet are official named effects even when
+    # the source soulmark or skill does not mark the name in red. Add only
+    # entries not already discovered above, so a red mention never becomes a
+    # duplicate card or gains a redundant source label.
+    _add_unseen_pet_linked_effects(effects_by_name, glossary_descriptions)
 
     return list(effects_by_name.values())
 
@@ -643,7 +677,7 @@ async def render_custom_pet_info(
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     pet_id = int(pet.id)
-    cached = cache.get("custom_pet_info_v5", str(pet_id))
+    cached = cache.get("custom_pet_info_v6", str(pet_id))
     if cached is not None:
         return cached
 
@@ -668,8 +702,10 @@ async def render_custom_pet_info(
     if pet_data.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
+                "id": 0,
                 "desc": "登场首回合所有攻击先制+1同时增加20%暴击率",
                 "intensified": True,
+                "intensified_to_id": None,
                 "is_adv": False,
                 "pve_effective": None,
                 "tags": [],
@@ -799,5 +835,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v5", str(pet_id), result)
+    cache.put("custom_pet_info_v6", str(pet_id), result)
     return result

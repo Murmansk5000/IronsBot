@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 
 class FeaturePolicy(Protocol):
+    def group_has_feature(self, group_id: int, feature: str) -> bool: ...
+
     def is_group_feature_allowed(
         self,
         user_id: int,
@@ -36,6 +38,22 @@ def event_is_feature_allowed(
     if isinstance(event, PrivateMessageEvent):
         return features.is_private_feature_allowed(event.user_id, feature)
     return False
+
+
+def event_is_feature_visible_in_help(
+    features: FeaturePolicy,
+    event: Event,
+    feature: str,
+) -> bool:
+    """Check help visibility without letting a superuser bypass a group policy.
+
+    A superuser may execute a feature in any group, but the help menu should
+    describe what that group has explicitly enabled for its members.
+    """
+
+    if isinstance(event, GroupMessageEvent):
+        return features.group_has_feature(event.group_id, feature)
+    return event_is_feature_allowed(features, event, feature)
 
 
 def feature_rule(features: FeaturePolicy, feature: str) -> Rule:
