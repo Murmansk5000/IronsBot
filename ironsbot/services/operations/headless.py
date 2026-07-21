@@ -51,6 +51,7 @@ class HeadlessLoginRequest:
     password: str
     login_server_url: str
     heartbeat_interval: float | None
+    request_timeout_seconds: float
     reconnect_retries: int
     reconnect_delay: float
     reconnect_delay_max: float
@@ -185,6 +186,7 @@ class HeadlessService:
                 password,
                 self._connection.login_server_addr,
                 self._connection.heartbeat_interval,
+                self._connection.request_timeout_seconds,
                 self._connection.reconnect_retries,
                 self._connection.reconnect_delay,
                 self._connection.reconnect_delay_max,

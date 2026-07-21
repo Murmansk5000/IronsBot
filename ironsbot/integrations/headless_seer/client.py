@@ -50,6 +50,7 @@ class ClientManager:
                 request.password,
                 login_server_url=request.login_server_url,
                 heartbeat_interval=request.heartbeat_interval,
+                request_timeout_seconds=request.request_timeout_seconds,
                 reconnect_retries=request.reconnect_retries,
                 reconnect_delay=request.reconnect_delay,
                 reconnect_delay_max=request.reconnect_delay_max,

@@ -11,6 +11,7 @@ import httpx
 from ironsbot.core.tasks import TaskSpawner
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.core.connect import (
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
     SeerConnect,
     SeerEncryptConnect,
 )
@@ -84,6 +85,7 @@ class SeerGame:
         *,
         login_server_url: str,
         heartbeat_interval: float | None = None,
+        request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
         reconnect_retries: int = 0,
         reconnect_delay: float = 5.0,
         reconnect_delay_max: float = 120.0,
@@ -97,6 +99,7 @@ class SeerGame:
         self._is_logged_in = False
         self._lock = asyncio.Lock()
         self._heartbeat_interval = heartbeat_interval
+        self._request_timeout_seconds = request_timeout_seconds
         self._reconnect_retries = reconnect_retries
         self._reconnect_delay = reconnect_delay
         self._reconnect_delay_max = reconnect_delay_max
@@ -122,24 +125,29 @@ class SeerGame:
         self,
         command_id: CommandID[T_Deserializable],
         *body: object,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> tuple[HeadInfo, T_Deserializable]: ...
     @overload
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: object,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]: ...
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: object,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]:
         """发送封包并等待响应，自动附加 user_id。"""
         return await self.client.send_and_wait(
-            command_id, self.user_id, *body, timeout=timeout
+            command_id,
+            self.user_id,
+            *body,
+            timeout=(
+                self._request_timeout_seconds if timeout is None else timeout
+            ),
         )
 
     async def _send_heartbeat(self) -> None:
