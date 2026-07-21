@@ -33,6 +33,7 @@ from .listener import EventListener
 _T_CommandID = TypeVar("_T_CommandID", bound=CommandID)
 _T_UnpackedType = TypeVarTuple("_T_UnpackedType")
 logger = logging.getLogger(__name__)
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 20.0
 
 
 def _serialize_binary(data: AS3ByteArray, *args: Any) -> None:
@@ -90,7 +91,9 @@ class AbstractSocketConnect(
         self._pending_requests: defaultdict[
             _T_CommandID, deque[asyncio.Future[tuple[Unpack[_T_UnpackedType]]]]
         ] = defaultdict(deque)
-        self._request_locks: dict[_T_CommandID, asyncio.Lock] = {}
+        # The protocol has no per-request sequence number. Keep one request in
+        # flight so a response can never be associated with the wrong caller.
+        self._request_lock = asyncio.Lock()
         self._heartbeat_interval = heartbeat_interval
         self._on_heartbeat = on_heartbeat
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -306,11 +309,10 @@ class AbstractSocketConnect(
         self,
         command_id: _T_CommandID,
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[Unpack[_T_UnpackedType]]:
         """发送封包并等待对应 cmd_id 的响应，FIFO 顺序关联。"""
-        lock = self._request_lock(command_id)
-        async with lock:
+        async with self._request_lock:
             future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]] = (
                 self._loop.create_future()
             )
@@ -332,13 +334,6 @@ class AbstractSocketConnect(
                 )
                 self._on_connection_lost()
                 raise
-
-    def _request_lock(self, command_id: _T_CommandID) -> asyncio.Lock:
-        lock = self._request_locks.get(command_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._request_locks[command_id] = lock
-        return lock
 
     def _discard_pending(
         self,
@@ -414,20 +409,20 @@ class SeerConnect(AbstractSocketConnect[CommandID, HeadInfo, SocketRecvPacketBod
         self,
         command_id: CommandID[T_Deserializable],
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[HeadInfo, T_Deserializable]: ...
     @overload
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]: ...
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]:
         return await super().send_and_wait(command_id, *body, timeout=timeout)
 

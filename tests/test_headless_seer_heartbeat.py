@@ -100,23 +100,28 @@ def test_seer_game_heartbeat_uses_self_user_info() -> None:
     asyncio.run(run())
 
 
-def test_same_command_requests_wait_for_the_previous_response() -> None:
+def test_socket_requests_wait_for_the_previous_response() -> None:
     async def run() -> None:
         client = FakeConnect(
             asyncio.get_running_loop(),
             spawn=TaskOwner().create,
         )
-        command_id = CommandID[Any](2051)
+        first_command_id = CommandID[Any](2051)
+        second_command_id = CommandID[Any](2052)
 
-        first = asyncio.create_task(client.send_and_wait(command_id, timeout=1))
+        first = asyncio.create_task(
+            client.send_and_wait(first_command_id, timeout=1)
+        )
         await asyncio.sleep(0)
-        second = asyncio.create_task(client.send_and_wait(command_id, timeout=1))
+        second = asyncio.create_task(
+            client.send_and_wait(second_command_id, timeout=1)
+        )
         await asyncio.sleep(0)
 
-        assert client.sent_commands == [command_id]
+        assert client.sent_commands == [first_command_id]
 
         first_response = object()
-        assert client._resolve_pending(command_id, first_response)
+        assert client._resolve_pending(first_command_id, first_response)
         assert await first == (first_response,)
 
         expected_send_count = 2
@@ -124,10 +129,10 @@ def test_same_command_requests_wait_for_the_previous_response() -> None:
             if len(client.sent_commands) == expected_send_count:
                 break
             await asyncio.sleep(0)
-        assert client.sent_commands == [command_id] * expected_send_count
+        assert client.sent_commands == [first_command_id, second_command_id]
 
         second_response = object()
-        assert client._resolve_pending(command_id, second_response)
+        assert client._resolve_pending(second_command_id, second_response)
         assert await second == (second_response,)
 
     asyncio.run(run())

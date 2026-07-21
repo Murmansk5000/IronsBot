@@ -235,6 +235,7 @@ class HeadlessConfig(BaseModel):
     password: str | None = Field(default=None, exclude=True, repr=False)
     login_server_addr: str = "https://seer-login-ip.61.com/unity-ip.txt"
     heartbeat_interval: float = 300
+    request_timeout_seconds: float = Field(default=20.0, gt=0)
     reconnect_retries: int = -1
     reconnect_delay: float = 5.0
     reconnect_delay_max: float = 120.0

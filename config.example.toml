@@ -1019,6 +1019,8 @@ local_path = "data/aliases-data.sqlite"
 login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
 # Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。
 heartbeat_interval = 300.0
+# Default: 20.0; EN: Single game-server request timeout. A timeout reconnects to prevent a late packet from matching the next query. ZH: 单个游戏服务器请求的超时秒数；超时后会重连，避免迟到封包错配到下一次查询。
+request_timeout_seconds = 20.0
 # Default: -1; EN: Reconnect attempts, -1 means forever. ZH: 重连次数，-1 表示无限。
 reconnect_retries = -1
 # Default: 5.0; EN: Initial reconnect delay seconds. ZH: 初始重连延迟秒数。
