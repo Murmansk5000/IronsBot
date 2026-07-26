@@ -16,15 +16,15 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover - exercised on Python 3.10 in deployment
     import tomli as tomllib
 
-CONFIG_ENV = "IRONSBOT_CONFIG"
+CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 _SECRET_ENV_PATHS = (
-    ("IRONSBOT_ONEBOT_TOKEN", ("bot", "onebot_token")),
-    ("IRONSBOT_AI_KEY", ("ai", "api_key")),
-    ("IRONSBOT_SEER_USER_ID", ("operations", "headless", "user_id")),
-    ("IRONSBOT_SEER_PASSWORD", ("operations", "headless", "password")),
-    ("IRONSBOT_SENDPIC_TOKEN", ("messaging", "sendpic", "cnb_token")),
-    ("IRONSBOT_GITHUB_TOKEN", ("operations", "data_sync", "github_token")),
+    ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
+    ("AI_KEY", ("ai", "api_key")),
+    ("HEADLESS_SEER_USER_ID", ("operations", "headless", "user_id")),
+    ("HEADLESS_SEER_PASSWORD", ("operations", "headless", "password")),
+    ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
+    ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
 )
 
 
