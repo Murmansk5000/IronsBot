@@ -84,10 +84,10 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 无头请求期限
+## 命令窗口与群发送额度
 
-连接上的请求串行执行，配置的响应时限只覆盖等待响应，不包括排队、发送和超时后的短暂迟到响应排空；不能将默认响应时限理解为整次操作的总期限。
-排空结果影响是否重置连接，取消仍向上游传播。连接可用状态和诊断记录不等于远端游戏请求成功。
+语义命令按用户及命令身份使用滑动窗口，保留单命令覆盖及管理员豁免；命令窗口和群出站额度各自控制，不可互代。
+会话令牌用于保存活动状态引用，任务完成接线不代表所有陈旧令牌或取消情况已获得新的代际保证；崩溃堆栈及协议选择也不是原生崩溃已根治的证明。
 
 ## 插件架构
 
@@ -197,7 +197,7 @@ at_users = ["owner"]
 - 皮肤价格、渲染缓存等运行数据
 
 超级管理员发送 `/更新数据` 时，IronsBot 会先按
-`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+`[runtime.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
 GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk5000/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出 JSON。

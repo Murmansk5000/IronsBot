@@ -54,11 +54,14 @@ COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR = (
 COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR = (
     "messaging.command_cooldown.in_progress_message must not be empty"
 )
+COMMAND_COOLDOWN_WINDOWS_REQUIRED_ERROR = (
+    "messaging.command_cooldown.windows must not be empty"
+)
+COMMAND_COOLDOWN_WINDOWS_DUPLICATE_ERROR = (
+    "messaging.command_cooldown.windows contains duplicate window_seconds"
+)
 COMMAND_COOLDOWN_EMPTY_ID_ERROR = (
     "messaging.command_cooldown.commands contains an empty command id"
-)
-COMMAND_COOLDOWN_NEGATIVE_SECONDS_ERROR = (
-    "messaging.command_cooldown.commands values must be non-negative"
 )
 
 
@@ -69,14 +72,49 @@ class DuplicateScheduleIdError(ValueError):
         return cls(f"{SCHEDULE_ID_DUPLICATE_ERROR}: {duplicate_text}")
 
 
+class CommandCooldownWindowConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    window_seconds: float = Field(gt=0)
+    max_requests: int = Field(ge=1)
+
+
+def _default_command_cooldown_windows() -> list[CommandCooldownWindowConfig]:
+    return [
+        CommandCooldownWindowConfig(window_seconds=60.0, max_requests=3),
+        CommandCooldownWindowConfig(window_seconds=300.0, max_requests=5),
+    ]
+
+
+def _normalize_command_cooldown_windows(
+    windows: list[CommandCooldownWindowConfig],
+    *,
+    required: bool,
+) -> list[CommandCooldownWindowConfig]:
+    if not windows:
+        if required:
+            raise ValueError(COMMAND_COOLDOWN_WINDOWS_REQUIRED_ERROR)
+        return []
+    seen: set[float] = set()
+    for window in windows:
+        if window.window_seconds in seen:
+            raise ValueError(COMMAND_COOLDOWN_WINDOWS_DUPLICATE_ERROR)
+        seen.add(window.window_seconds)
+    return sorted(windows, key=lambda item: item.window_seconds)
+
+
 class CommandCooldownConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
-    default_seconds: float = Field(default=60.0, ge=0)
+    enabled: bool = False
+    windows: list[CommandCooldownWindowConfig] = Field(
+        default_factory=_default_command_cooldown_windows
+    )
     cooldown_message: str = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
     in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
-    commands: dict[str, float] = Field(default_factory=dict)
+    commands: dict[str, list[CommandCooldownWindowConfig]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("cooldown_message")
     @classmethod
@@ -110,21 +148,36 @@ class CommandCooldownConfig(BaseModel):
             raise ValueError(COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR)
         return message
 
+    @field_validator("windows")
+    @classmethod
+    def validate_windows(
+        cls,
+        value: list[CommandCooldownWindowConfig],
+    ) -> list[CommandCooldownWindowConfig]:
+        return _normalize_command_cooldown_windows(value, required=True)
+
     @field_validator("commands")
     @classmethod
-    def normalize_commands(cls, value: dict[str, float]) -> dict[str, float]:
-        normalized: dict[str, float] = {}
-        for raw_key, seconds in value.items():
+    def normalize_commands(
+        cls,
+        value: dict[str, list[CommandCooldownWindowConfig]],
+    ) -> dict[str, list[CommandCooldownWindowConfig]]:
+        normalized: dict[str, list[CommandCooldownWindowConfig]] = {}
+        for raw_key, windows in value.items():
             key = raw_key.strip()
             if not key:
                 raise ValueError(COMMAND_COOLDOWN_EMPTY_ID_ERROR)
-            if seconds < 0:
-                raise ValueError(COMMAND_COOLDOWN_NEGATIVE_SECONDS_ERROR)
-            normalized[key] = float(seconds)
+            normalized[key] = _normalize_command_cooldown_windows(
+                windows,
+                required=False,
+            )
         return normalized
 
-    def seconds_for(self, command_id: str) -> float:
-        return self.commands.get(command_id, self.default_seconds)
+    def windows_for(
+        self,
+        command_id: str,
+    ) -> tuple[CommandCooldownWindowConfig, ...]:
+        return tuple(self.commands.get(command_id, self.windows))
 
 
 class BotRoutingConfig(BaseModel):
@@ -266,7 +319,7 @@ def _default_outbound_rate_limit_windows() -> list[OutboundRateLimitWindowConfig
 class OutboundRateLimitConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = True
+    enabled: bool = False
     windows: list[OutboundRateLimitWindowConfig] = Field(
         default_factory=_default_outbound_rate_limit_windows
     )

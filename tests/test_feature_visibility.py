@@ -24,10 +24,10 @@ DEFINITIONS = {
 }
 
 
-def _group_event(text: str = "帮助"):
+def _group_event(text: str = "帮助", *, user_id: int = 2):
     return group_message_event(
         text,
-        user_id=2,
+        user_id=user_id,
         group_id=4,
     )
 
@@ -65,6 +65,7 @@ def _visible(
     plugin_id: str,
     *,
     settings: Settings | None = None,
+    user_id: int = 2,
 ) -> bool:
     settings = settings or _settings()
     features = FeatureService(
@@ -73,7 +74,7 @@ def _visible(
     )
     entries = visible_help_entries(
         build_test_plugin_registry(settings),
-        _group_event(),
+        _group_event(user_id=user_id),
         features=features,
         ignored_plugins=tuple(settings.features.help.ignored_plugins),
     )
@@ -131,6 +132,16 @@ def test_pet_config_is_not_enabled_by_seer_bundle() -> None:
         "pet_config",
         settings=_settings(allowed_features=("seer",)),
     )
+
+
+def test_superuser_can_see_unconfigured_features_in_help() -> None:
+    settings = _settings()
+    settings.features.superuser_bypass = True
+    settings.bot.superusers = [2]
+    settings.pet_config.enabled = True
+
+    assert _visible("seer_query", settings=settings)
+    assert _visible("pet_config", settings=settings)
 
 
 def test_rank_help_visible_when_seer_rank_allowed() -> None:

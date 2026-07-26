@@ -34,4 +34,4 @@ def can_manage_group_event(features: SuperuserPolicy, event: object) -> bool:
 def can_manage_conversation_event(features: SuperuserPolicy, event: object) -> bool:
     if getattr(event, "group_id", None) is not None:
         return can_manage_group_event(features, event)
-    return is_superuser_event(features, event)
+    return event_user_id(event) is not None
