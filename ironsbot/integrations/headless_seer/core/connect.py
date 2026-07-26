@@ -2,11 +2,13 @@
 import asyncio
 import logging
 import struct
+import time
 from abc import abstractmethod
 from asyncio import BaseTransport, StreamReader, StreamReaderProtocol, StreamWriter
 from collections import defaultdict, deque
 from collections.abc import Callable, Coroutine, Iterable
 from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Generic, TypeGuard, TypeVar, overload
 
@@ -33,6 +35,31 @@ from .listener import EventListener
 _T_CommandID = TypeVar("_T_CommandID", bound=CommandID)
 _T_UnpackedType = TypeVarTuple("_T_UnpackedType")
 logger = logging.getLogger(__name__)
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 20.0
+REQUEST_TIMEOUT_DRAIN_SECONDS = 2.0
+REQUEST_HISTORY_LIMIT = 8
+_COMMAND_ID_NAMES = {
+    int(command_id): name for name, command_id in COMMAND_ID._asdict().items()
+}
+
+
+@dataclass(slots=True)
+class HeadlessRequestHistoryEntry:
+    """One outbound request kept only long enough to explain a disconnect."""
+
+    command_id: int
+    context: str
+    started_at: float
+    status: str = "sending"
+    finished_at: float | None = None
+    error_type: str = ""
+
+    def finish(self, status: str, *, error: BaseException | None = None) -> None:
+        if self.finished_at is not None:
+            return
+        self.status = status
+        self.finished_at = time.monotonic()
+        self.error_type = type(error).__name__ if error is not None else ""
 
 
 def _serialize_binary(data: AS3ByteArray, *args: Any) -> None:
@@ -78,6 +105,7 @@ class AbstractSocketConnect(
         heartbeat_interval: float | None = None,
         on_heartbeat: Callable[[], Coroutine[Any, Any, None]] | None = None,
         on_disconnect: Callable[[], Coroutine[Any, Any, None]] | None = None,
+        request_context: Callable[[], str] | None = None,
     ) -> None:
         self._loop = loop
         self._spawn = spawn
@@ -90,6 +118,9 @@ class AbstractSocketConnect(
         self._pending_requests: defaultdict[
             _T_CommandID, deque[asyncio.Future[tuple[Unpack[_T_UnpackedType]]]]
         ] = defaultdict(deque)
+        # The protocol has no per-request sequence number. Keep one request in
+        # flight so a response can never be associated with the wrong caller.
+        self._request_lock = asyncio.Lock()
         self._heartbeat_interval = heartbeat_interval
         self._on_heartbeat = on_heartbeat
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -97,6 +128,14 @@ class AbstractSocketConnect(
         self._on_disconnect = on_disconnect
         self._disconnect_notify_task: asyncio.Task[None] | None = None
         self._intentional_disconnect = False
+        self._request_context = request_context
+        self._request_history: deque[HeadlessRequestHistoryEntry] = deque(
+            maxlen=REQUEST_HISTORY_LIMIT,
+        )
+        self._request_entries: dict[
+            asyncio.Future[tuple[Unpack[_T_UnpackedType]]],
+            HeadlessRequestHistoryEntry,
+        ] = {}
 
     @abstractmethod
     async def send(self, command_id: _T_CommandID, *body: Any) -> _T_CommandID:
@@ -114,6 +153,40 @@ class AbstractSocketConnect(
     @property
     def is_connected(self) -> bool:
         return _writer_is_connected(self._writer)
+
+    def format_recent_request_history(
+        self,
+        *,
+        limit: int = REQUEST_HISTORY_LIMIT,
+        now: float | None = None,
+    ) -> str:
+        """Return a compact trace of the commands sent before a failure."""
+        if limit <= 0:
+            return ""
+        current = time.monotonic() if now is None else now
+        entries = tuple(self._request_history)[-limit:]
+        return "\n".join(
+            self._format_request_history_entry(entry, now=current) for entry in entries
+        )
+
+    @staticmethod
+    def _format_request_history_entry(
+        entry: HeadlessRequestHistoryEntry,
+        *,
+        now: float,
+    ) -> str:
+        command = str(entry.command_id)
+        command_name = _COMMAND_ID_NAMES.get(entry.command_id)
+        if command_name:
+            command = f"{command} ({command_name})"
+        context = f"｜{entry.context}" if entry.context else ""
+        finished_at = entry.finished_at if entry.finished_at is not None else now
+        elapsed = finished_at - entry.started_at
+        age = max(now - entry.started_at, 0.0)
+        status = entry.status
+        if entry.error_type:
+            status = f"{status} {entry.error_type}"
+        return f"{command}{context}｜{status} {elapsed:.1f}秒｜{age:.1f}秒前"
 
     async def connect(self, host: str, port: int) -> None:
         self._host = host
@@ -213,6 +286,12 @@ class AbstractSocketConnect(
 
     def _on_connection_lost(self) -> None:
         """读循环正常退出（连接断开）后的清理。"""
+        if (
+            self._writer is None
+            and self._reader_task is None
+            and not self._pending_requests
+        ):
+            return
         self._reader_task = None
         self._stop_heartbeat()
         self._reject_all_pending(ConnectionError("连接已断开"))
@@ -220,7 +299,14 @@ class AbstractSocketConnect(
         if _writer_is_connected(writer):
             writer.close()
         self._writer = None
-        if not self._intentional_disconnect and self._on_disconnect:
+        if (
+            not self._intentional_disconnect
+            and self._on_disconnect
+            and (
+                self._disconnect_notify_task is None
+                or self._disconnect_notify_task.done()
+            )
+        ):
             self._disconnect_notify_task = self._spawn(
                 self._on_disconnect(),
                 name="headless-disconnect-notify",
@@ -292,15 +378,114 @@ class AbstractSocketConnect(
         self,
         command_id: _T_CommandID,
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[Unpack[_T_UnpackedType]]:
         """发送封包并等待对应 cmd_id 的响应，FIFO 顺序关联。"""
-        future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]] = (
-            self._loop.create_future()
-        )
-        self._pending_requests[command_id].append(future)
-        await self.send(command_id, *body)
-        return await asyncio.wait_for(future, timeout=timeout)
+        async with self._request_lock:
+            future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]] = (
+                self._loop.create_future()
+            )
+            entry = HeadlessRequestHistoryEntry(
+                command_id=int(command_id),
+                context=self._current_request_context(),
+                started_at=time.monotonic(),
+            )
+            self._request_history.append(entry)
+            self._request_entries[future] = entry
+            self._pending_requests[command_id].append(future)
+            try:
+                await self.send(command_id, *body)
+                entry.status = "等待响应"
+            except BaseException as exc:
+                self._discard_pending(command_id, future)
+                future.cancel()
+                entry.finish("发送失败", error=exc)
+                raise
+
+            try:
+                return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
+            except asyncio.TimeoutError:
+                entry.finish("超时")
+                logger.warning(
+                    "headless request timed out; draining late response: command_id=%s",
+                    command_id,
+                )
+                if not await self._drain_timed_out_request(command_id, future):
+                    future.cancel()
+                    logger.warning(
+                        "headless timed out request did not drain; resetting connection: "
+                        "command_id=%s",
+                        command_id,
+                    )
+                    self._on_connection_lost()
+                raise
+            except asyncio.CancelledError:
+                future.cancel()
+                entry.finish("已取消")
+                raise
+            except BaseException as exc:
+                entry.finish("失败", error=exc)
+                raise
+            finally:
+                self._request_entries.pop(future, None)
+
+    async def _drain_timed_out_request(
+        self,
+        command_id: _T_CommandID,
+        future: asyncio.Future[tuple[Unpack[_T_UnpackedType]]],
+    ) -> bool:
+        """Keep the transport quarantined briefly so a late reply can be consumed."""
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(future),
+                timeout=REQUEST_TIMEOUT_DRAIN_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            return False
+        except asyncio.CancelledError:
+            future.cancel()
+            self._on_connection_lost()
+            raise
+        except Exception as error:
+            if self.is_connected:
+                logger.info(
+                    "headless timed out request received a late error; keeping connection: "
+                    "command_id=%s error_type=%s",
+                    command_id,
+                    type(error).__name__,
+                )
+            return True
+        else:
+            logger.info(
+                "headless timed out request received a late response; keeping connection: "
+                "command_id=%s",
+                command_id,
+            )
+            return True
+
+    def _current_request_context(self) -> str:
+        if self._request_context is None:
+            return ""
+        try:
+            return self._request_context().strip()[:120]
+        except Exception:
+            logger.debug("headless request context provider failed", exc_info=True)
+            return ""
+
+    def _discard_pending(
+        self,
+        command_id: _T_CommandID,
+        future: asyncio.Future[Any],
+    ) -> None:
+        pending = self._pending_requests.get(command_id)
+        if pending is None:
+            return
+        try:
+            pending.remove(future)
+        except ValueError:
+            return
+        if not pending:
+            del self._pending_requests[command_id]
 
     def _pop_pending(self, command_id: _T_CommandID) -> asyncio.Future | None:
         """弹出 pending 队列中的第一个 Future，没有则返回 None。"""
@@ -321,6 +506,7 @@ class AbstractSocketConnect(
             return False
         if not future.done():
             future.set_result(args)
+        self._finish_request(future, "完成")
         return True
 
     def _reject_pending(self, command_id: _T_CommandID, exc: BaseException) -> bool:
@@ -330,6 +516,7 @@ class AbstractSocketConnect(
             return False
         if not future.done():
             future.set_exception(exc)
+        self._finish_request(future, "响应错误", error=exc)
         return True
 
     def _reject_all_pending(self, exc: BaseException) -> None:
@@ -338,7 +525,19 @@ class AbstractSocketConnect(
             for future in queue:
                 if not future.done():
                     future.set_exception(exc)
+                self._finish_request(future, "连接中断", error=exc)
         self._pending_requests.clear()
+
+    def _finish_request(
+        self,
+        future: asyncio.Future[Any],
+        status: str,
+        *,
+        error: BaseException | None = None,
+    ) -> None:
+        entry = self._request_entries.get(future)
+        if entry is not None:
+            entry.finish(status, error=error)
 
 
 class SeerConnect(AbstractSocketConnect[CommandID, HeadInfo, SocketRecvPacketBody]):
@@ -361,20 +560,20 @@ class SeerConnect(AbstractSocketConnect[CommandID, HeadInfo, SocketRecvPacketBod
         self,
         command_id: CommandID[T_Deserializable],
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[HeadInfo, T_Deserializable]: ...
     @overload
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]: ...
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: Any,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]:
         return await super().send_and_wait(command_id, *body, timeout=timeout)
 
@@ -447,6 +646,7 @@ class SeerEncryptConnect(SeerConnect):
         heartbeat_interval: float | None = None,
         on_heartbeat: Callable[[], Coroutine[Any, Any, None]] | None = None,
         on_disconnect: Callable[[], Coroutine[Any, Any, None]] | None = None,
+        request_context: Callable[[], str] | None = None,
     ) -> None:
         super().__init__(
             loop,
@@ -455,6 +655,7 @@ class SeerEncryptConnect(SeerConnect):
             heartbeat_interval=heartbeat_interval,
             on_heartbeat=on_heartbeat,
             on_disconnect=on_disconnect,
+            request_context=request_context,
         )
         self._result: int = 0
 

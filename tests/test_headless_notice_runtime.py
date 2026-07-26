@@ -115,7 +115,14 @@ def test_headless_state_notice_uses_admin_notice_delivery(
     service = build_service(
         notices=HeadlessNoticeConfig(
             state_offline_message="offline {user_id} {reason} {source}",
-        )
+        ),
+        now=lambda: datetime(
+            2026,
+            7,
+            21,
+            12,
+            tzinfo=ZoneInfo("Asia/Shanghai"),
+        ),
     )
 
     async def fake_send(

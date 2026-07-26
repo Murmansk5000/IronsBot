@@ -11,6 +11,7 @@ import httpx
 from ironsbot.core.tasks import TaskSpawner
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.core.connect import (
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
     SeerConnect,
     SeerEncryptConnect,
 )
@@ -84,9 +85,11 @@ class SeerGame:
         *,
         login_server_url: str,
         heartbeat_interval: float | None = None,
+        request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
         reconnect_retries: int = 0,
         reconnect_delay: float = 5.0,
         reconnect_delay_max: float = 120.0,
+        request_interval_seconds: float = 0.0,
         state_notifier: HeadlessStateNotifier | None = None,
         operations: HeadlessOperationTracker,
         spawn: TaskSpawner,
@@ -97,9 +100,13 @@ class SeerGame:
         self._is_logged_in = False
         self._lock = asyncio.Lock()
         self._heartbeat_interval = heartbeat_interval
+        self._request_timeout_seconds = request_timeout_seconds
         self._reconnect_retries = reconnect_retries
         self._reconnect_delay = reconnect_delay
         self._reconnect_delay_max = reconnect_delay_max
+        self._request_interval_seconds = max(request_interval_seconds, 0.0)
+        self._request_gate = asyncio.Lock()
+        self._next_request_at = 0.0
         self._reconnect_task: asyncio.Task[None] | None = None
         self._shutdown_requested = False
         self._login_server_url: str = login_server_url
@@ -122,30 +129,45 @@ class SeerGame:
         self,
         command_id: CommandID[T_Deserializable],
         *body: object,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> tuple[HeadInfo, T_Deserializable]: ...
     @overload
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: object,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]: ...
     async def send_and_wait(
         self,
         command_id: CommandID,
         *body: object,
-        timeout: float = 10.0,
+        timeout: float | None = None,
     ) -> tuple[HeadInfo, SocketRecvPacketBody]:
         """发送封包并等待响应，自动附加 user_id。"""
-        return await self.client.send_and_wait(
-            command_id, self.user_id, *body, timeout=timeout
-        )
+        async with self._request_gate:
+            delay = self._next_request_at - time.monotonic()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            try:
+                return await self.client.send_and_wait(
+                    command_id,
+                    self.user_id,
+                    *body,
+                    timeout=(
+                        self._request_timeout_seconds if timeout is None else timeout
+                    ),
+                )
+            finally:
+                self._next_request_at = (
+                    time.monotonic() + self._request_interval_seconds
+                )
 
     async def _send_heartbeat(self) -> None:
         """心跳回调，由连接层周期性调用。"""
         logger.debug(f"{self.user_id}：发送心跳包")
-        await self.get_user_info(self.user_id)
+        with self.operations.track("心跳", source="无头心跳", background=True):
+            await self.get_user_info(self.user_id)
 
     async def login(self) -> None:
         """完整的登录流程：登录服务器认证 -> 获取服务器列表 -> 连接游戏服务器。"""
@@ -206,6 +228,7 @@ class SeerGame:
                 heartbeat_interval=self._heartbeat_interval,
                 on_heartbeat=self._send_heartbeat,
                 on_disconnect=self._handle_disconnect,
+                request_context=self.operations.format_current,
             )
             try:
                 await impl.connect(ip, port)
@@ -244,7 +267,11 @@ class SeerGame:
         if self._shutdown_requested:
             return
         operation = self.operations.format_recent()
+        request_history = self._format_request_history(limit=3)
+        request_history_log = self._format_request_history()
         reason = "连接已断开"
+        if request_history:
+            reason = f"{reason}\n断线前实际封包：\n{request_history}"
         if operation:
             reason = f"{reason}\n疑似触发操作：{operation}"
         logger.warning(
@@ -252,9 +279,19 @@ class SeerGame:
             self.user_id,
             f" ({operation})" if operation else "",
         )
+        if request_history_log:
+            logger.warning(
+                "%s：断线前实际封包历史：%s",
+                self.user_id,
+                request_history_log.replace("\n", "；"),
+            )
         await self._notify_state(connected=False, reason=reason, source="无头连接")
         if not self._shutdown_requested:
             self.schedule_reconnect()
+
+    def _format_request_history(self, *, limit: int = 8) -> str:
+        impl = self._impl
+        return impl.format_recent_request_history(limit=limit) if impl is not None else ""
 
     async def _notify_state(
         self,

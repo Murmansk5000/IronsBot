@@ -51,6 +51,18 @@ def test_notice_payload_with_red_packet_marker_is_detected() -> None:
     assert is_red_packet_payload(payload)
 
 
+def test_notice_payload_with_napcat_red_packet_gray_tip_id_is_detected() -> None:
+    payload = {
+        "post_type": "notice",
+        "notice_type": "notify",
+        "sub_type": "gray_tip",
+        "busi_id": "81",
+        "content": '{"items":[{"txt":"system message"}]}',
+    }
+
+    assert is_red_packet_payload(payload)
+
+
 def test_notice_payload_without_red_packet_marker_is_not_detected() -> None:
     payload = {
         "post_type": "notice",
