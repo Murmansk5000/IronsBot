@@ -33,6 +33,8 @@ class RemoteBuildStepConfig(BaseModel):
     ref: str = "main"
     timeout_seconds: float = Field(default=1200.0, gt=0)
     poll_interval_seconds: float = Field(default=10.0, gt=0)
+    reuse_existing_run: bool = True
+    reuse_existing_run_max_age_seconds: float = Field(default=3600.0, gt=0)
     inputs: dict[str, WorkflowInputValue] = Field(default_factory=dict)
 
     @property
@@ -61,6 +63,10 @@ class RemoteBuildConfig(RemoteBuildStepConfig):
                 ref=self.ref,
                 timeout_seconds=self.timeout_seconds,
                 poll_interval_seconds=self.poll_interval_seconds,
+                reuse_existing_run=self.reuse_existing_run,
+                reuse_existing_run_max_age_seconds=(
+                    self.reuse_existing_run_max_age_seconds
+                ),
                 inputs=dict(self.inputs),
             )
         ]

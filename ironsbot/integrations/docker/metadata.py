@@ -55,14 +55,15 @@ async def resolve_image_commit_summary(
                 )
                 response.raise_for_status()
                 data = response.json()
-        except Exception as e:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             logger.warning(
                 "failed to fetch docker image commit message: "
-                "repo=%s/%s revision=%s error=%s",
+                "repo=%s/%s revision=%s error_type=%s error=%r",
                 owner,
                 name,
                 short_revision,
-                e,
+                type(error).__name__,
+                error,
             )
         else:
             commit = data.get("commit")
