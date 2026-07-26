@@ -442,13 +442,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH}),
             help=HelpEntry(
                 name="B站动态",
-                description="查询、刷新和自动推送配置账号的 Bilibili 动态",
+                description="查询、刷新和自动推送已订阅 UID 的 Bilibili 动态",
                 usage=(
                     "【B站动态】\n"
                     "动态：查看订阅账号的最新动态。\n"
                     "/动态更新、/动态刷新：超级管理员手动刷新。\n"
                     "B站账号：查看当前会话订阅账号。\n"
-                    "B站推送模式 <账号昵称> <内容|链接|默认>：修改群推送模式。"
+                    "B站推送模式 <账号别名|公开昵称|UID> "
+                    "<内容|链接|默认>："
+                    "修改当前会话推送模式。"
                 ),
                 group="message",
                 order=20,
