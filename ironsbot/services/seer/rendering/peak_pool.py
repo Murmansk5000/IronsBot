@@ -14,8 +14,7 @@ from ironsbot.services.seer.render_paths import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from seerapi_models import PeakExpertPoolORM, PeakPoolORM
-
+    from ironsbot.services.seer.peak import PeakPoolSnapshot
     from ironsbot.services.seer.render_cache import RenderCache
 
     from . import HtmlTemplateRenderer
@@ -41,7 +40,7 @@ class PoolDict(TypedDict):
 
 
 def _peak_pool_cache_key(
-    pools: Sequence[PeakPoolORM | PeakExpertPoolORM], pool_type: str
+    pools: Sequence[PeakPoolSnapshot], pool_type: str
 ) -> str:
     pool_ids = sorted(p.id for p in pools)
     raw = f"{pool_ids}:{pool_type}"
@@ -52,7 +51,7 @@ async def render_peak_pool(
     cache: RenderCache,
     images: SeerImageSource,
     render_html: HtmlTemplateRenderer,
-    pools: Sequence[PeakPoolORM | PeakExpertPoolORM],
+    pools: Sequence[PeakPoolSnapshot],
     pool_type: str,
 ) -> bytes:
     """渲染巅峰池信息卡片图片，返回 PNG 图片字节"""
@@ -65,9 +64,9 @@ async def render_peak_pool(
     unique_type_ids: dict[int, None] = {}
 
     for pool in pools:
-        for pet in pool.pet:
+        for pet in pool.pets:
             unique_rids.setdefault(str(pet.resource_id), None)
-            unique_type_ids.setdefault(pet.type.id, None)
+            unique_type_ids.setdefault(pet.type_id, None)
 
     rid_list = list(unique_rids)
     type_id_list = list(unique_type_ids)
@@ -96,9 +95,9 @@ async def render_peak_pool(
                 "id": pet.id,
                 "name": pet.name,
                 "head_img": head_data_uris[str(pet.resource_id)],
-                "type_icon": type_data_uris[pet.type.id],
+                "type_icon": type_data_uris[pet.type_id],
             }
-            for pet in pool.pet
+            for pet in pool.pets
         ]
         pool_dicts.append(
             {
@@ -108,7 +107,7 @@ async def render_peak_pool(
             }
         )
 
-    max_pets = max(len(p.pet) for p in pools)
+    max_pets = max(len(pool.pets) for pool in pools)
     cols = min(max_pets, MAX_COLS)
     grid_width = cols * CELL_WIDTH + (cols - 1) * CELL_GAP
     max_width = grid_width + POOL_OVERHEAD + CONTAINER_PADDING

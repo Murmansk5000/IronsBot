@@ -11,9 +11,9 @@ from ironsbot.services.seer.query_result import (
     QueryResult,
 )
 from ironsbot.services.seer.type_calc import (
+    TypeCombinationSnapshot,
     TypeMatchup,
     load_custom_type_matchup,
-    load_type_matchup,
     load_type_matchup_by_id,
 )
 
@@ -40,32 +40,42 @@ class TypeQueryService:
     async def search(self, arg: str) -> QueryResult[int]:
         with self._data.resolve(self._data.type_combination, arg) as values:
             combinations = tuple(values)
-        if not combinations:
+            if not combinations:
+                target_id = None
+            elif len(combinations) == 1:
+                target = combinations[0]
+                if _contains_normal_type(target):
+                    return QueryResult(message=NORMAL_TYPE_MESSAGE)
+                target_id = int(target.id)
+            elif len(combinations) > PROMPT_MAX_ITEMS:
+                return QueryResult(
+                    message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
+                )
+            else:
+                return QueryResult(
+                    choices=tuple(
+                        QueryChoice(str(item.name), str(item.id), int(item.id))
+                        for item in combinations
+                    )
+                )
+        if target_id is None:
             with self._data.query(
                 partial(load_custom_type_matchup, arg=arg)
             ) as matchup:
-                return (
-                    QueryResult()
-                    if matchup is None
-                    else await self._render_matchup(matchup)
-                )
-        if len(combinations) == 1:
-            target = combinations[0]
-            if _contains_normal_type(target):
-                return QueryResult(message=NORMAL_TYPE_MESSAGE)
-            with self._data.query(
-                partial(load_type_matchup, target=target)
-            ) as matchup:
-                return await self._render_matchup(matchup)
-        if len(combinations) > PROMPT_MAX_ITEMS:
-            return QueryResult(
-                message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
+                resolved_matchup = matchup
+            return (
+                QueryResult()
+                if resolved_matchup is None
+                else await self._render_matchup(resolved_matchup)
             )
-        return QueryResult(
-            choices=tuple(
-                QueryChoice(str(item.name), str(item.id), int(item.id))
-                for item in combinations
-            )
+        with self._data.query(
+            partial(load_type_matchup_by_id, type_id=target_id)
+        ) as matchup:
+            resolved_matchup = matchup
+        return (
+            QueryResult()
+            if resolved_matchup is None
+            else await self._render_matchup(resolved_matchup)
         )
 
     async def select(self, type_id: int) -> QueryResult[int]:
@@ -79,7 +89,8 @@ class TypeQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
-            return await self._render_matchup(matchup)
+            resolved_matchup = matchup
+        return await self._render_matchup(resolved_matchup)
 
     async def _render_matchup(self, matchup: TypeMatchup) -> QueryResult[int]:
         if _contains_normal_type(matchup.target):
@@ -89,7 +100,9 @@ class TypeQueryService:
         )
 
 
-def _contains_normal_type(type_combination: TypeCombinationORM) -> bool:
+def _contains_normal_type(
+    type_combination: TypeCombinationORM | TypeCombinationSnapshot,
+) -> bool:
     return NORMAL_TYPE_ID in {
         type_combination.primary_id,
         type_combination.secondary_id,

@@ -100,14 +100,42 @@ class SessionBoundSuit:
 async def test_title_query_returns_rendered_reply() -> None:
     data = FakeData()
     data.values[data.title] = (
-        SimpleNamespace(id=7, name="星际英雄", ability_desc="体力 + 20"),
+        SimpleNamespace(
+            id=7,
+            name="星际英雄",
+            ability_desc="体力 + 20",
+            achievement=SimpleNamespace(point=10),
+        ),
     )
 
     result = await _service(data).search("title", "星际英雄")
 
     assert result.reply is not None
-    assert result.reply.text == "【星际英雄】\n🆔：7\n效果：体力 + 20"
+    assert result.reply.text == (
+        "【星际英雄】\n"
+        "🆔：7\n"
+        "成就点数：10点\n"
+        "效果：体力 + 20"
+    )
     assert result.reply.image == b"image:7"
+
+
+@pytest.mark.asyncio
+async def test_title_without_achievement_omits_points() -> None:
+    data = FakeData()
+    data.values[data.title] = (
+        SimpleNamespace(
+            id=8,
+            name="普通称号",
+            ability_desc="",
+            achievement=None,
+        ),
+    )
+
+    result = await _service(data).search("title", "普通称号")
+
+    assert result.reply is not None
+    assert result.reply.text == "【普通称号】\n🆔：8"
 
 
 @pytest.mark.asyncio

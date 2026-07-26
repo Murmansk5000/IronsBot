@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 
 from sqlalchemy.engine.base import Engine
@@ -11,6 +11,7 @@ from sqlmodel import create_engine
 from ironsbot.integrations.storage.sqlite import SqliteDatabase
 
 logger = logging.getLogger(__name__)
+DatabaseLoadListener = Callable[[], object]
 
 
 class DatabaseManager:
@@ -22,6 +23,7 @@ class DatabaseManager:
 
     def __init__(self) -> None:
         self._engines: dict[str, Engine] = {}
+        self._load_listeners: dict[str, list[DatabaseLoadListener]] = {}
 
     @staticmethod
     def _create_memory_engine() -> Engine:
@@ -43,6 +45,14 @@ class DatabaseManager:
         """获取指定名称的数据库引擎。"""
         return self._engines.get(name)
 
+    def add_load_listener(
+        self,
+        name: str,
+        listener: DatabaseLoadListener,
+    ) -> None:
+        """注册数据库成功换版后的同步观察器。"""
+        self._load_listeners.setdefault(name, []).append(listener)
+
     def load_from_file(self, name: str, file_path: str) -> None:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
@@ -59,6 +69,7 @@ class DatabaseManager:
         if old_engine is not None:
             old_engine.dispose()
         logger.debug(f"已从文件导入数据到内存数据库 '{name}'")
+        self._notify_loaded(name)
 
     @contextmanager
     def session(self, name: str) -> Iterator[SQLModelSession | None]:
@@ -81,3 +92,15 @@ class DatabaseManager:
         for engine in self._engines.values():
             engine.dispose()
         self._engines.clear()
+        self._load_listeners.clear()
+
+    def _notify_loaded(self, name: str) -> None:
+        for listener in self._load_listeners.get(name, ()):
+            self._run_load_listener(name, listener)
+
+    @staticmethod
+    def _run_load_listener(name: str, listener: DatabaseLoadListener) -> None:
+        try:
+            listener()
+        except Exception:
+            logger.exception("数据库 '%s' 换版观察器执行失败", name)

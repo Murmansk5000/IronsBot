@@ -7,7 +7,8 @@ def test_seer_query_usage_message_only_lists_allowed_sections() -> None:
     )
 
     assert "【玩家】" in message
-    assert "绑定米米号123456" in message
+    assert "解绑米米号" in message
+    assert "绑定米米号123456" not in message
     assert "【榜单入口】" in message
     assert "成就榜123456" in message
     assert "【精灵、技能、魂印、立绘、皮肤】" not in message
