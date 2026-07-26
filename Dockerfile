@@ -27,6 +27,8 @@ WORKDIR /app
 
 ENV TZ Asia/Shanghai
 ENV PYTHONPATH=/app
+# Emit Python stack traces to container logs when a native extension crashes.
+ENV PYTHONFAULTHANDLER=1
 
 COPY --from=requirements_stage /tmp/fonts/ /usr/share/fonts/opentype/source-han-sans/
 RUN apt-get update \

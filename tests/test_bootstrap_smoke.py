@@ -10,10 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_application_bootstrap_smoke() -> None:
     script = """
 import os
+import inspect
+from functools import partial
 
 os.environ["APP_CONFIG_PATH"] = "config.example.toml"
 
 from nonebot.log import logger
+from nonebot.utils import is_coroutine_callable
 
 logger.remove()
 
@@ -25,6 +28,22 @@ assert len(state.plugins) > 0
 assert len(state.matchers.message_matchers) > 0
 assert len(state.matchers.notice_matchers) > 0
 assert len({plugin.id for plugin in state.plugins}) == len(state.plugins)
+
+for matcher in (
+    *state.matchers.message_matchers,
+    *state.matchers.notice_matchers,
+):
+    dependencies = (*matcher.rule.checkers, *matcher.handlers)
+    for dependency in dependencies:
+        call = dependency.call
+        wraps_async = (
+            isinstance(call, partial)
+            and inspect.iscoroutinefunction(call.func)
+        )
+        assert not wraps_async or is_coroutine_callable(call), (
+            f"unrecognized async partial in {matcher}: {call}"
+        )
+
 print("BOOTSTRAP_OK")
 """
     result = subprocess.run(
