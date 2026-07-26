@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind, bind_async
 from ironsbot.runtime.rules import no_reply
 
 from .account_commands import (
@@ -37,7 +36,7 @@ def install(
 ) -> None:
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query"),
-        rule=Rule(partial(is_dynamic_menu_command, features)) & no_reply(),
+        rule=Rule(bind(is_dynamic_menu_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
     )
@@ -51,7 +50,7 @@ def install(
 
     update_dynamic = registry.on_message(
         policy=CommandPolicy.command("bili_refresh"),
-        rule=Rule(partial(is_update_dynamic_command, features)) & no_reply(),
+        rule=Rule(bind(is_update_dynamic_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
     )
@@ -65,7 +64,7 @@ def install(
 
     bili_account = registry.on_message(
         policy=CommandPolicy.command("bili_accounts"),
-        rule=Rule(partial(is_bili_account_command, features)) & no_reply(),
+        rule=Rule(bind(is_bili_account_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
     )

@@ -1,12 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves it at runtime
+    MessageEvent,
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.data import DataUnavailableError
@@ -15,11 +20,6 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
-
     from ironsbot.services.seer.countermark_stat_rank import (
         CountermarkStatRankService,
     )
@@ -61,7 +61,7 @@ def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_countermark_stat_rank"),
         rule=seer_feature_rule(group.features, "seer_mintmark")
-        & Rule(partial(_match_command, service))
+        & Rule(bind(_match_command, service))
         & no_reply(),
         priority=group.matcher_priority("seer_mintmark"),
     )

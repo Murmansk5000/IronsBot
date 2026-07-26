@@ -134,8 +134,19 @@ def test_pet_config_is_not_enabled_by_seer_bundle() -> None:
     )
 
 
-def test_superuser_can_see_unconfigured_features_in_help() -> None:
+def test_superuser_group_help_respects_group_feature_policy() -> None:
     settings = _settings()
+    settings.features.superuser_bypass = True
+    settings.bot.superusers = [2]
+    settings.pet_config.enabled = True
+
+    assert not _visible("seer_query", settings=settings)
+    assert not _visible("pet_config", settings=settings)
+    assert not _visible("headless_notice", settings=settings)
+
+
+def test_superuser_group_help_includes_enabled_features() -> None:
+    settings = _settings(allowed_features=("seer", "pet_config"))
     settings.features.superuser_bypass = True
     settings.bot.superusers = [2]
     settings.pet_config.enabled = True

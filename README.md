@@ -84,11 +84,6 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 命令窗口与群发送额度
-
-语义命令按用户及命令身份使用滑动窗口，保留单命令覆盖及管理员豁免；命令窗口和群出站额度各自控制，不可互代。
-会话令牌用于保存活动状态引用，任务完成接线不代表所有陈旧令牌或取消情况已获得新的代际保证；崩溃堆栈及协议选择也不是原生崩溃已根治的证明。
-
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：

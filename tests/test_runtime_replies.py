@@ -1,6 +1,11 @@
 import asyncio
+from typing import cast
 
-from ironsbot.runtime.matchers import REPLY_BEFORE_SEND_STATE_KEY
+from ironsbot.runtime.matchers import (
+    CommandCooldown,
+    MatcherRegistry,
+    PromptSessionManager,
+)
 from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     send_matcher_message,
@@ -53,9 +58,16 @@ def test_reply_uses_policy_owned_by_matcher_runtime_state() -> None:
         assert actual_event is event
         calls.append("before")
 
+    runtime = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        before_reply_send=before_send,
+        prompt_session_manager=PromptSessionManager(),
+    )
+
     class FakeMatcher:
         def __init__(self) -> None:
-            self.state = {REPLY_BEFORE_SEND_STATE_KEY: before_send}
+            self.state = runtime._with_runtime_hooks({})["state"]
 
         async def send(self, _message: object) -> None:
             calls.append("send")

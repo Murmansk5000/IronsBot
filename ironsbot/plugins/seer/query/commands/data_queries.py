@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
@@ -16,8 +17,6 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-
-    from nonebot.matcher import Matcher
 
     from ironsbot.services.seer.data_queries import (
         DataQueryReply,

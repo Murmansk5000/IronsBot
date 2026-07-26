@@ -9,7 +9,10 @@ from ironsbot.plugins.seer.query.commands.query_rules import (
     not_fixed_image_command,
     not_rank_query,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_allowed, feature_rule
+from ironsbot.runtime.feature_policy import (
+    event_is_feature_visible_in_help,
+    feature_rule,
+)
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
@@ -58,7 +61,7 @@ def _is_visible(
     features: FeatureService,
     enabled: bool,
 ) -> bool:
-    return enabled and event_is_feature_allowed(
+    return enabled and event_is_feature_visible_in_help(
         features,
         event,
         Feature.PET_CONFIG.value,

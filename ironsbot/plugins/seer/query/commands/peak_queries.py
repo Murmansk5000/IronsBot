@@ -6,6 +6,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
@@ -16,9 +18,6 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.matcher import Matcher
-
     from ironsbot.services.seer.peak import (
         PeakQueryResult,
         PeakQueryService,

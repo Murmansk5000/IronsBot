@@ -3,7 +3,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
@@ -26,11 +32,6 @@ from .player_context import (
 from .player_detail_conversation import send_player_info_with_detail_prompt
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
-
     from ironsbot.services.seer.player_service import PlayerService
 
 _MAX_PLAYER_ID = 2_000_000_000
