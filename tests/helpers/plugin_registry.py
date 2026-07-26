@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.app.registry import build_plugin_registry
+
 from ironsbot.config.models.settings import Settings
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
@@ -15,8 +16,9 @@ from ironsbot.services.operations.headless import HeadlessService
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from ironsbot.app.composition import ApplicationResources
     from ironsbot.runtime.plugins import PluginDefinition
+
+    from ironsbot.app.composition import ApplicationResources
 
 
 async def _noop_startup(_scheduler: object) -> None:
@@ -111,6 +113,7 @@ def build_test_plugin_registry(
                 data_queries=SimpleNamespace(
                     weekly_preview=_noop_query,
                     data_version=_noop_query,
+                    new_achievements=_noop_query,
                     season_countdown=_noop_query,
                 ),
                 countermark_rank=SimpleNamespace(

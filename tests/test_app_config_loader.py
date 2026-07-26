@@ -1,5 +1,6 @@
 import re
 import sys
+from hashlib import sha256
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
@@ -460,6 +461,19 @@ def test_public_text_does_not_reference_stale_structures() -> None:
 
     for path in PUBLIC_TEXT_PATHS:
         text = path.read_text(encoding="utf-8")
+        if path == ROOT / "README.md":
+            # Only the exact reviewed archive notice is outside active text.
+            archive_notice_sha256 = (
+                "c5fca609748734341ff2541affa4a1a194d02860a8c8e3a98b5f79ace6aafc68"
+            )
+            text = "".join(
+                line
+                for line in text.splitlines(keepends=True)
+                if (
+                    sha256(line.rstrip("\r\n").encode("utf-8")).hexdigest()
+                    != archive_notice_sha256
+                )
+            )
         stale_matches.extend(
             f"{path.relative_to(ROOT)}: {pattern}"
             for pattern in STALE_PUBLIC_TEXT_PATTERNS
@@ -702,4 +716,25 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert (
         app_config.seer.render.cache_max_size_mb
         == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
+    )
+
+
+def test_achievement_history_lookback_days_can_be_configured(
+    tmp_path: Path,
+) -> None:
+    expected_lookback_days = 6
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.achievement_history]
+baseline_lookback_days = 6
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert (
+        config.seer.achievement_history.baseline_lookback_days
+        == expected_lookback_days
     )

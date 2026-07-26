@@ -402,6 +402,15 @@ class SeasonCountdownConfig(BaseModel):
         raise ValueError("season time must be an ISO datetime")  # noqa: TRY003
 
 
+class AchievementHistoryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: Path = Path("data/seer/achievement_history.sqlite")
+    max_snapshots: int = Field(default=32, ge=2, le=128)
+    baseline_lookback_days: int = Field(default=4, ge=1, le=14)
+
+
+
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -413,3 +422,6 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
+    achievement_history: AchievementHistoryConfig = Field(
+        default_factory=AchievementHistoryConfig
+    )

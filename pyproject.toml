@@ -21,6 +21,7 @@ dependencies = [
     "qrcode-terminal>=0.8",
     "tomli>=2; python_version < '3.11'",
     "unitypy>=1.25.0",
+    "resvg-py>=0.3.3",
 ]
 
 [project.optional-dependencies]

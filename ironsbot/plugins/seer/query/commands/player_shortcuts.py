@@ -3,14 +3,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import (
-    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
-)
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
-
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
@@ -18,6 +10,13 @@ from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     parse_player_shortcut_command,
 )
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 

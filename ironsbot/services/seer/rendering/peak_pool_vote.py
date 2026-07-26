@@ -12,8 +12,7 @@ from ironsbot.services.seer.render_paths import (
 from . import HtmlTemplateRenderer
 
 if TYPE_CHECKING:
-    from seerapi_models.pet import PetORM
-
+    from ironsbot.services.seer.peak import PeakPetSnapshot
     from ironsbot.services.seer.rank_models import RankEntry
 
 TABLE_WIDTH = 400
@@ -37,7 +36,7 @@ class VotePoolDict(TypedDict):
 class VotePoolInput(TypedDict):
     items: "list[RankEntry]"
     title: str
-    pets: "list[PetORM]"
+    pets: "list[PeakPetSnapshot]"
 
 
 async def render_peak_pool_vote(
@@ -46,7 +45,7 @@ async def render_peak_pool_vote(
     pools: list[VotePoolInput],
 ) -> bytes:
     """渲染巅峰池票选结果图片，返回 PNG 图片字节"""
-    pet_map: dict[int, "PetORM"] = {}
+    pet_map: dict[int, "PeakPetSnapshot"] = {}
     unique_rids: dict[str, None] = {}
     unique_type_ids: dict[int, None] = {}
 
@@ -54,7 +53,7 @@ async def render_peak_pool_vote(
         for pet in pool["pets"]:
             pet_map[pet.id] = pet
             unique_rids.setdefault(str(pet.resource_id), None)
-            unique_type_ids.setdefault(pet.type.id, None)
+            unique_type_ids.setdefault(pet.type_id, None)
 
     rid_list = list(unique_rids)
     type_id_list = list(unique_type_ids)
@@ -83,7 +82,7 @@ async def render_peak_pool_vote(
             pet = pet_map.get(info.id)
             if pet is not None:
                 head_img = head_data_uris[str(pet.resource_id)]
-                type_icon = type_data_uris[pet.type.id]
+                type_icon = type_data_uris[pet.type_id]
                 name = pet.name
             else:
                 head_img = ""

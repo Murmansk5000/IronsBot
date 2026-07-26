@@ -10,6 +10,7 @@ from ironsbot.services.seer.pet_query import (
     PetImageSelection,
     PetQueryService,
 )
+from ironsbot.services.seer.skin_image_resolution import SkinImageResolution
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -27,6 +28,7 @@ class FakeData:
         self.pets: tuple[Any, ...] = ()
         self.skins: tuple[Any, ...] = ()
         self.skin_details: Any | None = None
+        self.skin_image_resolutions: dict[int, SkinImageResolution] = {}
         self.session_active = False
 
     @contextmanager
@@ -65,7 +67,11 @@ class FakeData:
             self.session_active = False
 
     @contextmanager
-    def query(self, _operation: object) -> Iterator[Any | None]:
+    def query(self, operation: object) -> Iterator[Any | None]:
+        operation_function = getattr(operation, "func", None)
+        if getattr(operation_function, "__name__", "") == "load_skin_image_resolutions":
+            yield self.skin_image_resolutions
+            return
         yield self.skin_details
 
 
@@ -198,6 +204,51 @@ async def test_pet_image_selection_includes_skin_details() -> None:
         "礼卡价格：20\n"
         "售价：100"
     )
+
+
+@pytest.mark.asyncio
+async def test_pet_image_selection_uses_build_time_skin_body_resolution() -> None:
+    data = FakeData()
+    data.skin_image_resolutions = {
+        538: SkinImageResolution(
+            skin_id=538,
+            head_resource_id=3382,
+            body_resource_id=1400538,
+            head_resolution="unique_name_source",
+            body_resolution="direct_skin",
+            source_pet_id=3382,
+        )
+    }
+
+    result = await _service(data).select_image(
+        PetImageSelection(1400538, "天道魂帝", 538)
+    )
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:1400538"
+
+
+@pytest.mark.asyncio
+async def test_pet_image_selection_reports_unresolved_build_time_skin_body() -> None:
+    data = FakeData()
+    data.skin_image_resolutions = {
+        999: SkinImageResolution(
+            skin_id=999,
+            head_resource_id=0,
+            body_resource_id=0,
+            head_resolution="unresolved",
+            body_resolution="unresolved",
+            source_pet_id=None,
+        )
+    }
+
+    result = await _service(data).select_image(
+        PetImageSelection(1400999, "无法解析", 999)
+    )
+
+    assert result.reply is not None
+    assert result.reply.image is None
+    assert result.reply.image_error == "❌该经典皮肤的立绘资源未解析。"
 
 
 @pytest.mark.asyncio

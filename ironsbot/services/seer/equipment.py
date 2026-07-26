@@ -13,7 +13,7 @@ from ironsbot.services.seer.query_result import (
 )
 
 if TYPE_CHECKING:
-    from seerapi_models import EquipORM, SuitORM, TitlePartORM
+    from seerapi_models import AchievementORM, EquipORM, SuitORM, TitlePartORM
 
     from ironsbot.services.seer.data import DataGetter, SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
@@ -171,12 +171,13 @@ class EquipmentQueryService:
 
     @staticmethod
     def _format_title(title: TitlePartORM) -> str:
-        text = f"【{title.name}】\n🆔：{title.id}"
-        return (
-            f"{text}\n效果：{title.ability_desc}"
-            if title.ability_desc
-            else text
-        )
+        lines = [f"【{title.name}】", f"🆔：{title.id}"]
+        achievement = cast("AchievementORM | None", title.achievement)
+        if achievement is not None:
+            lines.append(f"成就点数：{achievement.point}点")
+        if title.ability_desc:
+            lines.append(f"效果：{title.ability_desc}")
+        return "\n".join(lines)
 
     @staticmethod
     def _entity_name(kind: EquipmentKind) -> str:

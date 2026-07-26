@@ -16,6 +16,7 @@ from ironsbot.services.seer.query_result import (
     QueryResult,
 )
 from ironsbot.services.seer.render_crash_report import render_crash_marker
+from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 from ironsbot.services.seer.skin_price import load_skin_details
 
 if TYPE_CHECKING:
@@ -31,6 +32,7 @@ PetInfoRenderer = Callable[[PetORM], Awaitable[bytes]]
 class PetImageSelection:
     resource_id: int
     name: str
+    skin_id: int | None = None
 
 
 class PetQueryService:
@@ -129,11 +131,30 @@ class PetQueryService:
         self,
         selection: PetImageSelection,
     ) -> QueryReply:
-        image = await fetch_optional_image(
-            self._images,
-            "pet_body",
-            str(selection.resource_id),
-        )
+        body_resource_id = selection.resource_id
+        if selection.skin_id is not None:
+            with self._data.query(
+                partial(
+                    load_skin_image_resolutions,
+                    skin_ids=(selection.skin_id,),
+                )
+            ) as resolutions:
+                resolution = resolutions.get(selection.skin_id)
+            if resolution is not None:
+                body_resource_id = resolution.body_resource_id
+
+        image_data: bytes | None = None
+        image_error = ""
+        if body_resource_id > 0:
+            image = await fetch_optional_image(
+                self._images,
+                "pet_body",
+                str(body_resource_id),
+            )
+            image_data = image.data
+            image_error = image.error
+        elif selection.skin_id is not None:
+            image_error = "❌该经典皮肤的立绘资源未解析。"
         text = f"💎【{selection.name}】\n"
         with self._data.query(
             partial(load_skin_details, resource_id=selection.resource_id)
@@ -148,28 +169,31 @@ class PetQueryService:
                 text += details.price_lines
         return QueryReply(
             text=text,
-            image=image.data,
-            image_error=image.error,
+            image=image_data,
+            image_error=image_error,
         )
 
     async def _build_info_reply(self, pet: PetORM) -> QueryReply:
+        pet_id = int(pet.id)
+        pet_name = str(pet.name)
+        resource_id = int(pet.resource_id)
         logger.info(
             "rendering pet info image: pet_id=%s pet_name=%s resource_id=%s",
-            pet.id,
-            pet.name,
-            pet.resource_id,
+            pet_id,
+            pet_name,
+            resource_id,
         )
         with render_crash_marker(
             operation="pet_info_render",
-            pet_id=pet.id,
-            pet_name=pet.name,
-            resource_id=pet.resource_id,
+            pet_id=pet_id,
+            pet_name=pet_name,
+            resource_id=resource_id,
         ):
             image = await self._render_info(pet)
         logger.info(
             "rendered pet info image: pet_id=%s pet_name=%s bytes=%s",
-            pet.id,
-            pet.name,
+            pet_id,
+            pet_name,
             len(image),
         )
         return QueryReply(image=image)
@@ -199,7 +223,11 @@ class PetQueryService:
                     QueryChoice(
                         skin.name,
                         str(skin.resource_id),
-                        PetImageSelection(skin.resource_id, skin.name),
+                        PetImageSelection(
+                            skin.resource_id,
+                            skin.name,
+                            int(getattr(skin, "id", 0) or 0) or None,
+                        ),
                         is_sub_choice=True,
                     )
                 )
@@ -211,7 +239,11 @@ class PetQueryService:
                 QueryChoice(
                     skin.name,
                     f"所属精灵：{skin.pet.name}",
-                    PetImageSelection(skin.resource_id, skin.name),
+                    PetImageSelection(
+                        skin.resource_id,
+                        skin.name,
+                        int(getattr(skin, "id", 0) or 0) or None,
+                    ),
                 )
             )
         return tuple(choices)

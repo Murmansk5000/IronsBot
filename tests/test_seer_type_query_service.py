@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.services.seer.type_calc import TypeMatchup
+from ironsbot.services.seer.type_calc import (
+    TypeCombinationSnapshot,
+    TypeMatchup,
+)
 from ironsbot.services.seer.type_query import (
     NORMAL_TYPE_MESSAGE,
     TypeQueryService,
@@ -24,6 +27,7 @@ class FakeData:
     def __init__(self) -> None:
         self.combinations: tuple[Any, ...] = ()
         self.matchup: TypeMatchup | None = None
+        self.query_open = False
 
     @contextmanager
     def resolve(
@@ -35,7 +39,11 @@ class FakeData:
 
     @contextmanager
     def query(self, _operation: object) -> Iterator[TypeMatchup | None]:
-        yield self.matchup
+        self.query_open = True
+        try:
+            yield self.matchup
+        finally:
+            self.query_open = False
 
 
 def _type(type_id: int, name: str, *, primary_id: int | None = None) -> Any:
@@ -49,7 +57,12 @@ def _type(type_id: int, name: str, *, primary_id: int | None = None) -> Any:
 
 def _matchup(target: Any) -> TypeMatchup:
     return TypeMatchup(
-        target=target,
+        target=TypeCombinationSnapshot(
+            id=int(target.id),
+            name=str(target.name),
+            primary_id=int(target.primary_id),
+            secondary_id=target.secondary_id,
+        ),
         attack_table=[],
         defense_table=[],
         cache_key=str(target.id),
@@ -76,12 +89,21 @@ async def test_single_type_query_renders_matchup() -> None:
     data.combinations = (target,)
     data.matchup = _matchup(target)
     rendered: list[TypeMatchup] = []
+    render_session_states: list[bool] = []
 
-    result = await _service(data, rendered).search("草")
+    async def render(matchup: TypeMatchup) -> bytes:
+        render_session_states.append(data.query_open)
+        rendered.append(matchup)
+        return b"rendered"
+
+    result = await TypeQueryService(cast("SeerDataAccess", data), render).search(
+        "草"
+    )
 
     assert result.reply is not None
     assert result.reply.image == b"rendered"
     assert rendered == [data.matchup]
+    assert render_session_states == [False]
 
 
 @pytest.mark.asyncio
