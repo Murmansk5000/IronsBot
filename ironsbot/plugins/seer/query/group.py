@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.rule import Rule
 
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
     async def _is_feature_allowed(event: Event) -> bool:
-        return event_has_feature(features, event, feature)
+        return event_is_feature_allowed(features, event, feature)
 
     return Rule(_is_feature_allowed)
 
