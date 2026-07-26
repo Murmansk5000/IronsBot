@@ -12,6 +12,7 @@
     display: flex;
     align-items: center;
     margin-bottom: 10px;
+    gap: 0;
 }
 
 .sk-type-icon {
@@ -26,12 +27,24 @@
     font-weight: bold;
     color: #ffffff;
     vertical-align: middle;
+    min-width: 0;
 }
 
 .sk-badges {
     display: inline-block;
     margin-left: 10px;
     vertical-align: middle;
+    flex: 0 0 auto;
+}
+
+.sk-id {
+    margin-left: auto;
+    padding-left: 12px;
+    color: #a0c0e0;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    opacity: 0.86;
 }
 
 .sk-badge {

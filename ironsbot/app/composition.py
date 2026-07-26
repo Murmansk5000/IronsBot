@@ -42,6 +42,9 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.sendpic import SendpicBackendProvider
+from ironsbot.integrations.storage.achievement_history import (
+    SqliteAchievementHistoryStore,
+)
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
@@ -100,6 +103,7 @@ from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
+from ironsbot.services.seer.achievement_history import AchievementHistoryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -301,6 +305,20 @@ def build_application(settings: Settings) -> Application:
         databases,
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
     )
+    achievement_history = AchievementHistoryService(
+        seer_database,
+        SqliteAchievementHistoryStore(
+            settings.seer.achievement_history.path,
+            max_snapshots=settings.seer.achievement_history.max_snapshots,
+            baseline_lookback_days=(
+                settings.seer.achievement_history.baseline_lookback_days
+            ),
+        ),
+    )
+    databases.add_load_listener(
+        SEERAPI_DB_NAME,
+        achievement_history.capture_current_snapshot,
+    )
     prompt_sessions = PromptSessionManager()
     features = FeatureService(
         settings.features,
@@ -383,7 +401,6 @@ def build_application(settings: Settings) -> Application:
         features,
         delivery,
         bilibili.targets.subscription_options,
-        _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
     sendpic = SendpicService(
         settings.messaging.sendpic,
@@ -502,6 +519,7 @@ def build_application(settings: Settings) -> Application:
             seer_database,
             seer_images,
             settings.seer.season,
+            achievement_history,
         ),
         CountermarkStatRankService(seer_database),
         AutocardService(seer_database),
