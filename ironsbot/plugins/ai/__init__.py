@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
@@ -15,9 +17,6 @@ from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
