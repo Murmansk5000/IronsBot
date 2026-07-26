@@ -16,7 +16,7 @@ from ironsbot.core.messaging import (
     FIRE_MANUAL_URL,
     MessageTarget,
 )
-from ironsbot.runtime.matchers import REPLY_BEFORE_SEND_STATE_KEY
+from ironsbot.runtime.matchers import get_reply_before_send
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -78,7 +78,7 @@ async def apply_reply_before_send(
     matcher: Any,
     event: MessageEvent | None,
 ) -> None:
-    hook = matcher.state.get(REPLY_BEFORE_SEND_STATE_KEY)
+    hook = get_reply_before_send(matcher)
     if hook is not None:
         await hook(event)
 

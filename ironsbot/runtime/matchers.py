@@ -5,6 +5,7 @@ from asyncio import get_running_loop
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import partial
+from inspect import Signature, signature
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeAlias, TypeVar, cast
 
@@ -26,18 +27,53 @@ if TYPE_CHECKING:
 ReplyBeforeSend = Callable[[Event | None], Awaitable[None]]
 CommandIdResolver = Callable[[MessageEvent, T_State], str | None]
 CommandIdSource = str | CommandIdResolver
-REPLY_BEFORE_SEND_STATE_KEY = "_ironsbot_reply_before_send"
-PROMPT_SESSION_MANAGER_STATE_KEY = "_ironsbot_prompt_session_manager"
+RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
 TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
 _COMMAND_COOLDOWN_TOKEN_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 T = TypeVar("T")
 
 
-class _AsyncPartial(partial):
+class _BoundPartial(partial):
+    @property
+    def __globals__(self) -> dict[str, Any]:
+        """Expose the wrapped function globals for NoneBot dependency parsing."""
+
+        return cast("dict[str, Any]", getattr(self.func, "__globals__", {}))
+
+    @property
+    def __signature__(self) -> Signature:
+        """Hide arguments already supplied by the application runtime."""
+
+        original = signature(self.func)
+        try:
+            supplied = original.bind_partial(*self.args, **(self.keywords or {}))
+        except TypeError:
+            return original
+        return original.replace(
+            parameters=[
+                parameter
+                for name, parameter in original.parameters.items()
+                if name not in supplied.arguments
+            ]
+        )
+
+
+class _AsyncPartial(_BoundPartial):
     async def __call__(self, *args: Any, **kwargs: Any) -> Any:
         result: Awaitable[Any] = super().__call__(*args, **kwargs)
         return await result
+
+
+def bind(
+    func: Callable[..., T],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> Callable[..., T]:
+    """Bind a synchronous NoneBot callback without hiding its annotations."""
+
+    return cast("Callable[..., T]", _BoundPartial(func, *args, **kwargs))
 
 
 def bind_async(
@@ -79,6 +115,15 @@ class CommandCooldown(Protocol):
 
 class PromptSessionManagerMissingError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _MatcherRuntimeContext:
+    before_reply_send: ReplyBeforeSend | None
+    prompt_session_manager: PromptSessionManager | None
+
+
+_MATCHER_RUNTIME_CONTEXTS: dict[str, _MatcherRuntimeContext] = {}
 
 
 @dataclass(slots=True)
@@ -147,14 +192,31 @@ class PromptSessionManager:
         cls._temporary_matcher_states.pop(token, None)
 
 
+def _runtime_context(
+    source: Matcher | dict[Any, Any],
+) -> _MatcherRuntimeContext | None:
+    state = source if isinstance(source, dict) else source.state
+    token = state.get(RUNTIME_CONTEXT_TOKEN_STATE_KEY)
+    if not isinstance(token, str):
+        return None
+    return _MATCHER_RUNTIME_CONTEXTS.get(token)
+
+
 def get_prompt_session_manager(
     source: Matcher | dict[Any, Any],
 ) -> PromptSessionManager:
-    state = source if isinstance(source, dict) else source.state
-    manager = state.get(PROMPT_SESSION_MANAGER_STATE_KEY)
+    context = _runtime_context(source)
+    manager = None if context is None else context.prompt_session_manager
     if not isinstance(manager, PromptSessionManager):
         raise PromptSessionManagerMissingError
     return manager
+
+
+def get_reply_before_send(
+    source: Matcher | dict[Any, Any],
+) -> ReplyBeforeSend | None:
+    context = _runtime_context(source)
+    return None if context is None else context.before_reply_send
 
 
 async def reject_with_rule(
@@ -275,6 +337,17 @@ class MatcherRegistry:
     _cooldown_registrations: dict[type[Matcher], tuple[str, str]] = field(
         default_factory=dict
     )
+    _runtime_context_token: str | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.before_reply_send is None and self.prompt_session_manager is None:
+            return
+        token = token_urlsafe(18)
+        _MATCHER_RUNTIME_CONTEXTS[token] = _MatcherRuntimeContext(
+            before_reply_send=self.before_reply_send,
+            prompt_session_manager=self.prompt_session_manager,
+        )
+        self._runtime_context_token = token
 
     def on_message(
         self,
@@ -402,14 +475,11 @@ class MatcherRegistry:
         self._cooldown_registrations[matcher] = ("command", str(label))
 
     def _with_runtime_hooks(self, kwargs: dict[str, Any]) -> dict[str, Any]:
-        if self.before_reply_send is None and self.prompt_session_manager is None:
+        if self._runtime_context_token is None:
             return kwargs
         updated = dict(kwargs)
         state = dict(updated.get("state") or {})
-        if self.before_reply_send is not None:
-            state[REPLY_BEFORE_SEND_STATE_KEY] = self.before_reply_send
-        if self.prompt_session_manager is not None:
-            state[PROMPT_SESSION_MANAGER_STATE_KEY] = self.prompt_session_manager
+        state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = self._runtime_context_token
         updated["state"] = state
         return updated
 

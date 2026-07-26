@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 
 from ironsbot.core.commands import parse_confirmation
@@ -13,8 +14,6 @@ from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
 from ironsbot.runtime.rules import no_reply
 
 if TYPE_CHECKING:
-    from nonebot.matcher import Matcher
-
     from ironsbot.services.team.resource import TeamResourceService
 
 
