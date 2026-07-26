@@ -17,7 +17,7 @@ from ironsbot.services.messaging.subscriptions import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Awaitable, Callable, Iterable
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
@@ -57,6 +57,18 @@ class MessagingService:
         [PushTargetType, int],
         list[PushSubscriptionOption],
     ]
+    _prepare_extra_push_options: (
+        Callable[[PushTargetType, int], Awaitable[str | None]] | None
+    ) = None
+
+    async def prepare_subscription_options(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> str | None:
+        if self._prepare_extra_push_options is None:
+            return None
+        return await self._prepare_extra_push_options(target_type, target_id)
 
     def match_private_action(
         self,

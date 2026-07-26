@@ -7,7 +7,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
-from ironsbot.runtime.feature_policy import event_has_feature
+from ironsbot.runtime.feature_policy import event_is_feature_allowed
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
@@ -24,11 +24,11 @@ BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
 BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 
 
-async def is_dynamic_menu_command(
+def is_dynamic_menu_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
-    if not event_has_feature(features, event, "bili_query"):
+    if not event_is_feature_allowed(features, event, "bili_query"):
         return False
 
     return command_text_matches(
@@ -37,7 +37,7 @@ async def is_dynamic_menu_command(
     )
 
 
-async def is_update_dynamic_command(
+def is_update_dynamic_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
@@ -54,13 +54,13 @@ async def is_update_dynamic_command(
     return features.is_superuser(event.user_id)
 
 
-async def is_bili_account_command(
+def is_bili_account_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
     if not (
-        event_has_feature(features, event, "bili_query")
-        or event_has_feature(features, event, "bili_push")
+        event_is_feature_allowed(features, event, "bili_query")
+        or event_is_feature_allowed(features, event, "bili_push")
     ):
         return False
 
@@ -80,7 +80,7 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
         if not rest:
             return ("", "")
 
-        parts = rest.split(maxsplit=1)
+        parts = rest.rsplit(maxsplit=1)
         account = parts[0].strip()
         mode_text = parts[1].strip() if len(parts) > 1 else ""
         return (account, mode_text)
@@ -88,7 +88,7 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
     return None
 
 
-async def is_bili_push_mode_command(
+def is_bili_push_mode_command(
     event: MessageEvent,
     state: T_State,
 ) -> bool:
