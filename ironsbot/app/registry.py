@@ -4,9 +4,9 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-import nonebot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
+from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.plugins.operations.status.command_text import SERVER_STATUS_USAGE
@@ -15,7 +15,6 @@ from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginDefinition,
     PluginHooks,
-    PluginInstall,
 )
 from ironsbot.runtime.replies import (
     append_fire_manual_ad_message,
@@ -41,21 +40,10 @@ if TYPE_CHECKING:
 
 
 class PluginRegistryError(ValueError):
-    @classmethod
-    def external_load_failed(cls, module: str) -> PluginRegistryError:
-        return cls(f"failed to load external plugin: {module}")
+    pass
 
 
-def _load_external_plugin(module: str) -> None:
-    if nonebot.load_plugin(module) is None:
-        raise PluginRegistryError.external_load_failed(module)
-
-
-def _external_install(module: str) -> PluginInstall:
-    def install(_registry: MatcherRegistry) -> None:
-        _load_external_plugin(module)
-
-    return install
+OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
 
 
 def _always_help_visible(_event: Event) -> bool:
@@ -94,12 +82,9 @@ def _messaging_help_visible(
     features: FeatureService,
     config: MessageConfig,
 ) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        actions = [*config.group_commands, *config.group_schedules]
-    elif isinstance(event, PrivateMessageEvent):
-        actions = [*config.private_commands, *config.private_schedules]
-    else:
+    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
+    actions = [*config.commands, *config.schedules]
     return any(
         action.enabled
         and event_is_feature_visible_in_help(features, event, action.feature)
@@ -143,9 +128,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         register_rank_page_refresh_jobs,
     )
     from ironsbot.plugins.team import install as install_team_audit
-    from ironsbot.plugins.team.resource import (
-        install as install_team_resource,
-    )
+    from ironsbot.plugins.team.resource import install as install_team_resource
     config = settings
     features = resources.features
     delivery = resources.delivery
@@ -191,7 +174,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     definitions: tuple[PluginDefinition, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
-        _load_external_plugin("nonebot_plugin_apscheduler")
+        load_external_plugin("nonebot_plugin_apscheduler")
         from nonebot_plugin_apscheduler import scheduler as backend
 
         scheduler.bind(backend)
@@ -278,15 +261,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         ),
         PluginDefinition(
             id="localstore",
-            install=_external_install("nonebot_plugin_localstore"),
+            install=external_install("nonebot_plugin_localstore"),
         ),
         PluginDefinition(
             id="htmlkit",
-            install=_external_install("nonebot_plugin_htmlkit"),
+            install=external_install("nonebot_plugin_htmlkit"),
         ),
         PluginDefinition(
             id="saa",
-            install=_external_install("nonebot_plugin_saa"),
+            install=external_install("nonebot_plugin_saa"),
         ),
         PluginDefinition(
             id="admin_priority",
@@ -444,13 +427,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH}),
             help=HelpEntry(
                 name="B站动态",
-                description="查询、刷新和自动推送配置账号的 Bilibili 动态",
+                description="查询、刷新和自动推送已订阅 UID 的 Bilibili 动态",
                 usage=(
                     "【B站动态】\n"
                     "动态：查看订阅账号的最新动态。\n"
                     "/动态更新、/动态刷新：超级管理员手动刷新。\n"
                     "B站账号：查看当前会话订阅账号。\n"
-                    "B站推送模式 <账号昵称> <内容|链接|默认>：修改群推送模式。"
+                    "B站推送模式 <账号别名|公开昵称|UID> "
+                    "<内容|链接|默认>："
+                    "修改当前会话推送模式。"
                 ),
                 group="message",
                 order=20,
@@ -771,6 +756,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             install=partial(install_rank_help, features=features),
         ),
     )
+    private_definitions = resources.private_extensions.load_plugin_definitions(
+        resources.private_extension_runtime
+    )
+    definitions = (*definitions, *private_definitions)
     validate_plugin_registry(definitions)
     return definitions
 
@@ -787,7 +776,7 @@ def validate_plugin_registry(
         feature for definition in definitions for feature in definition.features
     }
     missing = sorted(
-        set(Feature) - owned_features,
+        set(Feature) - owned_features - OPTIONAL_PRIVATE_FEATURES,
         key=lambda feature: feature.value,
     )
     if missing:

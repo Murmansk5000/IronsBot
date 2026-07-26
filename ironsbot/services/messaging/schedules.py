@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.core.messaging import append_fire_manual_ad_text
 from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_group
 from ironsbot.services.messaging.subscription_options import (
-    group_schedule_key,
-    private_schedule_key,
+    schedule_key,
 )
 from ironsbot.services.messaging.subscriptions import (
     CRON_TIME_PREFERENCE,
@@ -20,10 +19,7 @@ from .push_time import daily_time_parts_for_push
 from .service import build_schedule_job_id, build_schedule_trigger_kwargs
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.messaging import (
-        GroupScheduledMessageAction,
-        PrivateScheduledMessageAction,
-    )
+    from ironsbot.config.models.messaging import MessageScheduledAction
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -34,7 +30,7 @@ MESSAGE_SCHEDULE_JOB_PREFIX = "message_action_"
 
 
 async def send_private_schedule(
-    task: PrivateScheduledMessageAction,
+    task: MessageScheduledAction,
     index: int = 1,
     target_user_ids: tuple[int, ...] | None = None,
     *,
@@ -47,7 +43,7 @@ async def send_private_schedule(
         override_user_ids = cron_override_target_ids(
             messaging._store,
             "private",
-            private_schedule_key(index, task),
+            schedule_key(index, task),
         )
         private_user_ids = [
             user_id for user_id in private_user_ids if user_id not in override_user_ids
@@ -62,12 +58,12 @@ async def send_private_schedule(
         append_fire_manual_ad_text(task.message),
         private_user_ids=private_user_ids,
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
-        subscription_key=private_schedule_key(index, task),
+        subscription_key=schedule_key(index, task),
     )
 
 
 async def send_group_schedule(
-    task: GroupScheduledMessageAction,
+    task: MessageScheduledAction,
     index: int = 1,
     target_group_ids: tuple[int, ...] | None = None,
     *,
@@ -78,7 +74,7 @@ async def send_group_schedule(
         override_group_ids = cron_override_target_ids(
             messaging._store,
             "group",
-            group_schedule_key(index, task),
+            schedule_key(index, task),
         )
         group_ids = [
             group_id for group_id in group_ids if group_id not in override_group_ids
@@ -98,8 +94,18 @@ async def send_group_schedule(
             append_fire_manual_ad_for_group,
             messaging._features,
         ),
-        subscription_key=group_schedule_key(index, task),
+        subscription_key=schedule_key(index, task),
     )
+
+
+async def send_schedule(
+    task: MessageScheduledAction,
+    index: int = 1,
+    *,
+    messaging: MessagingService,
+) -> None:
+    await send_private_schedule(task, index, messaging=messaging)
+    await send_group_schedule(task, index, messaging=messaging)
 
 
 def cron_override_target_ids(
@@ -127,7 +133,7 @@ def schedule_override_job_id(
 
 
 def schedule_override_trigger_kwargs(
-    task: PrivateScheduledMessageAction | GroupScheduledMessageAction,
+    task: MessageScheduledAction,
     value: str,
 ) -> dict[str, Any]:
     hour, minute = daily_time_parts_for_push(value)
@@ -140,10 +146,10 @@ def schedule_override_trigger_kwargs(
 def _register_private_schedule_overrides(
     registry: JobRegistry,
     index: int,
-    task: PrivateScheduledMessageAction,
+    task: MessageScheduledAction,
     messaging: MessagingService,
 ) -> None:
-    key = private_schedule_key(index, task)
+    key = schedule_key(index, task)
     eligible_user_ids = set(
         messaging._features.users_with_superusers(
             messaging._features.users_for_feature(task.feature)
@@ -182,10 +188,10 @@ def _register_private_schedule_overrides(
 def _register_group_schedule_overrides(
     registry: JobRegistry,
     index: int,
-    task: GroupScheduledMessageAction,
+    task: MessageScheduledAction,
     messaging: MessagingService,
 ) -> None:
-    key = group_schedule_key(index, task)
+    key = schedule_key(index, task)
     eligible_group_ids = set(
         messaging._features.groups_for_feature(task.feature)
     )
@@ -219,43 +225,24 @@ def _register_group_schedule_overrides(
         )
 
 
-def _register_private_schedule(
+def _register_schedule(
     registry: JobRegistry,
     index: int,
-    task: PrivateScheduledMessageAction,
+    task: MessageScheduledAction,
     messaging: MessagingService,
 ) -> None:
     if not task.enabled:
         return
 
-    job_id = build_schedule_job_id("private_schedule", index, task.id)
+    job_id = build_schedule_job_id("schedule", index, task.id)
     registry.add(
-        partial(send_private_schedule, messaging=messaging),
+        partial(send_schedule, messaging=messaging),
         "cron",
         kwargs={"task": task, "index": index},
         job_id=job_id,
         **build_schedule_trigger_kwargs(task),
     )
     _register_private_schedule_overrides(registry, index, task, messaging)
-
-
-def _register_group_schedule(
-    registry: JobRegistry,
-    index: int,
-    task: GroupScheduledMessageAction,
-    messaging: MessagingService,
-) -> None:
-    if not task.enabled:
-        return
-
-    job_id = build_schedule_job_id("group_schedule", index, task.id)
-    registry.add(
-        partial(send_group_schedule, messaging=messaging),
-        "cron",
-        kwargs={"task": task, "index": index},
-        job_id=job_id,
-        **build_schedule_trigger_kwargs(task),
-    )
     _register_group_schedule_overrides(registry, index, task, messaging)
 
 
@@ -264,11 +251,8 @@ async def register_message_schedules(
     messaging: MessagingService,
 ) -> None:
     def register_jobs(registry: JobRegistry) -> None:
-        for index, task in enumerate(messaging._config.private_schedules, start=1):
-            _register_private_schedule(registry, index, task, messaging)
-
-        for index, task in enumerate(messaging._config.group_schedules, start=1):
-            _register_group_schedule(registry, index, task, messaging)
+        for index, task in enumerate(messaging._config.schedules, start=1):
+            _register_schedule(registry, index, task, messaging)
 
     JobRegistry(
         scheduler,

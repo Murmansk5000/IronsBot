@@ -13,6 +13,7 @@ from ironsbot.services.seer.rank_list_models import GlobalRankSpec
 from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
 
 if TYPE_CHECKING:
+    from ironsbot.integrations.headless_seer.core.connect import SeerEncryptConnect
     from ironsbot.services.seer.rank import RankService
 
 
@@ -35,6 +36,20 @@ def test_headless_operation_context_keeps_recent_operation() -> None:
         == "后台刷榜缓存：群星牌 1-100名（后台操作）"
     )
     assert operations.format_recent(now=float("inf")) == ""
+
+
+def test_headless_operation_context_includes_group_id() -> None:
+    operations = HeadlessOperationTracker()
+
+    with operations.track(
+        "基础资料",
+        "米米号 123456",
+        source="米米号查询",
+        group_id=987654321,
+    ):
+        assert operations.format_current() == (
+            "基础资料：米米号 123456（用户操作，群：987654321）"
+        )
 
 
 def test_headless_disconnect_notice_includes_recent_operation() -> None:
@@ -79,6 +94,61 @@ def test_headless_disconnect_notice_includes_recent_operation() -> None:
                 123456,
             )
         ]
+
+    asyncio.run(run())
+
+
+def test_headless_disconnect_notice_includes_actual_request_history() -> None:
+    class RequestHistory:
+        def __init__(self) -> None:
+            self.limits: list[int] = []
+
+        def format_recent_request_history(self, *, limit: int = 8) -> str:
+            self.limits.append(limit)
+            return (
+                "4481 (GET_DAILY_RANK_INFO)｜后台本地样本刷新（后台操作）"
+                "｜超时 20.0秒｜0.0秒前"
+            )
+
+    async def run() -> None:
+        notices: list[tuple[bool, str, str, int | None]] = []
+
+        async def notifier(
+            *,
+            connected: bool,
+            reason: str,
+            source: str,
+            user_id: int | None,
+        ) -> None:
+            notices.append((connected, reason, source, user_id))
+
+        game = SeerGame(
+            123456,
+            "password",
+            login_server_url="https://example.invalid/unity-ip.txt",
+            state_notifier=notifier,
+            operations=HeadlessOperationTracker(),
+            spawn=TaskOwner().create,
+        )
+        history = RequestHistory()
+        game._impl = cast("SeerEncryptConnect", history)
+
+        await game._handle_disconnect()
+
+        assert notices == [
+            (
+                False,
+                (
+                    "连接已断开\n"
+                    "断线前实际封包：\n"
+                    "4481 (GET_DAILY_RANK_INFO)｜后台本地样本刷新（后台操作）"
+                    "｜超时 20.0秒｜0.0秒前"
+                ),
+                "无头连接",
+                123456,
+            )
+        ]
+        assert history.limits == [3, 8]
 
     asyncio.run(run())
 

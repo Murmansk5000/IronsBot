@@ -42,7 +42,7 @@ async def _scheduled_local_rank_refresh(
     if not config.auto_refresh:
         return
 
-    result = await service.refresh(headless.get_game())
+    result = await service.refresh(headless.get_game(), background=True)
     logger.info(
         "local rank cache auto refresh finished: "
         f"total={result.total}, "
@@ -79,7 +79,7 @@ async def _scheduled_rank_page_refresh(
         logger.info("rank page cache auto refresh skipped: outside active window")
         return
 
-    result = await service.refresh(headless.get_game())
+    result = await service.refresh(headless.get_game(), background=True)
     logger.info(
         "rank page cache auto refresh finished: "
         f"total={result.total}, success={result.success}, failed={result.failed}"

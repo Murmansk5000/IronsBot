@@ -5,10 +5,13 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.integrations.headless_seer.core import connect as connect_module
 from ironsbot.integrations.headless_seer.core.connect import AbstractSocketConnect
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.integrations.headless_seer.type_hint import CommandID
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
+
+EXPECTED_COMPLETED_REQUESTS = 2
 
 
 class FakeWriter:
@@ -135,10 +138,70 @@ def test_socket_requests_wait_for_the_previous_response() -> None:
         assert client._resolve_pending(second_command_id, second_response)
         assert await second == (second_response,)
 
+        history = client.format_recent_request_history()
+        assert "2051" in history
+        assert "2052" in history
+        assert history.count("完成") == EXPECTED_COMPLETED_REQUESTS
+
     asyncio.run(run())
 
 
-def test_request_timeout_resets_connection_and_discards_pending_request() -> None:
+def test_request_timeout_drains_late_response_without_resetting_connection() -> None:
+    async def run() -> None:
+        disconnect_called = asyncio.Event()
+
+        async def on_disconnect() -> None:
+            disconnect_called.set()
+
+        client = FakeConnect(
+            asyncio.get_running_loop(),
+            spawn=TaskOwner().create,
+            on_disconnect=on_disconnect,
+            request_context=lambda: "后台本地样本刷新：米米号 123456",
+        )
+        writer = FakeWriter()
+        client._writer = cast("StreamWriter", writer)
+        command_id = CommandID[Any](2051)
+        first = asyncio.create_task(client.send_and_wait(command_id, timeout=0))
+        second_command_id = CommandID[Any](2052)
+        second = asyncio.create_task(client.send_and_wait(second_command_id, timeout=1))
+
+        for _ in range(10):
+            await asyncio.sleep(0)
+            if client._request_history and client._request_history[-1].status == "超时":
+                break
+
+        assert client._request_history[-1].status == "超时"
+        assert client.sent_commands == [command_id]
+        assert client._resolve_pending(command_id, object())
+
+        with pytest.raises(asyncio.TimeoutError):
+            await first
+
+        for _ in range(10):
+            if client.sent_commands == [command_id, second_command_id]:
+                break
+            await asyncio.sleep(0)
+
+        assert client.sent_commands == [command_id, second_command_id]
+        assert client._resolve_pending(second_command_id, object())
+        await second
+
+        assert not disconnect_called.is_set()
+        assert not writer.closed
+        assert client._writer is writer
+        assert not client._pending_requests
+        history = client.format_recent_request_history()
+        assert "2051" in history
+        assert "后台本地样本刷新：米米号 123456" in history
+        assert "超时" in history
+
+    asyncio.run(run())
+
+
+def test_request_timeout_resets_connection_only_after_drain_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def run() -> None:
         disconnect_called = asyncio.Event()
 
@@ -152,7 +215,7 @@ def test_request_timeout_resets_connection_and_discards_pending_request() -> Non
         )
         writer = FakeWriter()
         client._writer = cast("StreamWriter", writer)
-        command_id = CommandID[Any](2051)
+        command_id = CommandID[Any](4481)
 
         with pytest.raises(asyncio.TimeoutError):
             await client.send_and_wait(command_id, timeout=0)
@@ -162,5 +225,27 @@ def test_request_timeout_resets_connection_and_discards_pending_request() -> Non
         assert writer.closed
         assert client._writer is None
         assert not client._pending_requests
+
+    monkeypatch.setattr(connect_module, "REQUEST_TIMEOUT_DRAIN_SECONDS", 0.0)
+    asyncio.run(run())
+
+
+def test_request_history_marks_response_errors() -> None:
+    async def run() -> None:
+        client = FakeConnect(
+            asyncio.get_running_loop(),
+            spawn=TaskOwner().create,
+        )
+        command_id = CommandID[Any](4481)
+        request = asyncio.create_task(client.send_and_wait(command_id, timeout=1))
+        await asyncio.sleep(0)
+
+        assert client._reject_pending(command_id, ConnectionError("server closed"))
+        with pytest.raises(ConnectionError, match="server closed"):
+            await request
+
+        history = client.format_recent_request_history()
+        assert "4481" in history
+        assert "响应错误 ConnectionError" in history
 
     asyncio.run(run())

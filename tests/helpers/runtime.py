@@ -51,6 +51,8 @@ def build_test_runtime(  # noqa: PLR0913
     *,
     feature_config: FeatureConfig | None = None,
     superuser_ids: tuple[int, ...] = (),
+    command_features: frozenset[str] = frozenset(),
+    schedule_features: frozenset[str] = frozenset(),
     outbound_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe: PushUnsubscribeConfig | None = None,
     priority_config: SuperuserPriorityConfig | None = None,
@@ -61,6 +63,8 @@ def build_test_runtime(  # noqa: PLR0913
     features = FeatureService(
         resolved_feature_config,
         frozenset(superuser_ids),
+        command_features=command_features,
+        schedule_features=schedule_features,
     )
     push_config = push_unsubscribe or PushUnsubscribeConfig()
     tasks = TaskOwner()

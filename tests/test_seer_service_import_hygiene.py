@@ -10,7 +10,6 @@ PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.countermark_stat_rank_repository",
     "ironsbot.services.seer.player_collection_formatting",
     "ironsbot.services.seer.player_compact_formatting",
-    "ironsbot.services.seer.player_detail_formatting",
     "ironsbot.services.seer.player_formatting_common",
     "ironsbot.services.seer.player_query",
     "ironsbot.services.seer.player_peak_formatting",

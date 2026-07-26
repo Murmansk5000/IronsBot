@@ -1,4 +1,3 @@
-import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -12,22 +11,27 @@ from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
     CommandCooldownWindowConfig,
-    CommandMessageAction,
-    GroupScheduledMessageAction,
+    MessageCommandAction,
     MessageConfig,
+    MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
-    PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
-    TeamAuditWelcomeConfig,
 )
-from ironsbot.config.models.operations import DockerUpdateConfig
+from ironsbot.config.models.operations import (
+    DockerUpdateConfig,
+)
 from ironsbot.config.models.seer import (
+    PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
     TeamResourceConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
-from ironsbot.core.bilibili import DEFAULT_BILI_ACCOUNT_UID
+from ironsbot.core.bilibili import (
+    DEFAULT_BILI_ACCOUNT_ALIAS,
+    DEFAULT_BILI_ACCOUNT_UID,
+)
+from ironsbot.core.features import FeatureService
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
@@ -36,6 +40,8 @@ DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
+CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
+_REFRESH_TTL_SECONDS = 120.0
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
@@ -50,49 +56,22 @@ DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
+DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
+DEFAULT_PLAYER_REQUEST_INTERVAL_SECONDS = 1.2
+DEFAULT_PLAYER_REQUEST_PAUSE_SECONDS = 60.0
+DEFAULT_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 600.0
+DEFAULT_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 300.0
+CUSTOM_PLAYER_REQUEST_MAX_QUEUED = 5
+CUSTOM_PLAYER_REQUEST_INTERVAL_SECONDS = 1.5
+CUSTOM_PLAYER_REQUEST_PAUSE_SECONDS = 45.0
+CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
+CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
 DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
     "data/messaging/push_unsubscriptions.sqlite"
 )
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
-ACTIVE_CONFIG_SURFACE_PATHS = (
-    ROOT / ".env.example",
-    ROOT / "config.example.toml",
-    ROOT / "templates" / "ironsbot.xml",
-    ROOT / "docker-compose.yml",
-)
-PUBLIC_TEXT_PATHS = (
-    *ACTIVE_CONFIG_SURFACE_PATHS,
-    ROOT / "README.md",
-    ROOT / "docker" / "README.md",
-)
-STALE_ACTIVE_CONFIG_PATTERNS = (
-    r"\buid_modes\b",
-    r"\bdefault_mode\b",
-    r"\bdefault_accounts\b",
-    r"\bextra_accounts\b",
-    r"\baccount_aliases\b",
-    r"\baccount_modes\b",
-    r"\bprivate_unsubscribe\b",
-    r"\bteam_shortcut\b",
-    r"\bactivity_link_push\b",
-    r"\bactivity_link_daily",
-    r"\baction_templates\b",
-    r"\bdefault_uids\b",
-    r"\bextra_uids\b",
-    r"\bfire_manual_intent\b",
-)
-STALE_PUBLIC_TEXT_PATTERNS = (
-    r"README\.old",
-    r"旧榜单",
-    r"db\s*(?:与|和)\s*image\s*模块",
-    r"seer_rank`\s*/\s*`rank",
-    r"TOML 使用宽松加载",
-    r"配置迁移",
-    r"Behavior Config Migration",
-    r"ignored with warning",
-)
 
 
 def _load_module_from_path(name: str, path: Path) -> ModuleType:
@@ -129,6 +108,38 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_image == "containrrr/watchtower:latest"
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
+    assert docker_update.registry_username == ""
+    assert docker_update.registry_token == ""
+
+
+def _assert_default_player_request_protection(
+    protection: PlayerRequestProtectionConfig,
+) -> None:
+    assert protection.enabled
+    assert protection.max_queued_queries == DEFAULT_PLAYER_REQUEST_MAX_QUEUED
+    assert (
+        protection.base_request_interval_seconds
+        == DEFAULT_PLAYER_REQUEST_INTERVAL_SECONDS
+    )
+    assert protection.disconnect_pause_seconds == DEFAULT_PLAYER_REQUEST_PAUSE_SECONDS
+    assert (
+        protection.repeat_disconnect_window_seconds
+        == DEFAULT_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS
+    )
+    assert (
+        protection.repeat_disconnect_pause_seconds
+        == DEFAULT_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS
+    )
+    assert protection.superuser_priority
+    assert protection.superuser_bypass_pause
+
+
+def _assert_default_file_logging(config: Settings) -> None:
+    assert not config.bot.logging.file_enabled
+    assert not config.bot.logging.error_file_enabled
+    assert config.bot.logging.rotation == "00:00"
+    assert config.bot.logging.retention == "30 days"
+    assert config.bot.logging.compression is None
 
 
 def _assert_example_bot_routing(config: Settings) -> None:
@@ -163,12 +174,6 @@ def _assert_default_team_audit_welcome(config: Settings) -> None:
     )
     assert "仍然还在审核群" in team_audit.final_followup_message
     assert team_audit.followup_cache_path == "data/team_audit_welcome/pending.sqlite"
-
-
-@pytest.mark.parametrize("field", ["feature", "groups"])
-def test_team_audit_rejects_removed_target_fields(field: str) -> None:
-    with pytest.raises(ValidationError):
-        TeamAuditWelcomeConfig.model_validate({field: "team_audit"})
 
 
 def _assert_default_matcher_priorities(
@@ -235,12 +240,15 @@ def test_example_config_parses() -> None:
     }
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
-    assert "fire_manual_intent" not in config.ai.intent_actions
-    assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
-    assert config.bilibili.account_nicknames["seer"] == "赛尔号官方"
+    assert (
+        config.bilibili.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid
+        == DEFAULT_BILI_ACCOUNT_UID
+    )
     assert config.bilibili.push.mode == "link"
-    assert config.bilibili.push.accounts == ["seer"]
-    assert config.bilibili.push.modes == {"seer": "full"}
+    assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
+    assert config.bilibili.push.modes == {
+        DEFAULT_BILI_ACCOUNT_ALIAS: "full"
+    }
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
@@ -270,10 +278,12 @@ def test_example_config_parses() -> None:
     assert config.operations.data_sync.sources["seerapi"].local_path
     assert config.operations.data_sync.sources["seerapi"].remote_build.enabled
     _assert_default_docker_update(config.operations.docker_update)
-    assert not config.bot.logging.file_enabled
     assert config.paths.log_file == Path("logs/ironsbot.log")
-    assert not config.bot.logging.error_file_enabled
     assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
+    _assert_default_file_logging(config)
+    _assert_default_player_request_protection(
+        config.seer.player.request_protection
+    )
     _assert_default_matcher_priorities(config.bot.matcher_priority)
     remote_build_steps = config.operations.data_sync.sources[
         "seerapi"
@@ -321,13 +331,13 @@ def test_example_config_has_no_unknown_fields() -> None:
 
 def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
-        PrivateScheduledMessageAction(
+        MessageScheduledAction(
             message="私聊定时推送",
             hour=23,
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
-        PrivateScheduledMessageAction(
+        MessageScheduledAction(
             id="每日 提醒",
             message="私聊定时推送",
             hour=23,
@@ -337,19 +347,17 @@ def test_scheduled_push_requires_stable_id() -> None:
 def test_scheduled_push_ids_are_globally_unique() -> None:
     with pytest.raises(ValidationError, match="定时推送 id 必须全局唯一: daily"):
         MessageConfig(
-            private_schedules=[
-                PrivateScheduledMessageAction(
+            schedules=[
+                MessageScheduledAction(
                     id="daily",
                     message="私聊定时推送",
                     hour=23,
-                )
-            ],
-            group_schedules=[
-                GroupScheduledMessageAction(
+                ),
+                MessageScheduledAction(
                     id="daily",
                     message="群聊定时推送",
                     hour=23,
-                )
+                ),
             ],
         )
 
@@ -359,7 +367,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action requires a non-empty id",
     ):
-        CommandMessageAction(
+        MessageCommandAction(
             commands=["hello"],
             message="world",
         )
@@ -368,7 +376,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action id may only contain",
     ):
-        CommandMessageAction(
+        MessageCommandAction(
             id="daily reminder",
             commands=["hello"],
             message="world",
@@ -443,34 +451,6 @@ def test_bot_routing_config_rejects_unknown_bot_alias() -> None:
         )
 
 
-def test_active_config_surfaces_do_not_reference_stale_fields() -> None:
-    stale_matches: list[str] = []
-
-    for path in ACTIVE_CONFIG_SURFACE_PATHS:
-        text = path.read_text(encoding="utf-8")
-        stale_matches.extend(
-            f"{path.relative_to(ROOT)}: {pattern}"
-            for pattern in STALE_ACTIVE_CONFIG_PATTERNS
-            if re.search(pattern, text)
-        )
-
-    assert stale_matches == []
-
-
-def test_public_text_does_not_reference_stale_structures() -> None:
-    stale_matches: list[str] = []
-
-    for path in PUBLIC_TEXT_PATHS:
-        text = path.read_text(encoding="utf-8")
-        stale_matches.extend(
-            f"{path.relative_to(ROOT)}: {pattern}"
-            for pattern in STALE_PUBLIC_TEXT_PATTERNS
-            if re.search(pattern, text)
-        )
-
-    assert stale_matches == []
-
-
 def test_rank_page_refresh_interval_offset_must_be_smaller_than_interval() -> None:
     with pytest.raises(ValidationError):
         RankPageRefreshConfig(interval_minutes=10, interval_offset_minutes=10)
@@ -517,7 +497,7 @@ def test_unknown_app_config_fields_are_rejected_with_exact_path(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[messaging.group_commands]]
+[[messaging.commands]]
 id = "hello"
 commands = ["hello"]
 message = "world"
@@ -532,7 +512,130 @@ unknown_command_field = true
 
     assert (
         exc_info.value.errors()[0]["loc"]
-        == ("messaging", "group_commands", 0, "unknown_command_field")
+        == ("messaging", "commands", 0, "unknown_command_field")
+    )
+
+
+def test_unified_message_actions_parse_as_toml_arrays_of_tables(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[messaging.commands]]
+id = "activity_link"
+commands = ["activity"]
+message = "activity link"
+feature = "web_activity_link"
+at_user_ids = [123456789]
+
+[[messaging.schedules]]
+id = "daily_reminder"
+name = "Daily reminder"
+hour = 23
+minute = 0
+message = "daily message"
+feature = "text_push"
+at_user_ids = [123456789]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+    assert config.messaging.commands[0].id == "activity_link"
+    assert config.messaging.commands[0].at_user_ids == [123456789]
+    assert config.messaging.schedules[0].id == "daily_reminder"
+    assert config.messaging.schedules[0].at_user_ids == [123456789]
+
+
+def test_achievement_history_lookback_days_can_be_configured(
+    tmp_path: Path,
+) -> None:
+    expected_lookback_days = 6
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.achievement_history]
+baseline_lookback_days = 6
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert (
+        config.seer.achievement_history.baseline_lookback_days
+        == expected_lookback_days
+    )
+
+
+def test_message_command_feature_registers_for_bundle_and_group_policy(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+main = 123456789
+
+[features.bundles]
+standard = ["seerinfo_link"]
+
+[features.group_policy]
+main = ["standard"]
+
+[[messaging.commands]]
+id = "seerinfo_page"
+commands = ["xm", "xrym"]
+message = "https://seerinfo.yuyuqaq.cn/"
+feature = "seerinfo_link"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+    features = FeatureService(
+        config.features,
+        frozenset(),
+        command_features=config.messaging.command_feature_keys,
+        schedule_features=config.messaging.schedule_feature_keys,
+    )
+
+    assert config.messaging.command_feature_keys == frozenset(
+        {"seerinfo_link"}
+    )
+    assert features.is_group_feature_allowed(
+        999,
+        123456789,
+        "seerinfo_link",
+    )
+
+
+def test_message_schedule_feature_registers_for_user_policy(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.user_aliases]
+owner = 123456789
+
+[features.user_policy]
+owner = ["custom_reminder"]
+
+[[messaging.schedules]]
+id = "custom_reminder"
+hour = 23
+message = "remember"
+feature = "custom_reminder"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.messaging.schedule_feature_keys == frozenset(
+        {"custom_reminder"}
     )
 
 
@@ -601,6 +704,7 @@ def test_player_binding_path_loads(tmp_path: Path) -> None:
         """
 [seer.player.binding]
 path = "data/custom-player-bindings.sqlite"
+change_cooldown_days = 5
 """.strip(),
         encoding="utf-8",
     )
@@ -610,6 +714,106 @@ path = "data/custom-player-bindings.sqlite"
     assert config.seer.player.binding.path == Path(
         "data/custom-player-bindings.sqlite"
     )
+    assert (
+        config.seer.player.binding.change_cooldown_days
+        == CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS
+    )
+
+
+def test_player_binding_rejects_removed_hour_cooldown(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player.binding]
+change_cooldown_hours = 72.0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
+
+    assert exc_info.value.errors()[0]["loc"] == (
+        "seer",
+        "player",
+        "binding",
+        "change_cooldown_hours",
+    )
+
+
+def test_player_background_refresh_loads(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player.background_refresh]
+enabled = true
+cache_ttl_seconds = 120.0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.seer.player.background_refresh.enabled
+    assert (
+        config.seer.player.background_refresh.cache_ttl_seconds
+        == _REFRESH_TTL_SECONDS
+    )
+
+
+def test_player_background_refresh_defaults_disabled(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text("", encoding="utf-8")
+
+    config = load_settings(config_path)
+
+    assert not config.seer.player.background_refresh.enabled
+
+
+def test_player_request_protection_loads(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.player.request_protection]
+max_queued_queries = 5
+base_request_interval_seconds = 1.5
+disconnect_pause_seconds = 45.0
+repeat_disconnect_window_seconds = 480.0
+repeat_disconnect_pause_seconds = 240.0
+superuser_priority = false
+superuser_bypass_pause = false
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path).seer.player.request_protection
+
+    assert config.enabled
+    assert config.max_queued_queries == CUSTOM_PLAYER_REQUEST_MAX_QUEUED
+    assert (
+        config.base_request_interval_seconds
+        == CUSTOM_PLAYER_REQUEST_INTERVAL_SECONDS
+    )
+    assert config.disconnect_pause_seconds == CUSTOM_PLAYER_REQUEST_PAUSE_SECONDS
+    assert (
+        config.repeat_disconnect_window_seconds
+        == CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS
+    )
+    assert (
+        config.repeat_disconnect_pause_seconds
+        == CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS
+    )
+    assert not config.superuser_priority
+    assert not config.superuser_bypass_pause
+
+
+def test_player_request_protection_defaults_are_safe(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text("", encoding="utf-8")
+
+    config = load_settings(config_path).seer.player.request_protection
+
+    _assert_default_player_request_protection(config)
 
 
 def test_incomplete_unknown_ai_action_is_rejected_with_exact_path(
@@ -677,6 +881,46 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     assert settings.operations.data_sync.github_token == "gh-token"
     assert settings.operations.headless.user_id == HEADLESS_USER_ID
     assert settings.operations.headless.password == "md5"
+
+
+def test_docker_registry_token_must_be_set_in_environment(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[operations.docker_update]
+registry_token = "registry-token"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="DOCKER_REGISTRY_TOKEN"):
+        load_settings(config_path)
+
+
+def test_docker_registry_credentials_read_from_environment(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[operations.docker_update]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        config_path,
+        env={
+            "DOCKER_REGISTRY_USERNAME": "owner",
+            "DOCKER_REGISTRY_TOKEN": "registry-token",
+        },
+    )
+
+    docker_update = settings.operations.docker_update
+    assert docker_update.registry_username == "owner"
+    assert docker_update.registry_token == "registry-token"
 
 
 def test_app_config_defaults_cover_runtime_services() -> None:

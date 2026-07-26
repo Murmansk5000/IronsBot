@@ -1,12 +1,11 @@
 from dataclasses import dataclass
 from typing import Any, cast
 
+from ironsbot.services.seer.player_collection_formatting import (
+    format_autocard_rank_info,
+)
 from ironsbot.services.seer.player_compact_formatting import (
     format_compact_player_info,
-)
-from ironsbot.services.seer.player_detail_formatting import (
-    append_extra_errors,
-    format_player_detail_messages,
 )
 from ironsbot.services.seer.player_formatting_common import (
     format_login_timeline_lines,
@@ -19,10 +18,8 @@ from ironsbot.services.seer.player_formatting_common import (
 from ironsbot.services.seer.player_peak_formatting import (
     format_compact_peak_section,
 )
-from ironsbot.services.seer.player_query import PlayerDetailErrors
 from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
-    PlayerRankSummary,
     RankLookupResult,
 )
 
@@ -62,58 +59,6 @@ class MoreInfo:
 
 
 @dataclass(frozen=True)
-class UnityPartOne:
-    achievement_num: int
-    pet_kind_num: int
-    skin_num: int
-
-
-@dataclass(frozen=True)
-class RankResult:
-    score: int
-    rank: int = 1
-
-
-@dataclass(frozen=True)
-class RankBreakdown:
-    pet_kind: RankResult
-    skin: RankResult
-    outfit_suit: RankResult
-    outfit_part: RankResult
-    mount: RankResult
-    countermark: RankResult
-    unlocked_count: int
-
-
-@dataclass(frozen=True)
-class RankSummary:
-    book: RankResult
-    achieve: RankResult
-    breakdown: RankBreakdown
-
-
-@dataclass(frozen=True)
-class PeakRank:
-    rank: int | None
-    failure: str | None = None
-
-
-@dataclass(frozen=True)
-class PeakSummary:
-    standard: PeakRank
-    wild: PeakRank
-    expert: PeakRank
-
-
-@dataclass(frozen=True)
-class AutocardRankSummary:
-    rank: int | None = 12
-    score: int | None = 3456
-    queried: bool = True
-    searched_limit: int = 2000
-
-
-@dataclass(frozen=True)
 class UnityPeak:
     current_j_rank: int = 3
     current_j_star: int = 2
@@ -150,53 +95,6 @@ class _LocalSummary:
 
     def sample_rank(self, key: str) -> str:
         return self._ranks.get(key, self._rank_text)
-
-
-def _rank_result(score: int, rank: int = 1) -> RankResult:
-    return RankResult(score=score, rank=rank)
-
-
-def _rank_summary() -> RankSummary:
-    return RankSummary(
-        book=_rank_result(1234),
-        achieve=_rank_result(56),
-        breakdown=RankBreakdown(
-            pet_kind=_rank_result(100),
-            skin=_rank_result(10),
-            outfit_suit=_rank_result(20),
-            outfit_part=_rank_result(30),
-            mount=_rank_result(5),
-            countermark=_rank_result(8),
-            unlocked_count=173,
-        ),
-    )
-
-
-def _peak_summary() -> PeakSummary:
-    return PeakSummary(
-        standard=PeakRank(rank=1),
-        wild=PeakRank(rank=None),
-        expert=PeakRank(rank=3),
-    )
-
-
-def _autocard_rank_summary(
-    *,
-    rank: int | None = 12,
-    score: int | None = 3456,
-    queried: bool = True,
-    searched_limit: int = 2000,
-) -> AutocardRankSummary:
-    return AutocardRankSummary(
-        rank=rank,
-        score=score,
-        queried=queried,
-        searched_limit=searched_limit,
-    )
-
-
-def _unity_peak() -> UnityPeak:
-    return UnityPeak()
 
 
 def test_format_player_identity_team_vip_and_online_text() -> None:
@@ -293,6 +191,7 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
         _as_any(_LocalSummary()),
     )
 
+    assert message.splitlines()[1].startswith("获取时间：")
     assert "竞技：王者33星" in message
     assert "竞技：圣皇0星" not in message
     assert "场次124" not in message
@@ -300,7 +199,12 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
 
 
 def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
-    peak = UnityPeak(current_j_rank=4, current_j_star=0)
+    peak = UnityPeak(
+        current_j_rank=4,
+        current_j_star=0,
+        current_j_win=33,
+        current_j_all=41,
+    )
     summary = PeakSeasonRankSummary.empty()
     summary.standard.failure = "查询超时"
 
@@ -315,9 +219,27 @@ def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
     )
     assert "赛季榜查询超时" in standard_line
     assert "赛季榜未上榜" not in standard_line
+    assert "场次41" in standard_line
+    assert "胜率33/41=80.488%" in standard_line
 
 
-def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
+def test_format_autocard_rank_starts_with_fetch_time() -> None:
+    message = format_autocard_rank_info(
+        RankLookupResult(
+            title="群星之巅榜",
+            score_name="分",
+            rank=15,
+            score=9525,
+            queried=True,
+        ),
+        player_identity="米米号：1269554（XJTLoveness）",
+        local_summary=_as_any(_LocalSummary()),
+    )
+
+    assert message.splitlines()[1].startswith("获取时间：")
+
+
+def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     user_info = UserInfo(
         user_id=PLAYER_ID,
         nick="赛小息",
@@ -336,9 +258,6 @@ def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
         unity_peak=_as_any(Empty()),
         peak_rank_summary=_as_any(Empty()),
         local_summary=_as_any(_LocalSummary()),
-        has_collection=True,
-        has_peak=True,
-        has_autocard=True,
         show_peak=False,
         extra_errors=["在线状态失败"],
     )
@@ -347,126 +266,5 @@ def test_format_compact_player_info_keeps_basic_sections_and_prompts() -> None:
     assert "米米号：105023264（赛小息）" in message
     assert "注册时间：2000年1月1日 08:00:00" in message
     assert "战队：未加入" in message
-    assert "回复“收集”查看收集与排行" in message
-    assert "回复“巅峰”查看巅峰之战" in message
-    assert "回复“群星牌”查看群星之巅排名" in message
     assert "在线状态失败" in message
-
-
-def test_format_player_detail_messages_builds_collection_and_peak() -> None:
-    user_info = UserInfo(nick="赛小息")
-    more_info = MoreInfo(pet_all_num=321, total_achieve=56)
-    unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
-    peak_summary = PeakSeasonRankSummary.empty()
-    peak_summary.standard.failure = "查询超时"
-
-    messages = format_player_detail_messages(
-        player_id=PLAYER_ID,
-        user_info=user_info,
-        more_info=more_info,
-        unity_part_one=_as_any(unity_part_one),
-        unity_peak=_as_any(_unity_peak()),
-        rank_summary=_as_any(_rank_summary()),
-        peak_rank_summary=peak_summary,
-        autocard_rank_summary=_as_any(_autocard_rank_summary()),
-        local_rank_summary=_as_any(_LocalSummary("样本第1")),
-        empty_local_rank_summary=_as_any(_LocalSummary()),
-        has_collection=True,
-        needs_peak_section=True,
-        has_autocard_rank=True,
-        show_local_rank=True,
-        extra_errors=PlayerDetailErrors(
-            collection=["全服排行失败"],
-            autocard=["群星牌排行失败"],
-        ),
-    )
-
-    assert "📚【收集与排行】" in messages.collection_message
-    assert "米米号：105023264（赛小息）" in messages.collection_message
-    assert "图鉴积分：1234" in messages.collection_message
-    assert "样本第1" in messages.collection_message
-    assert "【巅峰之战】" in messages.peak_message
-    assert "竞技：" in messages.peak_message
-    assert "样本段位第1" in messages.peak_message
-    assert "🃏【群星牌排名】" in messages.autocard_message
-    assert "群星之巅：3456分" in messages.autocard_message
-    assert "全服第12" in messages.autocard_message
-    assert "样本第1" in messages.autocard_message
-    assert "全服排行失败" in messages.collection_message
-    assert "全服排行失败" not in messages.peak_message
-    assert "全服排行失败" not in messages.autocard_message
-    assert "赛季榜查询超时" in messages.peak_message
-    assert "【扩展数据提示】" not in messages.peak_message
-    assert "群星牌排行失败" in messages.autocard_message
-    assert "群星牌排行失败" not in messages.collection_message
-
-
-def test_format_player_detail_messages_show_rank_failures_on_affected_lines() -> None:
-    user_info = UserInfo(nick="赛小息")
-    more_info = MoreInfo(pet_all_num=321, total_achieve=56)
-    unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
-    rank_summary = PlayerRankSummary.empty()
-    rank_summary.book.score = 1234
-    rank_summary.book.failure = "查询超时"
-    autocard_summary = RankLookupResult(
-        title="群星之巅榜",
-        score_name="分",
-        score=3456,
-        failure="查询超时",
-    )
-
-    messages = format_player_detail_messages(
-        player_id=PLAYER_ID,
-        user_info=user_info,
-        more_info=more_info,
-        unity_part_one=_as_any(unity_part_one),
-        unity_peak=_as_any(_unity_peak()),
-        rank_summary=rank_summary,
-        peak_rank_summary=PeakSeasonRankSummary.empty(),
-        autocard_rank_summary=autocard_summary,
-        local_rank_summary=_as_any(_LocalSummary()),
-        empty_local_rank_summary=_as_any(_LocalSummary()),
-        has_collection=True,
-        needs_peak_section=False,
-        has_autocard_rank=True,
-        show_local_rank=False,
-        extra_errors=PlayerDetailErrors(),
-    )
-
-    assert "图鉴积分：1234｜全服排行失败：查询超时" in messages.collection_message
-    assert "群星之巅：3456分｜全服排行失败：查询超时" in messages.autocard_message
-    assert "【扩展数据提示】" not in messages.collection_message
-    assert "【扩展数据提示】" not in messages.autocard_message
-
-
-def test_format_player_detail_messages_can_hide_local_rank_details() -> None:
-    user_info = UserInfo(nick="赛小息")
-    more_info = MoreInfo(pet_all_num=321, total_achieve=56)
-    unity_part_one = UnityPartOne(achievement_num=7, pet_kind_num=100, skin_num=10)
-
-    messages = format_player_detail_messages(
-        player_id=PLAYER_ID,
-        user_info=user_info,
-        more_info=more_info,
-        unity_part_one=_as_any(unity_part_one),
-        unity_peak=_as_any(_unity_peak()),
-        rank_summary=_as_any(_rank_summary()),
-        peak_rank_summary=_as_any(_peak_summary()),
-        autocard_rank_summary=_as_any(_autocard_rank_summary()),
-        local_rank_summary=_as_any(_LocalSummary("样本第1")),
-        empty_local_rank_summary=_as_any(_LocalSummary()),
-        has_collection=True,
-        needs_peak_section=False,
-        has_autocard_rank=False,
-        show_local_rank=False,
-        extra_errors=PlayerDetailErrors(),
-    )
-
-    assert "样本第1" not in messages.collection_message
-    assert messages.peak_message == ""
-    assert messages.autocard_message == ""
-
-
-def test_append_extra_errors_preserves_existing_message_when_empty() -> None:
-    assert append_extra_errors("正文", []) == "正文"
-    assert append_extra_errors("正文", ["A", "B"]) == "正文\n\n【扩展数据提示】\n\nA；B"
+    assert "\n\n" not in message

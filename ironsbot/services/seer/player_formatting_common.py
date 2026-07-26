@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import TZ_CN, now
 from ironsbot.services.seer.formatting import format_datetime
 from ironsbot.services.seer.rank_formatting import format_rank_position_text
 
@@ -21,6 +22,10 @@ PEAK_RANK_NAMES = {
 }
 COSMIC_SAINT_RANK_VALUE = 4
 COSMIC_SAINT_MIN_STAR = 100
+
+
+def format_player_data_time() -> str:
+    return f"获取时间：{now(tz=TZ_CN).strftime('%Y-%m-%d %H:%M:%S')}"
 
 
 def filter_blank_lines(lines: list[str]) -> list[str]:

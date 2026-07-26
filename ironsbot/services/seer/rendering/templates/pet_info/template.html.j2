@@ -188,7 +188,8 @@
         }
 
         .sm-tags {
-            margin-bottom: 8px;
+            margin-top: 10px;
+            margin-bottom: 0;
         }
 
         .sm-desc {
@@ -198,15 +199,17 @@
         }
 
         .sm-icon-row {
-            margin: 6px 0 10px;
-            text-align: center;
+            margin: 2px 0 12px;
+            text-align: left;
         }
 
         .sm-icon {
-            width: 56px;
-            height: 56px;
+            height: 72px;
+            width: auto;
+            max-width: 160px;
             vertical-align: middle;
             image-rendering: auto;
+            object-fit: contain;
         }
 
         .special-effects {
@@ -220,6 +223,21 @@
             border-left: 4px solid #ffffff;
             border-radius: 0 4px 4px 0;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+.special-effect-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+            object-fit: contain;
+        }
+
+        .special-effect-body {
+            min-width: 0;
+            flex: 1;
         }
 
         .sm-upgrade-title {
@@ -252,6 +270,7 @@
             color: #e0f0ff;
             font-size: 16px;
             line-height: 1.55;
+            white-space: pre-line;
         }
 
         /* ========== 刻印卡片 ========== */
@@ -462,6 +481,12 @@
                         <div class="sec-title">魂印</div>
                         {% for sm in base_soulmarks %}
                         <div class="sm-item">
+                            {% if sm.icon %}
+                            <div class="sm-icon-row">
+                                <img class="sm-icon" src="{{ sm.icon }}" />
+                            </div>
+                            {% endif %}
+                            <div class="sm-desc">{{ sm.desc }}</div>
                             {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
                             <div class="sm-tags">
                                 {% for t in sm.tags %}
@@ -482,12 +507,6 @@
                                 -->
                             </div>
                             {% endif %}
-                            {% if sm.icon %}
-                            <div class="sm-icon-row">
-                                <img class="sm-icon" src="{{ sm.icon }}" />
-                            </div>
-                            {% endif %}
-                            <div class="sm-desc">{{ sm.desc }}</div>
                         </div>
                         {% endfor %}
 
@@ -529,6 +548,12 @@
                         </div>
                         {% endif %}
                             {% endif %}
+                            {% if sm.icon %}
+                            <div class="sm-icon-row">
+                                <img class="sm-icon" src="{{ sm.icon }}" />
+                            </div>
+                            {% endif %}
+                            <div class="sm-desc">{{ sm.desc }}</div>
                             {% if sm.tags or sm.intensified or sm.is_adv or sm.pve_effective is not none %}
                             <div class="sm-tags">
                                 {% for t in sm.tags %}
@@ -542,12 +567,6 @@
                                 {% endif %}
                             </div>
                             {% endif %}
-                            {% if sm.icon %}
-                            <div class="sm-icon-row">
-                                <img class="sm-icon" src="{{ sm.icon }}" />
-                            </div>
-                            {% endif %}
-                            <div class="sm-desc">{{ sm.desc }}</div>
                         </div>
                         {% endfor %}
                     </div>
@@ -559,6 +578,10 @@
                         <div class="special-effects">
                             {% for effect in special_effects %}
                             <div class="special-effect">
+                                {% if effect.icon %}
+                                <img class="special-effect-icon" src="{{ effect.icon }}" />
+                                {% endif %}
+                                <div class="special-effect-body">
                                 <div class="special-effect-head">
                                     <span class="special-effect-name">{{ effect.name }}</span>
                                     <span class="special-effect-sources">{{ effect.sources | join("、") }}</span>
@@ -566,6 +589,7 @@
                                 {% if effect.desc %}
                                 <div class="special-effect-desc">{{ effect.desc }}</div>
                                 {% endif %}
+                                </div>
                             </div>
                             {% endfor %}
                         </div>

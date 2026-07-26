@@ -40,7 +40,8 @@ def bili_push_subscription_key(uid: int) -> str:
 
 
 def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
-    return f"B站动态：{label or int(uid)}"
+    del uid
+    return f"B站动态：{label}" if label else "B站动态"
 
 
 def normalize_push_mode_text(raw_mode: str) -> BiliRuntimePushMode | None:

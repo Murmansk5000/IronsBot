@@ -120,6 +120,32 @@ def snapshot_peak_pools(
     )
 
 
+def active_peak_pool_limits(
+    pools: Iterable[PeakPoolSnapshot],
+    *,
+    at: datetime | None = None,
+) -> dict[int, int]:
+    """Return the current standard-pool carry limit for each pet.
+
+    A pet can appear in more than one active pool while the upstream data is
+    transitioning.  In that case, retain the stricter limit so the lineup
+    marker never advertises a carry count that is too permissive.
+    """
+
+    current_time = at or time.now(tz=time.TZ_CN)
+    limits: dict[int, int] = {}
+    for pool in pools:
+        start_time = normalize_peak_vote_time(pool.start_time)
+        end_time = normalize_peak_vote_time(pool.end_time)
+        if not start_time <= current_time <= end_time:
+            continue
+        for pet in pool.pets:
+            previous_limit = limits.get(pet.id)
+            if previous_limit is None or pool.count < previous_limit:
+                limits[pet.id] = pool.count
+    return limits
+
+
 def snapshot_peak_votes(
     votes: Iterable[PeakPoolVoteORM],
 ) -> tuple[PeakVoteSnapshot, ...]:

@@ -4,7 +4,15 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
@@ -14,7 +22,7 @@ from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import NormalizedIntList, csv_items, json_array
-from ironsbot.core.features import FeatureConfig
+from ironsbot.core.features import FeatureConfig, validate_feature_config
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -94,9 +102,9 @@ class LoggingConfig(BaseModel):
     file_enabled: bool = False
     file_level: str = "INFO"
     error_file_enabled: bool = False
-    rotation: str = "20 MB"
-    retention: str = "14 days"
-    compression: str | None = "zip"
+    rotation: str = "00:00"
+    retention: str = "30 days"
+    compression: str | None = None
 
     @field_validator("file_level")
     @classmethod
@@ -188,3 +196,28 @@ class Settings(BaseModel):
     pet_config: PetConfigConfig = Field(default_factory=PetConfigConfig)
     seer: SeerConfig = Field(default_factory=SeerConfig)
     operations: OperationsConfig = Field(default_factory=OperationsConfig)
+
+    @model_validator(mode="after")
+    def validate_registered_features(self) -> Settings:
+        try:
+            validate_feature_config(
+                self.features,
+                command_features=self.messaging.command_feature_keys,
+                schedule_features=self.messaging.schedule_feature_keys,
+            )
+        except ValueError as exc:
+            raise ValidationError.from_exception_data(
+                self.__class__.__name__,
+                [
+                    InitErrorDetails(
+                        type=PydanticCustomError(
+                            "feature_config",
+                            "{message}",
+                            {"message": str(exc)},
+                        ),
+                        loc=("features",),
+                        input=self.features.model_dump(),
+                    )
+                ],
+            ) from exc
+        return self

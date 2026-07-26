@@ -45,6 +45,17 @@ class HeadlessStateNotifier(Protocol):
     ) -> None: ...
 
 
+class HeadlessStateListener(Protocol):
+    async def __call__(
+        self,
+        *,
+        previous: bool | None,
+        connected: bool,
+        reason: str,
+        source: str,
+    ) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class HeadlessLoginRequest:
     user_id: int
@@ -56,6 +67,7 @@ class HeadlessLoginRequest:
     reconnect_delay: float
     reconnect_delay_max: float
     state_notifier: HeadlessStateNotifier
+    request_interval_seconds: float = 0.0
 
 
 class HeadlessGame(Protocol):
@@ -125,22 +137,26 @@ def _format_offline_duration(delta: timedelta | None) -> str:
 
 
 class HeadlessService:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - composed runtime dependencies
         self,
         client: HeadlessClient,
         connection: HeadlessConfig,
         notices: HeadlessNoticeConfig,
         admin_notices: AdminNoticeService,
         *,
+        request_interval_seconds: float = 0.0,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
         self._connection = connection
         self._notices = notices
         self._admin_notices = admin_notices
+        self._request_interval_seconds = max(request_interval_seconds, 0.0)
         self._now = now or (lambda: datetime.now(LOCAL_TZ))
         self._state = HeadlessState()
         self._state_lock = asyncio.Lock()
+        self._available = asyncio.Event()
+        self._state_listeners: list[HeadlessStateListener] = []
 
     @property
     def configured(self) -> bool:
@@ -167,6 +183,20 @@ class HeadlessService:
     def get_game(self) -> HeadlessGame:
         return self._client.get_client()
 
+    def add_state_listener(self, listener: HeadlessStateListener) -> None:
+        self._state_listeners.append(listener)
+
+    async def wait_until_available(self, *, timeout: float) -> HeadlessGame:
+        try:
+            return self.get_game()
+        except (DisconnectedError, NotLoggedInError):
+            pass
+        try:
+            await asyncio.wait_for(self._available.wait(), timeout=timeout)
+        except TimeoutError as error:
+            raise RuntimeError from error
+        return self.get_game()
+
     async def login(self) -> int:
         try:
             game = self._client.get_client()
@@ -182,15 +212,16 @@ class HeadlessService:
 
         game = await self._client.login(
             HeadlessLoginRequest(
-                user_id,
-                password,
-                self._connection.login_server_addr,
-                self._connection.heartbeat_interval,
-                self._connection.request_timeout_seconds,
-                self._connection.reconnect_retries,
-                self._connection.reconnect_delay,
-                self._connection.reconnect_delay_max,
-                self.mark_game_state,
+                user_id=user_id,
+                password=password,
+                login_server_url=self._connection.login_server_addr,
+                heartbeat_interval=self._connection.heartbeat_interval,
+                request_timeout_seconds=self._connection.request_timeout_seconds,
+                reconnect_retries=self._connection.reconnect_retries,
+                reconnect_delay=self._connection.reconnect_delay,
+                reconnect_delay_max=self._connection.reconnect_delay_max,
+                state_notifier=self.mark_game_state,
+                request_interval_seconds=self._request_interval_seconds,
             )
         )
         if not game.is_logged_in:
@@ -329,6 +360,17 @@ class HeadlessService:
             offline_since = self._state.offline_since
             self._state.connected = connected
             self._state.offline_since = None if connected else now
+            if connected:
+                self._available.set()
+            else:
+                self._available.clear()
+
+        await self._notify_state_listeners(
+            previous=previous,
+            connected=connected,
+            reason=reason,
+            source=source,
+        )
 
         if previous is None or not notify:
             return
@@ -364,3 +406,28 @@ class HeadlessService:
             interval_seconds=1.2,
             subscription_key="headless_seer_notice",
         )
+
+    async def _notify_state_listeners(
+        self,
+        *,
+        previous: bool | None,
+        connected: bool,
+        reason: str,
+        source: str,
+    ) -> None:
+        if not self._state_listeners:
+            return
+        try:
+            await asyncio.gather(
+                *(
+                    listener(
+                        previous=previous,
+                        connected=connected,
+                        reason=reason,
+                        source=source,
+                    )
+                    for listener in tuple(self._state_listeners)
+                )
+            )
+        except Exception:
+            logger.exception("headless state listener failed")

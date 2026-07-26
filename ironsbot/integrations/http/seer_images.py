@@ -56,6 +56,10 @@ _URLS: dict[ImageKind, tuple[str, ...]] = {
         "https://raw.githubusercontent.com/Murmansk-Seer/"
         "seer-unity-preview-img-dumper/main/img/preview.png",
     ),
+    "sign_buff": (
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png",
+    ),
     "suit": (
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
         "newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png",

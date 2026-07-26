@@ -7,9 +7,11 @@
 # 快速阅读顺序：
 # 1. [features.group_aliases] / [features.user_aliases]
 #    先给群号、QQ 号起短名字，后面策略里都用这些短名字。
-# 2. [features.group_policy] / [features.user_policy]
+# 2. [features.bundles]
+#    可选：把经常重复的功能清单定义成 standard、lite 等自定义组合。
+# 3. [features.group_policy] / [features.user_policy]
 #    决定每个群、每个私聊用户能使用哪些功能。
-# 3. [bilibili]、[messaging]、[pet_config]、[seer.*]、[operations.*]
+# 4. [bilibili]、[messaging]、[pet_config]、[seer.*]、[operations.*]
 #    分别配置 B 站推送、固定文本/退订/红包提醒、精灵配置图、赛尔查询、运行时同步/日志/重启等行为。
 #
 # 常用 feature key：
@@ -103,12 +105,12 @@ file_enabled = false
 file_level = "INFO"
 # Default: false; EN: Also write ERROR/CRITICAL logs to a separate file. ZH: 额外写入独立错误日志文件；只包含 ERROR/CRITICAL，便于排查崩溃。
 error_file_enabled = false
-# Default: "20 MB"; EN: Rotate log file when it reaches this size. ZH: 单个日志文件达到该大小后轮转。
-rotation = "20 MB"
-# Default: "14 days"; EN: Keep rotated logs for this duration. ZH: 轮转日志保留时间。
-retention = "14 days"
-# Default: "zip"; EN: Compress rotated logs. Set to "" or null to disable. ZH: 轮转旧日志压缩格式，设为空或 null 表示不压缩。
-compression = "zip"
+# Default: "00:00"; EN: Rotate at local midnight, producing one file per day. ZH: 每天本地时间 00:00 轮转，便于按日期查日志。
+rotation = "00:00"
+# Default: "30 days"; EN: Keep daily logs for this duration. ZH: 每日日志保留时间。
+retention = "30 days"
+# Default: null; EN: Do not compress old daily logs. Set "zip" to save space. ZH: 默认不压缩旧日志；磁盘空间紧张时可改为 "zip"。
+compression = ""
 
 [paths]
 # Default: "logs/ironsbot.log"
@@ -145,10 +147,53 @@ group_b = 876543210
 owner = 1234567890
 user_a = 2345678901
 
+[features.bundles]
+# Default: empty table
+# EN: Reusable feature bundles. Values may reference atomic features, built-in
+# bundles, another custom bundle, or a feature declared by a messaging action.
+# Names must not replace registered keys.
+# ZH: 可复用功能组合。值可引用单项功能、内置组合或其他自定义组合；
+# `messaging.commands` / `messaging.schedules` 声明的 feature 也可在这里引用。
+# 名称不能覆盖已有 feature。admin_notice 必须在目标策略中显式授予，不能放进组合。
+standard = [
+    "seer",
+    "player_lineup_private",
+    "image",
+    "web_activity_link",
+    "web_activity_push",
+    "seerinfo",
+    "bili_query",
+    "bili_push",
+    "seer_activity_query",
+    "seer_activity_push",
+    "server_status_query",
+    "ai_intent",
+    "ai_intent_fire_manual",
+    "ai_intent_team_recommend",
+]
+lite = [
+    "seer_pet",
+    "seer_player",
+    "player_lineup_private",
+    "seer_team",
+    "seer_equipment",
+    "seer_type",
+    "seer_peak",
+    "seer_autocard",
+    "seer_rank",
+    "seer_data",
+    "seer_activity_push",
+    "server_status_query",
+    "ai_intent",
+    "ai_intent_fire_manual",
+    "ai_intent_team_recommend",
+]
+
 [features.group_policy]
 # Default: empty table
-# EN: Group feature allowlist. Feature bundles include all, query, seer, bili,
-# seer_activity, server_status, text, text_push, and message. Seer sub-features:
+# EN: Group feature allowlist. Built-in bundles include all, query, seer, bili,
+# seer_activity, server_status, text, text_push, and message. Custom bundles are
+# defined above. Seer sub-features:
 # seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
 # seer_peak, seer_autocard, seer_rank, seer_data.
 # ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询功能组合；
@@ -165,7 +210,7 @@ user_a = 2345678901
 # 具体推送项可在 TD 菜单里分别退订。
 # 超级管理员是否绕过这些限制，由 [features].superuser_bypass 控制。
 # Example:
-# example = ["seer_pet", "pet_config", "seer_mintmark", "seer_autocard", "team_resource_subscription"]
+# example = ["standard", "team_resource_subscription"]
 
 [features.user_policy]
 # Default: empty table
@@ -360,23 +405,27 @@ notice_timeout_seconds = 8.0
 
 [bilibili]
 # B 站配置分三层：
-# 1. [bilibili.accounts] 是账号别名库，只负责定义 UID 和中文昵称，不代表一定推送。
-# 2. [bilibili.push].accounts 是默认推送账号，所有开启 bili_push 的群/用户都会收到。
-# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号。
+# 1. [bilibili.accounts.<别名>] 定义稳定账号别名和 UID，不代表一定监控或推送。
+# 2. [bilibili.push].accounts 是默认推送别名，所有开启 bili_push 的群/用户都会收到。
+# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号别名。
 # 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
-# 群主/管理员可以用“B站推送模式 <账号昵称>”临时覆盖当前群已订阅账号的推送形式。
+# QQ 展示使用 B 站接口返回的公开昵称，不在 TOML 中配置 nickname。
+# 模式命令支持账号别名、公开昵称或 UID。
 # Default: 300.0
 # EN: Cooldown for Bilibili login QR notices.
 # ZH: B 站登录二维码提醒冷却秒数。
 # Example: 600.0
 login_notice_cooldown_seconds = 300.0
 
-[bilibili.accounts]
-# Default: { seer = { uid = 1310714247, nickname = "赛尔号官方" } }
-# EN: Named Bilibili account library. Other Bilibili config references these names.
-# ZH: B 站账号别名库，其他 B 站配置均引用这些英文别名；nickname 只用于菜单展示。
-# Example: fire = { uid = 527589079, nickname = "火火" }
-seer = { uid = 1310714247, nickname = "赛尔号官方" }
+[bilibili.accounts.seer]
+# Default: 1310714247
+# EN: Bilibili UID referenced by the stable alias `seer`.
+# ZH: 稳定别名 `seer` 对应的 B 站 UID。
+uid = 1310714247
+
+# Add more accounts with unique aliases:
+# [bilibili.accounts.fire]
+# uid = 527589079
 
 [bilibili.storage]
 # Default: "data/bilibili_monitor"
@@ -412,21 +461,21 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 mode = "link"
 
 # Default: ["seer"]
-# EN: Accounts pushed to every group/private target that enables bili_push.
-# ZH: 所有开启 bili_push 的群/私聊默认推送的账号。
+# EN: Account aliases pushed to every target that enables bili_push.
+# ZH: 所有开启 bili_push 的群/私聊默认推送的账号别名。
 # Example: ["seer"]
 accounts = ["seer"]
 
 # Default: { seer = "full" }
 # EN: Global per-account push modes. Runtime admin overrides take priority.
-# ZH: 全局按账号指定推送模式；管理员在群内设置的运行时覆盖优先级更高。
+# ZH: 全局按账号别名指定推送模式；当前会话的运行时设置优先级更高。
 # Example: { seer = "full", fire = "link" }
 modes = { seer = "full" }
 
 # EN: Group owners/admins can override one account at runtime with:
-#     B站推送模式 <账号昵称> <内容|链接|默认>
-# ZH: 群主/管理员可在群内运行时修改某个账号的推送模式：
-#     B站推送模式 <账号昵称> <内容|链接|默认>
+#     B站推送模式 <alias|public name|UID> <full|link|default>
+# ZH: 群主/管理员或私聊用户可用别名、公开昵称或 UID 修改推送模式：
+#     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
 
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
@@ -449,37 +498,37 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 
 [messaging]
 # Default: []
-# EN: Private fixed command replies.
-# ZH: 私聊固定文本回复动作。
-# Example action fields: id, enabled, feature, message, commands.
-private_commands = []
-
-# Default: []
-# EN: Private scheduled messages.
-# ZH: 私聊定时文本动作。
-# Example action fields: id, name, enabled, feature, message, hour, minute, day_of_week.
-# `id` is required, must stay stable, and must be unique across all private/group
-# schedules. Renaming it resets TD and push-time preferences for that schedule.
-# `id` 必填，必须保持稳定，并且在所有私聊/群聊定时推送中全局唯一；
-# 修改 `id` 会重置该推送的 TD 和时间覆盖记录。
-# `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-private_schedules = []
-
-# Default: []
-# EN: Group fixed command replies.
-# ZH: 群聊固定文本回复动作。
+# EN: Fixed command replies. Each action is available in both private and group
+# chats; the feature user/group policies decide where it actually responds.
+# ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
+# `at_user_ids` only applies to group replies and is ignored in private chats.
 # Example action fields: id, enabled, feature, message, commands, at_user_ids.
-group_commands = []
+# `id` uniquely identifies the action. `feature` declares its permission key;
+# that key may then be referenced by features.bundles/group_policy/user_policy.
+# `id` 唯一标识这条动作；`feature` 同时声明它的权限名，随后可在
+# features.bundles/group_policy/user_policy 中引用，不需要修改 Python 代码。
+# Add each action with `[[messaging.commands]]`; omit this table when no action is needed.
+#
+# [[messaging.commands]]
+# id = "seerinfo_page"
+# commands = ["xm", "xrym", "雷小伊", "重聚"]
+# message = "https://seerinfo.yuyuqaq.cn/"
+# feature = "seerinfo_link"
 
 # Default: []
-# EN: Group scheduled messages.
-# ZH: 群聊定时文本动作。
-# Example action fields: id, name, enabled, feature, message, hour, minute,
-# day_of_week, at_user_ids.
-# `id` follows the same required, stable, globally unique rule described above.
-# `id` 同样必须遵守上面的必填、稳定、全局唯一规则。
+# EN: Scheduled text pushes. Each task delivers to users and groups where its
+# feature is enabled; `at_user_ids` only applies to group delivery.
+# ZH: 定时文本推送默认同时面向私聊和群聊；feature 在用户/群策略中启用后才会投递。
+# Like command actions, a schedule's feature is registered from TOML and may
+# be referenced by bundles and target policies.
+# 与命令动作相同，定时动作的 feature 会从 TOML 注册，可被组合和目标策略引用。
+# `id` is required, must stay stable, and must be globally unique. Renaming it
+# resets TD and push-time preferences for that schedule.
+# `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-group_schedules = []
+# Example task fields: id, name, enabled, feature, message, hour, minute,
+# day_of_week, at_user_ids.
+# Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
@@ -685,6 +734,7 @@ in_progress_message = "该命令正在处理中，请等待当前操作完成。
 # seer_player_collection = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_player_peak = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_player_autocard = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
+# player_lineup_private = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_rank_score = []
 
 [seer.player]
@@ -701,6 +751,77 @@ sections = ["all"]
 # EN: Stores each QQ user's default Seer player ID and first-query choice.
 # ZH: 保存每个 QQ 用户的默认米米号及首次查询选择。
 path = "data/seer/player_bindings.sqlite"
+# Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
+# ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
+change_cooldown_days = 3
+
+[seer.player.query_limits]
+# EN: Persistent daily budgets for live player-related queries, reset by Beijing date.
+# ZH: 玩家相关实时查询的每日额度，按北京时间自然日重置。
+enabled = true
+# EN: Total daily live queries for a user's current default player ID. Complete cache hits remain available after exhaustion.
+# ZH: 查询当前默认米米号实时数据的每日总次数；额度耗尽后仍可读取已有完整缓存。
+bound_default_daily_limit = 10
+# EN: Daily live queries for one other player ID and one query type.
+# ZH: 实时查询同一个其他米米号的同一种数据，每日最多次数。
+other_target_action_daily_limit = 1
+# EN: Total daily live player-related queries before a default player ID is bound.
+# ZH: 尚未绑定默认米米号时，玩家相关实时查询的每日总次数。
+unbound_daily_limit = 1
+# EN: Whether superusers bypass these daily budgets.
+# ZH: 超级管理员是否绕过每日额度。
+superuser_bypass = true
+# EN: SQLite state file for daily usage records.
+# ZH: 每日查询额度记录的 SQLite 文件。
+path = "data/seer/player_query_limits.sqlite"
+
+[seer.player.request_protection]
+# Default: true. EN: Serialize live player-related requests to one workflow at a time.
+# ZH: 默认开启。所有玩家相关实时请求同时只执行一个，避免无头客户端并发封包。
+enabled = true
+# Default: 3. EN: Maximum normal-user requests waiting behind the active request.
+# ZH: 普通用户最多可等待的请求数；正在执行的请求不计入。超级管理员可优先插队。
+max_queued_queries = 3
+# Default: 1.2. EN: Minimum spacing between every headless game packet in seconds.
+# ZH: 所有无头赛尔号封包之间的最小间隔秒数；调低会更快，但更容易触发远端断连。
+base_request_interval_seconds = 1.2
+# Default: 60.0. EN: Pause ordinary player queries after a confirmed disconnect.
+# ZH: 确认无头连接断开后，普通玩家查询暂停秒数。
+disconnect_pause_seconds = 60.0
+# Default: 600.0. EN: Window used to detect a repeated disconnect.
+# ZH: 在这段秒数内再次断线，使用下面更长的暂停时间。
+repeat_disconnect_window_seconds = 600.0
+# Default: 300.0. EN: Pause ordinary player queries after a repeated disconnect.
+# ZH: 重复断线后的普通玩家查询暂停秒数。
+repeat_disconnect_pause_seconds = 300.0
+# Default: true. EN: Let superusers wait ahead of normal queued player queries.
+# ZH: 超级管理员请求优先于普通等待队列，但不会打断正在发送的封包。
+superuser_priority = true
+# Default: true. EN: Let superusers wait for automatic reconnect instead of the fixed pause.
+# ZH: 超级管理员跳过固定暂停时间，改为等待无头客户端自动重连；不会强行发送封包。
+superuser_bypass_pause = true
+
+[seer.player.background_refresh]
+# Default: false. When true, a successful “米米号” query warms collection,
+# peak and autocard data in the background. It never blocks the basic reply.
+# ZH: 默认关闭。开启后，成功查询米米号会在后台预热收集、巅峰和群星牌数据；
+# 不会阻塞基础资料回复。频繁查询会增加无头客户端请求量，请谨慎开启。
+enabled = false
+# Default: 300.0; EN: In-memory prefetch result lifetime in seconds.
+# ZH: 后台预热结果在内存中的保留秒数。
+cache_ttl_seconds = 300.0
+
+# [seer.player.lineup] moved to operations.private_extensions.settings.player_lineup
+# The public image renders a labelled blank 12-slot preview. Real lineup data
+# is available only after the optional private extension package is installed.
+# The extension reuses this bot's one headless Seer login; it does not start a
+# second API container or a second login.
+# Default: 15.0; EN: In-process private lineup packet timeout seconds. ZH: 私有阵容封包超时秒数。
+# timeout_seconds = 15.0
+# Default: "data/seer/player_lineup_cache.sqlite"
+# EN: Persists each player's last successful lineup reply without automatic expiry.
+# ZH: 永久保存每个玩家最后一次成功阵容结果；实时查询成功时覆盖。
+# cache_path = "data/seer/player_lineup_cache.sqlite"
 
 [seer.team]
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
@@ -863,6 +984,19 @@ autocard_name = "群星牌赛季"
 # ZH: 可选的群星牌赛季结束时间；填写后“赛季倒计时”会显示群星牌剩余时间。
 # autocard_end_time = 2026-07-17T10:00:00+08:00
 
+[seer.achievement_history]
+# Default: "data/seer/achievement_history.sqlite"
+# EN: Official ConfigPackage snapshots used by the "新增成就/新成就" comparison.
+# ZH: “新增成就/新成就”的官方配置包快照数据库；首次启用会先建立基线。
+path = "data/seer/achievement_history.sqlite"
+# Default: 32; EN: Number of official ConfigPackage snapshots retained.
+# ZH: 保留的官方配置包版本数量。
+max_snapshots = 32
+# Default: 4
+# EN: Baselines must predate the current official package by this many days.
+# ZH: 分别使用最近周五周期和指定天数回溯基线，结果按成就 ID 合并去重。
+baseline_lookback_days = 4
+
 [seer.local_rank]
 # Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
 enabled = true
@@ -960,6 +1094,8 @@ local_path = "data/ironsbot-data.sqlite"
 
 [operations.data_sync.sources.seerapi.remote_build]
 # Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
+# EN: Each step reuses a recent queued/running workflow by default to avoid duplicate builds.
+# ZH: 每个步骤默认会复用最近正在排队/运行的同 workflow，避免重复触发导致排队变慢。
 enabled = true
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
@@ -1081,6 +1217,35 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
+
+[operations.private_extensions]
+# Optional private extension package. The main Unraid/Docker image remains
+# murmansk5000/ironsbot:latest; when enabled, startup pulls this package through
+# the mounted Docker socket, validates its manifest, and installs it under /app/data.
+# Default: false; EN: Enable the private extension package. ZH: 启用私有扩展包。
+enabled = false
+# Default: "murmansk5000/ironsbot-private:latest"; EN: Private extension package image.
+# ZH: 私有扩展包镜像，不是机器人主镜像。
+image = "murmansk5000/ironsbot-private:latest"
+# Default: "/ironsbot_extensions"; EN: Read-only package directory inside that image.
+# ZH: 私有镜像内的只读扩展包目录。
+archive_path = "/ironsbot_extensions"
+# Default: "data/private_extensions"; EN: Installed package cache under /app/data.
+# ZH: 解包后的扩展缓存目录，会保留最后一次校验成功的版本。
+data_path = "data/private_extensions"
+# Default: 60.0; EN: Startup pull and archive-read timeout seconds.
+# ZH: 启动时拉取和读取扩展包的超时秒数；失败不会阻止机器人启动。
+timeout_seconds = 60.0
+
+# Private-only values are passed through without public schema knowledge.
+[operations.private_extensions.settings.player_lineup]
+timeout_seconds = 15.0
+cache_path = "data/seer/player_lineup_cache.sqlite"
+
+# Set DOCKER_REGISTRY_USERNAME and DOCKER_REGISTRY_TOKEN as Unraid/Docker
+# environment variables when the extension image is private. Do not put those
+# registry credentials in TOML. The same credentials are reused for Docker
+# image updates and private extension pulls.
 
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。

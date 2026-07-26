@@ -26,4 +26,11 @@ except (TOMLDecodeError, ValidationError, TypeError, ValueError) as error:
     raise SystemExit(CONFIG_LOAD_ERROR_EXIT_CODE) from None
 
 if __name__ == "__main__":
-    nonebot.run(app=application.asgi)
+    # Prefer the pure-Python Uvicorn runtime. It avoids optional native event-loop
+    # and protocol accelerators while diagnosing production ExitCode=139 crashes.
+    nonebot.run(
+        app=application.asgi,
+        loop="asyncio",
+        http="h11",
+        ws="websockets-sansio",
+    )

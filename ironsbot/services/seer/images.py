@@ -14,6 +14,7 @@ ImageKind = Literal[
     "pet_body",
     "pet_head",
     "preview",
+    "sign_buff",
     "suit",
     "title",
 ]

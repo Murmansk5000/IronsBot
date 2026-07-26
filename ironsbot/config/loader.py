@@ -27,6 +27,14 @@ _SECRET_ENV_PATHS = (
     ("HEADLESS_SEER_PASSWORD", ("operations", "headless", "password")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
     ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
+    (
+        "DOCKER_REGISTRY_USERNAME",
+        ("operations", "docker_update", "registry_username"),
+    ),
+    (
+        "DOCKER_REGISTRY_TOKEN",
+        ("operations", "docker_update", "registry_token"),
+    ),
 )
 
 

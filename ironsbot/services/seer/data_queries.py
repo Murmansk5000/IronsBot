@@ -12,6 +12,9 @@ from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeasonCountdownConfig
+    from ironsbot.services.seer.achievement_history import (
+        AchievementHistoryService,
+    )
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
 
@@ -25,10 +28,12 @@ class SeerDataQueryService:
         data: SeerDataAccess,
         images: SeerImageSource,
         season: SeasonCountdownConfig,
+        achievement_history: AchievementHistoryService,
     ) -> None:
         self._data = data
         self._images = images
         self._season = season
+        self._achievement_history = achievement_history
 
     async def weekly_preview(self) -> DataQueryReply:
         with self._data.query(load_weekly_preview_links) as links:
@@ -54,6 +59,9 @@ class SeerDataQueryService:
         operation = partial(format_season_countdown, config=self._season)
         with self._data.query(operation) as message:
             return message
+
+    async def new_achievements(self) -> str:
+        return await self._achievement_history.new_achievements()
 
     async def _fallback_preview(self) -> DataQueryReply:
         try:

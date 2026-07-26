@@ -44,6 +44,7 @@ from ironsbot.plugins.team import resource
 
 TEAM_ID = 1234567
 TEAM_THRESHOLD = 2000
+GROUP_ID = 456
 TEST_RUNTIME = build_test_runtime(
     feature_config=FeatureConfig(
         group_policy={"456": ["team_resource_subscription"]},
@@ -238,7 +239,7 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
     store = TeamResourceSubscriptionStore(config.subscription_path)
     store.upsert(
         TeamResourceSubscriptionUpdate(
-            group_id=456,
+            group_id=GROUP_ID,
             team_id=TEAM_ID,
             team_name="示例战队",
             threshold=1000,
@@ -259,8 +260,11 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
     async def fake_query(
         _self: TeamResourceService,
         team_id: int,
+        *,
+        group_id: int | None = None,
     ) -> TeamResourceResult:
         assert team_id == TEAM_ID
+        assert group_id == GROUP_ID
         return TeamResourceResult(TEAM_ID, "示例战队", "", 500)
 
     async def fake_send_target_messages(

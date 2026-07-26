@@ -46,6 +46,11 @@ def install(group: SeerMatcherGroup) -> None:
         ("下周预告", "seer_data_preview", service.weekly_preview),
         ("数据版本", "seer_data_version", service.data_version),
         (
+            ("新增成就", "新成就"),
+            "seer_data_new_achievements",
+            service.new_achievements,
+        ),
+        (
             ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
             "seer_season_countdown",
             service.season_countdown,

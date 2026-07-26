@@ -94,7 +94,11 @@ async def _handle_list(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    message = await service.list(state[RANK_LIST_COMMAND_KEY])
+    message = await service.list(
+        state[RANK_LIST_COMMAND_KEY],
+        qq_user_id=event.user_id,
+        group_id=event_group_id(event),
+    )
     await finish_event_reply(matcher, event, message)
 
 
@@ -107,6 +111,7 @@ async def _handle_score(
     message = await service.score(
         state[RANK_SCORE_COMMAND_KEY],
         group_id=event_group_id(event),
+        qq_user_id=event.user_id,
     )
     await finish_event_reply(matcher, event, message)
 
@@ -117,7 +122,11 @@ async def _handle_player(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    message = await service.player(state[RANK_PLAYER_COMMAND_KEY])
+    message = await service.player(
+        state[RANK_PLAYER_COMMAND_KEY],
+        qq_user_id=event.user_id,
+        group_id=event_group_id(event),
+    )
     await finish_event_reply(matcher, event, message)
 
 

@@ -12,16 +12,13 @@ from ironsbot.services.operations.headless_errors import (
     SocketRecvError,
 )
 from ironsbot.services.seer.errors import format_socket_recv_error
+from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamQueryConfig
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.team.resource import TeamResourceService
-
-TEAM_ID_MIN = 100_000
-TEAM_ID_MAX = 2_000_000_000
-
 
 @dataclass(frozen=True, slots=True)
 class TeamQueryActor:
@@ -45,13 +42,7 @@ class SeerTeamQueryService:
 
     @staticmethod
     def parse_team_ids(text: str) -> tuple[int, ...]:
-        return tuple(
-            dict.fromkeys(
-                team_id
-                for item in re.findall(r"\d+", text)
-                if TEAM_ID_MIN <= (team_id := int(item)) <= TEAM_ID_MAX
-            )
-        )
+        return tuple(dict.fromkeys(int(item) for item in re.findall(r"\d+", text)))
 
     async def query(
         self,
@@ -61,8 +52,14 @@ class SeerTeamQueryService:
         messages: list[str] = []
         subscription_prompt: str | None = None
         for team_id in team_ids:
+            if not is_valid_team_id(team_id):
+                messages.append(TEAM_ID_ERROR_MESSAGE)
+                continue
             try:
-                message, team_info = await self._query_one(team_id)
+                message, team_info = await self._query_one(
+                    team_id,
+                    group_id=actor.group_id,
+                )
             except (NotLoggedInError, DisconnectedError) as error:
                 await self._headless.mark_unavailable(
                     str(error),
@@ -92,12 +89,18 @@ class SeerTeamQueryService:
             messages.append(subscription_prompt)
         return "\n\n".join(messages)
 
-    async def _query_one(self, team_id: int) -> tuple[str, Any]:
+    async def _query_one(
+        self,
+        team_id: int,
+        *,
+        group_id: int | None,
+    ) -> tuple[str, Any]:
         game = self._headless.get_game()
         with game.operations.track(
             "战队查询",
             f"战队 {team_id}",
             source="战队查询",
+            group_id=group_id,
         ):
             team_info = await asyncio.wait_for(
                 game.get_team_info(team_id),

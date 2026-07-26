@@ -1,6 +1,8 @@
+import asyncio
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 
 import nonebot
 
@@ -53,6 +55,22 @@ class FakeScheduler:
 
     def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+
+class FakeHeadless:
+    def get_game(self) -> object:
+        return object()
+
+
+class FakeRefreshService:
+    def __init__(self, config: object, result: object) -> None:
+        self.config = config
+        self._result = result
+        self.background_calls: list[bool] = []
+
+    async def refresh(self, _game: object, *, background: bool = False) -> object:
+        self.background_calls.append(background)
+        return self._result
 
 
 def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
@@ -121,3 +139,30 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "jitter": 240,
         },
     ]
+
+
+def test_scheduled_refreshes_use_background_priority() -> None:
+    async def run() -> None:
+        headless = FakeHeadless()
+        local = FakeRefreshService(
+            SimpleNamespace(auto_refresh=True),
+            SimpleNamespace(total=1, success=1, skipped_full=0, failed=0),
+        )
+        pages = FakeRefreshService(
+            SimpleNamespace(enabled=True, active_start="", active_end=""),
+            SimpleNamespace(total=1, success=1, failed=0),
+        )
+
+        await seer_runtime._scheduled_local_rank_refresh(
+            cast("Any", headless),
+            cast("Any", local),
+        )
+        await seer_runtime._scheduled_rank_page_refresh(
+            cast("Any", headless),
+            cast("Any", pages),
+        )
+
+        assert local.background_calls == [True]
+        assert pages.background_calls == [True]
+
+    asyncio.run(run())

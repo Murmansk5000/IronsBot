@@ -16,6 +16,7 @@ from ironsbot.services.seer.peak import (
     PeakPetSnapshot,
     PeakPoolSnapshot,
     PeakQueryService,
+    active_peak_pool_limits,
 )
 
 if TYPE_CHECKING:
@@ -74,6 +75,41 @@ class FakeHeadless:
         if self.error is not None:
             raise self.error
         return self.game
+
+
+def test_active_peak_pool_limits_uses_only_current_pools_and_strictest_limit() -> None:
+    current_time = datetime(2026, 7, 22, tzinfo=time.TZ_CN)
+    pet_one = PeakPetSnapshot(id=1, name="One", resource_id=1, type_id=1)
+    pet_two = PeakPetSnapshot(id=2, name="Two", resource_id=2, type_id=1)
+
+    limits = active_peak_pool_limits(
+        (
+            PeakPoolSnapshot(
+                id=1,
+                count=3,
+                start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+                end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+                pets=(pet_one, pet_two),
+            ),
+            PeakPoolSnapshot(
+                id=2,
+                count=2,
+                start_time=datetime(2026, 7, 10, tzinfo=time.TZ_CN),
+                end_time=datetime(2026, 7, 25, tzinfo=time.TZ_CN),
+                pets=(pet_one,),
+            ),
+            PeakPoolSnapshot(
+                id=3,
+                count=0,
+                start_time=datetime(2026, 6, 1, tzinfo=time.TZ_CN),
+                end_time=datetime(2026, 6, 30, tzinfo=time.TZ_CN),
+                pets=(pet_two,),
+            ),
+        ),
+        at=current_time,
+    )
+
+    assert limits == {1: 2, 2: 3}
 
 
 def _service(

@@ -54,6 +54,7 @@ class ClientManager:
                 reconnect_retries=request.reconnect_retries,
                 reconnect_delay=request.reconnect_delay,
                 reconnect_delay_max=request.reconnect_delay_max,
+                request_interval_seconds=request.request_interval_seconds,
                 state_notifier=request.state_notifier,
                 operations=self._operations,
                 spawn=self._spawn,
