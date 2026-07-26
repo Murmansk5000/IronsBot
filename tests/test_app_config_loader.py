@@ -704,3 +704,24 @@ def test_app_config_defaults_cover_runtime_services() -> None:
         app_config.seer.render.cache_max_size_mb
         == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
     )
+
+
+def test_achievement_history_lookback_days_can_be_configured(
+    tmp_path: Path,
+) -> None:
+    expected_lookback_days = 6
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.achievement_history]
+baseline_lookback_days = 6
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert (
+        config.seer.achievement_history.baseline_lookback_days
+        == expected_lookback_days
+    )
