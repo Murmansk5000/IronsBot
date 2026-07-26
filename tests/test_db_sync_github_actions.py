@@ -100,6 +100,7 @@ def _config() -> RemoteBuildConfig:
         ref="main",
         timeout_seconds=30,
         poll_interval_seconds=0.01,
+        reuse_existing_run=False,
     )
 
 
@@ -111,6 +112,7 @@ def _config_with_inputs() -> RemoteBuildConfig:
         ref="main",
         timeout_seconds=30,
         poll_interval_seconds=0.01,
+        reuse_existing_run=False,
         inputs={"debug_enabled": False},
     )
 
@@ -147,6 +149,23 @@ def test_trigger_and_wait_workflow_returns_success() -> None:
         message="GitHub workflow completed successfully",
     )
     assert client.posts[0]["json"] == {"ref": "main"}
+
+
+def test_trigger_and_wait_workflow_reuses_existing_run() -> None:
+    config = _config().model_copy(update={"reuse_existing_run": True})
+    client = FakeGitHubClient(
+        [
+            {"workflow_runs": [_run_payload(status="in_progress", conclusion=None)]},
+            _run_payload(status="completed", conclusion="success"),
+        ]
+    )
+
+    result = asyncio.run(
+        trigger_and_wait_workflow(config, token="token", client=client)
+    )
+
+    assert result.ok
+    assert client.posts == []
 
 
 def test_trigger_and_wait_workflow_returns_failure() -> None:

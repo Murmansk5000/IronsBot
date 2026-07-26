@@ -102,10 +102,10 @@ async def run_remote_build(  # noqa: PLR0913
     if not token:
         results[name] = remote_build_failure(
             config=config,
-            message="缺少 IRONSBOT_GITHUB_TOKEN，未触发远程构建",
+            message="缺少 GITHUB_WORKFLOW_TOKEN，未触发远程构建",
         )
         logger.warning(
-            f"数据库 '{name}' 远程构建已启用，但未配置 IRONSBOT_GITHUB_TOKEN"
+            f"数据库 '{name}' 远程构建已启用，但未配置 GITHUB_WORKFLOW_TOKEN"
         )
         return False
 

@@ -28,13 +28,13 @@ def _subprocess_env() -> dict[str, str]:
     }
     env.update(
         {
-            "IRONSBOT_AI_KEY": "",
-            "IRONSBOT_CONFIG": str(ROOT / "config.example.toml"),
-            "IRONSBOT_GITHUB_TOKEN": "",
-            "IRONSBOT_ONEBOT_TOKEN": "",
-            "IRONSBOT_SEER_PASSWORD": "",
-            "IRONSBOT_SEER_USER_ID": "",
-            "IRONSBOT_SENDPIC_TOKEN": "",
+            "AI_KEY": "",
+            "APP_CONFIG_PATH": str(ROOT / "config.example.toml"),
+            "GITHUB_WORKFLOW_TOKEN": "",
+            "ONEBOT_ACCESS_TOKEN": "",
+            "HEADLESS_SEER_PASSWORD": "",
+            "HEADLESS_SEER_USER_ID": "",
+            "SENDPIC_CNB_TOKEN": "",
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONIOENCODING": "utf-8",
             "PYTHONPATH": str(ROOT),
