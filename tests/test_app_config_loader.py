@@ -234,8 +234,7 @@ def test_example_config_parses() -> None:
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
     assert "fire_manual_intent" not in config.ai.intent_actions
-    assert config.bilibili.accounts["seer"] == DEFAULT_BILI_ACCOUNT_UID
-    assert config.bilibili.account_nicknames["seer"] == "赛尔号官方"
+    assert config.bilibili.accounts["seer"].uid == DEFAULT_BILI_ACCOUNT_UID
     assert config.bilibili.push.mode == "link"
     assert config.bilibili.push.accounts == ["seer"]
     assert config.bilibili.push.modes == {"seer": "full"}

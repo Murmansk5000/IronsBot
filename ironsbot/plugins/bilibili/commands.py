@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.rules import no_reply
 
 from .account_commands import (
@@ -42,7 +42,7 @@ def install(
         block=True,
     )
     dynamic_menu.append_handler(
-        partial(
+        bind_async(
             handle_dynamic_menu_action,
             service=service,
             monitor=monitor,
@@ -56,7 +56,7 @@ def install(
         block=True,
     )
     update_dynamic.append_handler(
-        partial(
+        bind_async(
             handle_update_dynamic_action,
             features=features,
             monitor=monitor,
@@ -70,7 +70,7 @@ def install(
         block=True,
     )
     bili_account.append_handler(
-        partial(handle_bili_accounts_action, targets=targets)
+        bind_async(handle_bili_accounts_action, targets=targets)
     )
 
     push_mode = registry.on_message(
@@ -80,7 +80,7 @@ def install(
         block=True,
     )
     push_mode.append_handler(
-        partial(
+        bind_async(
             handle_bili_push_mode_action,
             features=features,
             targets=targets,
