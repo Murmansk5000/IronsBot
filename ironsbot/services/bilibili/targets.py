@@ -7,11 +7,9 @@ from ironsbot.core.bilibili import (
 )
 from ironsbot.core.features import FeatureService
 from ironsbot.services.bilibili.accounts import (
-    account_display_label,
-    account_nickname,
+    BiliAccountNames,
     account_uid,
-    bili_accounts,
-    resolve_account_reference,
+    normalize_account_alias,
 )
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
@@ -31,35 +29,22 @@ def _unique_ints(values: list[int]) -> list[int]:
     return list(dict.fromkeys(item for item in values if item > 0))
 
 
+ACCOUNT_NAMES_UNAVAILABLE = (
+    "❌ 暂时无法获取当前会话订阅账号的 B站公开昵称，请稍后重试。"
+)
+
+
 @dataclass(frozen=True, slots=True)
 class BiliTargetRule:
-    accounts: frozenset[str]
+    aliases: frozenset[str]
     uids: frozenset[int]
-    uid_accounts: dict[int, str]
     mode: BiliPushMode
-    modes: dict[str, BiliPushMode]
-    account_nicknames: dict[str, str] = field(default_factory=dict)
+    modes: dict[int, BiliPushMode]
 
     def mode_for_uid(self, uid: int) -> BiliPushMode | None:
         if uid not in self.uids:
             return None
-        account = self.account_for_uid(uid)
-        if account is None:
-            return self.mode
-        return self.modes.get(account, self.mode)
-
-    def account_for_uid(self, uid: int) -> str | None:
-        return self.uid_accounts.get(uid)
-
-    def label_for_uid(self, uid: int) -> str:
-        account = self.account_for_uid(uid)
-        if account is None:
-            return str(int(uid))
-        nickname = self.account_nicknames.get(account)
-        if nickname:
-            return f"{nickname}\uff08{int(uid)}\uff09"
-        return f"{account}\uff08{int(uid)}\uff09"
-
+        return self.modes.get(uid, self.mode)
 
 @dataclass(frozen=True, slots=True)
 class BiliPushTargets:
@@ -80,7 +65,7 @@ class BiliPushTargets:
         )
 
 
-def _target_accounts(
+def _target_aliases(
     target_config: BiliPushTargetConfig,
     config: BiliConfig,
 ) -> frozenset[str]:
@@ -92,32 +77,29 @@ def _target_accounts(
     )
 
 
+def _resolve_modes(
+    modes: dict[str, BiliPushMode],
+    config: BiliConfig,
+) -> dict[int, BiliPushMode]:
+    return {
+        config.accounts[alias].uid: mode
+        for alias, mode in modes.items()
+    }
+
+
 def _resolve_rule(
     target_config: BiliPushTargetConfig,
     config: BiliConfig,
 ) -> BiliTargetRule:
-    accounts = _target_accounts(target_config, config)
-    account_to_uid = {
-        account: config.accounts[account]
-        for account in accounts
-    }
-    uid_accounts = {
-        uid: account
-        for account, uid in account_to_uid.items()
-        if uid > 0
-    }
-    account_nicknames = {
-        account: nickname
-        for account in accounts
-        if (nickname := config.account_nicknames.get(account))
-    }
+    aliases = _target_aliases(target_config, config)
     return BiliTargetRule(
-        accounts=accounts,
-        uids=frozenset(uid for uid in account_to_uid.values() if uid > 0),
-        uid_accounts=uid_accounts,
-        account_nicknames=account_nicknames,
+        aliases=aliases,
+        uids=frozenset(config.accounts[alias].uid for alias in aliases),
         mode=target_config.mode or config.push.mode,
-        modes={**config.push.modes, **target_config.modes},
+        modes={
+            **_resolve_modes(config.push.modes, config),
+            **_resolve_modes(target_config.modes, config),
+        },
     )
 
 
@@ -127,13 +109,8 @@ def _default_rule(config: BiliConfig) -> BiliTargetRule:
 
 def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTargetRule:
     return BiliTargetRule(
-        accounts=old_rule.accounts | new_rule.accounts,
+        aliases=old_rule.aliases | new_rule.aliases,
         uids=old_rule.uids | new_rule.uids,
-        uid_accounts={**old_rule.uid_accounts, **new_rule.uid_accounts},
-        account_nicknames={
-            **old_rule.account_nicknames,
-            **new_rule.account_nicknames,
-        },
         mode=new_rule.mode,
         modes={**old_rule.modes, **new_rule.modes},
     )
@@ -177,6 +154,7 @@ class BiliTargetService:
     features: FeatureService
     preferences: BiliPushPreferenceStore
     unsubscribe_store: PushSubscriptionRepository
+    account_names: BiliAccountNames = field(default_factory=BiliAccountNames)
 
     def configured_group_rules(self) -> dict[int, BiliTargetRule]:
         return _resolve_group_rules(self.features, self.config)
@@ -249,19 +227,6 @@ class BiliTargetService:
             or rule.mode
         )
 
-    def mode_for_account(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        account: str,
-    ) -> BiliPushMode | None:
-        uid = account_uid(account, self.config)
-        return (
-            self.mode_for_uid(target_type, target_id, uid)
-            if uid is not None
-            else None
-        )
-
     def target_rule(
         self,
         target_type: PushTargetType,
@@ -285,59 +250,69 @@ class BiliTargetService:
         return [
             PushSubscriptionOption(
                 key=(key := bili_push_subscription_key(uid)),
-                label=bili_push_subscription_label(uid, rule.label_for_uid(uid)),
+                label=bili_push_subscription_label(
+                    uid,
+                    self.account_names.name_for_uid(uid),
+                ),
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
             )
             for uid in sorted(rule.uids)
         ]
 
-    def account_summary(
+    async def prepare_account_names(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> str | None:
+        rule = self.target_rule(target_type, target_id)
+        if rule is None:
+            return None
+        if await self.account_names.refresh(rule.uids):
+            return None
+        return ACCOUNT_NAMES_UNAVAILABLE
+
+    async def account_summary(
         self,
         target_type: PushTargetType,
         target_id: int,
     ) -> str:
-        accounts = bili_accounts(self.config)
-        lines = [
-            "📺【B站账号】",
-            "账号库："
-            + "、".join(
-                (
-                    f"{nickname}（{uid}）"
-                    if (nickname := account_nickname(name, self.config))
-                    else f"{name}={uid}"
-                )
-                for name, uid in accounts.items()
-            ),
-        ]
+        lines = ["📺【B站账号】"]
         rule = self.target_rule(target_type, target_id)
         if rule is None:
             lines.append("当前会话未开启 B站推送。")
+            return "\n".join(lines)
+        if error := await self.prepare_account_names(target_type, target_id):
+            lines.append(error)
             return "\n".join(lines)
 
         unsubscribed = self.unsubscribe_store.target_unsubscribed_keys(
             target_type,
             target_id,
         )
-        lines.append("当前订阅：")
-        for account in sorted(rule.accounts):
-            uid = accounts[account]
-            mode = self.mode_for_account(target_type, target_id, account)
+        scope = "当前群" if target_type == "group" else "当前私聊"
+        lines.append(f"{scope}订阅：")
+        for uid in sorted(rule.uids):
+            mode = self.mode_for_uid(target_type, target_id, uid)
             td_text = (
                 "，已 TD"
                 if bili_push_subscription_key(uid) in unsubscribed
                 else ""
             )
+            account_name = self.account_names.name_for_uid(uid)
+            if account_name is None:
+                return "\n".join([*lines, ACCOUNT_NAMES_UNAVAILABLE])
             lines.append(
-                f"- {account_display_label(account, self.config, uid=uid)}："
-                f"{push_mode_label(mode)}{td_text}"
+                f"- {account_name}：{push_mode_label(mode)}{td_text}"
             )
+        manager = "群主/管理员可发送" if target_type == "group" else "可发送"
         lines.append(
-            "群主/管理员可发送：B站推送模式 <账号昵称> <内容|链接|默认>"
+            f"{manager}：B站推送模式 <账号别名|公开昵称|UID> "
+            "<内容|链接|默认>"
         )
         return "\n".join(lines)
 
-    def update_push_mode(
+    async def update_push_mode(
         self,
         target_type: PushTargetType,
         target_id: int,
@@ -347,16 +322,30 @@ class BiliTargetService:
         if not account_ref.strip() or not raw_mode.strip():
             return _push_mode_usage()
 
-        account = resolve_account_reference(account_ref, self.config)
-        uid = account_uid(account, self.config) if account is not None else None
-        if account is None or uid is None:
-            return f"❌ 未知 B站账号：{account_ref}\n可发送“B站账号”查看账号库。"
-
         rule = self.target_rule(target_type, target_id)
-        if self.mode_for_account(target_type, target_id, account) is None:
-            return f"❌ 当前会话没有订阅 B站账号：{account_ref}。"
-        if rule is None or account not in rule.accounts:
-            return _push_mode_usage()
+        if rule is None:
+            return "❌ 当前会话未开启 B站推送。"
+
+        alias = normalize_account_alias(account_ref)
+        uid = (
+            account_uid(alias, self.config)
+            if alias in rule.aliases
+            else None
+        )
+        if uid is None:
+            uid = self.account_names.resolve(account_ref, rule.uids)
+        if uid is None:
+            if error := await self.prepare_account_names(
+                target_type,
+                target_id,
+            ):
+                return error
+            uid = self.account_names.resolve(account_ref, rule.uids)
+        if uid is None or self.mode_for_uid(target_type, target_id, uid) is None:
+            return (
+                "❌ 当前会话没有订阅该 B站账号。\n"
+                "可发送“B站账号”查看当前会话订阅。"
+            )
 
         try:
             mode = normalize_push_mode_text(raw_mode)
@@ -368,11 +357,13 @@ class BiliTargetService:
         else:
             self.preferences.set_mode(target_type, target_id, uid, mode)
 
-        effective_mode = self.mode_for_account(target_type, target_id, account)
+        effective_mode = self.mode_for_uid(target_type, target_id, uid)
         scope = "当前群" if target_type == "group" else "当前私聊"
-        account_text = account_display_label(account, self.config, uid=uid)
+        await self.account_names.refresh([uid])
+        account_name = self.account_names.name_for_uid(uid)
+        account_text = f"“{account_name}”" if account_name else ""
         return (
-            f"已设置{scope} B站账号 {account_text}推送模式："
+            f"已设置{scope} B站账号{account_text}的推送模式："
             f"{push_mode_label(mode)}。\n"
             f"当前生效模式：{push_mode_label(effective_mode)}。"
         )
@@ -406,8 +397,8 @@ class BiliTargetService:
 
 def _push_mode_usage() -> str:
     return (
-        "用法：B站推送模式 <账号昵称> <内容|链接|默认>\n"
-        "例：B站推送模式 赛尔号官方 链接\n"
-        "例：B站推送模式 火火 内容\n"
-        "例：B站推送模式 火火 默认"
+        "用法：B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>\n"
+        "例：B站推送模式 赛尔号官号 链接\n"
+        "例：B站推送模式 赛尔号官号 内容\n"
+        "例：B站推送模式 赛尔号官号 默认"
     )

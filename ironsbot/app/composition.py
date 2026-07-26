@@ -23,6 +23,7 @@ from ironsbot.integrations.htmlkit import render_html_template
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.bilibili import (
+    fetch_bili_account_name,
     fetch_bili_feed,
     poll_bili_login_qr,
     request_bili_login_qr,
@@ -81,6 +82,7 @@ from ironsbot.services.activity.service import (
     TargetType,
 )
 from ironsbot.services.ai.service import AiService
+from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
@@ -356,6 +358,9 @@ def build_application(settings: Settings) -> Application:
                 bili_data_dir / "push_preferences.sqlite"
             ),
             subscriptions,
+            BiliAccountNames(
+                partial(fetch_bili_account_name, http_clients.origin)
+            ),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -378,6 +383,7 @@ def build_application(settings: Settings) -> Application:
         features,
         delivery,
         bilibili.targets.subscription_options,
+        _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
     sendpic = SendpicService(
         settings.messaging.sendpic,
