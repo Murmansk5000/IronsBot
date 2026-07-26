@@ -3,12 +3,11 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.runtime.matchers import CommandPolicy
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -61,4 +60,4 @@ def install(group: SeerMatcherGroup) -> None:
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
-        matcher.append_handler(partial(_finish_query, operation))
+        matcher.append_handler(bind_async(_finish_query, operation))
