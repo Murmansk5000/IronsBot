@@ -20,6 +20,7 @@ LOGIN_REQUEST = HeadlessLoginRequest(
     "password",
     "https://example.invalid",
     None,
+    20.0,
     0,
     5.0,
     120.0,
@@ -29,14 +30,18 @@ LOGIN_REQUEST = HeadlessLoginRequest(
 
 class _FakeSeerGame:
     instances: ClassVar[list["_FakeSeerGame"]] = []
+    requested_timeouts: ClassVar[list[float]] = []
     login_started: ClassVar[asyncio.Event]
     login_release: ClassVar[asyncio.Event]
 
-    def __init__(self, user_id: int, _password: str, **_kwargs: object) -> None:
+    def __init__(self, user_id: int, _password: str, **kwargs: object) -> None:
         self.user_id = user_id
         self.is_logged_in = False
         self.logout_calls = 0
         self.schedule_reconnect_calls = 0
+        request_timeout = kwargs["request_timeout_seconds"]
+        assert isinstance(request_timeout, float)
+        self.requested_timeouts.append(request_timeout)
         self.instances.append(self)
 
     async def login(self) -> None:
@@ -54,6 +59,7 @@ class _FakeSeerGame:
 
 def _reset_fake_game() -> None:
     _FakeSeerGame.instances = []
+    _FakeSeerGame.requested_timeouts = []
     _FakeSeerGame.login_started = asyncio.Event()
     _FakeSeerGame.login_release = asyncio.Event()
 
@@ -77,6 +83,7 @@ def test_client_manager_serializes_and_reuses_concurrent_login(
 
         assert first is second
         assert len(_FakeSeerGame.instances) == 1
+        assert _FakeSeerGame.requested_timeouts == [20.0]
 
     asyncio.run(run())
 

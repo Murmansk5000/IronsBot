@@ -19,6 +19,7 @@ class HeadlessOperation:
     detail: str
     source: str
     background: bool
+    group_id: int | None
     started_at: float
     ended_at: float | None = None
 
@@ -40,6 +41,7 @@ class HeadlessOperationTracker:
         *,
         source: str = "",
         background: bool = False,
+        group_id: int | None = None,
     ) -> Iterator[HeadlessOperation]:
         parent = self._current.get()
         operation = HeadlessOperation(
@@ -47,6 +49,7 @@ class HeadlessOperationTracker:
             detail=detail.strip(),
             source=source.strip() or label.strip() or "无头请求",
             background=background,
+            group_id=group_id,
             started_at=time.monotonic(),
         )
         token = self._current.set(operation)
@@ -69,9 +72,19 @@ class HeadlessOperationTracker:
         operation = self._recent(now=now, window_seconds=window_seconds)
         if operation is None:
             return ""
+        return self._format(operation)
+
+    def format_current(self) -> str:
+        """Describe the operation that is issuing a socket request right now."""
+        operation = self._current.get()
+        return self._format(operation) if operation is not None else ""
+
+    @staticmethod
+    def _format(operation: HeadlessOperation) -> str:
         detail = f"：{operation.detail}" if operation.detail else ""
         kind = "后台" if operation.background else "用户"
-        return f"{operation.label}{detail}（{kind}操作）"
+        group = f"，群：{operation.group_id}" if operation.group_id is not None else ""
+        return f"{operation.label}{detail}（{kind}操作{group}）"
 
     def _recent(
         self,

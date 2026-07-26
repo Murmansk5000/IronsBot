@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 无头请求期限
+
+连接上的请求串行执行，配置的响应时限只覆盖等待响应，不包括排队、发送和超时后的短暂迟到响应排空；不能将默认响应时限理解为整次操作的总期限。
+排空结果影响是否重置连接，取消仍向上游传播。连接可用状态和诊断记录不等于远端游戏请求成功。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
