@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: MIT
+"""Generic optional actions contributed to a player's detail conversation."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
+
+from ironsbot.services.seer.query_result import QueryReply
+
+PlayerDetailActionQuery = Callable[[int, int, int | None], Awaitable[QueryReply]]
+_BUILTIN_ALIASES = frozenset({"收集", "巅峰", "群星牌"})
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerDetailExtensionAction:
+    """One optional action shown after built-in player detail items."""
+
+    id: str
+    feature: str
+    label: str
+    aliases: tuple[str, ...]
+    query: PlayerDetailActionQuery
+
+
+class PlayerDetailExtensionRegistry:
+    """Process-local registry populated by installed optional extensions."""
+
+    def __init__(self) -> None:
+        self._actions: dict[str, PlayerDetailExtensionAction] = {}
+
+    def register(self, action: PlayerDetailExtensionAction) -> None:
+        label = action.label.strip()
+        if not action.id or not action.feature or not label:
+            msg = "player detail extension action requires id, feature, and label"
+            raise ValueError(msg)
+        if "【" in label or "】" in label:
+            msg = "player detail extension labels must not include menu brackets"
+            raise ValueError(msg)
+        aliases = tuple(_normalize_command(alias) for alias in action.aliases)
+        if not aliases or any(not alias for alias in aliases):
+            msg = "player detail extension action requires aliases"
+            raise ValueError(msg)
+        if any(alias.isdecimal() for alias in aliases):
+            msg = "player detail extension aliases must not declare menu numbers"
+            raise ValueError(msg)
+        builtin_overlap = sorted(set(aliases) & _BUILTIN_ALIASES)
+        if builtin_overlap:
+            msg = "player detail extension aliases overlap built-ins: " + ", ".join(
+                builtin_overlap
+            )
+            raise ValueError(msg)
+        if len(set(aliases)) != len(aliases):
+            msg = f"player detail extension repeats an alias: {action.id}"
+            raise ValueError(msg)
+        if action.id in self._actions:
+            msg = f"player detail extension repeats an id: {action.id}"
+            raise ValueError(msg)
+        claimed = {
+            alias
+            for current in self._actions.values()
+            for alias in current.aliases
+        }
+        overlap = sorted(set(aliases) & claimed)
+        if overlap:
+            msg = "player detail extension alias collision: " + ", ".join(overlap)
+            raise ValueError(msg)
+        self._actions[action.id] = PlayerDetailExtensionAction(
+            id=action.id,
+            feature=action.feature,
+            label=label,
+            aliases=aliases,
+            query=action.query,
+        )
+
+    def actions(self) -> tuple[PlayerDetailExtensionAction, ...]:
+        return tuple(self._actions.values())
+
+    def get(self, action_id: str) -> PlayerDetailExtensionAction | None:
+        return self._actions.get(action_id)
+
+    def resolve_alias(
+        self,
+        text: str,
+        *,
+        allowed_ids: Iterable[str],
+    ) -> PlayerDetailExtensionAction | None:
+        alias = _normalize_command(text)
+        for action_id in allowed_ids:
+            action = self._actions.get(action_id)
+            if action is not None and alias in action.aliases:
+                return action
+        return None
+
+
+def _normalize_command(value: str) -> str:
+    return "".join(value.split()).casefold()

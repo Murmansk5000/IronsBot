@@ -104,12 +104,12 @@ def _service(
     return service, headless, team_resource
 
 
-def test_team_service_parses_unique_valid_ids() -> None:
+def test_team_service_parses_unique_ids_before_validation() -> None:
     service, _headless, _resource = _service()
 
     assert service.parse_team_ids(
         "战队123456 99 123456 2000000001 654321"
-    ) == (123456, 654321)
+    ) == (123456, 99, 2000000001, 654321)
 
 
 @pytest.mark.asyncio
@@ -151,3 +151,16 @@ async def test_team_service_formats_timeout() -> None:
         (TEAM_ID,),
         TeamQueryActor(user_id=1, group_id=None, can_manage=False),
     ) == "❌ 战队 123456 查询超时，请稍后再试。"
+
+
+@pytest.mark.asyncio
+async def test_team_service_rejects_invalid_id_before_io() -> None:
+    service, headless, _resource = _service()
+
+    message = await service.query(
+        (1,),
+        TeamQueryActor(user_id=1, group_id=456, can_manage=True),
+    )
+
+    assert "100000 ~ 2000000000" in message
+    assert not headless.available

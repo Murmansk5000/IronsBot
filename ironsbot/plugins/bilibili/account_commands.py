@@ -30,7 +30,7 @@ async def handle_bili_accounts_action(
     await finish_event_reply(
         matcher,
         event,
-        targets.account_summary(target_type, target_id),
+        await targets.account_summary(target_type, target_id),
     )
 
 
@@ -46,7 +46,7 @@ async def handle_bili_push_mode_action(
         await finish_event_reply(
             matcher,
             event,
-            "❌ 仅群主、管理员或超级管理员可用。",
+            "❌ 仅本群群主、管理员或超级管理员可用。",
         )
         return
 
@@ -56,7 +56,7 @@ async def handle_bili_push_mode_action(
     await finish_event_reply(
         matcher,
         event,
-        targets.update_push_mode(
+        await targets.update_push_mode(
             target_type,
             target_id,
             account_ref,

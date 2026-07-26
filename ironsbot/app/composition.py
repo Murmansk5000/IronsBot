@@ -12,6 +12,11 @@ from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.app.private_extensions import (
+    PrivateExtensionCatalog,
+    PrivateExtensionRuntime,
+    load_private_extension_catalog,
+)
 from ironsbot.app.registry import build_plugin_registry
 from ironsbot.core.features import FeatureService
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -23,6 +28,7 @@ from ironsbot.integrations.htmlkit import render_html_template
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.bilibili import (
+    fetch_bili_account_name,
     fetch_bili_feed,
     poll_bili_login_qr,
     request_bili_login_qr,
@@ -41,6 +47,9 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.sendpic import SendpicBackendProvider
+from ironsbot.integrations.storage.achievement_history import (
+    SqliteAchievementHistoryStore,
+)
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
@@ -56,6 +65,9 @@ from ironsbot.integrations.storage.pet_config_images import (
 )
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
+)
+from ironsbot.integrations.storage.player_query_limits import (
+    SqlitePlayerQueryLimitStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import (
     PushUnsubscribeStore,
@@ -81,6 +93,7 @@ from ironsbot.services.activity.service import (
     TargetType,
 )
 from ironsbot.services.ai.service import AiService
+from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
@@ -98,6 +111,7 @@ from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
+from ironsbot.services.seer.achievement_history import AchievementHistoryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -107,6 +121,13 @@ from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.peak import PeakQueryService
 from ironsbot.services.seer.pet_query import PetQueryService
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
+from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
+from ironsbot.services.seer.player_request_protection import (
+    PlayerRequestProtectionService,
+)
 from ironsbot.services.seer.player_service import (
     PlayerDetailService,
     PlayerService,
@@ -148,8 +169,6 @@ LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
-
-
 @dataclass(frozen=True, slots=True)
 class ApplicationResources:
     features: FeatureService
@@ -176,6 +195,8 @@ class ApplicationResources:
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService
     help_hint: HelpHintService
+    private_extensions: PrivateExtensionCatalog
+    private_extension_runtime: PrivateExtensionRuntime
 
 
 @dataclass(slots=True)
@@ -281,7 +302,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
     )
 
 
-def build_application(settings: Settings) -> Application:
+def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
     driver = nonebot.get_driver()
@@ -299,10 +320,26 @@ def build_application(settings: Settings) -> Application:
         databases,
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
     )
+    achievement_history = AchievementHistoryService(
+        seer_database,
+        SqliteAchievementHistoryStore(
+            settings.seer.achievement_history.path,
+            max_snapshots=settings.seer.achievement_history.max_snapshots,
+            baseline_lookback_days=(
+                settings.seer.achievement_history.baseline_lookback_days
+            ),
+        ),
+    )
+    databases.add_load_listener(
+        SEERAPI_DB_NAME,
+        achievement_history.capture_current_snapshot,
+    )
     prompt_sessions = PromptSessionManager()
     features = FeatureService(
         settings.features,
         frozenset(settings.bot.superusers),
+        command_features=settings.messaging.command_feature_keys,
+        schedule_features=settings.messaging.schedule_feature_keys,
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
@@ -341,6 +378,11 @@ def build_application(settings: Settings) -> Application:
         settings.operations.headless,
         settings.operations.headless_notice,
         admin_notices,
+        request_interval_seconds=(
+            settings.seer.player.request_protection.base_request_interval_seconds
+            if settings.seer.player.request_protection.enabled
+            else 0.0
+        ),
     )
     priority = AdminPriorityService(settings.features.priority, features)
     bili_data_dir = settings.bilibili.storage.data_dir
@@ -356,6 +398,9 @@ def build_application(settings: Settings) -> Application:
                 bili_data_dir / "push_preferences.sqlite"
             ),
             subscriptions,
+            BiliAccountNames(
+                partial(fetch_bili_account_name, http_clients.origin)
+            ),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -378,6 +423,7 @@ def build_application(settings: Settings) -> Application:
         features,
         delivery,
         bilibili.targets.subscription_options,
+        _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
     sendpic = SendpicService(
         settings.messaging.sendpic,
@@ -427,6 +473,19 @@ def build_application(settings: Settings) -> Application:
     player_bindings = SqlitePlayerBindingStore(
         settings.seer.player.binding.path
     )
+    player_query_quotas = PlayerQueryQuotaService(
+        settings.seer.player.query_limits,
+        player_bindings,
+        features,
+        SqlitePlayerQueryLimitStore(settings.seer.player.query_limits.path),
+    )
+    player_requests = PlayerRequestProtectionService(
+        settings.seer.player.request_protection,
+        features,
+        headless,
+        task_owner.create,
+    )
+    headless.add_state_listener(player_requests.on_headless_state_change)
     pet_config = PetConfigQueryService(
         seer_database,
         FilePetConfigImageStore(settings.pet_config.image_dir),
@@ -439,6 +498,7 @@ def build_application(settings: Settings) -> Application:
         settings.seer.local_rank,
         settings.seer.player,
         rank,
+        player_requests,
     )
     rank_display = RankDisplayService(
         settings.seer.rank,
@@ -448,6 +508,7 @@ def build_application(settings: Settings) -> Application:
     rank_page_refresh = RankPageRefreshService(
         settings.seer.rank.page_refresh,
         rank,
+        player_requests,
     )
     player = PlayerService(
         settings.seer,
@@ -459,8 +520,16 @@ def build_application(settings: Settings) -> Application:
             rank,
             local_rank,
             task_owner.create,
+            player_requests,
         ),
+        player_query_quotas,
+        player_requests,
     )
+    docker_client = DockerClient()
+    private_extensions = load_private_extension_catalog(
+        settings.operations.private_extensions
+    )
+    player_detail_extensions = PlayerDetailExtensionRegistry()
     rank_queries = RankQueryService(
         rank,
         local_rank,
@@ -472,6 +541,8 @@ def build_application(settings: Settings) -> Application:
                 settings.seer.player.detail_timeout_seconds
             ),
         ),
+        player_query_quotas,
+        player_requests,
     )
     rank_admin = RankAdminService(
         RankAdminPolicy(
@@ -496,6 +567,7 @@ def build_application(settings: Settings) -> Application:
             seer_database,
             seer_images,
             settings.seer.season,
+            achievement_history,
         ),
         CountermarkStatRankService(seer_database),
         AutocardService(seer_database),
@@ -552,6 +624,7 @@ def build_application(settings: Settings) -> Application:
             merge_connected=settings.seer.mintmark.merge_connected,
         ),
         player,
+        player_detail_extensions,
         rank_queries,
         rank_admin,
     )
@@ -567,9 +640,23 @@ def build_application(settings: Settings) -> Application:
             else None
         ),
     )
+    private_extension_runtime = PrivateExtensionRuntime(
+        features=features,
+        seer=seer,
+        headless=headless,
+        data=seer_database,
+        images=seer_images,
+        render_html=render_html_template,
+        error_message=seer_database.error_message,
+        player_quotas=player_query_quotas,
+        player_requests=player_requests,
+        player_details=player_detail_extensions,
+        release_priority=priority.release,
+        settings=settings.operations.private_extensions.settings,
+    )
     docker_update = DockerUpdateService(
         settings.operations.docker_update,
-        DockerClient(),
+        docker_client,
         partial(
             terminate_bot_process,
             signal_parent=True,
@@ -608,6 +695,8 @@ def build_application(settings: Settings) -> Application:
             settings.features.group_aliases,
             settings.features.user_aliases,
         ),
+        private_extensions=private_extensions,
+        private_extension_runtime=private_extension_runtime,
     )
     plugins = build_plugin_registry(
         settings=settings,

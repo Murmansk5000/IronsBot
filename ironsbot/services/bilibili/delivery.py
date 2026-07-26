@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
-    "群主/管理员可发送：B站账号 / B站推送模式 <账号别名> <内容|链接|默认>"
+    "群主/管理员可发送：B站账号 / "
+    "B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2

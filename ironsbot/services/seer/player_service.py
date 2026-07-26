@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeVar
+from datetime import datetime, timezone
+from time import monotonic
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
@@ -12,46 +13,46 @@ from ironsbot.services.operations.headless_errors import (
     SocketRecvError,
 )
 from ironsbot.services.seer.errors import format_player_query_error
-from ironsbot.services.seer.local_rank_models import LocalRankSummary
+from ironsbot.services.seer.ids import (
+    PLAYER_ID_ERROR_MESSAGE,
+    is_valid_player_id,
+)
+from ironsbot.services.seer.player_account_policy import PlayerAccountPolicyMixin
+from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
 from ironsbot.services.seer.player_binding import player_binding_offer_message
-from ironsbot.services.seer.player_compact_formatting import (
-    format_compact_player_info,
-)
-from ironsbot.services.seer.player_detail_formatting import (
-    format_player_detail_messages,
-)
 from ironsbot.services.seer.player_query import (
-    PlayerDetailErrors,
-    PlayerDetailMessages,
     PlayerQuerySectionPlan,
-    calculate_player_peak_scores,
-    format_player_extra_error,
-    optional_player_extra,
-    plan_player_detail_fetches,
-    plan_player_query_sections,
     player_query_failure_message,
     player_query_timeout_message,
-    validate_player_peak_season,
+)
+from ironsbot.services.seer.player_query_cache import PlayerQueryCache
+from ironsbot.services.seer.player_query_limits import (
+    PlayerQueryQuotaExceededError,
+)
+from ironsbot.services.seer.player_request_protection import (
+    PlayerRequestBusyError,
+    PlayerRequestPausedError,
+    PlayerRequestReconnectError,
+    player_request_protection_message,
+)
+from ironsbot.services.seer.player_service_models import (
+    PendingPlayerQuery,
+    PlayerQueryResult,
+    _BackgroundRefresh,
+    _CachedDetailReply,
 )
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
-    fetch_player_shortcut_message,
+    PlayerShortcutDependencies,
+    fetch_player_shortcut_reply,
 )
-from ironsbot.services.seer.rank_models import (
-    PeakSeasonRankSummary,
-    PlayerRankSummary,
-    RankLookupResult,
-    RankSummaryProgress,
-)
-from ironsbot.services.seer.sequ_extra import (
-    UnityPartOneInfo,
-    UnityPeakInfo,
-    fetch_unity_part_one,
-    fetch_unity_peak,
-)
+from ironsbot.services.seer.query_result import QueryReply
+
+_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
+_PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.tasks import TaskSpawner
@@ -62,27 +63,14 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_binding import PlayerBindingStore
+    from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
+    from ironsbot.services.seer.player_request_protection import (
+        PlayerRequestProtectionService,
+    )
+    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
     from ironsbot.services.seer.rank import RankService
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
-
-
-@dataclass(slots=True)
-class PendingPlayerQuery:
-    player_id: int
-    game: HeadlessGame
-    user_info: Any
-    more_info: Any
-    player_message: str
-    section_plan: PlayerQuerySectionPlan
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerQueryResult:
-    pending: PendingPlayerQuery | None = None
-    message: str = ""
-    offer_binding: bool = False
 
 
 class PlayerDetailService:
@@ -92,272 +80,309 @@ class PlayerDetailService:
         rank: RankService,
         local_rank: LocalRankService,
         spawn: TaskSpawner,
+        requests: PlayerRequestProtectionService | None = None,
     ) -> None:
         self._config = config
         self._rank = rank
         self._local_rank = local_rank
         self._spawn = spawn
+        self._requests = requests
+        self._background_refreshes: dict[int, _BackgroundRefresh] = {}
+        self._cached_replies: dict[
+            tuple[int, PlayerShortcutKind],
+            _CachedDetailReply,
+        ] = {}
 
-    def create_task(
+    def start_background_refresh(
         self,
+        game: HeadlessGame,
         pending: PendingPlayerQuery,
-    ) -> asyncio.Task[PlayerDetailMessages] | None:
-        plan = pending.section_plan
-        if not plan.needs_detail_task:
-            return None
-        task = self._spawn(
-            self._build_messages(
-                game=pending.game,
-                player_id=pending.player_id,
-                user_info=pending.user_info,
-                more_info=pending.more_info,
-                has_collection=plan.has_collection,
-                needs_peak_section=plan.needs_peak_section,
-                has_autocard_rank=plan.has_autocard_rank,
-                show_local_rank=plan.show_local_rank,
-            ),
-            name=f"seer-player-detail-{pending.player_id}",
+        *,
+        group_id: int | None = None,
+    ) -> None:
+        refresh_config = self._config.player.background_refresh
+        if not refresh_config.enabled:
+            return
+
+        kinds = _background_refresh_kinds(pending.section_plan)
+        if not kinds or pending.player_id in self._background_refreshes:
+            return
+
+        self._clear_expired_replies()
+        loop = asyncio.get_running_loop()
+        refresh = _BackgroundRefresh(
+            replies={kind: loop.create_future() for kind in kinds},
+            started_at=monotonic(),
         )
-        task.add_done_callback(self._log_unrequested_task_error)
-        return task
+        self._background_refreshes[pending.player_id] = refresh
+        task = self._spawn(
+            self._run_background_refresh(
+                game,
+                player_id=pending.player_id,
+                refresh=refresh,
+                group_id=group_id,
+            ),
+            name=f"seer-player-background-refresh-{pending.player_id}",
+        )
+        task.add_done_callback(
+            lambda _task: self._finish_background_refresh(pending.player_id, refresh)
+        )
 
     async def shortcut(
         self,
         game: HeadlessGame,
         command: PlayerShortcutCommand,
         player_id: int,
-    ) -> str:
-        return await fetch_player_shortcut_message(
-            self._rank,
-            self._local_rank,
+        *,
+        use_cache: bool = True,
+    ) -> QueryReply:
+        if use_cache:
+            cached = self._cached_reply(player_id, command.kind)
+            if cached is not None:
+                return cached
+
+        reply = await self._fetch_shortcut(
+            game,
+            command=command,
+            player_id=player_id,
+        )
+        self._store_reply(player_id, command.kind, reply)
+        return reply
+
+    async def _fetch_shortcut(
+        self,
+        game: HeadlessGame,
+        *,
+        command: PlayerShortcutCommand,
+        player_id: int,
+    ) -> QueryReply:
+        return await fetch_player_shortcut_reply(
+            PlayerShortcutDependencies(
+                rank=self._rank,
+                local_rank=self._local_rank,
+                timeout_seconds=self._detail_stage_timeout_seconds(),
+            ),
             game,
             command=command,
             player_id=player_id,
         )
 
-    def spawn_task(
-        self,
-        coroutine: Coroutine[Any, Any, T],
-        *,
-        name: str,
-    ) -> asyncio.Task[T]:
-        return self._spawn(coroutine, name=name)
+    def _detail_stage_timeout_seconds(self) -> float:
+        player_config = self._config.player
+        basic_timeout = float(getattr(player_config, "timeout_seconds", 30.0))
+        detail_timeout = float(
+            getattr(player_config, "detail_timeout_seconds", 90.0)
+        )
+        return min(
+            basic_timeout,
+            detail_timeout / _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT,
+        )
 
-    async def _build_messages(  # noqa: PLR0913
+    async def _run_background_refresh(
         self,
-        *,
         game: HeadlessGame,
+        *,
         player_id: int,
-        user_info: Any,
-        more_info: Any,
-        has_collection: bool,
-        needs_peak_section: bool,
-        has_autocard_rank: bool,
-        show_local_rank: bool,
-    ) -> PlayerDetailMessages:
-        config = self._config
-        extra_errors = PlayerDetailErrors()
-        timeout_seconds = min(
-            float(config.player.timeout_seconds),
-            float(config.player.detail_timeout_seconds),
-        )
-        fetch_plan = plan_player_detail_fetches(
-            has_collection=has_collection,
-            needs_peak_section=needs_peak_section,
-            has_autocard_rank=has_autocard_rank,
-            local_rank_enabled=config.local_rank.enabled,
-        )
-        with game.operations.track(
-            "米米号详情查询",
-            f"米米号 {player_id}",
-            source="米米号详情查询",
-        ):
-            unity_part_one, unity_peak = await asyncio.gather(
-                optional_player_extra(
-                    "展示/收集数据",
-                    fetch_plan.needs_unity_part_one,
-                    lambda: fetch_unity_part_one(game, player_id),
-                    UnityPartOneInfo(),
-                    extra_errors.collection,
-                    on_error=self._log_extra_error,
-                    timeout_seconds=timeout_seconds,
-                ),
-                optional_player_extra(
-                    "巅峰数据",
-                    fetch_plan.needs_unity_peak,
-                    lambda: fetch_unity_peak(game, player_id),
-                    UnityPeakInfo(),
-                    extra_errors.peak,
-                    on_error=self._log_extra_error,
-                    timeout_seconds=timeout_seconds,
-                ),
-            )
-            peak_sub_key = self._rank.current_peak_sub_key()
-            peak_scores = calculate_player_peak_scores(unity_peak)
-            rank_progress = RankSummaryProgress()
-            peak_progress = RankSummaryProgress()
-            rank_summary_fallback = PlayerRankSummary.empty()
-            peak_summary_fallback = PeakSeasonRankSummary.empty()
-            autocard_summary_fallback = RankLookupResult(
-                title="群星之巅榜",
-                score_name="分",
-            )
-
-            def record_rank_summary_error(label: str, error: Exception) -> None:
-                self._log_extra_error(label, error)
-                rank_summary_fallback.mark_failure(
-                    label,
-                    format_player_extra_error(error),
-                )
-
-            def record_peak_summary_error(label: str, error: Exception) -> None:
-                self._log_extra_error(label, error)
-                peak_summary_fallback.mark_failure(
-                    label,
-                    format_player_extra_error(error),
-                )
-
-            def record_autocard_summary_error(
-                label: str,
-                error: Exception,
-            ) -> None:
-                self._log_extra_error(label, error)
-                autocard_summary_fallback.failure = format_player_extra_error(error)
-
-            rank_summary, peak_summary, autocard_summary = await asyncio.gather(
-                optional_player_extra(
-                    "全服排行",
-                    fetch_plan.needs_rank_summary,
-                    lambda: self._rank.fetch_player_summary(
-                        game,
-                        player_id,
-                        achieve_score=getattr(
-                            more_info,
-                            "total_achieve",
-                            None,
-                        ),
-                        pet_kind_count=unity_part_one.pet_kind_num,
-                        skin_score=unity_part_one.skin_num,
-                        progress=rank_progress,
-                    ),
-                    rank_summary_fallback,
-                    None,
-                    on_error=record_rank_summary_error,
-                    timeout_seconds=timeout_seconds,
-                    error_label_factory=lambda: (
-                        rank_progress.current_title or "全服排行"
-                    ),
-                ),
-                optional_player_extra(
-                    "巅峰赛季榜",
-                    needs_peak_section,
-                    lambda: self._rank.fetch_peak_summary(
-                        game,
-                        player_id,
-                        standard_score=peak_scores.standard,
-                        wild_score=peak_scores.wild,
-                        expert_score=peak_scores.expert,
-                        progress=peak_progress,
-                    ),
-                    peak_summary_fallback,
-                    None,
-                    on_error=record_peak_summary_error,
-                    timeout_seconds=timeout_seconds,
-                    error_label_factory=lambda: (
-                        peak_progress.current_title or "巅峰赛季榜"
-                    ),
-                ),
-                optional_player_extra(
-                    "群星牌排行",
-                    fetch_plan.needs_autocard_rank,
-                    lambda: self._rank.fetch_autocard_summary(
-                        game,
-                        player_id,
-                    ),
-                    autocard_summary_fallback,
-                    None,
-                    on_error=record_autocard_summary_error,
-                    timeout_seconds=timeout_seconds,
-                ),
-            )
-            validated_peak = validate_player_peak_season(
-                unity_peak,
-                peak_scores,
-                peak_summary,
-            )
-            local_summary = await optional_player_extra(
-                "机器人查询排行",
-                fetch_plan.needs_local_rank,
-                lambda: self._local_rank.update_cache(
-                    player_id=player_id,
-                    nick=user_info.nick,
-                    more_info=more_info,
-                    unity_part_one=unity_part_one,
-                    unity_peak=validated_peak.unity_peak,
-                    rank_summary=rank_summary,
-                    autocard_rank_summary=autocard_summary,
-                    peak_sub_key=peak_sub_key,
-                    peak_standard_score=validated_peak.scores.standard,
-                    peak_wild_score=validated_peak.scores.wild,
-                    peak_expert_score=validated_peak.scores.expert,
-                    clear_metric_keys=validated_peak.clear_metric_keys,
-                ),
-                LocalRankSummary(),
-                extra_errors.shared,
-                on_error=self._log_extra_error,
-                timeout_seconds=timeout_seconds,
-            )
-        return format_player_detail_messages(
-            player_id=player_id,
-            user_info=user_info,
-            more_info=more_info,
-            unity_part_one=unity_part_one,
-            unity_peak=unity_peak,
-            rank_summary=rank_summary,
-            peak_rank_summary=peak_summary,
-            autocard_rank_summary=autocard_summary,
-            local_rank_summary=local_summary,
-            empty_local_rank_summary=LocalRankSummary(),
-            has_collection=has_collection,
-            needs_peak_section=needs_peak_section,
-            has_autocard_rank=has_autocard_rank,
-            show_local_rank=show_local_rank,
-            extra_errors=extra_errors,
-        )
-
-    @staticmethod
-    def _log_extra_error(label: str, _error: Exception) -> None:
-        logger.exception("米米号扩展字段获取失败：%s", label)
-
-    @staticmethod
-    def _log_unrequested_task_error(
-        task: asyncio.Task[PlayerDetailMessages],
+        refresh: _BackgroundRefresh,
+        group_id: int | None,
     ) -> None:
-        try:
-            error = task.exception()
-        except asyncio.CancelledError:
-            return
-        if error is not None:
-            logger.error(
-                "米米号后台详情任务失败",
-                exc_info=(type(error), error, error.__traceback__),
+        for kind, future in refresh.replies.items():
+            if future.done():
+                continue
+            try:
+                command = PlayerShortcutCommand(kind=kind, player_id=player_id)
+                logger.info(
+                    "米米号后台预热开始：player_id=%s section=%s",
+                    player_id,
+                    kind,
+                )
+                reply = await self._run_background_shortcut(
+                    game,
+                    command=command,
+                    player_id=player_id,
+                    group_id=group_id,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "米米号后台预热失败：player_id=%s section=%s",
+                    player_id,
+                    kind,
+                )
+                if not future.done():
+                    future.set_result(None)
+                continue
+
+            logger.info(
+                "米米号后台预热完成：player_id=%s section=%s",
+                player_id,
+                kind,
             )
+            self._store_reply(player_id, kind, reply)
+
+    def _finish_background_refresh(
+        self,
+        player_id: int,
+        refresh: _BackgroundRefresh,
+    ) -> None:
+        for future in refresh.replies.values():
+            if not future.done():
+                future.set_result(None)
+        if self._background_refreshes.get(player_id) is refresh:
+            self._background_refreshes.pop(player_id, None)
+
+    def _cached_reply(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+    ) -> QueryReply | None:
+        cache_key = (player_id, kind)
+        cached = self._cached_replies.get(cache_key)
+        if cached is None:
+            return None
+        if cached.expires_at > monotonic():
+            return cached.reply
+        self._cached_replies.pop(cache_key, None)
+        return None
+
+    def cached_reply(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+    ) -> QueryReply | None:
+        return self._cached_reply(player_id, kind)
+
+    def _store_reply(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+        reply: QueryReply,
+    ) -> None:
+        self._cached_replies[(player_id, kind)] = _CachedDetailReply(
+            expires_at=monotonic()
+            + self._config.player.background_refresh.cache_ttl_seconds,
+            reply=reply,
+        )
+        refresh = self._background_refreshes.get(player_id)
+        future = None if refresh is None else refresh.replies.get(kind)
+        if future is not None and not future.done():
+            future.set_result(reply)
+
+    def _clear_expired_replies(self) -> None:
+        now = monotonic()
+        for cache_key, cached in tuple(self._cached_replies.items()):
+            if cached.expires_at <= now:
+                self._cached_replies.pop(cache_key, None)
+
+    def has_cached_or_inflight(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+    ) -> bool:
+        if self._cached_reply(player_id, kind) is not None:
+            return True
+        refresh = self._background_refreshes.get(player_id)
+        return refresh is not None and kind in refresh.replies
+
+    def has_inflight_refresh(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+    ) -> bool:
+        refresh = self._background_refreshes.get(player_id)
+        if refresh is not None and self._refresh_expired(refresh):
+            self._expire_background_refresh(player_id, refresh)
+            return False
+        future = None if refresh is None else refresh.replies.get(kind)
+        return future is not None and not future.done()
+
+    async def _run_background_shortcut(
+        self,
+        game: HeadlessGame,
+        *,
+        command: PlayerShortcutCommand,
+        player_id: int,
+        group_id: int | None,
+    ) -> QueryReply:
+        async def fetch() -> QueryReply:
+            with game.operations.track(
+                _shortcut_operation_label(command.kind),
+                f"米米号 {player_id}",
+                source="米米号后台预热",
+                background=True,
+                group_id=group_id,
+            ):
+                return await asyncio.wait_for(
+                    self._fetch_shortcut(
+                        game,
+                        command=command,
+                        player_id=player_id,
+                    ),
+                    timeout=self._config.player.detail_timeout_seconds,
+                )
+
+        timeout_seconds = self._background_refresh_timeout_seconds()
+        if self._requests is None:
+            return await asyncio.wait_for(fetch(), timeout=timeout_seconds)
+        return await self._requests.run(
+            fetch,
+            user_id=None,
+            label=f"后台{_shortcut_operation_label(command.kind)}",
+            background=True,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def _background_refresh_timeout_seconds(self) -> float:
+        return (
+            float(self._config.player.detail_timeout_seconds)
+            + _BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS
+        )
+
+    def _refresh_expired(self, refresh: _BackgroundRefresh) -> bool:
+        return (
+            monotonic() - refresh.started_at
+            >= self._background_refresh_timeout_seconds()
+        )
+
+    def _expire_background_refresh(
+        self,
+        player_id: int,
+        refresh: _BackgroundRefresh,
+    ) -> None:
+        logger.warning(
+            "米米号后台预热超时，清理等待状态：player_id=%s",
+            player_id,
+        )
+        for future in refresh.replies.values():
+            if not future.done():
+                future.set_result(None)
+        if self._background_refreshes.get(player_id) is refresh:
+            self._background_refreshes.pop(player_id, None)
 
 
-class PlayerService:
-    def __init__(
+class PlayerService(PlayerAccountPolicyMixin):
+    def __init__(  # noqa: PLR0913 - composed Seer query dependencies
         self,
         config: SeerConfig,
         headless: HeadlessService,
         bindings: PlayerBindingStore,
         error_message: ErrorMessageLookup,
         details: PlayerDetailService,
+        quotas: PlayerQueryQuotaService | None = None,
+        requests: PlayerRequestProtectionService | None = None,
+        *,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._config = config
         self._headless = headless
         self._bindings = bindings
         self._error_message = error_message
         self._details = details
+        self._quotas = quotas
+        self._requests = requests
+        self._now = now or _utc_now
+        self._query_cache = PlayerQueryCache.from_config(config)
 
     def default_player_id(self, qq_user_id: int) -> int | None:
         return self._bindings.get(qq_user_id).player_id
@@ -368,28 +393,48 @@ class PlayerService:
         *,
         qq_user_id: int,
         explicit: bool,
+        group_id: int | None = None,
     ) -> PlayerQueryResult:
-        result = await self._query(player_id, source="米米号查询")
+        if not is_valid_player_id(player_id):
+            return PlayerQueryResult(message=PLAYER_ID_ERROR_MESSAGE)
+        binding = self._bindings.get(qq_user_id)
+        cached = self._query_cache.result(
+            player_id,
+            offer_binding=explicit and not binding.choice_completed,
+        )
+        quota_message = self._check_quota(
+            qq_user_id=qq_user_id,
+            player_id=player_id,
+            action_key="player",
+        )
+        if quota_message:
+            return cached or PlayerQueryResult(message=quota_message)
+        try:
+            result = await self._run_live_request(
+                lambda: self._query(
+                    player_id,
+                    source="米米号查询",
+                    group_id=group_id,
+                ),
+                user_id=qq_user_id,
+                label="米米号基础资料",
+                quota_player_id=player_id,
+                quota_action_key="player",
+            )
+        except PlayerQueryQuotaExceededError as error:
+            return cached or PlayerQueryResult(message=error.message)
+        except _PLAYER_REQUEST_ERRORS as error:
+            return cached or PlayerQueryResult(
+                message=player_request_protection_message(error)
+            )
         if result.pending is None:
-            return result
+            return cached or result
+        self._query_cache.put(result.pending)
         binding = self._bindings.get(qq_user_id)
         return PlayerQueryResult(
             pending=result.pending,
             offer_binding=explicit and not binding.choice_completed,
         )
-
-    async def bind_player(
-        self,
-        qq_user_id: int,
-        player_id: int,
-    ) -> PlayerQueryResult:
-        result = await self._query(player_id, source="米米号绑定")
-        pending = result.pending
-        if pending is None:
-            return result
-        status = self._save_binding(qq_user_id, pending)
-        pending.player_message = f"{status}\n\n{pending.player_message}"
-        return PlayerQueryResult(pending=pending)
 
     def save_binding_choice(
         self,
@@ -411,61 +456,142 @@ class PlayerService:
         return status
 
     def binding_offer(self, pending: PendingPlayerQuery) -> str:
+        limits = self._config.player.query_limits
         return player_binding_offer_message(
             pending.player_id,
             str(pending.user_info.nick),
+            unbound_daily_limit=(
+                limits.unbound_daily_limit if limits.enabled else None
+            ),
+            bound_default_daily_limit=(
+                limits.bound_default_daily_limit if limits.enabled else None
+            ),
         )
 
+    def record_returned_query(
+        self,
+        qq_user_id: int,
+        pending: PendingPlayerQuery,
+    ) -> None:
+        if pending.quota_recorded:
+            return
+        pending.quota_recorded = True
+        try:
+            self._record_successful_quota(
+                qq_user_id=qq_user_id,
+                player_id=pending.player_id,
+                action_key="player",
+            )
+        except Exception:
+            logger.exception(
+                "记录已返回的米米号查询额度失败：user=%s player=%s",
+                qq_user_id,
+                pending.player_id,
+            )
+
     def unbind(self, qq_user_id: int) -> str:
-        removed = self._bindings.unbind(qq_user_id=qq_user_id)
+        binding = self._bindings.get(qq_user_id)
+        if binding.player_id is None:
+            return "当前没有已绑定的米米号。"
+        change_error = self._binding_change_error(qq_user_id)
+        if change_error:
+            return change_error
+        removed = self._bindings.unbind(
+            qq_user_id=qq_user_id,
+            changed_at=self._now(),
+        )
         return "已解除默认米米号。" if removed else "当前没有已绑定的米米号。"
 
-    def create_detail_task(
-        self,
-        pending: PendingPlayerQuery,
-    ) -> asyncio.Task[PlayerDetailMessages] | None:
-        return self._details.create_task(pending)
-
-    def spawn_task(
-        self,
-        coroutine: Coroutine[Any, Any, T],
-        *,
-        name: str,
-    ) -> asyncio.Task[T]:
-        return self._details.spawn_task(coroutine, name=name)
-
-    async def shortcut(
+    async def shortcut(  # noqa: PLR0911 - distinct query failure replies
         self,
         command: PlayerShortcutCommand,
         qq_user_id: int,
-    ) -> str:
+        *,
+        group_id: int | None = None,
+    ) -> QueryReply:
         player_id = command.player_id or self.default_player_id(qq_user_id)
         if player_id is None:
-            return (
-                "尚未设置默认米米号。可发送“绑定米米号12345”直接绑定，"
-                "或发送“米米号+数字”查询；也可直接在本指令后填写米米号。"
-            )
-        try:
-            game = self._headless.get_game()
-            with game.operations.track(
-                "米米号快捷详情查询",
-                f"米米号 {player_id}",
-                source="米米号快捷详情查询",
-            ):
-                message = await asyncio.wait_for(
-                    self._details.shortcut(game, command, player_id),
-                    timeout=self._config.player.detail_timeout_seconds,
+            return QueryReply(
+                text=(
+                    "尚未设置默认米米号。请发送“米米号+数字”查询，"
+                    "也可直接在本指令后填写米米号。"
                 )
-            await self._headless.mark_available(
-                source="米米号快捷详情查询",
-                user_id=int(game.user_id),
             )
-        except TimeoutError:
-            return player_query_timeout_message(player_id)
+        if not is_valid_player_id(player_id):
+            return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
+        cached = self._details.cached_reply(player_id, command.kind)
+        try:
+            quota_message = self._check_quota(
+                qq_user_id=qq_user_id,
+                player_id=player_id,
+                action_key=command.kind,
+            )
+            if quota_message:
+                return cached or QueryReply(text=quota_message)
+            message = await self._run_live_request(
+                lambda: self._shortcut_live(
+                    command,
+                    player_id,
+                    group_id=group_id,
+                ),
+                user_id=qq_user_id,
+                label=_shortcut_operation_label(command.kind),
+                quota_player_id=player_id,
+                quota_action_key=command.kind,
+            )
+        except PlayerQueryQuotaExceededError as error:
+            return cached or QueryReply(text=error.message)
+        except _PLAYER_REQUEST_ERRORS as error:
+            return cached or QueryReply(text=player_request_protection_message(error))
+        except (TimeoutError, asyncio.TimeoutError):
+            return cached or QueryReply(text=player_query_timeout_message(player_id))
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
-            return self.format_error(player_id, error)
+            return cached or QueryReply(text=self.format_error(player_id, error))
         except Exception as error:  # noqa: BLE001
-            return player_query_failure_message(player_id, error)
+            return cached or QueryReply(
+                text=player_query_failure_message(player_id, error)
+            )
+        self._record_successful_quota(
+            qq_user_id=qq_user_id,
+            player_id=player_id,
+            action_key=command.kind,
+        )
+        return message
+
+    def has_inflight_detail(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+    ) -> bool:
+        return self._details.has_inflight_refresh(player_id, kind)
+
+    async def _shortcut_live(
+        self,
+        command: PlayerShortcutCommand,
+        player_id: int,
+        *,
+        group_id: int | None,
+    ) -> QueryReply:
+        game = self._headless.get_game()
+        with game.operations.track(
+            _shortcut_operation_label(command.kind),
+            f"米米号 {player_id}",
+            source="米米号快捷详情查询",
+            group_id=group_id,
+        ):
+            message = await asyncio.wait_for(
+                self._details.shortcut(
+                    game,
+                    command,
+                    player_id,
+                    use_cache=False,
+                ),
+                timeout=self._config.player.detail_timeout_seconds,
+            )
+        await self._headless.mark_available(
+            source="米米号快捷详情查询",
+            user_id=int(game.user_id),
+        )
         return message
 
     def format_error(
@@ -484,18 +610,27 @@ class PlayerService:
         player_id: int,
         *,
         source: str,
+        group_id: int | None,
     ) -> PlayerQueryResult:
         try:
-            pending = await self._fetch_pending(
+            game = self._headless.get_game()
+            pending = await fetch_pending_player_query(
+                self._config,
                 player_id,
-                self._headless.get_game(),
+                game,
+                group_id=group_id,
             )
             await self._headless.mark_available(
                 source=source,
-                user_id=int(pending.game.user_id),
+                user_id=int(game.user_id),
+            )
+            self._details.start_background_refresh(
+                game,
+                pending,
+                group_id=group_id,
             )
             return PlayerQueryResult(pending=pending)
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
             return PlayerQueryResult(
                 message=player_query_timeout_message(player_id)
             )
@@ -506,87 +641,72 @@ class PlayerService:
                     source=source,
                 )
             return PlayerQueryResult(message=self.format_error(player_id, error))
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
+            logger.exception(
+                "米米号查询失败：player_id=%s source=%s",
+                player_id,
+                source,
+            )
             return PlayerQueryResult(
                 message=player_query_failure_message(player_id, error)
             )
 
-    async def _fetch_pending(
+    async def _run_live_request(
         self,
-        player_id: int,
-        game: HeadlessGame,
-    ) -> PendingPlayerQuery:
-        config = self._config
-        extra_errors: list[str] = []
-        plan = plan_player_query_sections(
-            config.player.sections,
-            local_rank_enabled=config.local_rank.enabled,
-        )
-        with game.operations.track(
-            "米米号查询",
-            f"米米号 {player_id}",
-            source="米米号查询",
-        ):
-            user_info, more_info, online_info = await asyncio.wait_for(
-                asyncio.gather(
-                    game.get_user_info(player_id),
-                    game.get_more_user_info(player_id),
-                    optional_player_extra(
-                        "在线状态",
-                        plan.needs_online_info,
-                        lambda: game.get_user_online_info(player_id),
-                        None,
-                        extra_errors,
-                        on_error=PlayerDetailService._log_extra_error,
-                    ),
-                ),
-                timeout=config.player.timeout_seconds,
-            )
-        team_name = "无"
-        if getattr(user_info, "team_id", 0) > 0:
-            try:
-                team_info = await asyncio.wait_for(
-                    game.get_team_info(user_info.team_id),
-                    timeout=min(5.0, config.team.timeout_seconds),
+        operation: Callable[[], Awaitable[Any]],
+        *,
+        user_id: int,
+        label: str,
+        quota_player_id: int | None = None,
+        quota_action_key: str | None = None,
+    ) -> Any:
+        async def guarded_operation() -> Any:
+            if quota_player_id is not None and quota_action_key is not None:
+                quota_message = self._check_quota(
+                    qq_user_id=user_id,
+                    player_id=quota_player_id,
+                    action_key=quota_action_key,
                 )
-                team_name = team_info.name
-            except Exception:  # noqa: BLE001
-                team_name = str(user_info.team_id)
-        player_message = format_compact_player_info(
-            user_info,
-            more_info,
-            team_name=team_name,
-            online_info=online_info,
-            unity_peak=UnityPeakInfo(),
-            peak_rank_summary=PeakSeasonRankSummary.empty(),
-            local_summary=LocalRankSummary(),
-            has_collection=plan.has_collection,
-            has_peak=plan.needs_peak_section,
-            has_autocard=plan.has_autocard_rank,
-            show_peak=False,
-            extra_errors=extra_errors,
-        )
-        return PendingPlayerQuery(
-            player_id=player_id,
-            game=game,
-            user_info=user_info,
-            more_info=more_info,
-            player_message=player_message,
-            section_plan=plan,
+                if quota_message:
+                    raise PlayerQueryQuotaExceededError(quota_message)
+            return await operation()
+
+        if self._requests is None:
+            return await guarded_operation()
+        return await self._requests.run(
+            guarded_operation,
+            user_id=user_id,
+            label=label,
         )
 
-    def _save_binding(
-        self,
-        qq_user_id: int,
-        pending: PendingPlayerQuery,
-    ) -> str:
-        try:
-            self._bindings.bind(
-                qq_user_id=qq_user_id,
-                player_id=pending.player_id,
-                player_nick=str(pending.user_info.nick),
-            )
-        except Exception as error:
-            logger.exception("保存米米号绑定失败")
-            return f"⚠️ 默认米米号设置保存失败：{error}"
-        return f"已设置默认米米号：{pending.player_id}。"
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _background_refresh_kinds(
+    plan: PlayerQuerySectionPlan,
+) -> tuple[PlayerShortcutKind, ...]:
+    kinds: list[PlayerShortcutKind] = []
+    if plan.has_collection:
+        kinds.append("collection")
+    if plan.needs_peak_section:
+        kinds.append("peak")
+    if plan.has_autocard_rank:
+        kinds.append("autocard")
+    return tuple(kinds)
+
+
+_PLAYER_REQUEST_ERRORS = (
+    PlayerRequestBusyError,
+    PlayerRequestPausedError,
+    PlayerRequestReconnectError,
+)
+
+
+def _shortcut_operation_label(kind: PlayerShortcutKind) -> str:
+    return {
+        "collection": "收集查询",
+        "peak": "巅峰查询",
+        "autocard": "群星牌查询",
+    }[kind]

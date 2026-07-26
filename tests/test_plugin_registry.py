@@ -20,7 +20,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
-from ironsbot.app.registry import validate_plugin_registry
+from ironsbot.app.registry import OPTIONAL_PRIVATE_FEATURES, validate_plugin_registry
 from ironsbot.core.features import Feature
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -39,7 +39,7 @@ def test_plugin_registry_is_the_feature_authority() -> None:
         for feature in definition.features
     }
 
-    assert owned_features == set(Feature)
+    assert owned_features | OPTIONAL_PRIVATE_FEATURES == set(Feature)
     assert len(DEFINITIONS_BY_ID) == len(DEFINITIONS)
 
 

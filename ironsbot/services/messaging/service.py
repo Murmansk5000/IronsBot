@@ -17,12 +17,11 @@ from ironsbot.services.messaging.subscriptions import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Awaitable, Callable, Iterable
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
-        CommandMessageAction,
-        GroupCommandMessageAction,
+        MessageCommandAction,
         MessageConfig,
     )
     from ironsbot.core.features import FeatureService
@@ -57,15 +56,18 @@ class MessagingService:
         [PushTargetType, int],
         list[PushSubscriptionOption],
     ]
+    _prepare_extra_push_options: (
+        Callable[[PushTargetType, int], Awaitable[str | None]] | None
+    ) = None
 
     def match_private_action(
         self,
         text: str,
         user_id: int,
-    ) -> CommandMessageAction | None:
+    ) -> MessageCommandAction | None:
         return find_command_action(
             text,
-            self._config.private_commands,
+            self._config.commands,
             is_allowed=lambda action: self._features.is_private_feature_allowed(
                 user_id,
                 action.feature,
@@ -78,10 +80,10 @@ class MessagingService:
         *,
         user_id: int,
         group_id: int,
-    ) -> GroupCommandMessageAction | None:
+    ) -> MessageCommandAction | None:
         return find_command_action(
             text,
-            self._config.group_commands,
+            self._config.commands,
             is_allowed=lambda action: self._features.is_group_feature_allowed(
                 user_id,
                 group_id,
@@ -115,6 +117,15 @@ class MessagingService:
             *self._builtin_subscription_options(target_type, target_id),
             *self._schedule_subscription_options(target_type, target_id),
         ]
+
+    async def prepare_subscription_options(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> str | None:
+        if self._prepare_extra_push_options is None:
+            return None
+        return await self._prepare_extra_push_options(target_type, target_id)
 
     def subscription_menu(
         self,
@@ -269,11 +280,7 @@ class MessagingService:
         target_type: PushTargetType,
         target_id: int,
     ) -> list[PushSubscriptionOption]:
-        tasks = (
-            self._config.group_schedules
-            if target_type == "group"
-            else self._config.private_schedules
-        )
+        tasks = self._config.schedules
         features = {task.feature for task in tasks if task.enabled}
         return build_schedule_subscription_options(
             target_type=target_type,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves at runtime
+from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     PrivateMessageEvent,
 )
@@ -18,10 +18,8 @@ from ironsbot.runtime.replies import (
 from ironsbot.runtime.rules import no_reply
 
 from .matcher_rules import (
-    GROUP_ACTION_KEY,
-    PRIVATE_ACTION_KEY,
-    match_group_command,
-    match_private_command,
+    MESSAGE_ACTION_KEY,
+    match_message_command,
     match_push_subscription_command,
     match_push_time_command,
 )
@@ -38,29 +36,17 @@ def _message_subscription_priority(registry: MatcherRegistry) -> int:
     return max(registry.priority("message_commands") - 1, 0)
 
 
-async def handle_private_command(
+async def handle_message_command(
     matcher: Matcher,
-    event: PrivateMessageEvent,
+    event: PrivateMessageEvent | GroupMessageEvent,
     state: T_State,
 ) -> None:
-    action = state[PRIVATE_ACTION_KEY]
-    await finish_matcher_message(
-        matcher,
-        action.message,
-        event=event,
+    action = state[MESSAGE_ACTION_KEY]
+    at_user_ids = (
+        [*event_sender_at_user_ids(event), *action.at_user_ids]
+        if isinstance(event, GroupMessageEvent)
+        else []
     )
-
-
-async def handle_group_command(
-    matcher: Matcher,
-    event: GroupMessageEvent,
-    state: T_State,
-) -> None:
-    action = state[GROUP_ACTION_KEY]
-    at_user_ids = [
-        *event_sender_at_user_ids(event),
-        *action.at_user_ids,
-    ]
     await finish_matcher_message(
         matcher,
         action.message,
@@ -86,16 +72,16 @@ def install(
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
 ) -> None:
-    private_matcher = registry.on_message(
+    command_matcher = registry.on_message(
         policy=CommandPolicy.command(
-            _action_command_id(PRIVATE_ACTION_KEY, "message_private")
+            _action_command_id(MESSAGE_ACTION_KEY, "message")
         ),
-        rule=Rule(bind(match_private_command, messaging=messaging))
+        rule=Rule(bind(match_message_command, messaging=messaging))
         & no_reply(),
         priority=registry.priority("message_commands"),
         block=True,
     )
-    private_matcher.append_handler(handle_private_command)
+    command_matcher.append_handler(handle_message_command)
 
     subscription_matcher = registry.on_message(
         policy=CommandPolicy.exempt(
@@ -124,14 +110,3 @@ def install(
             messaging,
         )
     )
-
-    group_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            _action_command_id(GROUP_ACTION_KEY, "message_group")
-        ),
-        rule=Rule(bind(match_group_command, messaging=messaging))
-        & no_reply(),
-        priority=registry.priority("message_commands"),
-        block=True,
-    )
-    group_matcher.append_handler(handle_group_command)

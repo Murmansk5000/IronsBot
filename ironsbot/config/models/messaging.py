@@ -260,8 +260,9 @@ class BaseMessageAction(BaseModel):
         return message
 
 
-class CommandMessageAction(BaseMessageAction):
+class MessageCommandAction(BaseMessageAction):
     commands: NormalizedStringList = Field(default_factory=list)
+    at_user_ids: NormalizedIntList = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
@@ -274,7 +275,9 @@ class CommandMessageAction(BaseMessageAction):
         return self
 
 
-class ScheduledMessageAction(BaseMessageAction):
+class MessageScheduledAction(BaseMessageAction):
+    feature: str = "text_push"
+    at_user_ids: NormalizedIntList = Field(default_factory=list)
     hour: int = Field(ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
     day_of_week: str | None = None
@@ -287,19 +290,6 @@ class ScheduledMessageAction(BaseMessageAction):
         if not _SCHEDULE_ID_PATTERN.fullmatch(schedule_id):
             raise ValueError(SCHEDULE_ID_FORMAT_ERROR)
         return self
-
-
-class PrivateScheduledMessageAction(ScheduledMessageAction):
-    feature: str = "text_push"
-
-
-class GroupCommandMessageAction(CommandMessageAction):
-    at_user_ids: NormalizedIntList = Field(default_factory=list)
-
-
-class GroupScheduledMessageAction(ScheduledMessageAction):
-    feature: str = "text_push"
-    at_user_ids: NormalizedIntList = Field(default_factory=list)
 
 
 class OutboundRateLimitWindowConfig(BaseModel):
@@ -467,23 +457,27 @@ class MessageConfig(BaseModel):
     red_packet_notice: RedPacketNoticeConfig = Field(
         default_factory=RedPacketNoticeConfig
     )
-    private_commands: list[CommandMessageAction] = Field(default_factory=list)
-    private_schedules: list[PrivateScheduledMessageAction] = Field(
-        default_factory=list
-    )
-    group_commands: list[GroupCommandMessageAction] = Field(default_factory=list)
-    group_schedules: list[GroupScheduledMessageAction] = Field(default_factory=list)
+    commands: list[MessageCommandAction] = Field(default_factory=list)
+    schedules: list[MessageScheduledAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
     team_audit_welcome: TeamAuditWelcomeConfig = Field(
         default_factory=TeamAuditWelcomeConfig
     )
     sendpic: SendpicBehaviorConfig = Field(default_factory=SendpicBehaviorConfig)
 
+    @property
+    def command_feature_keys(self) -> frozenset[str]:
+        return frozenset(action.feature for action in self.commands)
+
+    @property
+    def schedule_feature_keys(self) -> frozenset[str]:
+        return frozenset(action.feature for action in self.schedules)
+
     @model_validator(mode="after")
     def validate_unique_schedule_ids(self) -> Self:
         seen: set[str] = set()
         duplicates: set[str] = set()
-        for task in (*self.private_schedules, *self.group_schedules):
+        for task in self.schedules:
             if task.id in seen:
                 duplicates.add(task.id)
             seen.add(task.id)

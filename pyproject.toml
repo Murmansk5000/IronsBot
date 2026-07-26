@@ -15,6 +15,7 @@ dependencies = [
     "nonebot2[fastapi,httpx]>=2.4.4",
     "seerapi-models>=106.4.0",
     "nonebot-plugin-htmlkit>=0.1.0rc5",
+    "pillow>=12.3.0",
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
     "nonebot-plugin-send-anything-anywhere>=0.7.1",
@@ -28,6 +29,7 @@ dependencies = [
     "pymdown-extensions>=10.21.3",
     "python-dotenv>=1.2.2",
     "starlette>=1.3.1",
+    "resvg-py>=0.3.3",
 ]
 
 [tool.nonebot]
@@ -39,6 +41,9 @@ nonebot-adapter-onebot = [
     { name = "OneBot V12", module_name = "nonebot.adapters.onebot.v12" },
 ]
 "@local" = []
+
+[tool.setuptools.packages.find]
+include = ["ironsbot*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

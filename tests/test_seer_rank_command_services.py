@@ -10,7 +10,7 @@ from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
     RankAdminService,
 )
-from ironsbot.services.seer.rank_list_models import RankListCommand
+from ironsbot.services.seer.rank_list_models import RankListCommand, RankPlayerCommand
 from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
@@ -102,6 +102,18 @@ async def test_local_rank_query_does_not_require_headless_client() -> None:
 
     assert "样本图鉴积分榜" in message
     assert "先查询一些米米号后再试" in message
+
+
+@pytest.mark.asyncio
+async def test_rank_player_query_rejects_invalid_player_id_before_headless() -> None:
+    message = await _query_service(
+        FakeLocalRank(),
+        FakeDisplay(),
+    ).player(
+        RankPlayerCommand(rank_key="群星牌", player_id=26),
+    )
+
+    assert "50000 ~ 2000000000" in message
 
 
 def test_rank_display_limit_is_validated_and_saved_by_service() -> None:

@@ -16,6 +16,9 @@ RUN_MATCH_WINDOW_SECONDS = 30
 HTTP_NO_CONTENT = 204
 REQUEST_RETRY_ATTEMPTS = 3
 REQUEST_RETRY_BASE_DELAY_SECONDS = 2.0
+REUSABLE_RUN_STATUSES = frozenset(
+    {"queued", "in_progress", "waiting", "requested", "pending"}
+)
 
 
 class GitHubActionsClientError(RuntimeError):
@@ -103,6 +106,28 @@ def _match_workflow_run(
     return None
 
 
+def _match_reusable_workflow_run(
+    runs: list[dict[str, Any]],
+    *,
+    ref: str,
+    now: datetime,
+    max_age_seconds: float,
+) -> dict[str, Any] | None:
+    earliest = now - timedelta(seconds=max_age_seconds)
+    for run in runs:
+        if run.get("head_branch") != ref:
+            continue
+        if run.get("status") not in REUSABLE_RUN_STATUSES:
+            continue
+        created_at = str(run.get("created_at") or "")
+        if not created_at:
+            continue
+        if _parse_github_datetime(created_at) < earliest:
+            continue
+        return run
+    return None
+
+
 async def _dispatch_workflow(
     client: AsyncGitHubClient,
     *,
@@ -149,6 +174,35 @@ async def _find_dispatched_run(
     if not isinstance(runs, list):
         return None
     return _match_workflow_run(runs, ref=config.ref, started_at=started_at)
+
+
+async def _find_reusable_run(
+    client: AsyncGitHubClient,
+    *,
+    config: RemoteBuildStepConfig,
+    token: str,
+    now: datetime,
+) -> dict[str, Any] | None:
+    response = await _get_with_retries(
+        client,
+        f"{_workflow_url(config.repository, config.workflow_id)}/runs",
+        headers=_headers(token),
+        params={
+            "branch": config.ref,
+            "per_page": 20,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    runs = payload.get("workflow_runs", [])
+    if not isinstance(runs, list):
+        return None
+    return _match_reusable_workflow_run(
+        runs,
+        ref=config.ref,
+        now=now,
+        max_age_seconds=config.reuse_existing_run_max_age_seconds,
+    )
 
 
 async def _get_run(
@@ -245,13 +299,27 @@ async def trigger_and_wait_workflow(
         github_client = client
 
     try:
-        await _dispatch_workflow(github_client, config=config, token=token)
         deadline = started_at + timedelta(seconds=config.timeout_seconds)
         matched_run_id: int | None = None
         last_run_url = (
             f"https://github.com/{config.repository}/actions/workflows/"
             f"{config.workflow_id}"
         )
+        if config.reuse_existing_run:
+            reusable_run = await _find_reusable_run(
+                github_client,
+                config=config,
+                token=token,
+                now=started_at,
+            )
+            if reusable_run is not None:
+                matched_run_id = int(reusable_run["id"])
+                last_run_url = str(
+                    reusable_run.get("html_url") or last_run_url
+                )
+
+        if matched_run_id is None:
+            await _dispatch_workflow(github_client, config=config, token=token)
 
         while datetime.now(timezone.utc) < deadline:
             if matched_run_id is None:

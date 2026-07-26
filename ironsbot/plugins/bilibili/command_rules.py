@@ -80,7 +80,7 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
         if not rest:
             return ("", "")
 
-        parts = rest.split(maxsplit=1)
+        parts = rest.rsplit(maxsplit=1)
         account = parts[0].strip()
         mode_text = parts[1].strip() if len(parts) > 1 else ""
         return (account, mode_text)

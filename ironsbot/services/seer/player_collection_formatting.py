@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer.player_formatting_common import (
     format_metric_line,
+    format_player_data_time,
     join_metric_parts,
     sample_rank_text,
 )
@@ -113,7 +114,7 @@ def format_collection_info(
             local_key="achievement_count",
         ),
     ]
-    lines = ["📚【收集与排行】", player_identity]
+    lines = ["📚【收集与排行】", format_player_data_time(), player_identity]
     lines.extend(line for line in metric_lines if line)
     return "\n".join(lines)
 
@@ -124,7 +125,7 @@ def format_autocard_rank_info(
     player_identity: str,
     local_summary: LocalRankSummary,
 ) -> str:
-    lines = ["🃏【群星牌排名】", player_identity]
+    lines = ["🃏【群星牌排名】", format_player_data_time(), player_identity]
     sample_text = (
         sample_rank_text(local_summary, "autocard_score")
         if result.score is not None

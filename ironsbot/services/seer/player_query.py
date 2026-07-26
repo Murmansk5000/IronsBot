@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.rank_peak import build_peak_rating_score
@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, MutableMapping
     from typing import Any
 
+    from ironsbot.services.seer.player_detail_extensions import (
+        PlayerDetailExtensionAction,
+    )
     from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
     from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
@@ -18,25 +21,9 @@ PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 PLAYER_AUTOCARD_KEY = "_player_autocard_message"
-PLAYER_DETAIL_TASK_KEY = "_player_detail_task"
 PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
-PLAYER_DETAIL_AUTO_REPLY_KEYS = "_player_detail_auto_reply_keys"
-PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY = "_player_detail_auto_reply_tasks"
-
-
-@dataclass(slots=True)
-class PlayerDetailMessages:
-    collection_message: str = ""
-    peak_message: str = ""
-    autocard_message: str = ""
-
-
-@dataclass(slots=True)
-class PlayerDetailErrors:
-    collection: list[str] = field(default_factory=list)
-    peak: list[str] = field(default_factory=list)
-    autocard: list[str] = field(default_factory=list)
-    shared: list[str] = field(default_factory=list)
+PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY = "_player_detail_builtin_selections"
+PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY = "_player_detail_extension_selections"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,34 +35,46 @@ class PlayerQuerySectionPlan:
     needs_online_info: bool
     local_rank_enabled: bool
 
-    @property
-    def needs_detail_task(self) -> bool:
-        return (
-            self.has_collection
-            or self.needs_peak_section
-            or self.has_autocard_rank
-            or self.local_rank_enabled
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerDetailFetchPlan:
-    needs_unity_part_one: bool
-    needs_unity_peak: bool
-    needs_rank_summary: bool
-    needs_autocard_rank: bool
-    needs_local_rank: bool
-
 
 @dataclass(frozen=True, slots=True)
 class PlayerDetailReplyRequest:
     key: str
     label: str
+    menu_label: str
+    aliases: tuple[str, ...]
+
+
+_PLAYER_DETAIL_REQUESTS = (
+    PlayerDetailReplyRequest(
+        key=PLAYER_COLLECTION_KEY,
+        label="收集与排行",
+        menu_label="收集",
+        aliases=("收集",),
+    ),
+    PlayerDetailReplyRequest(
+        key=PLAYER_PEAK_KEY,
+        label="巅峰之战",
+        menu_label="巅峰",
+        aliases=("巅峰",),
+    ),
+    PlayerDetailReplyRequest(
+        key=PLAYER_AUTOCARD_KEY,
+        label="群星牌排名",
+        menu_label="群星牌",
+        aliases=("群星牌",),
+    ),
+)
+_PLAYER_DETAIL_REQUEST_BY_KEY = {
+    request.key: request for request in _PLAYER_DETAIL_REQUESTS
+}
 
 
 @dataclass(frozen=True, slots=True)
 class PlayerDetailPromptPlan:
-    commands: tuple[str, ...]
+    accepted_commands: tuple[str, ...]
+    prompt_lines: tuple[str, ...]
+    builtin_selections: tuple[tuple[str, str], ...]
+    extension_selections: tuple[tuple[str, str], ...]
     should_enter_conversation: bool
 
 
@@ -183,8 +182,16 @@ def validate_player_peak_season(
             if result.rank is not None and result.score is not None
             else None
         )
-        scores[mode] = confirmed_score
-        if confirmed_score is not None and confirmed_score == candidate_score:
+        # A rank lookup that did not find the player (or timed out) does not
+        # prove that the live player packet belongs to an old season.  Keep
+        # its match data unless the rank lookup positively returns a different
+        # current score.
+        scores[mode] = (
+            confirmed_score
+            if confirmed_score is not None
+            else candidate_score
+        )
+        if confirmed_score is None or confirmed_score == candidate_score:
             continue
 
         peak_updates[win_field] = 0
@@ -192,10 +199,7 @@ def validate_player_peak_season(
         invalidates_total_matches = (
             invalidates_total_matches or int(getattr(unity_peak, total_field)) > 0
         )
-        if confirmed_score is None:
-            clear_metric_keys.update(metric_keys)
-        else:
-            clear_metric_keys.update(metric_keys[1:])
+        clear_metric_keys.update(metric_keys[1:])
 
     if invalidates_total_matches:
         clear_metric_keys.add("peak_total_matches")
@@ -267,33 +271,23 @@ def format_player_extra_error(error: Exception) -> str:
     return str(error) or type(error).__name__
 
 
-def resolve_player_detail_reply(text_value: str) -> PlayerDetailReplyRequest | None:
+def resolve_player_detail_reply(
+    text_value: str,
+    *,
+    selections: Iterable[tuple[str, str]],
+) -> PlayerDetailReplyRequest | None:
     normalized = _normalize_detail_command_text(text_value)
-    if normalized == "收集":
-        return PlayerDetailReplyRequest(
-            key=PLAYER_COLLECTION_KEY,
-            label="收集与排行",
-        )
-    if normalized == "巅峰":
-        return PlayerDetailReplyRequest(
-            key=PLAYER_PEAK_KEY,
-            label="巅峰之战",
-        )
-    if normalized == "群星牌":
-        return PlayerDetailReplyRequest(
-            key=PLAYER_AUTOCARD_KEY,
-            label="群星牌排名",
-        )
+    for selection, request_key in selections:
+        request = _PLAYER_DETAIL_REQUEST_BY_KEY.get(request_key)
+        if request is None:
+            continue
+        if normalized == selection or normalized in request.aliases:
+            return request
     return None
 
 
-def store_player_detail_messages(
-    state: MutableMapping[str, Any],
-    detail_messages: PlayerDetailMessages,
-) -> None:
-    state[PLAYER_COLLECTION_KEY] = detail_messages.collection_message
-    state[PLAYER_PEAK_KEY] = detail_messages.peak_message
-    state[PLAYER_AUTOCARD_KEY] = detail_messages.autocard_message
+def is_player_detail_exit(text_value: str) -> bool:
+    return _normalize_detail_command_text(text_value) == "0"
 
 
 def cached_player_detail_message(
@@ -301,26 +295,6 @@ def cached_player_detail_message(
     key: str,
 ) -> str:
     return str(state.get(key) or "")
-
-
-def player_detail_auto_reply_keys(state: MutableMapping[str, Any]) -> set[str]:
-    raw_keys = state.get(PLAYER_DETAIL_AUTO_REPLY_KEYS)
-    if isinstance(raw_keys, set):
-        return raw_keys
-
-    keys: set[str] = set()
-    state[PLAYER_DETAIL_AUTO_REPLY_KEYS] = keys
-    return keys
-
-
-def player_detail_auto_reply_tasks(state: MutableMapping[str, Any]) -> set[Any]:
-    raw_tasks = state.get(PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY)
-    if isinstance(raw_tasks, set):
-        return raw_tasks
-
-    tasks: set[Any] = set()
-    state[PLAYER_DETAIL_AUTO_REPLY_TASKS_KEY] = tasks
-    return tasks
 
 
 def plan_player_query_sections(
@@ -342,44 +316,20 @@ def plan_player_query_sections(
     )
 
 
-def plan_player_detail_fetches(
-    *,
-    has_collection: bool,
-    needs_peak_section: bool,
-    has_autocard_rank: bool,
-    local_rank_enabled: bool,
-) -> PlayerDetailFetchPlan:
-    needs_unity_part_one = has_collection
-    needs_unity_peak = needs_peak_section
-    needs_rank_summary = has_collection or local_rank_enabled
-
-    if local_rank_enabled:
-        needs_unity_part_one = True
-        needs_unity_peak = True
-
-    return PlayerDetailFetchPlan(
-        needs_unity_part_one=needs_unity_part_one,
-        needs_unity_peak=needs_unity_peak,
-        needs_rank_summary=needs_rank_summary,
-        needs_autocard_rank=has_autocard_rank,
-        needs_local_rank=local_rank_enabled,
-    )
-
-
-def player_detail_commands(
+def _available_builtin_detail_requests(
     *,
     has_collection: bool,
     has_peak: bool,
     has_autocard: bool,
-) -> tuple[str, ...]:
-    commands: list[str] = []
+) -> tuple[PlayerDetailReplyRequest, ...]:
+    requests: list[PlayerDetailReplyRequest] = []
     if has_collection:
-        commands.append("收集")
+        requests.append(_PLAYER_DETAIL_REQUESTS[0])
     if has_peak:
-        commands.append("巅峰")
+        requests.append(_PLAYER_DETAIL_REQUESTS[1])
     if has_autocard:
-        commands.append("群星牌")
-    return tuple(commands)
+        requests.append(_PLAYER_DETAIL_REQUESTS[2])
+    return tuple(requests)
 
 
 def plan_player_detail_prompt(
@@ -388,16 +338,76 @@ def plan_player_detail_prompt(
     has_peak: bool,
     has_autocard: bool,
     supports_conversation: bool,
+    extension_actions: Iterable[PlayerDetailExtensionAction] = (),
 ) -> PlayerDetailPromptPlan:
-    commands = player_detail_commands(
+    extensions = tuple(extension_actions)
+    builtin_requests = _available_builtin_detail_requests(
         has_collection=has_collection,
         has_peak=has_peak,
         has_autocard=has_autocard,
     )
-    return PlayerDetailPromptPlan(
-        commands=commands,
-        should_enter_conversation=bool(commands) and supports_conversation,
+    builtin_selections = tuple(
+        (str(index), request.key)
+        for index, request in enumerate(builtin_requests, start=1)
     )
+    extension_selections = tuple(
+        (str(index), action.id)
+        for index, action in enumerate(extensions, start=len(builtin_selections) + 1)
+    )
+    has_actions = bool(builtin_selections or extension_selections)
+    accepted_commands = _unique_commands(
+        (
+            *(selection for selection, _ in builtin_selections),
+            *(alias for request in builtin_requests for alias in request.aliases),
+            *(selection for selection, _ in extension_selections),
+            *(alias for action in extensions for alias in action.aliases),
+            "0",
+        )
+        if has_actions
+        else ()
+    )
+    prompt_lines = (
+        (
+            "回复数字查看详情：",
+            *(
+                _format_player_detail_menu_item(selection, request.menu_label)
+                for selection, request in zip(
+                    builtin_selections,
+                    builtin_requests,
+                    strict=True,
+                )
+            ),
+            *(
+                _format_player_detail_menu_item(selection, action.label)
+                for selection, action in zip(
+                    extension_selections,
+                    extensions,
+                    strict=True,
+                )
+            ),
+            "0.【退出】",
+        )
+        if has_actions
+        else ()
+    )
+    return PlayerDetailPromptPlan(
+        accepted_commands=accepted_commands,
+        prompt_lines=prompt_lines,
+        builtin_selections=builtin_selections,
+        extension_selections=extension_selections,
+        should_enter_conversation=has_actions and supports_conversation,
+    )
+
+
+def _format_player_detail_menu_item(
+    selection: tuple[str, str],
+    label: str,
+) -> str:
+    return f"{selection[0]}.【{label}】"
+
+
+def _unique_commands(commands: Iterable[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(commands))
 
 
 def player_query_timeout_message(player_id: int) -> str:
@@ -405,27 +415,10 @@ def player_query_timeout_message(player_id: int) -> str:
 
 
 def player_query_failure_message(player_id: int, error: object) -> str:
-    return f"❌ 米米号 {player_id} 查询失败：{error}"
-
-
-def player_detail_timeout_message(label: str) -> str:
-    return f"❌ {label}数据查询超时，请稍后再试。"
-
-
-def player_detail_failure_message(label: str, error: object) -> str:
-    return f"❌ {label}数据获取失败：{error}"
-
-
-def player_detail_empty_message(label: str) -> str:
-    return f"❌ {label}数据没有返回结果，请稍后再试。"
-
-
-def player_detail_pending_message(label: str) -> str:
-    return (
-        f"⏳ {label}还在查询中，请稍等后再试。\n"
-        "这部分需要拉取收集、全服榜或赛季榜数据，排名越靠后可能越慢，"
-        "多人同时查询时也可能需要排队。"
-    )
+    detail = str(error).strip()
+    if not detail:
+        detail = type(error).__name__
+    return f"❌ 米米号 {player_id} 查询失败：{detail}"
 
 
 def _normalize_detail_command_text(text_value: str) -> str:

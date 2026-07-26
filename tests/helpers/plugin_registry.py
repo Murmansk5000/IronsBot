@@ -12,6 +12,9 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -20,6 +23,10 @@ if TYPE_CHECKING:
 
 
 async def _noop_startup(_scheduler: object) -> None:
+    return
+
+
+def _noop_startup_notice_add(*_args: object) -> None:
     return
 
 
@@ -58,6 +65,8 @@ def build_test_plugin_registry(
     runtime = build_test_runtime(
         feature_config=config.features,
         superuser_ids=tuple(config.bot.superusers),
+        command_features=config.messaging.command_feature_keys,
+        schedule_features=config.messaging.schedule_feature_keys,
     )
     headless = HeadlessService(
         ClientManager(runtime.tasks.create),
@@ -111,6 +120,7 @@ def build_test_plugin_registry(
                 data_queries=SimpleNamespace(
                     weekly_preview=_noop_query,
                     data_version=_noop_query,
+                    new_achievements=_noop_query,
                     season_countdown=_noop_query,
                 ),
                 countermark_rank=SimpleNamespace(
@@ -167,11 +177,10 @@ def build_test_plugin_registry(
                     save_binding_choice=lambda *_args, **_kwargs: "",
                     binding_offer=lambda _pending: "",
                     unbind=lambda _user_id: "",
-                    create_detail_task=lambda _pending: None,
-                    spawn_task=lambda _coroutine, **_kwargs: None,
                     shortcut=_noop_query,
                     format_error=lambda _player_id, error: str(error),
                 ),
+                player_detail_extensions=PlayerDetailExtensionRegistry(),
                 rank_queries=SimpleNamespace(
                     help_message=lambda: "",
                     default_limit=lambda _group_id: 10,
@@ -192,8 +201,12 @@ def build_test_plugin_registry(
             ai=object(),
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
-            startup_notice=object(),
+            startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             help_hint=object(),
+            private_extensions=SimpleNamespace(
+                load_plugin_definitions=lambda _runtime: ()
+            ),
+            private_extension_runtime=object(),
         ),
     )
     return build_plugin_registry(

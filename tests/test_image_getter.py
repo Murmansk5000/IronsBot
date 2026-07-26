@@ -72,6 +72,16 @@ async def _fetch_item_from_fallback_source() -> tuple[bytes, list[str]]:
         await clients.close()
 
 
+async def _fetch_sign_buff() -> tuple[bytes, list[str]]:
+    cache = _ItemFallbackClient()
+    clients = HttpClients(cache=cache)
+    images = HttpSeerImageSource(clients)
+    try:
+        return await images.fetch("sign_buff", "33", fallback=False), cache.urls
+    finally:
+        await clients.close()
+
+
 def test_image_fetches_are_serialized_for_shared_cache_client() -> None:
     assert asyncio.run(_fetch_many_images()) == 1
 
@@ -82,3 +92,13 @@ def test_item_image_tries_known_asset_categories() -> None:
     assert data == b"item-image"
     assert "/item/doodle/icon/1726710.png" in urls[0]
     assert "/item/petitem/icon/1726710.png" in urls[1]
+
+
+def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
+    data, urls = asyncio.run(_fetch_sign_buff())
+
+    assert data == b"item-image"
+    assert urls == [
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "newseer/assets/art/ui/assets/battleeffect/signbuff/33.png"
+    ]

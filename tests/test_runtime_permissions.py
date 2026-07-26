@@ -56,8 +56,8 @@ def test_can_manage_conversation_event_allows_private_superuser() -> None:
     )
 
 
-def test_can_manage_conversation_event_rejects_regular_private_user() -> None:
-    assert not permissions.can_manage_conversation_event(
+def test_can_manage_conversation_event_allows_regular_private_user() -> None:
+    assert permissions.can_manage_conversation_event(
         REGULAR_FEATURES,
         private_message_event(),
     )

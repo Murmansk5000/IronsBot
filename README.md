@@ -118,10 +118,11 @@ services:
 ## 常用赛尔查询
 
 - 首次发送 `米米号123456` 并成功查到玩家后，按提示回复 `是`/`y` 或 `否`/`n`；完成选择后才会发送玩家详情。
-- 发送 `绑定米米号123456`、`更改米米号123456`、`解绑米米号` 可管理默认米米号。绑定是快捷查询设置，不验证游戏账号所有权。
-- 已绑定用户可直接发送 `米米号`、`收集`、`巅峰`、`群星牌`；也可发送 `收集123456`、`巅峰123456`、`群星牌123456` 查询指定玩家。
+- 首次成功查询米米号后，按提示回复 `是`/`y` 可设为默认米米号；发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。
+- 查询指定米米号后，回复数字 `1`、`2`、`3`、`4` 查看收集、巅峰、群星牌和阵容，回复 `0` 退出；已绑定用户可直接发送 `米米号`、`收集`、`巅峰`、`群星牌`、`阵容`。
+- `米米号` 默认只读取基础资料；收集、巅峰、群星牌和阵容只会在用户明确发送对应口令时再请求。`[seer.player.background_refresh]` 默认关闭，按需开启后才会预热扩展数据。
 - `雷伊配置`、`配置雷伊` 或 `4923配置` 会按精灵名称、别名或序号发送本地配置图；将图片命名为 `data/pet_configs/<精灵序号>.png` 即可收录。该目录不存在时会在启动时自动创建。
-- `群星牌地葬` 按名称查询卡牌，`群星牌卡98` 按卡牌 ID 查询；纯数字 `群星牌98` 按米米号查询玩家排名。
+- `群星牌地葬` 按名称查询卡牌，`群星牌卡98` 按卡牌 ID 查询；玩家群星牌排名通过米米号详情菜单或已绑定用户发送 `群星牌` 查询。
 - 全服榜后面的纯数字统一按米米号处理，例如 `成就榜123456`。名次必须写 `成就榜200名`，分数必须写 `成就榜5000点`；页码和范围仍可写 `第2页`、`50-100`。
 - 自定义刻印系列维护在 `tables_custom/mintmark_series_members.csv`。当前支持 `刻印十年`、`十年01`、`刻印V10`、`V10物速`；同步并构建 alias SQLite 后生效。
 - `[seer.mintmark].merge_connected = true` 会把关联刻印合并并显示全部 ID；设为 `false` 会保留原始记录并标注关联 ID，适合排查上游数据。
@@ -176,6 +177,7 @@ Desktop 可以把任意可写目录挂载到 `/config`：
 `config/ironsbot.toml`；文件不存在会立即报错。日志默认写入当前工作目录的 `logs/`，
 运行数据默认写入 `data/`。Docker/Unraid 推荐额外挂载
 `/app/logs`，启用文件日志后完整日志和错误日志都能在宿主机上直接查看。
+默认按本地时间每天 `00:00` 轮转，保留 30 天且不压缩；可在 `[bot.logging]` 按磁盘空间调整。
 
 示例 TOML：
 
@@ -190,15 +192,25 @@ example = 987654321
 [features.user_aliases]
 owner = 1234567890
 
+[features.bundles]
+standard = ["seer", "player_lineup_private", "image", "seerinfo_link", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "ai_intent"]
+lite = ["seer_pet", "seer_player", "player_lineup_private", "seer_team", "seer_equipment", "seer_type", "seer_peak", "seer_autocard", "seer_rank", "seer_data"]
+
 [features.group_policy]
 admin = ["admin_notice"]
-example = ["seer", "image", "seer_rank", "meeting", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "server_status_push", "team_resource_subscription", "ai_intent_team_recommend", "ai_chat", "ai_intent", "fire_manual_ad", "ai_intent_fire_manual"]
+example = ["standard", "meeting", "team_resource_subscription"]
 
 [features.user_policy]
 owner = ["all"]
 
-[bilibili.accounts]
-seer = 1310714247
+[[messaging.commands]]
+id = "seerinfo_page"
+commands = ["xm", "xrym", "雷小伊", "重聚"]
+message = "https://seerinfo.yuyuqaq.cn/"
+feature = "seerinfo_link"
+
+[bilibili.accounts.seer]
+uid = 1310714247
 
 [bilibili.push]
 accounts = ["seer"]
@@ -212,8 +224,7 @@ mode = "link"
 # 群主/管理员可在群里发送：
 # B站账号
 # B站推送模式 seer 链接
-# B站推送模式 seer 内容
-# B站推送模式 seer 默认
+# 也可使用 B站公开昵称或 UID；QQ 展示只使用公开昵称
 
 [seer.team_resource]
 times = ["23:00"]
@@ -232,11 +243,23 @@ default_at_users = ["owner"]
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
 `all` 里。游戏内每周活动使用 `seer_activity_query` / `seer_activity_push`；
 游戏外活动链接使用 `web_activity_link` / `web_activity_push`。消息动作可以
-使用自己的 feature 名，例如 `web_activity_link` 或 `seerinfo`。`fire_manual_ad`
+声明自己的 feature 名：`[[messaging.commands]]` 和 `[[messaging.schedules]]`
+中的 `feature` 会注册为原子权限，随后可在 `[features.bundles]`、
+`group_policy` 和 `user_policy` 中引用，不需要修改 Python 枚举。动作的 `id`
+只负责唯一标识动作，不会自动成为权限名。未被内置功能或消息动作声明的权限仍会
+阻止启动；动态命令权限会进入 `all`、`text`、`message`，动态定时权限会进入
+`all`、`text_push`、`message`。`admin_notice` 仍不会被组合间接授予。
+`fire_manual_ad`
 只控制主动推送末尾的火火手册链接；`ai_intent_fire_manual`
 控制用户明确索要手册链接时的 AI 意图动作。
 
-TOML 使用严格加载。未知或已删除的字段、未注册 feature、未知 B站账号引用、
+`[features.bundles]` 可以定义 `standard`、`lite` 等可复用组合；组合之间可以引用，
+最终按并集展开。自定义名称不能覆盖内置 feature/组合，未知引用、空组合和循环引用
+都会阻止启动。为避免管理异常被普通群间接获得，`admin_notice` 不能放入组合，必须在
+`group_policy` 或 `user_policy` 的目标项中显式写出。
+
+TOML 使用严格加载。未知或已删除的字段、既非内置也未被消息动作声明的 feature、
+未知 B站账号引用、
 未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
 [config.example.toml](config.example.toml) 是当前唯一权威示例；升级时应直接删除
 旧字段并使用当前结构，不会保留旧字段兼容或静默忽略逻辑。
@@ -252,7 +275,7 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 `seer_player_peak`、`seer_player_autocard`、`seer_team`、
 `seer_rank_list`、`seer_rank_player`、`seer_rank_score`、
 `server_status_query`、`ai_chat` 和 `data_sync`。动态文本命令使用
-`message_private.<id>` / `message_group.<id>`，AI 意图使用
+`message.<id>`，AI 意图使用
 `ai_intent.<action_id>`；对应 `id` 必须稳定且不可为空。
 
 群消息发送额度默认关闭；显式设置 `[messaging.outbound_rate_limit].enabled = true` 后，使用
@@ -270,6 +293,7 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 | `query` | 常用查询组合：赛尔查询、精灵配置图、图片、榜单、B站查询、活动查询、开服查询。 |
 | `seer` | 全部赛尔查询子功能总开关。 |
 | `seer_player` | 米米号绑定、玩家基础信息及收集/巅峰/群星牌快捷查询。 |
+| `player_lineup_private` | 查询公开阵容；群聊和私聊都使用这个独立权限。 |
 | `seer_team` | 战队 ID 查询。 |
 | `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |
 | `pet_config` | 本地精灵配置图查询；独立于 `seer` 功能包，图片文件名使用精灵序号。 |
@@ -279,7 +303,7 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 | `seer_peak` | 巅峰池、票选、巅峰榜、精灵出场榜。 |
 | `seer_autocard` | 群星牌资料和群星之巅榜。 |
 | `seer_rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
-| `seer_data` | 下周预告、数据版本等数据工具。 |
+| `seer_data` | 下周预告、新增成就、数据版本等数据工具。 |
 | `image` | 固定图片/本地图发送。 |
 | `meeting` | 腾讯会议回复。 |
 | `text` | 通用文本口令回复。 |
@@ -313,6 +337,7 @@ TOML 使用严格加载。未知或已删除的字段、未注册 feature、未�
 - B站 Cookie 与动态状态
 - 米米号样本排行 SQLite
 - QQ 用户默认米米号绑定 SQLite
+- 玩家查询每日额度 SQLite
 - 全服榜页 SQLite 缓存
 - 皮肤价格、渲染缓存等运行数据
 
@@ -371,6 +396,43 @@ docker_socket_path = "/var/run/docker.sock"
 watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 ```
+
+### 私有扩展包
+
+公共镜像不包含阵容命令、协议解析、缓存或渲染实现。只有已安装且已验证的私有扩展包才会
+注册该功能，并复用主机器人的精灵数据、头像资源和渲染器。
+
+真实阵容来自可选私有扩展包 `murmansk5000/ironsbot-private:latest`。它不是机器人
+覆盖镜像：Unraid 的 Repository 和 `[operations.docker_update].image` 始终保持
+`murmansk5000/ironsbot:latest`。容器启动时，公开主镜像通过 Docker socket 拉取私有包、
+校验清单并解包到 `/app/data/private_extensions`，再只加载公开代码明确认可的扩展契约。
+
+阵容是第一个扩展；以后可在同一个私有包中增加新的、由公开主程序显式支持的扩展。整个
+部署仍只有一个 IronsBot 进程和一个无头米米号登录。扩展直接借用主连接发送封包，不启动
+FastAPI、不暴露端口，也不需要第二个米米号或 API Token。
+
+在 TOML 中启用私有扩展包：
+
+```toml
+[operations.private_extensions]
+enabled = true
+image = "murmansk5000/ironsbot-private:latest"
+```
+
+再在 Unraid 容器变量或 `.env.prod` 中设置 Docker Hub 的最小拉取凭据；不要写进 TOML：
+
+```text
+DOCKER_REGISTRY_USERNAME=murmansk5000
+DOCKER_REGISTRY_TOKEN=private-image-pull-token
+```
+
+私有扩展包在公开主镜像启动前通过已挂载的 Docker socket 拉取，因此 Unraid 的 Repository
+不需要改成私有镜像。Docker socket、上述两个容器变量，以及 `enabled = true` 都是必要条件；
+首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
+
+凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
+主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置，阵容功能不再
+拥有独立账号、密码或重连策略。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 

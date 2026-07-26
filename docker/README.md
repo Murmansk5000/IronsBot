@@ -19,6 +19,20 @@ ghcr.io/murmansk5000/ironsbot:<base-version>.<revision>
 ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 ```
 
+`阵容` 的渲染始终由 IronsBot 主进程完成。公开镜像没有私有协议解析器时会发送标注过的
+12 格空白示意图；私有 `murmansk5000/ironsbot-private:latest` 是一个扩展包镜像，不是
+机器人覆盖镜像。公开主镜像在启动前从其中读取受控扩展，并复用主机器人已经登录的无头
+米米号。它不启动第二个容器、第二个 API 或第二个无头登录。
+
+私有镜像需要 Docker Hub 拉取凭据。把 `DOCKER_REGISTRY_USERNAME` 和
+`DOCKER_REGISTRY_TOKEN` 设为容器环境变量，并在 TOML 启用
+`[operations.private_extensions]`。Unraid 的 Repository 和
+`[operations.docker_update].image` 保持公开主镜像。凭据缺失或私有包未安装时，主机器人
+仍会启动，阵容查询只显示空白示意图。
+
+容器变量用于已经运行的机器人通过 Docker API 拉取私有扩展包，也可用于 Watchtower 拉取
+私有主镜像。当前扩展包方案不要求把 Unraid Repository 改成私有镜像。
+
 `latest` tracks the `main` branch of this repository.
 
 ## Version Tags And Changelog
@@ -244,6 +258,9 @@ GITHUB_WORKFLOW_TOKEN=
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
+When file logging is enabled, the default logs rotate at local midnight, keep
+30 days, and are not compressed; adjust `[bot.logging]` if disk space requires
+a different policy.
 
 Feature names are used in `[features.group_policy]` and
 `[features.user_policy]`:
@@ -263,7 +280,7 @@ Feature names are used in `[features.group_policy]` and
 | `seer_peak` | Peak pools, votes, peak ranks, and pet usage ranks. |
 | `seer_autocard` | Autocard data and Autocard global rank. |
 | `seer_rank` | Global ranks, sample ranks, rank/sample status, and rank cache commands. |
-| `seer_data` | Weekly preview, data version, and data tools. |
+| `seer_data` | Weekly preview, new-achievement comparison, data version, and data tools. |
 | `image` | Fixed/local image replies. |
 | `meeting` | Tencent Meeting reply. |
 | `text` | Generic text command replies. |
@@ -310,8 +327,8 @@ main = ["seer", "meeting", "web_activity_link", "bili_query", "bili_push", "ai_c
 [features.user_policy]
 owner = ["all"]
 
-[bilibili.accounts]
-seer = 1310714247
+[bilibili.accounts.seer]
+uid = 1310714247
 
 [bilibili.push]
 accounts = ["seer"]
@@ -325,8 +342,7 @@ mode = "link"
 # Group owners/admins can inspect and override one subscribed account at runtime:
 # B站账号
 # B站推送模式 seer 链接
-# B站推送模式 seer 内容
-# B站推送模式 seer 默认
+# Public Bilibili names and numeric UIDs are also accepted.
 ```
 
 ### Behavior Config Validation

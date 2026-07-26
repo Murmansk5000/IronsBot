@@ -119,6 +119,7 @@ def test_player_query_commands_have_independent_windows() -> None:
         "seer_player_collection",
         "seer_player_peak",
         "seer_player_autocard",
+        "player_lineup_private",
     ):
         assert service.admit(
             user_id=USER_ID,

@@ -13,7 +13,11 @@ from pydantic import (
     model_validator,
 )
 
-from ironsbot.core.commands import NormalizedStringList, json_object, string_list
+from ironsbot.core.commands import (
+    NormalizedStringList,
+    json_object,
+    string_list,
+)
 from ironsbot.core.time import normalize_daily_time
 
 INVALID_INTERVAL_TIME_ERROR = (
@@ -23,10 +27,6 @@ INVALID_INTERVAL_TIME_ERROR = (
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
 DEFAULT_BILI_ACCOUNT_UID = 1310714247
-DEFAULT_BILI_ACCOUNTS = {DEFAULT_BILI_ACCOUNT_ALIAS: DEFAULT_BILI_ACCOUNT_UID}
-DEFAULT_BILI_ACCOUNT_NICKNAMES = {
-    DEFAULT_BILI_ACCOUNT_ALIAS: "赛尔号官方",
-}
 DEFAULT_BILI_PUSH_MODES: dict[str, BiliPushMode] = {
     DEFAULT_BILI_ACCOUNT_ALIAS: "full",
 }
@@ -50,30 +50,33 @@ def _normalize_mode(value: object) -> BiliPushMode | None:
     return cast("BiliPushMode", mode)
 
 
-def _normalize_account_name(value: object) -> str:
+def _normalize_account_alias(value: object) -> str:
     return str(value).strip().lower()
 
 
-def _account_list(value: object) -> list[str]:
+def _account_alias_list(value: object) -> list[str]:
     return [
-        account
-        for raw_account in string_list(value)
-        if (account := _normalize_account_name(raw_account))
+        alias
+        for raw_alias in string_list(value)
+        if (alias := _normalize_account_alias(raw_alias))
     ]
 
 
 def _mode_mapping(value: object) -> dict[str, BiliPushMode]:
     parsed = json_object(value, name="bilibili.push.modes")
     result: dict[str, BiliPushMode] = {}
-    for raw_account, raw_mode in parsed.items():
-        account = _normalize_account_name(raw_account)
+    for raw_alias, raw_mode in parsed.items():
+        alias = _normalize_account_alias(raw_alias)
         mode = _normalize_mode(raw_mode)
-        if account and mode is not None:
-            result[account] = mode
+        if alias and mode is not None:
+            result[alias] = mode
     return result
 
 
-_BiliAccounts = Annotated[list[str], BeforeValidator(_account_list)]
+_BiliAccountAliases = Annotated[
+    list[str],
+    BeforeValidator(_account_alias_list),
+]
 _OptionalBiliPushMode = Annotated[
     BiliPushMode | None,
     BeforeValidator(_normalize_mode),
@@ -83,20 +86,6 @@ _BiliPushModes = Annotated[
     dict[str, BiliPushMode],
     BeforeValidator(_mode_mapping),
 ]
-
-
-def _normalize_account_nickname(value: object) -> str:
-    return str(value).strip()
-
-
-def _parse_account_definition(value: object) -> tuple[int, str | None]:
-    if isinstance(value, dict):
-        raw_uid = value.get("uid", 0)
-        uid = raw_uid if isinstance(raw_uid, int) else int(str(raw_uid))
-        raw_nickname = value.get("nickname", value.get("name", ""))
-        nickname = _normalize_account_nickname(raw_nickname)
-        return uid, nickname or None
-    return int(str(value)), None
 
 
 class BiliIntervalWindow(BaseModel):
@@ -133,10 +122,16 @@ class BiliPollingConfig(BaseModel):
     )
 
 
+class BiliAccountConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    uid: int = Field(gt=0)
+
+
 class BiliPushTargetConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    accounts: _BiliAccounts = Field(default_factory=list)
+    accounts: _BiliAccountAliases = Field(default_factory=list)
     mode: _OptionalBiliPushMode = None
     modes: _BiliPushModes = Field(default_factory=dict)
 
@@ -145,7 +140,7 @@ class BiliPushConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: _RequiredBiliPushMode = "link"
-    accounts: _BiliAccounts = Field(
+    accounts: _BiliAccountAliases = Field(
         default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
     )
     modes: _BiliPushModes = Field(
@@ -182,11 +177,12 @@ class BiliFilterConfig(BaseModel):
 class BiliConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    accounts: dict[str, int] = Field(
-        default_factory=lambda: dict(DEFAULT_BILI_ACCOUNTS)
-    )
-    account_nicknames: dict[str, str] = Field(
-        default_factory=lambda: dict(DEFAULT_BILI_ACCOUNT_NICKNAMES)
+    accounts: dict[str, BiliAccountConfig] = Field(
+        default_factory=lambda: {
+            DEFAULT_BILI_ACCOUNT_ALIAS: BiliAccountConfig(
+                uid=DEFAULT_BILI_ACCOUNT_UID
+            )
+        }
     )
     storage: BiliStorageConfig = Field(default_factory=BiliStorageConfig)
     polling: BiliPollingConfig = Field(default_factory=BiliPollingConfig)
@@ -201,81 +197,30 @@ class BiliConfig(BaseModel):
     @classmethod
     def normalize_accounts(cls, value: object) -> object:
         parsed = json_object(value, name="bilibili.accounts")
-        result: dict[str, int] = dict(DEFAULT_BILI_ACCOUNTS)
-        for raw_alias, raw_uid in parsed.items():
-            alias = _normalize_account_name(raw_alias)
-            if not alias:
-                continue
-            uid, _nickname = _parse_account_definition(raw_uid)
-            if uid > 0:
-                result[alias] = uid
+        result: dict[str, object] = {
+            DEFAULT_BILI_ACCOUNT_ALIAS: {
+                "uid": DEFAULT_BILI_ACCOUNT_UID,
+            }
+        }
+        for raw_alias, raw_config in parsed.items():
+            alias = _normalize_account_alias(raw_alias)
+            if alias:
+                result[alias] = raw_config
         return result
-
-    @field_validator("account_nicknames", mode="before")
-    @classmethod
-    def normalize_account_nicknames(cls, value: object) -> object:
-        parsed = json_object(value, name="bilibili.account_nicknames")
-        result: dict[str, str] = {}
-        for raw_alias, raw_nickname in parsed.items():
-            alias = _normalize_account_name(raw_alias)
-            nickname = _normalize_account_nickname(raw_nickname)
-            if alias and nickname:
-                result[alias] = nickname
-        return result
-
-    @model_validator(mode="before")
-    @classmethod
-    def extract_account_nicknames(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-
-        accounts = json_object(
-            data.get("accounts", {}),
-            name="bilibili.accounts",
-        )
-        nicknames = dict(DEFAULT_BILI_ACCOUNT_NICKNAMES)
-        raw_nicknames = data.get("account_nicknames")
-        if raw_nicknames is not None:
-            for raw_alias, raw_nickname in json_object(
-                raw_nicknames,
-                name="bilibili.account_nicknames",
-            ).items():
-                alias = _normalize_account_name(raw_alias)
-                nickname = _normalize_account_nickname(raw_nickname)
-                if alias and nickname:
-                    nicknames[alias] = nickname
-
-        for raw_alias, raw_account in accounts.items():
-            alias = _normalize_account_name(raw_alias)
-            if not alias:
-                continue
-            _uid, nickname = _parse_account_definition(raw_account)
-            if nickname:
-                nicknames[alias] = nickname
-
-        copied = dict(data)
-        copied["account_nicknames"] = nicknames
-        return copied
 
     @model_validator(mode="after")
     def validate_account_references(self) -> BiliConfig:
         accounts = set(self.accounts)
-        for account in self.account_nicknames:
-            _validate_account_ref(
-                f"bilibili.account_nicknames.{account}",
-                account,
-                accounts,
-            )
-        for index, account in enumerate(self.push.accounts):
+        for index, alias in enumerate(self.push.accounts):
             _validate_account_ref(
                 f"bilibili.push.accounts[{index}]",
-                account,
+                alias,
                 accounts,
             )
-        for account in self.push.modes:
+        for alias in self.push.modes:
             _validate_account_ref(
-                f"bilibili.push.modes.{account}",
-                account,
+                f"bilibili.push.modes.{alias}",
+                alias,
                 accounts,
             )
         _validate_target_account_refs(
@@ -293,12 +238,12 @@ class BiliConfig(BaseModel):
 
 def _validate_account_ref(
     location: str,
-    account: str,
+    alias: str,
     accounts: set[str],
 ) -> None:
-    if account not in accounts:
+    if alias not in accounts:
         raise ValueError(  # noqa: TRY003
-            f"unknown Bilibili account reference at {location}: {account}"
+            f"unknown Bilibili account alias at {location}: {alias}"
         )
 
 
@@ -308,15 +253,15 @@ def _validate_target_account_refs(
     accounts: set[str],
 ) -> None:
     for ref, target in targets.items():
-        for index, account in enumerate(target.accounts):
+        for index, alias in enumerate(target.accounts):
             _validate_account_ref(
                 f"{location}.{ref}.accounts[{index}]",
-                account,
+                alias,
                 accounts,
             )
-        for account in target.modes:
+        for alias in target.modes:
             _validate_account_ref(
-                f"{location}.{ref}.modes.{account}",
-                account,
+                f"{location}.{ref}.modes.{alias}",
+                alias,
                 accounts,
             )

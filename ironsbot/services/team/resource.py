@@ -14,6 +14,10 @@ from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
 )
 from ironsbot.services.operations.scheduler import JobRegistry
+from ironsbot.services.seer.ids import (
+    TEAM_ID_ERROR_MESSAGE,
+    is_valid_team_id,
+)
 from ironsbot.services.seer.team import format_team_info
 
 if TYPE_CHECKING:
@@ -30,8 +34,6 @@ logger = logging.getLogger(__name__)
 
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
-TEAM_ID_MIN = 100_000
-TEAM_ID_MAX = 2_000_000_000
 
 _ADD_PREFIXES = ("订阅战队", "添加战队", "战队订阅")
 _REMOVE_PREFIXES = ("取消订阅战队", "删除订阅战队", "战队取消订阅")
@@ -247,7 +249,7 @@ class TeamResourceService:
 
     def remove_subscription(self, *, group_id: int, team_id: int) -> str:
         if not is_valid_team_id(team_id):
-            return "战队ID范围必须在 100000~2000000000 之间。"
+            return TEAM_ID_ERROR_MESSAGE
         deleted = self._store.delete(group_id=group_id, team_id=team_id)
         return (
             f"已取消本群战队订阅：{team_id}。"
@@ -265,9 +267,9 @@ class TeamResourceService:
         operator_id: int,
     ) -> str:
         if not is_valid_team_id(team_id):
-            return "战队ID范围必须在 100000~2000000000 之间。"
+            return TEAM_ID_ERROR_MESSAGE
         try:
-            result = await self.query(team_id)
+            result = await self.query(team_id, group_id=group_id)
         except TeamResourceQueryError as error:
             return str(error)
 
@@ -331,17 +333,35 @@ class TeamResourceService:
 
     async def query_group_messages(self, group_id: int) -> list[str]:
         return await self.query_messages(
-            subscription.team_id
-            for subscription in self._store.list_group(group_id)
+            (
+                subscription.team_id
+                for subscription in self._store.list_group(group_id)
+            ),
+            group_id=group_id,
         )
 
-    async def query_messages(self, team_ids: Iterable[int]) -> list[str]:
-        return [await self._query_message(team_id) for team_id in team_ids]
+    async def query_messages(
+        self,
+        team_ids: Iterable[int],
+        *,
+        group_id: int | None = None,
+    ) -> list[str]:
+        return [
+            await self._query_message(team_id, group_id=group_id)
+            for team_id in team_ids
+        ]
 
-    async def query(self, team_id: int) -> TeamResourceResult:
+    async def query(
+        self,
+        team_id: int,
+        *,
+        group_id: int | None = None,
+    ) -> TeamResourceResult:
+        if not is_valid_team_id(team_id):
+            raise TeamResourceQueryError(TEAM_ID_ERROR_MESSAGE)
         try:
             return await asyncio.wait_for(
-                self._fetch(team_id),
+                self._fetch(team_id, group_id=group_id),
                 timeout=self._config.query_timeout_seconds,
             )
         except (NotLoggedInError, DisconnectedError) as error:
@@ -364,7 +384,10 @@ class TeamResourceService:
             ):
                 continue
             try:
-                result = await self.query(subscription.team_id)
+                result = await self.query(
+                    subscription.team_id,
+                    group_id=subscription.group_id,
+                )
             except TeamResourceQueryError:
                 continue
 
@@ -403,7 +426,12 @@ class TeamResourceService:
                 job_id=time_text.replace(":", ""),
             )
 
-    async def _fetch(self, team_id: int) -> TeamResourceResult:
+    async def _fetch(
+        self,
+        team_id: int,
+        *,
+        group_id: int | None,
+    ) -> TeamResourceResult:
         try:
             game = self._headless.get_game()
             with game.operations.track(
@@ -411,6 +439,7 @@ class TeamResourceService:
                 f"战队 {team_id}",
                 source="战队资源查询",
                 background=True,
+                group_id=group_id,
             ):
                 info = await game.get_team_info(team_id)
         except (NotLoggedInError, DisconnectedError) as error:
@@ -428,9 +457,14 @@ class TeamResourceService:
             info.score,
         )
 
-    async def _query_message(self, team_id: int) -> str:
+    async def _query_message(
+        self,
+        team_id: int,
+        *,
+        group_id: int | None,
+    ) -> str:
         try:
-            return (await self.query(team_id)).message
+            return (await self.query(team_id, group_id=group_id)).message
         except TeamResourceQueryError as error:
             return str(error)
 
@@ -500,11 +534,5 @@ def parse_team_resource_manage_command(
                 manual_mention,
             )
     return None
-
-
-def is_valid_team_id(team_id: int) -> bool:
-    return TEAM_ID_MIN <= team_id <= TEAM_ID_MAX
-
-
 def _format_user_ids(user_ids: tuple[int, ...]) -> str:
     return "、".join(str(user_id) for user_id in user_ids) if user_ids else "无"

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MIT
+from __future__ import annotations
+
+PLAYER_ID_MIN = 50_000
+PLAYER_ID_MAX = 2_000_000_000
+TEAM_ID_MIN = 100_000
+TEAM_ID_MAX = 2_000_000_000
+
+PLAYER_ID_ERROR_MESSAGE = (
+    f"❌ 米米号无效，请输入 {PLAYER_ID_MIN} ~ {PLAYER_ID_MAX} 之间的数字。"
+)
+TEAM_ID_ERROR_MESSAGE = (
+    f"❌ 战队ID无效，请输入 {TEAM_ID_MIN} ~ {TEAM_ID_MAX} 之间的数字。"
+)
+
+
+def is_valid_player_id(player_id: int) -> bool:
+    return PLAYER_ID_MIN <= player_id <= PLAYER_ID_MAX
+
+
+def is_valid_team_id(team_id: int) -> bool:
+    return TEAM_ID_MIN <= team_id <= TEAM_ID_MAX

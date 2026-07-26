@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
@@ -14,9 +15,18 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, no_reply
-from ironsbot.services.seer.player_binding import parse_player_binding_target
+from ironsbot.services.seer.ids import (
+    PLAYER_ID_ERROR_MESSAGE,
+    PLAYER_ID_MAX,
+    PLAYER_ID_MIN,
+    is_valid_player_id,
+)
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
 from ironsbot.services.seer.player_query import extract_player_query_arg
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
@@ -26,7 +36,6 @@ from ironsbot.services.seer.player_service import (
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ._args import parse_numeric_id
 from .player_context import (
-    PLAYER_BINDING_COMMAND_ID_KEY,
     PLAYER_BINDING_NAMESPACE,
     PLAYER_BINDING_PENDING_KEY,
     PLAYER_ID_KEY,
@@ -36,16 +45,27 @@ from .player_context import (
 from .player_detail_conversation import send_player_info_with_detail_prompt
 
 if TYPE_CHECKING:
+    from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.player_service import PlayerService
 
-_MAX_PLAYER_ID = 2_000_000_000
+@dataclass(frozen=True, slots=True)
+class PlayerCommandDependencies:
+    player: PlayerService
+    features: FeatureService
+    detail_extensions: PlayerDetailExtensionRegistry = field(
+        default_factory=PlayerDetailExtensionRegistry
+    )
+
+
+def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
+    _ = player_id
+    return parse_confirmation(text)
 
 
 def _unbound_player_entry_prompt(error: str = "") -> str:
     prompt = (
-        "尚未设置默认米米号。请直接发送米米号数字（例如 123456）查询，"
-        "也可发送“米米号123456”查询或“绑定米米号123456”直接绑定。\n"
-        "首次成功查询后，机器人会询问是否设为默认米米号。"
+        "尚未设置默认米米号，请直接发送数字（例如 123456）。\n"
+        "查询成功后可按提示选择设为默认。"
     )
     return f"{error}\n\n{prompt}" if error else prompt
 
@@ -55,7 +75,7 @@ def _is_unbound_player_id_reply(event: MessageEvent) -> bool:
 
 
 async def prompt_for_unbound_player_id(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     *,
@@ -65,7 +85,7 @@ async def prompt_for_unbound_player_id(
         matcher,
         event,
         namespace=PLAYER_UNBOUND_ENTRY_NAMESPACE,
-        handlers=[bind_async(handle_unbound_player_id_entry, service)],
+        handlers=[bind_async(handle_unbound_player_id_entry, dependencies)],
         reply_check=_is_unbound_player_id_reply,
         prompt=_unbound_player_entry_prompt(error),
     )
@@ -90,16 +110,8 @@ async def _is_invalid_player_text_query(event: Event) -> bool:
     return arg is not None and bool(arg) and not arg.isdigit()
 
 
-async def _is_binding_command(event: Event, state: T_State) -> bool:
-    player_id = parse_player_binding_target(event.get_plaintext())
-    if player_id is None:
-        return False
-    state[PLAYER_BINDING_COMMAND_ID_KEY] = player_id
-    return True
-
-
 async def validate_player_id(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -108,15 +120,15 @@ async def validate_player_id(
         player_id = await parse_numeric_id(
             matcher,
             state,
-            min_value=1,
-            max_value=_MAX_PLAYER_ID,
-            error_message="❌ 米米号无效，请输入纯数字米米号。",
+            min_value=PLAYER_ID_MIN,
+            max_value=PLAYER_ID_MAX,
+            error_message=PLAYER_ID_ERROR_MESSAGE,
         )
     else:
-        player_id = service.default_player_id(event.user_id)
+        player_id = dependencies.player.default_player_id(event.user_id)
         if player_id is None:
             await prompt_for_unbound_player_id(
-                service,
+                dependencies,
                 matcher,
                 event,
             )
@@ -125,19 +137,20 @@ async def validate_player_id(
 
 
 async def handle_player(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
     explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
-    result = await service.query(
+    result = await dependencies.player.query(
         int(state[PLAYER_ID_KEY]),
         qq_user_id=event.user_id,
         explicit=explicit,
+        group_id=event_group_id(event),
     )
     await _handle_player_query_result(
-        service,
+        dependencies,
         matcher,
         event,
         state,
@@ -146,37 +159,38 @@ async def handle_player(
 
 
 async def handle_unbound_player_id_entry(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
     raw_player_id = event.get_plaintext().strip()
     player_id = int(raw_player_id)
-    if not 1 <= player_id <= _MAX_PLAYER_ID:
+    if not is_valid_player_id(player_id):
         await prompt_for_unbound_player_id(
-            service,
+            dependencies,
             matcher,
             event,
-            error="❌ 米米号无效，请输入纯数字米米号。",
+            error=PLAYER_ID_ERROR_MESSAGE,
         )
         return
 
-    result = await service.query(
+    result = await dependencies.player.query(
         player_id,
         qq_user_id=event.user_id,
         explicit=True,
+        group_id=event_group_id(event),
     )
     if result.message:
         await prompt_for_unbound_player_id(
-            service,
+            dependencies,
             matcher,
             event,
             error=result.message,
         )
         return
     await _handle_player_query_result(
-        service,
+        dependencies,
         matcher,
         event,
         state,
@@ -185,7 +199,7 @@ async def handle_unbound_player_id_entry(
 
 
 async def _handle_player_query_result(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -203,14 +217,18 @@ async def _handle_player_query_result(
             matcher,
             event,
             namespace=PLAYER_BINDING_NAMESPACE,
-            handlers=[bind_async(handle_player_binding_choice, service)],
+            handlers=[bind_async(handle_player_binding_choice, dependencies)],
             reply_check=lambda reply: (
-                parse_confirmation(reply.get_plaintext()) is not None
+                _parse_pending_binding_choice(
+                    reply.get_plaintext(),
+                    pending.player_id,
+                )
+                is not None
             ),
-            prompt=service.binding_offer(pending),
+            prompt=dependencies.player.binding_offer(pending),
         )
     await _send_pending_player_query(
-        service,
+        dependencies,
         matcher,
         event,
         state,
@@ -219,7 +237,7 @@ async def _handle_player_query_result(
 
 
 async def handle_player_binding_choice(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -227,16 +245,19 @@ async def handle_player_binding_choice(
     pending = state.get(PLAYER_BINDING_PENDING_KEY)
     if not isinstance(pending, PendingPlayerQuery):
         return
-    choice = parse_confirmation(event.get_plaintext())
+    choice = _parse_pending_binding_choice(
+        event.get_plaintext(),
+        pending.player_id,
+    )
     if choice is None:
         return
-    service.save_binding_choice(
+    dependencies.player.save_binding_choice(
         event.user_id,
         pending,
         accepted=choice,
     )
     await _send_pending_player_query(
-        service,
+        dependencies,
         matcher,
         event,
         state,
@@ -245,7 +266,7 @@ async def handle_player_binding_choice(
 
 
 async def _send_pending_player_query(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -253,45 +274,22 @@ async def _send_pending_player_query(
 ) -> None:
     plan = pending.section_plan
     await send_player_info_with_detail_prompt(
-        service.spawn_task,
+        dependencies.player,
+        dependencies.features,
+        dependencies.detail_extensions,
         matcher,
         event,
         state,
+        player_id=pending.player_id,
         player_message=pending.player_message,
-        error_formatter=service.format_error,
-        detail_task=service.create_detail_task(pending),
         has_collection=plan.has_collection,
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
+        on_sent=lambda: dependencies.player.record_returned_query(
+            event.user_id,
+            pending,
+        ),
     )
-
-
-async def handle_player_binding_command(
-    service: PlayerService,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    player_id = int(state[PLAYER_BINDING_COMMAND_ID_KEY])
-    if not 1 <= player_id <= _MAX_PLAYER_ID:
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 米米号无效，请输入纯数字米米号。",
-        )
-        return
-    result = await service.bind_player(event.user_id, player_id)
-    if result.message:
-        await finish_event_reply(matcher, event, result.message)
-        return
-    if result.pending is not None:
-        await _send_pending_player_query(
-            service,
-            matcher,
-            event,
-            state,
-            result.pending,
-        )
 
 
 async def handle_player_unbind(
@@ -308,18 +306,11 @@ async def handle_player_unbind(
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.player
-    binding_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_player_binding"),
-        rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(_is_binding_command)
-        & no_reply(),
-        priority=group.matcher_priority("seer_player"),
-        block=True,
+    dependencies = PlayerCommandDependencies(
+        service,
+        group.features,
+        group.resources.player_detail_extensions,
     )
-    binding_matcher.append_handler(
-        bind_async(handle_player_binding_command, service)
-    )
-
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
         policy=CommandPolicy.command("seer_player_binding"),
@@ -346,5 +337,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    query_matcher.append_handler(bind_async(validate_player_id, service))
-    query_matcher.append_handler(bind_async(handle_player, service))
+    query_matcher.append_handler(
+        bind_async(validate_player_id, dependencies)
+    )
+    query_matcher.append_handler(bind_async(handle_player, dependencies))

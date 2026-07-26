@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 import httpx
 import pytest
 
+from ironsbot.integrations.http.bilibili import fetch_bili_account_name
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.services.bilibili import login
 from ironsbot.services.bilibili.auth import (
@@ -38,6 +39,32 @@ def test_bili_auth_invalid_accepts_http_and_api_codes() -> None:
         200,
         cast("dict", ["not", "a", "dict"]),
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_bili_account_name_uses_public_card_name() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["mid"] == "1310714247"
+        assert request.url.params["photo"] == "true"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "card": {
+                        "mid": "1310714247",
+                        "name": "赛尔号官号",
+                    }
+                },
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as client:
+        name = await fetch_bili_account_name(client, 1310714247)
+
+    assert name == "赛尔号官号"
 
 
 def test_extract_bili_login_cookie_merges_response_and_login_url() -> None:
