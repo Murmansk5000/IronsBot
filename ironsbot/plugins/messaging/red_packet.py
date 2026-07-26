@@ -24,6 +24,11 @@ RED_PACKET_NOTICE_SUBSCRIPTION_KEY = "red_packet_notice"
 RED_PACKET_SEGMENT_TYPES = frozenset(
     {"redbag", "redpacket", "red_packet", "hongbao", "lucky_money"}
 )
+RED_PACKET_EVENT_SUBTYPES = RED_PACKET_SEGMENT_TYPES
+RED_PACKET_GRAY_TIP_BUSINESS_IDS = frozenset({"81"})
+RED_PACKET_BUSINESS_ID_KEYS = frozenset(
+    {"busi_id", "busiId", "business_id", "businessId"}
+)
 RED_PACKET_RAW_MARKERS = (
     "[CQ:redbag",
     "[CQ:redpacket",
@@ -53,17 +58,39 @@ def _payload_contains_marker(value: Any, markers: tuple[str, ...]) -> bool:
     return False
 
 
+def _payload_has_red_packet_business_id(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        if any(
+            str(value.get(key) or "").strip() in RED_PACKET_GRAY_TIP_BUSINESS_IDS
+            for key in RED_PACKET_BUSINESS_ID_KEYS
+        ):
+            return True
+        return any(_payload_has_red_packet_business_id(item) for item in value.values())
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        return any(_payload_has_red_packet_business_id(item) for item in value)
+    return False
+
+
 def is_red_packet_message(message: Message) -> bool:
     for segment in message:
         if segment.type.lower() in RED_PACKET_SEGMENT_TYPES:
             return True
+        if _payload_has_red_packet_business_id(segment.data):
+            return True
         if _payload_contains_marker(segment.data, RED_PACKET_RAW_MARKERS):
             return True
-    return _payload_contains_marker(str(message), RED_PACKET_RAW_MARKERS)
+    return _payload_has_red_packet_business_id(
+        message
+    ) or _payload_contains_marker(str(message), RED_PACKET_RAW_MARKERS)
 
 
 def is_red_packet_payload(payload: Mapping[str, Any]) -> bool:
-    return _payload_contains_marker(payload, RED_PACKET_NOTICE_MARKERS)
+    subtype = str(payload.get("sub_type") or "").strip().lower()
+    return (
+        subtype in RED_PACKET_EVENT_SUBTYPES
+        or _payload_has_red_packet_business_id(payload)
+        or _payload_contains_marker(payload, RED_PACKET_NOTICE_MARKERS)
+    )
 
 
 def summarize_red_packet_message(message: Message) -> str:
