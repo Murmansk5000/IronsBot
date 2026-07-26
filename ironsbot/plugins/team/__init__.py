@@ -4,14 +4,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, NoticeEvent
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupIncreaseNoticeEvent,
+    NoticeEvent,
+)
 from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import bind_async
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.team.audit import TeamAuditService

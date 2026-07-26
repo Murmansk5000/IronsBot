@@ -4,11 +4,17 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    MessageEvent,
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
@@ -38,11 +44,6 @@ from .rank_list_context import (
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-
-    from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
@@ -249,7 +250,7 @@ def install(group: SeerMatcherGroup) -> None:
     list_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_list"),
         rule=feature_rule
-        & Rule(partial(_is_rank_list_command, query)),
+        & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
     )
     list_matcher.append_handler(bind_async(_handle_list, query))
@@ -258,7 +259,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command("seer_rank_player"),
         rule=feature_rule
         & Rule(
-            partial(
+            bind(
                 _store_command,
                 parse_rank_player_command,
                 RANK_PLAYER_COMMAND_KEY,
@@ -272,7 +273,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command("seer_rank_score"),
         rule=feature_rule
         & Rule(
-            partial(
+            bind(
                 _store_command,
                 parse_rank_score_command,
                 RANK_SCORE_COMMAND_KEY,
@@ -310,7 +311,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command("seer_rank_cache_batch"),
         rule=feature_rule
         & Rule(
-            partial(
+            bind(
                 _store_command,
                 parse_rank_cache_batch_command,
                 RANK_CACHE_BATCH_COMMAND_KEY,
@@ -336,7 +337,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command("seer_rank_page_cache_status"),
         rule=feature_rule
         & Rule(
-            partial(
+            bind(
                 _store_command,
                 parse_rank_page_cache_status_command,
                 RANK_PAGE_CACHE_STATUS_COMMAND_KEY,
@@ -351,7 +352,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command("seer_rank_page_cache_refresh"),
         rule=feature_rule
         & Rule(
-            partial(
+            bind(
                 _store_command,
                 parse_rank_page_cache_refresh_command,
                 RANK_PAGE_CACHE_REFRESH_COMMAND_KEY,
@@ -368,7 +369,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.command("seer_rank_display_limit"),
         rule=feature_rule
         & Rule(
-            partial(
+            bind(
                 _store_command,
                 parse_rank_display_limit_command,
                 RANK_DISPLAY_LIMIT_COMMAND_KEY,

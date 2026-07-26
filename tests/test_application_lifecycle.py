@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from nonebot.adapters.onebot.v11 import Bot
+from nonebot.dependencies.utils import get_typed_signature
 from nonebot.internal.driver import Driver
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
@@ -59,6 +60,10 @@ def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
     assert len(driver.shutdown_handlers) == 1
     assert len(driver.bot_connect_handlers) == 1
     assert len(driver.bot_disconnect_handlers) == 1
+    connect_signature = get_typed_signature(lifecycle.bot_connect)
+    disconnect_signature = get_typed_signature(lifecycle.bot_disconnect)
+    assert connect_signature.parameters["bot"].annotation is Bot
+    assert disconnect_signature.parameters["bot"].annotation is Bot
 
 
 def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:

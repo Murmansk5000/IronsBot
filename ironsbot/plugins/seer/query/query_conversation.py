@@ -4,7 +4,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.exception import FinishedException
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.runtime.params import parse_string_arg
@@ -14,10 +17,6 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_result import QueryResult
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.matcher import Matcher
-    from nonebot.typing import T_State
-
     from ironsbot.services.seer.query_result import QueryReply
 
 T = TypeVar("T")

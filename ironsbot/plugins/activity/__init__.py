@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 
@@ -16,10 +21,6 @@ from ironsbot.services.activity.commands import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import MessageEvent
-    from nonebot.matcher import Matcher
-
     from ironsbot.core.features import FeatureService
     from ironsbot.services.activity.service import ActivityService
 

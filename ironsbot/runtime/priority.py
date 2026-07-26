@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.typing import T_State
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService, SuperuserPriorityConfig
 
 logger = getLogger(__name__)
