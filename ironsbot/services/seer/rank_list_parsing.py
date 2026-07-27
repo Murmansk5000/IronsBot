@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from ironsbot.core.commands import normalize_command_text, strip_command_prefix
+from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.rank_list_models import (
     BATCH_CACHE_PREFIXES,
     GLOBAL_RANKS,
@@ -21,9 +22,6 @@ from ironsbot.services.seer.rank_list_models import (
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
-
-MAX_PLAYER_ID = 2_000_000_000
-
 
 
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
@@ -96,7 +94,7 @@ def parse_rank_player_command(text: str) -> RankPlayerCommand | None:
         return None
 
     player_id = int(suffix)
-    if not 0 < player_id <= MAX_PLAYER_ID:
+    if not is_valid_player_id(player_id):
         return None
     return RankPlayerCommand(rank_key=rank_key, player_id=player_id)
 

@@ -12,6 +12,9 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -167,11 +170,10 @@ def build_test_plugin_registry(
                     save_binding_choice=lambda *_args, **_kwargs: "",
                     binding_offer=lambda _pending: "",
                     unbind=lambda _user_id: "",
-                    create_detail_task=lambda _pending: None,
-                    spawn_task=lambda _coroutine, **_kwargs: None,
                     shortcut=_noop_query,
                     format_error=lambda _player_id, error: str(error),
                 ),
+                player_detail_extensions=PlayerDetailExtensionRegistry(),
                 rank_queries=SimpleNamespace(
                     help_message=lambda: "",
                     default_limit=lambda _group_id: 10,
