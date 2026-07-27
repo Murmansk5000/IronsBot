@@ -74,9 +74,7 @@ def test_player_info_prompt_includes_visible_private_extension(
     assert "2.【private action】" in call.kwargs["prompt"]
     assert state[PLAYER_DETAIL_COMMANDS_KEY] == (
         "1",
-        "收集",
         "2",
-        "private",
         "0",
     )
     assert state[PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY] == (

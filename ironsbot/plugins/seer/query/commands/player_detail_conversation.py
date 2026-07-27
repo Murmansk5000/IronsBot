@@ -268,13 +268,7 @@ def _resolve_player_detail_extension_action(
     )
     selection_ids = dict(selections)
     selection = _normalize_detail_command_text(text_value)
-    action = extensions.get(selection_ids.get(selection, ""))
-    if action is not None:
-        return action
-    return extensions.resolve_alias(
-        text_value,
-        allowed_ids=tuple(selection_ids.values()),
-    )
+    return extensions.get(selection_ids.get(selection, ""))
 
 
 def _stored_player_detail_selections(
