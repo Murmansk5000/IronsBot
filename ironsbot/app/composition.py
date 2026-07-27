@@ -113,6 +113,9 @@ from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.peak import PeakQueryService
 from ironsbot.services.seer.pet_query import PetQueryService
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
 from ironsbot.services.seer.player_service import (
     PlayerDetailService,
     PlayerService,
@@ -576,6 +579,7 @@ def build_application(settings: Settings) -> Application:
             merge_connected=settings.seer.mintmark.merge_connected,
         ),
         player,
+        PlayerDetailExtensionRegistry(),
         rank_queries,
         rank_admin,
     )

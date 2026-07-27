@@ -149,6 +149,31 @@ class PlayerBindingConfig(BaseModel):
     path: SQLitePath = Path("data/seer/player_bindings.sqlite")
 
 
+class PlayerQueryLimitsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    bound_default_daily_limit: int = Field(default=10, ge=0)
+    other_target_action_daily_limit: int = Field(default=1, ge=0)
+    unbound_daily_limit: int = Field(default=1, ge=0)
+    superuser_bypass: bool = True
+    path: SQLitePath = Path("data/seer/player_query_limits.sqlite")
+
+class PlayerRequestProtectionConfig(BaseModel):
+    """Serialize live player lookups and pause briefly after disconnects."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    max_queued_queries: int = Field(default=3, ge=0)
+    base_request_interval_seconds: float = Field(default=1.2, ge=0)
+    disconnect_pause_seconds: float = Field(default=60.0, ge=0)
+    repeat_disconnect_window_seconds: float = Field(default=600.0, ge=0)
+    repeat_disconnect_pause_seconds: float = Field(default=300.0, ge=0)
+    superuser_priority: bool = True
+    superuser_bypass_pause: bool = True
+
+
 class PlayerQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -156,6 +181,12 @@ class PlayerQueryConfig(BaseModel):
     detail_timeout_seconds: float = Field(default=90, gt=0)
     sections: list[str] = Field(default_factory=lambda: list(PLAYER_SECTION_KEYS))
     binding: PlayerBindingConfig = Field(default_factory=PlayerBindingConfig)
+    query_limits: PlayerQueryLimitsConfig = Field(
+        default_factory=PlayerQueryLimitsConfig
+    )
+    request_protection: PlayerRequestProtectionConfig = Field(
+        default_factory=PlayerRequestProtectionConfig
+    )
 
     @field_validator("sections", mode="before")
     @classmethod
