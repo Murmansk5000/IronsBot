@@ -264,6 +264,8 @@ def test_parse_rank_player_command_treats_plain_digits_as_player_id() -> None:
     assert parse_rank_player_command("样本成就榜123456") is None
     assert parse_rank_player_command("成就榜第123456名") is None
     assert parse_rank_player_command("成就榜5000点") is None
+    assert parse_rank_player_command("群星牌榜26") is None
+    assert parse_rank_player_command("竞技榜49999") is None
 
 
 @pytest.mark.parametrize(

@@ -173,8 +173,6 @@ def build_test_plugin_registry(
                     save_binding_choice=lambda *_args, **_kwargs: "",
                     binding_offer=lambda _pending: "",
                     unbind=lambda _user_id: "",
-                    create_detail_task=lambda _pending: None,
-                    spawn_task=lambda _coroutine, **_kwargs: None,
                     shortcut=_noop_query,
                     format_error=lambda _player_id, error: str(error),
                 ),

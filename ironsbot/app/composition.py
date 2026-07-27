@@ -61,6 +61,9 @@ from ironsbot.integrations.storage.pet_config_images import (
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
+from ironsbot.integrations.storage.player_query_limits import (
+    SqlitePlayerQueryLimitStore,
+)
 from ironsbot.integrations.storage.push_subscriptions import (
     PushUnsubscribeStore,
 )
@@ -115,6 +118,10 @@ from ironsbot.services.seer.peak import PeakQueryService
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
+)
+from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
+from ironsbot.services.seer.player_request_protection import (
+    PlayerRequestProtectionService,
 )
 from ironsbot.services.seer.player_service import (
     PlayerDetailService,
@@ -290,7 +297,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
     )
 
 
-def build_application(settings: Settings) -> Application:
+def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
     driver = nonebot.get_driver()
@@ -364,6 +371,11 @@ def build_application(settings: Settings) -> Application:
         settings.operations.headless,
         settings.operations.headless_notice,
         admin_notices,
+        request_interval_seconds=(
+            settings.seer.player.request_protection.base_request_interval_seconds
+            if settings.seer.player.request_protection.enabled
+            else 0.0
+        ),
     )
     priority = AdminPriorityService(settings.features.priority, features)
     bili_data_dir = settings.bilibili.storage.data_dir
@@ -453,6 +465,19 @@ def build_application(settings: Settings) -> Application:
     player_bindings = SqlitePlayerBindingStore(
         settings.seer.player.binding.path
     )
+    player_query_quotas = PlayerQueryQuotaService(
+        settings.seer.player.query_limits,
+        player_bindings,
+        features,
+        SqlitePlayerQueryLimitStore(settings.seer.player.query_limits.path),
+    )
+    player_requests = PlayerRequestProtectionService(
+        settings.seer.player.request_protection,
+        features,
+        headless,
+        task_owner.create,
+    )
+    headless.add_state_listener(player_requests.on_headless_state_change)
     pet_config = PetConfigQueryService(
         seer_database,
         FilePetConfigImageStore(settings.pet_config.image_dir),
@@ -465,6 +490,7 @@ def build_application(settings: Settings) -> Application:
         settings.seer.local_rank,
         settings.seer.player,
         rank,
+        player_requests,
     )
     rank_display = RankDisplayService(
         settings.seer.rank,
@@ -474,6 +500,7 @@ def build_application(settings: Settings) -> Application:
     rank_page_refresh = RankPageRefreshService(
         settings.seer.rank.page_refresh,
         rank,
+        player_requests,
     )
     player = PlayerService(
         settings.seer,
@@ -485,8 +512,12 @@ def build_application(settings: Settings) -> Application:
             rank,
             local_rank,
             task_owner.create,
+            player_requests,
         ),
+        player_query_quotas,
+        player_requests,
     )
+    player_detail_extensions = PlayerDetailExtensionRegistry()
     rank_queries = RankQueryService(
         rank,
         local_rank,
@@ -498,6 +529,8 @@ def build_application(settings: Settings) -> Application:
                 settings.seer.player.detail_timeout_seconds
             ),
         ),
+        player_query_quotas,
+        player_requests,
     )
     rank_admin = RankAdminService(
         RankAdminPolicy(
@@ -579,7 +612,7 @@ def build_application(settings: Settings) -> Application:
             merge_connected=settings.seer.mintmark.merge_connected,
         ),
         player,
-        PlayerDetailExtensionRegistry(),
+        player_detail_extensions,
         rank_queries,
         rank_admin,
     )

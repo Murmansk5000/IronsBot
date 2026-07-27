@@ -15,7 +15,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
-from .rank_list_context import event_group_id
+from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, no_reply
 from ironsbot.services.seer.ids import (
