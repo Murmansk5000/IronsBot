@@ -14,6 +14,9 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.mintmark import MintmarkQueryService
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.pet_query import PetQueryService
+    from ironsbot.services.seer.player_detail_extensions import (
+        PlayerDetailExtensionRegistry,
+    )
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
@@ -34,5 +37,6 @@ class SeerQueryResources:
     peak_query: PeakQueryService
     mintmark: MintmarkQueryService
     player: PlayerService
+    player_detail_extensions: PlayerDetailExtensionRegistry
     rank_queries: RankQueryService
     rank_admin: RankAdminService

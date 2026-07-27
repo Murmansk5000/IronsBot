@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import TZ_CN, now
 from ironsbot.services.seer.formatting import format_datetime
 from ironsbot.services.seer.rank_formatting import format_rank_position_text
 
@@ -21,6 +22,10 @@ PEAK_RANK_NAMES = {
 }
 COSMIC_SAINT_RANK_VALUE = 4
 COSMIC_SAINT_MIN_STAR = 100
+
+
+def format_player_data_time() -> str:
+    return f"获取时间：{now(tz=TZ_CN).strftime('%Y-%m-%d %H:%M:%S')}"
 
 
 def filter_blank_lines(lines: list[str]) -> list[str]:
@@ -119,10 +124,16 @@ def format_metric_line(
     local_key: str,
 ) -> str | None:
     value_text = str(value) if value is not None and value >= 0 else "暂无数据"
+    failure = None if rank_result is None else getattr(rank_result, "failure", None)
+    rank_text = (
+        f"全服排行失败：{failure}"
+        if failure
+        else format_rank_position_text(rank_result)
+    )
 
     metric_text = join_metric_parts(
         value_text,
-        format_rank_position_text(rank_result),
+        rank_text,
         sample_rank_text(local_summary, local_key),
     )
     return f"{title}：{metric_text}"

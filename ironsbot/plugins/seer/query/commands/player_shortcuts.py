@@ -3,27 +3,45 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.rule import Rule
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
+
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from .rank_list_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     parse_player_shortcut_command,
 )
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import (
-    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
-)
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.rule import Rule
-from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ..group import SeerMatcherGroup, seer_feature_rule
+from .player import PlayerCommandDependencies, prompt_for_unbound_player_id
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.player_service import PlayerService
+    from ironsbot.services.seer.query_result import QueryReply
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
+
+
+def _build_shortcut_reply_message(reply: QueryReply) -> str | Message:
+    if reply.image is None:
+        return f"{reply.leading_text}{reply.text}"
+
+    message = Message()
+    if reply.leading_text:
+        message += MessageSegment.text(reply.leading_text)
+    message += MessageSegment.image(reply.image)
+    if reply.text:
+        message += MessageSegment.text(reply.text)
+    return message
 
 
 async def _is_player_shortcut(event: Event, state: T_State) -> bool:
@@ -35,14 +53,26 @@ async def _is_player_shortcut(event: Event, state: T_State) -> bool:
 
 
 async def handle_player_shortcut(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
+    service = dependencies.player
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
-    message = await service.shortcut(command, event.user_id)
-    await finish_event_reply(matcher, event, message)
+    if command.player_id is None and service.default_player_id(event.user_id) is None:
+        await prompt_for_unbound_player_id(dependencies, matcher, event)
+        return
+    reply = await service.shortcut(
+        command,
+        event.user_id,
+        group_id=event_group_id(event),
+    )
+    await finish_event_reply(
+        matcher,
+        event,
+        _build_shortcut_reply_message(reply),
+    )
 
 
 def _shortcut_command_id(
@@ -64,5 +94,12 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     matcher.append_handler(
-        bind_async(handle_player_shortcut, group.resources.player)
+        bind_async(
+            handle_player_shortcut,
+            PlayerCommandDependencies(
+                group.resources.player,
+                group.features,
+                group.resources.player_detail_extensions,
+            ),
+        )
     )
