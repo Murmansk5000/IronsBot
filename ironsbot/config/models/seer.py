@@ -147,6 +147,7 @@ class PlayerBindingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: SQLitePath = Path("data/seer/player_bindings.sqlite")
+    change_cooldown_days: int = Field(default=3, ge=0)
 
 
 class PlayerQueryLimitsConfig(BaseModel):
@@ -158,6 +159,7 @@ class PlayerQueryLimitsConfig(BaseModel):
     unbound_daily_limit: int = Field(default=1, ge=0)
     superuser_bypass: bool = True
     path: SQLitePath = Path("data/seer/player_query_limits.sqlite")
+
 
 class PlayerRequestProtectionConfig(BaseModel):
     """Serialize live player lookups and pause briefly after disconnects."""
@@ -174,6 +176,15 @@ class PlayerRequestProtectionConfig(BaseModel):
     superuser_bypass_pause: bool = True
 
 
+class PlayerBackgroundRefreshConfig(BaseModel):
+    """Optional prefetch after a successful player lookup."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    cache_ttl_seconds: float = Field(default=300.0, gt=0)
+
+
 class PlayerQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -187,7 +198,9 @@ class PlayerQueryConfig(BaseModel):
     request_protection: PlayerRequestProtectionConfig = Field(
         default_factory=PlayerRequestProtectionConfig
     )
-
+    background_refresh: PlayerBackgroundRefreshConfig = Field(
+        default_factory=PlayerBackgroundRefreshConfig
+    )
     @field_validator("sections", mode="before")
     @classmethod
     def coerce_sections(cls, value: object) -> object:
@@ -439,7 +452,6 @@ class AchievementHistoryConfig(BaseModel):
     path: Path = Path("data/seer/achievement_history.sqlite")
     max_snapshots: int = Field(default=32, ge=2, le=128)
     baseline_lookback_days: int = Field(default=4, ge=1, le=14)
-
 
 
 class SeerConfig(BaseModel):

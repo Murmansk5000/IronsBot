@@ -14,7 +14,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
-from .rank_list_context import event_group_id
+from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.player_shortcuts import (
