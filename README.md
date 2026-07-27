@@ -84,6 +84,11 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+## 玩家绑定与查询额度
+
+默认玩家绑定只是查询偏好，不证明游戏账号所有权。每日查询工作额度、命令入口冷却和群消息发送额度是独立限制，各自按实际消费者的结算时点处理。
+额度检查和成功后扣减不是实时请求的原子预占。详情会话只接受菜单数字及 `0` 退出；未绑定输入仍有 Unicode 数字检查与整数转换不一致的历史边界，不能把功能接线当作已修复。
+
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：
