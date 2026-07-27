@@ -25,7 +25,7 @@ def test_extract_player_query_arg_accepts_explicit_and_default_forms() -> None:
     assert extract_player_query_arg("not a player command") is None
 
 
-def test_player_detail_resolver_uses_current_menu_selections() -> None:
+def test_player_detail_resolver_accepts_only_current_menu_numbers() -> None:
     selections = (
         ("1", PLAYER_COLLECTION_KEY),
         ("2", PLAYER_PEAK_KEY),
@@ -33,12 +33,14 @@ def test_player_detail_resolver_uses_current_menu_selections() -> None:
     )
 
     collection = resolve_player_detail_reply("1", selections=selections)
-    peak = resolve_player_detail_reply("巅峰", selections=selections)
+    peak = resolve_player_detail_reply("2", selections=selections)
 
     assert collection is not None
     assert collection.key == PLAYER_COLLECTION_KEY
     assert peak is not None
     assert peak.key == PLAYER_PEAK_KEY
+    assert resolve_player_detail_reply("收集", selections=selections) is None
+    assert resolve_player_detail_reply("巅峰", selections=selections) is None
     assert resolve_player_detail_reply("阵容", selections=selections) is None
 
 
@@ -81,11 +83,7 @@ def test_player_detail_prompt_assigns_standard_menu_numbers_in_registration_orde
             "1",
             "2",
             "3",
-            "收集",
-            "巅峰",
-            "群星牌",
             "4",
-            "private",
             "0",
         ),
         prompt_lines=(
@@ -124,7 +122,7 @@ def test_player_detail_prompt_uses_registered_extension_actions() -> None:
     )
 
     assert plan == PlayerDetailPromptPlan(
-        accepted_commands=("1", "巅峰", "2", "private", "0"),
+        accepted_commands=("1", "2", "0"),
         prompt_lines=(
             "回复数字查看详情：",
             "1.【巅峰】",

@@ -41,7 +41,6 @@ class PlayerDetailReplyRequest:
     key: str
     label: str
     menu_label: str
-    aliases: tuple[str, ...]
 
 
 _PLAYER_DETAIL_REQUESTS = (
@@ -49,19 +48,16 @@ _PLAYER_DETAIL_REQUESTS = (
         key=PLAYER_COLLECTION_KEY,
         label="收集与排行",
         menu_label="收集",
-        aliases=("收集",),
     ),
     PlayerDetailReplyRequest(
         key=PLAYER_PEAK_KEY,
         label="巅峰之战",
         menu_label="巅峰",
-        aliases=("巅峰",),
     ),
     PlayerDetailReplyRequest(
         key=PLAYER_AUTOCARD_KEY,
         label="群星牌排名",
         menu_label="群星牌",
-        aliases=("群星牌",),
     ),
 )
 _PLAYER_DETAIL_REQUEST_BY_KEY = {
@@ -281,7 +277,7 @@ def resolve_player_detail_reply(
         request = _PLAYER_DETAIL_REQUEST_BY_KEY.get(request_key)
         if request is None:
             continue
-        if normalized == selection or normalized in request.aliases:
+        if normalized == selection:
             return request
     return None
 
@@ -358,9 +354,7 @@ def plan_player_detail_prompt(
     accepted_commands = _unique_commands(
         (
             *(selection for selection, _ in builtin_selections),
-            *(alias for request in builtin_requests for alias in request.aliases),
             *(selection for selection, _ in extension_selections),
-            *(alias for action in extensions for alias in action.aliases),
             "0",
         )
         if has_actions
