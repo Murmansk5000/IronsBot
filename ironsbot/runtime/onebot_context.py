@@ -16,6 +16,11 @@ _AT_PATTERNS = (
 NOTICE_MESSAGE_MAX_CHARS = 300
 
 
+def event_group_id(event: MessageEvent) -> int | None:
+    group_id = getattr(event, "group_id", None)
+    return int(group_id) if group_id is not None else None
+
+
 def _message_has_bot_at(message: Any, self_id: str) -> bool:
     return bool(message) and any(
         getattr(segment, "type", "") == "at"

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -15,6 +16,9 @@ from ironsbot.services.seer.local_rank_models import (
     LocalRankCacheStats,
     LocalRankEntry,
     LocalRankSummary,
+)
+from ironsbot.services.seer.player_request_protection import (
+    PlayerRequestPausedError,
 )
 from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
 from ironsbot.services.seer.rank_peak import (
@@ -34,10 +38,14 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.local_rank_metrics import MetricSpec
+    from ironsbot.services.seer.player_request_protection import (
+        PlayerRequestProtectionService,
+    )
     from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
 
 LocalRankRecord = tuple[int, int, str, int, str]
+logger = logging.getLogger(__name__)
 
 
 class LocalRankRepository(Protocol):
@@ -100,6 +108,7 @@ class LocalRankService:
     config: LocalRankConfig
     player_config: PlayerQueryConfig
     rank: RankService
+    requests: PlayerRequestProtectionService | None = None
     _write_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
     def entries(
@@ -219,6 +228,8 @@ class LocalRankService:
         self,
         game: HeadlessGame,
         player_ids: Sequence[int] | None = None,
+        *,
+        background: bool = False,
     ) -> LocalRankRefreshResult:
         if player_ids is None:
             player_ids = self.repository.refresh_candidate_ids(
@@ -237,24 +248,24 @@ class LocalRankService:
                 result.skipped_full += 1
                 continue
             try:
-                with game.operations.track(
-                    "本地样本刷新",
-                    f"米米号 {player_id}",
-                    source="本地样本刷新",
-                    background=True,
-                ):
-                    await asyncio.wait_for(
-                        self._refresh_one(
-                            game=game,
-                            peak_sub_key=peak_sub_key,
-                            player_id=player_id,
-                        ),
-                        timeout=self.player_config.detail_timeout_seconds,
-                    )
+                await self._refresh_player(
+                    game=game,
+                    peak_sub_key=peak_sub_key,
+                    player_id=player_id,
+                    background=background,
+                )
             except asyncio.TimeoutError:
                 result.failures.append(
                     LocalRankRefreshFailure(player_id, "查询超时")
                 )
+            except PlayerRequestPausedError as error:
+                result.failures.append(
+                    LocalRankRefreshFailure(player_id, str(error))
+                )
+                logger.info(
+                    "local rank cache auto refresh stopped: player requests paused"
+                )
+                break
             except Exception as error:  # noqa: BLE001
                 result.failures.append(
                     LocalRankRefreshFailure(player_id, str(error))
@@ -263,6 +274,41 @@ class LocalRankService:
                 result.success += 1
             await asyncio.sleep(self.config.refresh_interval_seconds)
         return result
+
+    async def _refresh_player(
+        self,
+        *,
+        game: HeadlessGame,
+        peak_sub_key: int | None,
+        player_id: int,
+        background: bool,
+    ) -> None:
+        async def refresh_one() -> None:
+            action_name = "本地样本刷新" if background else "手动样本刷新"
+            with game.operations.track(
+                action_name,
+                f"米米号 {player_id}",
+                source=action_name,
+                background=background,
+            ):
+                await asyncio.wait_for(
+                    self._refresh_one(
+                        game=game,
+                        peak_sub_key=peak_sub_key,
+                        player_id=player_id,
+                    ),
+                    timeout=self.player_config.detail_timeout_seconds,
+                )
+
+        if self.requests is None:
+            await refresh_one()
+            return
+        await self.requests.run(
+            refresh_one,
+            user_id=None,
+            label="本地样本刷新" if background else "手动样本刷新",
+            background=background,
+        )
 
     async def _refresh_one(
         self,

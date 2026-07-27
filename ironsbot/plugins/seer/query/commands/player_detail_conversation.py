@@ -15,7 +15,7 @@ from ironsbot.runtime.conversations import (
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import bind_async
-from .rank_list_context import event_group_id
+from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.services.seer.player_detail_extensions import (  # noqa: TC001
     PlayerDetailExtensionRegistry,
