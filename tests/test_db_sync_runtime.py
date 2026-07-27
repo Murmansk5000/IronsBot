@@ -136,6 +136,34 @@ def test_registration_defers_database_engine_creation() -> None:
     assert databases.get_engine("unit") is None
 
 
+def test_manual_sync_shows_current_local_data_versions(tmp_path: Path) -> None:
+    cache_path = tmp_path / "seerapi.sqlite"
+    cache_path.write_bytes(b"seerapi cache")
+    sync = DatabaseSync(DatabaseManager())
+    sync.register(
+        "seerapi",
+        _source(
+            local_path=str(cache_path),
+            remote_build=_remote_build_config(),
+        ),
+    )
+    sync.register("aliases", _source(local_path=str(tmp_path / "aliases.sqlite")))
+    sync.fingerprints["seerapi"] = "0123456789abcdef"
+    service = DataSyncService(_config(), sync)
+
+    message, should_run = service.prepare_manual(force=False)
+
+    assert should_run
+    assert (
+        "开始检查远程数据更新：seerapi；"
+        "随后更新数据：seerapi, aliases，请稍等。"
+    ) in message
+    assert "当前本地数据版本：" in message
+    assert "seerapi：" in message
+    assert "sha256=0123456789ab" in message
+    assert "aliases：未安装" in message
+
+
 def test_startup_prepares_database_and_interval_job() -> None:
     databases = DatabaseManager()
     sync = DatabaseSync(databases)
