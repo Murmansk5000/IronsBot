@@ -156,11 +156,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         is_online=lambda: delivery.default_bot() is not None,
     )
     bili_push_delivery = BilibiliPushDeliveryService(
-        features,
         delivery,
         resources.subscriptions,
         build_dynamic_message,
         append_text_hint,
+        resources.push_message_limiter,
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,
@@ -295,6 +295,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 server_status=server_status,
                 features=features,
                 delivery=delivery,
+                message_limiter=resources.push_message_limiter,
             ),
             hooks=PluginHooks(
                 startup=(("docker_update", start_docker_update),),

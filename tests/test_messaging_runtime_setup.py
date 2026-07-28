@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -26,6 +27,7 @@ from ironsbot.config.models.messaging import (
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
@@ -130,6 +132,10 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         resources.features,
         resources.delivery,
         extra_push_options or (lambda _target_type, _target_id: []),
+        _push_message_limiter=partial(
+            append_fire_manual_ad_for_target,
+            resources.features,
+        ),
     )
 
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
+from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import build_dynamic_message
 from ironsbot.runtime.replies import append_text_hint
@@ -59,11 +61,11 @@ def _delivery_service(
     subscriptions: PushSubscriptionRepository | None = None,
 ) -> BilibiliPushDeliveryService:
     return BilibiliPushDeliveryService(
-        features,
         cast("MessageDelivery", object()),
         subscriptions or cast("PushSubscriptionRepository", object()),
         build_dynamic_message,
         append_text_hint,
+        partial(append_fire_manual_ad_for_target, features),
     )
 
 

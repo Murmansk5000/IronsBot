@@ -72,6 +72,11 @@ def build_push_time_menu_handler(
             handlers=[handle_push_time_select],
             rule=PUSH_TIME_FLOW.rule(state, session_id, version, target_type),
             prompt=build_push_time_menu_prompt(target_type, options),
+            queue_namespace=PUSH_TIME_FLOW.namespace,
+            queue_reply_check=PUSH_TIME_FLOW.reply_check(
+                session_id,
+                target_type,
+            ),
         )
 
     async def handle_push_time_select(

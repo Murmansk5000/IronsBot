@@ -211,7 +211,7 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature() -> None:
         feature="ai_intent_team_recommend",
         keywords=["战队"],
         action="team_recommend",
-        message="ok",
+        messages=["审核群链接", "审核群号"],
         intent="team",
     )
 

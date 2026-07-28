@@ -31,12 +31,16 @@ DEFAULT_JOIN_TEAM_INTENT = (
     "for joining. Answer no when the message only queries team data, discusses "
     "team resources, asks someone to buy resources, or casually mentions teams."
 )
-DEFAULT_JOIN_TEAM_MESSAGE = (
+DEFAULT_JOIN_TEAM_LINK_MESSAGE = (
     "\u70b9\u51fb\u94fe\u63a5\u52a0\u51655\u7ea7\u6218\u961f\u5ba1\u6838\u7fa4\uff1a"
     "http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&"
     "k=zZcvC2GF9tB027Kyq04Fl9_7bF-_v8FB&"
     "authKey=ZTZrJewKretFEap44nIcKtMkF8zpI1nhcR6ok2%2FXM6LNMO%2BE8ZVdYWLvWvwEwVjM&"
     "noverify=0&group_code=719544559"
+)
+DEFAULT_JOIN_TEAM_MESSAGES: Final = (
+    DEFAULT_JOIN_TEAM_LINK_MESSAGE,
+    "战队审核群号：719544559",
 )
 DEFAULT_CLASSIFIER_PROMPT = (
     "You are a strict intent classifier for a QQ bot.\n"
@@ -71,6 +75,7 @@ class AiIntentAction(BaseModel):
         "team_recommend"
     )
     message: str = ""
+    messages: NormalizedStringList = Field(default_factory=list)
     reply_prompt: str = ""
     team_ids: NormalizedIntList = Field(default_factory=list)
     include_team_resource_notice: bool = False

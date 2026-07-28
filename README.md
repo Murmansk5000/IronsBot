@@ -258,11 +258,10 @@ default_at_users = ["owner"]
 都会阻止启动。为避免管理异常被普通群间接获得，`admin_notice` 不能放入组合，必须在
 `group_policy` 或 `user_policy` 的目标项中显式写出。
 
-TOML 使用严格加载。未知或已删除的字段、既非内置也未被消息动作声明的 feature、
-未知 B站账号引用、
+TOML 对已识别字段严格加载：既非内置也未被消息动作声明的 feature、未知 B站账号引用、
 未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
-[config.example.toml](config.example.toml) 是当前唯一权威示例；升级时应直接删除
-旧字段并使用当前结构，不会保留旧字段兼容或静默忽略逻辑。
+无法识别的多余字段会被忽略，并在启动输出中列出完整路径；
+[config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 帮助提示与未开启 AI 群的 @ 提示共用 `[features.help]` 的两项限流配置。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
@@ -280,8 +279,9 @@ TOML 使用严格加载。未知或已删除的字段、既非内置也未被消
 
 群消息发送额度默认关闭；显式设置 `[messaging.outbound_rate_limit].enabled = true` 后，使用
 `[messaging.outbound_rate_limit].windows` 的多个精确滑动窗口。
-任一窗口达到上限都会抑制后续普通回复；主动推送可以在每群独立 FIFO 队列中
-短暂等待，私聊和启用 `admin_notice` 的管理群不计入群额度。
+任一窗口达到上限都会抑制后续普通回复；主动推送与超级管理员触发的群回复会在
+每群独立的无上限优先队列中等待，其中超级管理员回复优先。私聊和启用
+`admin_notice` 的管理群不计入群额度。
 
 行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥。
 

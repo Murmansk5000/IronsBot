@@ -33,6 +33,10 @@ def install(registry: MatcherRegistry, service: HelpHintService) -> None:
                 group_id=event.group_id,
                 user_id=event.user_id,
             )
+            or service.get_default_poke_hint(
+                group_id=event.group_id,
+                user_id=event.user_id,
+            )
             or DIRECT_COMMAND_HELP_HINT_TEXT
         )
         if event.group_id is None:
