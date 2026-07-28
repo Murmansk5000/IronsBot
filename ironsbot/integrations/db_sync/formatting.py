@@ -36,6 +36,19 @@ def format_fingerprint(value: str | None) -> str:
     return value[:12]
 
 
+def format_local_versions(local_versions: dict[str, Any]) -> str:
+    lines = ["当前本地数据版本："]
+    for name, version in local_versions.items():
+        if version is None:
+            lines.append(f"{name}：未安装")
+            continue
+        lines.append(
+            f"{name}：{format_timestamp(version.timestamp)} "
+            f"sha256={format_fingerprint(version.fingerprint)}"
+        )
+    return "\n".join(lines)
+
+
 def format_sync_statuses(
     results: dict[str, bool],
     sync_statuses: dict[str, Any],
