@@ -41,6 +41,7 @@ DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
+DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
 _REFRESH_TTL_SECONDS = 120.0
 DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
@@ -401,16 +402,6 @@ def test_outbound_rate_limit_requires_distinct_nonempty_windows() -> None:
         OutboundRateLimitConfig(windows=[window, window])
 
 
-def test_outbound_rate_limit_ignores_legacy_push_queue_settings() -> None:
-    config = OutboundRateLimitConfig(
-        push_queue_max_wait_seconds=15,
-        push_queue_max_messages=10,
-    )
-
-    assert "push_queue_max_wait_seconds" not in config.model_dump()
-    assert "push_queue_max_messages" not in config.model_dump()
-
-
 def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
     with pytest.raises(
         ValidationError,
@@ -501,12 +492,18 @@ def test_config_path_is_selected_by_single_environment_variable() -> None:
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_are_rejected_with_exact_path(
+def test_unknown_app_config_fields_are_ignored_and_reported(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
+unknown_top_level = true
+
+[seer.player]
+old_player_setting = true
+
 [[messaging.commands]]
 id = "hello"
 commands = ["hello"]
@@ -517,13 +514,31 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
+    config = load_settings(config_path)
+    output = capsys.readouterr().err
+
+    assert config.messaging.commands[0].id == "hello"
+    assert "IronsBot 配置含无法识别的字段，已忽略并继续启动" in output
+    assert "unknown_top_level" in output
+    assert "seer.player.old_player_setting" in output
+    assert "messaging.commands[0].unknown_command_field" in output
+
+
+def test_unknown_fields_do_not_hide_invalid_known_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bot]
+port = 0
+old_bot_setting = true
+""".strip(),
+        encoding="utf-8",
+    )
+
     with pytest.raises(ValidationError) as exc_info:
         load_settings(config_path)
 
-    assert (
-        exc_info.value.errors()[0]["loc"]
-        == ("messaging", "commands", 0, "unknown_command_field")
-    )
+    assert exc_info.value.errors()[0]["loc"] == ("bot", "port")
 
 
 def test_unified_message_actions_parse_as_toml_arrays_of_tables(
@@ -730,7 +745,10 @@ change_cooldown_days = 5
     )
 
 
-def test_player_binding_rejects_removed_hour_cooldown(tmp_path: Path) -> None:
+def test_removed_player_binding_field_is_ignored(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -740,15 +758,14 @@ change_cooldown_hours = 72.0
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError) as exc_info:
-        load_settings(config_path)
+    config = load_settings(config_path)
+    output = capsys.readouterr().err
 
-    assert exc_info.value.errors()[0]["loc"] == (
-        "seer",
-        "player",
-        "binding",
-        "change_cooldown_hours",
+    assert (
+        config.seer.player.binding.change_cooldown_days
+        == DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS
     )
+    assert "seer.player.binding.change_cooldown_hours" in output
 
 
 def test_player_background_refresh_loads(tmp_path: Path) -> None:
