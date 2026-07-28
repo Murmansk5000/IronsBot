@@ -110,8 +110,7 @@ services:
 ```
 
 启动前先根据 [config.example.toml](config.example.toml) 创建
-`./ironsbot-config/ironsbot.toml`。配置缺失或包含旧字段时会直接阻止启动，不会自动
-生成、修复或兼容旧结构。
+`./ironsbot-config/ironsbot.toml`。配置文件会在启动时严格校验。
 完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
@@ -318,8 +317,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
 | `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |
-| `server_status_push` | 开服状态广播推送。 |
-| `server_status` | `server_status_query` + `server_status_push`。 |
+| `server_status` | `server_status_query`。 |
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
 | `team_audit` | 战队审核群入群提示和 24 小时 follow-up。 |
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
@@ -457,20 +455,24 @@ check_on_restart = false
 `watchtower_docker_api_version = "1.40"` 即可。
 
 推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
-AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、按账号拆分的 B站动态、活动结束提醒和
-开服推送。私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、按账号拆分的 B站动态和活动结束提醒。
+私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送；发送 `推送时间` 可修改本群可编辑推送的提醒时间。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
-## 致谢
+## 鸣谢
 
-本项目当前是独立维护的 IronsBot 分支，但仍感谢上游与社区项目提供的基础和灵感：
+本项目独立维护，并感谢以下上游项目、作者与社区贡献者提供的基础、数据工具和参考实现。
 
-- [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)：原 IronsBot 项目，为本项目提供了核心查询、渲染和协议能力参考。
-- 本项目原作是 @火火（[GitHub: Yogurt114514](https://github.com/Yogurt114514)）开发的西塔伦Bot，谨以此项目向 @火火 致敬。感谢他为赛尔号玩家社区所做的贡献，愿火种永存。
-- [oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)：无头登录相关实现的参考来源之一。
-- [WhY15w](https://github.com/WhY15w)：Unity 配置与预告图等赛尔号数据工具参考。
+- [Nattsu39](https://github.com/Nattsu39) 的 [IronsBot](https://github.com/Nattsu39/IronsBot)：本项目的上游，提供了核心查询、渲染和协议能力参考。
+- @火火（[Yogurt114514](https://github.com/Yogurt114514)）的西塔伦Bot：本项目的早期来源，感谢其为赛尔号玩家社区所做的贡献。
+- [SeerAPI 开源团队](https://github.com/SeerAPI) 的 [seerapi](https://github.com/SeerAPI/seerapi) 及其数据生态：提供数据模型、构建工具与基础 SQLite 数据链路。
+- HurryWang（[WhY15w](https://github.com/WhY15w)）的 [seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser) 与 [seer-unity-preview-img-dumper](https://github.com/WhY15w/seer-unity-preview-img-dumper)：提供 Unity 配置解析和下周预告图提取参考。
+- [SeerRadar](https://github.com/SeerRadar) 的 [Sequ](https://github.com/SeerRadar/Sequ)：提供部分赛尔号数据参考。
+- [oldml](https://github.com/oldml) 的 [saixiaoxi](https://github.com/oldml/saixiaoxi)：提供无头登录相关实现参考。
+
+`Murmansk-Seer` 组织维护的 SeerAPI 数据链会在保留原项目署名与许可证的前提下持续演进。
 
 ## 上游更新策略
 
@@ -509,14 +511,6 @@ $env:PYTHONIOENCODING = "utf-8"
 ```powershell
 uv run python scripts/check_repo.py --static
 ```
-
-## 鸣谢
-
-- 上游项目：[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
-- SeerAPI：[SeerAPI](https://github.com/SeerAPI)
-- 无头登录参考：[oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)
-- Unity 配置解析源：[Murmansk-Seer/seer-unity-config-parser](https://github.com/Murmansk-Seer/seer-unity-config-parser)，感谢原项目 [WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
-- 感谢赛尔号玩家社区的资料整理与测试反馈。
 
 ## 许可证
 
