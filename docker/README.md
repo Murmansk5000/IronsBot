@@ -439,6 +439,7 @@ If a token or meeting link has ever been pushed to a public repository, treat it
 
 - Fork repository: [Murmansk5000/IronsBot](https://github.com/Murmansk5000/IronsBot)
 - Upstream repository: [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
+- Credits and data-tool upstreams: [README acknowledgements](https://github.com/Murmansk5000/IronsBot#%E9%B8%A3%E8%B0%A2)
 - Docker Hub image: [murmansk5000/ironsbot](https://hub.docker.com/r/murmansk5000/ironsbot)
 - GHCR image: `ghcr.io/murmansk5000/ironsbot`
 

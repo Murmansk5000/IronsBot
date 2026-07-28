@@ -461,14 +461,18 @@ AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提�
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
-## 致谢
+## 鸣谢
 
-本项目当前是独立维护的 IronsBot 分支，但仍感谢上游与社区项目提供的基础和灵感：
+本项目独立维护，并感谢以下上游项目、作者与社区贡献者提供的基础、数据工具和参考实现。
 
-- [Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)：原 IronsBot 项目，为本项目提供了核心查询、渲染和协议能力参考。
-- 本项目原作是 @火火（[GitHub: Yogurt114514](https://github.com/Yogurt114514)）开发的西塔伦Bot，谨以此项目向 @火火 致敬。感谢他为赛尔号玩家社区所做的贡献，愿火种永存。
-- [oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)：无头登录相关实现的参考来源之一。
-- [WhY15w](https://github.com/WhY15w)：Unity 配置与预告图等赛尔号数据工具参考。
+- [Nattsu39](https://github.com/Nattsu39) 的 [IronsBot](https://github.com/Nattsu39/IronsBot)：本项目的上游，提供了核心查询、渲染和协议能力参考。
+- @火火（[Yogurt114514](https://github.com/Yogurt114514)）的西塔伦Bot：本项目的早期来源，感谢其为赛尔号玩家社区所做的贡献。
+- [SeerAPI 开源团队](https://github.com/SeerAPI) 的 [seerapi](https://github.com/SeerAPI/seerapi) 及其数据生态：提供数据模型、构建工具与基础 SQLite 数据链路。
+- HurryWang（[WhY15w](https://github.com/WhY15w)）的 [seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser) 与 [seer-unity-preview-img-dumper](https://github.com/WhY15w/seer-unity-preview-img-dumper)：提供 Unity 配置解析和下周预告图提取参考。
+- [SeerRadar](https://github.com/SeerRadar) 的 [Sequ](https://github.com/SeerRadar/Sequ)：提供部分赛尔号数据参考。
+- [oldml](https://github.com/oldml) 的 [saixiaoxi](https://github.com/oldml/saixiaoxi)：提供无头登录相关实现参考。
+
+`Murmansk-Seer` 组织维护的 SeerAPI 数据链会在保留原项目署名与许可证的前提下持续演进。
 
 ## 上游更新策略
 
@@ -507,14 +511,6 @@ $env:PYTHONIOENCODING = "utf-8"
 ```powershell
 uv run python scripts/check_repo.py --static
 ```
-
-## 鸣谢
-
-- 上游项目：[Nattsu39/IronsBot](https://github.com/Nattsu39/IronsBot)
-- SeerAPI：[SeerAPI](https://github.com/SeerAPI)
-- 无头登录参考：[oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)
-- Unity 配置解析源：[Murmansk-Seer/seer-unity-config-parser](https://github.com/Murmansk-Seer/seer-unity-config-parser)，感谢原项目 [WhY15w/seer-unity-config-parser](https://github.com/WhY15w/seer-unity-config-parser)
-- 感谢赛尔号玩家社区的资料整理与测试反馈。
 
 ## 许可证
 
