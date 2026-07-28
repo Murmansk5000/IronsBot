@@ -19,7 +19,6 @@ PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.rank_list_models",
     "ironsbot.services.seer.rank_list_parsing",
     "ironsbot.services.seer.rank_list_score_messages",
-    "ironsbot.services.seer.rank_usage",
     "ironsbot.services.seer.render_paths",
     "ironsbot.services.seer.team",
     "ironsbot.services.seer.weekly_preview",

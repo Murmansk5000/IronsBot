@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.runtime.plugins import PluginDefinition
 
@@ -48,13 +49,15 @@ def _is_digit_input(event: Event) -> bool:
     return event.get_plaintext().strip().isdigit()
 
 
-async def handle_help(
+async def handle_help(  # noqa: PLR0913
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     *,
     entries: list[HelpMenuEntry],
     features: FeatureService,
+    commands: CommandCatalog,
+    ignored_plugins: tuple[str, ...],
 ) -> None:
     if not entries:
         await finish_event_reply(matcher, event, "当前会话没有可用的功能。")
@@ -64,7 +67,13 @@ async def handle_help(
     prompt_sessions = get_prompt_session_manager(matcher)
     version = prompt_sessions.acquire(session_id)
     rule = prompt_sessions.make_rule(session_id, version, _is_digit_input)
-    handler = _create_selection_handler(session_id, version, features)
+    handler = _create_selection_handler(
+        session_id,
+        version,
+        features,
+        commands,
+        ignored_plugins,
+    )
 
     await enter_prompt_loop(
         matcher,
@@ -83,6 +92,8 @@ def _create_selection_handler(
     session_id: str,
     version: int,
     features: FeatureService,
+    commands: CommandCatalog,
+    ignored_plugins: tuple[str, ...],
 ) -> object:
     async def _handler(
         matcher: Matcher,
@@ -111,7 +122,13 @@ def _create_selection_handler(
         await send_event_reply(
             matcher,
             event,
-            format_plugin_detail(entries[index - 1], event, features),
+            format_plugin_detail(
+                entries[index - 1],
+                event,
+                features,
+                commands,
+                ignored_plugins=ignored_plugins,
+            ),
         )
 
         rule = get_prompt_session_manager(matcher).make_rule(
@@ -128,6 +145,7 @@ def install(
     registry: MatcherRegistry,
     definitions: tuple[PluginDefinition, ...],
     features: FeatureService,
+    commands: CommandCatalog,
     *,
     ignored_plugins: tuple[str, ...],
 ) -> None:
@@ -148,6 +166,7 @@ def install(
             definitions,
             event,
             features=features,
+            commands=commands,
             ignored_plugins=ignored_plugins,
         )
         await handle_help(
@@ -156,6 +175,8 @@ def install(
             state,
             entries=entries,
             features=features,
+            commands=commands,
+            ignored_plugins=ignored_plugins,
         )
 
     matcher.append_handler(_handle_help)

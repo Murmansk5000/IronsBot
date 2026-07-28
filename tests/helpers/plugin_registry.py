@@ -10,6 +10,7 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
+from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.player_detail_extensions import (
@@ -203,6 +204,7 @@ def build_test_plugin_registry(
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             push_message_limiter=lambda message, _target: message,
+            commands=CommandCatalog(),
             help_hint=object(),
             private_extensions=SimpleNamespace(
                 load_plugin_definitions=lambda _runtime: ()
