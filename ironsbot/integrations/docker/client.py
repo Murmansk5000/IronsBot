@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
 from urllib.parse import quote
 from uuid import uuid4
@@ -10,7 +12,11 @@ import httpx
 from anyio import Path as AsyncPath
 
 from ironsbot.services.operations.docker_models import (
+    DockerImageArchive,
+    DockerImageArchiveRequest,
     DockerImageInfo,
+    DockerRegistryCredentials,
+    DockerUpdateRequest,
     DockerUpdateResult,
     WatchtowerUpdateOptions,
 )
@@ -102,42 +108,41 @@ class DockerClient:
 
     async def start_update(
         self,
-        *,
-        container_name: str,
-        image: str,
-        socket_path: str,
-        watchtower: WatchtowerUpdateOptions,
-        timeout_seconds: float,
+        request: DockerUpdateRequest,
     ) -> DockerUpdateResult:
         logger.warning(
             "admin requested docker self update: container=%s, watchtower=%s",
-            container_name,
-            watchtower.image,
+            request.container_name,
+            request.watchtower.image,
         )
-        if not await self.socket_exists(socket_path):
+        if not await self.socket_exists(request.socket_path):
             logger.warning(
                 "docker self update failed: socket not found: %s",
-                socket_path,
+                request.socket_path,
             )
             return DockerUpdateResult(
                 ok=False,
                 missing_socket=True,
-                message=f"Docker socket not found: {socket_path}",
+                message=f"Docker socket not found: {request.socket_path}",
             )
 
-        transport = httpx.AsyncHTTPTransport(uds=socket_path)
+        transport = httpx.AsyncHTTPTransport(uds=request.socket_path)
         try:
             async with httpx.AsyncClient(
                 transport=transport,
                 base_url="http://docker",
-                timeout=httpx.Timeout(timeout_seconds),
+                timeout=httpx.Timeout(request.timeout_seconds),
             ) as client:
                 current_image_id = await inspect_container_image_id(
                     client,
-                    container_name,
+                    request.container_name,
                 )
                 current_image_info = await inspect_image_info(client, current_image_id)
-                target_image_info = await pull_docker_image(client, image)
+                target_image_info = await pull_docker_image(
+                    client,
+                    request.image,
+                    registry_credentials=request.registry_credentials,
+                )
                 current_commit = await resolve_image_commit_summary(
                     current_image_info,
                     fallback_repo=("Murmansk5000", "IronsBot"),
@@ -158,12 +163,13 @@ class DockerClient:
                         target_image_commit=target_commit,
                     )
 
-                await ensure_watchtower_image(client, watchtower.image)
+                await ensure_watchtower_image(client, request.watchtower.image)
                 updater_id = await create_watchtower_container(
                     client,
-                    container_name=container_name,
-                    socket_path=socket_path,
-                    watchtower=watchtower,
+                    container_name=request.container_name,
+                    socket_path=request.socket_path,
+                    watchtower=request.watchtower,
+                    registry_credentials=request.registry_credentials,
                 )
                 response = await client.post(f"/containers/{updater_id}/start")
                 _raise_for_docker_status(response)
@@ -182,6 +188,37 @@ class DockerClient:
             target_image_commit=target_commit,
         )
 
+    async def fetch_image_archive(
+        self,
+        request: DockerImageArchiveRequest,
+    ) -> DockerImageArchive:
+        """Pull an image and read one directory without running its command."""
+
+        if not await self.socket_exists(request.socket_path):
+            msg = f"Docker socket not found: {request.socket_path}"
+            raise RuntimeError(msg)
+
+        transport = httpx.AsyncHTTPTransport(uds=request.socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(request.timeout_seconds),
+        ) as client:
+            image = await pull_docker_image(
+                client,
+                request.image,
+                registry_credentials=request.registry_credentials,
+            )
+            container_id = await create_archive_container(client, request.image)
+            try:
+                content = await read_container_archive(
+                    client,
+                    container_id,
+                    request.archive_path,
+                )
+            finally:
+                await remove_container_quietly(client, container_id)
+        return DockerImageArchive(image=image, content=content)
 
 async def inspect_container_image_id(
     client: httpx.AsyncClient,
@@ -197,16 +234,65 @@ async def inspect_container_image_id(
     return image_id
 
 
+async def create_archive_container(client: httpx.AsyncClient, image: str) -> str:
+    response = await client.post(
+        "/containers/create",
+        json={"Image": image, "Cmd": ["true"]},
+    )
+    _raise_for_docker_status(response)
+    payload = response.json()
+    container_id = payload.get("Id")
+    if not isinstance(container_id, str) or not container_id:
+        msg = "Docker API did not return archive container id"
+        raise RuntimeError(msg)
+    return container_id
+
+
+async def read_container_archive(
+    client: httpx.AsyncClient,
+    container_id: str,
+    archive_path: str,
+) -> bytes:
+    response = await client.get(
+        f"/containers/{quote(container_id, safe='')}/archive",
+        params={"path": archive_path},
+    )
+    _raise_for_docker_status(response)
+    return response.content
+
+
+async def remove_container_quietly(
+    client: httpx.AsyncClient,
+    container_id: str,
+) -> None:
+    try:
+        response = await client.delete(
+            f"/containers/{quote(container_id, safe='')}",
+            params={"force": "true"},
+        )
+        _raise_for_docker_status(response)
+    except Exception:  # noqa: BLE001 - never hide the original archive failure
+        logger.warning(
+            "could not remove temporary Docker archive container: %s",
+            container_id,
+            exc_info=True,
+        )
+
+
 async def pull_docker_image(
     client: httpx.AsyncClient,
     image: str,
+    *,
+    registry_credentials: DockerRegistryCredentials | None = None,
 ) -> DockerImageInfo:
     repository, tag = split_docker_image(image)
+    headers = _registry_auth_headers(registry_credentials)
     for attempt in range(1, IMAGE_PULL_RETRY_ATTEMPTS + 1):
         try:
             response = await client.post(
                 "/images/create",
                 params={"fromImage": repository, "tag": tag},
+                headers=headers,
             )
             _raise_for_docker_status(response)
             break
@@ -226,6 +312,25 @@ async def pull_docker_image(
             )
             await asyncio.sleep(IMAGE_PULL_RETRY_BASE_DELAY_SECONDS * attempt)
     return await inspect_image_info(client, image)
+
+
+def _registry_auth_headers(
+    credentials: DockerRegistryCredentials | None,
+) -> dict[str, str] | None:
+    if credentials is None:
+        return None
+    if not credentials.username or not credentials.token:
+        msg = "private registry credentials are incomplete"
+        raise TypeError(msg)
+    payload = json.dumps(
+        {
+            "username": credentials.username,
+            "password": credentials.token,
+            "serveraddress": "https://index.docker.io/v1/",
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {"X-Registry-Auth": base64.b64encode(payload).decode("ascii")}
 
 
 async def ensure_watchtower_image(
@@ -280,15 +385,24 @@ async def create_watchtower_container(
     container_name: str,
     socket_path: str,
     watchtower: WatchtowerUpdateOptions,
+    registry_credentials: DockerRegistryCredentials | None = None,
 ) -> str:
     updater_name = f"ironsbot-watchtower-once-{uuid4().hex[:12]}"
+    environment = [f"DOCKER_API_VERSION={watchtower.docker_api_version}"]
+    if registry_credentials is not None:
+        environment.extend(
+            [
+                f"REPO_USER={registry_credentials.username}",
+                f"REPO_PASS={registry_credentials.token}",
+            ]
+        )
     response = await client.post(
         "/containers/create",
         params={"name": updater_name},
         json={
             "Image": watchtower.image,
             "Cmd": ["--run-once", "--cleanup", container_name],
-            "Env": [f"DOCKER_API_VERSION={watchtower.docker_api_version}"],
+            "Env": environment,
             "HostConfig": {
                 "AutoRemove": True,
                 "Binds": [f"{socket_path}:/var/run/docker.sock"],

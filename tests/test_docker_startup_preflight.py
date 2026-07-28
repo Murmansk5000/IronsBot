@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
+from ironsbot.app import docker_preflight
 from ironsbot.app.docker_preflight import (
     STARTUP_PREFLIGHT_TIMEOUT_SECONDS,
+    run_startup_preflight,
     startup_preflight_config,
 )
-from ironsbot.config.models.operations import DockerUpdateConfig
+from ironsbot.config.models.operations import (
+    DockerUpdateConfig,
+    PrivateExtensionsConfig,
+)
 from ironsbot.services.operations.docker_models import DockerUpdateResult
 from ironsbot.services.operations.docker_preflight import (
     DockerStartupPreflightAction,
@@ -16,6 +23,11 @@ from ironsbot.services.operations.docker_preflight import (
     DockerStartupPreflightStore,
     consume_docker_startup_preflight_notice,
 )
+
+if TYPE_CHECKING:
+    import pytest
+
+    from ironsbot.config.models.settings import Settings
 
 MANUAL_DOCKER_TIMEOUT_SECONDS = 300.0
 
@@ -177,3 +189,79 @@ def test_startup_preflight_timeout_is_shorter_than_manual_update_timeout() -> No
         == STARTUP_PREFLIGHT_TIMEOUT_SECONDS
     )
     assert config.timeout_seconds == MANUAL_DOCKER_TIMEOUT_SECONDS
+
+
+def test_startup_preflight_refreshes_private_extensions_after_image_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_docker_preflight(_config: DockerUpdateConfig):
+        calls.append("docker")
+        return DockerStartupPreflightAction.CONTINUE
+
+    async def fake_extension_preflight(
+        _config: PrivateExtensionsConfig,
+        _docker_update: DockerUpdateConfig,
+    ) -> None:
+        calls.append("extensions")
+
+    monkeypatch.setattr(
+        docker_preflight,
+        "run_docker_startup_preflight",
+        fake_docker_preflight,
+    )
+    monkeypatch.setattr(
+        docker_preflight,
+        "run_private_extensions_preflight",
+        fake_extension_preflight,
+    )
+    settings = SimpleNamespace(
+        operations=SimpleNamespace(
+            docker_update=DockerUpdateConfig(),
+            private_extensions=PrivateExtensionsConfig(enabled=True),
+        )
+    )
+
+    action = asyncio.run(run_startup_preflight(cast("Settings", settings)))
+
+    assert action is DockerStartupPreflightAction.CONTINUE
+    assert calls == ["docker", "extensions"]
+
+
+def test_startup_preflight_skips_extension_refresh_during_update_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_docker_preflight(_config: DockerUpdateConfig):
+        calls.append("docker")
+        return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
+
+    async def fake_extension_preflight(
+        _config: PrivateExtensionsConfig,
+        _docker_update: DockerUpdateConfig,
+    ) -> None:
+        calls.append("extensions")
+
+    monkeypatch.setattr(
+        docker_preflight,
+        "run_docker_startup_preflight",
+        fake_docker_preflight,
+    )
+    monkeypatch.setattr(
+        docker_preflight,
+        "run_private_extensions_preflight",
+        fake_extension_preflight,
+    )
+    settings = SimpleNamespace(
+        operations=SimpleNamespace(
+            docker_update=DockerUpdateConfig(),
+            private_extensions=PrivateExtensionsConfig(enabled=True),
+        )
+    )
+
+    action = asyncio.run(run_startup_preflight(cast("Settings", settings)))
+
+    assert action is DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
+    assert calls == ["docker"]

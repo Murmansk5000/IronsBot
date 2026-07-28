@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
@@ -146,6 +148,8 @@ class DockerUpdateConfig(BaseModel):
     watchtower_image: str = "containrrr/watchtower:latest"
     watchtower_docker_api_version: str = "1.40"
     timeout_seconds: float = Field(default=300.0, gt=0)
+    registry_username: str = Field(default="", exclude=True, repr=False)
+    registry_token: str = Field(default="", exclude=True, repr=False)
 
     @field_validator(
         "image",
@@ -153,12 +157,36 @@ class DockerUpdateConfig(BaseModel):
         "docker_socket_path",
         "watchtower_image",
         "watchtower_docker_api_version",
+        "registry_username",
+        "registry_token",
     )
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             msg = "operations.docker_update string fields must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+
+class PrivateExtensionsConfig(BaseModel):
+    """Optional private extension package installed before the app boots."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    image: str = "murmansk5000/ironsbot-private:latest"
+    archive_path: str = "/ironsbot_extensions"
+    data_path: str = "data/private_extensions"
+    timeout_seconds: float = Field(default=60.0, gt=0)
+    settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+    @field_validator("image", "archive_path", "data_path")
+    @classmethod
+    def normalize_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "operations.private_extensions string fields must not be empty"
             raise ValueError(msg)
         return normalized
 
@@ -256,4 +284,7 @@ class OperationsConfig(BaseModel):
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
     server_status: ServerStatusConfig = Field(default_factory=ServerStatusConfig)
     docker_update: DockerUpdateConfig = Field(default_factory=DockerUpdateConfig)
+    private_extensions: PrivateExtensionsConfig = Field(
+        default_factory=PrivateExtensionsConfig
+    )
     restart: RestartConfig = Field(default_factory=RestartConfig)

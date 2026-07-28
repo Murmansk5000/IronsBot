@@ -29,6 +29,10 @@ async def _noop_startup(_scheduler: object) -> None:
     return
 
 
+def _noop_startup_notice_add(*_args: object) -> None:
+    return
+
+
 async def _noop_refresh_push_time(
     _option: object,
     *,
@@ -64,6 +68,8 @@ def build_test_plugin_registry(
     runtime = build_test_runtime(
         feature_config=config.features,
         superuser_ids=tuple(config.bot.superusers),
+        command_features=config.messaging.command_feature_keys,
+        schedule_features=config.messaging.schedule_feature_keys,
     )
     headless = HeadlessService(
         ClientManager(runtime.tasks.create),
@@ -202,8 +208,12 @@ def build_test_plugin_registry(
             ai=object(),
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
-            startup_notice=object(),
+            startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             help_hint=object(),
+            private_extensions=SimpleNamespace(
+                load_plugin_definitions=lambda _runtime: ()
+            ),
+            private_extension_runtime=object(),
         ),
     )
     return build_plugin_registry(

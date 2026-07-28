@@ -320,6 +320,20 @@ class DatabaseSync:
             self.remote_build_results,
         )
 
+    def format_local_versions(self, names: tuple[str, ...]) -> str:
+        versions: dict[str, VersionInfo | None] = {}
+        for name in names:
+            entry = self.registered_syncs.get(name)
+            local_path = entry.local_path if entry is not None else None
+            if local_path is None or not Path(local_path).exists():
+                versions[name] = None
+                continue
+            versions[name] = VersionInfo(
+                fingerprint=self.fingerprints.get(name),
+                timestamp=_file_timestamp(local_path),
+            )
+        return sync_formatting.format_local_versions(versions)
+
     def format_sync_statuses(self, results: dict[str, bool]) -> str:
         return sync_formatting.format_sync_statuses(results, self.last_sync_statuses)
 
