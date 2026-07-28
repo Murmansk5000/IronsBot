@@ -56,7 +56,8 @@ def _service(
 def test_help_hint_text_mentions_help_command() -> None:
     assert (
         DIRECT_COMMAND_HELP_HINT_TEXT
-        == "直接发送指令即可使用机器人功能；使用“帮助”指令获取帮助。"
+        == "直接发送指令使用机器人功能；@机器人的消息不会被识别为指令。"
+        "使用“帮助”指令获取帮助。"
     )
 
 
