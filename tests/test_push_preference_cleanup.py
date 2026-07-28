@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
-    GroupScheduledMessageAction,
     MessageConfig,
+    MessageScheduledAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.core.features import FeatureConfig
@@ -64,8 +64,8 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
     messaging = MessagingService(
         MessageConfig(
             push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
-            group_schedules=[
-                GroupScheduledMessageAction(
+            schedules=[
+                MessageScheduledAction(
                     id="daily",
                     message="每日提醒",
                     hour=23,

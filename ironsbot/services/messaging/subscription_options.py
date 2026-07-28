@@ -24,42 +24,26 @@ READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可
 
 class ScheduledPushKeyError(ValueError):
     @classmethod
-    def missing_id(cls, prefix: str, index: int) -> ScheduledPushKeyError:
-        return cls(f"{prefix} task {index} requires a stable id")
+    def missing_id(cls, index: int) -> ScheduledPushKeyError:
+        return cls(f"scheduled task {index} requires a stable id")
 
 
-def private_schedule_key(index: int, task: ScheduledPushTask) -> str:
-    return schedule_key("private_schedule", index, task)
-
-
-def group_schedule_key(index: int, task: ScheduledPushTask) -> str:
-    return schedule_key("group_schedule", index, task)
-
-
-def schedule_key(prefix: str, index: int, task: ScheduledPushTask) -> str:
+def schedule_key(index: int, task: ScheduledPushTask) -> str:
     raw_id = task.id.strip()
     if not raw_id:
-        raise ScheduledPushKeyError.missing_id(prefix, index)
+        raise ScheduledPushKeyError.missing_id(index)
     return raw_id
 
 
-def private_schedule_label(index: int, task: ScheduledPushTask) -> str:
-    return schedule_label("私聊推送", index, task)
-
-
-def group_schedule_label(index: int, task: ScheduledPushTask) -> str:
-    return schedule_label("群推送", index, task)
-
-
-def schedule_label(scope: str, index: int, task: ScheduledPushTask) -> str:
-    name = _schedule_display_name(scope, index, task)
+def schedule_label(index: int, task: ScheduledPushTask) -> str:
+    name = _schedule_display_name(index, task)
     time_label = f"{task.hour:02d}:{task.minute:02d}"
     if task.day_of_week:
         time_label = f"{task.day_of_week} {time_label}"
     return f"{name}（{time_label}）"
 
 
-def _schedule_display_name(scope: str, index: int, task: ScheduledPushTask) -> str:
+def _schedule_display_name(index: int, task: ScheduledPushTask) -> str:
     configured_name = getattr(task, "name", "").strip()
     if configured_name:
         return configured_name
@@ -68,7 +52,7 @@ def _schedule_display_name(scope: str, index: int, task: ScheduledPushTask) -> s
     if message_name:
         return message_name
 
-    return _schedule_display_name_from_feature(scope, index, task)
+    return _schedule_display_name_from_feature(index, task)
 
 
 def _schedule_display_name_from_message(message: str) -> str:
@@ -84,7 +68,6 @@ def _schedule_display_name_from_message(message: str) -> str:
 
 
 def _schedule_display_name_from_feature(
-    scope: str,
     index: int,
     task: ScheduledPushTask,
 ) -> str:
@@ -94,7 +77,7 @@ def _schedule_display_name_from_feature(
     }
     if task.feature in feature_names:
         return feature_names[task.feature]
-    return task.id.strip() or f"{scope}{index}"
+    return task.id.strip() or f"scheduled message {index}"
 
 
 def build_schedule_subscription_options(
@@ -114,18 +97,10 @@ def build_schedule_subscription_options(
         if target_id not in eligible_target_ids_for_feature.get(task.feature, set()):
             continue
 
-        key = (
-            private_schedule_key(index, task)
-            if target_type == "private"
-            else group_schedule_key(index, task)
-        )
+        key = schedule_key(index, task)
         is_unsubscribed = key in unsubscribed
 
-        label = (
-            private_schedule_label(index, task)
-            if target_type == "private"
-            else group_schedule_label(index, task)
-        )
+        label = schedule_label(index, task)
         options.append(
             PushSubscriptionOption(
                 key=key,

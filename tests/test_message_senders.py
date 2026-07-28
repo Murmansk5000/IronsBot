@@ -115,11 +115,11 @@ def _delivery(
 
 def test_send_target_messages_dedupes_and_limits_by_group() -> None:
     bot = FakeBot()
-    limiter_calls: list[int | None] = []
+    limiter_calls: list[MessageTarget] = []
 
-    def _limit(message: str | Message, group_id: int | None) -> str | Message:
-        limiter_calls.append(group_id)
-        return f"{message}:group={group_id}"
+    def _limit(message: str | Message, target: MessageTarget) -> str | Message:
+        limiter_calls.append(target)
+        return f"{message}:target={target.target_type}:{target.target_id}"
 
     summary = asyncio.run(
         _delivery().send_targets(
@@ -140,17 +140,20 @@ def test_send_target_messages_dedupes_and_limits_by_group() -> None:
         MessageTarget("private", PRIVATE_USER_ID),
     ]
     assert summary.failed == []
-    assert limiter_calls == [GROUP_ID, None]
+    assert limiter_calls == [
+        MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
+        MessageTarget("private", PRIVATE_USER_ID),
+    ]
 
     group_id, group_message = bot.group_messages[0]
     assert group_id == GROUP_ID
     assert group_message[0].type == "at"
     assert group_message[0].data["qq"] == str(MENTION_USER_ID)
-    assert group_message[-1].data["text"] == f"hello:group={GROUP_ID}"
+    assert group_message[-1].data["text"] == f"hello:target=group:{GROUP_ID}"
 
     user_id, private_message = bot.private_messages[0]
     assert user_id == PRIVATE_USER_ID
-    assert private_message[-1].data["text"] == "hello:group=None"
+    assert private_message[-1].data["text"] == f"hello:target=private:{PRIVATE_USER_ID}"
 
 
 def test_send_target_messages_reports_failed_targets() -> None:

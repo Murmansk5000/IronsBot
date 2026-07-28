@@ -151,16 +151,19 @@ main = 10002
 [features.user_aliases]
 owner = 20001
 
-[features.group_policy]
-admin = [
+[features.bundles]
+readme_queries = [
     "help",
     "bili_query",
     "seer_player",
 ]
+
+[features.group_policy]
+admin = [
+    "readme_queries",
+]
 main = [
-    "help",
-    "bili_query",
-    "seer_player",
+    "readme_queries",
 ]
 
 [features.user_policy]
@@ -200,11 +203,16 @@ xinghen = 10001
 [features.user_aliases]
 owner = 20001
 
-[features.group_policy]
-xinghen = [
+[features.bundles]
+readme_queries = [
     "help",
     "bili_query",
     "seer_player",
+]
+
+[features.group_policy]
+xinghen = [
+    "readme_queries",
 ]
 
 [features.user_policy]

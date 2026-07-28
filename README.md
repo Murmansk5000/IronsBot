@@ -84,10 +84,10 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 进行中投票池与渲染期限
+## 组合权限与逐目标推广
 
-投票池仅在规范化当前时间处于包含起止边界的有效窗口内查询；图片渲染单独限制为45秒，查询和进度提示不在该渲染期限内。
-实时榜单共用现有请求保护和资源归属，不因接入队列而改变缓存、本地查询或授权规则，也不获得新的整条查询总期限。
+功能组合按正式目录展开，不通过组合间接授予 `admin_notice`。登记可选私有功能不代表私有实现已安装或加载。
+消息为每个目标复制，推广转换依赖显式注入的目标级转换器；省略转换器时，不会自动套用已退役的全局转换策略。账号菜单的公开昵称是展示与选择信息，不是登录授权。
 
 ## 插件架构
 
@@ -147,16 +147,19 @@ xinghen = 10002
 [features.user_aliases]
 owner = 20001
 
-[features.group_policy]
-admin = [
+[features.bundles]
+readme_queries = [
     "help",
     "bili_query",
     "seer_player",
 ]
+
+[features.group_policy]
+admin = [
+    "readme_queries",
+]
 xinghen = [
-    "help",
-    "bili_query",
-    "seer_player",
+    "readme_queries",
 ]
 
 [features.user_policy]

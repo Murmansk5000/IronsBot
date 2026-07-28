@@ -37,6 +37,11 @@ async def handle_push_subscription_menu(
     read_only = isinstance(event, GroupMessageEvent) and not (
         is_group_push_subscription_manager(messaging, event)
     )
+    if error := await messaging.prepare_subscription_options(
+        target_type,
+        target_id,
+    ):
+        await matcher.finish(error)
     options, prompt = messaging.subscription_menu(
         target_type,
         target_id,
