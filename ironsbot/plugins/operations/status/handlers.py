@@ -18,26 +18,19 @@ from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
 
-from .broadcast import OpenBroadcast
 from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DISABLED_BARE_ADMIN_COMMAND,
+    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
 from .commands import handle_admin_status, handle_normal_status
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.operations import (
-        ServerStatusConfig,
-    )
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
-    )
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
 
@@ -57,23 +50,13 @@ async def handle_disabled_bare_admin_status(
     )
 
 
-def install(  # noqa: PLR0913
+def install(
     registry: MatcherRegistry,
-    server_status_config: ServerStatusConfig,
     docker_service: DockerUpdateService,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
-    delivery: MessageDelivery,
-    message_limiter: MessageLimiter | None = None,
 ) -> None:
-    broadcast = OpenBroadcast(
-        server_status_config,
-        features,
-        delivery,
-        message_limiter,
-    )
-
     async def handle_normal_server_status(
         matcher: Matcher,
         event: MessageEvent,
@@ -81,7 +64,7 @@ def install(  # noqa: PLR0913
         await handle_normal_status(
             matcher,
             event,
-            broadcast,
+            features,
             server_status,
         )
 
@@ -92,7 +75,6 @@ def install(  # noqa: PLR0913
         await handle_admin_status(
             matcher,
             event,
-            broadcast,
             server_status,
         )
 
@@ -100,6 +82,16 @@ def install(  # noqa: PLR0913
         message, restart_action = await docker_service.prepare_manual_restart()
         await send_event_reply(matcher, event, message)
         await docker_service.execute_restart(restart_action)
+
+    async def handle_check_image_update(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await finish_event_reply(
+            matcher,
+            event,
+            await docker_service.check_image_update(),
+        )
 
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
@@ -154,3 +146,13 @@ def install(  # noqa: PLR0913
         block=True,
     )
     update_matcher.append_handler(handle_restart)
+
+    check_update_matcher = registry.on_fullmatch(
+        DOCKER_CHECK_UPDATE_COMMANDS,
+        policy=CommandPolicy.command("bot_restart"),
+        rule=no_reply(),
+        permission=SUPERUSER,
+        priority=registry.priority("server_status_admin"),
+        block=True,
+    )
+    check_update_matcher.append_handler(handle_check_image_update)

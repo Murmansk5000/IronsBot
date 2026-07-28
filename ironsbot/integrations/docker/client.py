@@ -5,6 +5,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from anyio import Path as AsyncPath
 from ironsbot.services.operations.docker_models import (
     DockerImageArchive,
     DockerImageArchiveRequest,
+    DockerImageCheckResult,
     DockerImageInfo,
     DockerRegistryCredentials,
     DockerUpdateRequest,
@@ -33,6 +35,18 @@ TRANSIENT_DOCKER_PULL_ERRORS = (
     "connection refused",
     "temporarily unavailable",
     "tls handshake timeout",
+)
+REGISTRY_MANIFEST_ACCEPT = ", ".join(
+    (
+        "application/vnd.oci.image.index.v1+json",
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.docker.distribution.manifest.v2+json",
+    )
+)
+REGISTRY_BEARER_PARAMETER = re.compile(r'(?P<key>[a-z]+)="(?P<value>[^"]*)"')
+DOCKER_HUB_REGISTRIES = frozenset(
+    ("docker.io", "index.docker.io", "registry-1.docker.io")
 )
 logger = logging.getLogger(__name__)
 
@@ -186,6 +200,82 @@ class DockerClient:
             target_image_id=target_image_info.image_id,
             target_image_created=target_image_info.created,
             target_image_commit=target_commit,
+        )
+
+    async def check_update(
+        self,
+        request: DockerUpdateRequest,
+    ) -> DockerImageCheckResult:
+        """Compare the running image to the registry without pulling it."""
+
+        logger.warning(
+            "admin requested docker image check: container=%s, image=%s",
+            request.container_name,
+            request.image,
+        )
+        if not await self.socket_exists(request.socket_path):
+            return DockerImageCheckResult(
+                ok=False,
+                missing_socket=True,
+                message=f"Docker socket not found: {request.socket_path}",
+            )
+
+        transport = httpx.AsyncHTTPTransport(uds=request.socket_path)
+        try:
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://docker",
+                timeout=httpx.Timeout(request.timeout_seconds),
+            ) as client:
+                current_image_id = await inspect_container_image_id(
+                    client,
+                    request.container_name,
+                )
+                current_image = await inspect_image_info(client, current_image_id)
+                remote_digest = await inspect_remote_image_digest(
+                    client,
+                    request.image,
+                    registry_credentials=request.registry_credentials,
+                )
+                current_commit = await resolve_image_commit_summary(
+                    current_image,
+                    fallback_repo=("Murmansk5000", "IronsBot"),
+                )
+            try:
+                remote_image = await inspect_remote_image_info(
+                    request.image,
+                    registry_credentials=request.registry_credentials,
+                )
+                remote_commit = await resolve_image_commit_summary(
+                    remote_image,
+                    fallback_repo=("Murmansk5000", "IronsBot"),
+                )
+            except Exception as error:  # noqa: BLE001 - digest remains useful
+                logger.warning(
+                    "docker image metadata inspection failed: image=%s error=%s",
+                    request.image,
+                    error,
+                )
+                remote_image = DockerImageInfo(image_id="")
+                remote_commit = ""
+        except Exception as e:
+            logger.exception("docker image check failed")
+            return DockerImageCheckResult(ok=False, message=str(e))
+
+        return DockerImageCheckResult(
+            ok=True,
+            up_to_date=remote_digest in {
+                value.rsplit("@", maxsplit=1)[-1]
+                for value in current_image.repo_digests
+                if "@" in value
+            },
+            current_image_id=current_image.image_id,
+            current_image_created=current_image.created,
+            current_image_commit=current_commit,
+            remote_digest=remote_digest,
+            remote_image_id=remote_image.image_id,
+            remote_image_created=remote_image.created,
+            remote_image_commit=remote_commit,
         )
 
     async def fetch_image_archive(
@@ -373,10 +463,226 @@ async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerIma
                 for key, value in labels.items()
                 if value is not None
             }
+    raw_repo_digests = data.get("RepoDigests")
+    repo_digests = (
+        tuple(
+            value
+            for value in raw_repo_digests
+            if isinstance(value, str) and value
+        )
+        if isinstance(raw_repo_digests, list)
+        else ()
+    )
     return DockerImageInfo(
         image_id=image_id,
         created=created if isinstance(created, str) else "",
         labels=raw_labels,
+        repo_digests=repo_digests,
+    )
+
+
+async def inspect_remote_image_digest(
+    client: httpx.AsyncClient,
+    image: str,
+    *,
+    registry_credentials: DockerRegistryCredentials | None = None,
+) -> str:
+    """Read the registry manifest digest through Docker without image pulls."""
+
+    response = await client.get(
+        f"/distribution/{quote(image, safe='')}/json",
+        headers=_registry_auth_headers(registry_credentials),
+    )
+    _raise_for_docker_status(response)
+    payload = response.json()
+    descriptor = payload.get("Descriptor") if isinstance(payload, dict) else None
+    digest = descriptor.get("digest") if isinstance(descriptor, dict) else None
+    if not isinstance(digest, str) or not digest:
+        msg = "Docker API did not return remote image manifest digest"
+        raise RuntimeError(msg)
+    return digest
+
+
+async def inspect_remote_image_info(
+    image: str,
+    *,
+    registry_credentials: DockerRegistryCredentials | None = None,
+) -> DockerImageInfo:
+    """Read remote OCI config metadata without pulling the image to Docker."""
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(10.0),
+        follow_redirects=True,
+    ) as client:
+        return await inspect_registry_image_info(
+            client,
+            image,
+            registry_credentials=registry_credentials,
+        )
+
+
+async def inspect_registry_image_info(
+    client: httpx.AsyncClient,
+    image: str,
+    *,
+    registry_credentials: DockerRegistryCredentials | None = None,
+) -> DockerImageInfo:
+    """Resolve an image config through the registry v2 manifest API."""
+
+    registry_url, repository, reference = _registry_image_reference(image)
+    manifest_url = f"{registry_url}/v2/{repository}/manifests/{reference}"
+    manifest = await _registry_get_json(
+        client,
+        manifest_url,
+        accept=REGISTRY_MANIFEST_ACCEPT,
+        registry_credentials=registry_credentials,
+    )
+    if "manifests" in manifest:
+        descriptor = _linux_amd64_manifest_descriptor(manifest)
+        digest = descriptor.get("digest")
+        if not isinstance(digest, str) or not digest:
+            msg = "registry manifest index did not include an image digest"
+            raise RuntimeError(msg)
+        manifest = await _registry_get_json(
+            client,
+            f"{registry_url}/v2/{repository}/manifests/{digest}",
+            accept=REGISTRY_MANIFEST_ACCEPT,
+            registry_credentials=registry_credentials,
+        )
+
+    config = manifest.get("config")
+    config_digest = config.get("digest") if isinstance(config, dict) else None
+    if not isinstance(config_digest, str) or not config_digest:
+        msg = "registry image manifest did not include a config digest"
+        raise RuntimeError(msg)
+    config_payload = await _registry_get_json(
+        client,
+        f"{registry_url}/v2/{repository}/blobs/{config_digest}",
+        registry_credentials=registry_credentials,
+    )
+    raw_config = config_payload.get("config")
+    raw_labels = raw_config.get("Labels") if isinstance(raw_config, dict) else None
+    labels = (
+        {str(key): str(value) for key, value in raw_labels.items()}
+        if isinstance(raw_labels, dict)
+        else {}
+    )
+    created = config_payload.get("created")
+    return DockerImageInfo(
+        image_id=config_digest,
+        created=created if isinstance(created, str) else "",
+        labels=labels,
+    )
+
+
+def _registry_image_reference(image: str) -> tuple[str, str, str]:
+    repository, reference = split_docker_image(image)
+    parts = repository.split("/")
+    first = parts[0]
+    has_explicit_registry = (
+        first == "localhost" or "." in first or ":" in first
+    )
+    if not has_explicit_registry:
+        path = repository if "/" in repository else f"library/{repository}"
+        return "https://registry-1.docker.io", path, reference
+    registry_path = "/".join(parts[1:])
+    if not registry_path:
+        msg = f"Docker image does not include a repository path: {image}"
+        raise ValueError(msg)
+    registry = (
+        "registry-1.docker.io"
+        if first.lower() in DOCKER_HUB_REGISTRIES
+        else first
+    )
+    return f"https://{registry}", registry_path, reference
+
+
+def _linux_amd64_manifest_descriptor(manifest: dict[str, object]) -> dict[str, object]:
+    descriptors = manifest.get("manifests")
+    if not isinstance(descriptors, list):
+        msg = "registry manifest index did not include a manifest list"
+        raise TypeError(msg)
+    candidates: list[dict[str, object]] = [
+        descriptor for descriptor in descriptors if isinstance(descriptor, dict)
+    ]
+    for descriptor in candidates:
+        platform = descriptor.get("platform")
+        if not isinstance(platform, dict):
+            continue
+        if platform.get("os") == "linux" and platform.get("architecture") == "amd64":
+            return descriptor
+    if candidates:
+        return candidates[0]
+    msg = "registry manifest index did not include any image manifests"
+    raise RuntimeError(msg)
+
+
+async def _registry_get_json(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    accept: str | None = None,
+    registry_credentials: DockerRegistryCredentials | None = None,
+) -> dict[str, object]:
+    headers = {} if accept is None else {"Accept": accept}
+    response = await client.get(url, headers=headers)
+    if response.status_code == httpx.codes.UNAUTHORIZED:
+        response = await _registry_get_with_bearer_token(
+            client,
+            response,
+            url,
+            headers=headers,
+            registry_credentials=registry_credentials,
+        )
+    _raise_for_docker_status(response)
+    payload = response.json()
+    if not isinstance(payload, dict):
+        msg = "registry did not return a JSON object"
+        raise TypeError(msg)
+    return payload
+
+
+async def _registry_get_with_bearer_token(
+    client: httpx.AsyncClient,
+    challenge_response: httpx.Response,
+    url: str,
+    *,
+    headers: dict[str, str],
+    registry_credentials: DockerRegistryCredentials | None,
+) -> httpx.Response:
+    challenge = challenge_response.headers.get("WWW-Authenticate", "")
+    if not challenge.lower().startswith("bearer "):
+        _raise_for_docker_status(challenge_response)
+    parameters = {
+        match.group("key"): match.group("value")
+        for match in REGISTRY_BEARER_PARAMETER.finditer(challenge)
+    }
+    realm = parameters.pop("realm", "")
+    if not realm:
+        msg = "registry bearer challenge did not include a token realm"
+        raise RuntimeError(msg)
+    auth = (
+        None
+        if registry_credentials is None
+        else httpx.BasicAuth(
+            registry_credentials.username,
+            registry_credentials.token,
+        )
+    )
+    token_response = await client.get(realm, params=parameters, auth=auth)
+    _raise_for_docker_status(token_response)
+    token_payload = token_response.json()
+    token = (
+        token_payload.get("token") or token_payload.get("access_token")
+        if isinstance(token_payload, dict)
+        else None
+    )
+    if not isinstance(token, str) or not token:
+        msg = "registry token endpoint did not return an access token"
+        raise RuntimeError(msg)
+    return await client.get(
+        url,
+        headers={**headers, "Authorization": f"Bearer {token}"},
     )
 
 async def create_watchtower_container(
