@@ -17,6 +17,7 @@ from ironsbot.runtime.feature_policy import (
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.semantic_requests import ActionDefinition
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -115,5 +116,6 @@ def install(
             service.search,
             service.select,
             "请问你想查询哪只精灵的配置？",
+            ActionDefinition("pet_config", "精灵配置查询"),
         )
     )

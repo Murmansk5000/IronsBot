@@ -81,6 +81,7 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.runtime.priority import AdminPriorityService
 from ironsbot.services.activity.delivery import (
@@ -747,6 +748,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.bot.matcher_priority,
         before_reply_send=priority.wait,
         prompt_session_manager=prompt_sessions,
+        in_flight_requests=InFlightRequestService(features),
     )
     lifecycle = ApplicationLifecycle.from_plugins(
         driver,
