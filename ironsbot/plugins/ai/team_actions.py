@@ -18,10 +18,10 @@ async def _handle_team_recommend_action(
     action: AiIntentAction,
     event: MessageEvent,
 ) -> None:
-    await finish_event_reply(
+    await finish_message_sequence(
         matcher,
-        event,
-        action.message,
+        action.messages,
+        event=event,
     )
 
 

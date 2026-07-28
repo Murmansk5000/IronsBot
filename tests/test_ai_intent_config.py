@@ -3,11 +3,12 @@ import pytest
 from ironsbot.config.models.ai import (
     DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_FIRE_MANUAL_INTENT,
+    TEAM_RECOMMEND_LEGACY_MESSAGE_ERROR,
     UNKNOWN_AI_ACTION_ERROR,
     AiConfig,
 )
 from ironsbot.core.messaging import (
-    DEFAULT_JOIN_TEAM_MESSAGE,
+    DEFAULT_JOIN_TEAM_MESSAGES,
     FIRE_MANUAL_LINK_MESSAGE,
     FIRE_MANUAL_URL,
     AiIntentAction,
@@ -25,8 +26,9 @@ def test_default_ai_actions_include_team_recommend_and_fire_manual() -> None:
     assert action.feature == "ai_intent_team_recommend"
     assert action.keywords == ["战队"]
     assert action.action == "team_recommend"
-    assert action.message == DEFAULT_JOIN_TEAM_MESSAGE
-    assert "group_code=719544559" in action.message
+    assert action.messages == list(DEFAULT_JOIN_TEAM_MESSAGES)
+    assert "group_code=719544559" in action.messages[0]
+    assert action.messages[1] == "战队审核群号：719544559"
 
     manual_action = actions[1]
     assert manual_action.id == "fire_manual"
@@ -52,15 +54,14 @@ def test_configured_actions_override_builtin_actions_by_id() -> None:
         AiConfig(
             intent_actions={
                 "team_recommend": AiIntentAction(
-                    action="message",
-                    message="自定义战队回复",
+                    messages=["自定义链接", "自定义群号"],
                 )
             }
         ).intent_actions.values()
     )
 
     assert [action.id for action in actions] == ["team_recommend", "fire_manual"]
-    assert actions[0].message == "自定义战队回复"
+    assert actions[0].messages == ["自定义链接", "自定义群号"]
     assert actions[1].message == FIRE_MANUAL_LINK_MESSAGE
 
 
@@ -75,6 +76,17 @@ def test_default_actions_can_be_disabled_explicitly() -> None:
         action for action in actions if action.id == "fire_manual"
     )
     assert not manual_action.enabled
+
+
+def test_team_recommend_rejects_legacy_single_message() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        AiConfig(
+            intent_actions={
+                "team_recommend": AiIntentAction(message="旧单条回复")
+            }
+        )
+
+    assert TEAM_RECOMMEND_LEGACY_MESSAGE_ERROR in str(exc_info.value)
 
 
 def test_custom_action_requires_complete_definition() -> None:

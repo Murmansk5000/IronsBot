@@ -355,6 +355,15 @@ intent_actions_enabled = true
 [ai.intent_actions.team_recommend]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
+# EN: The team recommendation sends every messages item as a separate QQ message,
+# in order. Any number of items is supported; the legacy single message field is not.
+# ZH: 战队推荐会按顺序把 messages 中的每一项作为独立 QQ 消息发送，支持任意条数；
+# 不支持旧的单条 message 字段。
+# Example:
+# messages = [
+#   "点击链接加入战队审核群：https://example.com/team-review",
+#   "战队审核群号：123456789",
+# ]
 
 [ai.intent_actions.fire_manual]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
