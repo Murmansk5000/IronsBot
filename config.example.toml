@@ -331,19 +331,8 @@ suppress_push_patterns = [
 uid = 1310714247
 
 [messaging]
-# Default: []
-# EN: Private fixed command replies.
-# ZH: 私聊固定文本回复动作。
-# Example action fields: id, enabled, feature, message, commands.
-private_commands = []
-
-# Default: []
-# EN: Private scheduled messages.
-# ZH: 私聊定时文本动作。
-# Example action fields: id, enabled, feature, message, hour, minute, day_of_week.
-private_schedules = []
-group_commands = []
-group_schedules = []
+commands = []
+schedules = []
 
 [messaging.outbound_rate_limit]
 enabled = false

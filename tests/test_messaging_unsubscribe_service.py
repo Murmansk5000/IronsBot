@@ -9,9 +9,8 @@ from ironsbot.integrations.storage.push_subscriptions import (
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
-    group_schedule_label,
-    private_schedule_key,
-    private_schedule_label,
+    schedule_key,
+    schedule_label,
 )
 from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
@@ -26,7 +25,7 @@ EXPECTED_PRUNED_TOTAL = 4
 
 
 @dataclass(frozen=True, slots=True)
-class FakePrivateSchedule:
+class FakeSchedule:
     id: str
     feature: str
     name: str = ""
@@ -37,43 +36,43 @@ class FakePrivateSchedule:
     enabled: bool = True
 
 
-def test_private_schedule_key_requires_stable_id() -> None:
+def test_schedule_key_requires_stable_id() -> None:
     assert (
-        private_schedule_key(2, FakePrivateSchedule(id="daily", feature="push"))
+        schedule_key(2, FakeSchedule(id="daily", feature="push"))
         == "daily"
     )
     with pytest.raises(ValueError, match="requires a stable id"):
-        private_schedule_key(2, FakePrivateSchedule(id="", feature="push"))
+        schedule_key(2, FakeSchedule(id="", feature="push"))
 
 
 def test_schedule_label_uses_configured_name_before_internal_id() -> None:
-    task = FakePrivateSchedule(
+    task = FakeSchedule(
         id="web_activity_daily_private",
         name="周年庆签到提醒",
         feature="web_activity_push",
     )
 
-    assert private_schedule_label(1, task) == "周年庆签到提醒（23:00）"
+    assert schedule_label(1, task) == "周年庆签到提醒（23:00）"
 
 
 def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
-    task = FakePrivateSchedule(
+    task = FakeSchedule(
         id="web_activity_daily_private",
         feature="web_activity_push",
         message="周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign",
     )
 
-    assert private_schedule_label(1, task) == "周年庆主题站签到活动（23:00）"
+    assert schedule_label(1, task) == "周年庆主题站签到活动（23:00）"
 
 
 def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> None:
-    task = FakePrivateSchedule(
+    task = FakeSchedule(
         id="web_activity_daily_private",
         feature="web_activity_push",
         message="https://seerm.61.com/events/17years/#sign",
     )
 
-    assert group_schedule_label(1, task) == "游戏外活动推送（23:00）"
+    assert schedule_label(1, task) == "游戏外活动推送（23:00）"
 
 
 def test_builtin_push_options_split_startup_admin_notices() -> None:
@@ -267,9 +266,9 @@ def test_build_schedule_subscription_options_marks_subscription_state(
 ) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
     tasks = [
-        FakePrivateSchedule(id="daily", feature="text_push"),
-        FakePrivateSchedule(id="weekly", feature="weekly_push"),
-        FakePrivateSchedule(id="disabled", feature="text_push", enabled=False),
+        FakeSchedule(id="daily", feature="text_push"),
+        FakeSchedule(id="weekly", feature="weekly_push"),
+        FakeSchedule(id="disabled", feature="text_push", enabled=False),
     ]
     eligible = {
         "text_push": {1001},

@@ -3,23 +3,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot import logger
 
-from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_group
 from ironsbot.services.operations.server_status import (
     DEFAULT_START_TIME,
     DEFAULT_UPDATE_WEEKDAY,
 )
 
 if TYPE_CHECKING:
+    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
     from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.config.models.operations import ServerStatusConfig
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.messaging.delivery import MessageDelivery
 
 
 @dataclass(slots=True)
@@ -27,6 +25,7 @@ class OpenBroadcast:
     config: ServerStatusConfig
     features: FeatureService
     delivery: MessageDelivery
+    message_limiter: MessageLimiter | None = None
     last_at: datetime | None = None
 
     async def send(self, event: MessageEvent, *, now: datetime) -> None:
@@ -64,10 +63,7 @@ class OpenBroadcast:
             private_user_ids=user_ids,
             action_name="server status open broadcast",
             interval_seconds=1.2,
-            message_limiter=partial(
-                append_fire_manual_ad_for_group,
-                self.features,
-            ),
+            message_limiter=self.message_limiter,
             subscription_key="server_status_push",
         )
         if summary.succeeded:

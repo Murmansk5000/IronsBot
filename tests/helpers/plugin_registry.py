@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.app.registry import build_plugin_registry
+from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.integrations.docker.client import DockerClient
@@ -85,6 +86,10 @@ def build_test_plugin_registry(
             features=runtime.features,
             outbound=object(),
             delivery=runtime.delivery,
+        push_message_limiter=partial(
+            append_fire_manual_ad_for_target,
+            runtime.features,
+        ),
             admin_notices=runtime.admin_notices,
             activity=SimpleNamespace(register_jobs=lambda _scheduler: None),
             headless=headless,
