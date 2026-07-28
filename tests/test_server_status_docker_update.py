@@ -24,6 +24,7 @@ from ironsbot.integrations.docker.client import (
     DockerClient,
     create_watchtower_container,
     ensure_watchtower_image,
+    inspect_registry_image_info,
     inspect_remote_image_digest,
     pull_docker_image,
     split_docker_image,
@@ -35,6 +36,7 @@ from ironsbot.services.operations.docker_formatting import (
 )
 from ironsbot.services.operations.docker_models import (
     DockerImageCheckResult,
+    DockerImageInfo,
     DockerRegistryCredentials,
     DockerUpdateRequest,
     DockerUpdateResult,
@@ -157,10 +159,21 @@ def test_format_docker_image_check_does_not_offer_side_effects() -> None:
             current_image_id="sha256:current-image-id",
             current_image_created="2026-07-04T18:00:00.987654321Z",
             remote_digest="sha256:remote-manifest-digest",
+            remote_image_id="sha256:remote-image-id",
+            remote_image_created="2026-07-04T19:00:00.987654321Z",
+            current_image_commit="oldcommitabc old change",
+            remote_image_commit="newcommitabc new change",
         ),
     )
 
-    assert "检测到远端新镜像" in reply
+    assert "检测到新镜像：ironsbot" in reply
+    assert "当前镜像ID" in reply
+    assert "最新镜像ID" in reply
+    assert "oldcommitabc old change" in reply
+    assert "newcommitabc new change" in reply
+    assert "2026-07-05 02:00:00" in reply
+    assert "2026-07-05 03:00:00" in reply
+    assert "可发送 /更新镜像 更新并重启" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 
@@ -176,7 +189,59 @@ def test_format_docker_image_check_reports_matching_remote_digest() -> None:
         ),
     )
 
-    assert "远端镜像与当前容器一致" in reply
+    assert "Docker 镜像已是最新" in reply
+    assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
+
+
+def test_inspect_registry_image_info_reads_remote_oci_config() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/manifests/latest"):
+            return httpx.Response(
+                200,
+                json={
+                    "manifests": [
+                        {
+                            "digest": "sha256:linux-amd64-manifest",
+                            "platform": {"os": "linux", "architecture": "amd64"},
+                        }
+                    ]
+                },
+                request=request,
+            )
+        if request.url.path.endswith("/manifests/sha256:linux-amd64-manifest"):
+            return httpx.Response(
+                200,
+                json={"config": {"digest": "sha256:remote-config"}},
+                request=request,
+            )
+        if request.url.path.endswith("/blobs/sha256:remote-config"):
+            return httpx.Response(
+                200,
+                json={
+                    "created": "2026-07-28T10:01:35Z",
+                    "config": {
+                        "Labels": {
+                            "org.opencontainers.image.revision": "deadbeef",
+                        }
+                    },
+                },
+                request=request,
+            )
+        pytest.fail(f"unexpected registry request: {request.url}")
+
+    async def inspect() -> DockerImageInfo:
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await inspect_registry_image_info(
+                client,
+                "murmansk5000/ironsbot:latest",
+            )
+
+    result = asyncio.run(inspect())
+
+    assert result.image_id == "sha256:remote-config"
+    assert result.created == "2026-07-28T10:01:35Z"
+    assert result.labels["org.opencontainers.image.revision"] == "deadbeef"
 
 
 def test_inspect_remote_image_digest_uses_distribution_endpoint() -> None:
@@ -359,7 +424,7 @@ def test_docker_update_service_checks_without_starting_an_update() -> None:
     reply = asyncio.run(service.check_image_update())
 
     assert docker.check_request is not None
-    assert "无需更新" in reply
+    assert "Docker 镜像已是最新" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 
