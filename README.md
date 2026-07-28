@@ -84,11 +84,6 @@ services:
 复制为 `./ironsbot-config/ironsbot.toml` 后按需修改。完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
-## 扩展安装与运维状态
-
-私有扩展从未启动的临时容器读取归档，按清单和路径约束安装；可选刷新失败保留原有效包，自更新交接时不安装。功能登记、归档安装与实际配对运行是不同证据。
-文件日志默认按本地午夜轮转、保留三十天且不压缩；手动更新前展示已有版本记录，不为展示重新计算数据库哈希，也不表示下游已经发布或下载最新数据。
-
 ## 插件架构
 
 用户功能集中在 `ironsbot/plugins`，并由 manifest 显式加载：

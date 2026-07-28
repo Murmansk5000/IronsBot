@@ -100,6 +100,9 @@ async def handle_dynamic_select_action(
     service: BilibiliService,
 ) -> None:
     try:
+        if event.get_plaintext().strip() == "0":
+            await finish_event_reply(matcher, event, "已退出动态选择。")
+
         cached_ids = state.get(DYNAMIC_IDS_STATE_KEY, [])
         selection = service.select_dynamic(
             cached_ids,
