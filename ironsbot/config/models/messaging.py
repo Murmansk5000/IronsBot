@@ -313,8 +313,20 @@ class OutboundRateLimitConfig(BaseModel):
     windows: list[OutboundRateLimitWindowConfig] = Field(
         default_factory=_default_outbound_rate_limit_windows
     )
-    push_queue_max_wait_seconds: float = Field(default=15.0, ge=0)
-    push_queue_max_messages: int = Field(default=10, ge=0)
+    # Kept only so existing strict TOML files continue to start. The unlimited
+    # priority queue deliberately ignores both legacy limits.
+    push_queue_max_wait_seconds: float | None = Field(
+        default=None,
+        ge=0,
+        exclude=True,
+        deprecated=True,
+    )
+    push_queue_max_messages: int | None = Field(
+        default=None,
+        ge=0,
+        exclude=True,
+        deprecated=True,
+    )
     cooldown_message: str = (
         "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
     )

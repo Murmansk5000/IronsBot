@@ -280,8 +280,11 @@ TOML 使用严格加载。未知或已删除的字段、既非内置也未被消
 
 群消息发送额度默认关闭；显式设置 `[messaging.outbound_rate_limit].enabled = true` 后，使用
 `[messaging.outbound_rate_limit].windows` 的多个精确滑动窗口。
-任一窗口达到上限都会抑制后续普通回复；主动推送可以在每群独立 FIFO 队列中
-短暂等待，私聊和启用 `admin_notice` 的管理群不计入群额度。
+任一窗口达到上限都会抑制后续普通回复；主动推送与超级管理员触发的群回复会在
+每群独立的无上限优先队列中等待，其中超级管理员回复优先。私聊和启用
+`admin_notice` 的管理群不计入群额度。
+旧 TOML 中的 `push_queue_max_wait_seconds` 与 `push_queue_max_messages` 会被忽略，
+可在下次整理配置时删除。
 
 行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥。
 

@@ -401,6 +401,16 @@ def test_outbound_rate_limit_requires_distinct_nonempty_windows() -> None:
         OutboundRateLimitConfig(windows=[window, window])
 
 
+def test_outbound_rate_limit_ignores_legacy_push_queue_settings() -> None:
+    config = OutboundRateLimitConfig(
+        push_queue_max_wait_seconds=15,
+        push_queue_max_messages=10,
+    )
+
+    assert "push_queue_max_wait_seconds" not in config.model_dump()
+    assert "push_queue_max_messages" not in config.model_dump()
+
+
 def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
     with pytest.raises(
         ValidationError,

@@ -582,14 +582,11 @@ windows = [
   { window_seconds = 60.0, max_messages = 10 },
   { window_seconds = 600.0, max_messages = 30 },
 ]
-# Default: 15.0
-# EN: Maximum time a proactive push may wait for group capacity.
-# ZH: 主动推送等待本群发送额度的最长秒数。
-push_queue_max_wait_seconds = 15.0
-# Default: 10
-# EN: Maximum queued proactive pushes per group; user replies never queue.
-# ZH: 每个群最多积压的主动推送数；用户触发的回复不会排队。
-push_queue_max_messages = 10
+# EN: Proactive pushes and superuser-triggered group replies wait in an unlimited
+# priority queue when group capacity is exhausted. Superuser replies are sent
+# before proactive pushes; ordinary user replies are suppressed instead.
+# ZH: 群额度耗尽时，主动推送与超级管理员触发的群回复进入无上限优先队列；
+# 超级管理员回复优先于主动推送，普通用户回复直接抑制。
 # Default: built-in cooldown notice.
 # EN: Appended to the last allowed message when a window reaches its limit.
 # ZH: 某个窗口达到上限时，附加在最后一条允许消息末尾的提示。

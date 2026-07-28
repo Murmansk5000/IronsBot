@@ -13,6 +13,7 @@ from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.exception import MockApiException
 from nonebot.log import logger
+from nonebot.matcher import current_event
 
 from ironsbot.runtime.matchers import bind_async
 
@@ -45,7 +46,7 @@ class OutboundRateLimitDecision:
     allowed: bool
     permit: OutboundPermit | None = None
     retry_after_seconds: float = 0.0
-    reason: Literal["rate_limit", "queue_full", "queue_timeout"] | None = None
+    reason: Literal["rate_limit", "queue_cleared"] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,17 +171,40 @@ class MultiWindowGroupRateLimiter:
 
 
 @dataclass(slots=True)
-class _PushWaiter:
+class _QueuedOutbound:
     source: str
-    deadline: float
+    priority: Literal["superuser_reply", "push"]
     future: asyncio.Future[OutboundRateLimitDecision]
 
 
 @dataclass(slots=True)
 class _GroupPushQueue:
-    waiters: deque[_PushWaiter] = field(default_factory=deque)
+    superuser_waiters: deque[_QueuedOutbound] = field(default_factory=deque)
+    push_waiters: deque[_QueuedOutbound] = field(default_factory=deque)
     changed: asyncio.Event = field(default_factory=asyncio.Event)
     worker: asyncio.Task[None] | None = None
+
+    def has_waiters(self) -> bool:
+        return bool(self.superuser_waiters or self.push_waiters)
+
+    def next_waiter(self) -> _QueuedOutbound | None:
+        for waiters in (self.superuser_waiters, self.push_waiters):
+            while waiters:
+                waiter = waiters[0]
+                if waiter.future.cancelled():
+                    waiters.popleft()
+                    continue
+                return waiter
+        return None
+
+    def pop_waiter(self, waiter: _QueuedOutbound) -> None:
+        waiters = (
+            self.superuser_waiters
+            if waiter.priority == "superuser_reply"
+            else self.push_waiters
+        )
+        if waiters and waiters[0] is waiter:
+            waiters.popleft()
 
 
 class GroupOutboundRateLimitService:
@@ -225,12 +249,35 @@ class GroupOutboundRateLimitService:
         *,
         source: str,
     ) -> OutboundRateLimitDecision:
+        return await self._acquire_queued_outbound(
+            group_id,
+            source=source,
+            priority="push",
+        )
+
+    async def acquire_superuser_reply(
+        self,
+        group_id: int | None,
+    ) -> OutboundRateLimitDecision:
+        return await self._acquire_queued_outbound(
+            group_id,
+            source="superuser reply",
+            priority="superuser_reply",
+        )
+
+    async def _acquire_queued_outbound(
+        self,
+        group_id: int | None,
+        *,
+        source: str,
+        priority: Literal["superuser_reply", "push"],
+    ) -> OutboundRateLimitDecision:
         if group_id is None or not self._is_limited_group(group_id):
             return OutboundRateLimitDecision(allowed=True)
 
         config = self.config
         queue = self._push_queues.get(group_id)
-        if queue is None or not queue.waiters:
+        if queue is None or not queue.has_waiters():
             immediate = self._limiter.acquire(
                 group_id,
                 config.windows,
@@ -243,31 +290,18 @@ class GroupOutboundRateLimitService:
                 allowed=False,
                 reason="rate_limit",
             )
-        if (
-            config.push_queue_max_wait_seconds <= 0
-            or config.push_queue_max_messages <= 0
-        ):
-            return OutboundRateLimitDecision(
-                allowed=False,
-                retry_after_seconds=immediate.retry_after_seconds,
-                reason="queue_timeout",
-            )
 
         queue = self._push_queues.setdefault(group_id, _GroupPushQueue())
-        if len(queue.waiters) >= config.push_queue_max_messages:
-            return OutboundRateLimitDecision(
-                allowed=False,
-                retry_after_seconds=immediate.retry_after_seconds,
-                reason="queue_full",
-            )
-
         loop = asyncio.get_running_loop()
-        waiter = _PushWaiter(
+        waiter = _QueuedOutbound(
             source=source,
-            deadline=time.monotonic() + config.push_queue_max_wait_seconds,
+            priority=priority,
             future=loop.create_future(),
         )
-        queue.waiters.append(waiter)
+        if priority == "superuser_reply":
+            queue.superuser_waiters.append(waiter)
+        else:
+            queue.push_waiters.append(waiter)
         if queue.worker is None or queue.worker.done():
             queue.worker = self._spawn(
                 self._run_push_queue(group_id, queue),
@@ -285,6 +319,27 @@ class GroupOutboundRateLimitService:
             queue.changed.set()
             raise
 
+    def discard_pending_pushes(self, group_id: int) -> None:
+        """Drop waiting proactive pushes after a real group send failure.
+
+        Superuser-triggered replies use a separate priority lane and remain
+        queued so a transient OneBot failure cannot silently lose them.
+        """
+
+        queue = self._push_queues.get(group_id)
+        if queue is None:
+            return
+        while queue.push_waiters:
+            waiter = queue.push_waiters.popleft()
+            if not waiter.future.done():
+                waiter.future.set_result(
+                    OutboundRateLimitDecision(
+                        allowed=False,
+                        reason="queue_cleared",
+                    )
+                )
+        queue.changed.set()
+
     def rollback(self, permit: OutboundPermit | None) -> None:
         if permit is None or not self._limiter.rollback(permit):
             return
@@ -298,9 +353,11 @@ class GroupOutboundRateLimitService:
         for queue in self._push_queues.values():
             if queue.worker is not None:
                 queue.worker.cancel()
-            for waiter in queue.waiters:
+            for waiter in (*queue.superuser_waiters, *queue.push_waiters):
                 if not waiter.future.done():
                     waiter.future.cancel()
+            queue.superuser_waiters.clear()
+            queue.push_waiters.clear()
         self._push_queues.clear()
 
     async def _run_push_queue(
@@ -309,26 +366,10 @@ class GroupOutboundRateLimitService:
         queue: _GroupPushQueue,
     ) -> None:
         try:
-            while queue.waiters:
-                waiter = queue.waiters[0]
-                if waiter.future.cancelled():
-                    queue.waiters.popleft()
-                    continue
-
+            while (waiter := queue.next_waiter()) is not None:
                 now = time.monotonic()
-                remaining_wait = waiter.deadline - now
-                if remaining_wait <= 0:
-                    queue.waiters.popleft()
-                    waiter.future.set_result(
-                        OutboundRateLimitDecision(
-                            allowed=False,
-                            reason="queue_timeout",
-                        )
-                    )
-                    continue
-
                 if not self._is_limited_group(group_id):
-                    queue.waiters.popleft()
+                    queue.pop_waiter(waiter)
                     waiter.future.set_result(
                         OutboundRateLimitDecision(allowed=True)
                     )
@@ -342,14 +383,11 @@ class GroupOutboundRateLimitService:
                     now=now,
                 )
                 if decision.allowed:
-                    queue.waiters.popleft()
+                    queue.pop_waiter(waiter)
                     waiter.future.set_result(decision)
                     continue
 
-                delay = min(
-                    remaining_wait,
-                    max(0.001, decision.retry_after_seconds),
-                )
+                delay = max(0.001, decision.retry_after_seconds)
                 queue.changed.clear()
                 with suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(queue.changed.wait(), timeout=delay)
@@ -358,19 +396,16 @@ class GroupOutboundRateLimitService:
                 "outbound push queue worker failed: group={}",
                 group_id,
             )
-            while queue.waiters:
-                waiter = queue.waiters.popleft()
-                if not waiter.future.done():
-                    waiter.future.set_result(
-                        OutboundRateLimitDecision(
-                            allowed=False,
-                            reason="queue_timeout",
-                        )
-                    )
+            self.discard_pending_pushes(group_id)
         finally:
             queue.worker = None
-            if not queue.waiters:
+            if not queue.has_waiters():
                 self._push_queues.pop(group_id, None)
+            else:
+                queue.worker = self._spawn(
+                    self._run_push_queue(group_id, queue),
+                    name=f"ironsbot-push-rate-limit-{group_id}",
+                )
 
     def _is_limited_group(self, group_id: int) -> bool:
         return self.config.enabled and not self.features.group_has_feature(
@@ -399,6 +434,23 @@ def _extract_group_id(api: str, data: dict[str, Any]) -> int | None:
     except (TypeError, ValueError):
         return None
     return group_id if group_id > 0 else None
+
+
+def _is_superuser_reply(service: GroupOutboundRateLimitService) -> bool:
+    """Return whether the current matcher reply originates from a superuser."""
+
+    try:
+        event = current_event.get()
+    except LookupError:
+        return False
+    raw_user_id = getattr(event, "user_id", None)
+    if not isinstance(raw_user_id, int | str):
+        return False
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        return False
+    return service.features.is_superuser(user_id)
 
 
 def _append_cooldown_notice(data: dict[str, Any], notice: str) -> None:
@@ -454,6 +506,9 @@ async def _check_group_send_api(
     if preacquired is not None and preacquired.group_id == group_id:
         permit = preacquired
         decision = OutboundRateLimitDecision(allowed=True, permit=permit)
+    elif _is_superuser_reply(service):
+        decision = await service.acquire_superuser_reply(group_id)
+        permit = decision.permit
     else:
         decision = service.acquire_reply(group_id)
         permit = decision.permit
@@ -492,6 +547,8 @@ async def _finalize_group_send_api(
     permit = service._api_permits.pop(id(data), None)
     if exception is not None:
         service.rollback(permit)
+        if permit is not None:
+            service.discard_pending_pushes(permit.group_id)
 def install_outbound_rate_limit_hooks(
     service: GroupOutboundRateLimitService,
 ) -> None:
