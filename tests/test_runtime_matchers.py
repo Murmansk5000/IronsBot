@@ -4,7 +4,7 @@ import asyncio
 import inspect
 from copy import deepcopy
 from datetime import timedelta
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
@@ -14,12 +14,12 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
 
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
-    CommandCooldown,
     MatcherRegistry,
     PromptSessionManager,
     _restore_temporary_matcher_state,
@@ -28,6 +28,23 @@ from ironsbot.runtime.matchers import (
     get_prompt_session_manager,
     get_reply_before_send,
 )
+from ironsbot.runtime.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
+
+if TYPE_CHECKING:
+    from ironsbot.runtime.matcher_contracts import CommandCooldown
+
+
+def _semantic_request(target: str) -> SemanticRequest:
+    return SemanticRequest(
+        action=ActionDefinition("selection", "选择"),
+        target=SemanticTarget(target, target),
+        source=SemanticRequestSource.MENU,
+    )
 
 
 async def _bound_checker(
@@ -187,6 +204,57 @@ async def test_queued_conversation_cancellation_drops_pending_inputs() -> None:
     state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = first_ticket
     manager.finish_queued_conversation(state)
     assert not manager.queued_conversation_is_cancelled(state)
+
+
+@pytest.mark.asyncio
+async def test_queued_conversation_releases_cancelled_pending_reservations() -> None:
+    class Features:
+        def is_superuser(self, user_id: int) -> bool:
+            del user_id
+            return False
+
+    requests = InFlightRequestService(Features())
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_1_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+        request_service=requests,
+    )
+    active = requests.admit(
+        user_id=1,
+        request=_semantic_request("1"),
+    )
+    pending = requests.admit(
+        user_id=1,
+        request=_semantic_request("2"),
+    )
+    assert active.token is not None
+    assert pending.token is not None
+
+    active_ticket = await context.acquire(active.token)
+    assert active_ticket is not None
+    waiting = asyncio.create_task(context.acquire(pending.token))
+    await asyncio.sleep(0)
+    manager.cancel_queued_conversation(
+        {QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token}
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert requests.admit(
+        user_id=1,
+        request=_semantic_request("2"),
+    ).allowed
+    assert not requests.admit(
+        user_id=1,
+        request=_semantic_request("1"),
+    ).allowed
+
+    context.complete(active_ticket)
+    requests.finish(active.token)
 
 
 @pytest.mark.asyncio

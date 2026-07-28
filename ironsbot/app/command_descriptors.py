@@ -369,7 +369,7 @@ def rank_commands() -> tuple[CommandDescriptor, ...]:
             examples=examples,
             description=description,
             feature="seer_rank",
-            **options,
+            show_in_poke=options.get("show_in_poke", False),
         )
         for command_id, section, examples, description, options in regular_rows
     )

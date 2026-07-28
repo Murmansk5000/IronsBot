@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -21,7 +26,6 @@ from ironsbot.services.seer.player_account_policy import PlayerAccountPolicyMixi
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
 from ironsbot.services.seer.player_binding import player_binding_offer_message
 from ironsbot.services.seer.player_query import (
-    PlayerQuerySectionPlan,
     player_query_failure_message,
     player_query_timeout_message,
 )
@@ -30,9 +34,6 @@ from ironsbot.services.seer.player_query_limits import (
     PlayerQueryQuotaExceededError,
 )
 from ironsbot.services.seer.player_request_protection import (
-    PlayerRequestBusyError,
-    PlayerRequestPausedError,
-    PlayerRequestReconnectError,
     player_request_protection_message,
 )
 from ironsbot.services.seer.player_service_models import (
@@ -41,10 +42,17 @@ from ironsbot.services.seer.player_service_models import (
     _BackgroundRefresh,
     _CachedDetailReply,
 )
+from ironsbot.services.seer.player_service_support import (
+    PLAYER_REQUEST_ERRORS,
+    background_refresh_kinds,
+    shortcut_operation_label,
+    utc_now,
+)
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
     fetch_player_shortcut_reply,
+    player_shortcut_semantic_request,
 )
 from ironsbot.services.seer.query_result import QueryReply
 
@@ -53,6 +61,7 @@ _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+    from datetime import datetime
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.tasks import TaskSpawner
@@ -104,7 +113,7 @@ class PlayerDetailService:
         if not refresh_config.enabled:
             return
 
-        kinds = _background_refresh_kinds(pending.section_plan)
+        kinds = background_refresh_kinds(pending.section_plan)
         if not kinds or pending.player_id in self._background_refreshes:
             return
 
@@ -124,6 +133,7 @@ class PlayerDetailService:
             ),
             name=f"seer-player-background-refresh-{pending.player_id}",
         )
+        refresh.task = task
         task.add_done_callback(
             lambda _task: self._finish_background_refresh(pending.player_id, refresh)
         )
@@ -135,16 +145,30 @@ class PlayerDetailService:
         player_id: int,
         *,
         use_cache: bool = True,
+        anchor_only: bool = False,
     ) -> QueryReply:
         if use_cache:
             cached = self._cached_reply(player_id, command.kind)
             if cached is not None:
                 return cached
+            refresh = self._background_refreshes.get(player_id)
+            pending = None if refresh is None else refresh.replies.get(command.kind)
+            if (
+                pending is not None
+                and not pending.done()
+                and refresh is not None
+                and refresh.task is not None
+                and not refresh.task.done()
+            ):
+                refreshed = await asyncio.shield(pending)
+                if refreshed is not None:
+                    return refreshed
 
         reply = await self._fetch_shortcut(
             game,
             command=command,
             player_id=player_id,
+            anchor_only=anchor_only,
         )
         self._store_reply(player_id, command.kind, reply)
         return reply
@@ -155,6 +179,7 @@ class PlayerDetailService:
         *,
         command: PlayerShortcutCommand,
         player_id: int,
+        anchor_only: bool,
     ) -> QueryReply:
         return await fetch_player_shortcut_reply(
             PlayerShortcutDependencies(
@@ -165,6 +190,7 @@ class PlayerDetailService:
             game,
             command=command,
             player_id=player_id,
+            anchor_only=anchor_only,
         )
 
     def _detail_stage_timeout_seconds(self) -> float:
@@ -186,40 +212,62 @@ class PlayerDetailService:
         refresh: _BackgroundRefresh,
         group_id: int | None,
     ) -> None:
-        for kind, future in refresh.replies.items():
-            if future.done():
-                continue
-            try:
-                command = PlayerShortcutCommand(kind=kind, player_id=player_id)
-                logger.info(
-                    "米米号后台预热开始：player_id=%s section=%s",
-                    player_id,
-                    kind,
-                )
-                reply = await self._run_background_shortcut(
+        await asyncio.gather(
+            *(
+                self._run_background_refresh_item(
                     game,
-                    command=command,
                     player_id=player_id,
+                    kind=kind,
+                    future=future,
                     group_id=group_id,
                 )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception(
-                    "米米号后台预热失败：player_id=%s section=%s",
-                    player_id,
-                    kind,
-                )
-                if not future.done():
-                    future.set_result(None)
-                continue
+                for kind, future in refresh.replies.items()
+            ),
+            return_exceptions=True,
+        )
 
+    async def _run_background_refresh_item(
+        self,
+        game: HeadlessGame,
+        *,
+        player_id: int,
+        kind: PlayerShortcutKind,
+        future: asyncio.Future[QueryReply | None],
+        group_id: int | None,
+    ) -> None:
+        if future.done():
+            return
+        try:
+            command = PlayerShortcutCommand(kind=kind, player_id=player_id)
             logger.info(
-                "米米号后台预热完成：player_id=%s section=%s",
+                "米米号后台预热开始：player_id=%s section=%s",
                 player_id,
                 kind,
             )
-            self._store_reply(player_id, kind, reply)
+            reply = await self._run_background_shortcut(
+                game,
+                command=command,
+                player_id=player_id,
+                group_id=group_id,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "米米号后台预热失败：player_id=%s section=%s",
+                player_id,
+                kind,
+            )
+            if not future.done():
+                future.set_result(None)
+            return
+
+        logger.info(
+            "米米号后台预热完成：player_id=%s section=%s",
+            player_id,
+            kind,
+        )
+        self._store_reply(player_id, kind, reply)
 
     def _finish_background_refresh(
         self,
@@ -307,7 +355,7 @@ class PlayerDetailService:
     ) -> QueryReply:
         async def fetch() -> QueryReply:
             with game.operations.track(
-                _shortcut_operation_label(command.kind),
+                shortcut_operation_label(command.kind),
                 f"米米号 {player_id}",
                 source="米米号后台预热",
                 background=True,
@@ -318,6 +366,7 @@ class PlayerDetailService:
                         game,
                         command=command,
                         player_id=player_id,
+                        anchor_only=False,
                     ),
                     timeout=self._config.player.detail_timeout_seconds,
                 )
@@ -328,9 +377,14 @@ class PlayerDetailService:
         return await self._requests.run(
             fetch,
             user_id=None,
-            label=f"后台{_shortcut_operation_label(command.kind)}",
+            label=f"后台{shortcut_operation_label(command.kind)}",
             background=True,
             timeout_seconds=timeout_seconds,
+            semantic_request=player_shortcut_semantic_request(
+                kind=command.kind,
+                player_id=player_id,
+                source=SemanticRequestSource.BACKGROUND,
+            ),
         )
 
     def _background_refresh_timeout_seconds(self) -> float:
@@ -381,7 +435,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         self._details = details
         self._quotas = quotas
         self._requests = requests
-        self._now = now or _utc_now
+        self._now = now or utc_now
         self._query_cache = PlayerQueryCache.from_config(config)
 
     def default_player_id(self, qq_user_id: int) -> int | None:
@@ -420,10 +474,22 @@ class PlayerService(PlayerAccountPolicyMixin):
                 label="米米号基础资料",
                 quota_player_id=player_id,
                 quota_action_key="player",
+                semantic_request=SemanticRequest(
+                    action=ActionDefinition(
+                        "seer.player.info",
+                        "米米号基础资料",
+                        cooldown_key="seer_player",
+                    ),
+                    target=SemanticTarget(
+                        key=str(player_id),
+                        display=f"米米号 {player_id}",
+                    ),
+                    source=SemanticRequestSource.DIRECT,
+                ),
             )
         except PlayerQueryQuotaExceededError as error:
             return cached or PlayerQueryResult(message=error.message)
-        except _PLAYER_REQUEST_ERRORS as error:
+        except PLAYER_REQUEST_ERRORS as error:
             return cached or PlayerQueryResult(
                 message=player_request_protection_message(error)
             )
@@ -523,7 +589,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         )
         return "已解除默认米米号。" if removed else "当前没有已绑定的米米号。"
 
-    async def shortcut(  # noqa: PLR0911 - distinct query failure replies
+    async def shortcut(  # noqa: C901, PLR0911 - distinct query failure replies
         self,
         command: PlayerShortcutCommand,
         qq_user_id: int,
@@ -547,22 +613,28 @@ class PlayerService(PlayerAccountPolicyMixin):
                 player_id=player_id,
                 action_key=command.kind,
             )
-            if quota_message:
-                return cached or QueryReply(text=quota_message)
+            anchor_only = bool(quota_message)
             message = await self._run_live_request(
                 lambda: self._shortcut_live(
                     command,
                     player_id,
                     group_id=group_id,
+                    anchor_only=anchor_only,
                 ),
                 user_id=qq_user_id,
-                label=_shortcut_operation_label(command.kind),
+                label=shortcut_operation_label(command.kind),
                 quota_player_id=player_id,
                 quota_action_key=command.kind,
+                allow_quota_exhausted=anchor_only,
+                semantic_request=player_shortcut_semantic_request(
+                    kind=command.kind,
+                    player_id=player_id,
+                    source=SemanticRequestSource.DIRECT,
+                ),
             )
         except PlayerQueryQuotaExceededError as error:
             return cached or QueryReply(text=error.message)
-        except _PLAYER_REQUEST_ERRORS as error:
+        except PLAYER_REQUEST_ERRORS as error:
             return cached or QueryReply(text=player_request_protection_message(error))
         except (TimeoutError, asyncio.TimeoutError):
             return cached or QueryReply(text=player_query_timeout_message(player_id))
@@ -572,11 +644,16 @@ class PlayerService(PlayerAccountPolicyMixin):
             return cached or QueryReply(
                 text=player_query_failure_message(player_id, error)
             )
-        self._record_successful_quota(
-            qq_user_id=qq_user_id,
-            player_id=player_id,
-            action_key=command.kind,
-        )
+        if quota_message:
+            if not message.rank_lookup_is_lightweight:
+                return cached or QueryReply(text=quota_message)
+            return message
+        if message.rank_lookup_should_charge_quota:
+            self._record_successful_quota(
+                qq_user_id=qq_user_id,
+                player_id=player_id,
+                action_key=command.kind,
+            )
         return message
 
     def has_inflight_detail(
@@ -592,10 +669,11 @@ class PlayerService(PlayerAccountPolicyMixin):
         player_id: int,
         *,
         group_id: int | None,
+        anchor_only: bool,
     ) -> QueryReply:
         game = self._headless.get_game()
         with game.operations.track(
-            _shortcut_operation_label(command.kind),
+            shortcut_operation_label(command.kind),
             f"米米号 {player_id}",
             source="米米号快捷详情查询",
             group_id=group_id,
@@ -606,6 +684,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     command,
                     player_id,
                     use_cache=False,
+                    anchor_only=anchor_only,
                 ),
                 timeout=self._config.player.detail_timeout_seconds,
             )
@@ -667,7 +746,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                 message=player_query_failure_message(player_id, error)
             )
 
-    async def _run_live_request(
+    async def _run_live_request(  # noqa: PLR0913
         self,
         operation: Callable[[], Awaitable[Any]],
         *,
@@ -675,6 +754,8 @@ class PlayerService(PlayerAccountPolicyMixin):
         label: str,
         quota_player_id: int | None = None,
         quota_action_key: str | None = None,
+        semantic_request: SemanticRequest | None = None,
+        allow_quota_exhausted: bool = False,
     ) -> Any:
         async def guarded_operation() -> Any:
             if quota_player_id is not None and quota_action_key is not None:
@@ -683,7 +764,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     player_id=quota_player_id,
                     action_key=quota_action_key,
                 )
-                if quota_message:
+                if quota_message and not allow_quota_exhausted:
                     raise PlayerQueryQuotaExceededError(quota_message)
             return await operation()
 
@@ -693,36 +774,5 @@ class PlayerService(PlayerAccountPolicyMixin):
             guarded_operation,
             user_id=user_id,
             label=label,
+            semantic_request=semantic_request,
         )
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _background_refresh_kinds(
-    plan: PlayerQuerySectionPlan,
-) -> tuple[PlayerShortcutKind, ...]:
-    kinds: list[PlayerShortcutKind] = []
-    if plan.has_collection:
-        kinds.append("collection")
-    if plan.needs_peak_section:
-        kinds.append("peak")
-    if plan.has_autocard_rank:
-        kinds.append("autocard")
-    return tuple(kinds)
-
-
-_PLAYER_REQUEST_ERRORS = (
-    PlayerRequestBusyError,
-    PlayerRequestPausedError,
-    PlayerRequestReconnectError,
-)
-
-
-def _shortcut_operation_label(kind: PlayerShortcutKind) -> str:
-    return {
-        "collection": "收集查询",
-        "peak": "巅峰查询",
-        "autocard": "群星牌查询",
-    }[kind]

@@ -3,19 +3,34 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from ironsbot.core.features import FeatureService
     from ironsbot.runtime.plugins import PluginDefinition
 
 CommandScope = Literal["group", "private", "both"]
 CommandAudience = Literal["regular", "group_manager", "superuser"]
 CommandVisibility = Callable[["CommandContext"], bool]
+
+
+class CommandFeaturePolicy(Protocol):
+    def is_superuser(self, user_id: int) -> bool: ...
+
+    def group_has_feature(self, group_id: int, feature: str) -> bool: ...
+
+    def is_group_feature_allowed(
+        self,
+        user_id: int,
+        group_id: int,
+        feature: str,
+        /,
+    ) -> bool: ...
+
+    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool: ...
 
 
 class CommandCatalogError(ValueError):
@@ -72,7 +87,7 @@ class CommandContext:
         sender = getattr(event, "sender", None)
         role = getattr(sender, "role", None)
         return cls(
-            user_id=int(event.user_id),
+            user_id=int(cast("Any", event).user_id),
             group_id=(
                 int(group_id)
                 if (group_id := getattr(event, "group_id", None)) is not None
@@ -122,7 +137,7 @@ class CommandDescriptor:
     def is_available(
         self,
         context: CommandContext,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
     ) -> bool:
         if not _scope_matches(context, self.scope):
             return False
@@ -157,7 +172,7 @@ def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
 
 
 def _feature_is_allowed(
-    features: "FeatureService",
+    features: CommandFeaturePolicy,
     context: CommandContext,
     feature: str,
 ) -> bool:
@@ -240,7 +255,7 @@ class CommandCatalog:
     def available_for(
         self,
         event: object,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
         *,
         plugin_id: str | None = None,
         ignored_plugins: Iterable[str] = (),
@@ -255,7 +270,7 @@ class CommandCatalog:
     def available_for_context(
         self,
         context: CommandContext,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
         *,
         plugin_id: str | None = None,
         ignored_plugins: Iterable[str] = (),
@@ -272,7 +287,7 @@ class CommandCatalog:
     def available_for_plugin(
         self,
         event: object,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
         *,
         plugin_id: str,
         ignored_plugins: Iterable[str] = (),
@@ -287,7 +302,7 @@ class CommandCatalog:
     def poke_candidates(
         self,
         event: object,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
         *,
         ignored_plugins: Iterable[str] = (),
     ) -> tuple[CommandDescriptor, ...]:
@@ -304,7 +319,7 @@ class CommandCatalog:
     def poke_candidates_for_context(
         self,
         context: CommandContext,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
         *,
         ignored_plugins: Iterable[str] = (),
     ) -> tuple[CommandDescriptor, ...]:
@@ -321,7 +336,7 @@ class CommandCatalog:
     def format_for(
         self,
         event: object,
-        features: "FeatureService",
+        features: CommandFeaturePolicy,
         *,
         plugin_id: str,
         ignored_plugins: Iterable[str] = (),

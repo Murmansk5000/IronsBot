@@ -10,6 +10,7 @@ from nonebot.exception import FinishedException
 
 from ironsbot.plugins.seer.query.commands import player_detail_conversation
 from ironsbot.plugins.seer.query.commands.player_context import PLAYER_ID_KEY
+from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -51,6 +52,7 @@ def test_player_info_prompt_includes_visible_private_extension(
             label="private action",
             aliases=("private",),
             query=AsyncMock(return_value=QueryReply(text="private reply")),
+            action=ActionDefinition("private_action", "private action"),
         )
     )
     state: dict[str, object] = {}
@@ -144,6 +146,7 @@ def test_player_detail_delegates_a_registered_private_action(
             label="private action",
             aliases=("private",),
             query=action_query,
+            action=ActionDefinition("private_action", "private action"),
         )
     )
     continue_conversation = AsyncMock()
@@ -172,3 +175,54 @@ def test_player_detail_delegates_a_registered_private_action(
     call = continue_conversation.await_args
     assert call is not None
     assert call.kwargs["prompt"] == "private reply"
+
+
+def test_player_detail_semantic_request_matches_direct_shortcuts() -> None:
+    event = group_message_event("1")
+    state: dict[str, object] = {
+        PLAYER_ID_KEY: PLAYER_ID,
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
+    }
+
+    request = player_detail_conversation._player_detail_semantic_request(
+        PlayerDetailExtensionRegistry(),
+        event,
+        cast("Any", state),
+    )
+
+    assert request is not None
+    assert (request.action.id, request.target.key) == (
+        "seer.player.collection",
+        str(PLAYER_ID),
+    )
+
+
+def test_player_detail_extension_declares_a_semantic_action() -> None:
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="private_action",
+            feature="private_feature",
+            label="private action",
+            aliases=("private",),
+            query=AsyncMock(),
+            action=ActionDefinition("private_action", "阵容"),
+        )
+    )
+    event = group_message_event("1")
+    state: dict[str, object] = {
+        PLAYER_ID_KEY: PLAYER_ID,
+        PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY: (("1", "private_action"),),
+    }
+
+    request = player_detail_conversation._player_detail_semantic_request(
+        extensions,
+        event,
+        cast("Any", state),
+    )
+
+    assert request is not None
+    assert (request.action.id, request.target.key) == (
+        "private_action",
+        str(PLAYER_ID),
+    )

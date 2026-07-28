@@ -5,7 +5,12 @@ from inspect import signature
 from typing import Any, Generic, TypeAlias, TypeVar, cast, overload
 
 from nonebot.adapters import Event
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.message import run_preprocessor
@@ -17,12 +22,18 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.runtime.matchers import (
-    PromptSessionManagerMissingError,
+    enter_prompt_loop as _enter_prompt_loop,
+)
+from ironsbot.runtime.matchers import (
     get_prompt_session_manager,
     reject_with_rule,
 )
-from ironsbot.runtime.matchers import (
-    enter_prompt_loop as _enter_prompt_loop,
+from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
+from ironsbot.runtime.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
 )
 
 T = TypeVar("T")
@@ -33,6 +44,7 @@ class PromptItem(NamedTuple, Generic[T]):
     desc: str
     value: T
     is_sub_prompt: bool = False
+    semantic_target: SemanticTarget | None = None
 
 
 @dataclass
@@ -40,6 +52,7 @@ class Prompt(Generic[T]):
     title: str
     items: list[PromptItem[T]]
     at_user_id: int | None = None
+    action: ActionDefinition | None = None
 
     def __post_init__(self) -> None:
         if not self.title.endswith("\n"):
@@ -142,6 +155,35 @@ async def enter_prompt(
             next_event.get_session_id() == session_id
             and _is_digit_input(next_event)
         ),
+        queue_semantic_request_resolver=_prompt_semantic_request,
+    )
+
+
+def _prompt_semantic_request(
+    event: MessageEvent,
+    state: T_State,
+) -> SemanticRequest | None:
+    prompt = state.get(PROMPT_STATE_KEY)
+    if not isinstance(prompt, Prompt):
+        return None
+    text = event.get_plaintext().strip()
+    if not text.isdigit():
+        return None
+    item = prompt.get_item(int(text))
+    if item is None:
+        return None
+    target = item.semantic_target or SemanticTarget(
+        key=f"{item.name}\x1f{item.desc}",
+        display=item.name,
+    )
+    action = prompt.action or ActionDefinition(
+        id="selection_prompt",
+        label="选择菜单",
+    )
+    return SemanticRequest(
+        action=action,
+        target=target,
+        source=SemanticRequestSource.MENU,
     )
 
 

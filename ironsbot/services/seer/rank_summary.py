@@ -99,6 +99,7 @@ async def _safe_find_pet_kind_rank(  # noqa: PLR0913
     find_pet_kind_rank: FindPetKindRank,
     errors: list[str] | None = None,
     progress: RankSummaryProgress | None = None,
+    anchor_only: bool = False,
 ) -> RankLookupResult:
     title = "精灵图鉴"
     if progress is not None:
@@ -109,6 +110,7 @@ async def _safe_find_pet_kind_rank(  # noqa: PLR0913
             user_id=user_id,
             pet_kind_count=pet_kind_count,
             search_limit=search_limit,
+            anchor_only=anchor_only,
         )
     except (TimeoutError, OSError) as error:
         _LOGGER.warning("failed to fetch player rank item: pet_kind", exc_info=True)
@@ -133,6 +135,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
     sub_key: int,
     candidate_score: int | None,
     progress: RankSummaryProgress | None,
+    anchor_only: bool,
 ) -> RankLookupResult:
     has_candidate_score = candidate_score is not None and candidate_score > 0
     if has_candidate_score:
@@ -148,8 +151,13 @@ async def _find_current_peak_rank(  # noqa: PLR0913
             sub_key=sub_key,
             target_score=candidate_score,
             progress=progress,
+            anchor_only=anchor_only,
         )
-        if result.rank is not None or not result.queried:
+        if (
+            result.rank is not None
+            or not result.queried
+            or result.cost.restricted_miss
+        ):
             return result
 
     return await _safe_find_rank(
@@ -163,6 +171,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
         sub_key=sub_key,
         search_limit=None if has_candidate_score else 0,
         progress=progress,
+        anchor_only=anchor_only,
     )
 
 
@@ -177,6 +186,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
     find_rank: FindRank,
     errors: list[str] | None = None,
     progress: RankSummaryProgress | None = None,
+    anchor_only: bool = False,
 ) -> BookBreakdownSummary:
     pet_kind = await _safe_find_pet_kind_rank(
         game,
@@ -186,6 +196,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         find_pet_kind_rank=find_pet_kind_rank,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     skin = await _safe_find_rank(
         "skin",
@@ -201,6 +212,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         search_limit=limit,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     countermark = await _safe_find_rank(
         "countermark",
@@ -214,6 +226,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         search_limit=limit,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     outfit_suit = await _safe_find_rank(
         "outfit_suit",
@@ -227,6 +240,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         search_limit=limit,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     outfit_part = await _safe_find_rank(
         "outfit_part",
@@ -240,6 +254,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         search_limit=limit,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     mount = await _safe_find_rank(
         "mount",
@@ -253,6 +268,7 @@ async def fetch_book_breakdown_summary(  # noqa: PLR0913
         search_limit=limit,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     return BookBreakdownSummary(
         pet_kind_count=pet_kind_count,
@@ -275,6 +291,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     current_peak_sub_key: int | None,
     find_rank: FindRank,
     progress: RankSummaryProgress | None = None,
+    anchor_only: bool = False,
 ) -> PeakSeasonRankSummary:
     if current_peak_sub_key is None:
         return PeakSeasonRankSummary.empty()
@@ -291,6 +308,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         sub_key=current_peak_sub_key,
         candidate_score=standard_score,
         progress=progress,
+        anchor_only=anchor_only,
     )
     summary.wild = await _find_current_peak_rank(
         "wild_peak",
@@ -303,6 +321,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         sub_key=current_peak_sub_key,
         candidate_score=wild_score,
         progress=progress,
+        anchor_only=anchor_only,
     )
     summary.expert = await _find_current_peak_rank(
         "expert_peak",
@@ -315,6 +334,7 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
         sub_key=current_peak_sub_key,
         candidate_score=expert_score,
         progress=progress,
+        anchor_only=anchor_only,
     )
     return summary
 
@@ -324,6 +344,7 @@ async def fetch_autocard_rank_summary(
     user_id: int,
     *,
     find_rank: FindRank,
+    anchor_only: bool = False,
 ) -> RankLookupResult:
     return await find_rank(
         game,
@@ -332,6 +353,7 @@ async def fetch_autocard_rank_summary(
         score_name="分",
         key=AUTOCARD_RANK_KEY,
         sub_key=AUTOCARD_RANK_SUB_KEY,
+        anchor_only=anchor_only,
     )
 
 
@@ -347,6 +369,7 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
     find_rank: FindRank,
     find_pet_kind_rank: FindPetKindRank,
     progress: RankSummaryProgress | None = None,
+    anchor_only: bool = False,
 ) -> PlayerRankSummary:
     errors: list[str] = []
     book = await _safe_find_rank(
@@ -362,6 +385,7 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         target_score=book_score,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     achieve = await _safe_find_rank(
         "achieve",
@@ -376,6 +400,7 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         target_score=achieve_score,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     breakdown = await fetch_book_breakdown_summary(
         game,
@@ -387,6 +412,7 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
         find_rank=find_rank,
         errors=errors,
         progress=progress,
+        anchor_only=anchor_only,
     )
     return PlayerRankSummary(
         book=book,

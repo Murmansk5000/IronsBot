@@ -11,6 +11,7 @@ from ironsbot.plugins.seer.query.commands.player_context import (
 )
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
 
 
@@ -236,3 +237,70 @@ def test_shortcut_without_default_opens_player_id_entry(
 
     prompt.assert_awaited_once()
     service.shortcut.assert_not_awaited()
+
+
+def test_shortcut_sends_loading_reply_before_query(
+    monkeypatch: Any,
+) -> None:
+    service = SimpleNamespace(
+        default_player_id=lambda _user_id: 949105380,
+        shortcut=AsyncMock(return_value=QueryReply(text="查询结果")),
+    )
+    loading_reply = AsyncMock()
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player_shortcuts, "send_event_reply", loading_reply)
+    monkeypatch.setattr(player_shortcuts, "finish_event_reply", finish_reply)
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+    event = group_message_event("巅峰")
+    state: dict[str, object] = {
+        player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
+            kind="peak",
+            player_id=None,
+        )
+    }
+
+    asyncio.run(
+        player_shortcuts.handle_player_shortcut(
+            dependencies,
+            cast("Any", object()),
+            event,
+            state,
+        )
+    )
+
+    loading_reply.assert_awaited_once()
+    loading_call = loading_reply.await_args
+    assert loading_call is not None
+    assert "巅峰之战正在查询" in loading_call.args[2]
+    service.shortcut.assert_awaited_once_with(
+        state[player_shortcuts._SHORTCUT_COMMAND_KEY],
+        event.user_id,
+        group_id=event.group_id,
+    )
+    finish_reply.assert_awaited_once()
+
+
+def test_shortcut_semantic_request_uses_the_bound_player() -> None:
+    service = SimpleNamespace(default_player_id=lambda _user_id: 105_023_264)
+    event = group_message_event("收集")
+    state: dict[str, object] = {
+        player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
+            kind="collection",
+            player_id=None,
+        )
+    }
+
+    request = player_shortcuts._shortcut_semantic_request(
+        cast("Any", service),
+        event,
+        cast("Any", state),
+    )
+
+    assert request is not None
+    assert (request.action.id, request.target.key) == (
+        "seer.player.collection",
+        "105023264",
+    )
