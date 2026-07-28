@@ -761,14 +761,6 @@ message = "机器人已开启。"
 # Default: 0.0; EN: Delay before sending startup notice. ZH: 启动通知延迟秒数。
 delay = 0.0
 
-[operations.server_status]
-# Default: false; EN: Broadcast when server is detected open. ZH: 检测开服时是否广播。
-broadcast = false
-# Default: "赛尔号已经开服了。"; EN: Open broadcast message. ZH: 开服广播文本。
-broadcast_message = "赛尔号已经开服了。"
-# Default: 1440; EN: Broadcast cooldown minutes. ZH: 开服广播冷却分钟。
-broadcast_cooldown_minutes = 1440
-
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
 enabled = false

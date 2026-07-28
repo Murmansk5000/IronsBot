@@ -11,35 +11,22 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.matcher import Matcher
 
+    from ironsbot.core.features import FeatureService
     from ironsbot.services.operations.server_status import (
-        ServerStatusResult,
         ServerStatusService,
     )
 
-    from .broadcast import OpenBroadcast
-
 logger = logging.getLogger(__name__)
-
-
-async def _send_status_result(
-    matcher: Matcher,
-    event: MessageEvent,
-    broadcast: OpenBroadcast,
-    result: ServerStatusResult,
-) -> None:
-    if result.broadcast_opened:
-        await broadcast.send(event, now=result.queried_at)
-    await finish_event_reply(matcher, event, result.message)
 
 
 async def handle_normal_status(
     matcher: Matcher,
     event: MessageEvent,
-    broadcast: OpenBroadcast,
+    features: FeatureService,
     service: ServerStatusService,
 ) -> None:
     if not event_is_feature_allowed(
-        broadcast.features,
+        features,
         event,
         "server_status_query",
     ):
@@ -48,23 +35,14 @@ async def handle_normal_status(
             "server_status_query feature not allowed"
         )
         return
-    await _send_status_result(
-        matcher,
-        event,
-        broadcast,
-        await service.query_normal(),
-    )
+    result = await service.query_normal()
+    await finish_event_reply(matcher, event, result.message)
 
 
 async def handle_admin_status(
     matcher: Matcher,
     event: MessageEvent,
-    broadcast: OpenBroadcast,
     service: ServerStatusService,
 ) -> None:
-    await _send_status_result(
-        matcher,
-        event,
-        broadcast,
-        await service.query_admin(),
-    )
+    result = await service.query_admin()
+    await finish_event_reply(matcher, event, result.message)

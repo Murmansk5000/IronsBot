@@ -6,8 +6,12 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal, Protocol
 
-from .docker_formatting import format_docker_update_reply
+from .docker_formatting import (
+    format_docker_image_check_reply,
+    format_docker_update_reply,
+)
 from .docker_models import (
+    DockerImageCheckResult,
     DockerRegistryCredentials,
     DockerUpdateRequest,
     DockerUpdateResult,
@@ -30,6 +34,11 @@ class DockerGateway(Protocol):
         self,
         request: DockerUpdateRequest,
     ) -> DockerUpdateResult: ...
+
+    async def check_update(
+        self,
+        request: DockerUpdateRequest,
+    ) -> DockerImageCheckResult: ...
 
     async def restart_container(
         self,
@@ -55,21 +64,33 @@ class DockerUpdateService:
     async def run_update(self) -> tuple[str, DockerUpdateResult]:
         container_name = str(self._config.container_name)
         async with self._lock:
-            request = DockerUpdateRequest(
-                container_name=container_name,
-                image=str(self._config.image),
-                socket_path=str(self._config.docker_socket_path),
-                watchtower=WatchtowerUpdateOptions(
-                    image=str(self._config.watchtower_image),
-                    docker_api_version=str(
-                        self._config.watchtower_docker_api_version
-                    ),
-                ),
-                timeout_seconds=float(self._config.timeout_seconds),
-                registry_credentials=self._registry_credentials(),
-            )
-            result = await self._docker.start_update(request)
+            result = await self._docker.start_update(self._request(container_name))
         return container_name, result
+
+    async def check_image_update(self) -> str:
+        """Check the registry manifest without pulling or restarting anything."""
+
+        container_name = str(self._config.container_name)
+        async with self._lock:
+            result = await self._docker.check_update(self._request(container_name))
+        return format_docker_image_check_reply(
+            container_name=container_name,
+            image=str(self._config.image),
+            result=result,
+        )
+
+    def _request(self, container_name: str) -> DockerUpdateRequest:
+        return DockerUpdateRequest(
+            container_name=container_name,
+            image=str(self._config.image),
+            socket_path=str(self._config.docker_socket_path),
+            watchtower=WatchtowerUpdateOptions(
+                image=str(self._config.watchtower_image),
+                docker_api_version=str(self._config.watchtower_docker_api_version),
+            ),
+            timeout_seconds=float(self._config.timeout_seconds),
+            registry_credentials=self._registry_credentials(),
+        )
 
     def _registry_credentials(self) -> DockerRegistryCredentials | None:
         username = str(self._config.registry_username).strip()

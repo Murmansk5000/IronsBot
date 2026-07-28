@@ -39,8 +39,6 @@ class ServerNoticeSource(Protocol):
 @dataclass(frozen=True, slots=True)
 class ServerStatusResult:
     message: str
-    queried_at: datetime
-    broadcast_opened: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +68,6 @@ class ServerStatusService:
         await self._record_status(status, source="开服了吗")
         return ServerStatusResult(
             message=await self._notice_reply(status, now),
-            queried_at=now,
-            broadcast_opened=status.connected,
         )
 
     async def query_admin(self) -> ServerStatusResult:
@@ -102,8 +98,6 @@ class ServerStatusService:
         lines.extend(("", await self._notice_reply(status, now)))
         return ServerStatusResult(
             message="\n".join(lines),
-            queried_at=now,
-            broadcast_opened=status.connected,
         )
 
     def _headless_status(self) -> _HeadlessStatus:

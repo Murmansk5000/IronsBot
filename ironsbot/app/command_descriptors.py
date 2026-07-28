@@ -423,6 +423,7 @@ def server_status_commands() -> tuple[CommandDescriptor, ...]:
                 ("server_status.admin_query", ("/开服查询",), "查询开服状态，并在无头未登录时尝试重连", {"feature": "server_status_query", "audience": "superuser"}),
                 ("server_status.restart", ("/机器人重启", "/重启机器人"), "重启机器人进程", {"audience": "superuser"}),
                 ("server_status.image_update", ("/更新镜像", "/更新Docker"), "检查镜像并重启机器人", {"audience": "superuser"}),
+                ("server_status.image_check", ("/检查更新镜像", "/检查镜像更新"), "只检查远端镜像，不拉取或重启机器人", {"audience": "superuser"}),
             ),
         ),
     )
