@@ -285,9 +285,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         ),
         PluginDefinition(
             id="server_status",
-            features=frozenset(
-                {Feature.SERVER_STATUS_QUERY, Feature.SERVER_STATUS_PUSH}
-            ),
+            features=frozenset({Feature.SERVER_STATUS_QUERY}),
             help=HelpEntry(
                 name="开服查询",
                 description=(
@@ -302,13 +300,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             commands=server_status_commands(),
             install=partial(
                 install_server_status,
-                server_status_config=config.operations.server_status,
                 docker_service=docker_update_service,
                 server_status=server_status,
                 features=features,
                 commands=resources.commands,
-                delivery=delivery,
-                message_limiter=resources.push_message_limiter,
             ),
             hooks=PluginHooks(
                 startup=(("docker_update", start_docker_update),),

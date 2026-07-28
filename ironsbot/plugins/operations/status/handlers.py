@@ -18,7 +18,6 @@ from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
 
-from .broadcast import OpenBroadcast
 from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
@@ -30,15 +29,8 @@ from .command_text import (
 from .commands import handle_admin_status, handle_normal_status
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.operations import (
-        ServerStatusConfig,
-    )
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
-    )
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
 
@@ -58,23 +50,13 @@ async def handle_disabled_bare_admin_status(
     )
 
 
-def install(  # noqa: PLR0913
+def install(
     registry: MatcherRegistry,
-    server_status_config: ServerStatusConfig,
     docker_service: DockerUpdateService,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
-    delivery: MessageDelivery,
-    message_limiter: MessageLimiter | None = None,
 ) -> None:
-    broadcast = OpenBroadcast(
-        server_status_config,
-        features,
-        delivery,
-        message_limiter,
-    )
-
     async def handle_normal_server_status(
         matcher: Matcher,
         event: MessageEvent,
@@ -82,7 +64,7 @@ def install(  # noqa: PLR0913
         await handle_normal_status(
             matcher,
             event,
-            broadcast,
+            features,
             server_status,
         )
 
@@ -93,7 +75,6 @@ def install(  # noqa: PLR0913
         await handle_admin_status(
             matcher,
             event,
-            broadcast,
             server_status,
         )
 

@@ -318,8 +318,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
 | `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |
-| `server_status_push` | 开服状态广播推送。 |
-| `server_status` | `server_status_query` + `server_status_push`。 |
+| `server_status` | `server_status_query`。 |
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
 | `team_audit` | 战队审核群入群提示和 24 小时 follow-up。 |
 | `ai_chat` | @ 机器人或私聊触发 AI 聊天。 |
@@ -457,8 +456,8 @@ check_on_restart = false
 `watchtower_docker_api_version = "1.40"` 即可。
 
 推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
-AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、按账号拆分的 B站动态、活动结束提醒和
-开服推送。私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、按账号拆分的 B站动态和活动结束提醒。
+私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送；发送 `推送时间` 可修改本群可编辑推送的提醒时间。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。

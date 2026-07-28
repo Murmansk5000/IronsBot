@@ -70,7 +70,6 @@ def service(
 async def test_normal_status_uses_logged_in_state_as_authority() -> None:
     headless = FakeHeadless(connected=True)
     result = await service(headless, FakeNotices()).query_normal()
-    assert result.broadcast_opened is True
     assert "开服了" in result.message
     assert headless.available == [("开服了吗", None)]
 
@@ -79,7 +78,6 @@ async def test_normal_status_uses_logged_in_state_as_authority() -> None:
 async def test_normal_status_returns_notice_while_headless_is_offline() -> None:
     headless = FakeHeadless(connected=False)
     result = await service(headless, FakeNotices("维护公告")).query_normal()
-    assert result.broadcast_opened is False
     assert result.message == "维护公告"
     assert headless.unavailable == [("开服了吗", "未登录")]
 
@@ -90,7 +88,6 @@ async def test_notice_failure_does_not_hide_logged_in_state() -> None:
         FakeHeadless(connected=True),
         FakeNotices(error=RuntimeError("boom")),
     ).query_normal()
-    assert result.broadcast_opened is True
     assert "公告读取失败：RuntimeError" in result.message
 
 
@@ -98,6 +95,5 @@ async def test_notice_failure_does_not_hide_logged_in_state() -> None:
 async def test_admin_status_reconnects_before_querying_notice() -> None:
     headless = FakeHeadless(connected=False, login_result=456)
     result = await service(headless, FakeNotices()).query_admin()
-    assert result.broadcast_opened is True
     assert "重连结果：已登录米米号 456" in result.message
     assert headless.available[-1] == ("/开服查询重连", 456)
