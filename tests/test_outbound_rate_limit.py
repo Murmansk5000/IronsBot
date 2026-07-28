@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.exception import MockApiException
+from nonebot.matcher import current_event
 
 from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
@@ -11,16 +14,24 @@ from ironsbot.config.models.messaging import (
 )
 from ironsbot.core.features import FeatureConfig
 from ironsbot.integrations.onebot import outbound as outbound_rate_limit
+from ironsbot.integrations.onebot import outbound as outbound_limits
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     MultiWindowGroupRateLimiter,
+    OutboundRateLimitDecision,
     use_preacquired_push_permit,
 )
 from tests.helpers.runtime import build_test_runtime
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
+    from nonebot.adapters import Event
+
 GROUP_ID = 100
 OTHER_GROUP_ID = 101
 ADMIN_GROUP_ID = 200
+SUPERUSER_ID = 201
 
 
 def _windows(
@@ -38,18 +49,16 @@ def _windows(
 def _service(
     *,
     windows: list[OutboundRateLimitWindowConfig] | None = None,
-    queue_wait: float = 0.2,
-    queue_size: int = 10,
+    superuser_ids: tuple[int, ...] = (),
 ) -> GroupOutboundRateLimitService:
     config = OutboundRateLimitConfig(
         enabled=True,
         windows=windows or _windows((60.0, 10), (600.0, 30)),
-        push_queue_max_wait_seconds=queue_wait,
-        push_queue_max_messages=queue_size,
         cooldown_message="进入冷却",
     )
     return build_test_runtime(
         outbound_config=config,
+        superuser_ids=superuser_ids,
         feature_config=FeatureConfig(
             group_policy={str(ADMIN_GROUP_ID): ["admin_notice"]},
         ),
@@ -134,7 +143,7 @@ def test_service_ignores_admin_groups_and_private_targets() -> None:
 
 
 def test_push_waits_for_capacity_without_blocking_other_groups() -> None:
-    service = _service(windows=_windows((0.03, 1)), queue_wait=0.2)
+    service = _service(windows=_windows((0.03, 1)))
 
     async def run() -> None:
         assert (await service.acquire_push(GROUP_ID, source="first")).allowed
@@ -154,27 +163,118 @@ def test_push_waits_for_capacity_without_blocking_other_groups() -> None:
         service.reset()
 
 
-def test_push_queue_rejects_when_full() -> None:
+@pytest.mark.parametrize("expire_before_pushes", [False, True])
+def test_priority_queue_is_unbounded_and_prefers_superuser_replies(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    expire_before_pushes: bool,
+) -> None:
+    clock = [0.0]
+    # Freeze only the limiter clock, not asyncio's clock or timeout handling.
+    monkeypatch.setattr(
+        outbound_limits, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+    service = _service(windows=_windows((0.1, 1)))
+
+    async def run() -> None:
+        reserved = await service.acquire_push(GROUP_ID, source="first")
+        assert reserved.allowed
+        if expire_before_pushes:
+            clock[0] = 1.0
+        order: list[str] = []
+        started: asyncio.Queue[str] = asyncio.Queue()
+
+        async def record(
+            label: str,
+            request: Awaitable[OutboundRateLimitDecision],
+        ) -> OutboundRateLimitDecision:
+            started.put_nowait(label)
+            result = await request
+            order.append(label)
+            return result
+
+        push_tasks = [
+            asyncio.create_task(
+                record(
+                    f"push-{index}",
+                    service.acquire_push(GROUP_ID, source=f"push-{index}"),
+                )
+            )
+            for index in range(12)
+        ]
+        for index in range(len(push_tasks)):
+            assert await started.get() == f"push-{index}"
+        if expire_before_pushes:
+            reserved = await push_tasks[0]
+        superuser_task = asyncio.create_task(
+            record("superuser", service.acquire_superuser_reply(GROUP_ID))
+        )
+        assert await started.get() == "superuser"
+        assert not superuser_task.done()
+        assert order == (["push-0"] if expire_before_pushes else [])
+
+        # All remaining requests are queued before capacity becomes available.
+        service.rollback(reserved.permit)
+        superuser_result = await superuser_task
+        service.rollback(superuser_result.permit)
+        for task in push_tasks[int(expire_before_pushes) :]:
+            result = await task
+            service.rollback(result.permit)
+
+        results = await asyncio.gather(superuser_task, *push_tasks)
+
+        assert all(result.allowed for result in results)
+        expected = [f"push-{index}" for index in range(len(push_tasks))]
+        expected.insert(int(expire_before_pushes), "superuser")
+        assert order == expected
+
+    try:
+        asyncio.run(asyncio.wait_for(run(), timeout=5))
+    finally:
+        service.reset()
+
+
+def test_superuser_group_reply_uses_priority_queue() -> None:
     service = _service(
-        windows=_windows((1.0, 1)),
-        queue_wait=0.05,
-        queue_size=1,
+        windows=_windows((60.0, 1)),
+        superuser_ids=(SUPERUSER_ID,),
     )
 
     async def run() -> None:
-        assert (await service.acquire_push(GROUP_ID, source="first")).allowed
-        waiting = asyncio.create_task(
-            service.acquire_push(GROUP_ID, source="waiting")
+        first = service.acquire_reply(GROUP_ID)
+        assert first.permit is not None
+
+        data: dict[str, object] = {
+            "group_id": GROUP_ID,
+            "message": "superuser reply",
+        }
+        token = current_event.set(
+            cast("Event", SimpleNamespace(user_id=SUPERUSER_ID))
         )
-        await asyncio.sleep(0)
+        try:
+            queued = asyncio.create_task(
+                outbound_rate_limit._check_group_send_api(
+                    service,
+                    None,  # type: ignore[arg-type]
+                    "send_group_msg",
+                    data,
+                )
+            )
+            await asyncio.sleep(0)
+        finally:
+            current_event.reset(token)
 
-        rejected = await service.acquire_push(GROUP_ID, source="overflow")
-        timed_out = await waiting
-
-        assert not rejected.allowed
-        assert rejected.reason == "queue_full"
-        assert not timed_out.allowed
-        assert timed_out.reason == "queue_timeout"
+        assert not queued.done()
+        service.rollback(first.permit)
+        await queued
+        await outbound_rate_limit._finalize_group_send_api(
+            service,
+            None,  # type: ignore[arg-type]
+            None,
+            "send_group_msg",
+            data,
+            {"message_id": 1},
+        )
 
     try:
         asyncio.run(run())
@@ -182,7 +282,7 @@ def test_push_queue_rejects_when_full() -> None:
         service.reset()
 
 
-def test_api_hook_appends_boundary_notice_and_rolls_back_failure() -> None:
+def test_api_failure_drops_pending_pushes_but_keeps_superuser_replies() -> None:
     service = _service(windows=_windows((60.0, 1)))
 
     async def run() -> None:
@@ -195,6 +295,14 @@ def test_api_hook_appends_boundary_notice_and_rolls_back_failure() -> None:
         )
         assert str(data["message"]) == "正文\n\n进入冷却"
 
+        waiting_push = asyncio.create_task(
+            service.acquire_push(GROUP_ID, source="waiting")
+        )
+        waiting_superuser = asyncio.create_task(
+            service.acquire_superuser_reply(GROUP_ID)
+        )
+        await asyncio.sleep(0)
+
         await outbound_rate_limit._finalize_group_send_api(
             service,
             None,  # type: ignore[arg-type]
@@ -203,6 +311,14 @@ def test_api_hook_appends_boundary_notice_and_rolls_back_failure() -> None:
             data,
             None,
         )
+        dropped_push = await waiting_push
+        assert not dropped_push.allowed
+        assert dropped_push.reason == "queue_cleared"
+
+        released_superuser = await waiting_superuser
+        assert released_superuser.allowed
+        service.rollback(released_superuser.permit)
+
         retry_data: dict[str, object] = {
             "group_id": GROUP_ID,
             "message": "重试",

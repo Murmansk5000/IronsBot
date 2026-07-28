@@ -26,7 +26,10 @@ if TYPE_CHECKING:
     )
     from ironsbot.core.features import FeatureService
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
     from ironsbot.services.messaging.subscriptions import (
         PushPreferencePruneResult,
         PushPreferenceTarget,

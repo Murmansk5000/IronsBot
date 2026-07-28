@@ -71,6 +71,11 @@ async def handle_help(
         handlers=[handler],
         rule=rule,
         prompt=_help_prompt_message(event, format_plugin_list(entries)),
+        queue_namespace="help",
+        queue_reply_check=lambda next_event: (
+            next_event.get_session_id() == session_id
+            and _is_digit_input(next_event)
+        ),
     )
 
 

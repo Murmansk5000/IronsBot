@@ -17,11 +17,12 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.runtime.matchers import (
-    enter_prompt_loop as _enter_prompt_loop,
-)
-from ironsbot.runtime.matchers import (
+    PromptSessionManagerMissingError,
     get_prompt_session_manager,
     reject_with_rule,
+)
+from ironsbot.runtime.matchers import (
+    enter_prompt_loop as _enter_prompt_loop,
 )
 
 T = TypeVar("T")
@@ -103,7 +104,12 @@ def _is_digit_input(event: Event) -> bool:
 @run_preprocessor
 async def _invalidate_prompt_on_command(matcher: Matcher, event: Event) -> None:
     if matcher.priority > 0:
-        get_prompt_session_manager(matcher).invalidate(event.get_session_id())
+        try:
+            prompt_sessions = get_prompt_session_manager(matcher)
+        except PromptSessionManagerMissingError:
+            return
+        prompt_sessions.invalidate_event_conversations(event)
+        prompt_sessions.invalidate(event.get_session_id())
 
 
 async def enter_prompt(
@@ -131,6 +137,11 @@ async def enter_prompt(
         handlers=[handler],
         rule=rule,
         prompt=prompt.build_event_message(event),
+        queue_namespace="selection_prompt",
+        queue_reply_check=lambda next_event: (
+            next_event.get_session_id() == session_id
+            and _is_digit_input(next_event)
+        ),
     )
 
 

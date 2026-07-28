@@ -162,7 +162,10 @@ if TYPE_CHECKING:
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.plugins import PluginDefinition
-    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
     from ironsbot.services.messaging.service import MessagingService
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -234,6 +237,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
     databases: DatabaseManager,
     subscriptions: PushUnsubscribeStore,
     notice_source: UnityNoticeSource,
+    message_limiter: MessageLimiter,
 ) -> ActivityService:
     sent_store = ActivitySentStore(config.cache_path)
     repository = ActivityRepository()
@@ -281,7 +285,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
             private_user_ids=reminder.private_user_ids,
             action_name=reminder.action_name,
             interval_seconds=1.2,
-            message_limiter=partial(append_fire_manual_ad_for_target, features),
+            message_limiter=message_limiter,
             subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
         )
         return bool(summary.succeeded)
@@ -374,6 +378,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             http_clients.origin,
             settings.activity.notice_timeout_seconds,
         ),
+        push_message_limiter,
     )
     headless = HeadlessService(
         ClientManager(task_owner.create),
@@ -698,6 +703,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.features.help,
             settings.features.group_aliases,
             settings.features.user_aliases,
+            features,
         ),
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,

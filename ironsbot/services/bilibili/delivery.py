@@ -10,7 +10,10 @@ from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 if TYPE_CHECKING:
     from ironsbot.core.messaging import MessageTarget
     from ironsbot.services.bilibili.targets import BiliPushTargets
-    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )

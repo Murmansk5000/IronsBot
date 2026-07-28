@@ -5,8 +5,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.app.registry import build_plugin_registry
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
-
 from ironsbot.config.models.settings import Settings
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
@@ -20,9 +18,8 @@ from ironsbot.services.seer.player_detail_extensions import (
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.plugins import PluginDefinition
-
     from ironsbot.app.composition import ApplicationResources
+    from ironsbot.runtime.plugins import PluginDefinition
 
 
 async def _noop_startup(_scheduler: object) -> None:
@@ -92,10 +89,6 @@ def build_test_plugin_registry(
             features=runtime.features,
             outbound=object(),
             delivery=runtime.delivery,
-        push_message_limiter=partial(
-            append_fire_manual_ad_for_target,
-            runtime.features,
-        ),
             admin_notices=runtime.admin_notices,
             activity=SimpleNamespace(register_jobs=lambda _scheduler: None),
             headless=headless,
@@ -209,6 +202,7 @@ def build_test_plugin_registry(
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
+            push_message_limiter=lambda message, _target: message,
             help_hint=object(),
             private_extensions=SimpleNamespace(
                 load_plugin_definitions=lambda _runtime: ()
