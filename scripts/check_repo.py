@@ -7,15 +7,16 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
 
-try:
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+else:  # pragma: no cover - Python 3.10 fallback
     import tomli as tomllib  # type: ignore[no-redef]
 
 if TYPE_CHECKING:

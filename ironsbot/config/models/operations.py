@@ -20,7 +20,6 @@ INVALID_RECONNECT_TIME_ERROR = (
     "daily HH:MM times, "
     'for example "00:01,00:02" or ["00:01","00:02"]'
 )
-DEFAULT_BROADCAST_MESSAGE = "赛尔号已经开服了。"
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 WorkflowInputValue = str | int | float | bool
@@ -121,20 +120,6 @@ class StartupConfig(BaseModel):
     enabled: bool = True
     message: str = "机器人已开启。"
     delay: float = Field(default=0.0, ge=0)
-
-
-class ServerStatusConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    broadcast: bool = False
-    broadcast_message: str = DEFAULT_BROADCAST_MESSAGE
-    broadcast_cooldown_minutes: int = Field(default=1440, ge=0)
-
-    @field_validator("broadcast_message")
-    @classmethod
-    def normalize_broadcast_message(cls, value: str) -> str:
-        message = value.strip()
-        return message or DEFAULT_BROADCAST_MESSAGE
 
 
 class DockerUpdateConfig(BaseModel):
@@ -282,7 +267,6 @@ class OperationsConfig(BaseModel):
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
-    server_status: ServerStatusConfig = Field(default_factory=ServerStatusConfig)
     docker_update: DockerUpdateConfig = Field(default_factory=DockerUpdateConfig)
     private_extensions: PrivateExtensionsConfig = Field(
         default_factory=PrivateExtensionsConfig
