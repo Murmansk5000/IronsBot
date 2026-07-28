@@ -29,16 +29,26 @@ class RankPlayerScore:
     value: int | None
 
 
-async def fetch_rank_player_message(
+@dataclass(frozen=True, slots=True)
+class RankPlayerQueryResult:
+    message: str
+    lookup: RankLookupResult
+
+
+async def fetch_rank_player_result(
     rank: RankService,
     local_rank: LocalRankService,
     game: Any,
     *,
     command: RankPlayerCommand,
-) -> str:
+    anchor_only: bool = False,
+) -> RankPlayerQueryResult:
     spec = rank.get_spec(command.rank_key)
     if rank.spec_needs_sub_key(spec):
-        return "❌找不到当前巅峰赛季数据。"
+        return RankPlayerQueryResult(
+            "❌找不到当前巅峰赛季数据。",
+            RankLookupResult(title="巅峰赛季榜", score_name="分"),
+        )
 
     user_info = await game.get_user_info(command.player_id)
     target = await _fetch_player_score(game, command)
@@ -51,8 +61,14 @@ async def fetch_rank_player_message(
         sub_key=spec.sub_key,
         title=spec.title,
         unit=spec.unit,
+        anchor_only=anchor_only,
     )
-    if command.rank_key in _PEAK_KEYS and result.rank is None and result.queried:
+    if (
+        command.rank_key in _PEAK_KEYS
+        and result.rank is None
+        and result.queried
+        and not result.cost.restricted_miss
+    ):
         result = await rank.find_rank(
             game,
             user_id=command.player_id,
@@ -60,6 +76,7 @@ async def fetch_rank_player_message(
             score_name=spec.unit,
             key=spec.key,
             sub_key=spec.sub_key,
+            anchor_only=anchor_only,
         )
 
     score = (
@@ -92,13 +109,37 @@ async def fetch_rank_player_message(
         local_summary.sample_rank(metric_key),
     )
     title = spec.title.removesuffix("榜")
-    return "\n".join(
-        (
-            f"📊【{spec.title}玩家查询】",
-            format_player_identity(command.player_id, str(user_info.nick)),
-            f"{title}：{metric_text}",
-        )
+    return RankPlayerQueryResult(
+        "\n".join(
+            (
+                f"📊【{spec.title}玩家查询】",
+                format_player_identity(command.player_id, str(user_info.nick)),
+                f"{title}：{metric_text}",
+            )
+        ),
+        result,
     )
+
+
+async def fetch_rank_player_message(
+    rank: RankService,
+    local_rank: LocalRankService,
+    game: Any,
+    *,
+    command: RankPlayerCommand,
+    anchor_only: bool = False,
+) -> str:
+    """Return the stable text-only API used by existing callers."""
+
+    return (
+        await fetch_rank_player_result(
+            rank,
+            local_rank,
+            game,
+            command=command,
+            anchor_only=anchor_only,
+        )
+    ).message
 
 
 async def _fetch_player_score(
@@ -138,6 +179,7 @@ async def _find_player_rank(  # noqa: PLR0913
     sub_key: int,
     title: str,
     unit: str,
+    anchor_only: bool,
 ) -> RankLookupResult:
     if target.known and target.value is None:
         return RankLookupResult(title=title, score_name=unit)
@@ -147,6 +189,7 @@ async def _find_player_rank(  # noqa: PLR0913
             user_id=command.player_id,
             pet_kind_count=target.value,
             search_limit=None,
+            anchor_only=anchor_only,
         )
     return await rank.find_rank(
         game,
@@ -156,6 +199,7 @@ async def _find_player_rank(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         target_score=target.value,
+        anchor_only=anchor_only,
     )
 
 

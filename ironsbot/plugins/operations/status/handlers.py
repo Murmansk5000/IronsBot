@@ -14,7 +14,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
 
@@ -23,9 +23,9 @@ from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DISABLED_BARE_ADMIN_COMMAND,
+    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
-    SERVER_STATUS_USAGE,
 )
 from .commands import handle_admin_status, handle_normal_status
 
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         ServerStatusConfig,
     )
     from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.messaging.delivery import (
         MessageDelivery,
         MessageLimiter,
@@ -45,11 +46,15 @@ if TYPE_CHECKING:
 async def handle_disabled_bare_admin_status(
     matcher: Matcher,
     event: MessageEvent,
+    *,
+    commands: CommandCatalog,
+    features: FeatureService,
 ) -> None:
     await finish_event_reply(
         matcher,
         event,
-        SERVER_STATUS_USAGE,
+        "“开服查询”仅限超级管理员，且必须带 / 前缀。"
+        f"\n{commands.format_for(event, features, plugin_id='server_status')}",
     )
 
 
@@ -59,6 +64,7 @@ def install(  # noqa: PLR0913
     docker_service: DockerUpdateService,
     server_status: ServerStatusService,
     features: FeatureService,
+    commands: CommandCatalog,
     delivery: MessageDelivery,
     message_limiter: MessageLimiter | None = None,
 ) -> None:
@@ -96,6 +102,16 @@ def install(  # noqa: PLR0913
         await send_event_reply(matcher, event, message)
         await docker_service.execute_restart(restart_action)
 
+    async def handle_check_image_update(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await finish_event_reply(
+            matcher,
+            event,
+            await docker_service.check_image_update(),
+        )
+
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
         policy=CommandPolicy.command("server_status_query"),
@@ -112,7 +128,13 @@ def install(  # noqa: PLR0913
         priority=registry.priority("server_status"),
         block=True,
     )
-    disabled_matcher.append_handler(handle_disabled_bare_admin_status)
+    disabled_matcher.append_handler(
+        bind_async(
+            handle_disabled_bare_admin_status,
+            commands=commands,
+            features=features,
+        )
+    )
 
     admin_matcher = registry.on_fullmatch(
         ADMIN_SERVER_STATUS_COMMAND,
@@ -143,3 +165,13 @@ def install(  # noqa: PLR0913
         block=True,
     )
     update_matcher.append_handler(handle_restart)
+
+    check_update_matcher = registry.on_fullmatch(
+        DOCKER_CHECK_UPDATE_COMMANDS,
+        policy=CommandPolicy.command("bot_restart"),
+        rule=no_reply(),
+        permission=SUPERUSER,
+        priority=registry.priority("server_status_admin"),
+        block=True,
+    )
+    check_update_matcher.append_handler(handle_check_image_update)

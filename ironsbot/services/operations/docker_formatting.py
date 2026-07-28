@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
-    from .docker_models import DockerUpdateResult
+    from .docker_models import DockerImageCheckResult, DockerUpdateResult
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GIT_REVISION_PATTERN = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
@@ -75,6 +75,45 @@ def format_docker_update_reply(
         f"目标镜像：{image}\n"
         f"错误：{result.message or '未知错误'}"
     ).rstrip()
+
+
+def format_docker_image_check_reply(
+    *,
+    container_name: str,
+    image: str,
+    result: DockerImageCheckResult,
+) -> str:
+    """Format a read-only registry comparison for an administrator."""
+
+    if result.missing_socket:
+        return (
+            "Docker 镜像检查已跳过：容器内没有找到 Docker socket。\n"
+            "需要给 IronsBot 容器额外挂载：\n"
+            "/var/run/docker.sock -> /var/run/docker.sock"
+        )
+    if not result.ok:
+        return (
+            f"Docker 镜像检查失败：{container_name}\n"
+            f"目标镜像：{image}\n"
+            f"错误：{result.message or '未知错误'}"
+        )
+
+    current_version = format_image_version(
+        result.current_image_id,
+        result.current_image_created,
+    )
+    lines = [
+        f"Docker 镜像检查完成：{container_name}",
+        f"目标镜像：{image}",
+        f"当前镜像ID：{current_version}",
+        f"远端镜像摘要：{short_image_id(result.remote_digest)}",
+    ]
+    if result.up_to_date:
+        lines.append("结论：远端镜像与当前容器一致，无需更新。")
+    else:
+        lines.append("结论：检测到远端新镜像，可发送 /更新镜像 更新并重启。")
+    lines.append("本次只检查，未拉取镜像、未创建 Watchtower、未重启容器。")
+    return "\n".join(lines)
 
 
 def short_image_id(image_id: str) -> str:

@@ -1,8 +1,7 @@
 import asyncio
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ironsbot.runtime.matchers import (
-    CommandCooldown,
     MatcherRegistry,
     PromptSessionManager,
 )
@@ -11,6 +10,9 @@ from ironsbot.runtime.replies import (
     send_matcher_message,
 )
 from tests.helpers.onebot_events import group_message_event, private_message_event
+
+if TYPE_CHECKING:
+    from ironsbot.runtime.matcher_contracts import CommandCooldown
 
 
 def _group_event(

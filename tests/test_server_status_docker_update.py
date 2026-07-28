@@ -24,14 +24,17 @@ from ironsbot.integrations.docker.client import (
     DockerClient,
     create_watchtower_container,
     ensure_watchtower_image,
+    inspect_remote_image_digest,
     pull_docker_image,
     split_docker_image,
 )
 from ironsbot.services.operations.docker_formatting import (
+    format_docker_image_check_reply,
     format_docker_image_created,
     format_docker_update_reply,
 )
 from ironsbot.services.operations.docker_models import (
+    DockerImageCheckResult,
     DockerRegistryCredentials,
     DockerUpdateRequest,
     DockerUpdateResult,
@@ -143,6 +146,61 @@ def test_format_docker_update_up_to_date_reply() -> None:
     assert "2026-07-05 02:00:00" in reply
     assert "commitabcdef updated docs" in reply
     assert "Watchtower" not in reply
+
+
+def test_format_docker_image_check_does_not_offer_side_effects() -> None:
+    reply = format_docker_image_check_reply(
+        container_name="ironsbot",
+        image="murmansk5000/ironsbot:latest",
+        result=DockerImageCheckResult(
+            ok=True,
+            current_image_id="sha256:current-image-id",
+            current_image_created="2026-07-04T18:00:00.987654321Z",
+            remote_digest="sha256:remote-manifest-digest",
+        ),
+    )
+
+    assert "检测到远端新镜像" in reply
+    assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
+
+
+def test_format_docker_image_check_reports_matching_remote_digest() -> None:
+    reply = format_docker_image_check_reply(
+        container_name="ironsbot",
+        image="murmansk5000/ironsbot:latest",
+        result=DockerImageCheckResult(
+            ok=True,
+            up_to_date=True,
+            current_image_id="sha256:current-image-id",
+            remote_digest="sha256:remote-manifest-digest",
+        ),
+    )
+
+    assert "远端镜像与当前容器一致" in reply
+
+
+def test_inspect_remote_image_digest_uses_distribution_endpoint() -> None:
+    class FakeClient:
+        requested_url = ""
+
+        async def get(self, url: str, **_kwargs: object) -> httpx.Response:
+            self.requested_url = url
+            return httpx.Response(
+                200,
+                json={"Descriptor": {"digest": "sha256:remote-digest"}},
+                request=httpx.Request("GET", f"http://docker{url}"),
+            )
+
+    client = FakeClient()
+    digest = asyncio.run(
+        inspect_remote_image_digest(
+            client,  # type: ignore[arg-type]
+            "murmansk5000/ironsbot:latest",
+        )
+    )
+
+    assert digest == "sha256:remote-digest"
+    assert client.requested_url.startswith("/distribution/")
 
 
 def test_format_docker_image_created_trims_nanoseconds() -> None:
@@ -261,6 +319,48 @@ def test_docker_update_service_passes_private_registry_credentials() -> None:
         username="owner",
         token="registry-token",
     )
+
+
+def test_docker_update_service_checks_without_starting_an_update() -> None:
+    class FakeDocker:
+        check_request: DockerUpdateRequest | None = None
+
+        async def socket_exists(self, _socket_path: str) -> bool:
+            return True
+
+        async def start_update(
+            self,
+            _request: DockerUpdateRequest,
+        ) -> DockerUpdateResult:
+            pytest.fail("image check must not start an update")
+
+        async def check_update(
+            self,
+            request: DockerUpdateRequest,
+        ) -> DockerImageCheckResult:
+            self.check_request = request
+            return DockerImageCheckResult(
+                ok=True,
+                up_to_date=True,
+                current_image_id="sha256:current-image",
+                remote_digest="sha256:remote-digest",
+            )
+
+        async def restart_container(self, **_kwargs: object) -> None:
+            pytest.fail("image check must not restart the container")
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(image="murmansk5000/ironsbot:latest"),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    reply = asyncio.run(service.check_image_update())
+
+    assert docker.check_request is not None
+    assert "无需更新" in reply
+    assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 
 def test_watchtower_pull_failure_uses_cached_local_image() -> None:

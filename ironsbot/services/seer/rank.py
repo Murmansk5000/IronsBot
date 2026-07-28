@@ -177,7 +177,11 @@ class RankService:
                 end=end,
             )
             if cached is not None:
-                return RankPageResult(list(cached.items), cached.fetched_at)
+                return RankPageResult(
+                    list(cached.items),
+                    cached.fetched_at,
+                    from_cache=True,
+                )
 
         items = await self.fetch_online_page(
             game,
@@ -195,7 +199,7 @@ class RankService:
             items=items,
             fetched_at=fetched_at,
         )
-        return RankPageResult(items, fetched_at)
+        return RankPageResult(items, fetched_at, from_cache=False)
 
     async def fetch_page(  # noqa: PLR0913
         self,
@@ -216,6 +220,36 @@ class RankService:
             use_cache=use_cache,
         )
         return result.items
+
+    async def _fetch_page_result_for_position_lookup(  # noqa: PLR0913
+        self,
+        game: HeadlessGame,
+        *,
+        key: int,
+        sub_key: int,
+        start: int,
+        end: int,
+        use_cache: bool = False,
+    ) -> RankPageResult:
+        """Fetch one position-anchor page through the public page boundary.
+
+        A cached rank position is only an anchor.  Confirmation deliberately
+        reads that page again so the player can move within its 100-place band
+        without becoming a false cache hit.  Calling ``fetch_page`` here also
+        keeps the lookup compatible with the normal page cache and testable
+        through the established page-fetch seam.
+        """
+
+        _ = use_cache
+        items = await self.fetch_page(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=end,
+            use_cache=False,
+        )
+        return RankPageResult(items, time.time(), from_cache=False)
 
     async def fetch_item(
         self,
@@ -300,6 +334,7 @@ class RankService:
         sub_key: int,
         target_score: int | None = None,
         search_limit: int | None = None,
+        anchor_only: bool = False,
     ) -> RankLookupResult:
         score_target = (
             target_score
@@ -325,16 +360,18 @@ class RankService:
             sub_key=sub_key,
             page_size=page_size,
             result=result,
-            get_cached_rank_item=self.cache.item,
+            get_cached_rank_item=partial(self.cache.item, allow_stale=True),
             rank_window_page_starts=partial(
                 rank_window_page_starts,
                 window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
             ),
-            fetch_rank_page=self.fetch_page,
+            fetch_rank_page=self._fetch_page_result_for_position_lookup,
+            anchor_only=anchor_only,
         )
-        if cached is not None or limit <= 0:
+        if cached is not None or limit <= 0 or anchor_only:
             return cached or result
         if score_target is not None:
+            result.cost.used_score_search = True
             return await find_rank_by_score(
                 game,
                 user_id=user_id,
@@ -349,6 +386,7 @@ class RankService:
                 fetch_rank_item=self.fetch_item,
                 fetch_rank_page=self.fetch_page,
             )
+        result.cost.used_full_scan = True
         return await find_rank_by_linear_scan(
             game,
             user_id=user_id,
@@ -367,6 +405,7 @@ class RankService:
         user_id: int,
         pet_kind_count: int,
         search_limit: int | None,
+        anchor_only: bool = False,
     ) -> RankLookupResult:
         real_limit = (
             self._score_search_limit(search_limit)
@@ -394,12 +433,13 @@ class RankService:
             sub_key=PET_KIND_RANK_SUB_KEY,
             page_size=page_size,
             result=result,
-            get_cached_rank_item=self.cache.item,
+            get_cached_rank_item=partial(self.cache.item, allow_stale=True),
             rank_window_page_starts=partial(
                 rank_window_page_starts,
                 window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
             ),
-            fetch_rank_page=self.fetch_page,
+            fetch_rank_page=self.fetch_page_result,
+            anchor_only=anchor_only,
         )
         if cached is not None:
             cached.searched_limit = real_limit
@@ -409,10 +449,11 @@ class RankService:
                     cached.rank - PET_KIND_RANK_ANOMALY_COUNT,
                 )
             return cached
-        if real_limit <= 0:
+        if real_limit <= 0 or anchor_only:
             return result
 
         if pet_kind_count > 0:
+            result.cost.used_score_search = True
             result = await find_rank_by_score(
                 game,
                 user_id=user_id,
@@ -428,6 +469,7 @@ class RankService:
                 fetch_rank_page=self.fetch_page,
             )
         else:
+            result.cost.used_full_scan = True
             result = await find_rank_by_linear_scan(
                 game,
                 user_id=user_id,
@@ -510,6 +552,7 @@ class RankService:
         wild_score: int | None = None,
         expert_score: int | None = None,
         progress: RankSummaryProgress | None = None,
+        anchor_only: bool = False,
     ) -> PeakSeasonRankSummary:
         return await rank_summary.fetch_peak_season_rank_summary(
             game,
@@ -520,17 +563,21 @@ class RankService:
             current_peak_sub_key=self.current_peak_sub_key(),
             find_rank=self.find_rank,
             progress=progress,
+            anchor_only=anchor_only,
         )
 
     async def fetch_autocard_summary(
         self,
         game: HeadlessGame,
         user_id: int,
+        *,
+        anchor_only: bool = False,
     ) -> RankLookupResult:
         return await rank_summary.fetch_autocard_rank_summary(
             game,
             user_id,
             find_rank=self.find_rank,
+            anchor_only=anchor_only,
         )
 
     async def fetch_player_summary(  # noqa: PLR0913
@@ -543,6 +590,7 @@ class RankService:
         pet_kind_count: int = 0,
         skin_score: int | None = None,
         progress: RankSummaryProgress | None = None,
+        anchor_only: bool = False,
     ) -> PlayerRankSummary:
         return await rank_summary.fetch_player_rank_summary(
             game,
@@ -558,6 +606,7 @@ class RankService:
             find_rank=self.find_rank,
             find_pet_kind_rank=self.find_pet_kind_rank,
             progress=progress,
+            anchor_only=anchor_only,
         )
 
     def _online_search_limit(self, search_limit: int | None = None) -> int:

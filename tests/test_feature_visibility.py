@@ -15,6 +15,7 @@ from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature, FeatureConfig, FeatureService
 from ironsbot.plugins.help.menu import visible_help_entries
+from ironsbot.runtime.commands import CommandCatalog
 from tests.helpers.onebot_events import group_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -24,11 +25,17 @@ DEFINITIONS = {
 }
 
 
-def _group_event(text: str = "帮助", *, user_id: int = 2):
+def _group_event(
+    text: str = "帮助",
+    *,
+    user_id: int = 2,
+    role: str = "member",
+):
     return group_message_event(
         text,
         user_id=user_id,
         group_id=4,
+        sender={"role": role},
     )
 
 
@@ -66,16 +73,28 @@ def _visible(
     *,
     settings: Settings | None = None,
     user_id: int = 2,
+    role: str = "member",
 ) -> bool:
     settings = settings or _settings()
     features = FeatureService(
         settings.features,
         frozenset(settings.bot.superusers),
     )
+    definitions = build_test_plugin_registry(settings)
+    commands = CommandCatalog()
+    commands.load(
+        definitions,
+        known_features={
+            *(feature.value for feature in Feature),
+            *features.command_features,
+            *features.schedule_features,
+        },
+    )
     entries = visible_help_entries(
-        build_test_plugin_registry(settings),
-        _group_event(user_id=user_id),
+        definitions,
+        _group_event(user_id=user_id, role=role),
         features=features,
+        commands=commands,
         ignored_plugins=tuple(settings.features.help.ignored_plugins),
     )
     return plugin_id in {entry.key for entry in entries}
@@ -160,6 +179,13 @@ def test_rank_help_visible_when_seer_rank_allowed() -> None:
         "rank_help",
         settings=_settings(allowed_features=("seer_rank",)),
     )
+
+
+def test_help_menu_uses_current_user_command_permissions() -> None:
+    settings = _settings(allowed_features=("bili_push",))
+
+    assert not _visible("bilibili", settings=settings)
+    assert _visible("bilibili", settings=settings, role="admin")
 
 
 def test_messaging_visibility_reads_app_config() -> None:

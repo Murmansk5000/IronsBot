@@ -1,29 +1,40 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.matcher import Matcher
+from __future__ import annotations
+
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
 
-from ironsbot.core.features import FeatureService
+from ironsbot.core.features import FeatureService  # noqa: TC001
+from ironsbot.runtime.commands import CommandCatalog  # noqa: TC001
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
-from ironsbot.services.seer.rank_usage import (
-    RANK_HELP_ENTRY_COMMANDS,
-    build_rank_help_message,
-)
 
 
 async def handle_rank_help_entry(
     matcher: Matcher,
     event: MessageEvent,
+    *,
+    commands: CommandCatalog,
+    features: FeatureService,
 ) -> None:
-    await finish_event_reply(matcher, event, build_rank_help_message())
+    await finish_event_reply(
+        matcher,
+        event,
+        "📊【可用榜单】\n"
+        f"{commands.format_for(event, features, plugin_id='rank_help')}",
+    )
 
 
-def install(registry: MatcherRegistry, features: FeatureService) -> None:
+def install(
+    registry: MatcherRegistry,
+    features: FeatureService,
+    commands: CommandCatalog,
+) -> None:
     matcher = registry.on_fullmatch(
-        RANK_HELP_ENTRY_COMMANDS,
+        ("榜单", "排行榜"),
         policy=CommandPolicy.command("seer_rank_help"),
         rule=Rule(
             lambda event: event_is_feature_allowed(features, event, "seer_rank")
@@ -32,4 +43,10 @@ def install(registry: MatcherRegistry, features: FeatureService) -> None:
         priority=registry.priority("seer_rank_help"),
         block=True,
     )
-    matcher.append_handler(handle_rank_help_entry)
+    matcher.append_handler(
+        bind_async(
+            handle_rank_help_entry,
+            commands=commands,
+            features=features,
+        )
+    )

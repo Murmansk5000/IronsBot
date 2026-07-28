@@ -14,6 +14,7 @@ from anyio import Path as AsyncPath
 from ironsbot.services.operations.docker_models import (
     DockerImageArchive,
     DockerImageArchiveRequest,
+    DockerImageCheckResult,
     DockerImageInfo,
     DockerRegistryCredentials,
     DockerUpdateRequest,
@@ -186,6 +187,57 @@ class DockerClient:
             target_image_id=target_image_info.image_id,
             target_image_created=target_image_info.created,
             target_image_commit=target_commit,
+        )
+
+    async def check_update(
+        self,
+        request: DockerUpdateRequest,
+    ) -> DockerImageCheckResult:
+        """Compare the running image to the registry without pulling it."""
+
+        logger.warning(
+            "admin requested docker image check: container=%s, image=%s",
+            request.container_name,
+            request.image,
+        )
+        if not await self.socket_exists(request.socket_path):
+            return DockerImageCheckResult(
+                ok=False,
+                missing_socket=True,
+                message=f"Docker socket not found: {request.socket_path}",
+            )
+
+        transport = httpx.AsyncHTTPTransport(uds=request.socket_path)
+        try:
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://docker",
+                timeout=httpx.Timeout(request.timeout_seconds),
+            ) as client:
+                current_image_id = await inspect_container_image_id(
+                    client,
+                    request.container_name,
+                )
+                current_image = await inspect_image_info(client, current_image_id)
+                remote_digest = await inspect_remote_image_digest(
+                    client,
+                    request.image,
+                    registry_credentials=request.registry_credentials,
+                )
+        except Exception as e:
+            logger.exception("docker image check failed")
+            return DockerImageCheckResult(ok=False, message=str(e))
+
+        return DockerImageCheckResult(
+            ok=True,
+            up_to_date=remote_digest in {
+                value.rsplit("@", maxsplit=1)[-1]
+                for value in current_image.repo_digests
+                if "@" in value
+            },
+            current_image_id=current_image.image_id,
+            current_image_created=current_image.created,
+            remote_digest=remote_digest,
         )
 
     async def fetch_image_archive(
@@ -373,11 +425,44 @@ async def inspect_image_info(client: httpx.AsyncClient, image: str) -> DockerIma
                 for key, value in labels.items()
                 if value is not None
             }
+    raw_repo_digests = data.get("RepoDigests")
+    repo_digests = (
+        tuple(
+            value
+            for value in raw_repo_digests
+            if isinstance(value, str) and value
+        )
+        if isinstance(raw_repo_digests, list)
+        else ()
+    )
     return DockerImageInfo(
         image_id=image_id,
         created=created if isinstance(created, str) else "",
         labels=raw_labels,
+        repo_digests=repo_digests,
     )
+
+
+async def inspect_remote_image_digest(
+    client: httpx.AsyncClient,
+    image: str,
+    *,
+    registry_credentials: DockerRegistryCredentials | None = None,
+) -> str:
+    """Read the registry manifest digest through Docker without image pulls."""
+
+    response = await client.get(
+        f"/distribution/{quote(image, safe='')}/json",
+        headers=_registry_auth_headers(registry_credentials),
+    )
+    _raise_for_docker_status(response)
+    payload = response.json()
+    descriptor = payload.get("Descriptor") if isinstance(payload, dict) else None
+    digest = descriptor.get("digest") if isinstance(descriptor, dict) else None
+    if not isinstance(digest, str) or not digest:
+        msg = "Docker API did not return remote image manifest digest"
+        raise RuntimeError(msg)
+    return digest
 
 async def create_watchtower_container(
     client: httpx.AsyncClient,

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
     from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
     from ironsbot.services.seer.resources import SeerQueryResources
 
@@ -31,6 +32,7 @@ class SeerMatcherGroup:
     registry: MatcherRegistry
     resources: SeerQueryResources
     features: FeatureService
+    commands: CommandCatalog
     release_priority: Callable[[dict[str, Any]], Awaitable[None]]
 
     def on_message(

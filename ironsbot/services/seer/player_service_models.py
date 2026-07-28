@@ -39,3 +39,4 @@ class _CachedDetailReply:
 class _BackgroundRefresh:
     replies: dict[PlayerShortcutKind, asyncio.Future[QueryReply | None]]
     started_at: float
+    task: asyncio.Task[None] | None = None

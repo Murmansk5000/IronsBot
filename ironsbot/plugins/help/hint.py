@@ -3,7 +3,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import MessageSegment, NoticeEvent, PokeNotifyEvent
+from nonebot.adapters.onebot.v11 import (
+    ActionFailed,
+    Bot,
+    MessageSegment,
+    NoticeEvent,
+    PokeNotifyEvent,
+)
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
 
@@ -20,9 +26,25 @@ async def _is_poke_at_bot(event: NoticeEvent) -> bool:
     return is_poke_at_bot(event)
 
 
+async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
+    if event.group_id is None:
+        return None
+    try:
+        info = await bot.get_group_member_info(
+            group_id=event.group_id,
+            user_id=event.user_id,
+            no_cache=True,
+        )
+    except ActionFailed:  # pragma: no cover - adapter failures fall back safely
+        return None
+    role = info.get("role")
+    return str(role) if role is not None else None
+
+
 def install(registry: MatcherRegistry, service: HelpHintService) -> None:
     async def handle_poke_help(
         matcher: Matcher,
+        bot: Bot,
         event: PokeNotifyEvent,
     ) -> None:
         if not service.can_send(event.group_id):
@@ -36,6 +58,7 @@ def install(registry: MatcherRegistry, service: HelpHintService) -> None:
             or service.get_default_poke_hint(
                 group_id=event.group_id,
                 user_id=event.user_id,
+                group_role=await _group_role(bot, event),
             )
             or DIRECT_COMMAND_HELP_HINT_TEXT
         )

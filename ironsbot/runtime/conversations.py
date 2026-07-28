@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Message
 
+    from ironsbot.runtime.matcher_contracts import QueuedSemanticRequestResolver
+
 EventReplyCheck = Callable[[MessageEvent], bool]
 
 
@@ -45,6 +47,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
     handlers: list[Callable[..., object]],
     reply_check: EventReplyCheck,
     prompt: str | Message | None = None,
+    queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
 ) -> None:
     session_id = event_conversation_session_id(namespace, event)
     prompt_sessions = get_prompt_session_manager(matcher)
@@ -85,4 +88,5 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         prompt=prompt_message,
         queue_namespace=namespace,
         queue_reply_check=_is_same_conversation_reply,
+        queue_semantic_request_resolver=queue_semantic_request_resolver,
     )

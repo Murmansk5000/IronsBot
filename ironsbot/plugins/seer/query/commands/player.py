@@ -273,6 +273,14 @@ async def _send_pending_player_query(
     pending: PendingPlayerQuery,
 ) -> None:
     plan = pending.section_plan
+
+    def after_initial_reply_sent() -> None:
+        dependencies.player.record_returned_query(event.user_id, pending)
+        dependencies.player.start_background_refresh(
+            pending,
+            group_id=event_group_id(event),
+        )
+
     await send_player_info_with_detail_prompt(
         dependencies.player,
         dependencies.features,
@@ -285,10 +293,7 @@ async def _send_pending_player_query(
         has_collection=plan.has_collection,
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
-        on_sent=lambda: dependencies.player.record_returned_query(
-            event.user_id,
-            pending,
-        ),
+        on_sent=after_initial_reply_sent,
     )
 
 
