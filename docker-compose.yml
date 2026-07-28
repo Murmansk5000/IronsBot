@@ -16,6 +16,7 @@ services:
       - /mnt/user/appdata/ironsbot/logs:/app/logs
       # Optional: enables /重启机器人, /更新镜像, and startup image checks.
       # Mounting this socket gives the container Docker control on the host.
+      # Also required when startup pulls a private extension package.
       # - /var/run/docker.sock:/var/run/docker.sock
     dns:
       - 223.5.5.5

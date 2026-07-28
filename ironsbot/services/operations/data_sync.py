@@ -30,6 +30,7 @@ class DataSyncBackend(Protocol):
         force_remote_build: bool = False,
     ) -> tuple[bool, dict[str, bool]]: ...
     def format_remote_build_failures(self, failed_names: list[str]) -> str: ...
+    def format_local_versions(self, names: tuple[str, ...]) -> str: ...
     def format_sync_statuses(self, results: dict[str, bool]) -> str: ...
     def format_sync_result_notice(
         self,
@@ -53,12 +54,16 @@ class DataSyncService:
             return BUSY_MESSAGE, False
 
         builds = self._backend.remote_build_names()
+        local_versions = self._backend.format_local_versions(names)
         if not builds:
-            return f"开始更新数据：{', '.join(names)}，请稍等。", True
+            return (
+                f"开始更新数据：{', '.join(names)}，请稍等。\n{local_versions}",
+                True,
+            )
         action = "强制远程重建数据" if force else "检查远程数据更新"
         return (
             f"开始{action}：{', '.join(builds)}；"
-            f"随后更新数据：{', '.join(names)}，请稍等。",
+            f"随后更新数据：{', '.join(names)}，请稍等。\n{local_versions}",
             True,
         )
 

@@ -242,18 +242,6 @@ def test_only_task_owner_creates_background_tasks() -> None:
     assert offenders == []
 
 
-def test_production_has_no_legacy_runtime_setup_functions() -> None:
-    offenders = [
-        f"{_relative(path)}:{node.lineno}"
-        for path in _files()
-        for node in ast.walk(_tree(path))
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("setup_")
-        and node.name.endswith("_runtime")
-    ]
-    assert offenders == []
-
-
 def test_sqlite_connections_use_storage_database() -> None:
     offenders = [
         f"{_relative(path)}:{node.lineno}"

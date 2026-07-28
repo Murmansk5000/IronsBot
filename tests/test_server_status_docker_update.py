@@ -32,6 +32,8 @@ from ironsbot.services.operations.docker_formatting import (
     format_docker_update_reply,
 )
 from ironsbot.services.operations.docker_models import (
+    DockerRegistryCredentials,
+    DockerUpdateRequest,
     DockerUpdateResult,
     WatchtowerUpdateOptions,
 )
@@ -182,6 +184,83 @@ def test_create_watchtower_container_sets_docker_api_version() -> None:
     assert container_id == "watchtower-container-id"
     assert client.request_json is not None
     assert client.request_json["Env"] == ["DOCKER_API_VERSION=1.40"]
+
+
+def test_create_watchtower_container_passes_private_registry_credentials() -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, str]:
+            return {"Id": "watchtower-container-id"}
+
+    class FakeClient:
+        request_json: dict[str, object] | None = None
+
+        async def post(self, _url: str, **kwargs: object) -> FakeResponse:
+            self.request_json = kwargs["json"]  # type: ignore[assignment]
+            return FakeResponse()
+
+    client = FakeClient()
+
+    asyncio.run(
+        create_watchtower_container(
+            client,  # type: ignore[arg-type]
+            container_name="ironsbot",
+            socket_path="/var/run/docker.sock",
+            watchtower=WatchtowerUpdateOptions(
+                image="containrrr/watchtower:latest",
+                docker_api_version="1.40",
+            ),
+            registry_credentials=DockerRegistryCredentials(
+                username="owner",
+                token="registry-token",
+            ),
+        )
+    )
+
+    assert client.request_json is not None
+    assert client.request_json["Env"] == [
+        "DOCKER_API_VERSION=1.40",
+        "REPO_USER=owner",
+        "REPO_PASS=registry-token",
+    ]
+
+
+def test_docker_update_service_passes_private_registry_credentials() -> None:
+    class FakeDocker:
+        request: DockerUpdateRequest | None = None
+
+        async def socket_exists(self, _socket_path: str) -> bool:
+            return True
+
+        async def start_update(
+            self,
+            request: DockerUpdateRequest,
+        ) -> DockerUpdateResult:
+            self.request = request
+            return DockerUpdateResult(ok=True, up_to_date=True)
+
+        async def restart_container(self, **_kwargs: object) -> None:
+            return None
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(
+            registry_username="owner",
+            registry_token="registry-token",
+        ),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    asyncio.run(service.run_update())
+
+    assert docker.request is not None
+    assert docker.request.registry_credentials == DockerRegistryCredentials(
+        username="owner",
+        token="registry-token",
+    )
 
 
 def test_watchtower_pull_failure_uses_cached_local_image() -> None:

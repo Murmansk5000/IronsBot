@@ -102,9 +102,9 @@ class LoggingConfig(BaseModel):
     file_enabled: bool = False
     file_level: str = "INFO"
     error_file_enabled: bool = False
-    rotation: str = "20 MB"
-    retention: str = "14 days"
-    compression: str | None = "zip"
+    rotation: str = "00:00"
+    retention: str = "30 days"
+    compression: str | None = None
 
     @field_validator("file_level")
     @classmethod

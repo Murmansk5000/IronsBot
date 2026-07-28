@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from ironsbot.app.private_extensions import PrivateExtensionInstaller
 from ironsbot.config.loader import (
     ConfigFileNotFoundError,
     TOMLDecodeError,
@@ -21,7 +22,11 @@ from ironsbot.services.operations.docker_preflight import (
 from ironsbot.services.operations.docker_update import DockerUpdateService
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.operations import DockerUpdateConfig
+    from ironsbot.config.models.operations import (
+        DockerUpdateConfig,
+        PrivateExtensionsConfig,
+    )
+    from ironsbot.config.models.settings import Settings
 
 MISSING_CONFIG_EXIT_CODE = 2
 STARTUP_PREFLIGHT_TIMEOUT_SECONDS = 20.0
@@ -60,6 +65,27 @@ async def run_docker_startup_preflight(
     ).run()
 
 
+async def run_private_extensions_preflight(
+    config: PrivateExtensionsConfig,
+    docker_update: DockerUpdateConfig,
+) -> None:
+    await PrivateExtensionInstaller(
+        config,
+        docker_update,
+        DockerClient(),
+    ).install()
+
+
+async def run_startup_preflight(settings: Settings) -> DockerStartupPreflightAction:
+    action = await run_docker_startup_preflight(settings.operations.docker_update)
+    if action is DockerStartupPreflightAction.CONTINUE:
+        await run_private_extensions_preflight(
+            settings.operations.private_extensions,
+            settings.operations.docker_update,
+        )
+    return action
+
+
 def main() -> int:
     try:
         settings = load_settings()
@@ -69,9 +95,7 @@ def main() -> int:
     except (TOMLDecodeError, ValidationError, TypeError, ValueError) as error:
         sys.stderr.write(f"IronsBot 配置文件格式或字段错误：{error}\n")
         return MISSING_CONFIG_EXIT_CODE
-    action = asyncio.run(
-        run_docker_startup_preflight(settings.operations.docker_update)
-    )
+    action = asyncio.run(run_startup_preflight(settings))
     return int(action)
 
 

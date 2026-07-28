@@ -7,7 +7,12 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from .docker_formatting import format_docker_update_reply
-from .docker_models import DockerUpdateResult, WatchtowerUpdateOptions
+from .docker_models import (
+    DockerRegistryCredentials,
+    DockerUpdateRequest,
+    DockerUpdateResult,
+    WatchtowerUpdateOptions,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.operations import DockerUpdateConfig
@@ -23,12 +28,7 @@ class DockerGateway(Protocol):
 
     async def start_update(
         self,
-        *,
-        container_name: str,
-        image: str,
-        socket_path: str,
-        watchtower: WatchtowerUpdateOptions,
-        timeout_seconds: float,
+        request: DockerUpdateRequest,
     ) -> DockerUpdateResult: ...
 
     async def restart_container(
@@ -55,7 +55,7 @@ class DockerUpdateService:
     async def run_update(self) -> tuple[str, DockerUpdateResult]:
         container_name = str(self._config.container_name)
         async with self._lock:
-            result = await self._docker.start_update(
+            request = DockerUpdateRequest(
                 container_name=container_name,
                 image=str(self._config.image),
                 socket_path=str(self._config.docker_socket_path),
@@ -66,8 +66,17 @@ class DockerUpdateService:
                     ),
                 ),
                 timeout_seconds=float(self._config.timeout_seconds),
+                registry_credentials=self._registry_credentials(),
             )
+            result = await self._docker.start_update(request)
         return container_name, result
+
+    def _registry_credentials(self) -> DockerRegistryCredentials | None:
+        username = str(self._config.registry_username).strip()
+        token = str(self._config.registry_token).strip()
+        if not username and not token:
+            return None
+        return DockerRegistryCredentials(username=username, token=token)
 
     async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
         if not bool(self._config.check_on_restart):
