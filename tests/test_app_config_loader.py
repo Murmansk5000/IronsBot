@@ -12,12 +12,11 @@ from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
     CommandCooldownWindowConfig,
-    CommandMessageAction,
-    GroupScheduledMessageAction,
+    MessageCommandAction,
     MessageConfig,
+    MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
-    PrivateScheduledMessageAction,
     PushUnsubscribeConfig,
     TeamAuditWelcomeConfig,
 )
@@ -28,6 +27,7 @@ from ironsbot.config.models.seer import (
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
 from ironsbot.core.bilibili import DEFAULT_BILI_ACCOUNT_UID
+from ironsbot.core.features import FeatureService
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
@@ -320,13 +320,13 @@ def test_example_config_has_no_unknown_fields() -> None:
 
 def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
-        PrivateScheduledMessageAction(
+        MessageScheduledAction(
             message="私聊定时推送",
             hour=23,
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
-        PrivateScheduledMessageAction(
+        MessageScheduledAction(
             id="每日 提醒",
             message="私聊定时推送",
             hour=23,
@@ -336,19 +336,17 @@ def test_scheduled_push_requires_stable_id() -> None:
 def test_scheduled_push_ids_are_globally_unique() -> None:
     with pytest.raises(ValidationError, match="定时推送 id 必须全局唯一: daily"):
         MessageConfig(
-            private_schedules=[
-                PrivateScheduledMessageAction(
+            schedules=[
+                MessageScheduledAction(
                     id="daily",
                     message="私聊定时推送",
                     hour=23,
-                )
-            ],
-            group_schedules=[
-                GroupScheduledMessageAction(
+                ),
+                MessageScheduledAction(
                     id="daily",
                     message="群聊定时推送",
                     hour=23,
-                )
+                ),
             ],
         )
 
@@ -358,7 +356,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action requires a non-empty id",
     ):
-        CommandMessageAction(
+        MessageCommandAction(
             commands=["hello"],
             message="world",
         )
@@ -367,7 +365,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         ValidationError,
         match="command message action id may only contain",
     ):
-        CommandMessageAction(
+        MessageCommandAction(
             id="daily reminder",
             commands=["hello"],
             message="world",
@@ -516,7 +514,7 @@ def test_unknown_app_config_fields_are_rejected_with_exact_path(
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[messaging.group_commands]]
+[[messaging.commands]]
 id = "hello"
 commands = ["hello"]
 message = "world"
@@ -531,7 +529,7 @@ unknown_command_field = true
 
     assert (
         exc_info.value.errors()[0]["loc"]
-        == ("messaging", "group_commands", 0, "unknown_command_field")
+        == ("messaging", "commands", 0, "unknown_command_field")
     )
 
 
@@ -724,4 +722,106 @@ baseline_lookback_days = 6
     assert (
         config.seer.achievement_history.baseline_lookback_days
         == expected_lookback_days
+    )
+
+
+def test_unified_message_actions_parse_as_toml_arrays_of_tables(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[messaging.commands]]
+id = "activity_link"
+commands = ["activity"]
+message = "activity link"
+feature = "web_activity_link"
+at_user_ids = [123456789]
+
+[[messaging.schedules]]
+id = "daily_reminder"
+name = "Daily reminder"
+hour = 23
+minute = 0
+message = "daily message"
+feature = "text_push"
+at_user_ids = [123456789]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+    assert config.messaging.commands[0].id == "activity_link"
+    assert config.messaging.commands[0].at_user_ids == [123456789]
+    assert config.messaging.schedules[0].id == "daily_reminder"
+    assert config.messaging.schedules[0].at_user_ids == [123456789]
+
+
+def test_message_command_feature_registers_for_bundle_and_group_policy(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+main = 123456789
+
+[features.bundles]
+standard = ["seerinfo_link"]
+
+[features.group_policy]
+main = ["standard"]
+
+[[messaging.commands]]
+id = "seerinfo_page"
+commands = ["xm", "xrym"]
+message = "https://seerinfo.yuyuqaq.cn/"
+feature = "seerinfo_link"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+    features = FeatureService(
+        config.features,
+        frozenset(),
+        command_features=config.messaging.command_feature_keys,
+        schedule_features=config.messaging.schedule_feature_keys,
+    )
+
+    assert config.messaging.command_feature_keys == frozenset(
+        {"seerinfo_link"}
+    )
+    assert features.is_group_feature_allowed(
+        999,
+        123456789,
+        "seerinfo_link",
+    )
+
+
+def test_message_schedule_feature_registers_for_user_policy(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.user_aliases]
+owner = 123456789
+
+[features.user_policy]
+owner = ["custom_reminder"]
+
+[[messaging.schedules]]
+id = "custom_reminder"
+hour = 23
+message = "remember"
+feature = "custom_reminder"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.messaging.schedule_feature_keys == frozenset(
+        {"custom_reminder"}
     )

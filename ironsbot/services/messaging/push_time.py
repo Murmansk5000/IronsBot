@@ -13,10 +13,8 @@ from ironsbot.core.selection import (
 )
 from ironsbot.core.time import normalize_daily_time
 from ironsbot.services.messaging.subscription_options import (
-    group_schedule_key,
-    group_schedule_label,
-    private_schedule_key,
-    private_schedule_label,
+    schedule_key,
+    schedule_label,
 )
 from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
@@ -114,11 +112,7 @@ def _schedule_time_options(
     store: PushSubscriptionRepository,
     eligible_target_ids: EligibleTargetIds,
 ) -> list[PushTimeOption]:
-    tasks = (
-        config.group_schedules
-        if target_type == "group"
-        else config.private_schedules
-    )
+    tasks = config.schedules
     features = {task.feature for task in tasks if task.enabled}
     eligible = eligible_target_ids(target_type, features)
 
@@ -129,11 +123,7 @@ def _schedule_time_options(
         if target_id not in eligible.get(task.feature, set()):
             continue
 
-        key = (
-            group_schedule_key(index, task)
-            if target_type == "group"
-            else private_schedule_key(index, task)
-        )
+        key = schedule_key(index, task)
         default_value = f"{task.hour:02d}:{task.minute:02d}"
         override = store.get_time_preference(
             target_type,
@@ -142,11 +132,7 @@ def _schedule_time_options(
             CRON_TIME_PREFERENCE,
         )
         current_value = override or default_value
-        base_label = (
-            group_schedule_label(index, task)
-            if target_type == "group"
-            else private_schedule_label(index, task)
-        )
+        base_label = schedule_label(index, task)
         options.append(
             PushTimeOption(
                 key=key,

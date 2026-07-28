@@ -17,10 +17,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     PluginInstall,
 )
-from ironsbot.runtime.replies import (
-    append_fire_manual_ad_message,
-    append_text_hint,
-)
+from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.operations.docker_preflight import (
@@ -56,6 +53,9 @@ def _external_install(module: str) -> PluginInstall:
         _load_external_plugin(module)
 
     return install
+
+
+OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
 
 
 def _always_help_visible(_event: Event) -> bool:
@@ -94,12 +94,9 @@ def _messaging_help_visible(
     features: FeatureService,
     config: MessageConfig,
 ) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        actions = [*config.group_commands, *config.group_schedules]
-    elif isinstance(event, PrivateMessageEvent):
-        actions = [*config.private_commands, *config.private_schedules]
-    else:
+    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
+    actions = [*config.commands, *config.schedules]
     return any(
         action.enabled
         and event_is_feature_visible_in_help(features, event, action.feature)
@@ -180,7 +177,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         delivery,
         resources.subscriptions,
         build_dynamic_message,
-        append_fire_manual_ad_message,
         append_text_hint,
     )
     bili_monitor = BilibiliMonitorService(
@@ -789,7 +785,7 @@ def validate_plugin_registry(
         feature for definition in definitions for feature in definition.features
     }
     missing = sorted(
-        set(Feature) - owned_features,
+        set(Feature) - owned_features - OPTIONAL_PRIVATE_FEATURES,
         key=lambda feature: feature.value,
     )
     if missing:

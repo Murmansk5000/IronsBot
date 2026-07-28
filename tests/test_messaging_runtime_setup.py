@@ -18,13 +18,13 @@ except ValueError:
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
-    GroupScheduledMessageAction,
+    MessageCommandAction,
     MessageConfig,
-    PrivateScheduledMessageAction,
+    MessageScheduledAction,
     PushUnsubscribeConfig,
 )
 from ironsbot.core.features import FeatureConfig
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
@@ -39,7 +39,11 @@ from ironsbot.services.messaging.subscriptions import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
 )
-from tests.helpers.onebot_events import GroupMemberRole, group_member_message_event
+from tests.helpers.onebot_events import (
+    GroupMemberRole,
+    group_member_message_event,
+    private_message_event,
+)
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -60,30 +64,15 @@ class FakeJob:
     id: str
 
 
-def _private_schedule(
-    message: str,
-    *,
-    schedule_id: str = "private",
-    hour: int = 23,
-    minute: int = 0,
-) -> PrivateScheduledMessageAction:
-    return PrivateScheduledMessageAction(
-        id=schedule_id,
-        message=message,
-        hour=hour,
-        minute=minute,
-    )
-
-
-def _group_schedule(
+def _schedule(
     message: str,
     *,
     at_user_ids: list[int] | None = None,
-    schedule_id: str = "group",
+    schedule_id: str = "daily",
     hour: int = 23,
     minute: int = 0,
-) -> GroupScheduledMessageAction:
-    return GroupScheduledMessageAction(
+) -> MessageScheduledAction:
+    return MessageScheduledAction(
         id=schedule_id,
         message=message,
         at_user_ids=at_user_ids or [],
@@ -112,7 +101,8 @@ class FakeScheduler:
 def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     data_path: Path,
     *,
-    group_schedules: list[GroupScheduledMessageAction] | None = None,
+    commands: list[MessageCommandAction] | None = None,
+    schedules: list[MessageScheduledAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
@@ -123,7 +113,8 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
 ) -> MessagingService:
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
-        group_schedules=group_schedules or [],
+        commands=commands or [],
+        schedules=schedules or [],
     )
     resources = build_test_runtime(
         feature_config=FeatureConfig(
@@ -326,6 +317,81 @@ def test_group_push_subscription_management_command_matches_regular_member(
     )
 
 
+def test_unified_command_action_uses_feature_policy_for_each_message_scope(
+    tmp_path: Path,
+) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        commands=[
+            MessageCommandAction(
+                id="activity_link",
+                commands=["activity"],
+                feature="web_activity_link",
+                message="activity link",
+                at_user_ids=[3001],
+            )
+        ],
+        user_policy={"2001": ["web_activity_link"]},
+        group_policy={"1001": ["web_activity_link"]},
+    )
+
+    private_state: dict[str, object] = {}
+    group_state: dict[str, object] = {}
+    assert matcher_rules.match_message_command(
+        private_message_event("activity", user_id=2001),
+        private_state,
+        messaging=messaging,
+    )
+    assert matcher_rules.match_message_command(
+        group_member_message_event("activity", user_id=2002, group_id=1001),
+        group_state,
+        messaging=messaging,
+    )
+    private_action = cast(
+        "MessageCommandAction",
+        private_state[matcher_rules.MESSAGE_ACTION_KEY],
+    )
+    group_action = cast(
+        "MessageCommandAction",
+        group_state[matcher_rules.MESSAGE_ACTION_KEY],
+    )
+    assert private_action.id == "activity_link"
+    assert group_action.at_user_ids == [3001]
+
+
+def test_unified_schedule_delivers_to_private_and_group_targets(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, object]] = []
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        user_policy={"2001": ["text_push"]},
+        group_policy={"1001": ["text_push"]},
+    )
+
+    async def fake_broadcast(
+        _delivery: object,
+        _message: str,
+        **kwargs: object,
+    ) -> None:
+        sent.append(kwargs)
+
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)
+    asyncio.run(
+        message_schedules.send_schedule(
+            _schedule("shared schedule", at_user_ids=[3001]),
+            messaging=messaging,
+        )
+    )
+
+    assert sent[0]["private_user_ids"] == [2001]
+    assert sent[0]["subscription_key"] == "daily"
+    assert sent[1]["group_ids"] == [1001]
+    assert sent[1]["group_at_user_ids"] == [3001]
+    assert sent[1]["subscription_key"] == "daily"
+
+
 def test_scheduled_messages_append_fire_manual_ad(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -344,26 +410,36 @@ def test_scheduled_messages_append_fire_manual_ad(
     ) -> None:
         limiter = kwargs.get("message_limiter")
         group_ids = kwargs.get("group_ids")
+        private_user_ids = kwargs.get("private_user_ids")
         if limiter is not None and isinstance(group_ids, list) and group_ids:
-            message = limiter(message, group_ids[0])  # type: ignore[operator]
+            message = limiter(message, MessageTarget("group", group_ids[0]))  # type: ignore[operator]
+        if (
+            limiter is not None
+            and isinstance(private_user_ids, list)
+            and private_user_ids
+        ):
+            message = limiter(  # type: ignore[operator]
+                message,
+                MessageTarget("private", private_user_ids[0]),
+            )
         sent.append((message, kwargs))
 
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_private_schedule(
-            _private_schedule("私聊定时"),
+            _schedule("私聊定时", schedule_id="private"),
             messaging=messaging,
         )
     )
     asyncio.run(
         message_schedules.send_group_schedule(
-            _group_schedule("群定时", at_user_ids=[3001]),
+            _schedule("群定时", at_user_ids=[3001], schedule_id="group"),
             messaging=messaging,
         )
     )
 
     assert [message for message, _kwargs in sent] == [
-        f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
+        "私聊定时",
         f"群定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
     ]
     assert sent[0][1]["private_user_ids"] == [2001]
@@ -371,6 +447,37 @@ def test_scheduled_messages_append_fire_manual_ad(
     assert sent[1][1]["group_ids"] == [1001]
     assert sent[1][1]["group_at_user_ids"] == [3001]
     assert sent[1][1]["subscription_key"] == "group"
+
+
+def test_private_scheduled_message_appends_fire_manual_ad_only_when_enabled(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent: list[str] = []
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        user_policy={"2001": ["text_push", "fire_manual_ad"]},
+    )
+
+    async def fake_broadcast(
+        _delivery: object,
+        message: str,
+        **kwargs: object,
+    ) -> None:
+        limiter = kwargs.get("message_limiter")
+        if limiter is not None:
+            message = limiter(message, MessageTarget("private", 2001))  # type: ignore[operator]
+        sent.append(message)
+
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)
+    asyncio.run(
+        message_schedules.send_private_schedule(
+            _schedule("私聊定时", schedule_id="private"),
+            messaging=messaging,
+        )
+    )
+
+    assert sent == [f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}"]
 
 
 def test_private_schedule_passes_subscription_key(
@@ -397,7 +504,7 @@ def test_private_schedule_passes_subscription_key(
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_private_schedule(
-            _private_schedule("私聊定时"),
+            _schedule("私聊定时", schedule_id="private"),
             messaging=messaging,
         )
     )
@@ -439,7 +546,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_group_schedule(
-            _group_schedule("group push", at_user_ids=[], schedule_id="daily"),
+            _schedule("group push", at_user_ids=[], schedule_id="daily"),
             messaging=messaging,
         )
     )
@@ -460,7 +567,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         CRON_TIME_PREFERENCE,
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
-    task = GroupScheduledMessageAction(
+    task = MessageScheduledAction(
         message="group push",
         at_user_ids=[],
         id="daily",
@@ -474,7 +581,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
             scheduler,
             _messaging_resources(
                 data_path,
-                group_schedules=[task],
+                schedules=[task],
                 group_policy={
                     "1001": ["text_push"],
                     "1002": ["text_push"],
@@ -484,7 +591,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
     )
 
     assert [job["id"] for job in scheduler.jobs] == [
-        "message_action_group_schedule_daily",
+        "message_action_schedule_daily",
         "message_action_group_schedule_daily_override_1001",
     ]
     override_job = scheduler.jobs[1]

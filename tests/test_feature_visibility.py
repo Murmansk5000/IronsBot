@@ -11,7 +11,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.config.models.messaging import GroupCommandMessageAction
+from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature, FeatureConfig, FeatureService
 from ironsbot.plugins.help.menu import visible_help_entries
@@ -50,8 +50,8 @@ def _settings(
     settings.ai.intent_actions_enabled = ai_intent_enabled
     settings.seer.team_resource.enabled = team_resource_enabled
     if messaging_enabled:
-        settings.messaging.group_commands = [
-            GroupCommandMessageAction(
+        settings.messaging.commands = [
+            MessageCommandAction(
                 id="test_message",
                 commands=["测试消息"],
                 feature="text",

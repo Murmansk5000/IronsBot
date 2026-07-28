@@ -95,7 +95,7 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
-from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_group
+from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_target
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
@@ -275,7 +275,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
             private_user_ids=reminder.private_user_ids,
             action_name=reminder.action_name,
             interval_seconds=1.2,
-            message_limiter=partial(append_fire_manual_ad_for_group, features),
+            message_limiter=partial(append_fire_manual_ad_for_target, features),
             subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
         )
         return bool(summary.succeeded)
@@ -333,6 +333,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     features = FeatureService(
         settings.features,
         frozenset(settings.bot.superusers),
+        command_features=settings.messaging.command_feature_keys,
+        schedule_features=settings.messaging.schedule_feature_keys,
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
