@@ -40,7 +40,6 @@ from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
 )
 from ironsbot.services.seer.rank_player_query import fetch_rank_player_message
-from ironsbot.services.seer.rank_usage import build_rank_help_message
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -94,10 +93,6 @@ class RankQueryService:
         self._policy = policy
         self._quotas = quotas
         self._requests = requests
-
-    @staticmethod
-    def help_message() -> str:
-        return build_rank_help_message()
 
     def default_limit(self, group_id: int | None) -> int:
         return self._display.limit_for_group(group_id)

@@ -9,6 +9,7 @@ from ironsbot.plugins.seer.query.commands.query_rules import (
     not_fixed_image_command,
     not_rank_query,
 )
+from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.feature_policy import (
     event_is_feature_visible_in_help,
     feature_rule,
@@ -37,7 +38,6 @@ def plugin_definition(
         help=HelpEntry(
             name="精灵配置",
             description="按精灵名、别名或序号发送本地收录的配置图",
-            usage="雷伊配置 / 配置雷伊 / 4923配置",
             group="other",
             order=10,
             visible=partial(
@@ -45,6 +45,21 @@ def plugin_definition(
                 features=features,
                 enabled=config.enabled,
             ),
+        ),
+        commands=(
+            (
+                CommandDescriptor(
+                    id="pet_config.query",
+                    plugin_id="pet_config",
+                    section="查询",
+                    examples=("雷伊配置", "配置雷伊", "4923配置"),
+                    description="查询已收录的精灵配置图",
+                    feature="pet_config",
+                    show_in_poke=True,
+                ),
+            )
+            if config.enabled
+            else ()
         ),
         install=partial(
             install,

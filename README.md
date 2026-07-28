@@ -16,7 +16,7 @@ IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2
 - 全服榜、样本榜、巅峰榜、刻印数值榜与缓存状态查询。
 - 群星牌公开资料查询。
 - B站动态监控与历史动态点播，支持按账号退订、按账号设置全文/链接推送。
-- 当前活动、快结束活动和活动结束提醒。
+- 超级管理员当前活动查询、快结束活动查询和活动结束提醒。
 - 固定图片、固定文本、会议回复、通用指令回复和定时消息。
 - AI 聊天与 AI 意图动作。
 - 无头赛尔号登录状态检查、重连、启动通知和管理员开服查询。
@@ -314,7 +314,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `bili_query` | B站动态手动查询、刷新、历史点播。 |
 | `bili_push` | B站动态自动推送；TD 菜单会按 B站 UID 拆分退订项。 |
 | `bili` | `bili_query` + `bili_push`。 |
-| `seer_activity_query` | 游戏内活动、快结束活动手动查询。 |
+| `seer_activity_query` | 游戏内快结束活动手动查询；`/当前活动` 为超级管理员专用。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
 | `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |

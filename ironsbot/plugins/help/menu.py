@@ -10,12 +10,12 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
-from ironsbot.services.seer.query_usage import build_seer_query_usage_message
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.plugins import PluginDefinition
 
 HELP_ENTRIES_KEY = "_help_entries"
@@ -42,9 +42,9 @@ class HelpMenuEntry:
     key: str
     name: str
     description: str
-    usage: str
     group: str
     order: int
+    notes: tuple[str, ...]
 
 
 class MissingHelpEntryError(ValueError):
@@ -61,9 +61,9 @@ def entry_from_definition(definition: PluginDefinition) -> HelpMenuEntry:
         key=definition.id,
         name=help_entry.name,
         description=help_entry.description,
-        usage=help_entry.usage or "暂无详细帮助。",
         group=help_entry.group,
         order=help_entry.order,
+        notes=help_entry.notes,
     )
 
 
@@ -81,6 +81,7 @@ def visible_help_entries(
     event: Event,
     *,
     features: FeatureService,
+    commands: CommandCatalog,
     ignored_plugins: tuple[str, ...],
 ) -> list[HelpMenuEntry]:
     entries: list[HelpMenuEntry] = []
@@ -100,6 +101,14 @@ def visible_help_entries(
         visible = help_entry.visible
         if visible is not None:
             if not visible(event):
+                continue
+        elif definition.commands:
+            if not commands.available_for(
+                event,
+                features,
+                plugin_id=definition.id,
+                ignored_plugins=ignored_plugins,
+            ):
                 continue
         elif not any(
             event_is_feature_visible_in_help(features, event, feature.value)
@@ -157,11 +166,27 @@ def format_plugin_detail(
     entry: HelpMenuEntry,
     event: Event,
     features: FeatureService,
+    commands: CommandCatalog,
+    *,
+    ignored_plugins: tuple[str, ...],
 ) -> str:
-    if entry.key == "seer_query":
-        usage = build_seer_query_usage_message(
-            lambda feature: event_is_feature_visible_in_help(features, event, feature)
-        )
-        return f"📖 {entry.name}\n\n{usage}"
+    available = commands.available_for_plugin(
+        event,
+        features,
+        plugin_id=entry.key,
+        ignored_plugins=ignored_plugins,
+    )
+    lines = [f"📖 {entry.name}"]
+    if entry.notes:
+        lines.extend(("", *entry.notes))
+    if not available:
+        lines.extend(("", "暂无可直接输入的命令。"))
+        return "\n".join(lines)
 
-    return f"📖 {entry.name}\n\n{entry.usage}"
+    current_section = ""
+    for command in available:
+        if command.section != current_section:
+            lines.extend(("", f"【{command.section}】"))
+            current_section = command.section
+        lines.append(f"{' / '.join(command.examples)} — {command.description}")
+    return "\n".join(lines)
