@@ -4,9 +4,9 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-import nonebot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
+from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.plugins.operations.status.command_text import SERVER_STATUS_USAGE
@@ -15,7 +15,6 @@ from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginDefinition,
     PluginHooks,
-    PluginInstall,
 )
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
@@ -38,21 +37,7 @@ if TYPE_CHECKING:
 
 
 class PluginRegistryError(ValueError):
-    @classmethod
-    def external_load_failed(cls, module: str) -> PluginRegistryError:
-        return cls(f"failed to load external plugin: {module}")
-
-
-def _load_external_plugin(module: str) -> None:
-    if nonebot.load_plugin(module) is None:
-        raise PluginRegistryError.external_load_failed(module)
-
-
-def _external_install(module: str) -> PluginInstall:
-    def install(_registry: MatcherRegistry) -> None:
-        _load_external_plugin(module)
-
-    return install
+    pass
 
 
 OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
@@ -140,9 +125,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         register_rank_page_refresh_jobs,
     )
     from ironsbot.plugins.team import install as install_team_audit
-    from ironsbot.plugins.team.resource import (
-        install as install_team_resource,
-    )
+    from ironsbot.plugins.team.resource import install as install_team_resource
     config = settings
     features = resources.features
     delivery = resources.delivery
@@ -187,7 +170,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     definitions: tuple[PluginDefinition, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
-        _load_external_plugin("nonebot_plugin_apscheduler")
+        load_external_plugin("nonebot_plugin_apscheduler")
         from nonebot_plugin_apscheduler import scheduler as backend
 
         scheduler.bind(backend)
@@ -274,15 +257,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         ),
         PluginDefinition(
             id="localstore",
-            install=_external_install("nonebot_plugin_localstore"),
+            install=external_install("nonebot_plugin_localstore"),
         ),
         PluginDefinition(
             id="htmlkit",
-            install=_external_install("nonebot_plugin_htmlkit"),
+            install=external_install("nonebot_plugin_htmlkit"),
         ),
         PluginDefinition(
             id="saa",
-            install=_external_install("nonebot_plugin_saa"),
+            install=external_install("nonebot_plugin_saa"),
         ),
         PluginDefinition(
             id="admin_priority",
@@ -769,6 +752,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             install=partial(install_rank_help, features=features),
         ),
     )
+    private_definitions = resources.private_extensions.load_plugin_definitions(
+        resources.private_extension_runtime
+    )
+    definitions = (*definitions, *private_definitions)
     validate_plugin_registry(definitions)
     return definitions
 

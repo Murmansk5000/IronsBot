@@ -12,6 +12,11 @@ from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.app.private_extensions import (
+    PrivateExtensionCatalog,
+    PrivateExtensionRuntime,
+    load_private_extension_catalog,
+)
 from ironsbot.app.registry import build_plugin_registry
 from ironsbot.core.features import FeatureService
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -164,8 +169,6 @@ LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
-
-
 @dataclass(frozen=True, slots=True)
 class ApplicationResources:
     features: FeatureService
@@ -192,6 +195,8 @@ class ApplicationResources:
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService
     help_hint: HelpHintService
+    private_extensions: PrivateExtensionCatalog
+    private_extension_runtime: PrivateExtensionRuntime
 
 
 @dataclass(slots=True)
@@ -520,6 +525,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_query_quotas,
         player_requests,
     )
+    docker_client = DockerClient()
+    private_extensions = load_private_extension_catalog(
+        settings.operations.private_extensions
+    )
     player_detail_extensions = PlayerDetailExtensionRegistry()
     rank_queries = RankQueryService(
         rank,
@@ -631,9 +640,23 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else None
         ),
     )
+    private_extension_runtime = PrivateExtensionRuntime(
+        features=features,
+        seer=seer,
+        headless=headless,
+        data=seer_database,
+        images=seer_images,
+        render_html=render_html_template,
+        error_message=seer_database.error_message,
+        player_quotas=player_query_quotas,
+        player_requests=player_requests,
+        player_details=player_detail_extensions,
+        release_priority=priority.release,
+        settings=settings.operations.private_extensions.settings,
+    )
     docker_update = DockerUpdateService(
         settings.operations.docker_update,
-        DockerClient(),
+        docker_client,
         partial(
             terminate_bot_process,
             signal_parent=True,
@@ -672,6 +695,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.features.group_aliases,
             settings.features.user_aliases,
         ),
+        private_extensions=private_extensions,
+        private_extension_runtime=private_extension_runtime,
     )
     plugins = build_plugin_registry(
         settings=settings,
