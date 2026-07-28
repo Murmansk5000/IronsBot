@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 
 from ironsbot.core.features import FeatureService
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.rank_usage import (
     RANK_HELP_ENTRY_COMMANDS,
@@ -12,8 +14,11 @@ from ironsbot.services.seer.rank_usage import (
 )
 
 
-async def handle_rank_help_entry(matcher: Matcher) -> None:
-    await matcher.finish(build_rank_help_message())
+async def handle_rank_help_entry(
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    await finish_event_reply(matcher, event, build_rank_help_message())
 
 
 def install(registry: MatcherRegistry, features: FeatureService) -> None:

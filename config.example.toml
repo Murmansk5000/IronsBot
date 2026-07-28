@@ -235,13 +235,13 @@ hint_max_per_window = 3
 
 # EN: Optional per-group poke replies. Keys may be group aliases or numeric group IDs.
 # Configured text replaces the default help hint when someone pokes the bot in that group.
-# ZH: 可选的群聊戳一戳回复。key 可写群别名或群号；命中后覆盖默认帮助提示。
+# ZH: 可选的群聊戳一戳回复。key 可写群别名或群号；用户专属回复优先，命中后覆盖默认的随机短指令提示。
 # 推荐使用下面的行内写法，避免后续 features.help 字段误进入子表。
 # poke_replies = { example = "你戳了戳机器人。" }
 
 # EN: Optional per-user poke replies. Keys may be user aliases or numeric QQ IDs.
 # User replies take priority over group replies. Quote Chinese aliases in TOML.
-# ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。
+# ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
 [features.priority]
