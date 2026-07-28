@@ -9,6 +9,7 @@ class DockerImageInfo:
     image_id: str
     created: str = ""
     labels: dict[str, str] = field(default_factory=dict)
+    repo_digests: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,4 +71,17 @@ class DockerUpdateResult:
     target_image_id: str = ""
     target_image_created: str = ""
     target_image_commit: str = ""
+    missing_socket: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DockerImageCheckResult:
+    """Result of comparing the running image with a registry manifest."""
+
+    ok: bool
+    message: str = ""
+    up_to_date: bool = False
+    current_image_id: str = ""
+    current_image_created: str = ""
+    remote_digest: str = ""
     missing_socket: bool = False

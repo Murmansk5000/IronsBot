@@ -23,6 +23,7 @@ from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DISABLED_BARE_ADMIN_COMMAND,
+    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
@@ -101,6 +102,16 @@ def install(  # noqa: PLR0913
         await send_event_reply(matcher, event, message)
         await docker_service.execute_restart(restart_action)
 
+    async def handle_check_image_update(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await finish_event_reply(
+            matcher,
+            event,
+            await docker_service.check_image_update(),
+        )
+
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
         policy=CommandPolicy.command("server_status_query"),
@@ -154,3 +165,13 @@ def install(  # noqa: PLR0913
         block=True,
     )
     update_matcher.append_handler(handle_restart)
+
+    check_update_matcher = registry.on_fullmatch(
+        DOCKER_CHECK_UPDATE_COMMANDS,
+        policy=CommandPolicy.command("bot_restart"),
+        rule=no_reply(),
+        permission=SUPERUSER,
+        priority=registry.priority("server_status_admin"),
+        block=True,
+    )
+    check_update_matcher.append_handler(handle_check_image_update)
