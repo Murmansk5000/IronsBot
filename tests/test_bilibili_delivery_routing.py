@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 import pytest
@@ -7,6 +8,7 @@ from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.core.messaging import TargetSendSummary
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import build_dynamic_message
 from ironsbot.runtime.replies import append_text_hint
@@ -53,11 +55,11 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
 
     runtime = build_test_runtime()
     service = BilibiliPushDeliveryService(
-        runtime.features,
         runtime.delivery,
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
         build_dynamic_message,
         append_text_hint,
+        partial(append_fire_manual_ad_for_target, runtime.features),
     )
     await service.send(
         {},

@@ -34,7 +34,10 @@ if TYPE_CHECKING:
         ServerStatusConfig,
     )
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
 
@@ -57,8 +60,14 @@ def install(  # noqa: PLR0913
     server_status: ServerStatusService,
     features: FeatureService,
     delivery: MessageDelivery,
+    message_limiter: MessageLimiter | None = None,
 ) -> None:
-    broadcast = OpenBroadcast(server_status_config, features, delivery)
+    broadcast = OpenBroadcast(
+        server_status_config,
+        features,
+        delivery,
+        message_limiter,
+    )
 
     async def handle_normal_server_status(
         matcher: Matcher,

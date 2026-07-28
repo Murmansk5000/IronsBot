@@ -73,6 +73,11 @@ async def handle_push_subscription_menu(
             target_type,
         ),
         prompt=prompt,
+        queue_namespace=PUSH_SUBSCRIPTION_FLOW.namespace,
+        queue_reply_check=PUSH_SUBSCRIPTION_FLOW.reply_check(
+            session_id,
+            target_type,
+        ),
     )
 
 

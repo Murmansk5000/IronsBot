@@ -4,10 +4,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.messaging import MessageTarget
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from ironsbot.core.messaging import MessageTarget, TargetSendSummary
+    from ironsbot.core.messaging import TargetSendSummary
 
 MessageLimiter = Callable[[Any, MessageTarget], Any]
 

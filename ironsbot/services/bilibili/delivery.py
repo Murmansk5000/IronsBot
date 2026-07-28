@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
-from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_target
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
     from ironsbot.core.messaging import MessageTarget
     from ironsbot.services.bilibili.targets import BiliPushTargets
-    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -43,11 +44,11 @@ class DynamicPushDelivery:
 
 @dataclass(frozen=True, slots=True)
 class BilibiliPushDeliveryService:
-    features: FeatureService
     delivery: MessageDelivery
     subscriptions: PushSubscriptionRepository
     render: DynamicRenderer
     append_hint: HintAppender
+    message_limiter: MessageLimiter | None = None
 
     def build_deliveries(
         self,
@@ -125,7 +126,8 @@ class BilibiliPushDeliveryService:
         message: Any,
         target: MessageTarget,
     ) -> Any:
-        message = append_fire_manual_ad_for_target(self.features, message, target)
+        if self.message_limiter is not None:
+            message = self.message_limiter(message, target)
         if target.target_type != "group":
             return message
         group_id = target.target_id

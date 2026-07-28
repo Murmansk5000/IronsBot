@@ -5,6 +5,9 @@ import asyncio
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from ironsbot.core.selection import (
+    EXIT_SELECTION_LINE,
+)
 from ironsbot.services.seer.rank_peak import build_peak_rating_score
 
 if TYPE_CHECKING:
@@ -336,12 +339,12 @@ def plan_player_detail_prompt(
     supports_conversation: bool,
     extension_actions: Iterable[PlayerDetailExtensionAction] = (),
 ) -> PlayerDetailPromptPlan:
-    extensions = tuple(extension_actions)
     builtin_requests = _available_builtin_detail_requests(
         has_collection=has_collection,
         has_peak=has_peak,
         has_autocard=has_autocard,
     )
+    extensions = tuple(extension_actions)
     builtin_selections = tuple(
         (str(index), request.key)
         for index, request in enumerate(builtin_requests, start=1)
@@ -379,7 +382,7 @@ def plan_player_detail_prompt(
                     strict=True,
                 )
             ),
-            "0.【退出】",
+            EXIT_SELECTION_LINE,
         )
         if has_actions
         else ()

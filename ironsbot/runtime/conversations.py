@@ -83,4 +83,6 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         handlers=handlers,
         rule=rule,
         prompt=prompt_message,
+        queue_namespace=namespace,
+        queue_reply_check=_is_same_conversation_reply,
     )

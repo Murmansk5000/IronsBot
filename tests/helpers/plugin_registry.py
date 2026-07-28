@@ -202,6 +202,7 @@ def build_test_plugin_registry(
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
+            push_message_limiter=lambda message, _target: message,
             help_hint=object(),
             private_extensions=SimpleNamespace(
                 load_plugin_definitions=lambda _runtime: ()
