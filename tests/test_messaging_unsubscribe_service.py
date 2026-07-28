@@ -306,4 +306,5 @@ def test_build_push_subscription_menu_shows_subscription_state() -> None:
 
     assert "✅ 活动结束提醒" in text
     assert "❌ 开服推送" in text
-    assert "✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出" in text
+    assert "0.【退出】" in text
+    assert "✅ 已订阅 · ❌ 已退订，输入序号切换" in text

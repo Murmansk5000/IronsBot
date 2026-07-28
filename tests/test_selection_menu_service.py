@@ -14,7 +14,8 @@ def test_format_selection_menu_numbers_items() -> None:
     assert "请选择：" in text
     assert "1. 苹果" in text
     assert "2. 香蕉" in text
-    assert "💬 输入序号选择 · 输入 0 退出" in text
+    assert "0.【退出】" in text
+    assert "💬 输入序号选择" in text
 
 
 def test_format_selection_menu_numbers_across_sections() -> None:
@@ -44,7 +45,7 @@ def test_format_selection_menu_supports_prefix_and_detail_lines() -> None:
             ),
             SelectionMenuItem(label="子项", is_sub_item=True),
         ),
-        footer="✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出",
+        footer="✅ 已订阅 · ❌ 已退订，输入序号切换",
     )
 
     assert "1. ✅ 活动结束提醒" in text
@@ -52,4 +53,5 @@ def test_format_selection_menu_supports_prefix_and_detail_lines() -> None:
     assert "   👤 赛尔号（UID：1310714247）" in text
     assert "   📝 测试动态" in text
     assert " ↳ 3. 子项" in text
-    assert "✅ 已订阅 · ❌ 已退订，输入序号切换 · 输入 0 退出" in text
+    assert "0.【退出】" in text
+    assert "✅ 已订阅 · ❌ 已退订，输入序号切换" in text

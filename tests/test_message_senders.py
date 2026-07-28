@@ -217,7 +217,7 @@ def test_send_target_messages_reports_push_queue_suppression() -> None:
                 OutboundRateLimitDecision(allowed=True),
                 OutboundRateLimitDecision(
                     allowed=False,
-                    reason="queue_full",
+                    reason="queue_cleared",
                 ),
             ]
         )

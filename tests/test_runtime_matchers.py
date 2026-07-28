@@ -15,6 +15,8 @@ from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
 
 from ironsbot.runtime.matchers import (
+    QUEUED_CONVERSATION_TICKET_STATE_KEY,
+    QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
     CommandCooldown,
@@ -130,3 +132,83 @@ async def test_temporary_matcher_state_keeps_tasks_out_of_default_state() -> Non
             task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         temporary.destroy()
+
+
+@pytest.mark.asyncio
+async def test_queued_conversation_serializes_inputs_in_arrival_order() -> None:
+    second_ticket_number = 2
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_1_2",
+        state={"saved": "value"},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+
+    first_ticket = await context.acquire()
+    second = asyncio.create_task(context.acquire())
+    await asyncio.sleep(0)
+
+    assert first_ticket == 1
+    assert not second.done()
+
+    context.complete(first_ticket)
+    second_ticket = await second
+
+    assert second_ticket == second_ticket_number
+    context.complete(second_ticket)
+
+
+@pytest.mark.asyncio
+async def test_queued_conversation_cancellation_drops_pending_inputs() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_1_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+    state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+    }
+    first_ticket = await context.acquire()
+    pending = asyncio.create_task(context.acquire())
+    await asyncio.sleep(0)
+
+    manager.cancel_queued_conversation(state)
+
+    assert manager.queued_conversation(state) is None
+    assert manager.queued_conversation_is_cancelled(state)
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+
+    state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = first_ticket
+    manager.finish_queued_conversation(state)
+    assert not manager.queued_conversation_is_cancelled(state)
+
+
+@pytest.mark.asyncio
+async def test_queued_conversation_expiry_suppresses_active_reply() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_1_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+    state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+    }
+    ticket = await context.acquire()
+
+    manager._expire_queued_conversation(context.token)
+
+    assert manager.queued_conversation(state) is None
+    assert manager.queued_conversation_is_cancelled(state)
+
+    state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
+    manager.finish_queued_conversation(state)
+    assert not manager.queued_conversation_is_cancelled(state)
