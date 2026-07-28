@@ -83,5 +83,9 @@ class DockerImageCheckResult:
     up_to_date: bool = False
     current_image_id: str = ""
     current_image_created: str = ""
+    current_image_commit: str = ""
     remote_digest: str = ""
+    remote_image_id: str = ""
+    remote_image_created: str = ""
+    remote_image_commit: str = ""
     missing_socket: bool = False
