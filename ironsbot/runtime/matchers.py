@@ -1,15 +1,13 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from asyncio import Future, get_running_loop
-from collections import deque
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import partial
 from inspect import Signature, signature
 from secrets import token_urlsafe
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 
 from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -21,20 +19,49 @@ from nonebot.matcher import Matcher, current_bot, current_event, current_handler
 from nonebot.message import run_postprocessor
 from nonebot.plugin import on_command, on_fullmatch, on_message, on_notice
 from nonebot.rule import Rule
-from nonebot.typing import T_State
+from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
 if TYPE_CHECKING:
-    from asyncio import TimerHandle
-    from datetime import timedelta
+    from ironsbot.runtime.in_flight_requests import (
+        InFlightRequestService,
+    )
+    from ironsbot.runtime.matcher_contracts import (
+        CommandCooldown,
+        CommandIdSource,
+        QueuedSemanticRequestResolver,
+        SemanticRequestResolver,
+    )
+    from ironsbot.runtime.prompt_sessions import _QueuedConversation
+from ironsbot.runtime.matcher_contracts import (
+    CommandPolicyError,
+    static_command_id,
+)
+from ironsbot.runtime.prompt_errors import (
+    PromptLoopConfigurationError,
+    PromptSessionManagerMissingError,
+)
+from ironsbot.runtime.prompt_sessions import (
+    COMMAND_COOLDOWN_TOKEN_STATE_KEY as _COMMAND_COOLDOWN_TOKEN_KEY,
+)
+from ironsbot.runtime.prompt_sessions import (
+    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
+)
+from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_TICKET_STATE_KEY,
+    QUEUED_CONVERSATION_TOKEN_STATE_KEY,
+    TEMP_MATCHER_STATE_TOKEN_KEY,
+    PromptSessionManager,
+)
+from ironsbot.runtime.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    normalized_text_target,
+)
 
 ReplyBeforeSend = Callable[[Event | None], Awaitable[None]]
-CommandIdResolver = Callable[[MessageEvent, T_State], str | None]
-CommandIdSource = str | CommandIdResolver
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
-TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
-QUEUED_CONVERSATION_TOKEN_STATE_KEY = "_ironsbot_queued_conversation_token"
-QUEUED_CONVERSATION_TICKET_STATE_KEY = "_ironsbot_queued_conversation_ticket"
-_COMMAND_COOLDOWN_TOKEN_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
+SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 T = TypeVar("T")
 
@@ -95,274 +122,14 @@ def bind_async(
     )
 
 
-class CooldownDecision(Protocol):
-    @property
-    def allowed(self) -> bool: ...
-
-    @property
-    def token(self) -> object | None: ...
-
-    @property
-    def feedback(self) -> str | None: ...
-
-
-class CommandCooldown(Protocol):
-    def admit(
-        self,
-        *,
-        user_id: int,
-        command_id: str,
-        now: float | None = None,
-    ) -> CooldownDecision: ...
-
-    def finish(self, token: object) -> None: ...
-
-
-class PromptSessionManagerMissingError(RuntimeError):
-    pass
-
-
-class PromptLoopConfigurationError(ValueError):
-    def __init__(self) -> None:
-        super().__init__("queued prompt requires a reply check")
-
-
 @dataclass(frozen=True, slots=True)
 class _MatcherRuntimeContext:
     before_reply_send: ReplyBeforeSend | None
     prompt_session_manager: PromptSessionManager | None
+    in_flight_requests: InFlightRequestService | None
 
 
 _MATCHER_RUNTIME_CONTEXTS: dict[str, _MatcherRuntimeContext] = {}
-
-
-@dataclass(slots=True)
-class _TemporaryMatcherState:
-    state: T_State
-    expiry_handle: TimerHandle
-
-
-@dataclass(slots=True)
-class _QueuedConversation:
-    token: str
-    key: str
-    namespace: str
-    event_session_id: str
-    state: T_State
-    reply_check: Callable[[Event], bool]
-    handlers: list[Any]
-    active: bool = True
-    keep_open: bool = False
-    _next_ticket: int = 0
-    _active_ticket: int | None = None
-    _waiters: deque[tuple[int, Future[bool]]] = field(default_factory=deque)
-
-    def matches(self, event: Event) -> bool:
-        return self.active and self.reply_check(event)
-
-    def update_reply_check(self, reply_check: Callable[[Event], bool]) -> None:
-        self.reply_check = reply_check
-
-    async def acquire(self) -> int | None:
-        if not self.active:
-            return None
-        self._next_ticket += 1
-        ticket = self._next_ticket
-        future: Future[bool] = get_running_loop().create_future()
-        if self._active_ticket is None:
-            self._active_ticket = ticket
-            future.set_result(True)
-        else:
-            self._waiters.append((ticket, future))
-        try:
-            await future
-        except BaseException:
-            self._waiters = deque(
-                item for item in self._waiters if item[0] != ticket
-            )
-            raise
-        return ticket if self.active else None
-
-    def complete(self, ticket: int) -> None:
-        if self._active_ticket != ticket:
-            return
-        self._active_ticket = None
-        while self._waiters:
-            next_ticket, future = self._waiters.popleft()
-            if future.cancelled():
-                continue
-            self._active_ticket = next_ticket
-            future.set_result(True)
-            break
-
-    def close(self) -> None:
-        self.active = False
-        self.keep_open = False
-        for _, future in self._waiters:
-            if not future.done():
-                future.cancel()
-        self._waiters.clear()
-
-
-class PromptSessionManager:
-    _temporary_matcher_states: ClassVar[dict[str, _TemporaryMatcherState]] = {}
-
-    def __init__(self) -> None:
-        self._versions: dict[str, int] = {}
-        self._queued_by_key: dict[str, _QueuedConversation] = {}
-        self._queued_by_token: dict[str, _QueuedConversation] = {}
-        self._queued_expiry_handles: dict[str, TimerHandle] = {}
-        self._cancelled_queued_tokens: set[str] = set()
-
-    def acquire(self, session_id: str) -> int:
-        version = self._versions.get(session_id, 0) + 1
-        self._versions[session_id] = version
-        return version
-
-    def invalidate(self, session_id: str) -> None:
-        self.acquire(session_id)
-
-    def invalidate_event_conversations(self, event: Event) -> None:
-        event_session_id = event.get_session_id()
-        for context in tuple(self._queued_by_token.values()):
-            if context.event_session_id == event_session_id:
-                self._cancel_queued_conversation(context)
-
-    def start_queued_conversation(
-        self,
-        *,
-        namespace: str,
-        event_session_id: str,
-        state: T_State,
-        reply_check: Callable[[Event], bool],
-        handlers: list[Any],
-    ) -> _QueuedConversation:
-        key = f"{namespace}:{event_session_id}"
-        if existing := self._queued_by_key.get(key):
-            self._cancel_queued_conversation(existing)
-        saved_state = dict(state)
-        saved_state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
-        context = _QueuedConversation(
-            token=token_urlsafe(18),
-            key=key,
-            namespace=namespace,
-            event_session_id=event_session_id,
-            state=saved_state,
-            reply_check=reply_check,
-            handlers=handlers,
-        )
-        self._queued_by_key[key] = context
-        self._queued_by_token[context.token] = context
-        return context
-
-    def queued_conversation(
-        self,
-        state: T_State,
-    ) -> _QueuedConversation | None:
-        token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
-        if not isinstance(token, str):
-            return None
-        return self._queued_by_token.get(token)
-
-    def finish_queued_conversation(self, state: T_State) -> None:
-        context = self.queued_conversation(state)
-        ticket = state.get(QUEUED_CONVERSATION_TICKET_STATE_KEY)
-        token = state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
-        state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
-        if context is None or not isinstance(ticket, int):
-            if isinstance(token, str) and isinstance(ticket, int):
-                self._cancelled_queued_tokens.discard(token)
-            return
-        if not context.active or not context.keep_open:
-            self._close_queued_conversation(context)
-            return
-        context.keep_open = False
-        context.state = dict(state)
-        context.complete(ticket)
-
-    def cancel_queued_conversation(self, state: T_State) -> None:
-        if context := self.queued_conversation(state):
-            self._cancel_queued_conversation(context)
-
-    def queued_conversation_is_cancelled(self, state: T_State) -> bool:
-        token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
-        return isinstance(token, str) and token in self._cancelled_queued_tokens
-
-    def refresh_queued_conversation_expiry(
-        self,
-        context: _QueuedConversation,
-        *,
-        expires_after: timedelta,
-    ) -> None:
-        if previous := self._queued_expiry_handles.pop(context.token, None):
-            previous.cancel()
-        self._queued_expiry_handles[context.token] = get_running_loop().call_later(
-            max(expires_after.total_seconds(), 0),
-            self._expire_queued_conversation,
-            context.token,
-        )
-
-    def _close_queued_conversation(self, context: _QueuedConversation) -> None:
-        if expiry_handle := self._queued_expiry_handles.pop(context.token, None):
-            expiry_handle.cancel()
-        context.close()
-        self._queued_by_key.pop(context.key, None)
-        self._queued_by_token.pop(context.token, None)
-
-    def _cancel_queued_conversation(self, context: _QueuedConversation) -> None:
-        if context._active_ticket is not None:
-            self._cancelled_queued_tokens.add(context.token)
-        self._close_queued_conversation(context)
-
-    def _expire_queued_conversation(self, token: str) -> None:
-        self._queued_expiry_handles.pop(token, None)
-        if context := self._queued_by_token.get(token):
-            self._cancel_queued_conversation(context)
-
-    def make_rule(
-        self,
-        session_id: str,
-        version: int,
-        content_check: Callable[[Event], bool],
-    ) -> Rule:
-        def check(event: Event) -> bool:
-            return (
-                self._versions.get(session_id) == version
-                and content_check(event)
-            )
-
-        return Rule(check)
-
-    @classmethod
-    def store_temporary_matcher_state(
-        cls,
-        state: T_State,
-        *,
-        expires_after: timedelta,
-    ) -> str:
-        token = token_urlsafe(18)
-        expiry_handle = get_running_loop().call_later(
-            max(expires_after.total_seconds(), 0),
-            cls._discard_temporary_matcher_state,
-            token,
-        )
-        cls._temporary_matcher_states[token] = _TemporaryMatcherState(
-            state=state,
-            expiry_handle=expiry_handle,
-        )
-        return token
-
-    @classmethod
-    def take_temporary_matcher_state(cls, token: str) -> T_State | None:
-        stored = cls._temporary_matcher_states.pop(token, None)
-        if stored is None:
-            return None
-        stored.expiry_handle.cancel()
-        return stored.state
-
-    @classmethod
-    def _discard_temporary_matcher_state(cls, token: str) -> None:
-        cls._temporary_matcher_states.pop(token, None)
 
 
 def _runtime_context(
@@ -388,8 +155,11 @@ def get_prompt_session_manager(
 def get_reply_before_send(
     source: Matcher | dict[Any, Any],
 ) -> ReplyBeforeSend | None:
-    context = _runtime_context(source)
-    return None if context is None else context.before_reply_send
+    return (
+        None
+        if (context := _runtime_context(source)) is None
+        else context.before_reply_send
+    )
 
 
 def get_queued_conversation(
@@ -454,6 +224,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
     *,
     queue_namespace: str | None = None,
     queue_reply_check: Callable[[Event], bool] | None = None,
+    queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     **kwargs: Any,
 ) -> None:
     if queued_conversation_is_cancelled(matcher):
@@ -466,6 +237,9 @@ async def enter_prompt_loop(  # noqa: PLR0913
         if context := get_queued_conversation(matcher):
             if context.namespace == queue_namespace:
                 context.update_reply_check(queue_reply_check)
+                context.update_semantic_request_resolver(
+                    queue_semantic_request_resolver
+                )
                 context.keep_open = True
                 raise FinishedException
             get_prompt_session_manager(matcher).cancel_queued_conversation(
@@ -475,12 +249,19 @@ async def enter_prompt_loop(  # noqa: PLR0913
             matcher.state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
         event = current_event.get()
         prompt_sessions = get_prompt_session_manager(matcher)
+        runtime_context = _runtime_context(matcher)
         queued = prompt_sessions.start_queued_conversation(
             namespace=queue_namespace,
             event_session_id=event.get_session_id(),
             state=matcher.state,
             reply_check=queue_reply_check,
             handlers=handlers,
+            semantic_request_resolver=queue_semantic_request_resolver,
+            request_service=(
+                None
+                if runtime_context is None
+                else runtime_context.in_flight_requests
+            ),
         )
         await _create_queued_temp_matcher(matcher, queued)
         raise FinishedException
@@ -553,12 +334,12 @@ async def _create_queued_temp_matcher(
     )
 
 
-async def _capture_queued_conversation_input(
+async def _capture_queued_conversation_input(  # noqa: C901
     matcher: Matcher,
     event: Event,
-    state: T_State,
+    _state: T_State,
 ) -> None:
-    context = get_queued_conversation(state)
+    context = get_queued_conversation(_state)
     if context is None or not context.active:
         raise FinishedException
 
@@ -566,7 +347,7 @@ async def _capture_queued_conversation_input(
         raise FinishedException
 
     if event.get_plaintext().strip() == "0":
-        get_prompt_session_manager(state).cancel_queued_conversation(state)
+        get_prompt_session_manager(_state).cancel_queued_conversation(_state)
         if getattr(event, "group_id", None) is not None:
             await matcher.finish(
                 OneBotMessageSegment.at(event.user_id)
@@ -574,14 +355,52 @@ async def _capture_queued_conversation_input(
             )
         await matcher.finish("已退出当前选择。")
 
+    request_token: object | None = None
+    if context.semantic_request_resolver is not None:
+        request = context.semantic_request_resolver(event, context.state)
+        request_service = context.request_service
+        if request is not None and request_service is not None:
+            decision = request_service.admit(
+                user_id=event.user_id,
+                request=request,
+            )
+            if not decision.allowed:
+                await _create_queued_temp_matcher(matcher, context)
+                context.keep_open = True
+                if decision.feedback is not None:
+                    await _send_in_flight_feedback(matcher, event, decision.feedback)
+                raise FinishedException
+            request_token = decision.token
+
     await _create_queued_temp_matcher(matcher, context)
-    ticket = await context.acquire()
+    try:
+        ticket = await context.acquire(request_token)
+    except BaseException:
+        if request_token is not None and context.request_service is not None:
+            context.request_service.finish(request_token)
+        raise
     if ticket is None:
         raise FinishedException
-    state.clear()
-    state.update(context.state)
-    state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
-    state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
+    _state.clear()
+    _state.update(context.state)
+    _state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
+    _state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
+    if request_token is not None:
+        _state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_token
+
+
+async def _send_in_flight_feedback(
+    matcher: Matcher,
+    event: MessageEvent,
+    feedback: str,
+) -> None:
+    if getattr(event, "group_id", None) is not None:
+        await matcher.send(
+            OneBotMessageSegment.at(event.user_id)
+            + OneBotMessageSegment.text(f" {feedback}")
+        )
+        return
+    await matcher.send(feedback)
 
 
 async def _restore_temporary_matcher_state(state: T_State) -> None:
@@ -599,30 +418,33 @@ async def _restore_temporary_matcher_state(state: T_State) -> None:
     state.update(incoming_state)
 
 
-class CommandPolicyError(ValueError):
-    @classmethod
-    def ambiguous(cls) -> CommandPolicyError:
-        return cls("command policy requires exactly one command id or exemption")
-
-    @classmethod
-    def empty_exemption(cls) -> CommandPolicyError:
-        return cls("command policy exemption reason must not be empty")
-
-
 @dataclass(frozen=True, slots=True)
 class CommandPolicy:
     command_id: CommandIdSource | None = None
     exemption_reason: str | None = None
+    semantic_request: SemanticRequestResolver | None = None
 
     def __post_init__(self) -> None:
         if (self.command_id is None) == (self.exemption_reason is None):
             raise CommandPolicyError.ambiguous()
         if self.exemption_reason is not None and not self.exemption_reason.strip():
             raise CommandPolicyError.empty_exemption()
+        if self.exemption_reason is not None and (
+            self.semantic_request is not None
+        ):
+            raise CommandPolicyError.exempt_with_semantic_request()
 
     @classmethod
-    def command(cls, command_id: CommandIdSource) -> CommandPolicy:
-        return cls(command_id=command_id)
+    def command(
+        cls,
+        command_id: CommandIdSource,
+        *,
+        semantic_request: SemanticRequestResolver | None = None,
+    ) -> CommandPolicy:
+        return cls(
+            command_id=command_id,
+            semantic_request=semantic_request,
+        )
 
     @classmethod
     def exempt(cls, reason: str) -> CommandPolicy:
@@ -635,6 +457,7 @@ class MatcherRegistry:
     priorities: object
     before_reply_send: ReplyBeforeSend | None = None
     prompt_session_manager: PromptSessionManager | None = None
+    in_flight_requests: InFlightRequestService | None = None
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
     _notice_matchers: list[type[Matcher]] = field(default_factory=list)
     _cooldown_registrations: dict[type[Matcher], tuple[str, str]] = field(
@@ -643,12 +466,17 @@ class MatcherRegistry:
     _runtime_context_token: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.before_reply_send is None and self.prompt_session_manager is None:
+        if (
+            self.before_reply_send is None
+            and self.prompt_session_manager is None
+            and self.in_flight_requests is None
+        ):
             return
         token = token_urlsafe(18)
         _MATCHER_RUNTIME_CONTEXTS[token] = _MatcherRuntimeContext(
             before_reply_send=self.before_reply_send,
             prompt_session_manager=self.prompt_session_manager,
+            in_flight_requests=self.in_flight_requests,
         )
         self._runtime_context_token = token
 
@@ -697,6 +525,9 @@ class MatcherRegistry:
         async def finalize(state: T_State) -> None:
             with suppress(PromptSessionManagerMissingError):
                 get_prompt_session_manager(state).finish_queued_conversation(state)
+            token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
+            if token is not None and self.in_flight_requests is not None:
+                self.in_flight_requests.finish(token)
             token = state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
             if token is not None:
                 self.cooldown.finish(token)
@@ -727,7 +558,7 @@ class MatcherRegistry:
         policy: CommandPolicy,
     ) -> type[Matcher]:
         if policy.command_id is not None:
-            self._install_cooldown(matcher, policy.command_id)
+            self._install_admission(matcher, policy)
         else:
             self._cooldown_registrations[matcher] = (
                 "exempt",
@@ -736,13 +567,16 @@ class MatcherRegistry:
         self._message_matchers.append(matcher)
         return matcher
 
-    def _install_cooldown(
+    def _install_admission(  # noqa: C901
         self,
         matcher: type[Matcher],
-        command_id: CommandIdSource,
+        policy: CommandPolicy,
     ) -> None:
+        command_id = policy.command_id
+        if command_id is None:
+            return
         resolver = (
-            _static_command_id(command_id)
+            static_command_id(command_id)
             if isinstance(command_id, str)
             else command_id
         )
@@ -752,7 +586,7 @@ class MatcherRegistry:
             else getattr(resolver, "__name__", type(resolver).__name__)
         )
 
-        async def admit(
+        async def admit(  # noqa: C901
             matcher: Matcher,
             event: MessageEvent,
             state: T_State,
@@ -765,10 +599,36 @@ class MatcherRegistry:
                 logger.warning("command cooldown resolver returned an empty command id")
                 return
 
+            request = (
+                policy.semantic_request(event, state)
+                if policy.semantic_request is not None
+                else _default_semantic_request(
+                    command_id=normalized_id,
+                    label=str(label),
+                    event=event,
+                    _state=state,
+                )
+            )
+            if request is not None:
+                state[SEMANTIC_REQUEST_STATE_KEY] = request
+                if self.in_flight_requests is not None:
+                    request_decision = self.in_flight_requests.admit(
+                        user_id=event.user_id,
+                        request=request,
+                    )
+                    if request_decision.token is not None:
+                        state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_decision.token
+                    if not request_decision.allowed:
+                        await matcher.finish(request_decision.feedback)
+
             decision = self.cooldown.admit(
                 user_id=event.user_id,
                 command_id=normalized_id,
             )
+            if not decision.allowed:
+                request_token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
+                if request_token is not None and self.in_flight_requests is not None:
+                    self.in_flight_requests.finish(request_token)
             if decision.token is not None:
                 state[_COMMAND_COOLDOWN_TOKEN_KEY] = decision.token
             if not decision.allowed:
@@ -789,8 +649,22 @@ class MatcherRegistry:
         return updated
 
 
-def _static_command_id(command_id: str) -> CommandIdResolver:
-    def resolve(_event: MessageEvent, _state: T_State) -> str:
-        return command_id
-
-    return resolve
+def _default_semantic_request(
+    *,
+    command_id: str,
+    label: str,
+    event: MessageEvent,
+    _state: T_State,
+) -> SemanticRequest | None:
+    target = normalized_text_target(event.get_plaintext())
+    if target is None:
+        return None
+    return SemanticRequest(
+        action=ActionDefinition(
+            id=command_id,
+            label=label,
+            cooldown_key=command_id,
+        ),
+        target=target,
+        source=SemanticRequestSource.DIRECT,
+    )

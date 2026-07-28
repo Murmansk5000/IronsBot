@@ -13,6 +13,10 @@ from nonebot_plugin_saa import Image, MessageFactory
 from ironsbot.runtime.matchers import queued_conversation_is_cancelled
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
+from ironsbot.runtime.semantic_requests import (
+    ActionDefinition,
+    SemanticTarget,
+)
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.query_result import QueryResult
@@ -47,6 +51,7 @@ def make_query_handler(
     search: SearchQuery[T],
     select: SelectionQuery[T],
     prompt_title: str,
+    action: ActionDefinition,
 ) -> Callable[[Matcher, T_State, Event], Awaitable[None]]:
     async def resolve_selection(
         item: PromptItem[T],
@@ -87,12 +92,14 @@ def make_query_handler(
             state,
             Prompt(
                 title=prompt_title,
+                action=action,
                 items=[
                     PromptItem(
                         choice.name,
                         choice.description,
                         choice.value,
                         is_sub_prompt=choice.is_sub_choice,
+                        semantic_target=_query_choice_semantic_target(choice),
                     )
                     for choice in result.choices
                 ],
@@ -101,3 +108,22 @@ def make_query_handler(
         )
 
     return handle
+
+
+def _query_choice_semantic_target(choice: object) -> SemanticTarget:
+    explicit = getattr(choice, "semantic_target", None)
+    if isinstance(explicit, SemanticTarget):
+        return explicit
+    value = getattr(choice, "value", None)
+    if isinstance(value, (str, int)):
+        return SemanticTarget(key=str(value), display=str(value))
+    for attribute in ("id", "item_id", "pet_id", "resource_id"):
+        candidate = getattr(value, attribute, None)
+        if isinstance(candidate, (str, int)):
+            return SemanticTarget(key=str(candidate), display=str(candidate))
+    name = str(getattr(choice, "name", "")).strip()
+    description = str(getattr(choice, "description", "")).strip()
+    return SemanticTarget(
+        key=f"{name}\x1f{description}",
+        display=name or description,
+    )
