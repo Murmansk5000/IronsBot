@@ -489,6 +489,27 @@ class PlayerService(PlayerAccountPolicyMixin):
                 pending.player_id,
             )
 
+    def start_background_refresh(
+        self,
+        pending: PendingPlayerQuery,
+        *,
+        group_id: int | None = None,
+    ) -> None:
+        """Begin optional detail prefetch only after the initial reply is sent."""
+        try:
+            game = self._headless.get_game()
+        except (NotLoggedInError, DisconnectedError):
+            logger.info(
+                "跳过米米号后台预热：无头客户端当前不可用 player_id=%s",
+                pending.player_id,
+            )
+            return
+        self._details.start_background_refresh(
+            game,
+            pending,
+            group_id=group_id,
+        )
+
     def unbind(self, qq_user_id: int) -> str:
         binding = self._bindings.get(qq_user_id)
         if binding.player_id is None:
@@ -623,11 +644,6 @@ class PlayerService(PlayerAccountPolicyMixin):
             await self._headless.mark_available(
                 source=source,
                 user_id=int(game.user_id),
-            )
-            self._details.start_background_refresh(
-                game,
-                pending,
-                group_id=group_id,
             )
             return PlayerQueryResult(pending=pending)
         except (TimeoutError, asyncio.TimeoutError):
