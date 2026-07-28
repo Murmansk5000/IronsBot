@@ -127,7 +127,7 @@ def test_autocard_search_returns_selection_prompt_for_multiple_matches() -> None
     )
     assert "1. 破界法术（法术牌 102 普通 Lv1 火）" in result.prompt_text
     assert "2. 破界者（角色 201 火）" in result.prompt_text
-    assert "输入 0 退出" in result.prompt_text
+    assert "0.【退出】" in result.prompt_text
 
 
 def test_autocard_select_returns_rendered_role_entry() -> None:

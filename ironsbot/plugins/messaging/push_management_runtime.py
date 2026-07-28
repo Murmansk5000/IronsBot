@@ -9,9 +9,15 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from ironsbot.runtime.conversations import event_conversation_session_id
-from ironsbot.runtime.matchers import get_prompt_session_manager, reject_with_rule
+from ironsbot.runtime.matchers import (
+    get_prompt_session_manager,
+    reject_with_rule,
+    update_queued_reply_check,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.matcher import Matcher
@@ -56,6 +62,23 @@ class PromptFlow:
         *,
         selection: bool = True,
     ) -> Rule:
+        return get_prompt_session_manager(state).make_rule(
+            session_id,
+            version,
+            self.reply_check(
+                session_id,
+                target_type,
+                selection=selection,
+            ),
+        )
+
+    def reply_check(
+        self,
+        session_id: str,
+        target_type: PushTargetType,
+        *,
+        selection: bool = True,
+    ) -> Callable[[Event], bool]:
         event_type = (
             GroupMessageEvent if target_type == "group" else PrivateMessageEvent
         )
@@ -71,11 +94,7 @@ class PromptFlow:
                 and (text.isdigit() if selection else bool(text))
             )
 
-        return get_prompt_session_manager(state).make_rule(
-            session_id,
-            version,
-            check,
-        )
+        return check
 
     async def reject(
         self,
@@ -94,6 +113,12 @@ class PromptFlow:
             or target_type not in {"private", "group"}
         ):
             await matcher.finish(prompt)
+        reply_check = self.reply_check(
+            session_id,
+            cast("PushTargetType", target_type),
+            selection=selection,
+        )
+        update_queued_reply_check(matcher, reply_check)
         await reject_with_rule(
             matcher,
             self.rule(

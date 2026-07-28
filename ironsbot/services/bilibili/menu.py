@@ -4,10 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.core.selection import (
-    SelectionMenuItem,
-    format_selection_menu,
-)
+from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

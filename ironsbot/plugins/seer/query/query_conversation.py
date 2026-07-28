@@ -10,6 +10,7 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
+from ironsbot.runtime.matchers import queued_conversation_is_cancelled
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.services.seer.data import DataUnavailableError
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 SearchQuery = Callable[[str], Awaitable[QueryResult[T]]]
 SelectionQuery = Callable[[T], Awaitable[QueryResult[Any]]]
+
+
+def _raise_if_selection_cancelled(matcher: Matcher) -> None:
+    if queued_conversation_is_cancelled(matcher):
+        raise FinishedException
 
 
 def build_reply(reply: QueryReply) -> MessageFactory:
@@ -49,8 +55,10 @@ def make_query_handler(
         try:
             result = await select(item.value)
         except DataUnavailableError:
+            _raise_if_selection_cancelled(matcher)
             await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
             return
+        _raise_if_selection_cancelled(matcher)
         if result.message:
             await matcher.finish(result.message)
             return

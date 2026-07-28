@@ -13,11 +13,14 @@ from ironsbot.services.operations.server_status import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
     from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.config.models.operations import ServerStatusConfig
     from ironsbot.core.features import FeatureService
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
 
 
 @dataclass(slots=True)
