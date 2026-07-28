@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
-DYNAMIC_SELECT_COMMANDS = tuple(str(number) for number in range(1, 11))
 BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
 BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 
@@ -103,4 +102,4 @@ def is_bili_push_mode_command(
 
 
 def is_dynamic_select_reply(event: MessageEvent) -> bool:
-    return command_text_matches(event.get_plaintext(), DYNAMIC_SELECT_COMMANDS)
+    return event.get_plaintext().strip().isdigit()
