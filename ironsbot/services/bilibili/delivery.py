@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
-from ironsbot.services.messaging.promotions import split_fire_manual_ad_group_ids
+from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
+    from ironsbot.core.messaging import MessageTarget
     from ironsbot.services.bilibili.targets import BiliPushTargets
     from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.messaging.subscriptions import (
@@ -29,7 +30,6 @@ DynamicRenderer = Callable[
     [dict[str, Any], int, DynamicRenderMode],
     Any | None,
 ]
-MessageTransform = Callable[[Any], Any]
 HintAppender = Callable[[Any, str], Any]
 
 
@@ -47,7 +47,6 @@ class BilibiliPushDeliveryService:
     delivery: MessageDelivery
     subscriptions: PushSubscriptionRepository
     render: DynamicRenderer
-    append_promotion: MessageTransform
     append_hint: HintAppender
 
     def build_deliveries(
@@ -93,7 +92,7 @@ class BilibiliPushDeliveryService:
                 private_user_ids=planned.private_user_ids,
                 action_name=planned.action_name,
                 interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-                message_limiter=self._append_admin_hint,
+                message_limiter=self._transform_target_message,
                 subscription_key=bili_push_subscription_key(author_mid),
             )
 
@@ -107,37 +106,29 @@ class BilibiliPushDeliveryService:
         private_user_ids: list[int],
         action_name: str,
     ) -> list[DynamicPushDelivery]:
-        promoted_groups, plain_groups = split_fire_manual_ad_group_ids(
-            self.features,
-            group_ids,
-        )
-        variants = (
-            (promoted_groups, [], True),
-            ([], private_user_ids, True),
-            (plain_groups, [], False),
-        )
-        deliveries: list[DynamicPushDelivery] = []
-        for variant_groups, variant_users, promoted in variants:
-            if not variant_groups and not variant_users:
-                continue
-            message = self.render(item, pub_ts, mode)
-            if message is None:
-                continue
-            if promoted:
-                message = self.append_promotion(message)
-            deliveries.append(
-                DynamicPushDelivery(
-                    message=message,
-                    group_ids=variant_groups,
-                    private_user_ids=variant_users,
-                    action_name=action_name,
-                )
+        if not group_ids and not private_user_ids:
+            return []
+        message = self.render(item, pub_ts, mode)
+        if message is None:
+            return []
+        return [
+            DynamicPushDelivery(
+                message=message,
+                group_ids=group_ids,
+                private_user_ids=private_user_ids,
+                action_name=action_name,
             )
-        return deliveries
+        ]
 
-    def _append_admin_hint(self, message: Any, group_id: int | None) -> Any:
-        if group_id is None:
+    def _transform_target_message(
+        self,
+        message: Any,
+        target: MessageTarget,
+    ) -> Any:
+        message = append_fire_manual_ad_for_target(self.features, message, target)
+        if target.target_type != "group":
             return message
+        group_id = target.target_id
         if not self.subscriptions.mark_daily_hint_sent(
             "group",
             group_id,

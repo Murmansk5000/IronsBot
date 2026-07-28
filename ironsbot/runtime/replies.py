@@ -11,11 +11,7 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 
-from ironsbot.core.messaging import (
-    FIRE_MANUAL_LINK_MESSAGE,
-    FIRE_MANUAL_URL,
-    MessageTarget,
-)
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.runtime.matchers import get_reply_before_send
 
 if TYPE_CHECKING:
@@ -57,12 +53,6 @@ def append_text_hint(message: str | Message, hint: str) -> str | Message:
         return message
     text = message.rstrip()
     return text if hint in text else hint if not text else f"{text}\n\n{hint}"
-
-
-def append_fire_manual_ad_message(message: Message) -> Message:
-    if FIRE_MANUAL_URL not in str(message):
-        message += MessageSegment.text(f"\n\n{FIRE_MANUAL_LINK_MESSAGE}")
-    return message
 
 
 def event_sender_at_user_ids(event: MessageEvent | None) -> tuple[int, ...]:

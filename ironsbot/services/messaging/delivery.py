@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 
-MessageLimiter = Callable[[Any, int | None], Any]
+MessageLimiter = Callable[[Any, MessageTarget], Any]
 
 
 class MessageDelivery(Protocol):

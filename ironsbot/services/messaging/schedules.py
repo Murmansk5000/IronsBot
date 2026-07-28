@@ -4,8 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.messaging import append_fire_manual_ad_text
-from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_group
+from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_target
 from ironsbot.services.messaging.subscription_options import (
     schedule_key,
 )
@@ -55,9 +54,13 @@ async def send_private_schedule(
         ]
 
     await messaging._delivery.broadcast(
-        append_fire_manual_ad_text(task.message),
+        task.message,
         private_user_ids=private_user_ids,
         action_name=f"private scheduled message {task.id or '<unnamed>'}",
+        message_limiter=partial(
+            append_fire_manual_ad_for_target,
+            messaging._features,
+        ),
         subscription_key=schedule_key(index, task),
     )
 
@@ -91,7 +94,7 @@ async def send_group_schedule(
         group_at_user_ids=task.at_user_ids,
         action_name=f"group scheduled message {task.id or '<unnamed>'}",
         message_limiter=partial(
-            append_fire_manual_ad_for_group,
+            append_fire_manual_ad_for_target,
             messaging._features,
         ),
         subscription_key=schedule_key(index, task),
