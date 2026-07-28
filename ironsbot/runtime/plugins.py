@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.core.features import Feature
+    from ironsbot.runtime.commands import CommandDescriptor
     from ironsbot.runtime.matchers import MatcherRegistry
 
 HookResult: TypeAlias = Awaitable[None] | None
@@ -25,10 +26,10 @@ PluginInstall: TypeAlias = Callable[["MatcherRegistry"], None]
 class HelpEntry:
     name: str
     description: str
-    usage: str
     group: str
     order: int
     visible: HelpVisibility | None = None
+    notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,5 +46,6 @@ class PluginDefinition:
     id: str
     features: frozenset[Feature] = frozenset()
     help: HelpEntry | None = None
+    commands: tuple[CommandDescriptor, ...] = ()
     install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()

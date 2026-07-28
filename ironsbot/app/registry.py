@@ -4,12 +4,28 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
+from ironsbot.app.command_descriptors import (
+    about_commands,
+    activity_commands,
+    ai_chat_commands,
+    ai_intent_commands,
+    bilibili_commands,
+    configured_image_commands,
+    configured_message_commands,
+    data_sync_commands,
+    help_commands,
+    meeting_commands,
+    messaging_help_visible,
+    rank_commands,
+    seer_query_commands,
+    server_status_commands,
+    team_resource_commands,
+)
 from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
-from ironsbot.plugins.operations.status.command_text import SERVER_STATUS_USAGE
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -22,14 +38,12 @@ from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
-from ironsbot.services.seer.rank_usage import build_rank_help_message
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.app.composition import ApplicationResources
-    from ironsbot.config.models.messaging import MessageConfig
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
@@ -73,20 +87,13 @@ def _superuser_help_visible(
     return user_id is not None and features.is_superuser(int(user_id))
 
 
-def _messaging_help_visible(
+def _superuser_only_help_visible(
     event: Event,
     *,
     features: FeatureService,
-    config: MessageConfig,
 ) -> bool:
-    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
-        return False
-    actions = [*config.commands, *config.schedules]
-    return any(
-        action.enabled
-        and event_is_feature_visible_in_help(features, event, action.feature)
-        for action in actions
-    )
+    user_id = getattr(event, "user_id", None)
+    return user_id is not None and features.is_superuser(int(user_id))
 
 
 def build_plugin_registry(  # noqa: PLR0915 - declarative registry
@@ -207,6 +214,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 registry,
                 seer_resources,
                 features,
+                resources.commands,
                 priority_service.release,
             )
         )
@@ -243,6 +251,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             registry,
             definitions,
             features,
+            resources.commands,
             ignored_plugins=tuple(config.features.help.ignored_plugins),
         )
 
@@ -284,16 +293,20 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 description=(
                     "查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服"
                 ),
-                usage=SERVER_STATUS_USAGE,
                 group="seer",
                 order=70,
+                notes=(
+                    "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
+                ),
             ),
+            commands=server_status_commands(),
             install=partial(
                 install_server_status,
                 server_status_config=config.operations.server_status,
                 docker_service=docker_update_service,
                 server_status=server_status,
                 features=features,
+                commands=resources.commands,
                 delivery=delivery,
                 message_limiter=resources.push_message_limiter,
             ),
@@ -303,6 +316,17 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         ),
         PluginDefinition(
             id="db_sync",
+            help=HelpEntry(
+                name="数据更新",
+                description="构建并同步赛尔数据库与别名数据库",
+                group="admin",
+                order=20,
+                visible=partial(
+                    _superuser_only_help_visible,
+                    features=features,
+                ),
+            ),
+            commands=data_sync_commands(),
             install=partial(
                 install_db_sync,
                 service=data_sync_service,
@@ -332,20 +356,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="文本发送",
                 description="按配置回复固定文本/链接，也可定时向群或私聊发送文本",
-                usage=(
-                    "【文本发送】\n"
-                    "按 message 配置组中的关键词回复固定文本。\n"
-                    "按 message 配置组中的定时任务推送文本。\n"
-                    "常用场景：签到链接、活动链接、信息聚合页、群公告等。"
-                ),
                 group="message",
                 order=30,
                 visible=partial(
-                    _messaging_help_visible,
+                    messaging_help_visible,
                     features=features,
                     config=config.messaging,
                 ),
             ),
+            commands=configured_message_commands(config.messaging),
             install=partial(
                 install_messaging,
                 refresh_push_time_jobs=push_time_refresher,
@@ -365,13 +384,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="自定义无头登录",
                 description="自定义无头登录状态检查、掉线播报和定时重连",
-                usage=(
-                    "【自定义无头登录】\n"
-                    "启动后检查无头米米号是否登录成功。\n"
-                    "登录状态变化只通知 admin_notice 管理目标。"
-                ),
                 group="admin",
                 order=40,
+                notes=(
+                    "启动后检查无头米米号是否登录成功；登录状态变化仅通知管理目标。",
+                ),
                 visible=partial(
                     _superuser_help_visible,
                     features=features,
@@ -425,18 +442,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="B站动态",
                 description="查询、刷新和自动推送已订阅 UID 的 Bilibili 动态",
-                usage=(
-                    "【B站动态】\n"
-                    "动态：查看订阅账号的最新动态。\n"
-                    "/动态更新、/动态刷新：超级管理员手动刷新。\n"
-                    "B站账号：查看当前会话订阅账号。\n"
-                    "B站推送模式 <账号别名|公开昵称|UID> "
-                    "<内容|链接|默认>："
-                    "修改当前会话推送模式。"
-                ),
                 group="message",
                 order=20,
             ),
+            commands=bilibili_commands(),
             install=partial(
                 install_bilibili,
                 service=bilibili_service,
@@ -467,14 +476,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="活动结束提醒",
                 description="读取活动结束时间并提前提醒即将结束的活动",
-                usage=(
-                    "【活动结束提醒】\n"
-                    "按 activity.lead_hours 配置提前提醒。\n"
-                    "发送 当前活动 或 快结束活动 查询活动。"
-                ),
                 group="message",
                 order=10,
+                notes=("自动提醒时间由 activity.lead_hours 配置。",),
             ),
+            commands=activity_commands(),
             install=partial(
                 install_activity,
                 service=activity_service,
@@ -495,12 +501,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="战队资源订阅",
                 description="群内订阅战队，并在资源不足时定时提醒指定用户。",
-                usage=(
-                    "【战队资源订阅】\n"
-                    "发送 战队 查询本群订阅。\n"
-                    "群主/管理员可发送：订阅战队123456、"
-                    "取消订阅战队123456、战队订阅。"
-                ),
                 group="seer",
                 order=50,
                 visible=partial(
@@ -510,6 +510,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     enabled=config.seer.team_resource.enabled,
                     group_only=True,
                 ),
+            ),
+            commands=team_resource_commands(
+                enabled=config.seer.team_resource.enabled
             ),
             install=partial(
                 install_team_resource,
@@ -564,10 +567,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="赛尔号查询",
                 description="按当前权限开放赛尔号查询子功能",
-                usage="帮助菜单会按当前会话权限显示可用的赛尔号查询指令。",
                 group="seer",
                 order=10,
             ),
+            commands=seer_query_commands(),
             install=install_seer_query,
             hooks=PluginHooks(
                 startup=(
@@ -631,7 +634,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="AI聊天",
                 description="接入 OpenAI-compatible API 的自定义聊天插件",
-                usage="群聊中 @机器人 并附带问题；私聊中直接发送问题。",
                 group="ai",
                 order=10,
                 visible=partial(
@@ -641,6 +643,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     enabled=bool(config.ai.api_key.strip()),
                 ),
             ),
+            commands=ai_chat_commands(enabled=bool(config.ai.api_key.strip())),
             install=partial(
                 install_ai,
                 service=ai_service,
@@ -661,10 +664,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="AI意图分析",
                 description="按配置识别简短意图，并触发对应回复或功能。",
-                usage=(
-                    "【AI意图分析】\n"
-                    "按 ai.intent_actions 配置进行关键词粗筛和意图判断。"
-                ),
                 group="ai",
                 order=20,
                 visible=partial(
@@ -677,6 +676,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     ),
                 ),
             ),
+            commands=ai_intent_commands(config),
             install=partial(
                 install_ai_intent,
                 service=ai_service,
@@ -690,11 +690,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="关于",
                 description="IronsBot 项目信息与当前版本",
-                usage="发送“关于”查看 IronsBot 当前版本、项目地址和主要能力。",
                 group="core",
                 order=20,
                 visible=_always_help_visible,
             ),
+            commands=about_commands(),
             install=install_about,
         ),
         PluginDefinition(
@@ -703,11 +703,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="帮助",
                 description="按当前群/私聊权限显示可用功能",
-                usage="发送“帮助”查看当前会话可用功能。",
                 group="core",
                 order=10,
                 visible=_always_help_visible,
             ),
+            commands=help_commands(),
             install=install_help,
         ),
         PluginDefinition(
@@ -720,6 +720,13 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         PluginDefinition(
             id="sendpic",
             features=frozenset({Feature.IMAGE}),
+            help=HelpEntry(
+                name="图片发送",
+                description="发送固定图片或配置的图片库内容",
+                group="other",
+                order=20,
+            ),
+            commands=configured_image_commands(config),
             install=install_sendpic,
         ),
         PluginDefinition(
@@ -728,10 +735,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="会议回复",
                 description="按配置回复腾讯会议信息",
-                usage="发送配置的会议口令获取腾讯会议信息。",
                 group="message",
                 order=40,
             ),
+            commands=meeting_commands(config),
             install=partial(
                 install_meeting,
                 commands=tuple(config.messaging.meeting.commands),
@@ -746,11 +753,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             help=HelpEntry(
                 name="榜单",
                 description="查看全服榜、机器人样本榜、巅峰样本榜和刻印数值榜",
-                usage=build_rank_help_message(),
                 group="seer",
                 order=20,
             ),
-            install=partial(install_rank_help, features=features),
+            commands=rank_commands(),
+            install=partial(
+                install_rank_help,
+                features=features,
+                commands=resources.commands,
+            ),
         ),
     )
     private_definitions = resources.private_extensions.load_plugin_definitions(
