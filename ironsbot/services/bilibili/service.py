@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
 from ironsbot.services.bilibili.menu import (
+    DYNAMIC_MENU_DEFAULT_LIMIT,
     DynamicDetailSelection,
     DynamicMenuResult,
     build_dynamic_detail_for_selection,
@@ -85,7 +86,10 @@ class BilibiliService:
                 suppress_patterns=self.config.filters.suppress_push_patterns,
             )
 
-        records = self.history.list(limit=10, uids=query_uids)
+        records = self.history.list(
+            limit=DYNAMIC_MENU_DEFAULT_LIMIT,
+            uids=query_uids,
+        )
         if not records:
             return DynamicMenuResult(status="no_history")
 

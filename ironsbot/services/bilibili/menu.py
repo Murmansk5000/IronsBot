@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     )
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
+DYNAMIC_MENU_DEFAULT_LIMIT = 10
 
 DynamicSelectionStatus = Literal["ok", "expired", "invalid", "out_of_range"]
 DynamicDetailStatus = Literal[
