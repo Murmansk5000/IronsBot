@@ -37,6 +37,7 @@ from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     install_outbound_rate_limit_hooks,
 )
+from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
@@ -95,7 +96,6 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
-from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_group
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
@@ -157,7 +157,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.plugins import PluginDefinition
-    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
     from ironsbot.services.messaging.service import MessagingService
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -171,6 +171,7 @@ class ApplicationResources:
     features: FeatureService
     outbound: GroupOutboundRateLimitService
     delivery: MessageDelivery
+    push_message_limiter: MessageLimiter
     admin_notices: AdminNoticeService
     activity: ActivityService
     headless: HeadlessService
@@ -275,7 +276,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
             private_user_ids=reminder.private_user_ids,
             action_name=reminder.action_name,
             interval_seconds=1.2,
-            message_limiter=partial(append_fire_manual_ad_for_group, features),
+            message_limiter=partial(append_fire_manual_ad_for_target, features),
             subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
         )
         return bool(summary.succeeded)
@@ -333,6 +334,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     features = FeatureService(
         settings.features,
         frozenset(settings.bot.superusers),
+        command_features=settings.messaging.command_feature_keys,
+        schedule_features=settings.messaging.schedule_feature_keys,
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
@@ -352,6 +355,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         subscriptions,
     )
+    push_message_limiter = partial(append_fire_manual_ad_for_target, features)
     admin_notices = AdminNoticeService(features, delivery)
     install_outbound_rate_limit_hooks(outbound)
 
@@ -416,6 +420,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         features,
         delivery,
         bilibili.targets.subscription_options,
+        _push_message_limiter=push_message_limiter,
+        _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
     sendpic = SendpicService(
         settings.messaging.sendpic,
@@ -641,6 +647,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         features=features,
         outbound=outbound,
         delivery=delivery,
+        push_message_limiter=push_message_limiter,
         admin_notices=admin_notices,
         activity=activity,
         headless=headless,

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from enum import Enum
 from typing import TYPE_CHECKING, Final
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ironsbot.core.commands import (
     NormalizedStringList,
@@ -32,6 +33,7 @@ class Feature(str, Enum):
     IMAGE = "image"
     MEETING = "meeting"
     PET_CONFIG = "pet_config"
+    PLAYER_LINEUP_PRIVATE = "player_lineup_private"
     SEER = "seer"
     SEER_ACTIVITY_PUSH = "seer_activity_push"
     SEER_ACTIVITY_QUERY = "seer_activity_query"
@@ -114,6 +116,176 @@ REGISTERED_FEATURE_KEYS: Final[frozenset[str]] = (
     FEATURE_KEYS | frozenset(FEATURE_BUNDLES)
 )
 
+
+class FeatureBundleConfigError(ValueError):
+    @classmethod
+    def empty_name(cls) -> FeatureBundleConfigError:
+        return cls("features.bundles contains an empty bundle name")
+
+    @classmethod
+    def registered_name(cls, names: Iterable[str]) -> FeatureBundleConfigError:
+        return cls(
+            "features.bundles cannot replace registered feature key(s): "
+            + ", ".join(names)
+        )
+
+    @classmethod
+    def action_bundle_name(
+        cls,
+        names: Iterable[str],
+    ) -> FeatureBundleConfigError:
+        return cls(
+            "messaging action feature cannot use registered bundle key(s): "
+            + ", ".join(names)
+        )
+
+    @classmethod
+    def cycle(cls, names: Iterable[str]) -> FeatureBundleConfigError:
+        return cls("features.bundles contains a cycle: " + " -> ".join(names))
+
+    @classmethod
+    def empty_bundle(cls, name: str) -> FeatureBundleConfigError:
+        return cls(f"features.bundles.{name} must not be empty")
+
+    @classmethod
+    def unknown_item(
+        cls,
+        name: str,
+        index: int,
+        item: str,
+    ) -> FeatureBundleConfigError:
+        return cls(f"features.bundles.{name}[{index}]={item} is not registered")
+
+    @classmethod
+    def admin_notice(cls, name: str) -> FeatureBundleConfigError:
+        return cls(
+            f"features.bundles.{name} must not include admin_notice; "
+            "grant it explicitly in a target policy"
+        )
+
+
+def _coerce_feature_bundles(value: object) -> dict[str, list[str]]:
+    parsed = json_object(value, name="feature bundles")
+    result: dict[str, list[str]] = {}
+    for raw_key, raw_features in parsed.items():
+        key = str(raw_key).strip()
+        if not key:
+            raise FeatureBundleConfigError.empty_name()
+        result[key] = string_list(raw_features)
+    return result
+
+
+class _FeatureBundleResolver:
+    def __init__(
+        self,
+        custom_bundles: Mapping[str, list[str]],
+        *,
+        feature_keys: frozenset[str],
+        built_in_bundles: Mapping[str, frozenset[str]],
+    ) -> None:
+        self._custom_bundles = custom_bundles
+        self._feature_keys = feature_keys
+        self._resolved = dict(built_in_bundles)
+        self._resolving: list[str] = []
+
+    def resolve_all(self) -> dict[str, frozenset[str]]:
+        for bundle_name in self._custom_bundles:
+            self._expand(bundle_name)
+        return self._resolved
+
+    def _expand(self, name: str) -> frozenset[str]:
+        if name in self._resolved:
+            return self._resolved[name]
+        if name in self._resolving:
+            cycle_start = self._resolving.index(name)
+            raise FeatureBundleConfigError.cycle(
+                [*self._resolving[cycle_start:], name]
+            )
+
+        entries = self._custom_bundles[name]
+        if not entries:
+            raise FeatureBundleConfigError.empty_bundle(name)
+
+        self._resolving.append(name)
+        expanded: set[str] = set()
+        for index, item in enumerate(entries):
+            expanded.update(self._expand_item(name, index, item))
+        self._resolving.pop()
+
+        if Feature.ADMIN_NOTICE.value in expanded:
+            raise FeatureBundleConfigError.admin_notice(name)
+        bundle = frozenset(expanded)
+        self._resolved[name] = bundle
+        return bundle
+
+    def _expand_item(self, name: str, index: int, item: str) -> frozenset[str]:
+        if item in self._custom_bundles or item in self._resolved:
+            return self._expand(item)
+        if item in self._feature_keys:
+            return frozenset((item,))
+        raise FeatureBundleConfigError.unknown_item(name, index, item)
+
+
+def _normalize_feature_keys(features: Iterable[str]) -> frozenset[str]:
+    return frozenset(
+        feature
+        for raw_feature in features
+        if (feature := str(raw_feature).strip())
+    )
+
+
+def _built_in_bundles_with_message_features(
+    *,
+    command_features: frozenset[str],
+    schedule_features: frozenset[str],
+) -> dict[str, frozenset[str]]:
+    bundles = dict(FEATURE_BUNDLES)
+    safe_commands = command_features - {Feature.ADMIN_NOTICE.value}
+    safe_schedules = schedule_features - {Feature.ADMIN_NOTICE.value}
+    message_features = safe_commands | safe_schedules
+    bundles["all"] = bundles["all"] | message_features
+    bundles["text"] = bundles["text"] | safe_commands
+    bundles["text_push"] = bundles["text_push"] | safe_schedules
+    bundles["message"] = bundles["message"] | message_features
+    return bundles
+
+
+def resolve_feature_bundles(
+    custom_bundles: Mapping[str, list[str]],
+    *,
+    command_features: Iterable[str] = (),
+    schedule_features: Iterable[str] = (),
+) -> dict[str, frozenset[str]]:
+    """Validate and expand configured bundles into atomic feature keys."""
+
+    normalized_commands = _normalize_feature_keys(command_features)
+    normalized_schedules = _normalize_feature_keys(schedule_features)
+    configured_features = normalized_commands | normalized_schedules
+    action_bundle_collisions = sorted(
+        (configured_features - FEATURE_KEYS) & frozenset(FEATURE_BUNDLES)
+    )
+    if action_bundle_collisions:
+        raise FeatureBundleConfigError.action_bundle_name(
+            action_bundle_collisions
+        )
+
+    feature_keys = FEATURE_KEYS | configured_features
+    built_in_bundles = _built_in_bundles_with_message_features(
+        command_features=normalized_commands,
+        schedule_features=normalized_schedules,
+    )
+    collisions = sorted(
+        set(custom_bundles)
+        & (feature_keys | frozenset(built_in_bundles))
+    )
+    if collisions:
+        raise FeatureBundleConfigError.registered_name(collisions)
+    return _FeatureBundleResolver(
+        custom_bundles,
+        feature_keys=feature_keys,
+        built_in_bundles=built_in_bundles,
+    ).resolve_all()
+
 POKE_REPLY_REQUIRED_ERROR = (
     "features.help.poke_replies requires non-empty group refs and messages"
 )
@@ -173,6 +345,7 @@ class FeatureConfig(BaseModel):
 
     group_aliases: dict[str, int] = Field(default_factory=dict)
     user_aliases: dict[str, int] = Field(default_factory=dict)
+    bundles: dict[str, list[str]] = Field(default_factory=dict)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
     superuser_bypass: bool = True
@@ -186,36 +359,74 @@ class FeatureConfig(BaseModel):
     def normalize_aliases(cls, value: object) -> object:
         return _coerce_int_mapping(value)
 
+    @field_validator("bundles", mode="before")
+    @classmethod
+    def normalize_bundles(cls, value: object) -> object:
+        return _coerce_feature_bundles(value)
+
     @field_validator("group_policy", "user_policy", mode="before")
     @classmethod
     def normalize_policy(cls, value: object) -> object:
         return _coerce_policy_mapping(value)
 
-    @model_validator(mode="after")
-    def validate_registered_policy_features(self) -> FeatureConfig:
-        invalid: list[str] = []
-        for policy_name, policy in (
-            ("features.group_policy", self.group_policy),
-            ("features.user_policy", self.user_policy),
-        ):
-            for target, features in policy.items():
-                for index, raw_feature in enumerate(features):
-                    feature = raw_feature.strip()
-                    if not feature or feature in REGISTERED_FEATURE_KEYS:
-                        continue
-                    invalid.append(f"{policy_name}.{target}[{index}]={feature}")
+def validate_feature_config(
+    config: FeatureConfig,
+    *,
+    command_features: Iterable[str] = (),
+    schedule_features: Iterable[str] = (),
+) -> dict[str, frozenset[str]]:
+    normalized_commands = _normalize_feature_keys(command_features)
+    normalized_schedules = _normalize_feature_keys(schedule_features)
+    configured_features = normalized_commands | normalized_schedules
+    resolved_bundles = resolve_feature_bundles(
+        config.bundles,
+        command_features=normalized_commands,
+        schedule_features=normalized_schedules,
+    )
+    registered_policy_keys = (
+        FEATURE_KEYS | configured_features | frozenset(resolved_bundles)
+    )
+    invalid: list[str] = []
+    for policy_name, policy in (
+        ("features.group_policy", config.group_policy),
+        ("features.user_policy", config.user_policy),
+    ):
+        for target, features in policy.items():
+            for index, raw_feature in enumerate(features):
+                feature = raw_feature.strip()
+                if not feature or feature in registered_policy_keys:
+                    continue
+                invalid.append(f"{policy_name}.{target}[{index}]={feature}")
 
-        if invalid:
-            raise ValueError(
-                "unregistered feature policy key(s): " + ", ".join(invalid)
-            )
-        return self
+    if invalid:
+        raise ValueError(
+            "unregistered feature policy key(s): " + ", ".join(invalid)
+        )
+    return resolved_bundles
 
 
 @dataclass(frozen=True, slots=True)
 class FeatureService:
     config: FeatureConfig
     superuser_ids: frozenset[int]
+    command_features: frozenset[str] = frozenset()
+    schedule_features: frozenset[str] = frozenset()
+    _bundles: Mapping[str, frozenset[str]] = dataclass_field(
+        init=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        resolved_bundles = validate_feature_config(
+            self.config,
+            command_features=self.command_features,
+            schedule_features=self.schedule_features,
+        )
+        object.__setattr__(
+            self,
+            "_bundles",
+            resolved_bundles,
+        )
 
     def is_superuser(self, user_id: int) -> bool:
         return user_id in self.superuser_ids
@@ -288,11 +499,10 @@ class FeatureService:
             and resolved_id > 0
         )
 
-    @staticmethod
-    def _feature_matches(features: Iterable[str], feature: str) -> bool:
+    def _feature_matches(self, features: Iterable[str], feature: str) -> bool:
         normalized = {item.strip() for item in features if item.strip()}
         return feature in normalized or any(
-            feature in FEATURE_BUNDLES.get(item, frozenset()) for item in normalized
+            feature in self._bundles.get(item, frozenset()) for item in normalized
         )
 
     @staticmethod
