@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from nonebot import logger
 
-from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_group
+from ironsbot.services.messaging.promotions import append_fire_manual_ad_for_target
 from ironsbot.services.operations.server_status import (
     DEFAULT_START_TIME,
     DEFAULT_UPDATE_WEEKDAY,
@@ -65,7 +65,7 @@ class OpenBroadcast:
             action_name="server status open broadcast",
             interval_seconds=1.2,
             message_limiter=partial(
-                append_fire_manual_ad_for_group,
+                append_fire_manual_ad_for_target,
                 self.features,
             ),
             subscription_key="server_status_push",

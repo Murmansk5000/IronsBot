@@ -24,7 +24,7 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.core.features import FeatureConfig
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
@@ -410,8 +410,18 @@ def test_scheduled_messages_append_fire_manual_ad(
     ) -> None:
         limiter = kwargs.get("message_limiter")
         group_ids = kwargs.get("group_ids")
+        private_user_ids = kwargs.get("private_user_ids")
         if limiter is not None and isinstance(group_ids, list) and group_ids:
-            message = limiter(message, group_ids[0])  # type: ignore[operator]
+            message = limiter(message, MessageTarget("group", group_ids[0]))  # type: ignore[operator]
+        if (
+            limiter is not None
+            and isinstance(private_user_ids, list)
+            and private_user_ids
+        ):
+            message = limiter(  # type: ignore[operator]
+                message,
+                MessageTarget("private", private_user_ids[0]),
+            )
         sent.append((message, kwargs))
 
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
@@ -429,7 +439,7 @@ def test_scheduled_messages_append_fire_manual_ad(
     )
 
     assert [message for message, _kwargs in sent] == [
-        f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
+        "私聊定时",
         f"群定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
     ]
     assert sent[0][1]["private_user_ids"] == [2001]
@@ -437,6 +447,37 @@ def test_scheduled_messages_append_fire_manual_ad(
     assert sent[1][1]["group_ids"] == [1001]
     assert sent[1][1]["group_at_user_ids"] == [3001]
     assert sent[1][1]["subscription_key"] == "group"
+
+
+def test_private_scheduled_message_appends_fire_manual_ad_only_when_enabled(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent: list[str] = []
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        user_policy={"2001": ["text_push", "fire_manual_ad"]},
+    )
+
+    async def fake_broadcast(
+        _delivery: object,
+        message: str,
+        **kwargs: object,
+    ) -> None:
+        limiter = kwargs.get("message_limiter")
+        if limiter is not None:
+            message = limiter(message, MessageTarget("private", 2001))  # type: ignore[operator]
+        sent.append(message)
+
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)
+    asyncio.run(
+        message_schedules.send_private_schedule(
+            _schedule("私聊定时", schedule_id="private"),
+            messaging=messaging,
+        )
+    )
+
+    assert sent == [f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}"]
 
 
 def test_private_schedule_passes_subscription_key(

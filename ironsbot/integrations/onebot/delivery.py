@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from .router import BotRouter
 
-MessageLimiter = Callable[[str | Message, int | None], str | Message]
+MessageLimiter = Callable[[str | Message, MessageTarget], str | Message]
 PUSH_SUBSCRIPTION_HINT_KEY = "push_subscription_hint"
 
 
@@ -118,10 +118,10 @@ class OneBotDelivery:
             )
             return False
 
-        group_id = target.target_id if target.target_type == "group" else None
         limited_message = _copy_outbound_message(message)
         if message_limiter is not None:
-            limited_message = message_limiter(limited_message, group_id)
+            limited_message = message_limiter(limited_message, target)
+        group_id = target.target_id if target.target_type == "group" else None
         if subscription_key:
             limited_message = _append_unsubscribe_hint(
                 limited_message,

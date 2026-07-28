@@ -4,10 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.core.selection import (
-    SelectionMenuItem,
-    format_selection_menu,
-)
+from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -18,6 +15,7 @@ if TYPE_CHECKING:
     )
 
 DYNAMIC_IDS_STATE_KEY = "_bilibili_dynamic_ids"
+DYNAMIC_MENU_DEFAULT_LIMIT = 10
 
 DynamicSelectionStatus = Literal["ok", "expired", "invalid", "out_of_range"]
 DynamicDetailStatus = Literal[

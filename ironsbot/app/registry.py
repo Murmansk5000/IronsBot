@@ -16,10 +16,7 @@ from ironsbot.runtime.plugins import (
     PluginDefinition,
     PluginHooks,
 )
-from ironsbot.runtime.replies import (
-    append_fire_manual_ad_message,
-    append_text_hint,
-)
+from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.operations.docker_preflight import (
@@ -163,7 +160,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         delivery,
         resources.subscriptions,
         build_dynamic_message,
-        append_fire_manual_ad_message,
         append_text_hint,
     )
     bili_monitor = BilibiliMonitorService(

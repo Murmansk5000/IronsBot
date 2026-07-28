@@ -3,13 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from ironsbot.core.features import FeatureConfig
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import build_dynamic_message
-from ironsbot.runtime.replies import (
-    append_fire_manual_ad_message,
-    append_text_hint,
-)
+from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
@@ -29,7 +26,6 @@ if TYPE_CHECKING:
     )
 
 PUB_TS = 1781004683
-SPLIT_DELIVERY_COUNT = 2
 
 
 def _item(
@@ -67,7 +63,6 @@ def _delivery_service(
         cast("MessageDelivery", object()),
         subscriptions or cast("PushSubscriptionRepository", object()),
         build_dynamic_message,
-        append_fire_manual_ad_message,
         append_text_hint,
     )
 
@@ -96,61 +91,50 @@ def test_delivery_service_plans_full_and_link_targets(
 
     assert [delivery.action_name for delivery in deliveries] == [
         FULL_DYNAMIC_PUSH_ACTION,
-        FULL_DYNAMIC_PUSH_ACTION,
-        LINK_DYNAMIC_PUSH_ACTION,
         LINK_DYNAMIC_PUSH_ACTION,
     ]
     assert deliveries[0].group_ids == [1001]
-    assert deliveries[0].private_user_ids == []
-    assert deliveries[1].group_ids == []
-    assert deliveries[1].private_user_ids == [2001]
-    assert deliveries[2].group_ids == [1002]
-    assert deliveries[2].private_user_ids == []
-    assert deliveries[3].group_ids == []
-    assert deliveries[3].private_user_ids == [2002]
+    assert deliveries[0].private_user_ids == [2001]
+    assert deliveries[1].group_ids == [1002]
+    assert deliveries[1].private_user_ids == [2002]
 
     full_rendered = str(deliveries[0].message)
-    full_private_rendered = str(deliveries[1].message)
-    link_rendered = str(deliveries[2].message)
-    link_private_rendered = str(deliveries[3].message)
+    link_rendered = str(deliveries[1].message)
     assert "正文内容" in full_rendered
     assert "[CQ:image" in full_rendered
-    assert FIRE_MANUAL_LINK_MESSAGE in full_rendered
+    assert FIRE_MANUAL_LINK_MESSAGE not in full_rendered
     assert BILI_PUSH_ADMIN_HINT not in full_rendered
-    assert BILI_PUSH_ADMIN_HINT not in full_private_rendered
     assert "正文内容" not in link_rendered
     assert "[CQ:image" not in link_rendered
-    assert FIRE_MANUAL_LINK_MESSAGE in link_rendered
+    assert FIRE_MANUAL_LINK_MESSAGE not in link_rendered
     assert BILI_PUSH_ADMIN_HINT not in link_rendered
-    assert BILI_PUSH_ADMIN_HINT not in link_private_rendered
 
 
-def test_delivery_service_splits_groups_without_fire_manual_ad(
+def test_delivery_service_appends_fire_manual_ad_per_target(
+    tmp_path: Path,
 ) -> None:
-    deliveries = _delivery_service(
+    service = _delivery_service(
         build_test_runtime(
             feature_config=FeatureConfig(
                 group_policy={"1001": ["fire_manual_ad"]},
+                user_policy={"2001": ["fire_manual_ad"]},
             )
-        ).features
-    ).build_deliveries(
-        _item(),
-        PUB_TS,
-        BiliPushTargets(
-            full_group_ids=[1001, 1002],
-            link_group_ids=[],
-            full_user_ids=[],
-            link_user_ids=[],
-        ),
+        ).features,
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
     )
 
-    assert len(deliveries) == SPLIT_DELIVERY_COUNT
-    assert deliveries[0].group_ids == [1001]
-    assert FIRE_MANUAL_LINK_MESSAGE in str(deliveries[0].message)
-    assert BILI_PUSH_ADMIN_HINT not in str(deliveries[0].message)
-    assert deliveries[1].group_ids == [1002]
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(deliveries[1].message)
-    assert BILI_PUSH_ADMIN_HINT not in str(deliveries[1].message)
+    assert FIRE_MANUAL_LINK_MESSAGE in str(
+        service._transform_target_message("正文", MessageTarget("group", 1001))
+    )
+    assert FIRE_MANUAL_LINK_MESSAGE not in str(
+        service._transform_target_message("正文", MessageTarget("group", 1002))
+    )
+    assert FIRE_MANUAL_LINK_MESSAGE in str(
+        service._transform_target_message("正文", MessageTarget("private", 2001))
+    )
+    assert FIRE_MANUAL_LINK_MESSAGE not in str(
+        service._transform_target_message("正文", MessageTarget("private", 2002))
+    )
 
 
 def test_delivery_service_skips_empty_targets() -> None:
@@ -178,10 +162,13 @@ def test_delivery_service_appends_admin_hint_once_per_day(
     )
 
     service = _delivery_service(build_test_runtime().features, store)
-    first = service._append_admin_hint("正文", 1001)
-    second = service._append_admin_hint("正文2", 1001)
-    other_group = service._append_admin_hint("正文3", 1002)
-    private = service._append_admin_hint("正文4", None)
+    first = service._transform_target_message("正文", MessageTarget("group", 1001))
+    second = service._transform_target_message("正文2", MessageTarget("group", 1001))
+    other_group = service._transform_target_message(
+        "正文3",
+        MessageTarget("group", 1002),
+    )
+    private = service._transform_target_message("正文4", MessageTarget("private", 1))
 
     assert first == f"正文\n\n{BILI_PUSH_ADMIN_HINT}"
     assert second == "正文2"
