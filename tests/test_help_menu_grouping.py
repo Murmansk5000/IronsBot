@@ -33,6 +33,6 @@ def test_help_groups_come_from_plugin_definitions() -> None:
     assert _help_group("server_status") == "seer"
 
 
-def test_hidden_plugins_have_no_help_entry() -> None:
-    assert DEFINITIONS["sendpic"].help is None
+def test_notice_only_plugins_have_no_help_entry() -> None:
+    assert DEFINITIONS["sendpic"].help is not None
     assert DEFINITIONS["team_audit"].help is None

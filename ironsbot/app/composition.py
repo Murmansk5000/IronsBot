@@ -18,7 +18,7 @@ from ironsbot.app.private_extensions import (
     load_private_extension_catalog,
 )
 from ironsbot.app.registry import build_plugin_registry
-from ironsbot.core.features import FeatureService
+from ironsbot.core.features import Feature, FeatureService
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -80,6 +80,7 @@ from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStor
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
+from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.runtime.priority import AdminPriorityService
 from ironsbot.services.activity.delivery import (
@@ -198,6 +199,7 @@ class ApplicationResources:
     data_sync: DataSyncService
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService
+    commands: CommandCatalog
     help_hint: HelpHintService
     private_extensions: PrivateExtensionCatalog
     private_extension_runtime: PrivateExtensionRuntime
@@ -671,6 +673,24 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             reason="admin requested bot restart",
         ),
     )
+    command_catalog = CommandCatalog()
+
+    def poke_hint_candidates(
+        group_id: int | None,
+        user_id: int,
+        group_role: str | None,
+        ignored_plugins: tuple[str, ...],
+    ):
+        return command_catalog.poke_candidates_for_context(
+            CommandContext(
+                user_id=user_id,
+                group_id=group_id,
+                group_role=group_role,
+            ),
+            features,
+            ignored_plugins=ignored_plugins,
+        )
+
     resources = ApplicationResources(
         features=features,
         outbound=outbound,
@@ -699,11 +719,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         data_sync=data_sync,
         docker_update=docker_update,
         startup_notice=StartupNoticeService(admin_notices),
+        commands=command_catalog,
         help_hint=HelpHintService(
             settings.features.help,
             settings.features.group_aliases,
             settings.features.user_aliases,
-            features,
+            poke_hint_candidates,
         ),
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,
@@ -712,6 +733,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings=settings,
         resources=resources,
         scheduler=scheduler,
+    )
+    command_catalog.load(
+        plugins,
+        known_features=(
+            *(feature.value for feature in Feature),
+            *features.command_features,
+            *features.schedule_features,
+        ),
     )
     matchers = MatcherRegistry(
         CommandCooldownService(settings.messaging.command_cooldown, features),

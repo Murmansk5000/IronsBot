@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -9,6 +10,9 @@ from tests.helpers.onebot_events import group_message_event, private_message_eve
 
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
+
+    from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.commands import CommandCatalog
 
 
 @pytest.mark.asyncio
@@ -27,12 +31,21 @@ async def test_rank_help_replies_to_group_sender(
     event = group_message_event("榜单", user_id=123456)
 
     matcher = cast("Matcher", object())
-    await handle_rank_help_entry(matcher, event)
+    commands = SimpleNamespace(
+        format_for=lambda *_args, **_kwargs: "【榜单查询】\n成就榜 — 查询榜单"
+    )
+    await handle_rank_help_entry(
+        matcher,
+        event,
+        commands=cast("CommandCatalog", commands),
+        features=cast("FeatureService", object()),
+    )
 
     assert len(sent) == 1
     assert sent[0][0] is matcher
     assert sent[0][1] is event
-    assert "【可用榜单】" in sent[0][2]
+    assert "📊【可用榜单】" in sent[0][2]
+    assert "【榜单查询】" in sent[0][2]
 
 
 @pytest.mark.asyncio
@@ -51,7 +64,15 @@ async def test_rank_help_uses_same_reply_path_in_private(
     event = private_message_event("排行榜")
     matcher = cast("Matcher", object())
 
-    await handle_rank_help_entry(matcher, event)
+    commands = SimpleNamespace(
+        format_for=lambda *_args, **_kwargs: "【榜单查询】\n成就榜 — 查询榜单"
+    )
+    await handle_rank_help_entry(
+        matcher,
+        event,
+        commands=cast("CommandCatalog", commands),
+        features=cast("FeatureService", object()),
+    )
 
     assert len(sent) == 1
     assert sent[0][0] is matcher

@@ -28,7 +28,6 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_score_command,
     with_admin_prefix,
 )
-from ironsbot.services.seer.rank_usage import RANK_HELP_DETAIL_COMMANDS
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .rank_list_context import (
@@ -46,6 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
 
@@ -81,11 +81,17 @@ def _store_command(
 
 
 async def _handle_help(
-    service: RankQueryService,
+    commands: CommandCatalog,
+    features: FeatureService,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    await finish_event_reply(matcher, event, service.help_message())
+    await finish_event_reply(
+        matcher,
+        event,
+        "📊【可用榜单】\n"
+        f"{commands.format_for(event, features, plugin_id='rank_help')}",
+    )
 
 
 async def _handle_list(
@@ -249,12 +255,14 @@ def install(group: SeerMatcherGroup) -> None:
     priority = group.matcher_priority("seer_rank")
 
     help_matcher = group.on_fullmatch(
-        RANK_HELP_DETAIL_COMMANDS,
+        ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
         policy=CommandPolicy.command("seer_rank_help"),
         rule=feature_rule,
         priority=group.matcher_priority("seer_rank_help"),
     )
-    help_matcher.append_handler(bind_async(_handle_help, query))
+    help_matcher.append_handler(
+        bind_async(_handle_help, group.commands, group.features)
+    )
 
     list_matcher = group.on_message(
         policy=CommandPolicy.command("seer_rank_list"),
