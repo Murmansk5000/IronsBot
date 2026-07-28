@@ -3,6 +3,7 @@
 
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler
@@ -22,6 +23,7 @@ def install(group: SeerMatcherGroup) -> None:
             type_service.search,
             type_service.select,
             "请问你想查询的属性是……",
+            ActionDefinition("seer_type_query", "属性查询"),
         )
     )
 
@@ -41,5 +43,6 @@ def install(group: SeerMatcherGroup) -> None:
             effect_service.search,
             effect_service.select,
             "请问你想查询的异常状态是……",
+            ActionDefinition("seer_battle_effect_query", "异常状态查询"),
         )
     )

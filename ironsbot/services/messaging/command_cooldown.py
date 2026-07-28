@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import asyncio
 import math
 import time
 from collections import deque
@@ -46,7 +45,6 @@ class CommandCooldownDecision:
 
 @dataclass(slots=True)
 class _CommandCooldownEntry:
-    active_token: CommandCooldownToken | None = None
     in_progress: bool = False
     completed_at: deque[float] = field(default_factory=deque)
     feedback_sent: bool = False
@@ -99,22 +97,15 @@ class CommandCooldownService:
                 )
             return CommandCooldownDecision(allowed=False, feedback=feedback)
 
-        token = CommandCooldownToken(user_id, command_id)
-        entry.active_token = token
         entry.in_progress = True
         entry.feedback_sent = False
-        return CommandCooldownDecision(allowed=True, token=token)
-
-    def bind_current_task(self, token: object) -> None:
-        task = asyncio.current_task()
-        if task is None:
-            message = "Command admission requires an owning task"
-            raise RuntimeError(message)
-
-        def finish_task(_task: asyncio.Task[object]) -> None:
-            self.finish(token)
-
-        task.add_done_callback(finish_task)
+        return CommandCooldownDecision(
+            allowed=True,
+            token=CommandCooldownToken(
+                user_id,
+                command_id,
+            ),
+        )
 
     def finish(
         self,
@@ -125,11 +116,10 @@ class CommandCooldownService:
         if not isinstance(token, CommandCooldownToken):
             return
         entry = self._entries.get((token.user_id, token.command_id))
-        if entry is None or entry.active_token is not token or not entry.in_progress:
+        if entry is None or not entry.in_progress:
             return
         current_time = time.monotonic() if now is None else now
         entry.in_progress = False
-        entry.active_token = None
         entry.completed_at.append(current_time)
         entry.feedback_sent = False
 

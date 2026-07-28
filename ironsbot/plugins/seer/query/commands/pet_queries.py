@@ -3,6 +3,7 @@
 
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler
@@ -27,6 +28,7 @@ def install(group: SeerMatcherGroup) -> None:
             service.search_image,
             service.select_image,
             "请问你想查询的立绘是……",
+            ActionDefinition("seer_pet_image", "精灵立绘查询"),
         )
     )
 
@@ -47,5 +49,6 @@ def install(group: SeerMatcherGroup) -> None:
             service.search_info,
             service.select_info,
             "请问你想查询的精灵是……",
+            ActionDefinition("seer_pet_info", "精灵信息查询"),
         )
     )
