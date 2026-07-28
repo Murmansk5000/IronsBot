@@ -33,8 +33,8 @@
 
 [bot]
 # Default: "prod"
-# EN: Runtime environment label. This no longer selects dotenv files.
-# ZH: 运行环境标签，不再用于选择 dotenv 文件。
+# EN: Runtime environment label.
+# ZH: 运行环境标签。
 environment = "prod"
 # Default: "~fastapi+~httpx"
 # EN: NoneBot driver expression.
@@ -355,10 +355,9 @@ intent_actions_enabled = true
 [ai.intent_actions.team_recommend]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
 enabled = true
-# EN: The team recommendation sends every messages item as a separate QQ message,
-# in order. Any number of items is supported; the legacy single message field is not.
-# ZH: 战队推荐会按顺序把 messages 中的每一项作为独立 QQ 消息发送，支持任意条数；
-# 不支持旧的单条 message 字段。
+# EN: The team recommendation sends every messages item as a separate QQ message
+# in order. Any number of items is supported.
+# ZH: 战队推荐会按顺序把 messages 中的每一项作为独立 QQ 消息发送，支持任意条数。
 # Example:
 # messages = [
 #   "点击链接加入战队审核群：https://example.com/team-review",

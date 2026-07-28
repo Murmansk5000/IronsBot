@@ -281,8 +281,8 @@ Nested models may live in separate files, but they are reachable only through
 features, unknown account references, incomplete actions, and invalid section
 names fail startup with their exact configuration path.
 
-The loader has no cache, cleanup pass, fallback schema, aliases for removed
-fields, or automatic mutation. Missing TOML is a deployment concern: the
+The loader has no cache, cleanup pass, fallback schema, or automatic mutation.
+Missing TOML is a deployment concern: the
 container entrypoint may copy the authoritative example before startup, but
 the loader only reads and validates.
 
@@ -383,7 +383,6 @@ The repository must include tests that prove:
 - only `SqliteDatabase` calls `sqlite3.connect`;
 - services and integrations do not import NoneBot transport types except where
   an integration explicitly implements a NoneBot adapter;
-- obsolete package names and environment names have zero references;
 - plugin import/installation performs no network, filesystem, task, or
   database side effects;
 - configuration examples, Compose, Unraid, and documentation validate against

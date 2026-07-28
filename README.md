@@ -110,8 +110,7 @@ services:
 ```
 
 启动前先根据 [config.example.toml](config.example.toml) 创建
-`./ironsbot-config/ironsbot.toml`。配置缺失或包含旧字段时会直接阻止启动，不会自动
-生成、修复或兼容旧结构。
+`./ironsbot-config/ironsbot.toml`。配置文件会在启动时严格校验。
 完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 

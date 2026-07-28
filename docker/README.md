@@ -103,8 +103,8 @@ services:
 Before starting the container, create
 `./ironsbot-config/ironsbot.toml` from
 [`config.example.toml`](../config.example.toml) and set
-`[bot].superusers`. IronsBot strictly validates this file and exits if it is
-missing or contains obsolete fields. It never creates or rewrites the file.
+`[bot].superusers`. IronsBot strictly validates this file at startup. It never
+creates or rewrites the file.
 
 On Windows Docker Desktop, the left side of the volume is a Windows directory.
 Choose any writable directory on any drive. For example:
@@ -350,10 +350,10 @@ mode = "link"
 Behavior settings belong in `/config/ironsbot.toml`. The current `.env` and
 Unraid template only contain deployment settings and secrets, so behavior
 upgrades do not require adding behavior fields to the container template.
-Configuration is strict: unknown or removed fields, unknown references, and
-invalid values stop startup with their TOML path. Use
-[config.example.toml](../config.example.toml) as the only authoritative
-configuration shape and delete obsolete fields instead of retaining them.
+Configuration validates documented fields, references, and values at startup
+and reports the TOML path for invalid entries. Use
+[config.example.toml](../config.example.toml) as the authoritative
+configuration shape.
 
 ## Team Resource Subscription
 
