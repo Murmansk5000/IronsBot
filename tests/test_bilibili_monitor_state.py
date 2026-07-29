@@ -86,7 +86,7 @@ def test_bili_config_defaults_to_official_account() -> None:
     assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (
         DEFAULT_BILI_ACCOUNT_UID
     )
-    assert config.push.mode == "link"
+    assert config.push.mode == "full"
     assert config.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
     assert config.push.modes == DEFAULT_BILI_PUSH_MODES
 
@@ -231,7 +231,7 @@ def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:
     ).push_group_rules()
 
     assert rules[111].uids == frozenset({1310714247})
-    assert rules[111].mode == "link"
+    assert rules[111].mode == "full"
     assert rules[111].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}
     assert rules[222].uids == frozenset({1310714247, 375750254})
     assert rules[222].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}

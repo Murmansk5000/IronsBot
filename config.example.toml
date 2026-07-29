@@ -462,11 +462,11 @@ default_minutes = 30
 windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 
 [bilibili.push]
-# Default: "link"
+# Default: "full"
 # EN: Default push mode for accounts without an explicit mode.
 # ZH: 未单独指定模式的账号默认推送方式，可选 full 或 link。
 # Example: "full"
-mode = "link"
+mode = "full"
 
 # Default: ["seer"]
 # EN: Account aliases pushed to every target that enables bili_push.
