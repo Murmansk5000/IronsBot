@@ -414,7 +414,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
     )
     message = _append_extra_errors(
         format_compact_peak_section(
-            unity_peak,
+            validated_peak.unity_peak,
             rank_summary,
             local_summary,
             player_id=player_id,

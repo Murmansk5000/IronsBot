@@ -194,8 +194,8 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
     assert message.splitlines()[1].startswith("获取时间：")
     assert "竞技：王者33星" in message
     assert "竞技：圣皇0星" not in message
-    assert "场次124" not in message
-    assert "狂野：当前赛季前2000名未确认" in message
+    assert "场次124" in message
+    assert "狂野：当前赛季未确认" in message
 
 
 def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
@@ -219,8 +219,9 @@ def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
     )
     assert "赛季榜查询超时" in standard_line
     assert "赛季榜未上榜" not in standard_line
-    assert "场次41" in standard_line
-    assert "胜率33/41=80.488%" in standard_line
+    assert "当前赛季未确认" in standard_line
+    assert "场次41" not in standard_line
+    assert "胜率33/41=80.488%" not in standard_line
 
 
 def test_format_peak_does_not_report_unqueried_mode_as_unranked() -> None:
@@ -235,7 +236,9 @@ def test_format_peak_does_not_report_unqueried_mode_as_unranked() -> None:
     expert_line = next(
         line for line in message.splitlines() if line.startswith("专家：")
     )
-    assert "赛季榜未查询" in expert_line
+    assert "当前赛季未确认" in expert_line
+    assert "1421分" not in expert_line
+    assert "场次38" not in expert_line
     assert "赛季榜未上榜" not in expert_line
 
 
