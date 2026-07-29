@@ -44,11 +44,14 @@ from .custom_pet_soulmark_icons import (
     resolve_soulmark_icon_urls,
 )
 from .custom_pet_special_effects import (
+    _add_linked_glossary_effects,
     _add_named_status_icons,
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
     _add_soulmark_highlight_status_effects,
+    _deduplicate_special_effects,
     _extract_special_effects,
+    _sort_special_effects,
 )
 
 SPECIAL_SOULMARK_PET_ID = 2500
@@ -334,13 +337,13 @@ async def _load_special_effect_icons(
     images: SeerImageSource,
     effects: Sequence[SpecialEffectDict],
 ) -> None:
-    icon_effects = [effect for effect in effects if effect["icon_id"] is not None]
+    icon_effects = [effect for effect in effects if effect["status_id"] is not None]
     if not icon_effects:
         return
 
     results = await asyncio.gather(
         *(
-            fetch_optional_image(images, "sign_buff", str(effect["icon_id"]))
+            fetch_optional_image(images, "sign_buff", str(effect["status_id"]))
             for effect in icon_effects
         )
     )
@@ -375,9 +378,7 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
 
 def _format_soulmark_desc(soulmark: SoulmarkORM) -> str:
     if soulmark.analyze_desc:
-        return AnalyzeDescParser(soulmark.analyze_desc).to_html(
-            _ANALYZE_DESC_STYLES
-        )
+        return AnalyzeDescParser(soulmark.analyze_desc).to_html(_ANALYZE_DESC_STYLES)
     formatting = str(getattr(soulmark, "desc_formatting_adjustment", "") or "")
     if formatting:
         desc = formatting.replace("\r\n", "|").replace("\n", "|")
@@ -547,7 +548,7 @@ async def render_custom_pet_info(
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     pet_id = int(pet.id)
-    cached = cache.get("custom_pet_info_v13", str(pet_id))
+    cached = cache.get("custom_pet_info_v14", str(pet_id))
     if cached is not None:
         return cached
 
@@ -570,6 +571,10 @@ async def render_custom_pet_info(
     _add_skill_red_effects(session, pet, special_effects)
     _add_soulmark_highlight_status_effects(session, pet, special_effects)
     _add_named_status_icons(session, special_effects)
+    _add_linked_glossary_effects(session, special_effects)
+    _add_named_status_icons(session, special_effects)
+    _deduplicate_special_effects(special_effects)
+    _sort_special_effects(special_effects)
     if pet_data.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
@@ -710,5 +715,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v13", str(pet_id), result)
+    cache.put("custom_pet_info_v14", str(pet_id), result)
     return result
