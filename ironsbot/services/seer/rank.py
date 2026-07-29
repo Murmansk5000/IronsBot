@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
 from ironsbot.services.seer.rank_constants import (
+    AUTOCARD_RANK_KEY,
+    AUTOCARD_RANK_SUB_KEY,
     PET_KIND_RANK_ANOMALY_COUNT,
     PET_KIND_RANK_KEY,
     PET_KIND_RANK_SUB_KEY,
@@ -25,6 +27,11 @@ from ironsbot.services.seer.rank_pagination import (
     rank_window_page_starts,
 )
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
+from ironsbot.services.seer.rank_player_scheduler import (
+    PlayerRankLookupJob,
+    current_player_rank_page_scheduler,
+    run_player_rank_lookup_jobs,
+)
 from ironsbot.services.seer.rank_position_cache import find_rank_by_cached_position
 from ironsbot.services.seer.rank_range import (
     fetch_rank_range,
@@ -183,13 +190,23 @@ class RankService:
                     from_cache=True,
                 )
 
-        items = await self.fetch_online_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-        )
+        async def fetch_online() -> list[RankEntry]:
+            return await self.fetch_online_page(
+                game,
+                key=key,
+                sub_key=sub_key,
+                start=start,
+                end=end,
+            )
+
+        scheduler = current_player_rank_page_scheduler()
+        if scheduler is None:
+            items = await fetch_online()
+        else:
+            items = await scheduler.fetch_page(
+                f"key={key} sub_key={sub_key} page={start + 1}-{end + 1}",
+                fetch_online,
+            )
         fetched_at = time.time()
         self.cache.save(
             key=key,
@@ -564,6 +581,7 @@ class RankService:
             find_rank=self.find_rank,
             progress=progress,
             anchor_only=anchor_only,
+            run_lookup_jobs=self.run_player_lookup_jobs,
         )
 
     async def fetch_autocard_summary(
@@ -573,12 +591,23 @@ class RankService:
         *,
         anchor_only: bool = False,
     ) -> RankLookupResult:
-        return await rank_summary.fetch_autocard_rank_summary(
-            game,
-            user_id,
-            find_rank=self.find_rank,
-            anchor_only=anchor_only,
-        )
+        jobs = [
+            PlayerRankLookupJob(
+                id="autocard",
+                title="群星之巅榜",
+                key=AUTOCARD_RANK_KEY,
+                sub_key=AUTOCARD_RANK_SUB_KEY,
+                user_id=user_id,
+                target_score=None,
+                operation=lambda: rank_summary.fetch_autocard_rank_summary(
+                    game,
+                    user_id,
+                    find_rank=self.find_rank,
+                    anchor_only=anchor_only,
+                ),
+            )
+        ]
+        return (await self.run_player_lookup_jobs(jobs))["autocard"]
 
     async def fetch_player_summary(  # noqa: PLR0913
         self,
@@ -607,7 +636,60 @@ class RankService:
             find_pet_kind_rank=self.find_pet_kind_rank,
             progress=progress,
             anchor_only=anchor_only,
+            run_lookup_jobs=self.run_player_lookup_jobs,
         )
+
+    async def run_player_lookup_jobs(
+        self,
+        jobs: Sequence[PlayerRankLookupJob],
+    ) -> dict[str, RankLookupResult]:
+        prioritized_jobs = tuple(
+            self._with_player_lookup_priority(job)
+            for job in jobs
+        )
+        return await run_player_rank_lookup_jobs(
+            prioritized_jobs,
+            self.config.player_lookup,
+        )
+
+    def _with_player_lookup_priority(
+        self,
+        job: PlayerRankLookupJob,
+    ) -> PlayerRankLookupJob:
+        priority_group, priority_rank, priority_reason = self._player_lookup_priority(
+            job
+        )
+        return replace(
+            job,
+            priority_group=priority_group,
+            priority_rank=priority_rank,
+            priority_reason=priority_reason,
+        )
+
+    def _player_lookup_priority(
+        self,
+        job: PlayerRankLookupJob,
+    ) -> tuple[int, int, str]:
+        cached = self.cache.item(
+            key=job.key,
+            sub_key=job.sub_key,
+            user_id=job.user_id,
+            allow_stale=True,
+        )
+        if cached is not None:
+            return 0, cached.rank_index, "缓存名次"
+        if job.target_score is not None and job.target_score > 0:
+            indexes = self.cache.score_indexes(
+                key=job.key,
+                sub_key=job.sub_key,
+                score=job.target_score,
+                start_index=0,
+                end_index=self._score_search_limit(),
+            )
+            if indexes:
+                return 1, min(indexes), "缓存同分位置"
+            return 2, 2**31 - 1, "已知分数"
+        return 3, 2**31 - 1, "无分数线性查找"
 
     def _online_search_limit(self, search_limit: int | None = None) -> int:
         requested = (

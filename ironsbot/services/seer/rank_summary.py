@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from ironsbot.services.seer.rank_constants import (
@@ -17,6 +17,8 @@ from ironsbot.services.seer.rank_constants import (
     OUTFIT_PART_RANK_SUB_KEY,
     OUTFIT_RANK_KEY,
     OUTFIT_SUIT_RANK_SUB_KEY,
+    PET_KIND_RANK_KEY,
+    PET_KIND_RANK_SUB_KEY,
     SKIN_RANK_KEY,
     SKIN_RANK_SUB_KEY,
     STANDARD_PEAK_USER_RANK_KEY,
@@ -29,9 +31,14 @@ from ironsbot.services.seer.rank_models import (
     RankLookupResult,
     RankSummaryProgress,
 )
+from ironsbot.services.seer.rank_player_scheduler import PlayerRankLookupJob
 
 FindRank = Callable[..., Awaitable[RankLookupResult]]
 FindPetKindRank = Callable[..., Awaitable[RankLookupResult]]
+RunLookupJobs = Callable[
+    [Sequence[PlayerRankLookupJob]],
+    Awaitable[dict[str, RankLookupResult]],
+]
 _LOGGER = logging.getLogger("ironsbot.seer.rank_summary")
 
 
@@ -153,15 +160,12 @@ async def _find_current_peak_rank(  # noqa: PLR0913
             progress=progress,
             anchor_only=anchor_only,
         )
-        if (
-            result.rank is not None
-            or not result.queried
-            or result.cost.restricted_miss
-        ):
-            return result
+        if result.cost.restricted_miss:
+            result.failure = "缓存位置已变化，排名未确认"
+        return result
 
     return await _safe_find_rank(
-        f"{label}_current_season",
+        label,
         find_rank,
         game,
         user_id=user_id,
@@ -169,7 +173,7 @@ async def _find_current_peak_rank(  # noqa: PLR0913
         score_name=score_name,
         key=key,
         sub_key=sub_key,
-        search_limit=None if has_candidate_score else 0,
+        search_limit=0,
         progress=progress,
         anchor_only=anchor_only,
     )
@@ -292,51 +296,82 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
     find_rank: FindRank,
     progress: RankSummaryProgress | None = None,
     anchor_only: bool = False,
+    run_lookup_jobs: RunLookupJobs | None = None,
 ) -> PeakSeasonRankSummary:
     if current_peak_sub_key is None:
         return PeakSeasonRankSummary.empty()
 
-    summary = PeakSeasonRankSummary.empty()
-    summary.standard = await _find_current_peak_rank(
-        "standard_peak",
-        find_rank,
-        game,
-        user_id=user_id,
-        title="竞技赛季榜",
-        score_name="段位分",
-        key=STANDARD_PEAK_USER_RANK_KEY,
-        sub_key=current_peak_sub_key,
-        candidate_score=standard_score,
-        progress=progress,
-        anchor_only=anchor_only,
+    jobs = (
+        PlayerRankLookupJob(
+            id="standard_peak",
+            title="竞技赛季榜",
+            key=STANDARD_PEAK_USER_RANK_KEY,
+            sub_key=current_peak_sub_key,
+            user_id=user_id,
+            target_score=standard_score,
+            operation=lambda: _find_current_peak_rank(
+                "standard_peak",
+                find_rank,
+                game,
+                user_id=user_id,
+                title="竞技赛季榜",
+                score_name="段位分",
+                key=STANDARD_PEAK_USER_RANK_KEY,
+                sub_key=current_peak_sub_key,
+                candidate_score=standard_score,
+                progress=progress,
+                anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="wild_peak",
+            title="狂野赛季榜",
+            key=WILD_PEAK_USER_RANK_KEY,
+            sub_key=current_peak_sub_key,
+            user_id=user_id,
+            target_score=wild_score,
+            operation=lambda: _find_current_peak_rank(
+                "wild_peak",
+                find_rank,
+                game,
+                user_id=user_id,
+                title="狂野赛季榜",
+                score_name="段位分",
+                key=WILD_PEAK_USER_RANK_KEY,
+                sub_key=current_peak_sub_key,
+                candidate_score=wild_score,
+                progress=progress,
+                anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="expert_peak",
+            title="专家赛季榜",
+            key=EXPERT_PEAK_USER_RANK_KEY,
+            sub_key=current_peak_sub_key,
+            user_id=user_id,
+            target_score=expert_score,
+            operation=lambda: _find_current_peak_rank(
+                "expert_peak",
+                find_rank,
+                game,
+                user_id=user_id,
+                title="专家赛季榜",
+                score_name="专家积分",
+                key=EXPERT_PEAK_USER_RANK_KEY,
+                sub_key=current_peak_sub_key,
+                candidate_score=expert_score,
+                progress=progress,
+                anchor_only=anchor_only,
+            ),
+        ),
     )
-    summary.wild = await _find_current_peak_rank(
-        "wild_peak",
-        find_rank,
-        game,
-        user_id=user_id,
-        title="狂野赛季榜",
-        score_name="段位分",
-        key=WILD_PEAK_USER_RANK_KEY,
-        sub_key=current_peak_sub_key,
-        candidate_score=wild_score,
-        progress=progress,
-        anchor_only=anchor_only,
+    results = await _run_lookup_jobs(jobs, run_lookup_jobs)
+    return PeakSeasonRankSummary(
+        standard=results["standard_peak"],
+        wild=results["wild_peak"],
+        expert=results["expert_peak"],
     )
-    summary.expert = await _find_current_peak_rank(
-        "expert_peak",
-        find_rank,
-        game,
-        user_id=user_id,
-        title="专家赛季榜",
-        score_name="专家积分",
-        key=EXPERT_PEAK_USER_RANK_KEY,
-        sub_key=current_peak_sub_key,
-        candidate_score=expert_score,
-        progress=progress,
-        anchor_only=anchor_only,
-    )
-    return summary
 
 
 async def fetch_autocard_rank_summary(
@@ -370,53 +405,146 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
     find_pet_kind_rank: FindPetKindRank,
     progress: RankSummaryProgress | None = None,
     anchor_only: bool = False,
+    run_lookup_jobs: RunLookupJobs | None = None,
 ) -> PlayerRankSummary:
     errors: list[str] = []
-    book = await _safe_find_rank(
-        "book",
-        find_rank,
-        game,
-        user_id=user_id,
-        title="图鉴积分",
-        score_name="图鉴积分",
-        score=book_score,
-        key=BOOK_RANK_KEY,
-        sub_key=BOOK_RANK_SUB_KEY,
-        target_score=book_score,
-        errors=errors,
-        progress=progress,
-        anchor_only=anchor_only,
+    jobs = (
+        PlayerRankLookupJob(
+            id="book",
+            title="图鉴积分榜",
+            key=BOOK_RANK_KEY,
+            sub_key=BOOK_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=book_score,
+            operation=lambda: _safe_find_rank(
+                "book", find_rank, game, user_id=user_id, title="图鉴积分",
+                score_name="图鉴积分", score=book_score, key=BOOK_RANK_KEY,
+                sub_key=BOOK_RANK_SUB_KEY, target_score=book_score, errors=errors,
+                progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="achieve",
+            title="成就点数榜",
+            key=ACHIEVE_RANK_KEY,
+            sub_key=ACHIEVE_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=achieve_score,
+            operation=lambda: _safe_find_rank(
+                "achieve", find_rank, game, user_id=user_id, title="成就点数",
+                score_name="成就点数", score=achieve_score, key=ACHIEVE_RANK_KEY,
+                sub_key=ACHIEVE_RANK_SUB_KEY, target_score=achieve_score,
+                errors=errors, progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="pet_kind",
+            title="精灵图鉴榜",
+            key=PET_KIND_RANK_KEY,
+            sub_key=PET_KIND_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=pet_kind_count or None,
+            operation=lambda: _safe_find_pet_kind_rank(
+                game, user_id=user_id, pet_kind_count=pet_kind_count,
+                search_limit=book_breakdown_limit,
+                find_pet_kind_rank=find_pet_kind_rank, errors=errors,
+                progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="skin",
+            title="皮肤图鉴榜",
+            key=SKIN_RANK_KEY,
+            sub_key=SKIN_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=skin_score,
+            operation=lambda: _safe_find_rank(
+                "skin", find_rank, game, user_id=user_id, title="皮肤图鉴",
+                score_name="皮肤", score=skin_score, key=SKIN_RANK_KEY,
+                sub_key=SKIN_RANK_SUB_KEY, target_score=skin_score,
+                search_limit=book_breakdown_limit, errors=errors,
+                progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="countermark",
+            title="刻印图鉴榜",
+            key=COUNTERMARK_RANK_KEY,
+            sub_key=COUNTERMARK_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=None,
+            operation=lambda: _safe_find_rank(
+                "countermark", find_rank, game, user_id=user_id, title="刻印图鉴",
+                score_name="刻印", key=COUNTERMARK_RANK_KEY,
+                sub_key=COUNTERMARK_RANK_SUB_KEY, search_limit=book_breakdown_limit,
+                errors=errors, progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="outfit_suit",
+            title="套装图鉴榜",
+            key=OUTFIT_RANK_KEY,
+            sub_key=OUTFIT_SUIT_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=None,
+            operation=lambda: _safe_find_rank(
+                "outfit_suit", find_rank, game, user_id=user_id, title="套装图鉴",
+                score_name="套装", key=OUTFIT_RANK_KEY,
+                sub_key=OUTFIT_SUIT_RANK_SUB_KEY, search_limit=book_breakdown_limit,
+                errors=errors, progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="outfit_part",
+            title="部件图鉴榜",
+            key=OUTFIT_RANK_KEY,
+            sub_key=OUTFIT_PART_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=None,
+            operation=lambda: _safe_find_rank(
+                "outfit_part", find_rank, game, user_id=user_id, title="部件图鉴",
+                score_name="部件", key=OUTFIT_RANK_KEY,
+                sub_key=OUTFIT_PART_RANK_SUB_KEY, search_limit=book_breakdown_limit,
+                errors=errors, progress=progress, anchor_only=anchor_only,
+            ),
+        ),
+        PlayerRankLookupJob(
+            id="mount",
+            title="座驾图鉴榜",
+            key=OUTFIT_RANK_KEY,
+            sub_key=MOUNT_RANK_SUB_KEY,
+            user_id=user_id,
+            target_score=None,
+            operation=lambda: _safe_find_rank(
+                "mount", find_rank, game, user_id=user_id, title="座驾图鉴",
+                score_name="座驾", key=OUTFIT_RANK_KEY,
+                sub_key=MOUNT_RANK_SUB_KEY, search_limit=book_breakdown_limit,
+                errors=errors, progress=progress, anchor_only=anchor_only,
+            ),
+        ),
     )
-    achieve = await _safe_find_rank(
-        "achieve",
-        find_rank,
-        game,
-        user_id=user_id,
-        title="成就点数",
-        score_name="成就点数",
-        score=achieve_score,
-        key=ACHIEVE_RANK_KEY,
-        sub_key=ACHIEVE_RANK_SUB_KEY,
-        target_score=achieve_score,
-        errors=errors,
-        progress=progress,
-        anchor_only=anchor_only,
-    )
-    breakdown = await fetch_book_breakdown_summary(
-        game,
-        user_id,
+    results = await _run_lookup_jobs(jobs, run_lookup_jobs)
+    breakdown = BookBreakdownSummary(
         pet_kind_count=pet_kind_count,
-        skin_score=skin_score,
-        limit=book_breakdown_limit,
-        find_pet_kind_rank=find_pet_kind_rank,
-        find_rank=find_rank,
-        errors=errors,
-        progress=progress,
-        anchor_only=anchor_only,
+        pet_kind=results["pet_kind"],
+        skin=results["skin"],
+        countermark=results["countermark"],
+        outfit_suit=results["outfit_suit"],
+        outfit_part=results["outfit_part"],
+        mount=results["mount"],
     )
     return PlayerRankSummary(
-        book=book,
-        achieve=achieve,
+        book=results["book"],
+        achieve=results["achieve"],
         breakdown=breakdown,
         errors=tuple(errors),
     )
+
+
+async def _run_lookup_jobs(
+    jobs: Sequence[PlayerRankLookupJob],
+    runner: RunLookupJobs | None,
+) -> dict[str, RankLookupResult]:
+    if runner is not None:
+        return await runner(jobs)
+    return {job.id: await job.operation() for job in jobs}

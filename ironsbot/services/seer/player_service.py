@@ -502,6 +502,28 @@ class PlayerService(PlayerAccountPolicyMixin):
             offer_binding=explicit and not binding.choice_completed,
         )
 
+    async def bind_player(
+        self,
+        player_id: int,
+        *,
+        qq_user_id: int,
+        group_id: int | None = None,
+    ) -> PlayerQueryResult:
+        """Validate a player ID, save it as default, and return its info."""
+        result = await self.query(
+            player_id,
+            qq_user_id=qq_user_id,
+            explicit=True,
+            group_id=group_id,
+        )
+        if result.message or result.pending is None:
+            return result
+
+        pending = result.pending
+        status = self._save_binding(qq_user_id, pending)
+        pending.player_message = f"{status}\n\n{pending.player_message}"
+        return PlayerQueryResult(pending=pending)
+
     def save_binding_choice(
         self,
         qq_user_id: int,
@@ -600,8 +622,8 @@ class PlayerService(PlayerAccountPolicyMixin):
         if player_id is None:
             return QueryReply(
                 text=(
-                    "尚未设置默认米米号。请发送“米米号+数字”查询，"
-                    "也可直接在本指令后填写米米号。"
+                    "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
+                    "查询未绑定的米米号时，需要在查询指令后加上米米号。"
                 )
             )
         if not is_valid_player_id(player_id):

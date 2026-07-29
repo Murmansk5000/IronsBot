@@ -223,6 +223,22 @@ def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
     assert "胜率33/41=80.488%" in standard_line
 
 
+def test_format_peak_does_not_report_unqueried_mode_as_unranked() -> None:
+    peak = UnityPeak(current_z_score=1421, current_z_all=38)
+
+    message = format_compact_peak_section(
+        _as_any(peak),
+        PeakSeasonRankSummary.empty(),
+        _as_any(_LocalSummary()),
+    )
+
+    expert_line = next(
+        line for line in message.splitlines() if line.startswith("专家：")
+    )
+    assert "赛季榜未查询" in expert_line
+    assert "赛季榜未上榜" not in expert_line
+
+
 def test_format_autocard_rank_starts_with_fetch_time() -> None:
     message = format_autocard_rank_info(
         RankLookupResult(
