@@ -77,14 +77,21 @@ def format_peak_line(  # noqa: PLR0913
             f"{format_local_rank_suffix(local_summary, win_rate_key, label='样本胜率')}"
         )
     failure = rank_result.failure
-    rank_text = (
-        f"赛季榜{failure}"
-        if failure
-        else (
+    if failure:
+        rank_text = f"赛季榜{failure}"
+    elif rank_result.rank is not None:
+        rank_text = (
             f"{format_peak_rank_text(rank_result.rank)}"
             f"{format_local_rank_suffix(local_summary, score_key, label='样本段位')}"
         )
-    )
+    elif rank_result.queried:
+        rank_text = (
+            f"赛季榜前{rank_result.searched_limit}名未确认"
+            if rank_result.searched_limit > 0
+            else "赛季榜未确认"
+        )
+    else:
+        rank_text = "赛季榜未查询"
     return (
         f"{title}：{current}{METRIC_SEPARATOR}历史{history}"
         f"{METRIC_SEPARATOR}"

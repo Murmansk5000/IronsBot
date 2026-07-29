@@ -44,6 +44,7 @@ ONLINE_GAP_LOWER_START_RANK = 21
 ONLINE_GAP_LOWER_END_RANK = 30
 FETCHED_AT = 1_781_234_567.0
 LOOKUP_INDEX = 14
+MOVED_RANK = 150
 LARGE_SEGMENT_LIMIT = 50_000
 LARGE_SEGMENT_PROBE_LIMIT = 16
 LARGE_SEGMENT_PAGE_SIZE = 100
@@ -1152,6 +1153,97 @@ def test_cached_rank_without_target_score_is_verified_nearby(
     assert requested_ranges == [(0, 99)]
     assert result.rank == 1
     assert result.score == CACHED_SCORE + 1
+
+
+def test_cached_rank_confirms_its_own_page_before_expanding(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
+    requested_ranges: list[tuple[int, int]] = []
+    cached_item = CachedRankLookup(
+        id=105023264,
+        nick="cached",
+        score=CACHED_SCORE,
+        rank_index=109,
+        fetched_at=FETCHED_AT,
+        is_stale=True,
+    )
+    monkeypatch.setattr(cache, "item", lambda **_: cached_item)
+
+    async def fake_fetch_rank_page(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> list[RankItem]:
+        requested_ranges.append((start, end))
+        items = [RankItem(id=index, score=20_000 - index) for index in range(100)]
+        items[49] = RankItem(id=105023264, nick="moved", score=CACHED_SCORE + 5)
+        return items
+
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
+
+    result = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=105023264,
+            title="book",
+            score_name="score",
+            key=156,
+            sub_key=1,
+            target_score=CACHED_SCORE,
+        )
+    )
+
+    assert requested_ranges == [(100, 199)]
+    assert result.rank == MOVED_RANK
+    assert result.cost.lightweight_confirmed
+    assert not result.cost.expanded
+
+
+def test_anchor_only_rank_lookup_never_expands_beyond_cached_page(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
+    requested_ranges: list[tuple[int, int]] = []
+    cached_item = CachedRankLookup(
+        id=105023264,
+        nick="cached",
+        score=CACHED_SCORE,
+        rank_index=109,
+        fetched_at=FETCHED_AT,
+        is_stale=True,
+    )
+    monkeypatch.setattr(cache, "item", lambda **_: cached_item)
+
+    async def fake_fetch_rank_page(
+        *_args: object,
+        start: int,
+        end: int,
+        **_kwargs: object,
+    ) -> list[RankItem]:
+        requested_ranges.append((start, end))
+        return [RankItem(id=index, score=20_000 - index) for index in range(100)]
+
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
+
+    result = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=105023264,
+            title="book",
+            score_name="score",
+            key=156,
+            sub_key=1,
+            target_score=CACHED_SCORE,
+            anchor_only=True,
+        )
+    )
+
+    assert requested_ranges == [(100, 199)]
+    assert result.rank is None
+    assert result.cost.restricted_miss
+    assert not result.cost.expanded
 
 
 def test_fetch_rank_item_fetches_aligned_page_on_cache_miss(

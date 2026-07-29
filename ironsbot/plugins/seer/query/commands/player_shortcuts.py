@@ -15,17 +15,25 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.onebot_context import event_group_id
-from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+)
+from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     parse_player_shortcut_command,
+    player_shortcut_loading_message,
+    player_shortcut_semantic_request,
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies, prompt_for_unbound_player_id
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.query_result import QueryReply
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
@@ -63,6 +71,11 @@ async def handle_player_shortcut(
     if command.player_id is None and service.default_player_id(event.user_id) is None:
         await prompt_for_unbound_player_id(dependencies, matcher, event)
         return
+    await send_event_reply(
+        matcher,
+        event,
+        player_shortcut_loading_message(command.kind),
+    )
     reply = await service.shortcut(
         command,
         event.user_id,
@@ -84,9 +97,37 @@ def _shortcut_command_id(
     return f"seer_player_{kind}" if kind else "seer_player"
 
 
+def _shortcut_semantic_request(
+    service: PlayerService,
+    event: MessageEvent,
+    state: T_State,
+) -> SemanticRequest | None:
+    command = state.get(_SHORTCUT_COMMAND_KEY)
+    player_id = getattr(command, "player_id", None)
+    if not isinstance(player_id, int):
+        player_id = service.default_player_id(event.user_id)
+    kind = getattr(command, "kind", None)
+    if not isinstance(player_id, int) or not is_valid_player_id(player_id):
+        return None
+    if kind not in {"collection", "peak", "autocard"}:
+        return None
+    return player_shortcut_semantic_request(
+        kind=kind,
+        player_id=player_id,
+        source=SemanticRequestSource.DIRECT,
+    )
+
+
 def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
-        policy=CommandPolicy.command(_shortcut_command_id),
+        policy=CommandPolicy.command(
+            _shortcut_command_id,
+            semantic_request=lambda event, state: _shortcut_semantic_request(
+                group.resources.player,
+                event,
+                state,
+            ),
+        ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_shortcut)
         & no_reply(),

@@ -208,7 +208,7 @@ def _connected_mintmark_session() -> Session:
     return session
 
 
-def test_connected_mintmarks_merge_into_new_record() -> None:
+def test_connected_mintmarks_merge_keeps_new_record_and_orders_root_id_first() -> None:
     session = _connected_mintmark_session()
     old = session.get(MintmarkORM, OLD_MINTMARK_ID)
     new = session.get(MintmarkORM, NEW_MINTMARK_ID)
@@ -227,10 +227,11 @@ def test_connected_mintmarks_merge_into_new_record() -> None:
         assert len(views) == 1
         assert views[0].mintmark.id == NEW_MINTMARK_ID
         assert views[0].related_ids == (OLD_MINTMARK_ID,)
+        assert views[0].ids == (OLD_MINTMARK_ID, NEW_MINTMARK_ID)
         assert format_mintmark_choice_description(
             views[0],
             merge_connected=True,
-        ).startswith("45001、41606")
+        ).startswith("41606、45001")
 
 
 def test_connected_mintmarks_remain_separate_when_merge_disabled() -> None:
@@ -329,6 +330,7 @@ async def test_mintmark_series_query_preloads_connected_relationships() -> None:
     assert len(views) == 1
     assert views[0].mintmark.id == NEW_MINTMARK_ID
     assert views[0].related_ids == (OLD_MINTMARK_ID,)
+    assert views[0].ids == (OLD_MINTMARK_ID, NEW_MINTMARK_ID)
 
     service = MintmarkQueryService(
         data,
@@ -341,4 +343,4 @@ async def test_mintmark_series_query_preloads_connected_relationships() -> None:
     for result in (search_result, selection_result):
         assert result.reply is not None
         assert result.reply.image == b"image:45001"
-        assert "45001、41606" in result.reply.text
+        assert "41606、45001" in result.reply.text

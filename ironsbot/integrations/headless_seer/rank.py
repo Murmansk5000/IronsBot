@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from ironsbot.core.rank_lookup_context import rank_page_request_timeout
 from ironsbot.integrations.headless_seer.command_id import COMMAND_ID
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.integrations.headless_seer.packets.peak import DailyRankParam
@@ -16,10 +17,11 @@ async def fetch_rank_page(
     from ironsbot.services.seer.rank_ranges import validate_rank_offsets
 
     validate_rank_offsets(start, end)
+    timeout = rank_page_request_timeout.get() or 15.0
     _head, rank_list = await game.send_and_wait(
         COMMAND_ID.GET_DAILY_RANK_INFO,
         DailyRankParam(key=key, sub_key=sub_key, start=start, end=end),
-        timeout=15.0,
+        timeout=timeout,
     )
     return [
         RankEntry(id=item.id, nick=item.nick, score=item.score)
