@@ -143,7 +143,6 @@ def validate_player_peak_season(
             "standard",
             candidate_scores.standard,
             rank_summary.standard,
-            ("current_j_rank", "current_j_star"),
             "current_j_win",
             "current_j_all",
             (
@@ -156,7 +155,6 @@ def validate_player_peak_season(
             "wild",
             candidate_scores.wild,
             rank_summary.wild,
-            ("current_k_rank", "current_k_star"),
             "current_k_win",
             "current_k_all",
             ("peak_wild", "peak_wild_win_rate", "peak_wild_matches"),
@@ -165,7 +163,6 @@ def validate_player_peak_season(
             "expert",
             candidate_scores.expert,
             rank_summary.expert,
-            ("current_z_score",),
             "current_z_win",
             "current_z_all",
             ("peak_expert", "peak_expert_win_rate", "peak_expert_matches"),
@@ -173,9 +170,8 @@ def validate_player_peak_season(
     )
     for (
         mode,
-        _candidate_score,
+        candidate_score,
         result,
-        score_fields,
         win_field,
         total_field,
         metric_keys,
@@ -185,20 +181,24 @@ def validate_player_peak_season(
             if result.rank is not None and result.score is not None
             else None
         )
-        if confirmed_score is not None:
-            scores[mode] = confirmed_score
+        # A rank lookup that did not find the player (or timed out) does not
+        # prove that the live player packet belongs to an old season.  Keep
+        # its match data unless the rank lookup positively returns a different
+        # current score.
+        scores[mode] = (
+            confirmed_score
+            if confirmed_score is not None
+            else candidate_score
+        )
+        if confirmed_score is None or confirmed_score == candidate_score:
             continue
 
-        # The permanent-value packet has no season identifier.  Only a rank
-        # entry for this player in the active season can make these current
-        # values safe to display or sample.
-        scores[mode] = None
-        for field in (*score_fields, win_field, total_field):
-            peak_updates[field] = 0
+        peak_updates[win_field] = 0
+        peak_updates[total_field] = 0
         invalidates_total_matches = (
             invalidates_total_matches or int(getattr(unity_peak, total_field)) > 0
         )
-        clear_metric_keys.update(metric_keys)
+        clear_metric_keys.update(metric_keys[1:])
 
     if invalidates_total_matches:
         clear_metric_keys.add("peak_total_matches")

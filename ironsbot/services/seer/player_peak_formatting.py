@@ -28,13 +28,22 @@ if TYPE_CHECKING:
 def _resolve_peak_current(
     result: RankLookupResult,
     *,
+    candidate_score: int | None,
+    fallback_text: str,
     score_formatter: Callable[[int], str],
 ) -> tuple[str, bool]:
     rank = getattr(result, "rank", None)
     score = getattr(result, "score", None)
     if rank is not None and score is not None:
-        return score_formatter(int(score)), True
-    return "当前赛季未确认", False
+        return score_formatter(int(score)), int(score) == candidate_score
+
+    if bool(getattr(result, "queried", False)):
+        searched_limit = int(getattr(result, "searched_limit", 0) or 0)
+        if searched_limit > 0:
+            return f"当前赛季前{searched_limit}名未确认", candidate_score is not None
+        return "当前赛季未确认", candidate_score is not None
+
+    return fallback_text, candidate_score is not None
 
 
 def _format_peak_rating_score(score: int) -> str:
@@ -102,16 +111,30 @@ def format_compact_peak_section(
     if player_id is not None:
         lines.append(format_player_identity(player_id, nick))
 
+    standard_score = peak.current_j_rank * 100_000 + peak.current_j_star
+    wild_score = peak.current_k_rank * 100_000 + peak.current_k_star
     standard_current, standard_stats_available = _resolve_peak_current(
         peak_rank_summary.standard,
+        candidate_score=standard_score if peak.current_j_all > 0 else None,
+        fallback_text=format_rank_star_compact(
+            peak.current_j_rank,
+            peak.current_j_star,
+        ),
         score_formatter=_format_peak_rating_score,
     )
     wild_current, wild_stats_available = _resolve_peak_current(
         peak_rank_summary.wild,
+        candidate_score=wild_score if peak.current_k_all > 0 else None,
+        fallback_text=format_rank_star_compact(
+            peak.current_k_rank,
+            peak.current_k_star,
+        ),
         score_formatter=_format_peak_rating_score,
     )
     expert_current, expert_stats_available = _resolve_peak_current(
         peak_rank_summary.expert,
+        candidate_score=peak.current_z_score if peak.current_z_all > 0 else None,
+        fallback_text=f"{peak.current_z_score}分",
         score_formatter=lambda score: f"{score}分",
     )
 

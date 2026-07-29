@@ -17,15 +17,13 @@ from ironsbot.services.seer.local_rank_models import (
     LocalRankEntry,
     LocalRankSummary,
 )
-from ironsbot.services.seer.player_query import (
-    calculate_player_peak_scores,
-    validate_player_peak_season,
-)
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
 )
 from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
-from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
+from ironsbot.services.seer.rank_peak import (
+    build_peak_rating_score,
+)
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,
     UnityPeakInfo,
@@ -327,7 +325,25 @@ class LocalRankService:
             fetch_unity_part_one(game, player_id),
             fetch_unity_peak(game, player_id),
         )
-        candidate_peak_scores = calculate_player_peak_scores(unity_peak)
+        peak_standard_score = (
+            build_peak_rating_score(
+                unity_peak.current_j_rank,
+                unity_peak.current_j_star,
+            )
+            if unity_peak.current_j_all > 0
+            else None
+        )
+        peak_wild_score = (
+            build_peak_rating_score(
+                unity_peak.current_k_rank,
+                unity_peak.current_k_star,
+            )
+            if unity_peak.current_k_all > 0
+            else None
+        )
+        peak_expert_score = (
+            unity_peak.current_z_score if unity_peak.current_z_all > 0 else None
+        )
         rank_summary = await self.rank.fetch_player_summary(
             game,
             player_id,
@@ -335,39 +351,17 @@ class LocalRankService:
             pet_kind_count=unity_part_one.pet_kind_num,
             skin_score=unity_part_one.skin_num,
         )
-        try:
-            peak_rank_summary = await self.rank.fetch_peak_summary(
-                game,
-                player_id,
-                standard_score=candidate_peak_scores.standard,
-                wild_score=candidate_peak_scores.wild,
-                expert_score=candidate_peak_scores.expert,
-                anchor_only=True,
-            )
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "local rank refresh could not confirm current peak season: player=%s",
-                player_id,
-                exc_info=True,
-            )
-            peak_rank_summary = PeakSeasonRankSummary.empty()
-        validated_peak = validate_player_peak_season(
-            unity_peak,
-            candidate_peak_scores,
-            peak_rank_summary,
-        )
         await self.update_cache(
             player_id=player_id,
             nick=user_info.nick,
             more_info=more_info,
             unity_part_one=unity_part_one,
-            unity_peak=validated_peak.unity_peak,
+            unity_peak=unity_peak,
             rank_summary=rank_summary,
             peak_sub_key=peak_sub_key,
-            peak_standard_score=validated_peak.scores.standard,
-            peak_wild_score=validated_peak.scores.wild,
-            peak_expert_score=validated_peak.scores.expert,
-            clear_metric_keys=validated_peak.clear_metric_keys,
+            peak_standard_score=peak_standard_score,
+            peak_wild_score=peak_wild_score,
+            peak_expert_score=peak_expert_score,
         )
 
     @staticmethod
