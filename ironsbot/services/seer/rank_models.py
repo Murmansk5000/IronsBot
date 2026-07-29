@@ -11,6 +11,31 @@ class RankEntry:
 
 
 @dataclass(slots=True)
+class RankLookupCost:
+    """Observed work for one player-rank lookup."""
+
+    anchor_page_start: int | None = None
+    page_starts: list[int] = field(default_factory=list)
+    anchor_page_hit: bool = False
+    expanded: bool = False
+    used_score_search: bool = False
+    used_full_scan: bool = False
+    cache_page_hits: int = 0
+    online_page_fetches: int = 0
+    restricted_miss: bool = False
+
+    @property
+    def lightweight_confirmed(self) -> bool:
+        return (
+            self.anchor_page_start is not None
+            and self.anchor_page_hit
+            and self.page_starts == [self.anchor_page_start]
+            and not self.used_score_search
+            and not self.used_full_scan
+        )
+
+
+@dataclass(slots=True)
 class RankLookupResult:
     title: str
     score_name: str
@@ -19,6 +44,7 @@ class RankLookupResult:
     searched_limit: int = 0
     queried: bool = False
     failure: str | None = None
+    cost: RankLookupCost = field(default_factory=RankLookupCost)
 
 
 @dataclass(slots=True)
@@ -70,6 +96,7 @@ class RankScoreMissProof:
 class RankPageResult:
     items: list[Any]
     fetched_at: float
+    from_cache: bool = False
 
 
 @dataclass(slots=True)

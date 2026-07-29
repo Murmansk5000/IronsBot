@@ -4,10 +4,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass
 from math import ceil
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
+
+from ironsbot.core.semantic_requests import SemanticRequest, semantic_request_scope
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -54,9 +57,12 @@ class _QueuedRequest:
     label: str
     operation: Callable[[], Awaitable[Any]]
     future: asyncio.Future[Any]
+    user_id: int | None
     bypass_pause: bool
     background: bool
     timeout_seconds: float | None
+    semantic_request: SemanticRequest | None = None
+    priority: bool = False
 
 
 class PlayerRequestProtectionService:
@@ -80,10 +86,11 @@ class PlayerRequestProtectionService:
         self._normal: deque[_QueuedRequest] = deque()
         self._background: deque[_QueuedRequest] = deque()
         self._active: _QueuedRequest | None = None
+        self._by_request_key: dict[tuple[str, str], _QueuedRequest] = {}
         self._pause_until = 0.0
         self._last_disconnect_at: float | None = None
 
-    async def run(
+    async def run(  # noqa: PLR0913
         self,
         operation: Callable[[], Awaitable[T]],
         *,
@@ -91,9 +98,12 @@ class PlayerRequestProtectionService:
         label: str,
         background: bool = False,
         timeout_seconds: float | None = None,
+        semantic_request: SemanticRequest | None = None,
+        _retry_after_background_failure: bool = True,
     ) -> T:
         if not self._config.enabled:
-            return await operation()
+            with semantic_request_scope(semantic_request, user_id=user_id):
+                return await operation()
 
         is_superuser = (
             user_id is not None and self._features.is_superuser(user_id)
@@ -104,18 +114,53 @@ class PlayerRequestProtectionService:
         if self._paused() and not bypass_pause:
             raise PlayerRequestPausedError(self.pause_remaining_seconds())
 
+        request_key = _semantic_request_key(semantic_request)
+        if request_key and (existing := self._by_request_key.get(request_key)):
+            if existing.future.done():
+                self._by_request_key.pop(request_key, None)
+            else:
+                joined_background = existing.background
+                if not background:
+                    self._promote(
+                        existing,
+                        priority=(
+                            is_superuser
+                            and self._config.superuser_priority
+                        ),
+                    )
+                try:
+                    return cast("T", await existing.future)
+                except Exception:
+                    if (
+                        joined_background
+                        and not background
+                        and _retry_after_background_failure
+                    ):
+                        return await self.run(
+                            operation,
+                            user_id=user_id,
+                            label=label,
+                            background=False,
+                            timeout_seconds=timeout_seconds,
+                            semantic_request=semantic_request,
+                            _retry_after_background_failure=False,
+                        )
+                    raise
+
         item = _QueuedRequest(
             label=label,
             operation=cast("Callable[[], Awaitable[Any]]", operation),
             future=asyncio.get_running_loop().create_future(),
+            user_id=user_id,
             bypass_pause=bypass_pause,
             background=background,
             timeout_seconds=timeout_seconds,
-        )
-        self._enqueue(
-            item,
+            semantic_request=semantic_request,
             priority=is_superuser and self._config.superuser_priority,
         )
+        self._enqueue(item, priority=item.priority)
+        if request_key:
+            self._by_request_key[request_key] = item
         self._start_next()
         try:
             return cast("T", await item.future)
@@ -180,8 +225,26 @@ class PlayerRequestProtectionService:
             if not self._normal:
                 raise PlayerRequestBusyError
             displaced = self._normal.pop()
+            self._release_request_key(displaced)
             self._reject(displaced, PlayerRequestBusyError())
 
+        if priority:
+            self._priority.append(item)
+        else:
+            self._normal.append(item)
+
+    def _promote(self, item: _QueuedRequest, *, priority: bool) -> None:
+        """Move a pending prefetch into the interactive priority class."""
+
+        if self._active is item:
+            return
+        if not item.background and (item.priority or not priority):
+            return
+        for queue in (self._priority, self._normal, self._background):
+            with suppress(ValueError):
+                queue.remove(item)
+        item.background = False
+        item.priority = priority
         if priority:
             self._priority.append(item)
         else:
@@ -219,7 +282,11 @@ class PlayerRequestProtectionService:
                 await self._wait_for_reconnect()
             elif self._paused():
                 self._raise_paused()
-            result = await self._run_operation(item)
+            with semantic_request_scope(
+                item.semantic_request,
+                user_id=item.user_id,
+            ):
+                result = await self._run_operation(item)
         except asyncio.CancelledError:
             item.future.cancel()
             raise
@@ -240,6 +307,7 @@ class PlayerRequestProtectionService:
                 item.future.set_result(result)
         finally:
             self._active = None
+            self._release_request_key(item)
             self._start_next()
 
     async def _run_operation(self, item: _QueuedRequest) -> Any:
@@ -276,6 +344,7 @@ class PlayerRequestProtectionService:
     def _reject_waiting(self, queue: deque[_QueuedRequest]) -> None:
         while queue:
             item = queue.popleft()
+            self._release_request_key(item)
             self._reject(
                 item,
                 PlayerRequestPausedError(self.pause_remaining_seconds()),
@@ -285,6 +354,21 @@ class PlayerRequestProtectionService:
     def _reject(item: _QueuedRequest, error: Exception) -> None:
         if not item.future.done():
             item.future.set_exception(error)
+
+    def _release_request_key(self, item: _QueuedRequest) -> None:
+        if (
+            (request_key := _semantic_request_key(item.semantic_request)) is not None
+            and self._by_request_key.get(request_key) is item
+        ):
+            self._by_request_key.pop(request_key, None)
+
+
+def _semantic_request_key(
+    request: SemanticRequest | None,
+) -> tuple[str, str] | None:
+    if request is None:
+        return None
+    return request.action.id, request.target.key
 
 
 def player_request_protection_message(error: Exception) -> str:

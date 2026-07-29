@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -22,6 +23,7 @@ def _action(
         label=label,
         aliases=aliases,
         query=AsyncMock(return_value=QueryReply(text="ok")),
+        action=ActionDefinition("lineup", "阵容"),
     )
 
 

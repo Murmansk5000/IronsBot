@@ -5,8 +5,12 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.query_result import QueryReply
+
+if TYPE_CHECKING:
+    from ironsbot.core.semantic_requests import ActionDefinition
 
 PlayerDetailActionQuery = Callable[[int, int, int | None], Awaitable[QueryReply]]
 _BUILTIN_ALIASES = frozenset({"收集", "巅峰", "群星牌"})
@@ -21,6 +25,7 @@ class PlayerDetailExtensionAction:
     label: str
     aliases: tuple[str, ...]
     query: PlayerDetailActionQuery
+    action: ActionDefinition
 
 
 class PlayerDetailExtensionRegistry:
@@ -65,12 +70,16 @@ class PlayerDetailExtensionRegistry:
         if overlap:
             msg = "player detail extension alias collision: " + ", ".join(overlap)
             raise ValueError(msg)
+        if action.action.id != action.id:
+            msg = "player detail extension action id must match its registration id"
+            raise ValueError(msg)
         self._actions[action.id] = PlayerDetailExtensionAction(
             id=action.id,
             feature=action.feature,
             label=label,
             aliases=aliases,
             query=action.query,
+            action=action.action,
         )
 
     def actions(self) -> tuple[PlayerDetailExtensionAction, ...]:
