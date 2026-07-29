@@ -245,7 +245,7 @@ def test_example_config_parses() -> None:
         config.bilibili.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid
         == DEFAULT_BILI_ACCOUNT_UID
     )
-    assert config.bilibili.push.mode == "link"
+    assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
     assert config.bilibili.push.modes == {
         DEFAULT_BILI_ACCOUNT_ALIAS: "full"

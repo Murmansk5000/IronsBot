@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
@@ -14,6 +15,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
+from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_collection_formatting import (
@@ -45,6 +47,7 @@ from ironsbot.services.seer.sequ_extra import (
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
+    from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.rank import RankService
 
 PlayerShortcutKind = Literal["collection", "peak", "autocard"]
@@ -121,6 +124,32 @@ class PlayerShortcutDependencies:
     timeout_seconds: float = 30.0
 
 
+PlayerShortcutStatusSender = Callable[[str], Awaitable[None]]
+
+
+def _rank_summary_timeout_seconds(rank: RankService, fallback: float) -> float:
+    """Let the cooperative rank scheduler finish its own bounded request cycle.
+
+    The normal player-detail stage timeout is intentionally short.  Applying it
+    to a multi-board lookup cancels the scheduler midway through a page, which
+    turns unrelated boards into "not queried" results.  The scheduler already
+    has a total budget and a per-page timeout; add one page as a small grace
+    period so it can drain and return partial results itself.
+    """
+
+    player_lookup = getattr(getattr(rank, "config", None), "player_lookup", None)
+    if player_lookup is None:
+        return fallback
+    try:
+        return max(
+            fallback,
+            float(player_lookup.total_timeout_seconds)
+            + float(player_lookup.page_timeout_seconds),
+        )
+    except (AttributeError, TypeError, ValueError):
+        return fallback
+
+
 def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
     normalized = "".join(text.split())
     match = _SHORTCUT_RE.fullmatch(normalized)
@@ -138,6 +167,30 @@ def player_shortcut_loading_message(kind: PlayerShortcutKind) -> str:
     return (
         f"⏳ {label}正在查询，完成后会直接发送结果。\n"
         "数据较多时可能需要排队，请稍候。"
+    )
+
+
+async def execute_player_shortcut(
+    service: PlayerService,
+    command: PlayerShortcutCommand,
+    qq_user_id: int,
+    *,
+    group_id: int | None,
+    send_status: PlayerShortcutStatusSender | None = None,
+) -> QueryReply:
+    """Run numeric-menu and text shortcuts through the same query path."""
+
+    player_id = command.player_id or service.default_player_id(qq_user_id)
+    if (
+        send_status is not None
+        and isinstance(player_id, int)
+        and is_valid_player_id(player_id)
+    ):
+        await send_status(player_shortcut_loading_message(command.kind))
+    return await service.shortcut(
+        command,
+        qq_user_id,
+        group_id=group_id,
     )
 
 
@@ -256,7 +309,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
         rank_summary_fallback,
         None,
         on_error=record_rank_summary_error,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
         error_label_factory=lambda: rank_progress.current_title or "全服排行",
     )
     metrics = collect_metrics(
@@ -352,7 +405,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         peak_summary_fallback,
         None,
         on_error=record_peak_summary_error,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
         error_label_factory=lambda: peak_progress.current_title or "巅峰赛季榜",
     )
     validated_peak = validate_player_peak_season(
@@ -440,7 +493,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
             autocard_fallback,
             None,
             on_error=record_autocard_error,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
         ),
     )
     metrics = {

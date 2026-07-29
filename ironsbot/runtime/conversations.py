@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from nonebot.adapters import Event  # noqa: TC002 - dynamic callback annotation
 from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ironsbot.core.commands import command_text_matches
@@ -14,7 +15,6 @@ from ironsbot.runtime.matchers import (
 from ironsbot.runtime.replies import build_message, event_sender_at_user_ids
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Message
 
     from ironsbot.runtime.matcher_contracts import QueuedSemanticRequestResolver

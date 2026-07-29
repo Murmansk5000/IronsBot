@@ -139,7 +139,7 @@ class BiliPushTargetConfig(BaseModel):
 class BiliPushConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mode: _RequiredBiliPushMode = "link"
+    mode: _RequiredBiliPushMode = "full"
     accounts: _BiliAccountAliases = Field(
         default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
     )

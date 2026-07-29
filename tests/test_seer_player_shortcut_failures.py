@@ -8,12 +8,19 @@ from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
+    _rank_summary_timeout_seconds,
     fetch_player_shortcut_reply,
 )
 from ironsbot.services.seer.rank_models import PlayerRankSummary
 from ironsbot.services.seer.sequ_extra import UnityPartOneInfo
 
 PLAYER_ID = 813_824_069
+_SCHEDULER_TOTAL_TIMEOUT_SECONDS = 60
+_SCHEDULER_PAGE_TIMEOUT_SECONDS = 8
+_SCHEDULER_GRACEFUL_TIMEOUT_SECONDS = (
+    _SCHEDULER_TOTAL_TIMEOUT_SECONDS + _SCHEDULER_PAGE_TIMEOUT_SECONDS
+)
+_TEST_STAGE_TIMEOUT_SECONDS = 0.01
 
 
 class _Game:
@@ -68,6 +75,28 @@ class _RankWithoutData:
         return PlayerRankSummary.empty()
 
 
+def test_rank_summary_timeout_leaves_the_scheduler_a_page_to_finish() -> None:
+    rank = SimpleNamespace(
+        config=SimpleNamespace(
+            player_lookup=SimpleNamespace(
+                total_timeout_seconds=_SCHEDULER_TOTAL_TIMEOUT_SECONDS,
+                page_timeout_seconds=_SCHEDULER_PAGE_TIMEOUT_SECONDS,
+            )
+        )
+    )
+
+    assert _rank_summary_timeout_seconds(cast("Any", rank), 22.5) == (
+        _SCHEDULER_GRACEFUL_TIMEOUT_SECONDS
+    )
+
+
+def test_rank_summary_timeout_keeps_the_stage_timeout_for_simple_test_doubles() -> None:
+    assert (
+        _rank_summary_timeout_seconds(cast("Any", _Rank()), _TEST_STAGE_TIMEOUT_SECONDS)
+        == _TEST_STAGE_TIMEOUT_SECONDS
+    )
+
+
 @pytest.mark.asyncio
 async def test_collection_returns_partial_result_with_exact_timeout_stage(
     monkeypatch: pytest.MonkeyPatch,
@@ -91,7 +120,7 @@ async def test_collection_returns_partial_result_with_exact_timeout_stage(
         PlayerShortcutDependencies(
             rank=cast("Any", _Rank()),
             local_rank=cast("Any", _LocalRank()),
-            timeout_seconds=0.01,
+            timeout_seconds=_TEST_STAGE_TIMEOUT_SECONDS,
         ),
         _Game(),
         command=PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
