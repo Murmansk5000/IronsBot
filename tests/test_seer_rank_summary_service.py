@@ -4,6 +4,7 @@ from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     EXPERT_PEAK_USER_RANK_KEY,
     SKIN_RANK_KEY,
+    STANDARD_PEAK_USER_RANK_KEY,
     WILD_PEAK_USER_RANK_KEY,
 )
 from ironsbot.services.seer.rank_models import (
@@ -171,7 +172,7 @@ def test_peak_rank_summary_marks_all_modes_when_the_whole_section_fails() -> Non
 
 
 @pytest.mark.asyncio
-async def test_peak_rank_summary_retries_current_season_when_candidate_is_stale(
+async def test_peak_rank_summary_does_not_linearly_rescan_stale_candidate(
 ) -> None:
     calls: list[tuple[int, int | None]] = []
 
@@ -182,15 +183,6 @@ async def test_peak_rank_summary_retries_current_season_when_candidate_is_stale(
             (key, target_score if isinstance(target_score, int) else None)
         )
         if key == WILD_PEAK_USER_RANK_KEY:
-            if target_score is None:
-                return RankLookupResult(
-                    title=str(kwargs["title"]),
-                    score_name=str(kwargs["score_name"]),
-                    rank=CURRENT_PEAK_RANK,
-                    score=CURRENT_PEAK_SCORE,
-                    searched_limit=2000,
-                    queried=True,
-                )
             return RankLookupResult(
                 title=str(kwargs["title"]),
                 score_name=str(kwargs["score_name"]),
@@ -212,10 +204,76 @@ async def test_peak_rank_summary_retries_current_season_when_candidate_is_stale(
     )
 
     assert calls.count((WILD_PEAK_USER_RANK_KEY, PEAK_SCORE)) == 1
-    assert calls.count((WILD_PEAK_USER_RANK_KEY, None)) == 1
+    assert calls.count((WILD_PEAK_USER_RANK_KEY, None)) == 0
     assert summary.wild.queried
-    assert summary.wild.rank == CURRENT_PEAK_RANK
-    assert summary.wild.score == CURRENT_PEAK_SCORE
+    assert summary.wild.rank is None
+    assert summary.wild.score == PEAK_SCORE
+
+
+@pytest.mark.asyncio
+async def test_peak_rank_summary_reaches_expert_after_earlier_score_misses(
+) -> None:
+    calls: list[int] = []
+
+    async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
+        key = _int_kwarg(kwargs, "key")
+        calls.append(key)
+        rank = CURRENT_PEAK_RANK if key == EXPERT_PEAK_USER_RANK_KEY else None
+        return RankLookupResult(
+            title=str(kwargs["title"]),
+            score_name=str(kwargs["score_name"]),
+            rank=rank,
+            score=_int_kwarg(kwargs, "target_score") or None,
+            searched_limit=2000,
+            queried=True,
+        )
+
+    summary = await fetch_peak_season_rank_summary(
+        object(),
+        USER_ID,
+        standard_score=PEAK_SCORE,
+        wild_score=PEAK_SCORE,
+        expert_score=EXPERT_SCORE,
+        current_peak_sub_key=20260717,
+        find_rank=find_rank,
+    )
+
+    assert calls == [
+        STANDARD_PEAK_USER_RANK_KEY,
+        WILD_PEAK_USER_RANK_KEY,
+        EXPERT_PEAK_USER_RANK_KEY,
+    ]
+    assert summary.expert.rank == CURRENT_PEAK_RANK
+    assert summary.expert.score == EXPERT_SCORE
+
+
+@pytest.mark.asyncio
+async def test_peak_rank_summary_does_not_report_restricted_cache_miss_as_unranked(
+) -> None:
+    async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
+        result = RankLookupResult(
+            title=str(kwargs["title"]),
+            score_name=str(kwargs["score_name"]),
+            score=_int_kwarg(kwargs, "target_score") or None,
+            searched_limit=10_000,
+            queried=True,
+        )
+        result.cost.restricted_miss = True
+        return result
+
+    summary = await fetch_peak_season_rank_summary(
+        object(),
+        USER_ID,
+        standard_score=PEAK_SCORE,
+        wild_score=PEAK_SCORE,
+        expert_score=EXPERT_SCORE,
+        current_peak_sub_key=20260717,
+        find_rank=find_rank,
+        anchor_only=True,
+    )
+
+    assert summary.expert.rank is None
+    assert summary.expert.failure == "缓存位置已变化，排名未确认"
 
 
 @pytest.mark.asyncio
