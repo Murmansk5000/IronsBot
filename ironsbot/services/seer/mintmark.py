@@ -38,10 +38,11 @@ HP_MARK_THRESHOLD = 100
 class MintmarkQueryView:
     mintmark: MintmarkORM
     related_ids: tuple[int, ...] = ()
+    ordered_ids: tuple[int, ...] = ()
 
     @property
     def ids(self) -> tuple[int, ...]:
-        return (self.mintmark.id, *self.related_ids)
+        return self.ordered_ids or (self.mintmark.id, *self.related_ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +234,7 @@ def build_mintmark_views(
                         if related_id != preferred.id
                     )
                 ),
+                ordered_ids=_ordered_connected_mintmark_ids(connected),
             )
         )
     return tuple(result)
@@ -383,6 +385,37 @@ def _preferred_connected_mintmark(
         and mintmark.universal_part.connect_id is not None
     ]
     return max(children or list(mintmarks.values()), key=lambda item: item.id)
+
+
+def _ordered_connected_mintmark_ids(
+    mintmarks: dict[int, MintmarkORM],
+) -> tuple[int, ...]:
+    children_by_parent: dict[int, list[int]] = {}
+    root_ids: list[int] = []
+    for mintmark in mintmarks.values():
+        part = mintmark.universal_part
+        parent_id = None if part is None else part.connect_id
+        if parent_id is None or parent_id not in mintmarks:
+            root_ids.append(mintmark.id)
+            continue
+        children_by_parent.setdefault(parent_id, []).append(mintmark.id)
+
+    ordered: list[int] = []
+    visited: set[int] = set()
+
+    def visit(mintmark_id: int) -> None:
+        if mintmark_id in visited:
+            return
+        visited.add(mintmark_id)
+        ordered.append(mintmark_id)
+        for child_id in sorted(children_by_parent.get(mintmark_id, ())):
+            visit(child_id)
+
+    for root_id in sorted(root_ids):
+        visit(root_id)
+    for mintmark_id in sorted(mintmarks):
+        visit(mintmark_id)
+    return tuple(ordered)
 
 
 def _format_attribute(label: str, value: float, col_width: int = 8) -> str:
