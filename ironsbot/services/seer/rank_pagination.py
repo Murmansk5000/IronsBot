@@ -16,6 +16,11 @@ def rank_window_page_starts(
     window_pages: int,
 ) -> list[int]:
     page_start = center_index // page_size * page_size
-    first_page_start = max(0, page_start - window_pages * page_size)
-    last_page_start = page_start + window_pages * page_size
-    return list(range(first_page_start, last_page_start + 1, page_size))
+    starts = [page_start]
+    for distance in range(1, window_pages + 1):
+        previous = page_start - distance * page_size
+        following = page_start + distance * page_size
+        if previous >= 0:
+            starts.append(previous)
+        starts.append(following)
+    return starts

@@ -21,9 +21,9 @@ def test_rank_page_start_aligns_to_page_size() -> None:
     assert rank_page_start(199, page_size=MAX_PAGE_SIZE) == MAX_PAGE_SIZE
 
 
-def test_rank_window_page_starts_uses_symmetric_window() -> None:
+def test_rank_window_page_starts_checks_anchor_page_before_expanding() -> None:
     assert rank_window_page_starts(
         center_index=250,
         page_size=MAX_PAGE_SIZE,
         window_pages=2,
-    ) == [0, 100, 200, 300, 400]
+    ) == [200, 100, 300, 0, 400]

@@ -4,8 +4,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -39,7 +45,10 @@ from ironsbot.services.seer.rank_list_models import (
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
 )
-from ironsbot.services.seer.rank_player_query import fetch_rank_player_message
+from ironsbot.services.seer.rank_player_query import (
+    RankPlayerQueryResult,
+    fetch_rank_player_result,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -67,6 +76,7 @@ if TYPE_CHECKING:
     ]
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,17 +161,28 @@ class RankQueryService:
         if not is_valid_player_id(command.player_id):
             return PLAYER_ID_ERROR_MESSAGE
         quota_message = self._check_player_quota(command, qq_user_id)
-        if quota_message:
-            return quota_message
+        anchor_only = bool(quota_message)
         try:
-            message = await self._run_headless_request(
+            result = await self._run_headless_request(
                 lambda: self._fetch_player_message(
                     command,
                     qq_user_id,
                     group_id=group_id,
+                    anchor_only=anchor_only,
                 ),
                 user_id=qq_user_id,
                 label="榜单玩家查询",
+                semantic_request=SemanticRequest(
+                    action=ActionDefinition(
+                        f"seer.rank.player.{command.rank_key}",
+                        f"{spec.title}玩家查询",
+                    ),
+                    target=SemanticTarget(
+                        key=str(command.player_id),
+                        display=f"米米号 {command.player_id}",
+                    ),
+                    source=SemanticRequestSource.DIRECT,
+                ),
             )
         except PlayerQueryQuotaExceededError as error:
             return error.message
@@ -173,8 +194,18 @@ class RankQueryService:
             return self._policy.player_error(command.player_id, error)
         except Exception as error:  # noqa: BLE001
             return f"❌ {spec.title}玩家查询失败：{error}"
-        self._record_successful_player_quota(command, qq_user_id)
-        return message
+        if quota_message:
+            return (
+                result.message
+                if result.lookup.cost.lightweight_confirmed
+                else quota_message
+            )
+        if (
+            result.lookup.failure is None
+            and not result.lookup.cost.lightweight_confirmed
+        ):
+            self._record_successful_player_quota(command, qq_user_id)
+        return result.message
 
     async def _fetch_player_message(
         self,
@@ -182,15 +213,17 @@ class RankQueryService:
         qq_user_id: int | None,
         *,
         group_id: int | None,
-    ) -> str:
+        anchor_only: bool,
+    ) -> RankPlayerQueryResult:
         quota_message = self._check_player_quota(command, qq_user_id)
-        if quota_message:
+        if quota_message and not anchor_only:
             raise PlayerQueryQuotaExceededError(quota_message)
         return await asyncio.wait_for(
             self._player_message(
                 self._headless.get_game(),
                 command,
                 group_id=group_id,
+                anchor_only=anchor_only,
             ),
             timeout=self._policy.player_timeout_seconds,
         )
@@ -312,7 +345,8 @@ class RankQueryService:
         command: RankPlayerCommand,
         *,
         group_id: int | None,
-    ) -> str:
+        anchor_only: bool,
+    ) -> RankPlayerQueryResult:
         spec = self._rank.get_spec(command.rank_key)
         with game.operations.track(
             "榜单玩家查询",
@@ -320,11 +354,12 @@ class RankQueryService:
             source="榜单玩家查询",
             group_id=group_id,
         ):
-            return await fetch_rank_player_message(
+            return await fetch_rank_player_result(
                 self._rank,
                 self._local_rank,
                 game,
                 command=command,
+                anchor_only=anchor_only,
             )
 
     def _local_message(self, command: RankListCommand) -> str:
@@ -398,17 +433,19 @@ class RankQueryService:
 
     async def _run_headless_request(
         self,
-        operation: Callable[[], Awaitable[str]],
+        operation: Callable[[], Awaitable[T]],
         *,
         user_id: int | None,
         label: str,
-    ) -> str:
+        semantic_request: SemanticRequest | None = None,
+    ) -> T:
         if self._requests is None:
             return await operation()
         return await self._requests.run(
             operation,
             user_id=user_id,
             label=label,
+            semantic_request=semantic_request,
         )
 
 

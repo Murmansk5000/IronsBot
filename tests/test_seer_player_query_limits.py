@@ -18,6 +18,7 @@ from ironsbot.services.seer.player_service import (
 )
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.rank_models import RankLookupCost, RankLookupResult
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -422,8 +423,10 @@ def test_player_detail_prefers_live_until_quota_then_uses_cache(
             _player_id: int,
             *,
             group_id: int | None,
+            anchor_only: bool,
         ) -> QueryReply:
             assert group_id is None
+            assert not anchor_only
             nonlocal latest, live_calls
             live_calls += 1
             latest = QueryReply(text=f"live-{live_calls}")
@@ -440,6 +443,84 @@ def test_player_detail_prefers_live_until_quota_then_uses_cache(
 
     asyncio.run(run())
     assert live_calls == _LIVE_QUERY_LIMIT
+
+
+def test_exhausted_shortcut_allows_only_confirmed_anchor_page_lookup(
+    tmp_path: Path,
+) -> None:
+    bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    quota = _quota(tmp_path, bindings, unbound_daily_limit=1)
+    assert quota.consume(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="player",
+    ).allowed
+
+    latest = QueryReply(text="cached reply")
+
+    class _Details:
+        def cached_reply(self, *_args: object) -> QueryReply:
+            return latest
+
+    service = PlayerService(
+        cast(
+            "Any",
+            SimpleNamespace(
+                player=SimpleNamespace(
+                    binding=SimpleNamespace(change_cooldown_days=3)
+                )
+            ),
+        ),
+        cast("Any", object()),
+        bindings,
+        cast("Any", object()),
+        cast("Any", _Details()),
+        quota,
+        now=lambda: NOW,
+    )
+    anchor_only_calls: list[bool] = []
+
+    async def run() -> None:
+        async def fetch_live(
+            _command: PlayerShortcutCommand,
+            _player_id: int,
+            *,
+            group_id: int | None,
+            anchor_only: bool,
+        ) -> QueryReply:
+            assert group_id is None
+            anchor_only_calls.append(anchor_only)
+            return QueryReply(
+                text="fresh lightweight reply",
+                rank_lookups=(
+                    RankLookupResult(
+                        title="图鉴积分",
+                        score_name="点",
+                        rank=150,
+                        score=5000,
+                        cost=RankLookupCost(
+                            anchor_page_start=100,
+                            page_starts=[100],
+                            anchor_page_hit=True,
+                        ),
+                    ),
+                ),
+            )
+
+        service._shortcut_live = fetch_live  # type: ignore[method-assign]
+        reply = await service.shortcut(
+            PlayerShortcutCommand(kind="collection", player_id=DEFAULT_PLAYER_ID),
+            USER_ID,
+        )
+        assert reply.text == "fresh lightweight reply"
+
+    asyncio.run(run())
+    assert anchor_only_calls == [True]
+    assert not quota.check(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="collection",
+    ).allowed
 
 
 def test_initial_binding_choice_uses_the_default_player_quota(

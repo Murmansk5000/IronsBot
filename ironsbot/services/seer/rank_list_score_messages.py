@@ -46,7 +46,7 @@ def format_global_rank_score_message(
             ]
         return "\n".join(lines)
 
-    shown = result.items[: max(1, display_limit)]
+    shown = _score_items_for_display(result.items, display_limit)
     start_rank = result.start_rank or shown[0].rank_index + 1 + spec.rank_offset
     end_rank = result.end_rank or shown[-1].rank_index + 1 + spec.rank_offset
     lines = [
@@ -65,6 +65,19 @@ def format_global_rank_score_message(
     if result.truncated:
         lines.append("同分段过长，已按安全上限停止继续翻页。")
     return "\n".join(lines)
+
+
+def _score_items_for_display(items: list[Any], display_limit: int) -> list[Any]:
+    """Show both edges of a large same-score segment instead of only its head."""
+
+    limit = max(1, display_limit)
+    if len(items) <= limit:
+        return items
+    head_count = (limit + 1) // 2
+    tail_count = limit - head_count
+    if tail_count == 0:
+        return items[:head_count]
+    return [*items[:head_count], *items[-tail_count:]]
 
 
 def _format_score_gap_proof(spec: GlobalRankSpec, result: Any) -> list[str]:

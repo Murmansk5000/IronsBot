@@ -59,6 +59,7 @@ RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR = (
 RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
     "seer.rank.page_refresh.active_start and active_end must be configured together"
 )
+PLAYER_RANK_LOOKUP_TIMEOUT_ERROR = "player lookup total timeout must cover one page"
 TEAM_RESOURCE_TIME_ERROR = (
     "seer.team_resource.times must contain daily HH:MM times"
 )
@@ -327,6 +328,23 @@ class RankPageRefreshConfig(BaseModel):
         return self
 
 
+class PlayerRankLookupConfig(BaseModel):
+    """Bounded fair scheduling for rank sections in player detail replies."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page_timeout_seconds: float = Field(default=8, gt=0)
+    total_timeout_seconds: float = Field(default=60, gt=0)
+    page_retry_count: int = Field(default=1, ge=0, le=3)
+    pages_per_turn: int = Field(default=1, ge=1, le=5)
+
+    @model_validator(mode="after")
+    def validate_budget(self) -> "PlayerRankLookupConfig":
+        if self.total_timeout_seconds < self.page_timeout_seconds:
+            raise ValueError(PLAYER_RANK_LOOKUP_TIMEOUT_ERROR)
+        return self
+
+
 class RankQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -348,6 +366,9 @@ class RankQueryConfig(BaseModel):
     score_search_tie_page_limit: int = Field(default=5, ge=1)
     page_cache_path: SQLitePath = Path("data/seer/rank_page_cache.sqlite")
     peak_subkey: int | None = Field(default=None, ge=0)
+    player_lookup: PlayerRankLookupConfig = Field(
+        default_factory=PlayerRankLookupConfig
+    )
     page_refresh: RankPageRefreshConfig = Field(
         default_factory=RankPageRefreshConfig
     )
@@ -381,6 +402,7 @@ class RankQueryConfig(BaseModel):
             for key, limit in self.display_limits.items()
         }
         return self
+
 
 class LocalRankConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

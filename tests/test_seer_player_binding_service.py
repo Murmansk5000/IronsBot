@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -11,7 +12,11 @@ from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
 from ironsbot.services.seer.player_binding import player_binding_offer_message
-from ironsbot.services.seer.player_service import PlayerService
+from ironsbot.services.seer.player_service import (
+    PendingPlayerQuery,
+    PlayerQueryResult,
+    PlayerService,
+)
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 
 _PLAYER_ID = 123456
@@ -80,8 +85,57 @@ def test_shortcut_without_a_default_player_explains_player_id_lookup() -> None:
         )
     )
 
-    assert "绑定米米号12345" not in reply.text
-    assert "米米号+数字" in reply.text
+    assert reply.text == (
+        "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
+        "查询未绑定的米米号时，需要在查询指令后加上米米号。"
+    )
+
+
+def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
+    pending = PendingPlayerQuery(
+        player_id=_PLAYER_ID,
+        user_info=SimpleNamespace(nick="测试玩家"),
+        more_info=object(),
+        player_message="玩家信息",
+        section_plan=cast("Any", object()),
+    )
+    service = object.__new__(PlayerService)
+    service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
+    service._save_binding = Mock(return_value="已设置默认米米号：123456。")
+
+    result = asyncio.run(
+        service.bind_player(
+            _PLAYER_ID,
+            qq_user_id=10001,
+            group_id=20002,
+        )
+    )
+
+    service.query.assert_awaited_once_with(
+        _PLAYER_ID,
+        qq_user_id=10001,
+        explicit=True,
+        group_id=20002,
+    )
+    service._save_binding.assert_called_once_with(10001, pending)
+    assert result.offer_binding is False
+    assert result.pending is pending
+    assert pending.player_message.startswith("已设置默认米米号：123456。\n\n")
+
+
+def test_direct_binding_returns_invalid_player_error_without_saving() -> None:
+    service = object.__new__(PlayerService)
+    service.query = AsyncMock(
+        return_value=PlayerQueryResult(message="❌ 米米号无效，请输入数字。")
+    )
+    service._save_binding = Mock()
+
+    result = asyncio.run(
+        service.bind_player(1, qq_user_id=10001)
+    )
+
+    assert result.message == "❌ 米米号无效，请输入数字。"
+    service._save_binding.assert_not_called()
 
 
 def test_all_player_service_entries_reject_invalid_player_id_before_io() -> None:

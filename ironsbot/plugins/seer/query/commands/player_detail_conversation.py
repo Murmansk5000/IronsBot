@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, cast
 
 from nonebot.adapters import Event  # noqa: TC002
@@ -17,6 +18,10 @@ from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
+from ironsbot.runtime.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+)
 from ironsbot.services.seer.player_detail_extensions import (  # noqa: TC001
     PlayerDetailExtensionRegistry,
 )
@@ -33,7 +38,10 @@ from ironsbot.services.seer.player_query import (
     resolve_player_detail_reply,
 )
 from ironsbot.services.seer.player_service import PlayerService  # noqa: TC001
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcuts import (
+    PlayerShortcutCommand,
+    player_shortcut_semantic_request,
+)
 
 from .player_context import PLAYER_DETAIL_NAMESPACE, PLAYER_ID_KEY
 
@@ -185,6 +193,10 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
                 handlers=[bind_async(handle_player_detail_reply, service, extensions)],
                 reply_check=command_reply_check(prompt_plan.accepted_commands),
                 prompt=prompt,
+                queue_semantic_request_resolver=partial(
+                    _player_detail_semantic_request,
+                    extensions,
+                ),
             )
     except FinishedException:
         if on_sent is not None:
@@ -217,6 +229,10 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
         handlers=[bind_async(handle_player_detail_reply, service, extensions)],
         reply_check=command_reply_check(commands),
         prompt=prompt,
+        queue_semantic_request_resolver=partial(
+            _player_detail_semantic_request,
+            extensions,
+        ),
     )
 
 
@@ -269,6 +285,48 @@ def _resolve_player_detail_extension_action(
     selection_ids = dict(selections)
     selection = _normalize_detail_command_text(text_value)
     return extensions.get(selection_ids.get(selection, ""))
+
+
+def _player_detail_semantic_request(
+    extensions: PlayerDetailExtensionRegistry,
+    event: MessageEvent,
+    state: T_State,
+) -> SemanticRequest | None:
+    player_id = state.get(PLAYER_ID_KEY)
+    if not isinstance(player_id, int):
+        return None
+    text_value = event.get_plaintext()
+    extension_action = _resolve_player_detail_extension_action(
+        extensions,
+        text_value,
+        state,
+    )
+    if extension_action is not None:
+        return SemanticRequest(
+            action=extension_action.action,
+            target=player_shortcut_semantic_request(
+                kind="collection",
+                player_id=player_id,
+                source=SemanticRequestSource.MENU,
+            ).target,
+            source=SemanticRequestSource.EXTENSION,
+        )
+
+    detail_request = resolve_player_detail_reply(
+        text_value,
+        selections=_stored_player_detail_selections(
+            state,
+            PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY,
+        ),
+    )
+    if detail_request is None:
+        return None
+    kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
+    return player_shortcut_semantic_request(
+        kind=kind,
+        player_id=player_id,
+        source=SemanticRequestSource.MENU,
+    )
 
 
 def _stored_player_detail_selections(
