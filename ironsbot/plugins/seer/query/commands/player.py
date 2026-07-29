@@ -22,7 +22,6 @@ from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
     PLAYER_ID_MAX,
     PLAYER_ID_MIN,
-    is_valid_player_id,
 )
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -40,7 +39,6 @@ from .player_context import (
     PLAYER_BINDING_PENDING_KEY,
     PLAYER_ID_KEY,
     PLAYER_QUERY_IS_EXPLICIT_KEY,
-    PLAYER_UNBOUND_ENTRY_NAMESPACE,
 )
 from .player_detail_conversation import send_player_info_with_detail_prompt
 
@@ -62,32 +60,18 @@ def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     return parse_confirmation(text)
 
 
-def _unbound_player_entry_prompt(error: str = "") -> str:
-    prompt = (
-        "尚未设置默认米米号，请直接发送数字（例如 123456）。\n"
-        "查询成功后可按提示选择设为默认。"
-    )
-    return f"{error}\n\n{prompt}" if error else prompt
-
-
-def _is_unbound_player_id_reply(event: MessageEvent) -> bool:
-    return event.get_plaintext().strip().isdigit()
-
-
 async def prompt_for_unbound_player_id(
-    dependencies: PlayerCommandDependencies,
+    _dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
-    *,
-    error: str = "",
 ) -> None:
-    await enter_event_reply_conversation(
+    await finish_event_reply(
         matcher,
         event,
-        namespace=PLAYER_UNBOUND_ENTRY_NAMESPACE,
-        handlers=[bind_async(handle_unbound_player_id_entry, dependencies)],
-        reply_check=_is_unbound_player_id_reply,
-        prompt=_unbound_player_entry_prompt(error),
+        (
+            "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
+            "查询未绑定的米米号时，需要在查询指令后加上米米号。"
+        ),
     )
 
 
@@ -108,6 +92,15 @@ async def _is_player_id_query(event: Event, state: T_State) -> bool:
 async def _is_invalid_player_text_query(event: Event) -> bool:
     arg = extract_player_query_arg(event.get_plaintext())
     return arg is not None and bool(arg) and not arg.isdigit()
+
+
+async def _is_binding_command(event: Event, state: T_State) -> bool:
+    prefix = "绑定米米号"
+    text = event.get_plaintext().strip()
+    if not text.startswith(prefix):
+        return False
+    state[BOT_COMMAND_ARG_KEY] = text[len(prefix) :].strip()
+    return True
 
 
 async def validate_player_id(
@@ -158,37 +151,24 @@ async def handle_player(
     )
 
 
-async def handle_unbound_player_id_entry(
+async def handle_player_binding_command(
     dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    raw_player_id = event.get_plaintext().strip()
-    player_id = int(raw_player_id)
-    if not is_valid_player_id(player_id):
-        await prompt_for_unbound_player_id(
-            dependencies,
-            matcher,
-            event,
-            error=PLAYER_ID_ERROR_MESSAGE,
-        )
-        return
-
-    result = await dependencies.player.query(
+    player_id = await parse_numeric_id(
+        matcher,
+        state,
+        min_value=PLAYER_ID_MIN,
+        max_value=PLAYER_ID_MAX,
+        error_message=PLAYER_ID_ERROR_MESSAGE,
+    )
+    result = await dependencies.player.bind_player(
         player_id,
         qq_user_id=event.user_id,
-        explicit=True,
         group_id=event_group_id(event),
     )
-    if result.message:
-        await prompt_for_unbound_player_id(
-            dependencies,
-            matcher,
-            event,
-            error=result.message,
-        )
-        return
     await _handle_player_query_result(
         dependencies,
         matcher,
@@ -316,6 +296,18 @@ def install(group: SeerMatcherGroup) -> None:
         group.features,
         group.resources.player_detail_extensions,
     )
+    binding_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_player_binding"),
+        rule=seer_feature_rule(group.features, "seer_player")
+        & Rule(_is_binding_command)
+        & no_reply(),
+        priority=group.matcher_priority("seer_player"),
+        block=True,
+    )
+    binding_matcher.append_handler(
+        bind_async(handle_player_binding_command, dependencies)
+    )
+
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
         policy=CommandPolicy.command("seer_player_binding"),
