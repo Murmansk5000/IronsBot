@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,6 +11,7 @@ from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerDetailService,
+    PlayerService,
     _BackgroundRefresh,
 )
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
@@ -244,6 +246,52 @@ def test_direct_shortcut_bypasses_and_releases_pending_background_refresh(
 
     asyncio.run(run())
     assert called == ["collection"]
+
+
+def test_player_shortcut_live_reuses_background_refresh_cache() -> None:
+    async def run() -> None:
+        reply = QueryReply(text="preheated autocard reply")
+        details = SimpleNamespace(shortcut=AsyncMock(return_value=reply))
+        game = SimpleNamespace(
+            user_id=123456,
+            operations=SimpleNamespace(
+                track=lambda *_args, **_kwargs: nullcontext(),
+            ),
+        )
+        headless = SimpleNamespace(
+            get_game=lambda: game,
+            mark_available=AsyncMock(),
+        )
+        service = PlayerService(
+            config=cast(
+                "Any",
+                SimpleNamespace(
+                    player=SimpleNamespace(detail_timeout_seconds=30.0),
+                ),
+            ),
+            headless=cast("Any", headless),
+            bindings=cast("Any", object()),
+            error_message=cast("Any", object()),
+            details=cast("Any", details),
+        )
+
+        result = await service._shortcut_live(
+            PlayerShortcutCommand(kind="autocard", player_id=PLAYER_ID),
+            PLAYER_ID,
+            group_id=987654321,
+            anchor_only=False,
+        )
+
+        assert result is reply
+        details.shortcut.assert_awaited_once_with(
+            game,
+            PlayerShortcutCommand(kind="autocard", player_id=PLAYER_ID),
+            PLAYER_ID,
+            use_cache=True,
+            anchor_only=False,
+        )
+
+    asyncio.run(run())
 
 
 def test_background_refresh_expiration_releases_inflight_section(

@@ -24,13 +24,13 @@ from ironsbot.runtime.semantic_requests import (
 from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
+    execute_player_shortcut,
     parse_player_shortcut_command,
-    player_shortcut_loading_message,
     player_shortcut_semantic_request,
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player import PlayerCommandDependencies, prompt_for_unbound_player_id
+from .player import PlayerCommandDependencies
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_service import PlayerService
@@ -68,18 +68,16 @@ async def handle_player_shortcut(
 ) -> None:
     service = dependencies.player
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
-    if command.player_id is None and service.default_player_id(event.user_id) is None:
-        await prompt_for_unbound_player_id(dependencies, matcher, event)
-        return
-    await send_event_reply(
-        matcher,
-        event,
-        player_shortcut_loading_message(command.kind),
-    )
-    reply = await service.shortcut(
+
+    async def send_status(message: str) -> None:
+        await send_event_reply(matcher, event, message)
+
+    reply = await execute_player_shortcut(
+        service,
         command,
         event.user_id,
         group_id=event_group_id(event),
+        send_status=send_status,
     )
     await finish_event_reply(
         matcher,
