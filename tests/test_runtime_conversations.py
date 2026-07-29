@@ -3,6 +3,7 @@ from ironsbot.runtime.conversations import (
     event_conversation_session_id,
     is_self_message_event,
 )
+from ironsbot.runtime.prompt_sessions import PromptSessionManager
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 
@@ -51,3 +52,12 @@ def test_command_reply_check_matches_normalized_commands() -> None:
 def test_is_self_message_event_detects_bot_message() -> None:
     assert is_self_message_event(_group_event(user_id=1, self_id=1))
     assert not is_self_message_event(_group_event(user_id=2, self_id=1))
+
+
+def test_prompt_session_rule_resolves_event_annotation_at_runtime() -> None:
+    manager = PromptSessionManager()
+    version = manager.acquire("player-detail")
+
+    rule = manager.make_rule("player-detail", version, lambda _event: True)
+
+    assert rule.checkers
