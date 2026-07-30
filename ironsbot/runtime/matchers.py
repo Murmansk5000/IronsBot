@@ -423,6 +423,7 @@ class CommandPolicy:
     command_id: CommandIdSource | None = None
     exemption_reason: str | None = None
     semantic_request: SemanticRequestResolver | None = None
+    help_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (self.command_id is None) == (self.exemption_reason is None):
@@ -433,6 +434,10 @@ class CommandPolicy:
             self.semantic_request is not None
         ):
             raise CommandPolicyError.exempt_with_semantic_request()
+        if self.exemption_reason is not None and self.help_ids:
+            raise CommandPolicyError.exempt_with_help_ids()
+        if any(not command_id.strip() for command_id in self.help_ids):
+            raise CommandPolicyError.empty_help_id()
 
     @classmethod
     def command(
@@ -440,10 +445,12 @@ class CommandPolicy:
         command_id: CommandIdSource,
         *,
         semantic_request: SemanticRequestResolver | None = None,
+        help_ids: tuple[str, ...] = (),
     ) -> CommandPolicy:
         return cls(
             command_id=command_id,
             semantic_request=semantic_request,
+            help_ids=help_ids,
         )
 
     @classmethod
