@@ -4,6 +4,7 @@ from typing import Any, cast
 import nonebot
 import pytest
 
+from ironsbot.app.command_directory.plugins import bilibili_commands
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_ACCOUNT_ALIAS,
     DEFAULT_BILI_ACCOUNT_UID,
@@ -18,6 +19,8 @@ from ironsbot.integrations.storage.bilibili_preferences import (
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.command_rules import (
+    is_bili_account_command,
+    is_bili_push_mode_command,
     parse_bili_push_mode_command,
 )
 from ironsbot.services.bilibili import accounts
@@ -25,6 +28,11 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
+from tests.helpers.onebot_events import (
+    group_admin_message_event,
+    group_message_event,
+    private_message_event,
+)
 
 try:
     nonebot.get_driver()
@@ -148,6 +156,52 @@ def test_bili_push_mode_command_accepts_spaces_in_public_account_name() -> None:
     assert parse_bili_push_mode_command(
         "B站推送模式 赛尔号 官号 链接"
     ) == ("赛尔号 官号", "链接")
+
+
+def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
+    command = "B站推送模式 赛尔号官号 链接"
+
+    assert not is_bili_push_mode_command(
+        _features(),
+        group_message_event(command, group_id=987654321),
+        {},
+    )
+    state: dict[str, object] = {}
+    assert is_bili_push_mode_command(
+        _features(user_policy={"123": ["bili_push"]}),
+        private_message_event(command, user_id=123),
+        state,
+    )
+    assert state
+
+
+def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:
+    command = next(
+        item
+        for item in bilibili_commands()
+        if item.id == "bilibili.private_push_mode"
+    )
+
+    assert command.section == "私聊管理"
+    assert command.access[0].scope == "private"
+    assert command.access[0].audience == "regular"
+
+
+def test_bili_account_matcher_keeps_push_subscriptions_group_manager_only() -> None:
+    command = "B站账号"
+
+    assert not is_bili_account_command(
+        _features({"987654321": ["bili_push"]}),
+        group_message_event(command, group_id=987654321),
+    )
+    assert is_bili_account_command(
+        _features({"987654321": ["bili_push"]}),
+        group_admin_message_event(command, group_id=987654321),
+    )
+    assert is_bili_account_command(
+        _features({"987654321": ["bili_query"]}),
+        group_message_event(command, group_id=987654321),
+    )
 
 
 def test_group_query_falls_back_to_global_uids_when_feature_enabled() -> None:

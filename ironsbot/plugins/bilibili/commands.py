@@ -35,7 +35,7 @@ def install(
     targets: BiliTargetService,
 ) -> None:
     dynamic_menu = registry.on_message(
-        policy=CommandPolicy.command("bili_query"),
+        policy=CommandPolicy.command("bili_query", help_ids=("bilibili.dynamic",)),
         rule=Rule(bind(is_dynamic_menu_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
@@ -49,7 +49,7 @@ def install(
     )
 
     update_dynamic = registry.on_message(
-        policy=CommandPolicy.command("bili_refresh"),
+        policy=CommandPolicy.command("bili_refresh", help_ids=("bilibili.refresh",)),
         rule=Rule(bind(is_update_dynamic_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
@@ -63,7 +63,7 @@ def install(
     )
 
     bili_account = registry.on_message(
-        policy=CommandPolicy.command("bili_accounts"),
+        policy=CommandPolicy.command("bili_accounts", help_ids=("bilibili.accounts",)),
         rule=Rule(bind(is_bili_account_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
@@ -73,8 +73,11 @@ def install(
     )
 
     push_mode = registry.on_message(
-        policy=CommandPolicy.command("bili_push_mode"),
-        rule=Rule(is_bili_push_mode_command) & no_reply(),
+        policy=CommandPolicy.command(
+            "bili_push_mode",
+            help_ids=("bilibili.push_mode", "bilibili.private_push_mode"),
+        ),
+        rule=Rule(bind(is_bili_push_mode_command, features)) & no_reply(),
         priority=registry.priority("bilibili"),
         block=True,
     )

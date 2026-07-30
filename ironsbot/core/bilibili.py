@@ -20,9 +20,7 @@ from ironsbot.core.commands import (
 )
 from ironsbot.core.time import normalize_daily_time
 
-INVALID_INTERVAL_TIME_ERROR = (
-    "bilibili.polling.windows time must use HH:MM"
-)
+INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
@@ -38,6 +36,12 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
+
+
+class BiliPushTargetConfigError(ValueError):
+    @classmethod
+    def empty_onebot_target_reference(cls) -> BiliPushTargetConfigError:
+        return cls("bilibili.push targets contain an empty OneBot target ref")
 
 
 def _normalize_mode(value: object) -> BiliPushMode | None:
@@ -143,9 +147,7 @@ class BiliPushConfig(BaseModel):
     accounts: _BiliAccountAliases = Field(
         default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
     )
-    modes: _BiliPushModes = Field(
-        default_factory=lambda: dict(DEFAULT_BILI_PUSH_MODES)
-    )
+    modes: _BiliPushModes = Field(default_factory=lambda: dict(DEFAULT_BILI_PUSH_MODES))
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
 
@@ -157,7 +159,7 @@ class BiliPushConfig(BaseModel):
         for raw_ref, raw_config in parsed.items():
             ref = str(raw_ref).strip()
             if not ref:
-                continue
+                raise BiliPushTargetConfigError.empty_onebot_target_reference()
 
             if raw_config is None or raw_config == "":
                 result[ref] = {}
@@ -179,9 +181,7 @@ class BiliConfig(BaseModel):
 
     accounts: dict[str, BiliAccountConfig] = Field(
         default_factory=lambda: {
-            DEFAULT_BILI_ACCOUNT_ALIAS: BiliAccountConfig(
-                uid=DEFAULT_BILI_ACCOUNT_UID
-            )
+            DEFAULT_BILI_ACCOUNT_ALIAS: BiliAccountConfig(uid=DEFAULT_BILI_ACCOUNT_UID)
         }
     )
     storage: BiliStorageConfig = Field(default_factory=BiliStorageConfig)

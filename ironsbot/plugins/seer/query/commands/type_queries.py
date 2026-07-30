@@ -12,7 +12,10 @@ from ..query_conversation import make_query_handler
 def install(group: SeerMatcherGroup) -> None:
     type_service = group.resources.type_query
     type_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_type_query"),
+        policy=CommandPolicy.command(
+            "seer_type_query",
+            help_ids=("seer.type.query",),
+        ),
         rule=seer_feature_rule(group.features, "seer_type")
         & startswith_or_endswith("属性")
         & no_reply(),
@@ -29,7 +32,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     effect_service = group.resources.battle_effect
     effect_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_battle_effect_query"),
+        policy=CommandPolicy.command(
+            "seer_battle_effect_query",
+            help_ids=("seer.type.query",),
+        ),
         rule=seer_feature_rule(group.features, "seer_type")
         & startswith_or_endswith(
             ("异常", "查询异常状态"),

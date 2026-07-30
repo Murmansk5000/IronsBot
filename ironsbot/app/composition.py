@@ -229,6 +229,7 @@ class Application:
         for plugin in self.plugins:
             if plugin.install is not None:
                 plugin.install(self.matchers)
+        self.matchers.validate_command_catalog(self.resources.commands)
         self.matchers.install_postprocessor()
         self.lifecycle.install()
         self._installed = True

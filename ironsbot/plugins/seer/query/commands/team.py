@@ -64,7 +64,7 @@ async def _handle_team_query(
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.team_query
     matcher = group.on_message(
-        policy=CommandPolicy.command("seer_team"),
+        policy=CommandPolicy.command("seer_team", help_ids=("seer.team.query",)),
         rule=seer_feature_rule(group.features, "seer_team")
         & startswith_or_endswith(
             prefixes=("战队", "查询战队信息"),

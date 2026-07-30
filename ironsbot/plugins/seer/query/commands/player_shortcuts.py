@@ -120,6 +120,7 @@ def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command(
             _shortcut_command_id,
+            help_ids=("seer.player.default",),
             semantic_request=lambda event, state: _shortcut_semantic_request(
                 group.resources.player,
                 event,

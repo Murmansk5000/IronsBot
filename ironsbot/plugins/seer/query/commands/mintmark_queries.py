@@ -13,7 +13,10 @@ from .query_rules import not_rank_query
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.mintmark
     mintmark_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_mintmark_query"),
+        policy=CommandPolicy.command(
+            "seer_mintmark_query",
+            help_ids=("seer.mintmark.query",),
+        ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("刻印")
         & not_rank_query
@@ -30,7 +33,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
 
     gem_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_gem_query"),
+        policy=CommandPolicy.command(
+            "seer_gem_query",
+            help_ids=("seer.mintmark.query",),
+        ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("宝石")
         & no_reply(),

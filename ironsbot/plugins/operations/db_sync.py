@@ -66,7 +66,10 @@ def install(registry: MatcherRegistry, service: DataSyncService) -> None:
         )
 
     matcher = registry.on_message(
-        policy=CommandPolicy.command("data_sync"),
+        policy=CommandPolicy.command(
+            "data_sync",
+            help_ids=("db_sync.update", "db_sync.force_update"),
+        ),
         rule=Rule(_is_manual_sync_command) & no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("db_sync"),

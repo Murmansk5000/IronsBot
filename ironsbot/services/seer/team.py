@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.team.resource import TeamResourceService
 
+MAX_TEAM_QUERY_IDS = 3
+
 @dataclass(frozen=True, slots=True)
 class TeamQueryActor:
     user_id: int
@@ -49,6 +51,8 @@ class SeerTeamQueryService:
         team_ids: tuple[int, ...],
         actor: TeamQueryActor,
     ) -> str:
+        if len(team_ids) > MAX_TEAM_QUERY_IDS:
+            return f"一次最多查询 {MAX_TEAM_QUERY_IDS} 个战队，请分开查询。"
         messages: list[str] = []
         subscription_prompt: str | None = None
         for team_id in team_ids:
