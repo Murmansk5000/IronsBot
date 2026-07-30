@@ -62,7 +62,7 @@ async def check_ai_api(settings: AiApiSettings) -> AiApiTestResult:
         return AiApiTestResult(
             ok=False,
             elapsed_ms=0,
-            error="未配置 IRONSBOT_AI_KEY",
+            error="未配置 AI_KEY",
         )
 
     started_at = perf_counter()

@@ -260,3 +260,10 @@ uv run python bot.py
 
 - 包含 GPL 插件/代码的完整仓库和 Docker 镜像整体按 GPL-3.0-or-later 分发。
 - 可独立复用的自定义插件与工具代码按各文件 SPDX 声明执行。
+
+### OneBot 群聊提及提示限流
+
+未开启 AI 的 OneBot 群聊使用提及提示策略；提示本身的限制不等于所有业务命令的发送配额。
+在 `[messaging.command_cooldown]` 中，`duplicate_window_seconds` 与 `duplicate_message` 控制重复提示周期和文案；
+`mention_initial_window_seconds` 与 `mention_initial_max_responses` 控制首次提示的统计窗口和次数。
+字段校验与默认值以本版本的 [消息配置模型](ironsbot/config/models/messaging.py) 为准。

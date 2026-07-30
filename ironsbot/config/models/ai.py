@@ -11,13 +11,19 @@ from ironsbot.core.commands import json_object
 from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
 from ironsbot.core.messaging import (
     DEFAULT_JOIN_TEAM_INTENT,
-    DEFAULT_JOIN_TEAM_MESSAGE,
+    DEFAULT_JOIN_TEAM_MESSAGES,
     FIRE_MANUAL_LINK_MESSAGE,
     AiIntentAction,
 )
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
+TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR = (
+    "team_recommend AI action must configure messages"
+)
+TEAM_RECOMMEND_LEGACY_MESSAGE_ERROR = (
+    "team_recommend AI action uses messages instead of message"
+)
 AI_REPLY_PROMPT_REQUIRED_ERROR = "ai_reply AI action must configure reply_prompt"
 UNKNOWN_AI_ACTION_ERROR = (
     "unknown AI intent action must configure a complete action definition"
@@ -53,7 +59,7 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             keywords=["战队"],
             action="team_recommend",
             intent=DEFAULT_JOIN_TEAM_INTENT,
-            message=DEFAULT_JOIN_TEAM_MESSAGE,
+            messages=list(DEFAULT_JOIN_TEAM_MESSAGES),
             include_team_resource_notice=False,
         ),
         "keyword_info": AiIntentAction(
@@ -160,6 +166,12 @@ def _validate_resolved_action(action: AiIntentAction) -> None:
             f"ai.intent_actions.{action.id}: {MESSAGE_REQUIRED_ERROR}"
         )
 
+    if action.action == "team_recommend" and not action.messages:
+        raise ValueError(  # noqa: TRY003
+            f"ai.intent_actions.{action.id}: "
+            f"{TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR}"
+        )
+
     if action.action == "ai_reply" and not action.reply_prompt.strip():
         raise ValueError(  # noqa: TRY003
             f"ai.intent_actions.{action.id}: {AI_REPLY_PROMPT_REQUIRED_ERROR}"
@@ -177,6 +189,22 @@ def _validate_custom_action(action_id: str, action: AiIntentAction) -> None:
         )
 
 
+def _validate_no_legacy_team_recommend_message(
+    action_id: str,
+    action: AiIntentAction,
+) -> None:
+    fields_set = action.model_fields_set
+    is_team_recommend = (
+        action_id == "team_recommend" and "action" not in fields_set
+    ) or ("action" in fields_set and action.action == "team_recommend")
+    if not is_team_recommend or "message" not in fields_set:
+        return
+
+    raise ValueError(  # noqa: TRY003
+        f"ai.intent_actions.{action_id}: {TEAM_RECOMMEND_LEGACY_MESSAGE_ERROR}"
+    )
+
+
 def _resolve_action_map(
     configured_actions: dict[str, AiIntentAction],
 ) -> dict[str, AiIntentAction]:
@@ -187,6 +215,8 @@ def _resolve_action_map(
         action_id = raw_action_id.strip()
         if not action_id:
             continue
+
+        _validate_no_legacy_team_recommend_message(action_id, action)
 
         builtin_action = builtins.get(action_id)
         if builtin_action is None:
