@@ -59,7 +59,10 @@ def install(
         )
 
     current_matcher = registry.on_message(
-        policy=CommandPolicy.command("seer_activity_current"),
+        policy=CommandPolicy.command(
+            "seer_activity_current",
+            help_ids=("activity.current",),
+        ),
         rule=Rule(_is_current_seer_activity_command) & no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("activity"),
@@ -68,7 +71,10 @@ def install(
     current_matcher.append_handler(handle_current)
 
     ending_matcher = registry.on_message(
-        policy=CommandPolicy.command("seer_activity_ending"),
+        policy=CommandPolicy.command(
+            "seer_activity_ending",
+            help_ids=("activity.ending",),
+        ),
         rule=(
             Rule(
                 lambda event: event_is_feature_allowed(

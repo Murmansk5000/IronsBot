@@ -95,7 +95,10 @@ def install(
 
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
-        policy=CommandPolicy.command("server_status_query"),
+        policy=CommandPolicy.command(
+            "server_status_query",
+            help_ids=("server_status.query",),
+        ),
         rule=no_reply(),
         priority=registry.priority("server_status"),
         block=True,
@@ -104,7 +107,10 @@ def install(
 
     disabled_matcher = registry.on_fullmatch(
         DISABLED_BARE_ADMIN_COMMAND,
-        policy=CommandPolicy.command("server_status_query"),
+        policy=CommandPolicy.command(
+            "server_status_query",
+            help_ids=("server_status.admin_query",),
+        ),
         rule=no_reply(),
         priority=registry.priority("server_status"),
         block=True,
@@ -119,7 +125,10 @@ def install(
 
     admin_matcher = registry.on_fullmatch(
         ADMIN_SERVER_STATUS_COMMAND,
-        policy=CommandPolicy.command("server_status_admin"),
+        policy=CommandPolicy.command(
+            "server_status_admin",
+            help_ids=("server_status.admin_query",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
@@ -129,7 +138,10 @@ def install(
 
     restart_matcher = registry.on_fullmatch(
         BOT_RESTART_COMMANDS,
-        policy=CommandPolicy.command("bot_restart"),
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("server_status.restart",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
@@ -139,7 +151,10 @@ def install(
 
     update_matcher = registry.on_fullmatch(
         DOCKER_UPDATE_COMMANDS,
-        policy=CommandPolicy.command("bot_restart"),
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("server_status.image_update",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
@@ -149,7 +164,10 @@ def install(
 
     check_update_matcher = registry.on_fullmatch(
         DOCKER_CHECK_UPDATE_COMMANDS,
-        policy=CommandPolicy.command("bot_restart"),
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("server_status.image_check",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),

@@ -151,7 +151,7 @@ def install(
 ) -> None:
     matcher = registry.on_fullmatch(
         "帮助",
-        policy=CommandPolicy.command("help"),
+        policy=CommandPolicy.command("help", help_ids=("help",)),
         rule=no_reply(),
         priority=registry.priority("help"),
         block=True,

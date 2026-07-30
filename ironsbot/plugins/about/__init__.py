@@ -47,7 +47,7 @@ async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
 def install(registry: MatcherRegistry) -> None:
     matcher = registry.on_fullmatch(
         "关于",
-        policy=CommandPolicy.command("about"),
+        policy=CommandPolicy.command("about", help_ids=("about",)),
         rule=no_reply(),
         priority=registry.priority("about"),
         block=True,

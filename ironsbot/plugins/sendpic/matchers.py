@@ -29,7 +29,10 @@ def install_fixed_images(
     for command, filename in FIXED_IMAGE_COMMANDS.items():
         matcher = registry.on_fullmatch(
             command,
-            policy=CommandPolicy.command(f"sendpic_fixed.{command}"),
+            policy=CommandPolicy.command(
+                f"sendpic_fixed.{command}",
+                help_ids=(f"sendpic.fixed.{command}",),
+            ),
             rule=Rule(
                 lambda event: event_is_feature_allowed(features, event, "image")
             )
@@ -69,7 +72,10 @@ def create_image_command(
     """根据配置创建一个「随机/指定索引 + 图床后端」的命令。"""
     matcher = registry.on_command(
         config.command,
-        policy=CommandPolicy.command(f"sendpic.{config.id}"),
+        policy=CommandPolicy.command(
+            f"sendpic.{config.id}",
+            help_ids=(f"sendpic.{config.id}",),
+        ),
         aliases=set(config.aliases),
         rule=Rule(
             lambda event: event_is_feature_allowed(features, event, "image")
