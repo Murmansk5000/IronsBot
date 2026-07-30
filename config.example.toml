@@ -288,7 +288,7 @@ windows = [
 ]
 
 [bilibili.push]
-mode = "link"
+mode = "full"
 accounts = [
     "seer",
 ]

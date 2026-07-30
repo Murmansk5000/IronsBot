@@ -8,6 +8,7 @@ from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
+from ironsbot.runtime.permissions import can_manage_conversation_event
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
@@ -57,13 +58,15 @@ def is_bili_account_command(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
-    if not (
-        event_is_feature_allowed(features, event, "bili_query")
-        or event_is_feature_allowed(features, event, "bili_push")
-    ):
+    if not command_text_matches(event.get_plaintext(), BILI_ACCOUNT_COMMANDS):
         return False
-
-    return command_text_matches(event.get_plaintext(), BILI_ACCOUNT_COMMANDS)
+    if event_is_feature_allowed(features, event, "bili_query"):
+        return True
+    return event_is_feature_allowed(
+        features,
+        event,
+        "bili_push",
+    ) and can_manage_conversation_event(features, event)
 
 
 def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
@@ -88,9 +91,12 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
 
 
 def is_bili_push_mode_command(
+    features: FeatureService,
     event: MessageEvent,
     state: T_State,
 ) -> bool:
+    if not event_is_feature_allowed(features, event, "bili_push"):
+        return False
     parsed = parse_bili_push_mode_command(event.get_plaintext())
     if parsed is None:
         return False

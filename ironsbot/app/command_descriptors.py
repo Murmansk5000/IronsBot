@@ -454,7 +454,8 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
     return (
         *_commands("bilibili", "查询", "bili_query", (("bilibili.dynamic", ("动态",), "查看订阅账号的最新动态", {"show_in_poke": True}), ("bilibili.accounts", ("B站账号",), "查看当前会话订阅的账号", {}))),
         *_commands("bilibili", "本群管理", "bili_push", (("bilibili.push_mode", ("B站推送模式 <账号> <内容|链接|默认>",), "调整当前会话指定账号的推送模式", {"scope": "group", "audience": "group_manager"}),)),
-        *_commands("bilibili", "超级管理员", "bili_push", (("bilibili.private_push_mode", ("B站推送模式 <账号> <内容|链接|默认>",), "调整私聊订阅账号的推送模式", {"scope": "private", "audience": "superuser"}), ("bilibili.refresh", ("/动态更新", "/动态刷新"), "立即刷新订阅动态", {"audience": "superuser"}))),
+        *_commands("bilibili", "私聊管理", "bili_push", (('bilibili.private_push_mode', ('B站推送模式 <账号> <内容|链接|默认>',), '调整私聊订阅账号的推送模式', {'scope': 'private'}),)),
+        *_commands("bilibili", "超级管理员", "bili_push", (('bilibili.refresh', ('/动态更新', '/动态刷新'), '立即刷新订阅动态', {'audience': 'superuser'}),)),
     )
 
 
