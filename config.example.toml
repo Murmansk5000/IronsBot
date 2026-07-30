@@ -219,18 +219,25 @@ lite = [
 # Example:
 # owner = ["all"]
 
+[features.blacklist]
+# Default: []
+# EN: QQ users and groups whose incoming conversations are always ignored.
+# ZH: 永远不响应这些 QQ 用户或群的对话；群号命中时忽略该群所有用户消息。
+users = []
+groups = []
+
 [features.help]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
 ignored_plugins = []
 
 # Default: 60.0
-# EN: Shared rate-limit window for help hints and non-AI group @ hints.
-# ZH: 帮助提示和未开启 AI 群 @ 提示共用的限流窗口秒数。
+# EN: Rate-limit window for poke help hints.
+# ZH: 戳一戳帮助提示的限流窗口秒数。
 hint_window_seconds = 60.0
 
 # Default: 3
-# EN: Shared maximum hint count per group and window.
-# ZH: 每个群在一个窗口内最多发送的共享提示次数。
+# EN: Maximum poke hint count per group and window.
+# ZH: 每个群在一个窗口内最多发送的戳一戳提示次数。
 hint_max_per_window = 3
 
 # EN: Optional per-group poke replies. Keys may be group aliases or numeric group IDs.
@@ -865,20 +872,6 @@ allow_stale_cache = true
 score_search_probe_limit = 32
 # Default: 5; EN: Max tied-score pages scanned after binary lookup.
 score_search_tie_page_limit = 5
-# 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
-[seer.rank.player_lookup]
-# Default: 8; EN: Timeout for one official leaderboard page request.
-# ZH: 单次官方榜单页请求最多等待秒数。
-page_timeout_seconds = 8
-# Default: 60; EN: Shared time budget for all rank sections in one player detail.
-# ZH: 一次玩家详情中所有榜单共用的查询总秒数。
-total_timeout_seconds = 60
-# Default: 1; EN: Retries for a timed-out page after other boards get a turn.
-# ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
-page_retry_count = 1
-# Default: 1; EN: Consecutive leaderboard pages per board before rotating.
-# ZH: 同一个榜每次轮到时连续查询的页数；设为 1 最公平，设为 2/3 可减少轮转次数。
-pages_per_turn = 1
 # Default: "data/seer/rank_page_cache.sqlite"
 # EN: Rank page cache SQLite path.
 # ZH: 榜单分页缓存数据库。
@@ -899,6 +892,20 @@ display_limits = {}
 # EN: Runtime group overrides set by group owners/admins.
 # ZH: 群主/管理员在群内修改榜单默认显示条数后的持久化 SQLite。
 display_limit_path = "data/seer/rank_display_limits.sqlite"
+# 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
+[seer.rank.player_lookup]
+# Default: 8; EN: Timeout for one official leaderboard page request.
+# ZH: 单次官方榜单页请求最多等待秒数。
+page_timeout_seconds = 8
+# Default: 60; EN: Shared time budget for all rank sections in one player detail.
+# ZH: 一次玩家详情中所有榜单共用的查询总秒数。
+total_timeout_seconds = 60
+# Default: 1; EN: Retries for a timed-out page after other boards get a turn.
+# ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
+page_retry_count = 1
+# Default: 1; EN: Consecutive leaderboard pages per board before rotating.
+# ZH: 同一个榜每次轮到时连续查询的页数；设为 1 最公平，设为 2/3 可减少轮转次数。
+pages_per_turn = 1
 # Default: omitted/null.
 # EN: Leave unset to follow the official peak season automatically.
 #     Set only as a temporary diagnostic override.

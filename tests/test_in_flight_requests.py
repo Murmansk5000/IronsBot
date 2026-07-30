@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
+from ironsbot.runtime.in_flight_requests import (
+    DUPLICATE_REQUEST_MESSAGE,
+    InFlightRequestService,
+)
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -30,36 +33,70 @@ class _Features:
         return user_id in self.superusers
 
 
-def test_in_flight_request_deduplicates_one_user_action_target_once() -> None:
+def test_in_flight_request_replies_once_warns_once_then_stays_silent(
+) -> None:
     service = InFlightRequestService(_Features())
 
     first = service.admit(
         user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
+        now=0,
     )
     second = service.admit(
         user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
-    )
-    third = service.admit(
-        user_id=USER_ID,
-        request=_request("seer_pet_info", "5000"),
+        now=1,
     )
 
     assert first.allowed
     assert first.token is not None
     assert not second.allowed
-    assert second.feedback == (
-        "该查询正在处理中；重复的同类请求不会加入队列，后续重复不再提醒。"
-    )
-    assert not third.allowed
-    assert third.feedback is None
+    assert second.feedback == DUPLICATE_REQUEST_MESSAGE
 
-    service.finish(first.token)
+    assert not service.admit(
+        user_id=USER_ID,
+        request=_request("seer_pet_info", "5000"),
+        now=2,
+    ).allowed
+
+    service.finish(first.token, now=5)
+
+    completed_duplicate = service.admit(
+        user_id=USER_ID,
+        request=_request("seer_pet_info", "5000"),
+        now=64,
+    )
+    assert not completed_duplicate.allowed
+    assert completed_duplicate.feedback == DUPLICATE_REQUEST_MESSAGE
+
+    assert not service.admit(
+        user_id=USER_ID,
+        request=_request("seer_pet_info", "5000"),
+        now=64.5,
+    ).allowed
 
     assert service.admit(
         user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
+        now=65,
+    ).allowed
+
+
+def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
+    service = InFlightRequestService(_Features())
+    first = service.admit(
+        user_id=USER_ID,
+        request=_request("seer_pet_info", "5000"),
+        now=0,
+    )
+    assert first.token is not None
+
+    service.release(first.token)
+
+    assert service.admit(
+        user_id=USER_ID,
+        request=_request("seer_pet_info", "5000"),
+        now=1,
     ).allowed
 
 
@@ -108,10 +145,11 @@ def test_in_flight_request_stale_token_does_not_release_new_reservation() -> Non
         request=_request("seer_mintmark_query", "45001"),
     )
     assert first.token is not None
-    service.finish(first.token)
+    service.finish(first.token, now=0)
     second = service.admit(
         user_id=USER_ID,
         request=_request("seer_mintmark_query", "45001"),
+        now=60,
     )
     assert second.token is not None
 

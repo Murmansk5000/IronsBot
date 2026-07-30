@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
-    from ironsbot.services.messaging.help_hint import HelpHintService
+    from ironsbot.services.messaging.mention_guard import MentionGuardService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 RESERVED_PRIVATE_COMMANDS = {
@@ -103,7 +103,7 @@ def install(
     service: AiService,
     features: FeatureService,
     group_aliases: Mapping[str, int],
-    help_hint: HelpHintService,
+    mention_guard_service: MentionGuardService,
 ) -> None:
     async def run_ai_chat(
         matcher: Matcher,
@@ -157,16 +157,21 @@ def install(
         matcher: Matcher,
         event: GroupMessageEvent,
     ) -> None:
-        if not help_hint.can_send(event.group_id):
-            return
-        await finish_event_reply(matcher, event, _build_guard_message(event))
+        decision = mention_guard_service.admit(event.user_id)
+        if decision.should_send_help:
+            message = _build_guard_message(event)
+        elif decision.reply is not None:
+            message = decision.reply
+        else:
+            raise FinishedException
+        await finish_event_reply(matcher, event, message)
 
-    mention_guard = registry.on_message(
-        policy=CommandPolicy.command("ai_mention_guard"),
+    mention_guard_matcher = registry.on_message(
+        policy=CommandPolicy.exempt("non-AI direct mention guard"),
         rule=Rule(
             lambda event: _should_guard_non_ai_group_mention(features, event)
         ),
         priority=registry.pre_command_priority("ai_mention_guard"),
         block=True,
     )
-    mention_guard.append_handler(handle_non_ai_group_at_bot)
+    mention_guard_matcher.append_handler(handle_non_ai_group_at_bot)

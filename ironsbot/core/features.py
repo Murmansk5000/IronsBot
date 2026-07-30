@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ironsbot.core.commands import (
+    NormalizedIntList,
     NormalizedStringList,
     json_object,
     string_list,
@@ -59,6 +60,9 @@ class Feature(str, Enum):
 
 FIRE_MANUAL_AD_FEATURE: Final = Feature.FIRE_MANUAL_AD.value
 FIRE_MANUAL_INTENT_FEATURE: Final = Feature.AI_INTENT_FIRE_MANUAL.value
+CONVERSATION_BLACKLIST_ID_ERROR: Final = (
+    "conversation blacklist IDs must be positive"
+)
 FEATURE_KEYS: Final[frozenset[str]] = frozenset(
     feature.value for feature in Feature
 )
@@ -339,6 +343,22 @@ class SuperuserPriorityConfig(BaseModel):
     wait_timeout_seconds: float = Field(default=300.0, ge=0)
 
 
+class ConversationBlacklistConfig(BaseModel):
+    """Conversation sources that should never receive an interactive reply."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    users: NormalizedIntList = Field(default_factory=list)
+    groups: NormalizedIntList = Field(default_factory=list)
+
+    @field_validator("users", "groups")
+    @classmethod
+    def require_positive_ids(cls, values: list[int]) -> list[int]:
+        if any(value <= 0 for value in values):
+            raise ValueError(CONVERSATION_BLACKLIST_ID_ERROR)
+        return values
+
+
 class FeatureConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -348,6 +368,9 @@ class FeatureConfig(BaseModel):
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
     superuser_bypass: bool = True
+    blacklist: ConversationBlacklistConfig = Field(
+        default_factory=ConversationBlacklistConfig
+    )
     help: HelpConfig = Field(default_factory=HelpConfig)
     priority: SuperuserPriorityConfig = Field(
         default_factory=SuperuserPriorityConfig
@@ -429,6 +452,17 @@ class FeatureService:
 
     def is_superuser(self, user_id: int) -> bool:
         return user_id in self.superuser_ids
+
+    def is_conversation_blocked(
+        self,
+        user_id: int,
+        group_id: int | None = None,
+    ) -> bool:
+        """Whether an incoming private or group message must be ignored."""
+
+        return user_id in self.config.blacklist.users or (
+            group_id is not None and group_id in self.config.blacklist.groups
+        )
 
     def resolve_group_refs(self, refs: Iterable[object]) -> list[int]:
         return self._resolve_policy_refs(refs, self.config.group_aliases)

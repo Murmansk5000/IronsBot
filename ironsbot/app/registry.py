@@ -35,6 +35,7 @@ from ironsbot.runtime.plugins import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from ironsbot.services.messaging.mention_guard import MentionGuardService
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
@@ -113,6 +114,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
     from ironsbot.plugins.bilibili.delivery import build_dynamic_message
     from ironsbot.plugins.help.hint import install as install_help_hint
+    from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.messaging.meeting import install as install_meeting
     from ironsbot.plugins.messaging.priority import install as install_admin_priority
@@ -156,6 +158,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     docker_update_service = resources.docker_update
     startup_notice_service = resources.startup_notice
     help_hint_service = resources.help_hint
+    mention_guard_service = MentionGuardService()
     bili_notice_sender = partial(send_bili_login_notice, admin_notices)
     bili_auth_invalid = partial(
         bilibili_login.notify_required,
@@ -275,6 +278,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         PluginDefinition(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
+        ),
+        PluginDefinition(
+            id="conversation_blacklist",
+            install=partial(install_blacklist, features=features),
         ),
         PluginDefinition(
             id="admin_priority",
@@ -644,7 +651,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 service=ai_service,
                 features=features,
                 group_aliases=config.features.group_aliases,
-                help_hint=help_hint_service,
+                mention_guard_service=mention_guard_service,
             ),
         ),
         PluginDefinition(

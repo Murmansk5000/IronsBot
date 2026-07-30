@@ -108,6 +108,7 @@ from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
 )
 from ironsbot.services.operations.data_sync import DataSyncService
+from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.server_status import ServerStatusService
@@ -673,6 +674,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             signal_parent=True,
             reason="admin requested bot restart",
         ),
+        handoff_store=DockerStartupPreflightStore(),
     )
     command_catalog = CommandCatalog()
 

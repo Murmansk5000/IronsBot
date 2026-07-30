@@ -130,8 +130,11 @@ Optional Docker image check/update: superusers can send `/重启机器人`;
 `/更新镜像` and `/更新Docker` are equivalent commands for the same restart flow.
 By default `config.example.toml` checks the target image on startup and before
 manual restart/update commands. When a new image exists, IronsBot starts a
-one-shot Watchtower updater that pulls the latest image and recreates the
-current container. When the image is already current and Docker socket is
+one-shot Watchtower updater and keeps the old container from starting the bot.
+The recreated container verifies that it is running the expected image before
+it starts NoneBot, data sync, or startup notifications. If Watchtower fails,
+the old container stays in the handoff state and its Watchtower container is
+kept for log inspection. When the image is already current and Docker socket is
 mounted, `/重启机器人` restarts the current Docker container through the Docker
 API instead of relying on container restart policy. This requires mounting the
 Docker Engine socket into the IronsBot container, for example on Unraid/Linux:
