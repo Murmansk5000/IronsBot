@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
 EMPTY_REPLY = "AI没有返回有效内容，请稍后再试。"
-MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 IRONSBOT_AI_KEY。"
+MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 AI_KEY。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 TEAM_ACTIONS = frozenset({"team_recommend", "team_resource"})
@@ -209,7 +209,7 @@ class AiService:
                 _append_notice_source(
                     "AI聊天还没有配置 API Key。\n"
                     "请在 Unraid 容器变量或 .env.prod 中设置 "
-                    "IRONSBOT_AI_KEY。",
+                    "AI_KEY。",
                     source_context,
                 ),
             )
@@ -288,7 +288,7 @@ class AiService:
                 f"模型：{self._config.model}\n"
                 f"接口：{self._config.base_url}\n"
                 f"详情：{result.error_detail}\n"
-                "请检查 IRONSBOT_AI_KEY、账户额度、模型名和网络连接。",
+                "请检查 AI_KEY、账户额度、模型名和网络连接。",
                 source_context,
             ),
         )

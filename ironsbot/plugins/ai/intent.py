@@ -63,7 +63,11 @@ def install(
     service: AiService,
     group_aliases: Mapping[str, int],
     team_resource: TeamResourceService,
+    command_help_ids: tuple[str, ...],
 ) -> None:
+    if not command_help_ids:
+        return
+
     async def match_action(event: MessageEvent, state: T_State) -> bool:
         text = event.get_plaintext().strip()
         group_id = getattr(event, "group_id", None)
@@ -114,7 +118,10 @@ def install(
         )
 
     matcher = registry.on_message(
-        policy=CommandPolicy.command(_resolve_action_command_id),
+        policy=CommandPolicy.command(
+            _resolve_action_command_id,
+            help_ids=command_help_ids,
+        ),
         rule=Rule(match_action) & no_reply(),
         priority=registry.priority("ai_intent"),
         block=True,

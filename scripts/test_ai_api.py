@@ -86,7 +86,7 @@ def _bool_config(config: dict, key: str, *, default: bool = False) -> bool:
 def _build_settings(env: dict[str, str]) -> AiApiSettings:
     ai_config = _json_env(env, "AI_CONFIG")
     return AiApiSettings(
-        api_key=env.get("IRONSBOT_AI_KEY", ""),
+        api_key=env.get("AI_KEY", ""),
         base_url=str(ai_config.get("base_url") or "https://api.deepseek.com"),
         model=str(ai_config.get("model") or "deepseek-v4-pro"),
         timeout=_float_config(ai_config, "timeout", 45.0),

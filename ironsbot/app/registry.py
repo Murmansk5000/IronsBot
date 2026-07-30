@@ -35,6 +35,7 @@ from ironsbot.runtime.plugins import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from ironsbot.services.messaging.mention_guard import MentionGuardService
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
@@ -157,6 +158,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     docker_update_service = resources.docker_update
     startup_notice_service = resources.startup_notice
     help_hint_service = resources.help_hint
+    mention_guard_service = MentionGuardService(config.messaging.command_cooldown)
     bili_notice_sender = partial(send_bili_login_notice, admin_notices)
     bili_auth_invalid = partial(
         bilibili_login.notify_required,
@@ -175,6 +177,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         bili_auth_invalid,
         bili_push_delivery.send,
     )
+    ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginDefinition, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
@@ -649,7 +652,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 service=ai_service,
                 features=features,
                 group_aliases=config.features.group_aliases,
-                help_hint=help_hint_service,
+                mention_guard_service=mention_guard_service,
             ),
         ),
         PluginDefinition(
@@ -676,12 +679,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     ),
                 ),
             ),
-            commands=ai_intent_commands(config),
+            commands=ai_intent_command_descriptors,
             install=partial(
                 install_ai_intent,
                 service=ai_service,
                 group_aliases=config.features.group_aliases,
                 team_resource=team_resource_service,
+                command_help_ids=tuple(
+                    command.id for command in ai_intent_command_descriptors
+                ),
             ),
         ),
         PluginDefinition(
