@@ -4,8 +4,6 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
-
 from ironsbot.app.command_directory.dynamic import (
     ai_intent_commands,
     configured_image_commands,
@@ -27,9 +25,14 @@ from ironsbot.app.command_directory.plugins import (
 )
 from ironsbot.app.command_directory.seer import rank_commands, seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
+from ironsbot.app.plugin_visibility import (
+    always_help_visible,
+    feature_help_visible,
+    superuser_help_visible,
+    superuser_only_help_visible,
+)
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
-from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginDefinition,
@@ -44,12 +47,10 @@ from ironsbot.services.operations.docker_preflight import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.matchers import MatcherRegistry
 
@@ -59,45 +60,6 @@ class PluginRegistryError(ValueError):
 
 
 OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
-
-
-def _always_help_visible(_event: Event) -> bool:
-    return True
-
-
-def _feature_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-    feature: str,
-    enabled: bool = True,
-    group_only: bool = False,
-) -> bool:
-    return (
-        enabled
-        and (not group_only or isinstance(event, GroupMessageEvent))
-        and event_is_feature_visible_in_help(features, event, feature)
-    )
-
-
-def _superuser_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return False
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
-
-
-def _superuser_only_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-) -> bool:
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
 
 
 def build_plugin_registry(  # noqa: PLR0915 - declarative registry
@@ -162,7 +124,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     docker_update_service = resources.docker_update
     startup_notice_service = resources.startup_notice
     help_hint_service = resources.help_hint
-    mention_guard_service = MentionGuardService()
+    mention_guard_service = MentionGuardService(config.messaging.command_cooldown)
     bili_notice_sender = partial(send_bili_login_notice, admin_notices)
     bili_auth_invalid = partial(
         bilibili_login.notify_required,
@@ -287,6 +249,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         ),
         PluginDefinition(
             id="conversation_blacklist",
+            features=frozenset({Feature.BLACKLIST}),
             install=partial(install_blacklist, features=features),
         ),
         PluginDefinition(
@@ -330,7 +293,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="admin",
                 order=20,
                 visible=partial(
-                    _superuser_only_help_visible,
+                    superuser_only_help_visible,
                     features=features,
                 ),
             ),
@@ -403,7 +366,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     "启动后检查无头米米号是否登录成功；登录状态变化仅通知管理目标。",
                 ),
                 visible=partial(
-                    _superuser_help_visible,
+                    superuser_help_visible,
                     features=features,
                 ),
             ),
@@ -515,7 +478,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="seer",
                 order=50,
                 visible=partial(
-                    _feature_help_visible,
+                    feature_help_visible,
                     features=features,
                     feature="team_resource_subscription",
                     enabled=config.seer.team_resource.enabled,
@@ -646,7 +609,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="ai",
                 order=10,
                 visible=partial(
-                    _feature_help_visible,
+                    feature_help_visible,
                     features=features,
                     feature="ai_chat",
                     enabled=bool(config.ai.api_key.strip()),
@@ -680,7 +643,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="ai",
                 order=20,
                 visible=partial(
-                    _feature_help_visible,
+                    feature_help_visible,
                     features=features,
                     feature="ai_intent",
                     enabled=(
@@ -708,7 +671,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 description="IronsBot 项目信息与当前版本",
                 group="core",
                 order=20,
-                visible=_always_help_visible,
+                visible=always_help_visible,
             ),
             commands=about_commands(),
             install=install_about,
@@ -721,7 +684,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 description="按当前群/私聊权限显示可用功能",
                 group="core",
                 order=10,
-                visible=_always_help_visible,
+                visible=always_help_visible,
             ),
             commands=help_commands(),
             install=install_help,

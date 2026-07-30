@@ -13,6 +13,7 @@ from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConf
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import MessageTarget, TargetSendSummary
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.storage.team_resources import (
@@ -63,7 +64,7 @@ def _service(config: TeamResourceConfig) -> TeamResourceService:
         config,
         TeamResourceSubscriptionStore(config.subscription_path),
         HEADLESS,
-        {},
+        OneBotReferenceResolver({}, {}),
         TEST_RUNTIME.features,
         TEST_RUNTIME.delivery,
     )
@@ -112,8 +113,7 @@ class FakeJob:
         self.id = job_id
 
 
-def test_register_team_resource_jobs_uses_standard_scheduler_fields(
-) -> None:
+def test_register_team_resource_jobs_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
     service = _service(
         TeamResourceConfig(
@@ -145,8 +145,7 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields(
     ]
 
 
-def test_register_team_resource_jobs_skips_when_disabled(
-) -> None:
+def test_register_team_resource_jobs_skips_when_disabled() -> None:
     scheduler = FakeScheduler()
     service = _service(TeamResourceConfig(enabled=False, times=["23:00"]))
 
@@ -156,15 +155,9 @@ def test_register_team_resource_jobs_skips_when_disabled(
 
 
 def test_parse_team_resource_manage_commands() -> None:
-    add = TEAM_RESOURCE_SERVICE.parse_manage(
-        f"订阅战队{TEAM_ID} {TEAM_THRESHOLD}"
-    )
-    remove = TEAM_RESOURCE_SERVICE.parse_manage(
-        f"取消订阅战队{TEAM_ID}"
-    )
-    list_command = TEAM_RESOURCE_SERVICE.parse_manage(
-        "战队订阅"
-    )
+    add = TEAM_RESOURCE_SERVICE.parse_manage(f"订阅战队{TEAM_ID} {TEAM_THRESHOLD}")
+    remove = TEAM_RESOURCE_SERVICE.parse_manage(f"取消订阅战队{TEAM_ID}")
+    list_command = TEAM_RESOURCE_SERVICE.parse_manage("战队订阅")
 
     assert add is not None
     assert add.action == "add"
@@ -177,11 +170,8 @@ def test_parse_team_resource_manage_commands() -> None:
     assert list_command.action == "list"
 
 
-def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold(
-) -> None:
-    command = TEAM_RESOURCE_SERVICE.parse_manage(
-        f"订阅战队{TEAM_ID} @2315721708"
-    )
+def test_parse_team_resource_manage_command_ignores_manual_at_id_as_threshold() -> None:
+    command = TEAM_RESOURCE_SERVICE.parse_manage(f"订阅战队{TEAM_ID} @2315721708")
 
     assert command is not None
     assert command.team_id == TEAM_ID
@@ -199,8 +189,7 @@ def test_team_resource_manage_uses_command_cooldown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies(
-) -> None:
+async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies() -> None:
     message = Message(
         [
             MessageSegment.text(f"订阅战队{TEAM_ID} {TEAM_THRESHOLD} "),
@@ -251,7 +240,7 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
         config,
         store,
         HEADLESS,
-        {},
+        OneBotReferenceResolver(group_aliases={}, user_aliases={}),
         TEST_RUNTIME.features,
         TEST_RUNTIME.delivery,
     )

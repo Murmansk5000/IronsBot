@@ -25,7 +25,7 @@ def bootstrap() -> Application:
         port=settings.bot.port,
         log_level=settings.bot.log_level,
         command_start=set(settings.bot.command_start),
-        superusers={str(value) for value in settings.bot.superusers},
+        superusers={str(value) for value in settings.superuser_ids},
         onebot_access_token=settings.bot.onebot_token or None,
         apscheduler_autostart=False,
     )

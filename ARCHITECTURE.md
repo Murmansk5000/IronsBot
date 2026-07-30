@@ -356,6 +356,11 @@ The following behavioral invariants are frozen:
 - superuser bypass follows the configured policy;
 - group owner/admin/superuser checks remain consistent;
 - command cooldown uses stable semantic command ids;
+- every TOML value denoting a OneBot user, group, or @ target resolves through
+  the shared user/group reference service; plugins do not parse those aliases
+  independently;
+- `blacklist` is an explicit target-policy feature and always suppresses the
+  matching conversation before AI, rate controls, menus, or business matchers;
 - proactive group messages use the same outbound limit and bot routing as
   replies;
 - `admin_notice` targets only superusers and groups explicitly granted the

@@ -1,3 +1,4 @@
+import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -68,9 +69,7 @@ CUSTOM_PLAYER_REQUEST_PAUSE_SECONDS = 45.0
 CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
 CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
-DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = (
-    "data/messaging/push_unsubscriptions.sqlite"
-)
+DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = "data/messaging/push_unsubscriptions.sqlite"
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
 
@@ -170,8 +169,7 @@ def _assert_default_team_audit_welcome(config: Settings) -> None:
     assert "退出本审核群" in team_audit.followup_message
     assert team_audit.final_followup_enabled
     assert (
-        team_audit.final_followup_after_hours
-        == DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS
+        team_audit.final_followup_after_hours == DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS
     )
     assert "仍然还在审核群" in team_audit.final_followup_message
     assert team_audit.followup_cache_path == "data/team_audit_welcome/pending.sqlite"
@@ -183,6 +181,7 @@ def _assert_default_matcher_priorities(
     assert matcher_priority.seer_query < matcher_priority.ai_chat
     assert matcher_priority.ai_group_at < 0
     assert matcher_priority.ai_mention_guard < 0
+    assert matcher_priority.ai_group_at < matcher_priority.ai_mention_guard
     assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
     assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
     assert matcher_priority.sendpic < matcher_priority.seer_pet
@@ -207,21 +206,15 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
     assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
     assert (
-        config.interval_offset_minutes
-        == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
+        config.interval_offset_minutes == DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES
     )
     assert (
-        config.schedule_jitter_seconds
-        == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
+        config.schedule_jitter_seconds == DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS
     )
     assert (
-        config.request_interval_seconds
-        == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
+        config.request_interval_seconds == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
     )
-    assert (
-        config.request_jitter_seconds
-        == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
-    )
+    assert config.request_jitter_seconds == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
     assert config.active_start == "07:30"
     assert config.active_end == "01:30"
     assert config.times == []
@@ -247,9 +240,7 @@ def test_example_config_parses() -> None:
     )
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
-    assert config.bilibili.push.modes == {
-        DEFAULT_BILI_ACCOUNT_ALIAS: "full"
-    }
+    assert config.bilibili.push.modes == {DEFAULT_BILI_ACCOUNT_ALIAS: "full"}
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
@@ -282,9 +273,7 @@ def test_example_config_parses() -> None:
     assert config.paths.log_file == Path("logs/ironsbot.log")
     assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
     _assert_default_file_logging(config)
-    _assert_default_player_request_protection(
-        config.seer.player.request_protection
-    )
+    _assert_default_player_request_protection(config.seer.player.request_protection)
     _assert_default_matcher_priorities(config.bot.matcher_priority)
     remote_build_steps = config.operations.data_sync.sources[
         "seerapi"
@@ -296,14 +285,8 @@ def test_example_config_parses() -> None:
         "build_api_data",
         "build_ironsbot_data",
     ]
-    assert (
-        remote_build_steps[-1].repository
-        == "Murmansk-Seer/seerapi"
-    )
-    assert (
-        remote_build_steps[-1].workflow_id
-        == "build-ironsbot-data-db.yml"
-    )
+    assert remote_build_steps[-1].repository == "Murmansk-Seer/seerapi"
+    assert remote_build_steps[-1].workflow_id == "build-ironsbot-data-db.yml"
     assert remote_build_steps[0].inputs == {
         "force-update-assets": False,
         "force-update-config": False,
@@ -486,9 +469,7 @@ def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None
 
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
-    config = load_settings(
-        env={CONFIG_ENV: str(ROOT / "config.example.toml")}
-    )
+    config = load_settings(env={CONFIG_ENV: str(ROOT / "config.example.toml")})
     assert config.ai.model == "deepseek-v4-pro"
 
 
@@ -589,8 +570,7 @@ baseline_lookback_days = 6
     config = load_settings(config_path)
 
     assert (
-        config.seer.achievement_history.baseline_lookback_days
-        == expected_lookback_days
+        config.seer.achievement_history.baseline_lookback_days == expected_lookback_days
     )
 
 
@@ -626,9 +606,7 @@ feature = "seerinfo_link"
         schedule_features=config.messaging.schedule_feature_keys,
     )
 
-    assert config.messaging.command_feature_keys == frozenset(
-        {"seerinfo_link"}
-    )
+    assert config.messaging.command_feature_keys == frozenset({"seerinfo_link"})
     assert features.is_group_feature_allowed(
         999,
         123456789,
@@ -659,26 +637,178 @@ feature = "custom_reminder"
 
     config = load_settings(config_path)
 
-    assert config.messaging.schedule_feature_keys == frozenset(
-        {"custom_reminder"}
-    )
+    assert config.messaging.schedule_feature_keys == frozenset({"custom_reminder"})
 
 
-def test_conversation_blacklist_loads_user_and_group_ids(tmp_path: Path) -> None:
+def test_blacklist_feature_loads_user_and_group_aliases(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[features.blacklist]
-users = [123456789]
-groups = [987654321]
+[features.group_aliases]
+blocked_group = 987654321
+
+[features.user_aliases]
+blocked_user = 123456789
+
+[features.group_policy]
+blocked_group = ["blacklist"]
+
+[features.user_policy]
+blocked_user = ["blacklist"]
 """.strip(),
         encoding="utf-8",
     )
 
     config = load_settings(config_path)
 
-    assert config.features.blacklist.users == [123456789]
-    assert config.features.blacklist.groups == [987654321]
+    features = FeatureService(config.features, config.superuser_ids)
+    assert features.is_conversation_blocked(123456789)
+    assert features.is_conversation_blocked(1, 987654321)
+
+
+def test_all_bundle_declares_custom_extension_feature(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+main = 123456789
+
+[features.bundles]
+all = ["private_extension"]
+
+[features.group_policy]
+main = ["all"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+    features = FeatureService(config.features, config.superuser_ids)
+
+    assert features.is_group_feature_allowed(1, 123456789, "private_extension")
+
+
+def test_onebot_config_references_accept_aliases_and_numeric_ids(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bot]
+superusers = ["owner", "300"]
+
+[features.group_aliases]
+main_group = 100
+
+[features.user_aliases]
+owner = 200
+at_user = 201
+
+[features.bundles]
+all = ["private_extension"]
+
+[features.group_policy]
+main_group = ["all"]
+
+[features.user_policy]
+owner = ["blacklist"]
+
+[features.help]
+poke_replies = { main_group = "group reply" }
+poke_user_replies = { owner = "user reply" }
+
+[bilibili.push.groups.main_group]
+accounts = []
+
+[bilibili.push.users.owner]
+accounts = []
+
+[messaging.bot_routing]
+bot_aliases = { primary = 400 }
+
+[messaging.bot_routing.groups]
+main_group = "primary"
+
+[messaging.bot_routing.users]
+owner = "primary"
+
+[[messaging.commands]]
+id = "custom_command"
+commands = ["custom"]
+message = "custom reply"
+feature = "private_extension"
+at_user_ids = ["at_user", "202"]
+
+[[messaging.schedules]]
+id = "custom_schedule"
+hour = 12
+minute = 0
+message = "scheduled reply"
+feature = "private_extension"
+at_user_ids = ["at_user", 202]
+
+[seer.rank]
+display_limits = { main_group = 5 }
+
+[seer.team_resource]
+default_at_users = ["at_user", "202"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.superuser_ids == frozenset({200, 300})
+    assert config.onebot_references.resolve_groups(
+        ["main_group", "100"],
+        location="test.groups",
+    ) == [100]
+    assert config.onebot_references.resolve_users(
+        ["at_user", 202],
+        location="test.users",
+    ) == [201, 202]
+
+
+@pytest.mark.parametrize(
+    ("toml", "expected_path"),
+    [
+        (
+            """
+[features.group_policy]
+unknown_group = ["seer"]
+""",
+            "features.group_policy.unknown_group",
+        ),
+        (
+            """
+[features.group_aliases]
+"123" = 100
+""",
+            "features.group_aliases.123 must not use a numeric alias",
+        ),
+        (
+            """
+[[messaging.commands]]
+id = "custom_command"
+commands = ["custom"]
+message = "custom reply"
+feature = "text"
+at_user_ids = ["unknown_user"]
+""",
+            "messaging.commands[0].at_user_ids[0]",
+        ),
+    ],
+)
+def test_invalid_onebot_config_reference_reports_exact_path(
+    tmp_path: Path,
+    toml: str,
+    expected_path: str,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(toml.strip(), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match=re.escape(expected_path)):
+        load_settings(config_path)
 
 
 def test_unregistered_feature_policy_is_rejected_with_exact_path(
@@ -716,9 +846,7 @@ accounts = ["missing_account"]
         load_settings(config_path)
 
     assert exc_info.value.errors()[0]["loc"] == ("bilibili",)
-    assert (
-        "bilibili.push.groups.main.accounts[0]" in str(exc_info.value)
-    )
+    assert "bilibili.push.groups.main.accounts[0]" in str(exc_info.value)
 
 
 def test_unknown_seer_section_is_rejected_with_exact_path(
@@ -753,9 +881,7 @@ change_cooldown_days = 5
 
     config = load_settings(config_path)
 
-    assert config.seer.player.binding.path == Path(
-        "data/custom-player-bindings.sqlite"
-    )
+    assert config.seer.player.binding.path == Path("data/custom-player-bindings.sqlite")
     assert (
         config.seer.player.binding.change_cooldown_days
         == CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS
@@ -800,8 +926,7 @@ cache_ttl_seconds = 120.0
 
     assert config.seer.player.background_refresh.enabled
     assert (
-        config.seer.player.background_refresh.cache_ttl_seconds
-        == _REFRESH_TTL_SECONDS
+        config.seer.player.background_refresh.cache_ttl_seconds == _REFRESH_TTL_SECONDS
     )
 
 
@@ -835,8 +960,7 @@ superuser_bypass_pause = false
     assert config.enabled
     assert config.max_queued_queries == CUSTOM_PLAYER_REQUEST_MAX_QUEUED
     assert (
-        config.base_request_interval_seconds
-        == CUSTOM_PLAYER_REQUEST_INTERVAL_SECONDS
+        config.base_request_interval_seconds == CUSTOM_PLAYER_REQUEST_INTERVAL_SECONDS
     )
     assert config.disconnect_pause_seconds == CUSTOM_PLAYER_REQUEST_PAUSE_SECONDS
     assert (
@@ -974,8 +1098,7 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (
-        app_config.features.help.hint_max_per_window
-        == DEFAULT_HELP_HINT_MAX_PER_WINDOW
+        app_config.features.help.hint_max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
     assert app_config.activity.lead_hours == [11, 1]
     assert not app_config.messaging.command_cooldown.enabled
@@ -989,7 +1112,4 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert "aliases" in app_config.operations.data_sync.sources
     assert app_config.features.priority.enabled
     assert app_config.paths.render_cache == Path("render_cache")
-    assert (
-        app_config.seer.render.cache_max_size_mb
-        == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
-    )
+    assert app_config.seer.render.cache_max_size_mb == DEFAULT_RENDER_CACHE_MAX_SIZE_MB

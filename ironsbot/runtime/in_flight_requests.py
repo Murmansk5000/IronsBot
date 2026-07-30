@@ -6,13 +6,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from secrets import token_urlsafe
 from time import monotonic
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Protocol
+
+from ironsbot.core.response_admission import (
+    FeedbackOnce,
+    ResponseAdmissionDecision,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.semantic_requests import SemanticRequest
-
-RECENT_RESPONSE_WINDOW_SECONDS: Final = 60.0
-DUPLICATE_REQUEST_MESSAGE: Final = "该指令重复发送；后续重复不再提醒。"
 
 
 class SuperuserLookup(Protocol):
@@ -26,23 +28,24 @@ class InFlightRequestToken:
     token_id: str
 
 
-@dataclass(frozen=True, slots=True)
-class InFlightRequestDecision:
-    allowed: bool
-    token: InFlightRequestToken | None = None
-    feedback: str | None = None
+InFlightRequestDecision = ResponseAdmissionDecision
+
+
+class DuplicateResponseConfig(Protocol):
+    duplicate_window_seconds: float
+    duplicate_message: str
 
 
 @dataclass(slots=True)
 class _InFlightRequestEntry:
     token_id: str
-    feedback_sent: bool = False
+    feedback: FeedbackOnce = field(default_factory=FeedbackOnce)
 
 
 @dataclass(slots=True)
 class _RecentCompletion:
     completed_at: float
-    feedback_sent: bool = False
+    feedback: FeedbackOnce = field(default_factory=FeedbackOnce)
 
 
 @dataclass(slots=True)
@@ -56,6 +59,7 @@ class InFlightRequestService:
     """
 
     features: SuperuserLookup
+    config: DuplicateResponseConfig
     _entries: dict[tuple[int, str, str], _InFlightRequestEntry] = field(
         default_factory=dict
     )
@@ -95,10 +99,12 @@ class InFlightRequestService:
     def finish(self, token: object, *, now: float | None = None) -> None:
         """Record a handled request so identical replies stay silent briefly."""
 
-        key = self._release(token)
-        if key is not None:
+        released = self._release(token)
+        if released is not None:
+            key, entry = released
             self._recent_completions[key] = _RecentCompletion(
-                completed_at=monotonic() if now is None else now
+                completed_at=monotonic() if now is None else now,
+                feedback=entry.feedback,
             )
 
     def release(self, token: object) -> None:
@@ -106,33 +112,33 @@ class InFlightRequestService:
 
         self._release(token)
 
-    def _release(self, token: object) -> tuple[int, str, str] | None:
+    def _release(
+        self,
+        token: object,
+    ) -> tuple[tuple[int, str, str], _InFlightRequestEntry] | None:
         if not isinstance(token, InFlightRequestToken):
             return None
         key = (token.user_id, token.request.action.id, token.request.target.key)
         entry = self._entries.get(key)
         if entry is not None and entry.token_id == token.token_id:
             self._entries.pop(key, None)
-            return key
+            return key, entry
         return None
 
     def _prune_recent_completions(self, now: float) -> None:
         self._recent_completions = {
             key: completion
             for key, completion in self._recent_completions.items()
-            if now - completion.completed_at < RECENT_RESPONSE_WINDOW_SECONDS
+            if now - completion.completed_at < self.config.duplicate_window_seconds
         }
 
-    @staticmethod
     def _reject_duplicate(
+        self,
         entry: _InFlightRequestEntry | _RecentCompletion,
     ) -> InFlightRequestDecision:
-        if entry.feedback_sent:
-            return InFlightRequestDecision(allowed=False)
-        entry.feedback_sent = True
         return InFlightRequestDecision(
             allowed=False,
-            feedback=DUPLICATE_REQUEST_MESSAGE,
+            feedback=entry.feedback.take(self.config.duplicate_message),
         )
 
     def reset(self) -> None:

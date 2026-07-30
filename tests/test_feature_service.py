@@ -29,7 +29,10 @@ def test_feature_service_reads_feature_config() -> None:
 
 def test_feature_service_blocks_configured_users_and_groups() -> None:
     feature_service = FeatureService(
-        FeatureConfig(blacklist={"users": [456], "groups": [123]}),
+        FeatureConfig(
+            group_policy={"123": ["blacklist"]},
+            user_policy={"456": ["blacklist"]},
+        ),
         frozenset({456}),
     )
 
@@ -152,6 +155,7 @@ def test_custom_bundle_cannot_replace_message_action_feature() -> None:
     [
         ({"seer": ["image"]}, "cannot replace registered feature"),
         ({"empty": []}, "features.bundles.empty must not be empty"),
+        ({"all": [""]}, r"features.bundles.all\[0\] must not be empty"),
         ({"broken": ["missing"]}, r"features.bundles.broken\[0\]=missing"),
         ({"first": ["second"], "second": ["first"]}, "contains a cycle"),
         ({"management": ["admin_notice"]}, "must not include admin_notice"),
@@ -198,8 +202,36 @@ def test_all_feature_bundle_does_not_include_admin_notice() -> None:
         "player_lineup_private",
     )
     assert not feature_service.is_group_feature_allowed(999, 123, "admin_notice")
+    assert not feature_service.is_group_feature_allowed(999, 123, "blacklist")
     assert feature_service.groups_for_feature("seer_pet") == [123]
     assert feature_service.groups_for_feature("admin_notice") == []
+
+
+def test_all_bundle_accepts_declared_custom_feature_but_not_blacklist() -> None:
+    feature_service = FeatureService(
+        FeatureConfig(
+            bundles={"all": ["private_extension_action"]},
+            group_policy={"123": ["all"]},
+            superuser_bypass=False,
+        ),
+        frozenset(),
+    )
+
+    assert feature_service.is_group_feature_allowed(
+        999,
+        123,
+        "private_extension_action",
+    )
+    assert not feature_service.is_group_feature_allowed(999, 123, "blacklist")
+
+
+@pytest.mark.parametrize("feature", ["admin_notice", "blacklist"])
+def test_all_bundle_rejects_protected_feature(feature: str) -> None:
+    with pytest.raises(ValueError, match="must not include protected feature"):
+        FeatureService(
+            FeatureConfig(bundles={"all": [feature]}),
+            frozenset(),
+        )
 
 
 def test_team_audit_feature_is_registered() -> None:

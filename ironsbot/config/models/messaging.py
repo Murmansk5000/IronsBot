@@ -8,10 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing_extensions import Self
 
 from ironsbot.core.commands import (  # noqa: TC001 - Pydantic resolves aliases
-    NormalizedIntList,
     NormalizedStringList,
 )
 from ironsbot.core.messaging import SendpicBehaviorConfig
+from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
+    OneBotReferenceList,
+)
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
@@ -39,9 +41,7 @@ PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
 SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
-SCHEDULE_ID_FORMAT_ERROR = (
-    "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
-)
+SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 BotReference = str | int
@@ -53,6 +53,9 @@ COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR = (
 )
 COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR = (
     "messaging.command_cooldown.in_progress_message must not be empty"
+)
+COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR = (
+    "messaging.command_cooldown.duplicate_message must not be empty"
 )
 COMMAND_COOLDOWN_WINDOWS_REQUIRED_ERROR = (
     "messaging.command_cooldown.windows must not be empty"
@@ -112,9 +115,11 @@ class CommandCooldownConfig(BaseModel):
     )
     cooldown_message: str = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
     in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
-    commands: dict[str, list[CommandCooldownWindowConfig]] = Field(
-        default_factory=dict
-    )
+    duplicate_window_seconds: float = Field(default=60.0, gt=0)
+    duplicate_message: str = "该指令重复发送；后续重复不再提醒。"
+    mention_initial_window_seconds: float = Field(default=600.0, gt=0)
+    mention_initial_max_responses: int = Field(default=3, ge=1)
+    commands: dict[str, list[CommandCooldownWindowConfig]] = Field(default_factory=dict)
 
     @field_validator("cooldown_message")
     @classmethod
@@ -146,6 +151,14 @@ class CommandCooldownConfig(BaseModel):
         message = value.strip()
         if not message:
             raise ValueError(COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR)
+        return message
+
+    @field_validator("duplicate_message")
+    @classmethod
+    def validate_duplicate_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR)
         return message
 
     @field_validator("windows")
@@ -209,14 +222,13 @@ class BotRoutingConfig(BaseModel):
             for target, bot_ref in mapping.items()
             if not target.strip() or self.resolve_bot_reference(bot_ref) is None
         ]
-        if self.default_bot is not None and self.resolve_bot_reference(
-            self.default_bot
-        ) is None:
+        if (
+            self.default_bot is not None
+            and self.resolve_bot_reference(self.default_bot) is None
+        ):
             invalid_targets.append("messaging.bot_routing.default_bot")
         if invalid_targets:
-            msg = "unknown or invalid bot reference(s): " + ", ".join(
-                invalid_targets
-            )
+            msg = "unknown or invalid bot reference(s): " + ", ".join(invalid_targets)
             raise ValueError(msg)
         return self
 
@@ -262,7 +274,7 @@ class BaseMessageAction(BaseModel):
 
 class MessageCommandAction(BaseMessageAction):
     commands: NormalizedStringList = Field(default_factory=list)
-    at_user_ids: NormalizedIntList = Field(default_factory=list)
+    at_user_ids: OneBotReferenceList = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
@@ -277,7 +289,7 @@ class MessageCommandAction(BaseMessageAction):
 
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
-    at_user_ids: NormalizedIntList = Field(default_factory=list)
+    at_user_ids: OneBotReferenceList = Field(default_factory=list)
     hour: int = Field(ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
     day_of_week: str | None = None
@@ -313,9 +325,7 @@ class OutboundRateLimitConfig(BaseModel):
     windows: list[OutboundRateLimitWindowConfig] = Field(
         default_factory=_default_outbound_rate_limit_windows
     )
-    cooldown_message: str = (
-        "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
-    )
+    cooldown_message: str = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
     @field_validator("cooldown_message")
     @classmethod
@@ -382,9 +392,7 @@ class MeetingConfig(BaseModel):
 
     number: str = ""
     template: str = (
-        "腾讯会议\n"
-        "腾讯会议号：{meeting_number}\n"
-        "点击链接直接加入：{meeting_url}"
+        "腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}"
     )
     commands: NormalizedStringList = Field(default_factory=lambda: ["开播", "会议"])
 
