@@ -103,6 +103,11 @@ def _normalize_command_cooldown_windows(
     return sorted(windows, key=lambda item: item.window_seconds)
 
 
+COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR = (
+    "messaging.command_cooldown.duplicate_message must not be empty"
+)
+
+
 class CommandCooldownConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -112,6 +117,10 @@ class CommandCooldownConfig(BaseModel):
     )
     cooldown_message: str = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
     in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
+    duplicate_window_seconds: float = Field(default=60.0, gt=0)
+    duplicate_message: str = "该指令重复发送；后续重复不再提醒。"
+    mention_initial_window_seconds: float = Field(default=600.0, gt=0)
+    mention_initial_max_responses: int = Field(default=3, ge=1)
     commands: dict[str, list[CommandCooldownWindowConfig]] = Field(
         default_factory=dict
     )
@@ -178,6 +187,14 @@ class CommandCooldownConfig(BaseModel):
         command_id: str,
     ) -> tuple[CommandCooldownWindowConfig, ...]:
         return tuple(self.commands.get(command_id, self.windows))
+
+    @field_validator("duplicate_message")
+    @classmethod
+    def validate_duplicate_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR)
+        return message
 
 
 class BotRoutingConfig(BaseModel):
