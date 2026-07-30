@@ -45,7 +45,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from ironsbot.core.features import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
 
@@ -78,20 +77,6 @@ def _store_command(
         return False
     state[state_key] = command
     return True
-
-
-async def _handle_help(
-    commands: CommandCatalog,
-    features: FeatureService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    await finish_event_reply(
-        matcher,
-        event,
-        "📊【可用榜单】\n"
-        f"{commands.format_for(event, features, plugin_id='rank_help')}",
-    )
 
 
 async def _handle_list(
@@ -254,18 +239,16 @@ def install(group: SeerMatcherGroup) -> None:
     feature_rule = seer_feature_rule(group.features, "seer_rank") & no_reply()
     priority = group.matcher_priority("seer_rank")
 
-    help_matcher = group.on_fullmatch(
-        ("榜单帮助", "排行榜帮助", "有哪些榜单", "可用榜单"),
-        policy=CommandPolicy.command("seer_rank_help"),
-        rule=feature_rule,
-        priority=group.matcher_priority("seer_rank_help"),
-    )
-    help_matcher.append_handler(
-        bind_async(_handle_help, group.commands, group.features)
-    )
-
     list_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_rank_list"),
+        policy=CommandPolicy.command(
+            "seer_rank_list",
+            help_ids=(
+                "rank.global_collection",
+                "rank.global_peak",
+                "rank.sample_collection",
+                "rank.sample_peak",
+            ),
+        ),
         rule=feature_rule
         & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
@@ -273,7 +256,10 @@ def install(group: SeerMatcherGroup) -> None:
     list_matcher.append_handler(bind_async(_handle_list, query))
 
     player_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_rank_player"),
+        policy=CommandPolicy.command(
+            "seer_rank_player",
+            help_ids=("rank.global_collection", "rank.global_peak"),
+        ),
         rule=feature_rule
         & Rule(
             bind(
@@ -287,7 +273,10 @@ def install(group: SeerMatcherGroup) -> None:
     player_matcher.append_handler(bind_async(_handle_player, query))
 
     score_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_rank_score"),
+        policy=CommandPolicy.command(
+            "seer_rank_score",
+            help_ids=("rank.global_collection", "rank.global_peak"),
+        ),
         rule=feature_rule
         & Rule(
             bind(
@@ -302,7 +291,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     cache_status = group.on_fullmatch(
         with_admin_prefix(("样本情况", "样本状态")),
-        policy=CommandPolicy.command("seer_rank_cache_status"),
+        policy=CommandPolicy.command(
+            "seer_rank_cache_status",
+            help_ids=("rank.sample_status",),
+        ),
         rule=feature_rule,
         permission=SUPERUSER,
         priority=priority,
@@ -311,7 +303,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     cache_refresh = group.on_fullmatch(
         with_admin_prefix(("刷新样本",)),
-        policy=CommandPolicy.command("seer_rank_cache_refresh"),
+        policy=CommandPolicy.command(
+            "seer_rank_cache_refresh",
+            help_ids=("rank.sample_refresh",),
+        ),
         rule=feature_rule,
         permission=SUPERUSER,
         priority=priority,
@@ -325,7 +320,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
 
     cache_batch = group.on_message(
-        policy=CommandPolicy.command("seer_rank_cache_batch"),
+        policy=CommandPolicy.command(
+            "seer_rank_cache_batch",
+            help_ids=("rank.page_batch",),
+        ),
         rule=feature_rule
         & Rule(
             bind(
@@ -343,7 +341,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     page_overview = group.on_fullmatch(
         with_admin_prefix(("榜单情况", "榜单状态")),
-        policy=CommandPolicy.command("seer_rank_page_cache_status"),
+        policy=CommandPolicy.command(
+            "seer_rank_page_cache_status",
+            help_ids=("rank.page_status",),
+        ),
         rule=feature_rule,
         permission=SUPERUSER,
         priority=priority,
@@ -351,7 +352,10 @@ def install(group: SeerMatcherGroup) -> None:
     page_overview.append_handler(bind_async(_handle_page_overview, admin))
 
     page_status = group.on_message(
-        policy=CommandPolicy.command("seer_rank_page_cache_status"),
+        policy=CommandPolicy.command(
+            "seer_rank_page_cache_status",
+            help_ids=("rank.page_status",),
+        ),
         rule=feature_rule
         & Rule(
             bind(
@@ -366,7 +370,10 @@ def install(group: SeerMatcherGroup) -> None:
     page_status.append_handler(bind_async(_handle_page_status, admin))
 
     page_refresh = group.on_message(
-        policy=CommandPolicy.command("seer_rank_page_cache_refresh"),
+        policy=CommandPolicy.command(
+            "seer_rank_page_cache_refresh",
+            help_ids=("rank.page_refresh",),
+        ),
         rule=feature_rule
         & Rule(
             bind(
@@ -383,7 +390,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
 
     display_limit = group.on_message(
-        policy=CommandPolicy.command("seer_rank_display_limit"),
+        policy=CommandPolicy.command(
+            "seer_rank_display_limit",
+            help_ids=("rank.display_limit",),
+        ),
         rule=feature_rule
         & Rule(
             bind(

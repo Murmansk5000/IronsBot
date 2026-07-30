@@ -151,6 +151,9 @@ def install(
     registry: MatcherRegistry,
     service: TeamResourceService,
 ) -> None:
+    if not service.enabled:
+        return
+
     def is_manage(event: MessageEvent) -> bool:
         return _is_team_resource_manage(event, service=service)
 
@@ -162,7 +165,14 @@ def install(
 
     priority = registry.priority("team_resource_subscription")
     manage_matcher = registry.on_message(
-        policy=CommandPolicy.command("team_resource_manage"),
+        policy=CommandPolicy.command(
+            "team_resource_manage",
+            help_ids=(
+                "team_resource.subscribe",
+                "team_resource.unsubscribe",
+                "team_resource.list",
+            ),
+        ),
         rule=Rule(is_manage) & no_reply(allow_at=True),
         priority=priority,
         block=True,
@@ -184,7 +194,10 @@ def install(
     )
 
     query_matcher = registry.on_message(
-        policy=CommandPolicy.command("team_resource_query"),
+        policy=CommandPolicy.command(
+            "team_resource_query",
+            help_ids=("team_resource.query",),
+        ),
         rule=Rule(is_query) & no_reply(),
         priority=priority,
         block=True,

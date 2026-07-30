@@ -71,17 +71,20 @@ def install(
     registry: MatcherRegistry,
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
+    command_help_ids: tuple[str, ...],
 ) -> None:
-    command_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            _action_command_id(MESSAGE_ACTION_KEY, "message")
-        ),
-        rule=Rule(bind(match_message_command, messaging=messaging))
-        & no_reply(),
-        priority=registry.priority("message_commands"),
-        block=True,
-    )
-    command_matcher.append_handler(handle_message_command)
+    if command_help_ids:
+        command_matcher = registry.on_message(
+            policy=CommandPolicy.command(
+                _action_command_id(MESSAGE_ACTION_KEY, "message"),
+                help_ids=command_help_ids,
+            ),
+            rule=Rule(bind(match_message_command, messaging=messaging))
+            & no_reply(),
+            priority=registry.priority("message_commands"),
+            block=True,
+        )
+        command_matcher.append_handler(handle_message_command)
 
     subscription_matcher = registry.on_message(
         policy=CommandPolicy.exempt(

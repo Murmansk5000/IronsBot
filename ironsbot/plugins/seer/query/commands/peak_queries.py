@@ -112,7 +112,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     pool = group.on_fullmatch(
         ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
-        policy=CommandPolicy.command("seer_peak_pool"),
+        policy=CommandPolicy.command(
+            "seer_peak_pool",
+            help_ids=("seer.peak.query",),
+        ),
         rule=rule,
         priority=priority,
     )
@@ -120,7 +123,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     expert_pool = group.on_fullmatch(
         ("专家池", "巅峰专家池", "专家禁用池"),
-        policy=CommandPolicy.command("seer_peak_expert_pool"),
+        policy=CommandPolicy.command(
+            "seer_peak_expert_pool",
+            help_ids=("seer.peak.query",),
+        ),
         rule=rule,
         priority=priority,
     )
@@ -128,7 +134,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     vote = group.on_fullmatch(
         ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
-        policy=CommandPolicy.command("seer_peak_vote"),
+        policy=CommandPolicy.command(
+            "seer_peak_vote",
+            help_ids=("seer.peak.query",),
+        ),
         rule=rule,
         priority=priority,
     )
@@ -136,7 +145,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     suit = group.on_fullmatch(
         ("竞技套装榜", "狂野套装榜", "专家套装榜"),
-        policy=CommandPolicy.command("seer_peak_suit_rank"),
+        policy=CommandPolicy.command(
+            "seer_peak_suit_rank",
+            help_ids=("seer.peak.rank",),
+        ),
         rule=rule,
         priority=priority,
     )
@@ -146,7 +158,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     title = group.on_fullmatch(
         ("竞技称号榜", "狂野称号榜", "专家称号榜"),
-        policy=CommandPolicy.command("seer_peak_title_rank"),
+        policy=CommandPolicy.command(
+            "seer_peak_title_rank",
+            help_ids=("seer.peak.rank",),
+        ),
         rule=rule,
         priority=priority,
     )
@@ -163,7 +178,10 @@ def install(group: SeerMatcherGroup) -> None:
             "狂野精灵总榜",
             "专家精灵总榜",
         ),
-        policy=CommandPolicy.command("seer_peak_pet_rank"),
+        policy=CommandPolicy.command(
+            "seer_peak_pet_rank",
+            help_ids=("seer.peak.rank",),
+        ),
         rule=rule,
         priority=priority,
     )

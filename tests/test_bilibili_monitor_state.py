@@ -4,7 +4,7 @@ from typing import Any, cast
 import nonebot
 import pytest
 
-from ironsbot.app.command_descriptors import bilibili_commands
+from ironsbot.app.command_directory.plugins import bilibili_commands
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_ACCOUNT_ALIAS,
     DEFAULT_BILI_ACCOUNT_UID,
@@ -183,8 +183,8 @@ def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None
     )
 
     assert command.section == "私聊管理"
-    assert command.scope == "private"
-    assert command.audience == "regular"
+    assert command.access[0].scope == "private"
+    assert command.access[0].audience == "regular"
 
 
 def test_bili_account_matcher_keeps_push_subscriptions_group_manager_only() -> None:

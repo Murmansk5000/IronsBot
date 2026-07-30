@@ -48,7 +48,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
     for kind, command_id, prefixes, suffix, prompt_title in commands:
         matcher = group.on_message(
-            policy=CommandPolicy.command(command_id),
+            policy=CommandPolicy.command(
+                command_id,
+                help_ids=("seer.equipment.query",),
+            ),
             rule=seer_feature_rule(group.features, "seer_equipment")
             & startswith_or_endswith(prefixes, suffixes=suffix)
             & not_rank_query

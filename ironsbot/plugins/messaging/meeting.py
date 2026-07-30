@@ -44,7 +44,7 @@ def install(
         await finish_event_reply(matcher, event, reply)
 
     matcher = registry.on_message(
-        policy=CommandPolicy.command("meeting"),
+        policy=CommandPolicy.command("meeting", help_ids=("meeting",)),
         rule=Rule(is_meeting_command) & no_reply(),
         priority=registry.priority("meeting"),
         block=True,

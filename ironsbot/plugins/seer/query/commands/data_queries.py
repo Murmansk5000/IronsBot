@@ -60,7 +60,10 @@ def install(group: SeerMatcherGroup) -> None:
     for messages, command_id, operation in commands:
         matcher = group.on_fullmatch(
             messages,
-            policy=CommandPolicy.command(command_id),
+            policy=CommandPolicy.command(
+                command_id,
+                help_ids=("seer.data.query",),
+            ),
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
