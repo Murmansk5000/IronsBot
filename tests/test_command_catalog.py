@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import pytest
 
 from ironsbot.runtime.commands import (
+    CommandAccess,
     CommandCatalog,
     CommandCatalogError,
     CommandContext,
@@ -39,7 +40,7 @@ def _catalog(*commands: CommandDescriptor) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
         (PluginDefinition(id="example", commands=commands),),
-        known_features={"example_feature"},
+        known_features={"example_feature", "fallback_feature"},
     )
     return catalog
 
@@ -52,7 +53,7 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
             section="查询",
             examples=("查询",),
             description="查询资料",
-            feature="example_feature",
+            features_any=("example_feature",),
             show_in_poke=True,
         ),
         CommandDescriptor(
@@ -61,9 +62,8 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
             section="管理",
             examples=("/管理",),
             description="管理本群",
-            feature="example_feature",
-            scope="group",
-            audience="group_manager",
+            features_any=("example_feature",),
+            access=(CommandAccess("group", "group_manager"),),
             show_in_poke=True,
         ),
         CommandDescriptor(
@@ -72,7 +72,7 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
             section="超级管理员",
             examples=("/更新",),
             description="更新数据",
-            audience="superuser",
+            access=(CommandAccess(audience="superuser"),),
             show_in_poke=True,
         ),
     )
@@ -109,6 +109,76 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
     assert [command.id for command in private] == ["regular"]
 
 
+def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
+    catalog = _catalog(
+        CommandDescriptor(
+            id="mixed",
+            plugin_id="example",
+            section="查询",
+            examples=("查询",),
+            description="私聊用户或群管理员可用",
+            features_any=("example_feature", "fallback_feature"),
+            access=(
+                CommandAccess(scope="private"),
+                CommandAccess("group", "group_manager"),
+            ),
+        )
+    )
+    features = FakeFeatures(
+        group_features={100: {"fallback_feature"}},
+        private_features={1: {"example_feature"}},
+        superusers=set(),
+    )
+
+    assert [command.id for command in catalog.available_for_context(
+        CommandContext(user_id=1, group_id=None), features
+    )] == ["mixed"]
+    assert [command.id for command in catalog.available_for_context(
+        CommandContext(user_id=2, group_id=100, group_role="admin"), features
+    )] == ["mixed"]
+    assert not catalog.available_for_context(
+        CommandContext(user_id=2, group_id=100, group_role="member"), features
+    )
+
+
+def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
+    catalog = _catalog(
+        CommandDescriptor(
+            id="combined",
+            plugin_id="example",
+            section="Query",
+            examples=("query",),
+            description="Two independently available modes",
+            access=(
+                CommandAccess(features_any=("example_feature",)),
+                CommandAccess(
+                    "group",
+                    "group_manager",
+                    ("fallback_feature",),
+                ),
+            ),
+        )
+    )
+    features = FakeFeatures(
+        group_features={100: {"fallback_feature"}},
+        private_features={1: {"example_feature"}},
+        superusers=set(),
+    )
+
+    assert not catalog.available_for_context(
+        CommandContext(user_id=2, group_id=100, group_role="member"),
+        features,
+    )
+    assert catalog.available_for_context(
+        CommandContext(user_id=2, group_id=100, group_role="admin"),
+        features,
+    )
+    assert catalog.available_for_context(
+        CommandContext(user_id=1, group_id=None),
+        features,
+    )
+
+
 def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
     duplicate = CommandDescriptor(
         id="duplicate",
@@ -139,7 +209,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
         section="查询",
         examples=("查询",),
         description="查询资料",
-        feature="missing_feature",
+        features_any=("missing_feature",),
     )
     with pytest.raises(CommandCatalogError, match="unknown features"):
         catalog.load((PluginDefinition(id="example", commands=(unknown_feature,)),))
@@ -153,8 +223,7 @@ def test_group_manager_command_cannot_be_private_only() -> None:
             section="管理",
             examples=("管理",),
             description="管理资料",
-            scope="private",
-            audience="group_manager",
+            access=(CommandAccess("private", "group_manager"),),
         )
 
 
@@ -166,9 +235,33 @@ def test_catalog_cannot_be_reloaded_after_validation() -> None:
             section="查询",
             examples=("查询",),
             description="查询资料",
-            feature="example_feature",
+            features_any=("example_feature",),
         )
     )
 
     with pytest.raises(CommandCatalogError, match="already loaded"):
         catalog.load(())
+
+
+def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
+    catalog = _catalog(
+        CommandDescriptor(
+            id="documented",
+            plugin_id="example",
+            section="查询",
+            examples=("查询",),
+            description="查询资料",
+        )
+    )
+
+    with pytest.raises(CommandCatalogError, match="unknown command descriptor"):
+        catalog.validate_matcher_registrations(help_ids=("missing",))
+    with pytest.raises(CommandCatalogError, match="no matcher registration"):
+        catalog.validate_matcher_registrations(help_ids=())
+    with pytest.raises(CommandCatalogError, match="no help ids"):
+        catalog.validate_matcher_registrations(
+            help_ids=("documented",),
+            unclassified_labels=("unregistered_matcher",),
+        )
+
+    catalog.validate_matcher_registrations(help_ids=("documented",))

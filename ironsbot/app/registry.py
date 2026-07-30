@@ -4,29 +4,35 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
-
-from ironsbot.app.command_descriptors import (
+from ironsbot.app.command_directory.dynamic import (
+    ai_intent_commands,
+    configured_image_commands,
+    configured_message_commands,
+    messaging_help_visible,
+)
+from ironsbot.app.command_directory.operations import (
+    data_sync_commands,
+    server_status_commands,
+)
+from ironsbot.app.command_directory.plugins import (
     about_commands,
     activity_commands,
     ai_chat_commands,
-    ai_intent_commands,
     bilibili_commands,
-    configured_image_commands,
-    configured_message_commands,
-    data_sync_commands,
     help_commands,
     meeting_commands,
-    messaging_help_visible,
-    rank_commands,
-    seer_query_commands,
-    server_status_commands,
     team_resource_commands,
 )
+from ironsbot.app.command_directory.seer import rank_commands, seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
+from ironsbot.app.plugin_visibility import (
+    always_help_visible,
+    feature_help_visible,
+    superuser_help_visible,
+    superuser_only_help_visible,
+)
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
-from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginDefinition,
@@ -41,12 +47,10 @@ from ironsbot.services.operations.docker_preflight import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.matchers import MatcherRegistry
 
@@ -58,43 +62,6 @@ class PluginRegistryError(ValueError):
 OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
 
 
-def _always_help_visible(_event: Event) -> bool:
-    return True
-
-
-def _feature_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-    feature: str,
-    enabled: bool = True,
-    group_only: bool = False,
-) -> bool:
-    return (
-        enabled
-        and (not group_only or isinstance(event, GroupMessageEvent))
-        and event_is_feature_visible_in_help(features, event, feature)
-    )
-
-
-def _superuser_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return False
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
-
-
-def _superuser_only_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-) -> bool:
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
 
 
 def build_plugin_registry(  # noqa: PLR0915 - declarative registry
@@ -135,6 +102,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     )
     from ironsbot.plugins.team import install as install_team_audit
     from ironsbot.plugins.team.resource import install as install_team_resource
+
     config = settings
     features = resources.features
     delivery = resources.delivery
@@ -177,6 +145,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         bili_auth_invalid,
         bili_push_delivery.send,
     )
+    messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginDefinition, ...] = ()
 
@@ -325,7 +294,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="admin",
                 order=20,
                 visible=partial(
-                    _superuser_only_help_visible,
+                    superuser_only_help_visible,
                     features=features,
                 ),
             ),
@@ -367,11 +336,16 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     config=config.messaging,
                 ),
             ),
-            commands=configured_message_commands(config.messaging),
+            commands=messaging_commands,
             install=partial(
                 install_messaging,
                 refresh_push_time_jobs=push_time_refresher,
                 messaging=messaging,
+                command_help_ids=tuple(
+                    command.id
+                    for command in messaging_commands
+                    if command.interaction == "direct"
+                ),
             ),
             hooks=PluginHooks(
                 startup=(
@@ -393,7 +367,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     "启动后检查无头米米号是否登录成功；登录状态变化仅通知管理目标。",
                 ),
                 visible=partial(
-                    _superuser_help_visible,
+                    superuser_help_visible,
                     features=features,
                 ),
             ),
@@ -429,9 +403,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                             grace_seconds=config.operations.restart.grace_seconds,
                             restart_process=partial(
                                 terminate_bot_process,
-                                signal_parent=(
-                                    config.operations.restart.signal_parent
-                                ),
+                                signal_parent=(config.operations.restart.signal_parent),
                                 reason="scheduled bot restart",
                             ),
                         ),
@@ -507,16 +479,14 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="seer",
                 order=50,
                 visible=partial(
-                    _feature_help_visible,
+                    feature_help_visible,
                     features=features,
                     feature="team_resource_subscription",
                     enabled=config.seer.team_resource.enabled,
                     group_only=True,
                 ),
             ),
-            commands=team_resource_commands(
-                enabled=config.seer.team_resource.enabled
-            ),
+            commands=team_resource_commands(enabled=config.seer.team_resource.enabled),
             install=partial(
                 install_team_resource,
                 service=team_resource_service,
@@ -640,19 +610,23 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="ai",
                 order=10,
                 visible=partial(
-                    _feature_help_visible,
+                    feature_help_visible,
                     features=features,
                     feature="ai_chat",
                     enabled=bool(config.ai.api_key.strip()),
                 ),
             ),
             commands=ai_chat_commands(enabled=bool(config.ai.api_key.strip())),
-            install=partial(
-                install_ai,
-                service=ai_service,
-                features=features,
-                group_aliases=config.features.group_aliases,
-                mention_guard_service=mention_guard_service,
+            install=(
+                partial(
+                    install_ai,
+                    service=ai_service,
+                    features=features,
+                    group_aliases=config.features.group_aliases,
+                    mention_guard_service=mention_guard_service,
+                )
+                if config.ai.api_key.strip()
+                else None
             ),
         ),
         PluginDefinition(
@@ -670,7 +644,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="ai",
                 order=20,
                 visible=partial(
-                    _feature_help_visible,
+                    feature_help_visible,
                     features=features,
                     feature="ai_intent",
                     enabled=(
@@ -698,7 +672,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 description="IronsBot 项目信息与当前版本",
                 group="core",
                 order=20,
-                visible=_always_help_visible,
+                visible=always_help_visible,
             ),
             commands=about_commands(),
             install=install_about,
@@ -711,7 +685,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 description="按当前群/私聊权限显示可用功能",
                 group="core",
                 order=10,
-                visible=_always_help_visible,
+                visible=always_help_visible,
             ),
             commands=help_commands(),
             install=install_help,

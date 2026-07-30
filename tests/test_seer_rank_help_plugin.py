@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ironsbot.plugins.seer.rank_help import handle_rank_help_entry
+from ironsbot.plugins.seer.rank_help import RANK_HELP_COMMANDS, handle_rank_help_entry
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
@@ -13,6 +13,17 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
+
+
+def test_rank_help_owns_every_help_alias() -> None:
+    assert RANK_HELP_COMMANDS == (
+        "榜单",
+        "排行榜",
+        "榜单帮助",
+        "排行榜帮助",
+        "有哪些榜单",
+        "可用榜单",
+    )
 
 
 @pytest.mark.asyncio
@@ -32,7 +43,7 @@ async def test_rank_help_replies_to_group_sender(
 
     matcher = cast("Matcher", object())
     commands = SimpleNamespace(
-        format_for=lambda *_args, **_kwargs: "【榜单查询】\n成就榜 — 查询榜单"
+        format_for_context=lambda *_args, **_kwargs: "【榜单查询】\n成就榜 - 查询榜单"
     )
     await handle_rank_help_entry(
         matcher,
@@ -65,7 +76,7 @@ async def test_rank_help_uses_same_reply_path_in_private(
     matcher = cast("Matcher", object())
 
     commands = SimpleNamespace(
-        format_for=lambda *_args, **_kwargs: "【榜单查询】\n成就榜 — 查询榜单"
+        format_for_context=lambda *_args, **_kwargs: "【榜单查询】\n成就榜 - 查询榜单"
     )
     await handle_rank_help_entry(
         matcher,
