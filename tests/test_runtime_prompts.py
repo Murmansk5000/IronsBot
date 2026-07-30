@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
+from ironsbot.runtime.in_flight_requests import (
+    DUPLICATE_REQUEST_MESSAGE,
+    InFlightRequestService,
+)
 from ironsbot.runtime.prompts import Prompt, PromptItem, _prompt_semantic_request
 from ironsbot.runtime.semantic_requests import ActionDefinition, SemanticTarget
 from tests.helpers.onebot_events import group_message_event
@@ -81,4 +84,4 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
     assert first.allowed
     assert second.allowed
     assert not repeated.allowed
-    assert repeated.feedback is not None
+    assert repeated.feedback == DUPLICATE_REQUEST_MESSAGE

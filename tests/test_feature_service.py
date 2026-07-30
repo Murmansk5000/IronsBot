@@ -27,6 +27,17 @@ def test_feature_service_reads_feature_config() -> None:
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 
+def test_feature_service_blocks_configured_users_and_groups() -> None:
+    feature_service = FeatureService(
+        FeatureConfig(blacklist={"users": [456], "groups": [123]}),
+        frozenset({456}),
+    )
+
+    assert feature_service.is_conversation_blocked(456)
+    assert feature_service.is_conversation_blocked(999, 123)
+    assert not feature_service.is_conversation_blocked(999, 321)
+
+
 def test_feature_service_reads_query_bundle() -> None:
     assert "query" in FEATURE_BUNDLES
     assert "custom" not in FEATURE_BUNDLES

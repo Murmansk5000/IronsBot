@@ -202,6 +202,10 @@ example = ["standard", "meeting", "team_resource_subscription"]
 [features.user_policy]
 owner = ["all"]
 
+[features.blacklist]
+users = []
+groups = []
+
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym", "雷小伊", "重聚"]
@@ -262,7 +266,8 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 无法识别的多余字段会被忽略，并在启动输出中列出完整路径；
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
-帮助提示与未开启 AI 群的 @ 提示共用 `[features.help]` 的两项限流配置。
+`[features.blacklist]` 的 `users` 和 `groups` 可配置永远静默忽略的 QQ 用户或群；
+超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于 `[features.help]`。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
 跨群、私聊和多个机器人账号共用多个精确滑动窗口，不同语义命令互不影响。
 默认关闭；显式设置 `enabled = true` 后，内置窗口是 `60 秒 3 次` 与 `300 秒 5 次`。
