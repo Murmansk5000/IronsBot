@@ -120,7 +120,7 @@ class _QueuedConversation:
 
     def _release_request_token(self, token: object | None) -> None:
         if token is not None and self.request_service is not None:
-            self.request_service.finish(token)
+            self.request_service.release(token)
 
 
 class PromptSessionManager:

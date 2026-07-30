@@ -664,6 +664,23 @@ feature = "custom_reminder"
     )
 
 
+def test_conversation_blacklist_loads_user_and_group_ids(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.blacklist]
+users = [123456789]
+groups = [987654321]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.features.blacklist.users == [123456789]
+    assert config.features.blacklist.groups == [987654321]
+
+
 def test_unregistered_feature_policy_is_rejected_with_exact_path(
     tmp_path: Path,
 ) -> None:

@@ -377,7 +377,7 @@ async def _capture_queued_conversation_input(  # noqa: C901
         ticket = await context.acquire(request_token)
     except BaseException:
         if request_token is not None and context.request_service is not None:
-            context.request_service.finish(request_token)
+            context.request_service.release(request_token)
         raise
     if ticket is None:
         raise FinishedException
@@ -628,7 +628,7 @@ class MatcherRegistry:
             if not decision.allowed:
                 request_token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
                 if request_token is not None and self.in_flight_requests is not None:
-                    self.in_flight_requests.finish(request_token)
+                    self.in_flight_requests.release(request_token)
             if decision.token is not None:
                 state[_COMMAND_COOLDOWN_TOKEN_KEY] = decision.token
             if not decision.allowed:
