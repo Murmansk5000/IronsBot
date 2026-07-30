@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from nonebot.adapters.onebot.v11 import Message
 from pytest import MonkeyPatch
 
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     PushUnsubscribeConfig,
@@ -108,7 +109,7 @@ def _delivery(
     return OneBotDelivery(
         outbound or FakeOutboundService(),
         PushUnsubscribeConfig(),
-        BotRouter(BotRoutingConfig(), {}, {}),
+        BotRouter(BotRoutingConfig(), OneBotReferenceResolver({}, {})),
         FakeSubscriptions(),
     )
 

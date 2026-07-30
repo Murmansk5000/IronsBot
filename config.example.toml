@@ -14,7 +14,7 @@ retention = "30 days"
 [bot.matcher_priority]
 help_hint = 0
 ai_group_at = -10
-ai_mention_guard = -20
+ai_mention_guard = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3

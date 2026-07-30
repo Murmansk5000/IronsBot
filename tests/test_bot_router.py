@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.config.models.messaging import BotRoutingConfig
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot import router as bot_router
 from ironsbot.integrations.onebot.router import BotRouter
 
@@ -43,8 +44,10 @@ def _patch_router(
     )
     return BotRouter(
         config,
-        {"group_a": 987654321, "group_b": 876543210},
-        {"owner": 1234567890, "user_a": 2345678901},
+        OneBotReferenceResolver(
+            {"group_a": 987654321, "group_b": 876543210},
+            {"owner": 1234567890, "user_a": 2345678901},
+        ),
     )
 
 

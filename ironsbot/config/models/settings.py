@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from pydantic import (
@@ -21,8 +21,12 @@ from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.bilibili import BiliConfig
-from ironsbot.core.commands import NormalizedIntList, csv_items, json_array
+from ironsbot.core.commands import csv_items, json_array
 from ironsbot.core.features import FeatureConfig, validate_feature_config
+from ironsbot.core.onebot_references import (
+    OneBotReferenceList,
+    OneBotReferenceResolver,
+)
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -33,6 +37,12 @@ VALID_LOG_LEVELS = {
     "ERROR",
     "CRITICAL",
 }
+
+
+class MatcherPriorityConfigError(ValueError):
+    @classmethod
+    def ai_mention_order(cls) -> MatcherPriorityConfigError:
+        return cls("bot.matcher_priority.ai_group_at must run before ai_mention_guard")
 
 
 def _command_starts(value: object) -> list[str]:
@@ -65,7 +75,7 @@ class MatcherPriorityConfig(BaseModel):
 
     help_hint: int = Field(default=0, ge=0)
     ai_group_at: int = Field(default=-10, ge=-100)
-    ai_mention_guard: int = Field(default=-20, ge=-100)
+    ai_mention_guard: int = Field(default=-5, ge=-100)
     server_status: int = Field(default=1, ge=0)
     server_status_admin: int = Field(default=2, ge=0)
     bilibili: int = Field(default=3, ge=0)
@@ -95,6 +105,12 @@ class MatcherPriorityConfig(BaseModel):
     seer_query: int = Field(default=120, ge=0)
     ai_chat: int = Field(default=200, ge=0)
 
+    @model_validator(mode="after")
+    def validate_ai_mention_order(self) -> MatcherPriorityConfig:
+        if self.ai_group_at >= self.ai_mention_guard:
+            raise MatcherPriorityConfigError.ai_mention_order()
+        return self
+
 
 class LoggingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -111,10 +127,7 @@ class LoggingConfig(BaseModel):
     def normalize_file_level(cls, value: str) -> str:
         level = value.strip().upper()
         if level not in VALID_LOG_LEVELS:
-            msg = (
-                "bot.logging.file_level must be one of "
-                f"{sorted(VALID_LOG_LEVELS)}"
-            )
+            msg = f"bot.logging.file_level must be one of {sorted(VALID_LOG_LEVELS)}"
             raise ValueError(msg)
         return level
 
@@ -145,7 +158,7 @@ class BotConfig(BaseModel):
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
-    superusers: NormalizedIntList = Field(default_factory=list)
+    superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     matcher_priority: MatcherPriorityConfig = Field(
         default_factory=MatcherPriorityConfig
@@ -174,6 +187,7 @@ class BotConfig(BaseModel):
     @classmethod
     def normalize_command_start(cls, value: object) -> object:
         return _command_starts(value)
+
 
 class PathsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -205,6 +219,7 @@ class Settings(BaseModel):
                 command_features=self.messaging.command_feature_keys,
                 schedule_features=self.messaging.schedule_feature_keys,
             )
+            self._validate_onebot_references()
         except ValueError as exc:
             raise ValidationError.from_exception_data(
                 self.__class__.__name__,
@@ -221,3 +236,105 @@ class Settings(BaseModel):
                 ],
             ) from exc
         return self
+
+    @property
+    def onebot_references(self) -> OneBotReferenceResolver:
+        return OneBotReferenceResolver(
+            group_aliases=self.features.group_aliases,
+            user_aliases=self.features.user_aliases,
+        )
+
+    @property
+    def superuser_ids(self) -> frozenset[int]:
+        return frozenset(
+            self.onebot_references.resolve_users(
+                self.bot.superusers,
+                location="bot.superusers",
+            )
+        )
+
+    def _validate_onebot_references(self) -> None:
+        references = self.onebot_references
+        references.resolve_users(self.bot.superusers, location="bot.superusers")
+        self._validate_policy_refs(
+            self.features.group_policy,
+            resolve=references.resolve_group,
+            location="features.group_policy",
+        )
+        self._validate_policy_refs(
+            self.features.user_policy,
+            resolve=references.resolve_user,
+            location="features.user_policy",
+        )
+        self._validate_mapping_refs(
+            self.features.help.poke_replies,
+            resolve=references.resolve_group,
+            location="features.help.poke_replies",
+        )
+        self._validate_mapping_refs(
+            self.features.help.poke_user_replies,
+            resolve=references.resolve_user,
+            location="features.help.poke_user_replies",
+        )
+        self._validate_mapping_refs(
+            self.bilibili.push.groups,
+            resolve=references.resolve_group,
+            location="bilibili.push.groups",
+        )
+        self._validate_mapping_refs(
+            self.bilibili.push.users,
+            resolve=references.resolve_user,
+            location="bilibili.push.users",
+        )
+        self._validate_mapping_refs(
+            self.messaging.bot_routing.groups,
+            resolve=references.resolve_group,
+            location="messaging.bot_routing.groups",
+        )
+        self._validate_mapping_refs(
+            self.messaging.bot_routing.users,
+            resolve=references.resolve_user,
+            location="messaging.bot_routing.users",
+        )
+        self._validate_mapping_refs(
+            self.seer.rank.display_limits,
+            resolve=references.resolve_group,
+            location="seer.rank.display_limits",
+        )
+        references.resolve_users(
+            self.seer.team_resource.default_at_users,
+            location="seer.team_resource.default_at_users",
+        )
+        for index, action in enumerate(self.messaging.commands):
+            references.resolve_users(
+                action.at_user_ids,
+                location=f"messaging.commands[{index}].at_user_ids",
+            )
+        for index, action in enumerate(self.messaging.schedules):
+            references.resolve_users(
+                action.at_user_ids,
+                location=f"messaging.schedules[{index}].at_user_ids",
+            )
+
+    @staticmethod
+    def _validate_mapping_refs(
+        mapping: Mapping[str, object],
+        *,
+        resolve: Callable[..., int],
+        location: str,
+    ) -> None:
+        Settings._validate_policy_refs(
+            {key: [] for key in mapping},
+            resolve=resolve,
+            location=location,
+        )
+
+    @staticmethod
+    def _validate_policy_refs(
+        policy: Mapping[str, object],
+        *,
+        resolve: Callable[..., int],
+        location: str,
+    ) -> None:
+        for reference in policy:
+            resolve(reference, location=f"{location}.{reference}")

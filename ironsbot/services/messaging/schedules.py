@@ -87,7 +87,9 @@ async def send_group_schedule(
     await messaging._delivery.broadcast(
         task.message,
         group_ids=group_ids,
-        group_at_user_ids=task.at_user_ids,
+        group_at_user_ids=messaging._features.resolve_user_refs(
+            task.at_user_ids
+        ),
         action_name=f"group scheduled message {task.id or '<unnamed>'}",
         message_limiter=messaging._push_message_limiter,
         subscription_key=schedule_key(index, task),

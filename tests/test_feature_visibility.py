@@ -16,13 +16,10 @@ from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature, FeatureConfig, FeatureService
 from ironsbot.plugins.help.menu import visible_help_entries
 from ironsbot.runtime.commands import CommandCatalog
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
-DEFINITIONS = {
-    definition.id: definition
-    for definition in build_test_plugin_registry()
-}
+DEFINITIONS = {definition.id: definition for definition in build_test_plugin_registry()}
 
 
 def _group_event(
@@ -78,7 +75,7 @@ def _visible(
     settings = settings or _settings()
     features = FeatureService(
         settings.features,
-        frozenset(settings.bot.superusers),
+        settings.superuser_ids,
     )
     definitions = build_test_plugin_registry(settings)
     commands = CommandCatalog()
@@ -100,6 +97,36 @@ def _visible(
     return plugin_id in {entry.key for entry in entries}
 
 
+def _private_visible(
+    plugin_id: str,
+    *,
+    settings: Settings,
+    user_id: int = 2,
+) -> bool:
+    features = FeatureService(
+        settings.features,
+        settings.superuser_ids,
+    )
+    definitions = build_test_plugin_registry(settings)
+    commands = CommandCatalog()
+    commands.load(
+        definitions,
+        known_features={
+            *(feature.value for feature in Feature),
+            *features.command_features,
+            *features.schedule_features,
+        },
+    )
+    entries = visible_help_entries(
+        definitions,
+        private_message_event(user_id=user_id),
+        features=features,
+        commands=commands,
+        ignored_plugins=tuple(settings.features.help.ignored_plugins),
+    )
+    return plugin_id in {entry.key for entry in entries}
+
+
 def test_always_visible_help_is_shown() -> None:
     assert _visible("help")
 
@@ -109,12 +136,8 @@ def test_plugin_definitions_own_feature_visibility() -> None:
     assert DEFINITIONS["team_resource"].features == frozenset(
         {Feature.TEAM_RESOURCE_SUBSCRIPTION}
     )
-    assert DEFINITIONS["pet_config"].features == frozenset(
-        {Feature.PET_CONFIG}
-    )
-    assert DEFINITIONS["fire_manual_ad"].features == frozenset(
-        {Feature.FIRE_MANUAL_AD}
-    )
+    assert DEFINITIONS["pet_config"].features == frozenset({Feature.PET_CONFIG})
+    assert DEFINITIONS["fire_manual_ad"].features == frozenset({Feature.FIRE_MANUAL_AD})
     assert DEFINITIONS["ai_intent"].features == frozenset(
         {
             Feature.AI_INTENT,
@@ -156,18 +179,27 @@ def test_pet_config_is_not_enabled_by_seer_bundle() -> None:
 def test_superuser_group_help_respects_group_feature_policy() -> None:
     settings = _settings()
     settings.features.superuser_bypass = True
-    settings.bot.superusers = [2]
+    settings.bot.superusers = ["2"]
     settings.pet_config.enabled = True
 
     assert not _visible("seer_query", settings=settings)
     assert not _visible("pet_config", settings=settings)
+    assert not _visible("db_sync", settings=settings)
     assert not _visible("headless_notice", settings=settings)
+
+
+def test_headless_notice_is_not_listed_in_private_superuser_help() -> None:
+    settings = _settings()
+    settings.bot.superusers = ["2"]
+
+    assert _private_visible("db_sync", settings=settings)
+    assert not _private_visible("headless_notice", settings=settings)
 
 
 def test_superuser_group_help_includes_enabled_features() -> None:
     settings = _settings(allowed_features=("seer", "pet_config"))
     settings.features.superuser_bypass = True
-    settings.bot.superusers = [2]
+    settings.bot.superusers = ["2"]
     settings.pet_config.enabled = True
 
     assert _visible("seer_query", settings=settings)

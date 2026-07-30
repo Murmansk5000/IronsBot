@@ -40,10 +40,15 @@ async def handle_message_command(
     matcher: Matcher,
     event: PrivateMessageEvent | GroupMessageEvent,
     state: T_State,
+    *,
+    messaging: MessagingService,
 ) -> None:
     action = state[MESSAGE_ACTION_KEY]
     at_user_ids = (
-        [*event_sender_at_user_ids(event), *action.at_user_ids]
+        [
+            *event_sender_at_user_ids(event),
+            *messaging._features.resolve_user_refs(action.at_user_ids),
+        ]
         if isinstance(event, GroupMessageEvent)
         else []
     )
@@ -84,7 +89,9 @@ def install(
             priority=registry.priority("message_commands"),
             block=True,
         )
-        command_matcher.append_handler(handle_message_command)
+        command_matcher.append_handler(
+            bind_async(handle_message_command, messaging=messaging)
+        )
 
     subscription_matcher = registry.on_message(
         policy=CommandPolicy.exempt(
