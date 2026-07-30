@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 
@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 CommandScope = Literal["group", "private", "both"]
 CommandAudience = Literal["regular", "group_manager", "superuser"]
+CommandInteraction = Literal["direct", "conversation", "passive", "automatic"]
+CommandHelpLevel = Literal["brief", "full"]
 CommandVisibility = Callable[["CommandContext"], bool]
 
 
@@ -75,6 +77,51 @@ class CommandCatalogError(ValueError):
             f"group manager command {command_id!r} cannot be private-only"
         )
 
+    @classmethod
+    def empty_features_any(cls, command_id: str) -> CommandCatalogError:
+        return cls(
+            f"invalid command descriptor: {command_id!r} has an empty feature id"
+        )
+
+    @classmethod
+    def invalid_interaction(cls, command_id: str) -> CommandCatalogError:
+        return cls(
+            f"invalid command descriptor: {command_id!r} has invalid interaction"
+        )
+
+    @classmethod
+    def invalid_help_level(cls, command_id: str) -> CommandCatalogError:
+        return cls(
+            f"invalid command descriptor: {command_id!r} has invalid help level"
+        )
+
+    @classmethod
+    def unknown_registered_help_ids(
+        cls,
+        command_ids: Iterable[str],
+    ) -> CommandCatalogError:
+        return cls(
+            "matchers reference unknown command descriptor ids: "
+            + ", ".join(sorted(command_ids))
+        )
+
+    @classmethod
+    def undocumented_direct_commands(
+        cls,
+        command_ids: Iterable[str],
+    ) -> CommandCatalogError:
+        return cls(
+            "direct command descriptors have no matcher registration: "
+            + ", ".join(sorted(command_ids))
+        )
+
+    @classmethod
+    def unclassified_matchers(cls, labels: Iterable[str]) -> CommandCatalogError:
+        return cls(
+            "command matchers have no help ids or explicit exemption: "
+            + ", ".join(sorted(labels))
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class CommandContext:
@@ -82,23 +129,47 @@ class CommandContext:
     group_id: int | None
     group_role: str | None = None
 
-    @classmethod
-    def from_event(cls, event: object) -> CommandContext:
-        sender = getattr(event, "sender", None)
-        role = getattr(sender, "role", None)
-        return cls(
-            user_id=int(cast("Any", event).user_id),
-            group_id=(
-                int(group_id)
-                if (group_id := getattr(event, "group_id", None)) is not None
-                else None
-            ),
-            group_role=str(role) if role is not None else None,
-        )
-
     @property
     def is_group(self) -> bool:
         return self.group_id is not None
+
+
+@dataclass(frozen=True, slots=True)
+class CommandAccess:
+    """One allowed command audience and conversation scope."""
+
+    scope: CommandScope = "both"
+    audience: CommandAudience = "regular"
+    features_any: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.scope not in {"group", "private", "both"}:
+            raise CommandCatalogError.invalid_scope("access")
+        if self.audience not in {"regular", "group_manager", "superuser"}:
+            raise CommandCatalogError.invalid_audience("access")
+        if self.audience == "group_manager" and self.scope == "private":
+            raise CommandCatalogError.private_group_manager("access")
+        if any(not feature.strip() for feature in self.features_any):
+            raise CommandCatalogError.empty_features_any("access")
+
+    def is_available(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+    ) -> bool:
+        if not _scope_matches(context, self.scope):
+            return False
+        if self.features_any and not any(
+            _feature_is_allowed(features, context, feature)
+            for feature in self.features_any
+        ):
+            return False
+        if self.audience == "group_manager":
+            return context.is_group and (
+                context.group_role in GROUP_MANAGER_ROLES
+                or features.is_superuser(context.user_id)
+            )
+        return self.audience != "superuser" or features.is_superuser(context.user_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,9 +181,11 @@ class CommandDescriptor:
     section: str
     examples: tuple[str, ...]
     description: str
-    feature: str | None = None
-    scope: CommandScope = "both"
-    audience: CommandAudience = "regular"
+    features_any: tuple[str, ...] = ()
+    access: tuple[CommandAccess, ...] = (CommandAccess(),)
+    interaction: CommandInteraction = "direct"
+    help_level: CommandHelpLevel = "full"
+    notes: tuple[str, ...] = ()
     show_in_poke: bool = False
     visible: CommandVisibility | None = None
 
@@ -127,34 +200,25 @@ class CommandDescriptor:
             raise CommandCatalogError.requires_examples(self.id)
         if not self.description.strip():
             raise CommandCatalogError.requires_description(self.id)
-        if self.scope not in {"group", "private", "both"}:
+        if any(not feature.strip() for feature in self.features_any):
+            raise CommandCatalogError.empty_features_any(self.id)
+        if not self.access:
             raise CommandCatalogError.invalid_scope(self.id)
-        if self.audience not in {"regular", "group_manager", "superuser"}:
-            raise CommandCatalogError.invalid_audience(self.id)
-        if self.audience == "group_manager" and self.scope == "private":
-            raise CommandCatalogError.private_group_manager(self.id)
+        if self.interaction not in {"direct", "conversation", "passive", "automatic"}:
+            raise CommandCatalogError.invalid_interaction(self.id)
+        if self.help_level not in {"brief", "full"}:
+            raise CommandCatalogError.invalid_help_level(self.id)
 
     def is_available(
         self,
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
-        if not _scope_matches(context, self.scope):
+        if not any(rule.is_available(context, features) for rule in self.access):
             return False
-        if self.audience == "group_manager" and not (
-            context.is_group
-            and (
-                context.group_role in GROUP_MANAGER_ROLES
-                or features.is_superuser(context.user_id)
-            )
-        ):
-            return False
-        if self.audience == "superuser" and not features.is_superuser(
-            context.user_id
-        ):
-            return False
-        if self.feature is not None and not _feature_is_allowed(
-            features, context, self.feature
+        if self.features_any and not any(
+            _feature_is_allowed(features, context, feature)
+            for feature in self.features_any
         ):
             return False
         return self.visible is None or self.visible(context)
@@ -238,10 +302,17 @@ class CommandCatalog:
         known_feature_set = set(known_features)
         invalid_features = sorted(
             {
-                command.feature
+                feature
                 for command in commands
-                if command.feature is not None
-                if command.feature not in known_feature_set
+                for feature in (
+                    *command.features_any,
+                    *(
+                        feature
+                        for access in command.access
+                        for feature in access.features_any
+                    ),
+                )
+                if feature not in known_feature_set
             }
         )
         if invalid_features:
@@ -251,21 +322,6 @@ class CommandCatalog:
             )
         self._commands = commands
         self._loaded = True
-
-    def available_for(
-        self,
-        event: object,
-        features: CommandFeaturePolicy,
-        *,
-        plugin_id: str | None = None,
-        ignored_plugins: Iterable[str] = (),
-    ) -> tuple[CommandDescriptor, ...]:
-        return self.available_for_context(
-            CommandContext.from_event(event),
-            features,
-            plugin_id=plugin_id,
-            ignored_plugins=ignored_plugins,
-        )
 
     def available_for_context(
         self,
@@ -284,37 +340,34 @@ class CommandCatalog:
             if command.is_available(context, features)
         )
 
-    def available_for_plugin(
-        self,
-        event: object,
-        features: CommandFeaturePolicy,
-        *,
-        plugin_id: str,
-        ignored_plugins: Iterable[str] = (),
-    ) -> tuple[CommandDescriptor, ...]:
-        return self.available_for(
-            event,
-            features,
-            plugin_id=plugin_id,
-            ignored_plugins=ignored_plugins,
+    @property
+    def command_ids(self) -> frozenset[str]:
+        return frozenset(command.id for command in self._commands)
+
+    @property
+    def direct_command_ids(self) -> frozenset[str]:
+        return frozenset(
+            command.id
+            for command in self._commands
+            if command.interaction == "direct"
         )
 
-    def poke_candidates(
+    def validate_matcher_registrations(
         self,
-        event: object,
-        features: CommandFeaturePolicy,
         *,
-        ignored_plugins: Iterable[str] = (),
-    ) -> tuple[CommandDescriptor, ...]:
-        return tuple(
-            command
-            for command in self.available_for(
-                event,
-                features,
-                ignored_plugins=ignored_plugins,
-            )
-            if command.show_in_poke
-        )
+        help_ids: Iterable[str],
+        unclassified_labels: Iterable[str] = (),
+    ) -> None:
+        unclassified = tuple(unclassified_labels)
+        if unclassified:
+            raise CommandCatalogError.unclassified_matchers(unclassified)
+        registered_ids = frozenset(help_ids)
+        unknown = registered_ids - self.command_ids
+        if unknown:
+            raise CommandCatalogError.unknown_registered_help_ids(unknown)
+        missing = self.direct_command_ids - registered_ids
+        if missing:
+            raise CommandCatalogError.undocumented_direct_commands(missing)
 
     def poke_candidates_for_context(
         self,
@@ -333,16 +386,16 @@ class CommandCatalog:
             if command.show_in_poke
         )
 
-    def format_for(
+    def format_for_context(
         self,
-        event: object,
+        context: CommandContext,
         features: CommandFeaturePolicy,
         *,
         plugin_id: str,
         ignored_plugins: Iterable[str] = (),
     ) -> str:
-        available = self.available_for(
-            event,
+        available = self.available_for_context(
+            context,
             features,
             plugin_id=plugin_id,
             ignored_plugins=ignored_plugins,

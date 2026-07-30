@@ -15,6 +15,7 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import no_reply
 
@@ -42,11 +43,16 @@ async def handle_disabled_bare_admin_status(
     commands: CommandCatalog,
     features: FeatureService,
 ) -> None:
+    command_help = commands.format_for_context(
+        command_context(event),
+        features,
+        plugin_id="server_status",
+    )
     await finish_event_reply(
         matcher,
         event,
         "“开服查询”仅限超级管理员，且必须带 / 前缀。"
-        f"\n{commands.format_for(event, features, plugin_id='server_status')}",
+        f"\n{command_help}",
     )
 
 
@@ -95,7 +101,10 @@ def install(
 
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
-        policy=CommandPolicy.command("server_status_query"),
+        policy=CommandPolicy.command(
+            "server_status_query",
+            help_ids=("server_status.query",),
+        ),
         rule=no_reply(),
         priority=registry.priority("server_status"),
         block=True,
@@ -104,7 +113,10 @@ def install(
 
     disabled_matcher = registry.on_fullmatch(
         DISABLED_BARE_ADMIN_COMMAND,
-        policy=CommandPolicy.command("server_status_query"),
+        policy=CommandPolicy.command(
+            "server_status_query",
+            help_ids=("server_status.admin_query",),
+        ),
         rule=no_reply(),
         priority=registry.priority("server_status"),
         block=True,
@@ -119,7 +131,10 @@ def install(
 
     admin_matcher = registry.on_fullmatch(
         ADMIN_SERVER_STATUS_COMMAND,
-        policy=CommandPolicy.command("server_status_admin"),
+        policy=CommandPolicy.command(
+            "server_status_admin",
+            help_ids=("server_status.admin_query",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
@@ -129,7 +144,10 @@ def install(
 
     restart_matcher = registry.on_fullmatch(
         BOT_RESTART_COMMANDS,
-        policy=CommandPolicy.command("bot_restart"),
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("server_status.restart",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
@@ -139,7 +157,10 @@ def install(
 
     update_matcher = registry.on_fullmatch(
         DOCKER_UPDATE_COMMANDS,
-        policy=CommandPolicy.command("bot_restart"),
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("server_status.image_update",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
@@ -149,7 +170,10 @@ def install(
 
     check_update_matcher = registry.on_fullmatch(
         DOCKER_CHECK_UPDATE_COMMANDS,
-        policy=CommandPolicy.command("bot_restart"),
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("server_status.image_check",),
+        ),
         rule=no_reply(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),

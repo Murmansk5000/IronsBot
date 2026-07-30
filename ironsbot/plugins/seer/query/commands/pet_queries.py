@@ -13,7 +13,10 @@ from .query_rules import not_fixed_image_command, not_rank_query
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.pet_query
     image_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_pet_image"),
+        policy=CommandPolicy.command(
+            "seer_pet_image",
+            help_ids=("seer.pet.image",),
+        ),
         rule=seer_feature_rule(group.features, "seer_pet")
         & startswith_or_endswith(
             prefixes=("立绘", "皮肤", "查询立绘"),
@@ -33,7 +36,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
 
     info_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_pet_info"),
+        policy=CommandPolicy.command(
+            "seer_pet_info",
+            help_ids=("seer.pet.query",),
+        ),
         rule=seer_feature_rule(group.features, "seer_pet")
         & startswith_or_endswith(
             prefixes=("精灵", "查询精灵信息", "魂印", "技能"),

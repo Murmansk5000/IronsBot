@@ -131,6 +131,19 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
 
 
 @pytest.mark.asyncio
+async def test_team_service_rejects_more_than_three_ids_without_querying() -> None:
+    service, headless, _resource = _service()
+
+    message = await service.query(
+        (123456, 234567, 345678, 456789),
+        TeamQueryActor(user_id=1, group_id=None, can_manage=False),
+    )
+
+    assert "一次最多查询 3 个战队" in message
+    assert not headless.available
+
+
+@pytest.mark.asyncio
 async def test_team_service_adds_subscription_prompt_for_group_manager() -> None:
     service, _headless, resource = _service()
 

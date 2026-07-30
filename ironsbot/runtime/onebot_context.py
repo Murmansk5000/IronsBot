@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
+from ironsbot.runtime.commands import CommandContext
+
 _AT_PATTERNS = (
     re.compile(r"\[CQ:at,qq=([^\]]+)\]"),
     re.compile(r"\[at:qq=([^\],\]]+)"),
@@ -19,6 +21,18 @@ NOTICE_MESSAGE_MAX_CHARS = 300
 def event_group_id(event: MessageEvent) -> int | None:
     group_id = getattr(event, "group_id", None)
     return int(group_id) if group_id is not None else None
+
+
+def command_context(event: MessageEvent) -> CommandContext:
+    """Adapt a OneBot message event to the platform-neutral command context."""
+
+    sender = getattr(event, "sender", None)
+    role = getattr(sender, "role", None)
+    return CommandContext(
+        user_id=int(event.user_id),
+        group_id=event_group_id(event),
+        group_role=str(role) if role is not None else None,
+    )
 
 
 def _message_has_bot_at(message: Any, self_id: str) -> bool:

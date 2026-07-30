@@ -10,9 +10,10 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
+from ironsbot.runtime.onebot_context import command_context
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
+    from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
@@ -34,6 +35,11 @@ HELP_GROUP_TITLES = {
     "ai": "AI",
     "admin": "管理工具",
     "other": "其他",
+}
+HELP_INTERACTION_TITLES = {
+    "conversation": "按提示继续",
+    "passive": "被动触发",
+    "automatic": "自动响应",
 }
 
 
@@ -78,7 +84,7 @@ def entry_sort_key(entry: HelpMenuEntry) -> tuple[int, int, str]:
 
 def visible_help_entries(
     definitions: tuple[PluginDefinition, ...],
-    event: Event,
+    event: MessageEvent,
     *,
     features: FeatureService,
     commands: CommandCatalog,
@@ -103,8 +109,8 @@ def visible_help_entries(
             if not visible(event):
                 continue
         elif definition.commands:
-            if not commands.available_for(
-                event,
+            if not commands.available_for_context(
+                command_context(event),
                 features,
                 plugin_id=definition.id,
                 ignored_plugins=ignored_plugins,
@@ -164,14 +170,14 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
 
 def format_plugin_detail(
     entry: HelpMenuEntry,
-    event: Event,
+    event: MessageEvent,
     features: FeatureService,
     commands: CommandCatalog,
     *,
     ignored_plugins: tuple[str, ...],
 ) -> str:
-    available = commands.available_for_plugin(
-        event,
+    available = commands.available_for_context(
+        command_context(event),
         features,
         plugin_id=entry.key,
         ignored_plugins=ignored_plugins,
@@ -183,10 +189,19 @@ def format_plugin_detail(
         lines.extend(("", "暂无可直接输入的命令。"))
         return "\n".join(lines)
 
-    current_section = ""
-    for command in available:
-        if command.section != current_section:
-            lines.extend(("", f"【{command.section}】"))
-            current_section = command.section
-        lines.append(f"{' / '.join(command.examples)} — {command.description}")
+    for interaction in ("direct", "conversation", "passive", "automatic"):
+        commands_for_interaction = tuple(
+            command for command in available if command.interaction == interaction
+        )
+        if not commands_for_interaction:
+            continue
+        if interaction != "direct":
+            lines.extend(("", f"【{HELP_INTERACTION_TITLES[interaction]}】"))
+
+        current_section = ""
+        for command in commands_for_interaction:
+            if command.section != current_section:
+                lines.extend(("", f"【{command.section}】"))
+                current_section = command.section
+            lines.append(f"{' / '.join(command.examples)} — {command.description}")
     return "\n".join(lines)

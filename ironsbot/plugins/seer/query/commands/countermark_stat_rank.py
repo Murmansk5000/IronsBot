@@ -59,7 +59,10 @@ async def _handle_command(
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.countermark_rank
     matcher = group.on_message(
-        policy=CommandPolicy.command("seer_countermark_stat_rank"),
+        policy=CommandPolicy.command(
+            "seer_countermark_stat_rank",
+            help_ids=("seer.mintmark.rank",),
+        ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & Rule(bind(_match_command, service))
         & no_reply(),
