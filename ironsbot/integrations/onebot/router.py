@@ -9,19 +9,9 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.messaging import BotRoutingConfig
     from ironsbot.core.messaging import MessageTarget
-
-
-def _resolve_target_id(reference: str, aliases: Mapping[str, int]) -> int | None:
-    normalized = reference.strip()
-    if normalized in aliases:
-        return aliases[normalized]
-    if normalized.isdigit() and int(normalized) > 0:
-        return int(normalized)
-    return None
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
 
 
 def _connected_onebot_bots() -> dict[int, Bot]:
@@ -40,19 +30,21 @@ def _connected_onebot_bots() -> dict[int, Bot]:
 @dataclass(frozen=True, slots=True)
 class BotRouter:
     config: BotRoutingConfig
-    group_aliases: Mapping[str, int]
-    user_aliases: Mapping[str, int]
+    references: OneBotReferenceResolver
 
     def _configured_bot_id(self, target: MessageTarget) -> int | None:
         if target.target_type == "group":
             routes = self.config.groups
-            aliases = self.group_aliases
+            resolve = self.references.resolve_group
         else:
             routes = self.config.users
-            aliases = self.user_aliases
+            resolve = self.references.resolve_user
 
         for target_ref, bot_ref in routes.items():
-            if _resolve_target_id(target_ref, aliases) == target.target_id:
+            if resolve(
+                target_ref,
+                location=f"messaging.bot_routing.{target.target_type}s.{target_ref}",
+            ) == target.target_id:
                 return self.config.resolve_bot_reference(bot_ref)
         return None
 

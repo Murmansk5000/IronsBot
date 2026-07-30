@@ -15,6 +15,7 @@ from ironsbot.core.features import (
     FeatureService,
     SuperuserPriorityConfig,
 )
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -80,8 +81,10 @@ def build_test_runtime(  # noqa: PLR0913
         push_config,
         BotRouter(
             BotRoutingConfig(),
-            resolved_feature_config.group_aliases,
-            resolved_feature_config.user_aliases,
+            OneBotReferenceResolver(
+                resolved_feature_config.group_aliases,
+                resolved_feature_config.user_aliases,
+            ),
         ),
         PushUnsubscribeStore(push_config.data_path),
     )
@@ -97,7 +100,10 @@ def build_test_runtime(  # noqa: PLR0913
             cooldown_config or CommandCooldownConfig(),
             features,
         ),
-        in_flight_requests=InFlightRequestService(features),
+        in_flight_requests=InFlightRequestService(
+            features,
+            cooldown_config or CommandCooldownConfig(),
+        ),
         matcher_priorities=matcher_priority_config or MatcherPriorityConfig(),
         prompt_sessions=PromptSessionManager(),
         tasks=tasks,

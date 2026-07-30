@@ -346,7 +346,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     prompt_sessions = PromptSessionManager()
     features = FeatureService(
         settings.features,
-        frozenset(settings.bot.superusers),
+        settings.superuser_ids,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
     )
@@ -363,8 +363,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.messaging.push_unsubscribe,
         BotRouter(
             settings.messaging.bot_routing,
-            settings.features.group_aliases,
-            settings.features.user_aliases,
+            settings.onebot_references,
         ),
         subscriptions,
     )
@@ -452,7 +451,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.seer.team_resource.subscription_path
         ),
         headless,
-        settings.features.user_aliases,
+        settings.onebot_references,
         features,
         delivery,
     )
@@ -514,7 +513,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     rank_display = RankDisplayService(
         settings.seer.rank,
-        settings.features.group_aliases,
+        settings.onebot_references,
         SqliteRankDisplayStore(settings.seer.rank.display_limit_path),
     )
     rank_page_refresh = RankPageRefreshService(
@@ -724,8 +723,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         commands=command_catalog,
         help_hint=HelpHintService(
             settings.features.help,
-            settings.features.group_aliases,
-            settings.features.user_aliases,
+            settings.onebot_references,
             poke_hint_candidates,
         ),
         private_extensions=private_extensions,
@@ -749,7 +747,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.bot.matcher_priority,
         before_reply_send=priority.wait,
         prompt_session_manager=prompt_sessions,
-        in_flight_requests=InFlightRequestService(features),
+        in_flight_requests=InFlightRequestService(
+            features,
+            settings.messaging.command_cooldown,
+        ),
     )
     lifecycle = ApplicationLifecycle.from_plugins(
         driver,
