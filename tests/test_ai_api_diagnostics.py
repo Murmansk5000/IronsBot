@@ -15,7 +15,7 @@ def test_ai_api_fails_without_key() -> None:
     result = asyncio.run(check_ai_api(AiApiSettings(api_key="")))
 
     assert not result.ok
-    assert result.error == "未配置 IRONSBOT_AI_KEY"
+    assert result.error == "未配置 AI_KEY"
 
 
 def test_ai_api_success(monkeypatch: MonkeyPatch) -> None:

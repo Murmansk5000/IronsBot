@@ -9,10 +9,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.core.help import (
-    DIRECT_COMMAND_HELP_HINT_TEXT,
-    PET_CONFIG_UNAVAILABLE_TEXT,
-)
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
 from ironsbot.runtime.onebot_context import build_notice_source, mentions_bot
@@ -23,7 +20,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
-    from ironsbot.services.messaging.help_hint import HelpHintService
+    from ironsbot.services.messaging.mention_guard import MentionGuardService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 RESERVED_PRIVATE_COMMANDS = {
@@ -67,13 +64,11 @@ def _should_guard_non_ai_group_mention(
 
 
 def _build_guard_message(event: MessageEvent) -> str:
-    message = DIRECT_COMMAND_HELP_HINT_TEXT
-    if "配置" in event.get_plaintext():
-        message += f"\n{PET_CONFIG_UNAVAILABLE_TEXT}"
-    return message
+    del event
+    return DIRECT_COMMAND_HELP_HINT_TEXT
 
 
-async def _capture_ai_prompt(
+def _capture_ai_prompt(
     event: MessageEvent,
     state: T_State,
     features: FeatureService,
@@ -95,12 +90,12 @@ async def _capture_ai_prompt(
     return True
 
 
-async def _capture_group_ai_prompt(
+def _capture_group_ai_prompt(
     event: GroupMessageEvent,
     state: T_State,
     features: FeatureService,
 ) -> bool:
-    return await _capture_ai_prompt(event, state, features)
+    return _capture_ai_prompt(event, state, features)
 
 
 def install(
@@ -108,7 +103,7 @@ def install(
     service: AiService,
     features: FeatureService,
     group_aliases: Mapping[str, int],
-    help_hint: HelpHintService,
+    mention_guard_service: MentionGuardService,
 ) -> None:
     async def run_ai_chat(
         matcher: Matcher,
@@ -143,7 +138,7 @@ def install(
         await finish_event_reply(matcher, event, reply)
 
     direct_matcher = registry.on_message(
-        policy=CommandPolicy.command("ai_chat"),
+        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.private",)),
         rule=Rule(bind(_capture_ai_prompt, features=features)),
         priority=registry.priority("ai_chat"),
         block=True,
@@ -151,7 +146,7 @@ def install(
     direct_matcher.append_handler(run_ai_chat)
 
     group_at_matcher = registry.on_message(
-        policy=CommandPolicy.command("ai_chat"),
+        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.group",)),
         rule=Rule(bind(_capture_group_ai_prompt, features=features)),
         priority=registry.pre_command_priority("ai_group_at"),
         block=True,
@@ -162,16 +157,21 @@ def install(
         matcher: Matcher,
         event: GroupMessageEvent,
     ) -> None:
-        if not help_hint.can_send(event.group_id):
-            return
-        await finish_event_reply(matcher, event, _build_guard_message(event))
+        decision = mention_guard_service.admit(event.user_id)
+        if decision.allowed:
+            message = _build_guard_message(event)
+        elif decision.feedback is not None:
+            message = decision.feedback
+        else:
+            raise FinishedException
+        await finish_event_reply(matcher, event, message)
 
-    mention_guard = registry.on_message(
-        policy=CommandPolicy.command("ai_mention_guard"),
+    mention_guard_matcher = registry.on_message(
+        policy=CommandPolicy.exempt("non-AI direct mention guard"),
         rule=Rule(
             lambda event: _should_guard_non_ai_group_mention(features, event)
         ),
         priority=registry.pre_command_priority("ai_mention_guard"),
         block=True,
     )
-    mention_guard.append_handler(handle_non_ai_group_at_bot)
+    mention_guard_matcher.append_handler(handle_non_ai_group_at_bot)
