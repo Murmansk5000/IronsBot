@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
@@ -14,6 +15,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
+from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_collection_formatting import (
@@ -45,6 +47,7 @@ from ironsbot.services.seer.sequ_extra import (
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
+    from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.rank import RankService
 
 PlayerShortcutKind = Literal["collection", "peak", "autocard"]
@@ -121,6 +124,9 @@ class PlayerShortcutDependencies:
     timeout_seconds: float = 30.0
 
 
+PlayerShortcutStatusSender = Callable[[str], Awaitable[None]]
+
+
 def _rank_summary_timeout_seconds(rank: RankService, fallback: float) -> float:
     """Let the cooperative rank scheduler finish its own bounded request cycle.
 
@@ -161,6 +167,30 @@ def player_shortcut_loading_message(kind: PlayerShortcutKind) -> str:
     return (
         f"⏳ {label}正在查询，完成后会直接发送结果。\n"
         "数据较多时可能需要排队，请稍候。"
+    )
+
+
+async def execute_player_shortcut(
+    service: PlayerService,
+    command: PlayerShortcutCommand,
+    qq_user_id: int,
+    *,
+    group_id: int | None,
+    send_status: PlayerShortcutStatusSender | None = None,
+) -> QueryReply:
+    """Run numeric-menu and text shortcuts through the same query path."""
+
+    player_id = command.player_id or service.default_player_id(qq_user_id)
+    if (
+        send_status is not None
+        and isinstance(player_id, int)
+        and is_valid_player_id(player_id)
+    ):
+        await send_status(player_shortcut_loading_message(command.kind))
+    return await service.shortcut(
+        command,
+        qq_user_id,
+        group_id=group_id,
     )
 
 

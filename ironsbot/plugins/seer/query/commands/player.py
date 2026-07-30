@@ -297,7 +297,10 @@ def install(group: SeerMatcherGroup) -> None:
         group.resources.player_detail_extensions,
     )
     binding_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_player_binding"),
+        policy=CommandPolicy.command(
+            "seer_player_binding",
+            help_ids=("seer.player.bind",),
+        ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
         & no_reply(),
@@ -310,7 +313,10 @@ def install(group: SeerMatcherGroup) -> None:
 
     unbind_matcher = group.on_fullmatch(
         ("解绑米米号",),
-        policy=CommandPolicy.command("seer_player_binding"),
+        policy=CommandPolicy.command(
+            "seer_player_binding",
+            help_ids=("seer.player.unbind",),
+        ),
         rule=seer_feature_rule(group.features, "seer_player") & no_reply(),
         priority=group.matcher_priority("seer_player"),
         block=True,
@@ -327,7 +333,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
 
     query_matcher = group.on_message(
-        policy=CommandPolicy.command("seer_player"),
+        policy=CommandPolicy.command(
+            "seer_player",
+            help_ids=("seer.player.query",),
+        ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_id_query)
         & no_reply(),

@@ -87,7 +87,7 @@ def test_player_info_prompt_includes_visible_private_extension(
     )
 
 
-def test_player_detail_fetches_a_builtin_section_once_per_conversation(
+def test_player_detail_uses_the_shared_shortcut_executor(
     monkeypatch: Any,
 ) -> None:
     service = SimpleNamespace(shortcut=AsyncMock(return_value=QueryReply(text="peak")))
@@ -97,6 +97,8 @@ def test_player_detail_fetches_a_builtin_section_once_per_conversation(
         "_continue_player_detail_conversation",
         continue_conversation,
     )
+    send_status = AsyncMock()
+    monkeypatch.setattr(player_detail_conversation, "send_event_reply", send_status)
     event = group_message_event("2")
     state: dict[str, object] = {
         PLAYER_ID_KEY: PLAYER_ID,
@@ -118,8 +120,6 @@ def test_player_detail_fetches_a_builtin_section_once_per_conversation(
         event.user_id,
         group_id=event.group_id,
     )
-    assert state[PLAYER_PEAK_KEY] == "peak"
-
     asyncio.run(
         player_detail_conversation.handle_player_detail_reply(
             cast("Any", service),
@@ -130,7 +130,7 @@ def test_player_detail_fetches_a_builtin_section_once_per_conversation(
         )
     )
 
-    service.shortcut.assert_awaited_once()
+    assert service.shortcut.await_count == EXPECTED_CONVERSATION_CONTINUES
     assert continue_conversation.await_count == EXPECTED_CONVERSATION_CONTINUES
 
 
