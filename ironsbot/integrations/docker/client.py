@@ -120,6 +120,50 @@ class DockerClient:
             )
             _raise_for_docker_status(response)
 
+    async def container_uses_image(
+        self,
+        *,
+        container_name: str,
+        expected_image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> bool:
+        if not await self.socket_exists(socket_path):
+            return False
+        transport = httpx.AsyncHTTPTransport(uds=socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            current_image_id = await inspect_container_image_id(
+                client,
+                container_name,
+            )
+        return current_image_id == expected_image_id
+
+    async def remove_container(
+        self,
+        *,
+        container_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> None:
+        if not await self.socket_exists(socket_path):
+            msg = f"Docker socket not found: {socket_path}"
+            raise RuntimeError(msg)
+        transport = httpx.AsyncHTTPTransport(uds=socket_path)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://docker",
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            response = await client.delete(
+                f"/containers/{quote(container_id, safe='')}",
+                params={"force": "true"},
+            )
+            _raise_for_docker_status(response)
+
     async def start_update(
         self,
         request: DockerUpdateRequest,
@@ -187,6 +231,12 @@ class DockerClient:
                 )
                 response = await client.post(f"/containers/{updater_id}/start")
                 _raise_for_docker_status(response)
+                logger.warning(
+                    "Watchtower handoff started: container=%s updater=%s target=%s",
+                    request.container_name,
+                    updater_id,
+                    target_image_info.image_id,
+                )
         except Exception as e:
             logger.exception("docker self update failed")
             return DockerUpdateResult(ok=False, message=str(e))
@@ -710,7 +760,7 @@ async def create_watchtower_container(
             "Cmd": ["--run-once", "--cleanup", container_name],
             "Env": environment,
             "HostConfig": {
-                "AutoRemove": True,
+                "AutoRemove": False,
                 "Binds": [f"{socket_path}:/var/run/docker.sock"],
             },
         },

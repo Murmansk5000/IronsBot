@@ -88,6 +88,25 @@ def format_docker_update_reply(
     ).rstrip()
 
 
+def format_docker_update_handoff_reply(
+    *,
+    container_name: str,
+    image: str,
+    result: DockerUpdateResult,
+) -> str:
+    """Format a startup notice only after the target image is verified live."""
+
+    lines = [
+        f"Docker 镜像已更新完成：{container_name}",
+        f"目标镜像：{image}",
+        "当前镜像ID："
+        f"{format_image_version(result.target_image_id, result.target_image_created)}",
+    ]
+    if target_commit := visible_image_commit_summary(result.target_image_commit):
+        lines.append(f"当前代码：{target_commit}")
+    return "\n".join(lines)
+
+
 def format_docker_image_check_reply(
     *,
     container_name: str,
