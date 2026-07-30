@@ -705,7 +705,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     game,
                     command,
                     player_id,
-                    use_cache=False,
+                    use_cache=True,
                     anchor_only=anchor_only,
                 ),
                 timeout=self._config.player.detail_timeout_seconds,
