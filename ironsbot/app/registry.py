@@ -29,7 +29,6 @@ from ironsbot.app.plugin_visibility import (
     always_help_visible,
     feature_help_visible,
     superuser_help_visible,
-    superuser_only_help_visible,
 )
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
@@ -293,7 +292,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 group="admin",
                 order=20,
                 visible=partial(
-                    superuser_only_help_visible,
+                    superuser_help_visible,
                     features=features,
                 ),
             ),
@@ -357,19 +356,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         ),
         PluginDefinition(
             id="headless_notice",
-            help=HelpEntry(
-                name="自定义无头登录",
-                description="自定义无头登录状态检查、掉线播报和定时重连",
-                group="admin",
-                order=40,
-                notes=(
-                    "启动后检查无头米米号是否登录成功；登录状态变化仅通知管理目标。",
-                ),
-                visible=partial(
-                    superuser_help_visible,
-                    features=features,
-                ),
-            ),
             hooks=PluginHooks(
                 startup=(
                     (
