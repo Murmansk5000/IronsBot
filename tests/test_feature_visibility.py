@@ -19,10 +19,7 @@ from ironsbot.runtime.commands import CommandCatalog
 from tests.helpers.onebot_events import group_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
-DEFINITIONS = {
-    definition.id: definition
-    for definition in build_test_plugin_registry()
-}
+DEFINITIONS = {definition.id: definition for definition in build_test_plugin_registry()}
 
 
 def _group_event(
@@ -78,7 +75,7 @@ def _visible(
     settings = settings or _settings()
     features = FeatureService(
         settings.features,
-        frozenset(settings.bot.superusers),
+        settings.superuser_ids,
     )
     definitions = build_test_plugin_registry(settings)
     commands = CommandCatalog()
@@ -109,12 +106,8 @@ def test_plugin_definitions_own_feature_visibility() -> None:
     assert DEFINITIONS["team_resource"].features == frozenset(
         {Feature.TEAM_RESOURCE_SUBSCRIPTION}
     )
-    assert DEFINITIONS["pet_config"].features == frozenset(
-        {Feature.PET_CONFIG}
-    )
-    assert DEFINITIONS["fire_manual_ad"].features == frozenset(
-        {Feature.FIRE_MANUAL_AD}
-    )
+    assert DEFINITIONS["pet_config"].features == frozenset({Feature.PET_CONFIG})
+    assert DEFINITIONS["fire_manual_ad"].features == frozenset({Feature.FIRE_MANUAL_AD})
     assert DEFINITIONS["ai_intent"].features == frozenset(
         {
             Feature.AI_INTENT,
@@ -156,7 +149,7 @@ def test_pet_config_is_not_enabled_by_seer_bundle() -> None:
 def test_superuser_group_help_respects_group_feature_policy() -> None:
     settings = _settings()
     settings.features.superuser_bypass = True
-    settings.bot.superusers = [2]
+    settings.bot.superusers = ["2"]
     settings.pet_config.enabled = True
 
     assert not _visible("seer_query", settings=settings)
@@ -167,7 +160,7 @@ def test_superuser_group_help_respects_group_feature_policy() -> None:
 def test_superuser_group_help_includes_enabled_features() -> None:
     settings = _settings(allowed_features=("seer", "pet_config"))
     settings.features.superuser_bypass = True
-    settings.bot.superusers = [2]
+    settings.bot.superusers = ["2"]
     settings.pet_config.enabled = True
 
     assert _visible("seer_query", settings=settings)

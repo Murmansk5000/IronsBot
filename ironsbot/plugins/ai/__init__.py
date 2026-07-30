@@ -158,10 +158,10 @@ def install(
         event: GroupMessageEvent,
     ) -> None:
         decision = mention_guard_service.admit(event.user_id)
-        if decision.should_send_help:
+        if decision.allowed:
             message = _build_guard_message(event)
-        elif decision.reply is not None:
-            message = decision.reply
+        elif decision.feedback is not None:
+            message = decision.feedback
         else:
             raise FinishedException
         await finish_event_reply(matcher, event, message)

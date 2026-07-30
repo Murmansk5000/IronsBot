@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from ironsbot.config.models.seer import RankQueryConfig
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.services.seer.rank_display import RankDisplayService
 
@@ -25,7 +26,7 @@ def _service(
 ) -> RankDisplayService:
     return RankDisplayService(
         config,
-        aliases,
+        OneBotReferenceResolver(aliases, {}),
         SqliteRankDisplayStore(config.display_limit_path),
     )
 

@@ -69,7 +69,7 @@ class FakeJob:
 def _schedule(
     message: str,
     *,
-    at_user_ids: list[int] | None = None,
+    at_user_ids: Sequence[str | int] | None = None,
     schedule_id: str = "daily",
     hour: int = 23,
     minute: int = 0,
@@ -77,7 +77,7 @@ def _schedule(
     return MessageScheduledAction(
         id=schedule_id,
         message=message,
-        at_user_ids=at_user_ids or [],
+        at_user_ids=list(at_user_ids or []),
         hour=hour,
         minute=minute,
     )

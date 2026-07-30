@@ -17,7 +17,7 @@ IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2
 - 群星牌公开资料查询。
 - B站动态监控与历史动态点播，支持按账号退订、按账号设置全文/链接推送。
 - 超级管理员当前活动查询、快结束活动查询和活动结束提醒。
-- 固定图片、固定文本、会议回复、通用指令回复和定时消息。
+- 固定图片、固定文本、会议回复、通用指令回复和定时消息；帮助菜单会显示当前权限可见的自动定时推送，但它们不是可输入命令。
 - AI 聊天与 AI 意图动作。
 - 无头赛尔号登录状态检查、重连、启动通知和管理员开服查询。
 - Unraid Community Applications 模板与 Docker 镜像。
@@ -118,8 +118,8 @@ services:
 
 - 首次发送 `米米号123456` 并成功查到玩家后，按提示回复 `是`/`y` 或 `否`/`n`；完成选择后才会发送玩家详情。
 - 首次成功查询米米号后，按提示回复 `是`/`y` 可设为默认米米号；发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。
-- 查询指定米米号后，回复数字 `1`、`2`、`3`、`4` 查看收集、巅峰、群星牌和阵容，回复 `0` 退出；已绑定用户可直接发送 `米米号`、`收集`、`巅峰`、`群星牌`、`阵容`。
-- `米米号` 默认只读取基础资料；收集、巅峰、群星牌和阵容只会在用户明确发送对应口令时再请求。`[seer.player.background_refresh]` 默认关闭，按需开启后才会预热扩展数据。
+- 查询指定米米号后，回复数字查看收集、巅峰和群星牌，回复 `0` 退出；已绑定用户可直接发送 `米米号`、`收集`、`巅峰`、`群星牌`。
+- 已安装私有阵容扩展时，详情菜单和快捷命令会额外出现 `阵容`；公共镜像不硬编码该命令。`米米号` 默认只读取基础资料；扩展内容只会在用户明确选择或发送对应口令时再请求。`[seer.player.background_refresh]` 默认关闭，按需开启后才会预热扩展数据。
 - `雷伊配置`、`配置雷伊` 或 `4923配置` 会按精灵名称、别名或序号发送本地配置图；将图片命名为 `data/pet_configs/<精灵序号>.png` 即可收录。该目录不存在时会在启动时自动创建。
 - `群星牌地葬` 按名称查询卡牌，`群星牌卡98` 按卡牌 ID 查询；玩家群星牌排名通过米米号详情菜单或已绑定用户发送 `群星牌` 查询。
 - 全服榜后面的纯数字统一按米米号处理，例如 `成就榜123456`。名次必须写 `成就榜200名`，分数必须写 `成就榜5000点`；页码和范围仍可写 `第2页`、`50-100`。
@@ -192,19 +192,18 @@ example = 987654321
 owner = 1234567890
 
 [features.bundles]
+all = ["my_extension_feature"]
 standard = ["seer", "player_lineup_private", "image", "seerinfo_link", "bili_query", "bili_push", "seer_activity_query", "seer_activity_push", "server_status_query", "ai_intent"]
 lite = ["seer_pet", "seer_player", "player_lineup_private", "seer_team", "seer_equipment", "seer_type", "seer_peak", "seer_autocard", "seer_rank", "seer_data"]
 
 [features.group_policy]
 admin = ["admin_notice"]
 example = ["standard", "meeting", "team_resource_subscription"]
+blocked_group = ["blacklist"]
 
 [features.user_policy]
 owner = ["all"]
-
-[features.blacklist]
-users = []
-groups = []
+blocked_user = ["blacklist"]
 
 [[messaging.commands]]
 id = "seerinfo_page"
@@ -257,23 +256,31 @@ default_at_users = ["owner"]
 控制用户明确索要手册链接时的 AI 意图动作。
 
 `[features.bundles]` 可以定义 `standard`、`lite` 等可复用组合；组合之间可以引用，
-最终按并集展开。自定义名称不能覆盖内置 feature/组合，未知引用、空组合和循环引用
-都会阻止启动。为避免管理异常被普通群间接获得，`admin_notice` 不能放入组合，必须在
+最终按并集展开。`all = ["my_extension_feature"]` 可把自定义原子 feature 追加到
+内置 `all`，并让它成为可在策略中引用的扩展权限。自定义名称不能覆盖内置
+feature/组合，未知引用、空组合和循环引用都会阻止启动。为避免管理异常或静默拦截
+被普通群间接获得，`admin_notice` 与 `blacklist` 不能放入组合，必须在
 `group_policy` 或 `user_policy` 的目标项中显式写出。
 
 TOML 对已识别字段严格加载：既非内置也未被消息动作声明的 feature、未知 B站账号引用、
 未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
-无法识别的多余字段会被忽略，并在启动输出中列出完整路径；
+无法识别的多余字段会直接阻止启动，并在校验错误中列出完整路径；
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
-`[features.blacklist]` 的 `users` 和 `groups` 可配置永远静默忽略的 QQ 用户或群；
-超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于 `[features.help]`。
+在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
+群或用户；超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于
+`[features.help]`。所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
+数字字符串或数字 ID；别名在 `[features.user_aliases]` 和
+`[features.group_aliases]` 中定义，纯数字别名不可用。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
 跨群、私聊和多个机器人账号共用多个精确滑动窗口，不同语义命令互不影响。
 默认关闭；显式设置 `enabled = true` 后，内置窗口是 `60 秒 3 次` 与 `300 秒 5 次`。
 成功、失败、超时和异常都会在命令结束后计入相同窗口，超级管理员绕过。玩家基础查询、收集、巅峰、群星牌分别使用
 `seer_player`、`seer_player_collection`、`seer_player_peak`、`seer_player_autocard`
 四个独立额度，可在 `commands` 中单独覆盖。
+同一 QQ、同一真实语义目标的重复响应和未启用 AI 时的群内 @ 提示同样使用
+`[messaging.command_cooldown]` 的 `duplicate_*` 与 `mention_initial_*` 配置，但不受
+`enabled` 影响。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、
 `seer_player_peak`、`seer_player_autocard`、`seer_team`、
 `seer_rank_list`、`seer_rank_player`、`seer_rank_score`、

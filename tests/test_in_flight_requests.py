@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ironsbot.runtime.in_flight_requests import (
-    DUPLICATE_REQUEST_MESSAGE,
-    InFlightRequestService,
-)
+from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -15,6 +13,7 @@ from ironsbot.runtime.semantic_requests import (
 
 USER_ID = 100
 OTHER_USER_ID = 200
+DUPLICATE_MESSAGE = "重复请求"
 
 
 def _request(action_id: str, target_key: str) -> SemanticRequest:
@@ -22,6 +21,16 @@ def _request(action_id: str, target_key: str) -> SemanticRequest:
         action=ActionDefinition(action_id, action_id),
         target=SemanticTarget(target_key, target_key),
         source=SemanticRequestSource.DIRECT,
+    )
+
+
+def _service(features: _Features | None = None) -> InFlightRequestService:
+    return InFlightRequestService(
+        features or _Features(),
+        CommandCooldownConfig(
+            duplicate_window_seconds=60,
+            duplicate_message=DUPLICATE_MESSAGE,
+        ),
     )
 
 
@@ -35,7 +44,7 @@ class _Features:
 
 def test_in_flight_request_replies_once_warns_once_then_stays_silent(
 ) -> None:
-    service = InFlightRequestService(_Features())
+    service = _service()
 
     first = service.admit(
         user_id=USER_ID,
@@ -51,7 +60,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent(
     assert first.allowed
     assert first.token is not None
     assert not second.allowed
-    assert second.feedback == DUPLICATE_REQUEST_MESSAGE
+    assert second.feedback == DUPLICATE_MESSAGE
 
     assert not service.admit(
         user_id=USER_ID,
@@ -67,7 +76,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent(
         now=64,
     )
     assert not completed_duplicate.allowed
-    assert completed_duplicate.feedback == DUPLICATE_REQUEST_MESSAGE
+    assert completed_duplicate.feedback is None
 
     assert not service.admit(
         user_id=USER_ID,
@@ -83,7 +92,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent(
 
 
 def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
-    service = InFlightRequestService(_Features())
+    service = _service()
     first = service.admit(
         user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
@@ -101,7 +110,7 @@ def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
 
 
 def test_in_flight_request_keeps_users_actions_and_targets_independent() -> None:
-    service = InFlightRequestService(_Features())
+    service = _service()
 
     first = service.admit(
         user_id=USER_ID,
@@ -123,7 +132,7 @@ def test_in_flight_request_keeps_users_actions_and_targets_independent() -> None
 
 
 def test_in_flight_request_superusers_bypass_reservations() -> None:
-    service = InFlightRequestService(_Features(frozenset({USER_ID})))
+    service = _service(_Features(frozenset({USER_ID})))
 
     first = service.admit(
         user_id=USER_ID,
@@ -139,7 +148,7 @@ def test_in_flight_request_superusers_bypass_reservations() -> None:
 
 
 def test_in_flight_request_stale_token_does_not_release_new_reservation() -> None:
-    service = InFlightRequestService(_Features())
+    service = _service()
     first = service.admit(
         user_id=USER_ID,
         request=_request("seer_mintmark_query", "45001"),

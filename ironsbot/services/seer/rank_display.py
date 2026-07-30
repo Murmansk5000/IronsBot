@@ -5,9 +5,8 @@ import re
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.seer import RankQueryConfig
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
 
 _DISPLAY_LIMIT_RE = re.compile(
     r"^/\s*榜单(?:显示(?:条数|数量)?|默认(?:条数|数量)|条数)"
@@ -24,7 +23,7 @@ class RankDisplayStore(Protocol):
 
 class RankDisplayService(NamedTuple):
     config: RankQueryConfig
-    group_aliases: Mapping[str, int]
+    references: OneBotReferenceResolver
     store: RankDisplayStore
 
     def limit_for_group(self, group_id: int | None) -> int:
@@ -41,15 +40,15 @@ class RankDisplayService(NamedTuple):
     def _configured_group_limit(self, group_id: int | None) -> int | None:
         if group_id is None:
             return None
-        direct = self.config.display_limits.get(str(group_id))
-        if direct is not None:
-            return direct
         return next(
             (
-                self.config.display_limits[alias]
-                for alias, alias_group_id in self.group_aliases.items()
-                if alias_group_id == group_id
-                and alias in self.config.display_limits
+                limit
+                for reference, limit in self.config.display_limits.items()
+                if self.references.resolve_group(
+                    reference,
+                    location=f"seer.rank.display_limits.{reference}",
+                )
+                == group_id
             ),
             None,
         )

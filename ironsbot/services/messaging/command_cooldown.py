@@ -7,6 +7,11 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from ironsbot.core.response_admission import (
+    FeedbackOnce,
+    ResponseAdmissionDecision,
+)
+
 _ENTRY_PRUNE_INTERVAL_SECONDS = 60.0
 
 
@@ -36,18 +41,14 @@ class CommandCooldownToken:
     command_id: str
 
 
-@dataclass(frozen=True, slots=True)
-class CommandCooldownDecision:
-    allowed: bool
-    token: CommandCooldownToken | None = None
-    feedback: str | None = None
+CommandCooldownDecision = ResponseAdmissionDecision
 
 
 @dataclass(slots=True)
 class _CommandCooldownEntry:
     in_progress: bool = False
     completed_at: deque[float] = field(default_factory=deque)
-    feedback_sent: bool = False
+    feedback: FeedbackOnce = field(default_factory=FeedbackOnce)
 
 
 @dataclass(slots=True)
@@ -81,24 +82,24 @@ class CommandCooldownService:
         self._trim_entry(entry, windows, current_time)
 
         if entry.in_progress:
-            feedback: str | None = None
-            if not entry.feedback_sent:
-                entry.feedback_sent = True
-                feedback = self.config.in_progress_message
-            return CommandCooldownDecision(allowed=False, feedback=feedback)
+            return CommandCooldownDecision(
+                allowed=False,
+                feedback=entry.feedback.take(self.config.in_progress_message),
+            )
 
         remaining_seconds = self._remaining_seconds(entry, windows, current_time)
         if remaining_seconds is not None:
-            feedback = None
-            if not entry.feedback_sent:
-                entry.feedback_sent = True
-                feedback = self.config.cooldown_message.format(
-                    remaining_seconds=remaining_seconds,
-                )
-            return CommandCooldownDecision(allowed=False, feedback=feedback)
+            return CommandCooldownDecision(
+                allowed=False,
+                feedback=entry.feedback.take(
+                    self.config.cooldown_message.format(
+                        remaining_seconds=remaining_seconds,
+                    )
+                ),
+            )
 
         entry.in_progress = True
-        entry.feedback_sent = False
+        entry.feedback = FeedbackOnce()
         return CommandCooldownDecision(
             allowed=True,
             token=CommandCooldownToken(
@@ -121,7 +122,18 @@ class CommandCooldownService:
         current_time = time.monotonic() if now is None else now
         entry.in_progress = False
         entry.completed_at.append(current_time)
-        entry.feedback_sent = False
+        entry.feedback = FeedbackOnce()
+
+    def release(self, token: object) -> None:
+        """Drop an unhandled reservation without consuming a cooldown slot."""
+
+        if not isinstance(token, CommandCooldownToken):
+            return
+        entry = self._entries.get((token.user_id, token.command_id))
+        if entry is None or not entry.in_progress:
+            return
+        entry.in_progress = False
+        entry.feedback = FeedbackOnce()
 
     def reset(self) -> None:
         self._entries.clear()

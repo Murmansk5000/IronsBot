@@ -79,6 +79,17 @@ def test_command_cooldown_tracks_in_progress_and_notifies_once() -> None:
     assert second_repeat.feedback is None
 
 
+def test_command_cooldown_release_does_not_consume_a_window_slot() -> None:
+    service = _service(windows=_windows((60.0, 1)))
+    admitted = service.admit(user_id=USER_ID, command_id="seer_player", now=0)
+    assert admitted.token is not None
+
+    service.release(admitted.token)
+
+    retry = service.admit(user_id=USER_ID, command_id="seer_player", now=1)
+    assert retry.allowed
+
+
 def test_command_cooldown_enforces_multiple_sliding_windows() -> None:
     service = _service()
 

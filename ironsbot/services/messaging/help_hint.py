@@ -10,6 +10,7 @@ from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
     from ironsbot.core.features import HelpConfig
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
 
 
 class CommandHintCandidate(Protocol):
@@ -37,17 +38,15 @@ def is_poke_at_bot(event: PokeLikeEvent) -> bool:
 def _get_poke_reply(
     target_id: int | None,
     *,
-    aliases: Mapping[str, int],
+    resolve: Callable[..., int],
     replies: Mapping[str, str],
+    location: str,
 ) -> str | None:
     if target_id is None:
         return None
 
     for raw_target, message in replies.items():
-        resolved_target = aliases.get(raw_target)
-        if resolved_target is None and raw_target.isdigit():
-            resolved_target = int(raw_target)
-        if resolved_target == target_id:
+        if resolve(raw_target, location=f"{location}.{raw_target}") == target_id:
             return message
     return None
 
@@ -55,8 +54,7 @@ def _get_poke_reply(
 @dataclass(slots=True)
 class HelpHintService:
     config: HelpConfig
-    group_aliases: Mapping[str, int]
-    user_aliases: Mapping[str, int]
+    references: OneBotReferenceResolver
     poke_hint_candidates: CommandHintCandidates | None = None
     chooser: Callable[
         [Sequence[CommandHintCandidate]], CommandHintCandidate
@@ -68,12 +66,14 @@ class HelpHintService:
     def get_poke_reply(self, *, group_id: int | None, user_id: int) -> str | None:
         return _get_poke_reply(
             user_id,
-            aliases=self.user_aliases,
+            resolve=self.references.resolve_user,
             replies=self.config.poke_user_replies,
+            location="features.help.poke_user_replies",
         ) or _get_poke_reply(
             group_id,
-            aliases=self.group_aliases,
+            resolve=self.references.resolve_group,
             replies=self.config.poke_replies,
+            location="features.help.poke_replies",
         )
 
     def get_default_poke_hint(

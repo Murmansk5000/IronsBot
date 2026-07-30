@@ -57,8 +57,8 @@ log_level = "INFO"
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
 # Default: []
-# EN: NoneBot superuser QQ IDs.
-# ZH: NoneBot 超级管理员 QQ 号列表。
+# EN: NoneBot superuser QQ IDs or user aliases.
+# ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
 [bot.matcher_priority]
@@ -66,7 +66,7 @@ superusers = []
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
 ai_group_at = -10
-ai_mention_guard = -20
+ai_mention_guard = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3
@@ -151,10 +151,13 @@ user_a = 2345678901
 # Default: empty table
 # EN: Reusable feature bundles. Values may reference atomic features, built-in
 # bundles, another custom bundle, or a feature declared by a messaging action.
-# Names must not replace registered keys.
+# `all` appends custom atomic feature names to the built-in all bundle, which
+# declares those extension feature names for target policies.
 # ZH: 可复用功能组合。值可引用单项功能、内置组合或其他自定义组合；
 # `messaging.commands` / `messaging.schedules` 声明的 feature 也可在这里引用。
-# 名称不能覆盖已有 feature。admin_notice 必须在目标策略中显式授予，不能放进组合。
+# `all` 可追加自定义原子 feature，并同时声明它们可用于目标策略。
+# 名称不能覆盖已有 feature；admin_notice 和 blacklist 必须在目标策略中显式授予。
+# all = ["my_extension_feature"]
 standard = [
     "seer",
     "player_lineup_private",
@@ -206,11 +209,13 @@ lite = [
 # ai_intent_fire_manual 控制“手册”AI 意图识别。
 # ai_intent_team_recommend 控制“想加战队”AI 战队推荐动作。
 # team_resource_subscription 控制战队订阅查询和低资源定时提醒。
-# admin_notice 不包含在 all 里；管理群要收启动、异常等管理通知时需要显式写 admin_notice。
+# admin_notice 与 blacklist 不包含在 all 里；管理群要收启动、异常等管理通知时需要显式写 admin_notice。
+# 写入 blacklist 的用户或群会被完全静默，包含其它任何已启用的功能。
 # 具体推送项可在 TD 菜单里分别退订。
 # 超级管理员是否绕过这些限制，由 [features].superuser_bypass 控制。
 # Example:
 # example = ["standard", "team_resource_subscription"]
+# blocked_group = ["blacklist"]
 
 [features.user_policy]
 # Default: empty table
@@ -218,13 +223,7 @@ lite = [
 # ZH: 私聊/用户功能策略，也用于私聊推送目标。
 # Example:
 # owner = ["all"]
-
-[features.blacklist]
-# Default: []
-# EN: QQ users and groups whose incoming conversations are always ignored.
-# ZH: 永远不响应这些 QQ 用户或群的对话；群号命中时忽略该群所有用户消息。
-users = []
-groups = []
+# blocked_user = ["blacklist"]
 
 [features.help]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
@@ -516,7 +515,8 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 # EN: Fixed command replies. Each action is available in both private and group
 # chats; the feature user/group policies decide where it actually responds.
 # ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
-# `at_user_ids` only applies to group replies and is ignored in private chats.
+# `at_user_ids` accepts user aliases or QQ IDs, only applies to group replies,
+# and is ignored in private chats.
 # Example action fields: id, enabled, feature, message, commands, at_user_ids.
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.
@@ -532,7 +532,8 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
-# feature is enabled; `at_user_ids` only applies to group delivery.
+# feature is enabled; `at_user_ids` accepts user aliases or QQ IDs and only
+# applies to group delivery.
 # ZH: 定时文本推送默认同时面向私聊和群聊；feature 在用户/群策略中启用后才会投递。
 # Like command actions, a schedule's feature is registered from TOML and may
 # be referenced by bundles and target policies.
@@ -738,6 +739,15 @@ windows = [
 ]
 cooldown_message = "操作过于频繁，请 {remaining_seconds} 秒后再试。"
 in_progress_message = "该命令正在处理中，请等待当前操作完成。"
+# EN: Same semantic target responses are suppressed for this period even when
+# command cooldown windows are disabled.
+# ZH: 同一语义动作和真实目标在此期间重复发送会被抑制；不受 enabled 开关影响。
+duplicate_window_seconds = 60.0
+duplicate_message = "该指令重复发送；后续重复不再提醒。"
+# EN: Non-AI direct mentions use a per-user initial-response budget.
+# ZH: 未启用 AI 的群内直接 @ 机器人按用户使用首次提示额度。
+mention_initial_window_seconds = 600.0
+mention_initial_max_responses = 3
 
 [messaging.command_cooldown.commands]
 # EN: Optional per-command window overrides. An empty list disables limits for that command.

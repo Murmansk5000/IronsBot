@@ -10,6 +10,7 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -108,7 +109,7 @@ def _delivery(
     return OneBotDelivery(
         outbound or FakeOutboundService(),
         PushUnsubscribeConfig(),
-        BotRouter(BotRoutingConfig(), {}, {}),
+        BotRouter(BotRoutingConfig(), OneBotReferenceResolver({}, {})),
         FakeSubscriptions(),
     )
 

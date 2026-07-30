@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from enum import Enum
@@ -9,15 +10,20 @@ from typing import TYPE_CHECKING, Final
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ironsbot.core.commands import (
-    NormalizedIntList,
     NormalizedStringList,
+    csv_items,
+    json_array,
     json_object,
     string_list,
     unique_items,
 )
+from ironsbot.core.onebot_references import (
+    OneBotReferenceResolver,
+    normalize_alias_mapping,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable
 
 
 class Feature(str, Enum):
@@ -29,6 +35,7 @@ class Feature(str, Enum):
     AI_INTENT_TEAM_RECOMMEND = "ai_intent_team_recommend"
     BILI_PUSH = "bili_push"
     BILI_QUERY = "bili_query"
+    BLACKLIST = "blacklist"
     FIRE_MANUAL_AD = "fire_manual_ad"
     HELP = "help"
     IMAGE = "image"
@@ -60,12 +67,7 @@ class Feature(str, Enum):
 
 FIRE_MANUAL_AD_FEATURE: Final = Feature.FIRE_MANUAL_AD.value
 FIRE_MANUAL_INTENT_FEATURE: Final = Feature.AI_INTENT_FIRE_MANUAL.value
-CONVERSATION_BLACKLIST_ID_ERROR: Final = (
-    "conversation blacklist IDs must be positive"
-)
-FEATURE_KEYS: Final[frozenset[str]] = frozenset(
-    feature.value for feature in Feature
-)
+FEATURE_KEYS: Final[frozenset[str]] = frozenset(feature.value for feature in Feature)
 
 SEER_FEATURES: Final[frozenset[str]] = frozenset(
     {
@@ -83,7 +85,7 @@ SEER_FEATURES: Final[frozenset[str]] = frozenset(
 )
 
 FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
-    "all": (FEATURE_KEYS - {"admin_notice", "seer"}) | SEER_FEATURES,
+    "all": (FEATURE_KEYS - {"admin_notice", "blacklist", "seer"}) | SEER_FEATURES,
     "seer": SEER_FEATURES,
     "query": frozenset(
         {
@@ -115,8 +117,8 @@ FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
     ),
 }
 
-REGISTERED_FEATURE_KEYS: Final[frozenset[str]] = (
-    FEATURE_KEYS | frozenset(FEATURE_BUNDLES)
+REGISTERED_FEATURE_KEYS: Final[frozenset[str]] = FEATURE_KEYS | frozenset(
+    FEATURE_BUNDLES
 )
 
 
@@ -166,6 +168,38 @@ class FeatureBundleConfigError(ValueError):
             "grant it explicitly in a target policy"
         )
 
+    @classmethod
+    def all_disallowed_item(
+        cls,
+        index: int,
+        item: str,
+    ) -> FeatureBundleConfigError:
+        return cls(
+            "features.bundles.all must not include protected feature "
+            f"at index {index}: {item}"
+        )
+
+    @classmethod
+    def all_bundle_item(
+        cls,
+        index: int,
+        item: str,
+    ) -> FeatureBundleConfigError:
+        return cls(
+            "features.bundles.all only accepts atomic feature names; "
+            f"index {index} references bundle {item}"
+        )
+
+    @classmethod
+    def all_empty_item(cls, index: int) -> FeatureBundleConfigError:
+        return cls(f"features.bundles.all[{index}] must not be empty")
+
+
+class FeaturePolicyConfigError(ValueError):
+    @classmethod
+    def empty_target_reference(cls) -> FeaturePolicyConfigError:
+        return cls("feature policy contains an empty target reference")
+
 
 def _coerce_feature_bundles(value: object) -> dict[str, list[str]]:
     parsed = json_object(value, name="feature bundles")
@@ -174,8 +208,27 @@ def _coerce_feature_bundles(value: object) -> dict[str, list[str]]:
         key = str(raw_key).strip()
         if not key:
             raise FeatureBundleConfigError.empty_name()
-        result[key] = string_list(raw_features)
+        result[key] = _feature_bundle_items(raw_features)
     return result
+
+
+def _feature_bundle_items(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        raw_items: Iterable[object] = (
+            json_array(text, name="feature bundle entries")
+            if text.startswith("[")
+            else csv_items(text)
+        )
+        if not raw_items:
+            raw_items = ("",)
+    elif isinstance(value, Iterable) and not isinstance(value, Mapping):
+        raw_items = value
+    else:
+        raw_items = (value,)
+    return unique_items(str(raw_item).strip() for raw_item in raw_items)
 
 
 class _FeatureBundleResolver:
@@ -201,9 +254,7 @@ class _FeatureBundleResolver:
             return self._resolved[name]
         if name in self._resolving:
             cycle_start = self._resolving.index(name)
-            raise FeatureBundleConfigError.cycle(
-                [*self._resolving[cycle_start:], name]
-            )
+            raise FeatureBundleConfigError.cycle([*self._resolving[cycle_start:], name])
 
         entries = self._custom_bundles[name]
         if not entries:
@@ -231,9 +282,7 @@ class _FeatureBundleResolver:
 
 def _normalize_feature_keys(features: Iterable[str]) -> frozenset[str]:
     return frozenset(
-        feature
-        for raw_feature in features
-        if (feature := str(raw_feature).strip())
+        feature for raw_feature in features if (feature := str(raw_feature).strip())
     )
 
 
@@ -264,44 +313,71 @@ def resolve_feature_bundles(
     normalized_commands = _normalize_feature_keys(command_features)
     normalized_schedules = _normalize_feature_keys(schedule_features)
     configured_features = normalized_commands | normalized_schedules
+    configured_all = custom_bundles.get("all", [])
+    non_all_custom_bundles = {
+        name: entries for name, entries in custom_bundles.items() if name != "all"
+    }
+    custom_all_features = _resolve_custom_all_features(
+        configured_all,
+        custom_bundle_names=frozenset(non_all_custom_bundles),
+    )
     action_bundle_collisions = sorted(
         (configured_features - FEATURE_KEYS) & frozenset(FEATURE_BUNDLES)
     )
     if action_bundle_collisions:
-        raise FeatureBundleConfigError.action_bundle_name(
-            action_bundle_collisions
-        )
+        raise FeatureBundleConfigError.action_bundle_name(action_bundle_collisions)
 
-    feature_keys = FEATURE_KEYS | configured_features
+    feature_keys = FEATURE_KEYS | configured_features | custom_all_features
     built_in_bundles = _built_in_bundles_with_message_features(
         command_features=normalized_commands,
         schedule_features=normalized_schedules,
     )
+    built_in_bundles["all"] = built_in_bundles["all"] | custom_all_features
     collisions = sorted(
-        set(custom_bundles)
-        & (feature_keys | frozenset(built_in_bundles))
+        set(non_all_custom_bundles) & (feature_keys | frozenset(built_in_bundles))
     )
     if collisions:
         raise FeatureBundleConfigError.registered_name(collisions)
     return _FeatureBundleResolver(
-        custom_bundles,
+        non_all_custom_bundles,
         feature_keys=feature_keys,
         built_in_bundles=built_in_bundles,
     ).resolve_all()
+
+
+def _resolve_custom_all_features(
+    entries: Iterable[str],
+    *,
+    custom_bundle_names: frozenset[str],
+) -> frozenset[str]:
+    declared: set[str] = set()
+    for index, raw_entry in enumerate(entries):
+        entry = raw_entry.strip()
+        if not entry:
+            raise FeatureBundleConfigError.all_empty_item(index)
+        if entry in {
+            Feature.ADMIN_NOTICE.value,
+            Feature.BLACKLIST.value,
+        }:
+            raise FeatureBundleConfigError.all_disallowed_item(index, entry)
+        if entry in FEATURE_BUNDLES or entry in custom_bundle_names:
+            raise FeatureBundleConfigError.all_bundle_item(index, entry)
+        declared.add(entry)
+    return frozenset(declared)
+
 
 POKE_REPLY_REQUIRED_ERROR = (
     "features.help.poke_replies requires non-empty group refs and messages"
 )
 
 
-def _coerce_int_mapping(value: object) -> dict[str, int]:
+def _coerce_alias_mapping(
+    value: object,
+    *,
+    location: str,
+) -> dict[str, int]:
     parsed = json_object(value, name="feature aliases")
-    result: dict[str, int] = {}
-    for raw_key, raw_value in parsed.items():
-        key = str(raw_key).strip()
-        if key:
-            result[key] = int(raw_value)
-    return result
+    return normalize_alias_mapping(parsed, location=location)
 
 
 def _coerce_policy_mapping(value: object) -> dict[str, list[str]]:
@@ -309,8 +385,9 @@ def _coerce_policy_mapping(value: object) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for raw_key, raw_features in parsed.items():
         key = str(raw_key).strip()
-        if key:
-            result[key] = string_list(raw_features)
+        if not key:
+            raise FeaturePolicyConfigError.empty_target_reference()
+        result[key] = string_list(raw_features)
     return result
 
 
@@ -343,22 +420,6 @@ class SuperuserPriorityConfig(BaseModel):
     wait_timeout_seconds: float = Field(default=300.0, ge=0)
 
 
-class ConversationBlacklistConfig(BaseModel):
-    """Conversation sources that should never receive an interactive reply."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    users: NormalizedIntList = Field(default_factory=list)
-    groups: NormalizedIntList = Field(default_factory=list)
-
-    @field_validator("users", "groups")
-    @classmethod
-    def require_positive_ids(cls, values: list[int]) -> list[int]:
-        if any(value <= 0 for value in values):
-            raise ValueError(CONVERSATION_BLACKLIST_ID_ERROR)
-        return values
-
-
 class FeatureConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -368,18 +429,18 @@ class FeatureConfig(BaseModel):
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
     superuser_bypass: bool = True
-    blacklist: ConversationBlacklistConfig = Field(
-        default_factory=ConversationBlacklistConfig
-    )
     help: HelpConfig = Field(default_factory=HelpConfig)
-    priority: SuperuserPriorityConfig = Field(
-        default_factory=SuperuserPriorityConfig
-    )
+    priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
 
-    @field_validator("group_aliases", "user_aliases", mode="before")
+    @field_validator("group_aliases", mode="before")
     @classmethod
-    def normalize_aliases(cls, value: object) -> object:
-        return _coerce_int_mapping(value)
+    def normalize_group_aliases(cls, value: object) -> object:
+        return _coerce_alias_mapping(value, location="features.group_aliases")
+
+    @field_validator("user_aliases", mode="before")
+    @classmethod
+    def normalize_user_aliases(cls, value: object) -> object:
+        return _coerce_alias_mapping(value, location="features.user_aliases")
 
     @field_validator("bundles", mode="before")
     @classmethod
@@ -390,6 +451,7 @@ class FeatureConfig(BaseModel):
     @classmethod
     def normalize_policy(cls, value: object) -> object:
         return _coerce_policy_mapping(value)
+
 
 def validate_feature_config(
     config: FeatureConfig,
@@ -406,7 +468,13 @@ def validate_feature_config(
         schedule_features=normalized_schedules,
     )
     registered_policy_keys = (
-        FEATURE_KEYS | configured_features | frozenset(resolved_bundles)
+        FEATURE_KEYS
+        | configured_features
+        | _resolve_custom_all_features(
+            config.bundles.get("all", []),
+            custom_bundle_names=frozenset(config.bundles) - {"all"},
+        )
+        | frozenset(resolved_bundles)
     )
     invalid: list[str] = []
     for policy_name, policy in (
@@ -421,9 +489,7 @@ def validate_feature_config(
                 invalid.append(f"{policy_name}.{target}[{index}]={feature}")
 
     if invalid:
-        raise ValueError(
-            "unregistered feature policy key(s): " + ", ".join(invalid)
-        )
+        raise ValueError("unregistered feature policy key(s): " + ", ".join(invalid))
     return resolved_bundles
 
 
@@ -434,6 +500,10 @@ class FeatureService:
     command_features: frozenset[str] = frozenset()
     schedule_features: frozenset[str] = frozenset()
     _bundles: Mapping[str, frozenset[str]] = dataclass_field(
+        init=False,
+        repr=False,
+    )
+    _references: OneBotReferenceResolver = dataclass_field(
         init=False,
         repr=False,
     )
@@ -449,6 +519,14 @@ class FeatureService:
             "_bundles",
             resolved_bundles,
         )
+        object.__setattr__(
+            self,
+            "_references",
+            OneBotReferenceResolver(
+                group_aliases=self.config.group_aliases,
+                user_aliases=self.config.user_aliases,
+            ),
+        )
 
     def is_superuser(self, user_id: int) -> bool:
         return user_id in self.superuser_ids
@@ -460,28 +538,37 @@ class FeatureService:
     ) -> bool:
         """Whether an incoming private or group message must be ignored."""
 
-        return user_id in self.config.blacklist.users or (
-            group_id is not None and group_id in self.config.blacklist.groups
+        return self.user_has_feature(user_id, Feature.BLACKLIST.value) or (
+            group_id is not None
+            and self.group_has_feature(group_id, Feature.BLACKLIST.value)
         )
 
     def resolve_group_refs(self, refs: Iterable[object]) -> list[int]:
-        return self._resolve_policy_refs(refs, self.config.group_aliases)
+        return self._references.resolve_groups(
+            refs,
+            location="configured group refs",
+        )
 
     def resolve_user_refs(self, refs: Iterable[object]) -> list[int]:
-        return self._resolve_policy_refs(refs, self.config.user_aliases)
+        return self._references.resolve_users(
+            refs,
+            location="configured user refs",
+        )
 
     def groups_for_feature(self, feature: str) -> list[int]:
         return self._ids_for_feature(
             self.config.group_policy,
-            self.config.group_aliases,
-            feature,
+            resolve=self._references.resolve_group,
+            feature=feature,
+            location="features.group_policy",
         )
 
     def users_for_feature(self, feature: str) -> list[int]:
         return self._ids_for_feature(
             self.config.user_policy,
-            self.config.user_aliases,
-            feature,
+            resolve=self._references.resolve_user,
+            feature=feature,
+            location="features.user_policy",
         )
 
     def users_with_superusers(self, user_ids: Iterable[int]) -> list[int]:
@@ -501,35 +588,25 @@ class FeatureService:
         )
 
     def is_private_feature_allowed(self, user_id: int, feature: str) -> bool:
-        return user_id in self.users_for_feature(feature) or (
+        return self.user_has_feature(user_id, feature) or (
             self.config.superuser_bypass and self.is_superuser(user_id)
         )
 
-    def _resolve_policy_refs(
-        self,
-        refs: Iterable[object],
-        aliases: Mapping[str, int],
-    ) -> list[int]:
-        return unique_items(
-            resolved
-            for raw_ref in refs
-            if (resolved := self._resolve_policy_id(str(raw_ref), aliases))
-            is not None
-            and resolved > 0
-        )
+    def user_has_feature(self, user_id: int, feature: str) -> bool:
+        return user_id in self.users_for_feature(feature)
 
     def _ids_for_feature(
         self,
         policy: Mapping[str, list[str]],
-        aliases: Mapping[str, int],
+        *,
+        resolve: Callable[..., int],
         feature: str,
+        location: str,
     ) -> list[int]:
         return unique_items(
-            resolved_id
+            resolve(raw_key, location=f"{location}.{raw_key}")
             for raw_key, features in policy.items()
             if self._feature_matches(features, feature)
-            if (resolved_id := self._resolve_policy_id(raw_key, aliases)) is not None
-            and resolved_id > 0
         )
 
     def _feature_matches(self, features: Iterable[str], feature: str) -> bool:
@@ -537,18 +614,3 @@ class FeatureService:
         return feature in normalized or any(
             feature in self._bundles.get(item, frozenset()) for item in normalized
         )
-
-    @staticmethod
-    def _resolve_policy_id(
-        raw_key: str,
-        aliases: Mapping[str, int],
-    ) -> int | None:
-        key = raw_key.strip()
-        if not key:
-            return None
-        if key in aliases:
-            return aliases[key]
-        try:
-            return int(key)
-        except ValueError:
-            return None
