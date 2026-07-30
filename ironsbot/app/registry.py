@@ -6,23 +6,26 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from ironsbot.app.command_descriptors import (
+from ironsbot.app.command_directory.dynamic import (
+    ai_intent_commands,
+    configured_image_commands,
+    configured_message_commands,
+    messaging_help_visible,
+)
+from ironsbot.app.command_directory.operations import (
+    data_sync_commands,
+    server_status_commands,
+)
+from ironsbot.app.command_directory.plugins import (
     about_commands,
     activity_commands,
     ai_chat_commands,
-    ai_intent_commands,
     bilibili_commands,
-    configured_image_commands,
-    configured_message_commands,
-    data_sync_commands,
     help_commands,
     meeting_commands,
-    messaging_help_visible,
-    rank_commands,
-    seer_query_commands,
-    server_status_commands,
     team_resource_commands,
 )
+from ironsbot.app.command_directory.seer import rank_commands, seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
@@ -135,6 +138,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     )
     from ironsbot.plugins.team import install as install_team_audit
     from ironsbot.plugins.team.resource import install as install_team_resource
+
     config = settings
     features = resources.features
     delivery = resources.delivery
@@ -177,6 +181,8 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         bili_auth_invalid,
         bili_push_delivery.send,
     )
+    messaging_commands = configured_message_commands(config.messaging)
+    ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginDefinition, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
@@ -366,11 +372,16 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     config=config.messaging,
                 ),
             ),
-            commands=configured_message_commands(config.messaging),
+            commands=messaging_commands,
             install=partial(
                 install_messaging,
                 refresh_push_time_jobs=push_time_refresher,
                 messaging=messaging,
+                command_help_ids=tuple(
+                    command.id
+                    for command in messaging_commands
+                    if command.interaction == "direct"
+                ),
             ),
             hooks=PluginHooks(
                 startup=(
@@ -428,9 +439,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                             grace_seconds=config.operations.restart.grace_seconds,
                             restart_process=partial(
                                 terminate_bot_process,
-                                signal_parent=(
-                                    config.operations.restart.signal_parent
-                                ),
+                                signal_parent=(config.operations.restart.signal_parent),
                                 reason="scheduled bot restart",
                             ),
                         ),
@@ -513,9 +522,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     group_only=True,
                 ),
             ),
-            commands=team_resource_commands(
-                enabled=config.seer.team_resource.enabled
-            ),
+            commands=team_resource_commands(enabled=config.seer.team_resource.enabled),
             install=partial(
                 install_team_resource,
                 service=team_resource_service,
@@ -646,12 +653,16 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
             commands=ai_chat_commands(enabled=bool(config.ai.api_key.strip())),
-            install=partial(
-                install_ai,
-                service=ai_service,
-                features=features,
-                group_aliases=config.features.group_aliases,
-                mention_guard_service=mention_guard_service,
+            install=(
+                partial(
+                    install_ai,
+                    service=ai_service,
+                    features=features,
+                    group_aliases=config.features.group_aliases,
+                    mention_guard_service=mention_guard_service,
+                )
+                if config.ai.api_key.strip()
+                else None
             ),
         ),
         PluginDefinition(
@@ -678,12 +689,15 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     ),
                 ),
             ),
-            commands=ai_intent_commands(config),
+            commands=ai_intent_command_descriptors,
             install=partial(
                 install_ai_intent,
                 service=ai_service,
                 group_aliases=config.features.group_aliases,
                 team_resource=team_resource_service,
+                command_help_ids=tuple(
+                    command.id for command in ai_intent_command_descriptors
+                ),
             ),
         ),
         PluginDefinition(

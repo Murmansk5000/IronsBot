@@ -22,6 +22,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
 if TYPE_CHECKING:
+    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.in_flight_requests import (
         InFlightRequestService,
     )
@@ -423,6 +424,7 @@ class CommandPolicy:
     command_id: CommandIdSource | None = None
     exemption_reason: str | None = None
     semantic_request: SemanticRequestResolver | None = None
+    help_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (self.command_id is None) == (self.exemption_reason is None):
@@ -433,6 +435,10 @@ class CommandPolicy:
             self.semantic_request is not None
         ):
             raise CommandPolicyError.exempt_with_semantic_request()
+        if self.exemption_reason is not None and self.help_ids:
+            raise CommandPolicyError.exempt_with_help_ids()
+        if any(not command_id.strip() for command_id in self.help_ids):
+            raise CommandPolicyError.empty_help_id()
 
     @classmethod
     def command(
@@ -440,15 +446,26 @@ class CommandPolicy:
         command_id: CommandIdSource,
         *,
         semantic_request: SemanticRequestResolver | None = None,
+        help_ids: tuple[str, ...] = (),
     ) -> CommandPolicy:
         return cls(
             command_id=command_id,
             semantic_request=semantic_request,
+            help_ids=help_ids,
         )
 
     @classmethod
     def exempt(cls, reason: str) -> CommandPolicy:
         return cls(exemption_reason=reason)
+
+
+def _command_policy_label(policy: CommandPolicy) -> str:
+    command_id = policy.command_id
+    if isinstance(command_id, str):
+        return command_id
+    if command_id is None:
+        return "unknown"
+    return getattr(command_id, "__name__", type(command_id).__name__)
 
 
 @dataclass(slots=True)
@@ -463,6 +480,8 @@ class MatcherRegistry:
     _cooldown_registrations: dict[type[Matcher], tuple[str, str]] = field(
         default_factory=dict
     )
+    _command_help_ids: set[str] = field(default_factory=set)
+    _unclassified_command_labels: set[str] = field(default_factory=set)
     _runtime_context_token: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -552,6 +571,12 @@ class MatcherRegistry:
     ) -> tuple[str, str] | None:
         return self._cooldown_registrations.get(matcher)
 
+    def validate_command_catalog(self, catalog: CommandCatalog) -> None:
+        catalog.validate_matcher_registrations(
+            help_ids=self._command_help_ids,
+            unclassified_labels=self._unclassified_command_labels,
+        )
+
     def _register_message(
         self,
         matcher: type[Matcher],
@@ -559,6 +584,10 @@ class MatcherRegistry:
     ) -> type[Matcher]:
         if policy.command_id is not None:
             self._install_admission(matcher, policy)
+            if policy.help_ids:
+                self._command_help_ids.update(policy.help_ids)
+            else:
+                self._unclassified_command_labels.add(_command_policy_label(policy))
         else:
             self._cooldown_registrations[matcher] = (
                 "exempt",

@@ -71,3 +71,11 @@ class CommandPolicyError(ValueError):
     @classmethod
     def exempt_with_semantic_request(cls) -> CommandPolicyError:
         return cls("exempt command policy cannot define a semantic request")
+
+    @classmethod
+    def exempt_with_help_ids(cls) -> CommandPolicyError:
+        return cls("exempt command policy cannot define help ids")
+
+    @classmethod
+    def empty_help_id(cls) -> CommandPolicyError:
+        return cls("command policy help ids must not contain empty values")
