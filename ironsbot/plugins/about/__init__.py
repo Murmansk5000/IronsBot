@@ -13,14 +13,19 @@ ABOUT_MESSAGE = """
 项目：https://github.com/Murmansk5000/IronsBot
 上游作者：Nattsu39
 上游项目：https://github.com/Nattsu39/IronsBot
-致敬：本项目原作是 @火火（QQ：1157733847）开发的西塔伦Bot，
-谨以此项目向 @火火 致敬。感谢他为赛尔号玩家社区所做的贡献，愿火种永存。
 
 这是一个面向 QQ / OneBot v11 的自定义赛尔号机器人，当前版本以自定义插件为主：
 米米号与战队查询、B站动态、活动提醒、榜单、群星牌、
 固定图片/文本回复、AI 聊天和 Unraid 友好部署。
 
-感谢原作者 Nattsu39 开源 IronsBot，为本项目提供了核心基础与参考。
+鸣谢：
+- Nattsu39：IronsBot 上游项目。
+- 火火（GitHub：Yogurt114514）：西塔伦Bot 的作者与本项目早期来源。
+- SeerAPI 开源团队：数据模型、构建工具与基础数据链路。
+- HurryWang（GitHub：WhY15w）：Unity 配置解析与下周预告图提取工具。
+- SeerRadar：Sequ 数据参考；oldml：saixiaoxi 无头登录参考。
+
+完整项目与工具鸣谢：https://github.com/Murmansk5000/IronsBot#%E9%B8%A3%E8%B0%A2
 """.strip()
 
 VERSION_FILE_PATH = AsyncPath("__version__")

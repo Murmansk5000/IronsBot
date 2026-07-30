@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Any, ClassVar
 
+# NoneBot resolves Rule callback annotations when creating temporary matchers.
+from nonebot.adapters import Event  # noqa: TC002
 from nonebot.rule import Rule
 
 if TYPE_CHECKING:
@@ -16,7 +18,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import timedelta
 
-    from nonebot.adapters import Event
     from nonebot.typing import T_State
 
     from ironsbot.runtime.in_flight_requests import InFlightRequestService
