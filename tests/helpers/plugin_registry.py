@@ -65,7 +65,7 @@ def build_test_plugin_registry(
     config = settings or Settings()
     runtime = build_test_runtime(
         feature_config=config.features,
-        superuser_ids=tuple(config.bot.superusers),
+        superuser_ids=tuple(config.superuser_ids),
         command_features=config.messaging.command_feature_keys,
         schedule_features=config.messaging.schedule_feature_keys,
     )

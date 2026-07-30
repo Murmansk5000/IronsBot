@@ -2,7 +2,13 @@ from dataclasses import dataclass
 
 from ironsbot.core.features import HelpConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
-from ironsbot.runtime.commands import CommandCatalog, CommandContext, CommandDescriptor
+from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.runtime.commands import (
+    CommandAccess,
+    CommandCatalog,
+    CommandContext,
+    CommandDescriptor,
+)
 from ironsbot.runtime.plugins import PluginDefinition
 from ironsbot.services.messaging.help_hint import (
     HelpHintService,
@@ -186,8 +192,10 @@ def _service(
 
     return HelpHintService(
         config=config or HelpConfig(),
-        group_aliases=group_aliases or {},
-        user_aliases=user_aliases or {},
+        references=OneBotReferenceResolver(
+            group_aliases=group_aliases or {},
+            user_aliases=user_aliases or {},
+        ),
         poke_hint_candidates=candidates,
         chooser=lambda candidates: candidates[0],
     )
