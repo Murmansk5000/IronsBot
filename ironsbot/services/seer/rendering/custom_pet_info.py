@@ -548,7 +548,7 @@ async def render_custom_pet_info(
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     pet_id = int(pet.id)
-    cached = cache.get("custom_pet_info_v14", str(pet_id))
+    cached = cache.get("custom_pet_info_v15", str(pet_id))
     if cached is not None:
         return cached
 
@@ -715,5 +715,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v14", str(pet_id), result)
+    cache.put("custom_pet_info_v15", str(pet_id), result)
     return result
