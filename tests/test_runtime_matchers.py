@@ -14,6 +14,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
 
+from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
@@ -213,7 +214,7 @@ async def test_queued_conversation_releases_cancelled_pending_reservations() -> 
             del user_id
             return False
 
-    requests = InFlightRequestService(Features())
+    requests = InFlightRequestService(Features(), CommandCooldownConfig())
     manager = PromptSessionManager()
     context = manager.start_queued_conversation(
         namespace="test",

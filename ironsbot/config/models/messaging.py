@@ -8,10 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing_extensions import Self
 
 from ironsbot.core.commands import (  # noqa: TC001 - Pydantic resolves aliases
-    NormalizedIntList,
     NormalizedStringList,
 )
 from ironsbot.core.messaging import SendpicBehaviorConfig
+from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
+    OneBotReferenceList,
+)
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
@@ -279,7 +281,7 @@ class BaseMessageAction(BaseModel):
 
 class MessageCommandAction(BaseMessageAction):
     commands: NormalizedStringList = Field(default_factory=list)
-    at_user_ids: NormalizedIntList = Field(default_factory=list)
+    at_user_ids: OneBotReferenceList = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
@@ -294,7 +296,7 @@ class MessageCommandAction(BaseMessageAction):
 
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
-    at_user_ids: NormalizedIntList = Field(default_factory=list)
+    at_user_ids: OneBotReferenceList = Field(default_factory=list)
     hour: int = Field(ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
     day_of_week: str | None = None

@@ -14,6 +14,9 @@ from pydantic import (
 )
 
 from ironsbot.core.commands import NormalizedStringList, string_list
+from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
+    OneBotReferenceList,
+)
 from ironsbot.core.time import normalized_daily_times
 
 if TYPE_CHECKING:
@@ -60,9 +63,7 @@ RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
     "seer.rank.page_refresh.active_start and active_end must be configured together"
 )
 PLAYER_RANK_LOOKUP_TIMEOUT_ERROR = "player lookup total timeout must cover one page"
-TEAM_RESOURCE_TIME_ERROR = (
-    "seer.team_resource.times must contain daily HH:MM times"
-)
+TEAM_RESOURCE_TIME_ERROR = "seer.team_resource.times must contain daily HH:MM times"
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
     "01:15",
     "01:45",
@@ -202,6 +203,7 @@ class PlayerQueryConfig(BaseModel):
     background_refresh: PlayerBackgroundRefreshConfig = Field(
         default_factory=PlayerBackgroundRefreshConfig
     )
+
     @field_validator("sections", mode="before")
     @classmethod
     def coerce_sections(cls, value: object) -> object:
@@ -369,9 +371,7 @@ class RankQueryConfig(BaseModel):
     player_lookup: PlayerRankLookupConfig = Field(
         default_factory=PlayerRankLookupConfig
     )
-    page_refresh: RankPageRefreshConfig = Field(
-        default_factory=RankPageRefreshConfig
-    )
+    page_refresh: RankPageRefreshConfig = Field(default_factory=RankPageRefreshConfig)
 
     @field_validator("peak_subkey", mode="before")
     @classmethod
@@ -425,11 +425,9 @@ class TeamResourceConfig(BaseModel):
     enabled: bool = True
     times: list[str] = Field(default_factory=list)
     commands: NormalizedStringList = Field(default_factory=lambda: ["战队"])
-    subscription_path: SQLitePath = Path(
-        "data/seer/team_resource_subscriptions.sqlite"
-    )
+    subscription_path: SQLitePath = Path("data/seer/team_resource_subscriptions.sqlite")
     default_threshold: int = Field(default=1000, ge=0)
-    default_at_users: NormalizedStringList = Field(default_factory=list)
+    default_at_users: OneBotReferenceList = Field(default_factory=list)
     query_timeout_seconds: int = Field(default=20, gt=0)
     resource_line: str = (
         "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
@@ -440,6 +438,7 @@ class TeamResourceConfig(BaseModel):
     @classmethod
     def normalize_times(cls, value: object) -> object:
         return normalized_daily_times(value, error_message=TEAM_RESOURCE_TIME_ERROR)
+
 
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

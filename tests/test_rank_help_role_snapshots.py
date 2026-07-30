@@ -40,14 +40,14 @@ def _settings() -> Settings:
             superuser_bypass=True,
         )
     )
-    settings.bot.superusers = [3]
+    settings.bot.superusers = ["3"]
     return settings
 
 
 def _rank_command_ids(event: MessageEvent) -> tuple[str, ...]:
     settings = _settings()
     definitions = build_test_plugin_registry(settings)
-    features = FeatureService(settings.features, frozenset(settings.bot.superusers))
+    features = FeatureService(settings.features, settings.superuser_ids)
     catalog = CommandCatalog()
     catalog.load(
         definitions,
@@ -79,7 +79,7 @@ def test_rank_help_command_visibility_role_snapshots() -> None:
 def test_rank_help_group_manager_detail_only_shows_group_setting() -> None:
     settings = _settings()
     definitions = build_test_plugin_registry(settings)
-    features = FeatureService(settings.features, frozenset(settings.bot.superusers))
+    features = FeatureService(settings.features, settings.superuser_ids)
     catalog = CommandCatalog()
     catalog.load(definitions, known_features={feature.value for feature in Feature})
     definition = next(
