@@ -43,12 +43,3 @@ def superuser_help_visible(
         return False
     user_id = getattr(event, "user_id", None)
     return user_id is not None and features.is_superuser(int(user_id))
-
-
-def superuser_only_help_visible(
-    event: Event,
-    *,
-    features: FeatureService,
-) -> bool:
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))

@@ -7,10 +7,12 @@ import asyncio
 import logging
 import time
 from collections import deque
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+from anyio import create_task_group
 
 from ironsbot.core.rank_lookup_context import rank_page_request_timeout
 
@@ -50,7 +52,7 @@ class PlayerRankLookupJob:
 
 
 @dataclass(slots=True)
-class _PageRequest:
+class _PageRequest(Generic[T]):
     lookup_id: str
     title: str
     operation: Callable[[], Awaitable[T]]
@@ -72,7 +74,7 @@ class PlayerRankPageScheduler:
         self._config = config
         self._deadline = time.monotonic() + config.total_timeout_seconds
         self._queue: deque[_PageRequest[Any]] = deque()
-        self._worker: asyncio.Task[None] | None = None
+        self._queue_ready = asyncio.Event()
         self._closed = False
         self._stats: dict[str, _LookupStats] = {}
         self._active_lookup_id: str | None = None
@@ -102,11 +104,7 @@ class PlayerRankPageScheduler:
                 future=future,
             )
         )
-        if self._worker is None or self._worker.done():
-            self._worker = asyncio.create_task(
-                self._run(),
-                name="player-rank-page-scheduler",
-            )
+        self._queue_ready.set()
         return await future
 
     def lookup_stats(self, lookup_id: str) -> _LookupStats:
@@ -118,64 +116,67 @@ class PlayerRankPageScheduler:
             request = self._queue.popleft()
             if not request.future.done():
                 request.future.set_exception(TimeoutError("玩家榜单查询已结束"))
-        if self._worker is not None and not self._worker.done():
-            self._worker.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._worker
+        self._queue_ready.set()
 
-    async def _run(self) -> None:
-        while self._queue and not self._closed:
-            request = self._next_request()
-            if request.future.done():
-                continue
-            if time.monotonic() >= self._deadline:
-                request.future.set_exception(TimeoutError("玩家榜单查询总时间已到"))
-                self._expire_pending_requests()
-                return
+    async def run(self) -> None:
+        """Process page requests for the lifetime of one lookup batch."""
 
-            timeout_token = rank_page_request_timeout.set(
-                self._config.page_timeout_seconds
-            )
-            stats = self._stats.setdefault(request.lookup_id, _LookupStats())
-            stats.page_requests += 1
-            stats.turns += 1
-            try:
-                result = await request.operation()
-            except TimeoutError as error:
-                if request.attempt < self._config.page_retry_count:
-                    request.attempt += 1
-                    stats.retries += 1
-                    self._queue.append(request)
-                    # A slow page never consumes the rest of its board's turn.
-                    # Its retry stays at the tail so another board can progress.
-                    self._end_active_turn()
-                    _LOGGER.info(
-                        "player rank page timed out; retry queued: lookup=%s title=%s "
-                        "attempt=%s",
-                        request.lookup_id,
-                        request.title,
-                        request.attempt,
-                    )
-                else:
-                    request.future.set_exception(error)
-                    _LOGGER.warning(
-                        "player rank page timed out permanently: lookup=%s title=%s "
-                        "attempts=%s",
-                        request.lookup_id,
-                        request.title,
-                        request.attempt + 1,
-                    )
-            except Exception as error:  # noqa: BLE001
-                request.future.set_exception(error)
+        while not self._closed:
+            await self._queue_ready.wait()
+            while self._queue and not self._closed:
+                await self._process_next_request()
+            self._queue_ready.clear()
+
+    async def _process_next_request(self) -> None:
+        request = self._next_request()
+        if request.future.done():
+            return
+        if time.monotonic() >= self._deadline:
+            request.future.set_exception(TimeoutError("玩家榜单查询总时间已到"))
+            self._expire_pending_requests()
+            return
+
+        timeout_token = rank_page_request_timeout.set(self._config.page_timeout_seconds)
+        stats = self._stats.setdefault(request.lookup_id, _LookupStats())
+        stats.page_requests += 1
+        stats.turns += 1
+        try:
+            result = await request.operation()
+        except TimeoutError as error:
+            if request.attempt < self._config.page_retry_count:
+                request.attempt += 1
+                stats.retries += 1
+                self._queue.append(request)
+                # A slow page never consumes the rest of its board's turn.
+                # Its retry stays at the tail so another board can progress.
+                self._end_active_turn()
+                _LOGGER.info(
+                    "player rank page timed out; retry queued: lookup=%s title=%s "
+                    "attempt=%s",
+                    request.lookup_id,
+                    request.title,
+                    request.attempt,
+                )
             else:
-                request.future.set_result(result)
-            finally:
-                rank_page_request_timeout.reset(timeout_token)
+                request.future.set_exception(error)
+                _LOGGER.warning(
+                    "player rank page timed out permanently: lookup=%s title=%s "
+                    "attempts=%s",
+                    request.lookup_id,
+                    request.title,
+                    request.attempt + 1,
+                )
+        except Exception as error:  # noqa: BLE001
+            request.future.set_exception(error)
+        else:
+            request.future.set_result(result)
+        finally:
+            rank_page_request_timeout.reset(timeout_token)
 
-            # Let the lookup continue until it either queues its next page or
-            # completes. This is what makes pages_per_turn a real consecutive
-            # turn instead of merely a queue preference.
-            await asyncio.sleep(0)
+        # Let the lookup continue until it either queues its next page or
+        # completes. This is what makes pages_per_turn a real consecutive
+        # turn instead of merely a queue preference.
+        await asyncio.sleep(0)
 
     def _next_request(self) -> _PageRequest[Any]:
         if (
@@ -250,16 +251,25 @@ async def run_player_rank_lookup_jobs(
         )
         return job.id, result
 
-    tasks = [
-        asyncio.create_task(run_job(job), name=f"player-rank-{job.id}")
-        for job in ordered_jobs
-    ]
+    results: list[tuple[str, RankLookupResult] | BaseException] = []
     try:
-        results = await asyncio.gather(*tasks)
-        return dict(results)
+        async with create_task_group() as task_group:
+            task_group.start_soon(
+                scheduler.run,
+                name="player-rank-page-scheduler",
+            )
+            try:
+                results = await asyncio.gather(
+                    *(run_job(job) for job in ordered_jobs),
+                    return_exceptions=True,
+                )
+            finally:
+                await scheduler.close()
+        successful_results: list[tuple[str, RankLookupResult]] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+            successful_results.append(result)
+        return dict(successful_results)
     finally:
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await scheduler.close()
         _CURRENT_SCHEDULER.reset(token)
