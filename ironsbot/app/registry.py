@@ -113,6 +113,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
     from ironsbot.plugins.bilibili.delivery import build_dynamic_message
     from ironsbot.plugins.help.hint import install as install_help_hint
+    from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.messaging.meeting import install as install_meeting
     from ironsbot.plugins.messaging.priority import install as install_admin_priority
@@ -275,6 +276,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         PluginDefinition(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
+        ),
+        PluginDefinition(
+            id="conversation_blacklist",
+            install=partial(install_blacklist, features=features),
         ),
         PluginDefinition(
             id="admin_priority",
