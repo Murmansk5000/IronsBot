@@ -32,7 +32,6 @@ from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_COMMANDS_KEY,
     PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY,
     PLAYER_PEAK_KEY,
-    cached_player_detail_message,
     is_player_detail_exit,
     plan_player_detail_prompt,
     resolve_player_detail_reply,
@@ -40,6 +39,7 @@ from ironsbot.services.seer.player_query import (
 from ironsbot.services.seer.player_service import PlayerService  # noqa: TC001
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
+    execute_player_shortcut,
     player_shortcut_semantic_request,
 )
 
@@ -113,23 +113,19 @@ async def handle_player_detail_reply(
     if detail_request is None:
         raise FinishedException
 
-    message = cached_player_detail_message(state, detail_request.key)
-    if not message:
-        kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
-        if _is_detail_inflight(service, player_id, kind):
-            await send_event_reply(
-                matcher,
-                event,
-                _inflight_detail_message(detail_request.label),
-            )
+    kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
 
-        reply = await service.shortcut(
-            PlayerShortcutCommand(kind=kind, player_id=player_id),
-            event.user_id,
-            group_id=event_group_id(event),
-        )
-        message = _reply_text(reply.leading_text, reply.text, reply.image_error)
-        state[detail_request.key] = message
+    async def send_status(message: str) -> None:
+        await send_event_reply(matcher, event, message)
+
+    reply = await execute_player_shortcut(
+        service,
+        PlayerShortcutCommand(kind=kind, player_id=player_id),
+        event.user_id,
+        group_id=event_group_id(event),
+        send_status=send_status,
+    )
+    message = _reply_text(reply.leading_text, reply.text, reply.image_error)
 
     await _continue_player_detail_conversation(
         service,
@@ -253,24 +249,6 @@ def _query_reply_message(reply: QueryReply) -> str | Message:
     elif reply.image_error:
         message += MessageSegment.text(reply.image_error)
     return message
-
-
-def _is_detail_inflight(
-    service: PlayerService,
-    player_id: int,
-    kind: PlayerShortcutKind,
-) -> bool:
-    has_inflight = getattr(service, "has_inflight_detail", None)
-    if not callable(has_inflight):
-        return False
-    return bool(has_inflight(player_id, kind))
-
-
-def _inflight_detail_message(label: str) -> str:
-    return (
-        f"⏳ {label}正在查询，完成后会直接发送结果。\n"
-        "数据较多时可能需要排队，请稍候。"
-    )
 
 
 def _resolve_player_detail_extension_action(

@@ -137,10 +137,10 @@ def test_shortcut_without_default_shows_explicit_player_id_help(
 ) -> None:
     service = SimpleNamespace(
         default_player_id=lambda _user_id: None,
-        shortcut=AsyncMock(),
+        shortcut=AsyncMock(return_value=QueryReply(text="尚未绑定米米号。")),
     )
-    prompt = AsyncMock()
-    monkeypatch.setattr(player_shortcuts, "prompt_for_unbound_player_id", prompt)
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player_shortcuts, "finish_event_reply", finish_reply)
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
         cast("Any", object()),
@@ -161,8 +161,8 @@ def test_shortcut_without_default_shows_explicit_player_id_help(
         )
     )
 
-    prompt.assert_awaited_once()
-    service.shortcut.assert_not_awaited()
+    service.shortcut.assert_awaited_once()
+    finish_reply.assert_awaited_once()
 
 
 def test_shortcut_sends_loading_reply_before_query(

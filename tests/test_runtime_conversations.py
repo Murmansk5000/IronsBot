@@ -1,3 +1,5 @@
+from typing import get_type_hints
+
 from ironsbot.runtime.conversations import (
     command_reply_check,
     event_conversation_session_id,
@@ -59,5 +61,7 @@ def test_prompt_session_rule_resolves_event_annotation_at_runtime() -> None:
     version = manager.acquire("player-detail")
 
     rule = manager.make_rule("player-detail", version, lambda _event: True)
+    check = next(iter(rule.checkers)).call
 
     assert rule.checkers
+    assert "event" in get_type_hints(check)
