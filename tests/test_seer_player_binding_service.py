@@ -12,6 +12,7 @@ from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
 from ironsbot.services.seer.player_binding import player_binding_offer_message
+from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -85,10 +86,7 @@ def test_shortcut_without_a_default_player_explains_player_id_lookup() -> None:
         )
     )
 
-    assert reply.text == (
-        "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
-        "查询未绑定的米米号时，需要在查询指令后加上米米号。"
-    )
+    assert reply.text == unbound_player_shortcut_message()
 
 
 def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
