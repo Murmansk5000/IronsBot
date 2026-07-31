@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
 import nonebot
@@ -32,11 +32,7 @@ CACHED_HINT_SEGMENT_START_RANK = CACHED_HINT_SEGMENT_START_INDEX + 1
 CACHED_HINT_SEGMENT_COUNT = (
     CACHED_HINT_SEGMENT_END_INDEX - CACHED_HINT_SEGMENT_START_INDEX
 )
-CACHED_GAP_TARGET_SCORE = 10000
-CACHED_GAP_UPPER_SCORE = 10001
-CACHED_GAP_LOWER_SCORE = 9970
-CACHED_GAP_UPPER_RANK = 58
-CACHED_GAP_LOWER_RANK = 59
+REFRESHED_CANDIDATE_RANK = 59
 ONLINE_GAP_UPPER_SCORE = 200
 ONLINE_GAP_UPPER_START_RANK = 11
 ONLINE_GAP_UPPER_END_RANK = 20
@@ -99,12 +95,6 @@ class RankPageSummary:
     fetched_at: float = 0.0
     is_stale: bool = False
     is_partial: bool = False
-
-
-@dataclass(frozen=True)
-class CachedRankPageResult:
-    fetched_at: float
-    items: list[RankItem] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -776,7 +766,7 @@ def test_fetch_rank_score_segment_uses_cached_score_facts_as_hint(
     assert [item.id for item in result.items] == [SEGMENT_START_INDEX]
 
 
-def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_score(
+def test_fetch_rank_score_segment_refreshes_cached_candidate_page(
     monkeypatch: MonkeyPatch,
 ) -> None:
     rank, cache = _build_rank(
@@ -796,8 +786,8 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
                 end_index=59,
                 item_count=10,
                 expected_count=10,
-                min_score=CACHED_GAP_LOWER_SCORE,
-                max_score=CACHED_GAP_UPPER_SCORE,
+                min_score=9970,
+                max_score=10001,
                 fetched_at=FETCHED_AT,
                 is_stale=False,
                 is_partial=False,
@@ -805,11 +795,25 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
         ],
     )
     monkeypatch.setattr(cache, "score_indexes", lambda **_: [])
-    monkeypatch.setattr(
-        cache,
-        "page",
-        lambda **_: CachedRankPageResult(
-            fetched_at=FETCHED_AT,
+
+    async def unexpected_fetch_rank_item(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError
+
+    requested_pages: list[tuple[int, int, bool]] = []
+
+    async def fresh_fetch_rank_page_result(
+        _service: RankService,
+        _game: object,
+        *,
+        key: int,
+        sub_key: int,
+        start: int,
+        end: int,
+        use_cache: bool = False,
+    ) -> RankPageResult:
+        _ = key, sub_key
+        requested_pages.append((start, end, use_cache))
+        return RankPageResult(
             items=[
                 RankItem(id=1000 + index, nick=f"Player{index}", score=score)
                 for index, score in enumerate(
@@ -821,29 +825,20 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
                         10040,
                         10030,
                         10020,
-                        CACHED_GAP_UPPER_SCORE,
-                        CACHED_GAP_LOWER_SCORE,
-                        9960,
+                        10001,
+                        10000,
+                        9970,
                     ]
                 )
             ],
-        ),
-    )
-
-    async def unexpected_fetch_rank_item(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError
-
-    async def unexpected_fetch_rank_page_result(
-        *_args: object,
-        **_kwargs: object,
-    ) -> None:
-        raise AssertionError
+            fetched_at=FETCHED_AT,
+        )
 
     monkeypatch.setattr(RankService, "fetch_item", unexpected_fetch_rank_item)
     monkeypatch.setattr(
         RankService,
         "fetch_page_result",
-        unexpected_fetch_rank_page_result,
+        fresh_fetch_rank_page_result,
     )
 
     result = asyncio.run(
@@ -853,21 +848,16 @@ def test_fetch_rank_score_segment_uses_complete_cached_page_to_prove_missing_sco
             score_name="score",
             key=240,
             sub_key=1,
-            target_score=CACHED_GAP_TARGET_SCORE,
+            target_score=10000,
         )
     )
 
-    assert result.items == []
-    assert result.boundary_score == CACHED_GAP_LOWER_SCORE
+    assert requested_pages == [(50, 59, False)]
+    assert [item.id for item in result.items] == [1008]
+    assert result.start_rank == REFRESHED_CANDIDATE_RANK
+    assert result.end_rank == REFRESHED_CANDIDATE_RANK
+    assert result.total_count == 1
     assert result.fetched_at == FETCHED_AT
-    assert result.higher_gap is not None
-    assert result.higher_gap.score == CACHED_GAP_UPPER_SCORE
-    assert result.higher_gap.start_rank == CACHED_GAP_UPPER_RANK
-    assert [item.id for item in result.higher_gap.items] == [1007]
-    assert result.lower_gap is not None
-    assert result.lower_gap.score == CACHED_GAP_LOWER_SCORE
-    assert result.lower_gap.start_rank == CACHED_GAP_LOWER_RANK
-    assert [item.id for item in result.lower_gap.items] == [1008]
 
 
 def test_fetch_rank_score_segment_proves_missing_score_from_binary_gap(
