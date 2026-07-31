@@ -167,6 +167,7 @@ ironsbot/custom_plugins/bilibili_monitor/last_dynamic_time.txt
 /.pytest-plan-audit*/
 
 # Local scratch files and generated inspection assets
+/抓包/
 /.tmp/
 /tmp/
 /temp/
