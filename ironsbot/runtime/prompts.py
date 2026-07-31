@@ -45,6 +45,7 @@ class PromptItem(NamedTuple, Generic[T]):
     value: T
     is_sub_prompt: bool = False
     semantic_target: SemanticTarget | None = None
+    key: str | None = None
 
 
 @dataclass
@@ -74,7 +75,24 @@ class Prompt(Generic[T]):
         except IndexError:
             return None
 
+    def get_item_by_input(self, value: str) -> PromptItem[T] | None:
+        """Resolve either a normal numeric choice or an explicitly keyed choice."""
+        if any(item.key is not None for item in self.items):
+            return next((item for item in self.items if item.key == value), None)
+        return self.get_item(int(value)) if value.isdigit() else None
+
     def build_message(self) -> str:
+        if any(item.key is not None for item in self.items):
+            lines = [self.title.rstrip()]
+            for item in self.items:
+                key = item.key or "?"
+                indent = "   " if item.is_sub_prompt else ""
+                text = f"{indent}{key}. {item.name}"
+                if item.desc:
+                    text += f"（{item.desc}）"
+                lines.append(text)
+            lines.append("\n输入编号查看详情 · 输入 0 退出")
+            return "\n".join(lines)
         return format_selection_menu(
             title=self.title.rstrip(),
             items=tuple(
@@ -125,24 +143,27 @@ async def _invalidate_prompt_on_command(matcher: Matcher, event: Event) -> None:
         prompt_sessions.invalidate(event.get_session_id())
 
 
-async def enter_prompt(
+async def enter_prompt(  # noqa: PLR0913
     matcher: Matcher,
     event: Event,
     state: T_State,
     prompt: Prompt[Any],
     resolver: PromptResolver,
+    input_check: Callable[[Event], bool] | None = None,
 ) -> None:
     """发送 Prompt 并进入选择循环（替代 ``matcher.got``）。"""
     state[PROMPT_STATE_KEY] = prompt
     session_id = event.get_session_id()
     prompt_sessions = get_prompt_session_manager(matcher)
     version = prompt_sessions.acquire(session_id)
-    rule = prompt_sessions.make_rule(session_id, version, _is_digit_input)
+    input_check = input_check or _is_digit_input
+    rule = prompt_sessions.make_rule(session_id, version, input_check)
 
     handler = _create_selection_handler(
         resolver,
         session_id,
         version,
+        input_check,
     )
 
     await _enter_prompt_loop(
@@ -152,8 +173,7 @@ async def enter_prompt(
         prompt=prompt.build_event_message(event),
         queue_namespace="selection_prompt",
         queue_reply_check=lambda next_event: (
-            next_event.get_session_id() == session_id
-            and _is_digit_input(next_event)
+            next_event.get_session_id() == session_id and input_check(next_event)
         ),
         queue_semantic_request_resolver=_prompt_semantic_request,
     )
@@ -167,9 +187,7 @@ def _prompt_semantic_request(
     if not isinstance(prompt, Prompt):
         return None
     text = event.get_plaintext().strip()
-    if not text.isdigit():
-        return None
-    item = prompt.get_item(int(text))
+    item = prompt.get_item_by_input(text)
     if item is None:
         return None
     target = item.semantic_target or SemanticTarget(
@@ -191,6 +209,7 @@ def _create_selection_handler(
     resolver: PromptResolver,
     session_id: str,
     version: int,
+    input_check: Callable[[Event], bool],
 ) -> Callable[..., Awaitable[None]]:
     """创建选择循环 handler（从 event 读取输入，不依赖 got）。"""
 
@@ -207,11 +226,8 @@ def _create_selection_handler(
         if key_text == "0":
             await matcher.finish("❌已退出查询")
 
-        if not key_text.isdigit():
-            raise FinishedException
-
         prompt = cast("Prompt[Any]", state[PROMPT_STATE_KEY])
-        if (item := prompt.get_item(int(key_text))) is None:
+        if (item := prompt.get_item_by_input(key_text)) is None:
             await matcher.finish("⚠️序号超出范围，已退出选择")
 
         if len(signature(resolver).parameters) >= RESOLVER_WITH_EVENT_PARAM_COUNT:
@@ -223,7 +239,7 @@ def _create_selection_handler(
         rule = get_prompt_session_manager(matcher).make_rule(
             session_id,
             version,
-            _is_digit_input,
+            input_check,
         )
         await reject_with_rule(matcher, rule)
 
