@@ -121,7 +121,7 @@ def build_test_plugin_registry(
                 data_queries=SimpleNamespace(
                     weekly_preview=_noop_query,
                     data_version=_noop_query,
-                    new_achievements=_noop_query,
+                    new_content_snapshot=lambda: None,
                     season_countdown=_noop_query,
                 ),
                 countermark_rank=SimpleNamespace(

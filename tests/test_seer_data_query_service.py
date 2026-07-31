@@ -13,16 +13,14 @@ from ironsbot.services.seer.images import ImageSourceError
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ironsbot.services.seer.achievement_history import (
-        AchievementHistoryService,
-    )
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.new_content import NewContentService
 
 
-class FakeAchievementHistory:
-    async def new_achievements(self) -> str:
-        return "new achievements"
+class FakeNewContent:
+    def snapshot(self) -> object:
+        return object()
 
 
 class FakeData:
@@ -59,7 +57,7 @@ def _service(value: Any, *, fail_url: bool = False) -> SeerDataQueryService:
         cast("SeerDataAccess", FakeData(value)),
         cast("SeerImageSource", FakeImages(fail_url=fail_url)),
         SeasonCountdownConfig(),
-        cast("AchievementHistoryService", FakeAchievementHistory()),
+        cast("NewContentService", FakeNewContent()),
     )
 
 
@@ -85,10 +83,3 @@ async def test_weekly_preview_falls_back_to_packaged_image() -> None:
     )
 
     assert await service.weekly_preview() == b"fallback"
-
-
-@pytest.mark.asyncio
-async def test_new_achievements_delegates_to_history_service() -> None:
-    service = _service(None)
-
-    assert await service.new_achievements() == "new achievements"
