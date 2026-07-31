@@ -205,7 +205,7 @@ def test_help_hint_text_mentions_help_command() -> None:
     assert (
         DIRECT_COMMAND_HELP_HINT_TEXT
         == "别 @ 我，@ 我不会执行任何指令。"
-        "把 @ 删掉后，把刚才那句原样再发一次；不会用就直接发送‘帮助’。"
+        "删除 @ 后直接发送需要使用的指令；不会用就发送‘帮助’。"
     )
 
 

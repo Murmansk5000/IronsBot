@@ -5,6 +5,16 @@ from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
+    NEW_ACHIEVEMENTS_COMMANDS,
+    NEW_AUTOCARD_CARDS_COMMANDS,
+    NEW_AUTOCARD_ROLES_COMMANDS,
+    NEW_CONTENT_COMMANDS,
+    NEW_EQUIPS_COMMANDS,
+    NEW_MINTMARKS_COMMANDS,
+    NEW_MOUNTS_COMMANDS,
+    NEW_PETS_COMMANDS,
+    NEW_SKINS_COMMANDS,
+    NEW_SUITS_COMMANDS,
 )
 from ironsbot.services.seer.rank_catalog import rank_command_names
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, LOCAL_RANKS
@@ -178,6 +188,66 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     DATA_QUERY_HELP_EXAMPLES,
                     "查询赛尔数据和赛季信息",
                     {"show_in_poke": True},
+                ),
+                (
+                    "seer.data.new_content",
+                    NEW_CONTENT_COMMANDS,
+                    "查看本周官方新增内容分类",
+                    {},
+                ),
+                (
+                    "seer.data.new_pet",
+                    NEW_PETS_COMMANDS,
+                    "查看本周新增精灵",
+                    {"features_all": ("seer_data", "seer_pet")},
+                ),
+                (
+                    "seer.data.new_skin",
+                    NEW_SKINS_COMMANDS,
+                    "查看本周新增皮肤及所属精灵",
+                    {"features_all": ("seer_data", "seer_pet")},
+                ),
+                (
+                    "seer.data.new_mintmark",
+                    NEW_MINTMARKS_COMMANDS,
+                    "查看本周新增刻印",
+                    {"features_all": ("seer_data", "seer_mintmark")},
+                ),
+                (
+                    "seer.data.new_suit",
+                    NEW_SUITS_COMMANDS,
+                    "查看本周新增套装",
+                    {"features_all": ("seer_data", "seer_equipment")},
+                ),
+                (
+                    "seer.data.new_equip",
+                    NEW_EQUIPS_COMMANDS,
+                    "查看本周新增部件",
+                    {"features_all": ("seer_data", "seer_equipment")},
+                ),
+                (
+                    "seer.data.new_mount",
+                    NEW_MOUNTS_COMMANDS,
+                    "查看本周新增座驾",
+                    {"features_all": ("seer_data", "seer_equipment")},
+                ),
+                (
+                    "seer.data.new_achievement",
+                    NEW_ACHIEVEMENTS_COMMANDS,
+                    "查看本周新增成就及关联称号",
+                    {},
+                ),
+                (
+                    "seer.data.new_autocard_card",
+                    NEW_AUTOCARD_CARDS_COMMANDS,
+                    "查看本周新增群星牌",
+                    {"features_all": ("seer_data", "seer_autocard")},
+                ),
+                (
+                    "seer.data.new_autocard_role",
+                    NEW_AUTOCARD_ROLES_COMMANDS,
+                    "查看本周新增群星牌赛尔角色",
+                    {"features_all": ("seer_data", "seer_autocard")},
                 ),
             ),
         ),

@@ -141,6 +141,39 @@ def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
     )
 
 
+def test_catalog_requires_all_declared_features() -> None:
+    catalog = _catalog(
+        CommandDescriptor(
+            id="new_pet",
+            plugin_id="example",
+            section="新增内容",
+            examples=("新增精灵",),
+            description="查看新增精灵",
+            features_all=("example_feature", "fallback_feature"),
+        )
+    )
+    features = FakeFeatures(
+        group_features={
+            100: {"example_feature"},
+            101: {"example_feature", "fallback_feature"},
+        },
+        private_features={1: {"example_feature", "fallback_feature"}},
+        superusers=set(),
+    )
+
+    assert not catalog.available_for_context(
+        CommandContext(user_id=1, group_id=100), features
+    )
+    assert catalog.available_for_context(
+        CommandContext(user_id=1, group_id=101),
+        features,
+    )
+    assert catalog.available_for_context(
+        CommandContext(user_id=1, group_id=None),
+        features,
+    )
+
+
 def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
     catalog = _catalog(
         CommandDescriptor(
