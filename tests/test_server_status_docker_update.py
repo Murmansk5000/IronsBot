@@ -32,6 +32,7 @@ from ironsbot.integrations.docker.client import (
 from ironsbot.services.operations.docker_formatting import (
     format_docker_image_check_reply,
     format_docker_image_created,
+    format_docker_update_handoff_reply,
     format_docker_update_reply,
 )
 from ironsbot.services.operations.docker_models import (
@@ -42,6 +43,7 @@ from ironsbot.services.operations.docker_models import (
     DockerUpdateResult,
     WatchtowerUpdateOptions,
 )
+from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -106,6 +108,26 @@ def test_format_docker_update_success_reply() -> None:
     assert "oldcommitabc old change" in reply
     assert "newcommitabc new change" in reply
     assert "1234567890ab" not in reply
+
+
+def test_format_docker_update_handoff_reply_confirms_verified_target() -> None:
+    reply = format_docker_update_handoff_reply(
+        container_name="ironsbot",
+        image="murmansk5000/ironsbot:latest",
+        result=DockerUpdateResult(
+            ok=True,
+            updater_container_id="watchtower-id",
+            current_image_id="sha256:old-image-id",
+            target_image_id="sha256:new-image-id",
+            target_image_created="2026-07-04T18:00:00.987654321Z",
+            target_image_commit="newcommitabc new change",
+        ),
+    )
+
+    assert "Docker 镜像已更新完成" in reply
+    assert "Docker 自更新任务已启动" not in reply
+    assert "new-image-id" in reply
+    assert "newcommitabc new change" in reply
 
 
 def test_format_docker_update_hides_bare_commit_hash() -> None:
@@ -307,6 +329,9 @@ def test_create_watchtower_container_sets_docker_api_version() -> None:
     assert container_id == "watchtower-container-id"
     assert client.request_json is not None
     assert client.request_json["Env"] == ["DOCKER_API_VERSION=1.40"]
+    assert client.request_json["Cmd"] == ["--run-once", "--cleanup", "ironsbot"]
+    host_config = cast("dict[str, object]", client.request_json["HostConfig"])
+    assert host_config["AutoRemove"] is False
 
 
 def test_create_watchtower_container_passes_private_registry_credentials() -> None:
@@ -384,6 +409,88 @@ def test_docker_update_service_passes_private_registry_credentials() -> None:
         username="owner",
         token="registry-token",
     )
+
+
+def test_docker_update_service_verifies_target_image_before_cleanup() -> None:
+    class FakeDocker:
+        checked: tuple[str, str] | None = None
+        removed: str | None = None
+
+        async def socket_exists(self, _socket_path: str) -> bool:
+            return True
+
+        async def container_uses_image(
+            self,
+            *,
+            container_name: str,
+            expected_image_id: str,
+            socket_path: str,
+            timeout_seconds: float,
+        ) -> bool:
+            assert socket_path == "/var/run/docker.sock"
+            assert timeout_seconds > 0
+            self.checked = (container_name, expected_image_id)
+            return True
+
+        async def remove_container(
+            self,
+            *,
+            container_id: str,
+            socket_path: str,
+            timeout_seconds: float,
+        ) -> None:
+            assert socket_path == "/var/run/docker.sock"
+            assert timeout_seconds > 0
+            self.removed = container_id
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    matched = asyncio.run(
+        service.confirm_update_handoff(
+            expected_image_id="sha256:target",
+            updater_container_id="watchtower-id",
+        )
+    )
+
+    assert matched is True
+    assert docker.checked == ("ironsbot", "sha256:target")
+    assert docker.removed == "watchtower-id"
+
+
+def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> None:
+    class FakeDocker:
+        removed = False
+
+        async def socket_exists(self, _socket_path: str) -> bool:
+            return True
+
+        async def container_uses_image(self, **_kwargs: object) -> bool:
+            return False
+
+        async def remove_container(self, **_kwargs: object) -> None:
+            self.removed = True
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    matched = asyncio.run(
+        service.confirm_update_handoff(
+            expected_image_id="sha256:target",
+            updater_container_id="watchtower-id",
+        )
+    )
+
+    assert matched is False
+    assert docker.removed is False
 
 
 def test_docker_update_service_checks_without_starting_an_update() -> None:
@@ -643,3 +750,35 @@ def test_docker_service_started_update_skips_extra_restart(
 
     assert restart_action == "none"
     assert "Docker 自更新任务已启动" in message
+
+
+def test_manual_update_records_expected_target_for_recreated_container(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
+        return "ironsbot", DockerUpdateResult(
+            ok=True,
+            updater_container_id="watchtower-id",
+            current_image_id="sha256:old",
+            target_image_id="sha256:target",
+        )
+
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
+    store = DockerStartupPreflightStore(tmp_path / "docker-preflight.json")
+    service = DockerUpdateService(
+        DockerUpdateConfig(check_on_restart=True),
+        DockerClient(),
+        noop_restart_process,
+        handoff_store=store,
+        instance_id="old-container",
+    )
+
+    _message, restart_action = asyncio.run(service.prepare_manual_restart())
+
+    record = store.read()
+    assert restart_action == "none"
+    assert record is not None
+    assert record.source_instance_id == "old-container"
+    assert record.result.target_image_id == "sha256:target"
+    assert record.result.updater_container_id == "watchtower-id"

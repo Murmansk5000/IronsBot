@@ -45,24 +45,34 @@ def server_status_commands() -> tuple[CommandDescriptor, ...]:
                         "access": (CommandAccess(audience="superuser"),),
                     },
                 ),
-                (
-                    "server_status.restart",
-                    BOT_RESTART_COMMANDS,
-                    "重启机器人进程",
-                    {"access": (CommandAccess(audience="superuser"),)},
-                ),
-                (
-                    "server_status.image_update",
-                    DOCKER_UPDATE_COMMANDS,
-                    "检查镜像并重启机器人",
-                    {"access": (CommandAccess(audience="superuser"),)},
-                ),
-                (
-                    "server_status.image_check",
-                    DOCKER_CHECK_UPDATE_COMMANDS,
-                    "只检查远端镜像，不拉取或重启机器人",
-                    {"access": (CommandAccess(audience="superuser"),)},
-                ),
+            ),
+        ),
+    )
+
+
+def docker_update_commands() -> tuple[CommandDescriptor, ...]:
+    return commands_from_rows(
+        "docker_update",
+        "超级管理员",
+        None,
+        (
+            (
+                "docker_update.restart",
+                BOT_RESTART_COMMANDS,
+                "重启机器人进程",
+                {"access": (CommandAccess(audience="superuser"),)},
+            ),
+            (
+                "docker_update.image_update",
+                DOCKER_UPDATE_COMMANDS,
+                "检查镜像并重启机器人",
+                {"access": (CommandAccess(audience="superuser"),)},
+            ),
+            (
+                "docker_update.image_check",
+                DOCKER_CHECK_UPDATE_COMMANDS,
+                "只检查远端镜像，不拉取或重启机器人",
+                {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
     )
