@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.team.resource import (
+    TeamResourcePrivateSubscription,
+    TeamResourcePrivateSubscriptionUpdate,
     TeamResourceSubscription,
     TeamResourceSubscriptionPrompt,
     TeamResourceSubscriptionUpdate,
@@ -47,7 +49,27 @@ SCHEMA = (
     )
     """,
 )
-MIGRATIONS = (SqliteMigration(1, SCHEMA),)
+PRIVATE_SUBSCRIPTION_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS team_resource_private_subscriptions (
+        user_id INTEGER NOT NULL,
+        team_id INTEGER NOT NULL,
+        team_name TEXT NOT NULL DEFAULT '',
+        threshold INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, team_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_team_resource_private_subscriptions_user
+    ON team_resource_private_subscriptions (user_id, team_id)
+    """,
+)
+MIGRATIONS = (
+    SqliteMigration(1, SCHEMA),
+    SqliteMigration(2, PRIVATE_SUBSCRIPTION_SCHEMA),
+)
 
 
 class TeamResourceSubscriptionStore:
@@ -106,6 +128,54 @@ class TeamResourceSubscriptionStore:
                     at_text,
                     update.operator_id,
                     update.operator_id,
+                    now,
+                    now,
+                ),
+            )
+
+    def list_all_private(self) -> list[TeamResourcePrivateSubscription]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT user_id, team_id, team_name, threshold, created_at, updated_at
+                FROM team_resource_private_subscriptions
+                ORDER BY user_id, team_id
+                """
+            ).fetchall()
+        return [_row_to_private_subscription(row) for row in rows]
+
+    def list_user(self, user_id: int) -> list[TeamResourcePrivateSubscription]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT user_id, team_id, team_name, threshold, created_at, updated_at
+                FROM team_resource_private_subscriptions
+                WHERE user_id = ?
+                ORDER BY team_id
+                """,
+                (user_id,),
+            ).fetchall()
+        return [_row_to_private_subscription(row) for row in rows]
+
+    def upsert_private(self, update: TeamResourcePrivateSubscriptionUpdate) -> None:
+        now = _now_text()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO team_resource_private_subscriptions (
+                    user_id, team_id, team_name, threshold, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, team_id) DO UPDATE SET
+                    team_name = excluded.team_name,
+                    threshold = excluded.threshold,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    update.user_id,
+                    update.team_id,
+                    update.team_name.strip(),
+                    update.threshold,
                     now,
                     now,
                 ),
@@ -206,6 +276,36 @@ class TeamResourceSubscriptionStore:
             )
             return cursor.rowcount > 0
 
+    def update_private_team_name(
+        self,
+        *,
+        user_id: int,
+        team_id: int,
+        team_name: str,
+    ) -> None:
+        if not team_name.strip():
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE team_resource_private_subscriptions
+                SET team_name = ?, updated_at = ?
+                WHERE user_id = ? AND team_id = ?
+                """,
+                (team_name.strip(), _now_text(), user_id, team_id),
+            )
+
+    def delete_private(self, *, user_id: int, team_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM team_resource_private_subscriptions
+                WHERE user_id = ? AND team_id = ?
+                """,
+                (user_id, team_id),
+            )
+            return cursor.rowcount > 0
+
     def _connect(self):
         return SqliteDatabase(
             self.path,
@@ -225,6 +325,19 @@ def _row_to_subscription(
         updated_by=int(row[6]),
         created_at=str(row[7]),
         updated_at=str(row[8]),
+    )
+
+
+def _row_to_private_subscription(
+    row: tuple[Any, ...],
+) -> TeamResourcePrivateSubscription:
+    return TeamResourcePrivateSubscription(
+        user_id=int(row[0]),
+        team_id=int(row[1]),
+        team_name=str(row[2] or ""),
+        threshold=int(row[3]),
+        created_at=str(row[4]),
+        updated_at=str(row[5]),
     )
 
 
