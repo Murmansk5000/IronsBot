@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.runtime.matchers import CommandPolicy
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler
@@ -47,7 +48,10 @@ def install(group: SeerMatcherGroup) -> None:
     )
     for kind, command_id, prefixes, suffix, prompt_title in commands:
         matcher = group.on_message(
-            policy=CommandPolicy.command(command_id),
+            policy=CommandPolicy.command(
+                command_id,
+                help_ids=("seer.equipment.query",),
+            ),
             rule=seer_feature_rule(group.features, "seer_equipment")
             & startswith_or_endswith(prefixes, suffixes=suffix)
             & not_rank_query
@@ -59,5 +63,6 @@ def install(group: SeerMatcherGroup) -> None:
                 partial(service.search, kind),
                 partial(service.select, kind),
                 prompt_title,
+                ActionDefinition(command_id, f"{kind}查询"),
             )
         )

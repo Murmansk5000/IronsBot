@@ -224,7 +224,11 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
 
 
 @pytest.mark.asyncio
-async def test_peak_vote_snapshots_pets_before_headless_requests() -> None:
+async def test_peak_vote_snapshots_pets_before_headless_requests(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    current_time = datetime(2026, 7, 20, 19, 0, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
     data = FakeData()
     data.query_result = (
         SimpleNamespace(

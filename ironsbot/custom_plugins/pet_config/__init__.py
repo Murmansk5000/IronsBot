@@ -17,6 +17,7 @@ from ironsbot.runtime.feature_policy import (
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition
 from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.semantic_requests import ActionDefinition
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -54,7 +55,7 @@ def plugin_definition(
                     section="查询",
                     examples=("雷伊配置", "配置雷伊", "4923配置"),
                     description="查询已收录的精灵配置图",
-                    feature="pet_config",
+                    features_any=("pet_config",),
                     show_in_poke=True,
                 ),
             )
@@ -98,7 +99,7 @@ def install(
     )
 
     matcher = registry.on_message(
-        policy=CommandPolicy.command("pet_config"),
+        policy=CommandPolicy.command("pet_config", help_ids=("pet_config.query",)),
         rule=feature_rule(features, Feature.PET_CONFIG.value)
         & startswith_or_endswith(
             prefixes=("精灵配置", "配置"),
@@ -115,5 +116,6 @@ def install(
             service.search,
             service.select,
             "请问你想查询哪只精灵的配置？",
+            ActionDefinition("pet_config", "精灵配置查询"),
         )
     )

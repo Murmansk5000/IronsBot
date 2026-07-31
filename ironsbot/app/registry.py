@@ -58,7 +58,12 @@ class PluginRegistryError(ValueError):
     pass
 
 
-OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
+OPTIONAL_PRIVATE_FEATURES = frozenset(
+    {
+        Feature.LUCKY_SKIN_WINDOW,
+        Feature.PLAYER_LINEUP_PRIVATE,
+    }
+)
 
 
 def build_plugin_registry(  # noqa: PLR0915 - declarative registry
