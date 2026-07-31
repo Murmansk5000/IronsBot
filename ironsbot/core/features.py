@@ -39,6 +39,7 @@ class Feature(str, Enum):
     FIRE_MANUAL_AD = "fire_manual_ad"
     HELP = "help"
     IMAGE = "image"
+    LUCKY_SKIN_WINDOW = "lucky_skin_window"
     MEETING = "meeting"
     PET_CONFIG = "pet_config"
     PLAYER_LINEUP_PRIVATE = "player_lineup_private"

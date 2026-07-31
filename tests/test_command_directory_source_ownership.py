@@ -6,6 +6,7 @@ from ironsbot.app.command_directory.plugins import (
     activity_commands,
     bilibili_commands,
 )
+from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.plugins.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
@@ -27,6 +28,9 @@ from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
+)
+from ironsbot.services.seer.data_query_commands import (
+    DATA_QUERY_HELP_EXAMPLES,
 )
 
 
@@ -74,3 +78,9 @@ def test_operation_examples_use_matcher_command_sources() -> None:
     assert sync["db_sync.force_update"].examples == tuple(
         f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS
     )
+
+
+def test_data_query_examples_use_matcher_command_sources() -> None:
+    seer = _by_id(seer_query_commands())
+
+    assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES
