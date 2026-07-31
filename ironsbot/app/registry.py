@@ -12,6 +12,7 @@ from ironsbot.app.command_directory.dynamic import (
 )
 from ironsbot.app.command_directory.operations import (
     data_sync_commands,
+    docker_update_commands,
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
@@ -311,6 +312,20 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             ),
         ),
         PluginDefinition(
+            id="docker_update",
+            help=HelpEntry(
+                name="镜像维护",
+                description="检查 Docker 镜像、更新镜像或重启机器人",
+                group="admin",
+                order=10,
+                visible=partial(
+                    superuser_help_visible,
+                    features=features,
+                ),
+            ),
+            commands=docker_update_commands(),
+        ),
+        PluginDefinition(
             id="headless_seer",
             hooks=PluginHooks(
                 startup=(("headless_seer", headless.start),),
@@ -465,7 +480,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION}),
             help=HelpEntry(
                 name="战队资源订阅",
-                description="群内订阅战队，并在资源不足时定时提醒指定用户。",
+                description="订阅战队，并在资源不足时定时提醒当前会话。",
                 group="seer",
                 order=50,
                 visible=partial(
@@ -473,7 +488,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     features=features,
                     feature="team_resource_subscription",
                     enabled=config.seer.team_resource.enabled,
-                    group_only=True,
                 ),
             ),
             commands=team_resource_commands(enabled=config.seer.team_resource.enabled),

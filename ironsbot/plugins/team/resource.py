@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageEvent,
+    PrivateMessageEvent,
+)
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 
@@ -22,10 +27,15 @@ def _is_team_resource_query(
     *,
     service: TeamResourceService,
 ) -> bool:
-    return isinstance(event, GroupMessageEvent) and service.matches_query(
+    if isinstance(event, GroupMessageEvent):
+        return service.matches_query(
+            event.get_plaintext(),
+            user_id=event.user_id,
+            group_id=event.group_id,
+        )
+    return isinstance(event, PrivateMessageEvent) and service.matches_private_query(
         event.get_plaintext(),
         user_id=event.user_id,
-        group_id=event.group_id,
     )
 
 
@@ -34,10 +44,13 @@ def _is_team_resource_manage(
     *,
     service: TeamResourceService,
 ) -> bool:
-    return (
-        isinstance(event, GroupMessageEvent)
-        and service.allows(event.user_id, event.group_id)
-        and service.parse_manage(event.get_plaintext()) is not None
+    command = service.parse_manage(event.get_plaintext())
+    if command is None:
+        return False
+    if isinstance(event, GroupMessageEvent):
+        return service.allows(event.user_id, event.group_id)
+    return isinstance(event, PrivateMessageEvent) and service.allows_private(
+        event.user_id
     )
 
 
@@ -57,9 +70,15 @@ def _is_team_resource_prompt_choice(
 
 async def handle_team_resource_manage(
     matcher: Matcher,
-    event: GroupMessageEvent,
+    event: MessageEvent,
     service: TeamResourceService,
 ) -> None:
+    if isinstance(event, PrivateMessageEvent):
+        await _handle_private_team_resource_manage(matcher, event, service)
+        return
+    if not isinstance(event, GroupMessageEvent):
+        await matcher.finish()
+
     command = service.parse_manage(event.get_plaintext())
     if command is None:
         await matcher.finish()
@@ -109,6 +128,41 @@ async def handle_team_resource_manage(
     await finish_event_reply(matcher, event, message)
 
 
+async def _handle_private_team_resource_manage(
+    matcher: Matcher,
+    event: PrivateMessageEvent,
+    service: TeamResourceService,
+) -> None:
+    command = service.parse_manage(event.get_plaintext())
+    if command is None:
+        await matcher.finish()
+
+    if command.action == "list":
+        await finish_event_reply(
+            matcher,
+            event,
+            service.private_subscriptions_message(event.user_id),
+        )
+        return
+
+    team_id = command.team_id
+    if team_id is None:
+        await matcher.finish()
+
+    if command.action == "remove":
+        message = service.remove_private_subscription(
+            user_id=event.user_id,
+            team_id=team_id,
+        )
+    else:
+        message = await service.add_private_subscription(
+            user_id=event.user_id,
+            team_id=team_id,
+            threshold=command.threshold,
+        )
+    await finish_event_reply(matcher, event, message)
+
+
 async def handle_team_resource_prompt_choice(
     matcher: Matcher,
     event: GroupMessageEvent,
@@ -129,15 +183,23 @@ async def handle_team_resource_prompt_choice(
 
 async def handle_team_resource(
     matcher: Matcher,
-    event: GroupMessageEvent,
+    event: MessageEvent,
     service: TeamResourceService,
 ) -> None:
-    messages = await service.query_group_messages(event.group_id)
+    if isinstance(event, GroupMessageEvent):
+        messages = await service.query_group_messages(event.group_id)
+        empty_message = "本群还没有订阅战队。群主/管理员可发送“订阅战队123456”添加。"
+    elif isinstance(event, PrivateMessageEvent):
+        messages = await service.query_private_messages(event.user_id)
+        empty_message = "你还没有订阅战队。可发送“订阅战队123456”添加。"
+    else:
+        await matcher.finish()
+
     if not messages:
         await finish_event_reply(
             matcher,
             event,
-            "本群还没有订阅战队。群主/管理员可发送“订阅战队123456”添加。",
+            empty_message,
         )
         return
     await finish_message_sequence(

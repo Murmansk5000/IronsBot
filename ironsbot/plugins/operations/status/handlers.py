@@ -146,7 +146,7 @@ def install(
         BOT_RESTART_COMMANDS,
         policy=CommandPolicy.command(
             "bot_restart",
-            help_ids=("server_status.restart",),
+            help_ids=("docker_update.restart",),
         ),
         rule=no_reply(),
         permission=SUPERUSER,
@@ -159,7 +159,7 @@ def install(
         DOCKER_UPDATE_COMMANDS,
         policy=CommandPolicy.command(
             "bot_restart",
-            help_ids=("server_status.image_update",),
+            help_ids=("docker_update.image_update",),
         ),
         rule=no_reply(),
         permission=SUPERUSER,
@@ -172,7 +172,7 @@ def install(
         DOCKER_CHECK_UPDATE_COMMANDS,
         policy=CommandPolicy.command(
             "bot_restart",
-            help_ids=("server_status.image_check",),
+            help_ids=("docker_update.image_check",),
         ),
         rule=no_reply(),
         permission=SUPERUSER,

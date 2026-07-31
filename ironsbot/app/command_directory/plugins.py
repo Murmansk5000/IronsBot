@@ -147,40 +147,49 @@ def team_resource_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                 (
                     "team_resource.query",
                     ("战队",),
-                    "查看本群订阅战队的信息和资源",
-                    {"access": (CommandAccess(scope="group"),), "show_in_poke": True},
+                    "查看当前会话订阅战队的信息和资源",
+                    {"show_in_poke": True},
                 ),
             ),
         ),
         *commands_from_rows(
             "team_resource",
-            "本群管理",
+            "订阅管理",
             "team_resource_subscription",
             (
                 (
                     "team_resource.subscribe",
                     ("订阅战队123456",),
-                    "订阅战队资源提醒；可在末尾 @ 提醒对象",
+                    "订阅战队资源提醒；群聊可在末尾 @ 提醒对象",
                     {
-                        "access": (CommandAccess("group", "group_manager"),),
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
                         "show_in_poke": True,
                     },
                 ),
                 (
                     "team_resource.unsubscribe",
                     ("取消订阅战队123456",),
-                    "取消本群指定战队订阅",
+                    "取消当前会话指定战队订阅",
                     {
-                        "access": (CommandAccess("group", "group_manager"),),
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
                         "show_in_poke": True,
                     },
                 ),
                 (
                     "team_resource.list",
                     ("战队订阅",),
-                    "查看和管理本群战队订阅",
+                    "查看和管理当前会话的战队订阅",
                     {
-                        "access": (CommandAccess("group", "group_manager"),),
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
                         "show_in_poke": True,
                     },
                 ),

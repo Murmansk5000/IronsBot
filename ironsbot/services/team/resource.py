@@ -69,6 +69,22 @@ class TeamResourceSubscriptionUpdate(NamedTuple):
     operator_id: int
 
 
+class TeamResourcePrivateSubscription(NamedTuple):
+    user_id: int
+    team_id: int
+    team_name: str
+    threshold: int
+    created_at: str
+    updated_at: str
+
+
+class TeamResourcePrivateSubscriptionUpdate(NamedTuple):
+    user_id: int
+    team_id: int
+    team_name: str
+    threshold: int
+
+
 class TeamResourceSubscriptionPrompt(NamedTuple):
     group_id: int
     team_id: int
@@ -114,6 +130,9 @@ class TeamResourceStore(Protocol):
     def list_all(self) -> list[TeamResourceSubscription]: ...
     def list_group(self, group_id: int) -> list[TeamResourceSubscription]: ...
     def upsert(self, update: TeamResourceSubscriptionUpdate) -> None: ...
+    def list_all_private(self) -> list[TeamResourcePrivateSubscription]: ...
+    def list_user(self, user_id: int) -> list[TeamResourcePrivateSubscription]: ...
+    def upsert_private(self, update: TeamResourcePrivateSubscriptionUpdate) -> None: ...
     def has_prompted_group(self, group_id: int) -> bool: ...
     def get_pending_prompt(
         self,
@@ -142,6 +161,14 @@ class TeamResourceStore(Protocol):
         team_name: str,
     ) -> None: ...
     def delete(self, *, group_id: int, team_id: int) -> bool: ...
+    def update_private_team_name(
+        self,
+        *,
+        user_id: int,
+        team_id: int,
+        team_name: str,
+    ) -> None: ...
+    def delete_private(self, *, user_id: int, team_id: int) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,11 +200,23 @@ class TeamResourceService:
             TEAM_RESOURCE_FEATURE,
         )
 
+    def allows_private(self, user_id: int) -> bool:
+        return self.enabled and self._features.is_private_feature_allowed(
+            user_id,
+            TEAM_RESOURCE_FEATURE,
+        )
+
     def is_superuser(self, user_id: int) -> bool:
         return self._features.is_superuser(user_id)
 
     def matches_query(self, text: str, *, user_id: int, group_id: int) -> bool:
         return self.allows(user_id, group_id) and command_text_matches(
+            text,
+            self._config.commands,
+        )
+
+    def matches_private_query(self, text: str, *, user_id: int) -> bool:
+        return self.allows_private(user_id) and command_text_matches(
             text,
             self._config.commands,
         )
@@ -247,6 +286,32 @@ class TeamResourceService:
         )
         return "\n".join(lines)
 
+    def private_subscriptions_message(self, user_id: int) -> str:
+        subscriptions = self._store.list_user(user_id)
+        if not subscriptions:
+            return (
+                "你还没有订阅战队资源。\n"
+                "发送：订阅战队123456\n"
+                "也可发送：订阅战队123456 1000"
+            )
+
+        lines = ["你的战队资源订阅："]
+        for index, subscription in enumerate(subscriptions, start=1):
+            label = (
+                f"{subscription.team_name}（{subscription.team_id}）"
+                if subscription.team_name
+                else str(subscription.team_id)
+            )
+            lines.append(f"{index}. {label}｜阈值 {subscription.threshold}")
+        lines.extend(
+            (
+                "",
+                "发送：订阅战队123456 1000",
+                "取消订阅：取消订阅战队123456",
+            )
+        )
+        return "\n".join(lines)
+
     def remove_subscription(self, *, group_id: int, team_id: int) -> str:
         if not is_valid_team_id(team_id):
             return TEAM_ID_ERROR_MESSAGE
@@ -286,6 +351,45 @@ class TeamResourceService:
             f"已订阅本群战队：{result.team_name}（{result.team_id}）。\n"
             f"资源阈值：{effective_threshold}\n"
             f"提醒对象：{_format_user_ids(effective_users)}"
+        )
+
+    async def add_private_subscription(
+        self,
+        *,
+        user_id: int,
+        team_id: int,
+        threshold: int | None,
+    ) -> str:
+        if not is_valid_team_id(team_id):
+            return TEAM_ID_ERROR_MESSAGE
+        try:
+            result = await self.query(team_id)
+        except TeamResourceQueryError as error:
+            return str(error)
+
+        effective_threshold = threshold or self._config.default_threshold
+        self._store.upsert_private(
+            TeamResourcePrivateSubscriptionUpdate(
+                user_id=user_id,
+                team_id=result.team_id,
+                team_name=result.team_name,
+                threshold=effective_threshold,
+            )
+        )
+        return (
+            f"已订阅战队：{result.team_name}（{result.team_id}）。\n"
+            f"资源阈值：{effective_threshold}\n"
+            "提醒对象：你"
+        )
+
+    def remove_private_subscription(self, *, user_id: int, team_id: int) -> str:
+        if not is_valid_team_id(team_id):
+            return TEAM_ID_ERROR_MESSAGE
+        deleted = self._store.delete_private(user_id=user_id, team_id=team_id)
+        return (
+            f"已取消战队订阅：{team_id}。"
+            if deleted
+            else f"你没有订阅战队：{team_id}。"
         )
 
     def answer_prompt(
@@ -338,6 +442,14 @@ class TeamResourceService:
                 for subscription in self._store.list_group(group_id)
             ),
             group_id=group_id,
+        )
+
+    async def query_private_messages(self, user_id: int) -> list[str]:
+        return await self.query_messages(
+            (
+                subscription.team_id
+                for subscription in self._store.list_user(user_id)
+            ),
         )
 
     async def query_messages(
@@ -411,6 +523,31 @@ class TeamResourceService:
                 interval_seconds=0,
             )
 
+        for subscription in self._store.list_all_private():
+            if not self._features.user_has_feature(
+                subscription.user_id,
+                TEAM_RESOURCE_FEATURE,
+            ):
+                continue
+            try:
+                result = await self.query(subscription.team_id)
+            except TeamResourceQueryError:
+                continue
+
+            self._store.update_private_team_name(
+                user_id=subscription.user_id,
+                team_id=subscription.team_id,
+                team_name=result.team_name,
+            )
+            if result.resource >= subscription.threshold:
+                continue
+            await self._delivery.send_targets(
+                [MessageTarget("private", subscription.user_id)],
+                self._resource_notice(result, subscription),
+                action_name="private team resource subscription notice",
+                interval_seconds=0,
+            )
+
     def register_jobs(self, scheduler: Scheduler) -> None:
         if not self.enabled:
             return
@@ -471,7 +608,7 @@ class TeamResourceService:
     def _resource_notice(
         self,
         result: TeamResourceResult,
-        subscription: TeamResourceSubscription,
+        subscription: TeamResourceSubscription | TeamResourcePrivateSubscription,
     ) -> str:
         line = self._config.resource_line.format(
             team_name=result.team_name,

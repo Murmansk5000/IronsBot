@@ -7,6 +7,7 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.services.team.resource import (
+    TeamResourcePrivateSubscriptionUpdate,
     TeamResourceService,
     TeamResourceSubscriptionUpdate,
 )
@@ -84,6 +85,27 @@ def test_team_resource_disabled_has_no_subscriptions(
 
     assert not service.enabled
     assert store.list_all() == []
+
+
+def test_team_resource_subscription_store_keeps_private_subscriptions_separate(
+    tmp_path: Path,
+) -> None:
+    store = TeamResourceSubscriptionStore(tmp_path / "team_resource.sqlite")
+    store.upsert_private(
+        TeamResourcePrivateSubscriptionUpdate(
+            user_id=OWNER_ID,
+            team_id=TEAM_ID,
+            team_name="示例战队",
+            threshold=TEAM_RESOURCE_THRESHOLD,
+        )
+    )
+
+    subscriptions = store.list_user(OWNER_ID)
+
+    assert len(subscriptions) == 1
+    assert subscriptions[0].team_id == TEAM_ID
+    assert subscriptions[0].threshold == TEAM_RESOURCE_THRESHOLD
+    assert store.list_group(OWNER_ID) == []
 
 
 def test_team_resource_store_tracks_group_prompt_once(tmp_path: Path) -> None:
