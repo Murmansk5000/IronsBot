@@ -11,6 +11,7 @@ from ironsbot.core.commands import command_text_matches
 from ironsbot.runtime.matchers import (
     enter_prompt_loop,
     get_prompt_session_manager,
+    get_queued_conversation,
 )
 from ironsbot.runtime.replies import build_message, event_sender_at_user_ids
 
@@ -49,7 +50,15 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
     prompt: str | Message | None = None,
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
 ) -> None:
-    session_id = event_conversation_session_id(namespace, event)
+    queued = get_queued_conversation(matcher)
+    if queued is not None and queued.namespace == namespace:
+        session_id = queued.conversation_session_id
+        owner_event_session_id = queued.event_session_id
+    else:
+        session_id = event_conversation_session_id(namespace, event)
+        owner_event_session_id = event.get_session_id()
+    if not isinstance(session_id, str):
+        session_id = event_conversation_session_id(namespace, event)
     prompt_sessions = get_prompt_session_manager(matcher)
     version = prompt_sessions.acquire(session_id)
 
@@ -57,7 +66,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         if not isinstance(next_event, MessageEvent):
             return False
 
-        if event_conversation_session_id(namespace, next_event) != session_id:
+        if next_event.get_session_id() != owner_event_session_id:
             return False
 
         if is_self_message_event(next_event):
@@ -88,5 +97,10 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         prompt=prompt_message,
         queue_namespace=namespace,
         queue_reply_check=_is_same_conversation_reply,
+        queue_group_reply_check=lambda next_event: (
+            isinstance(next_event, MessageEvent) and reply_check(next_event)
+        ),
         queue_semantic_request_resolver=queue_semantic_request_resolver,
+        queue_event_session_id=owner_event_session_id,
+        queue_conversation_session_id=session_id,
     )

@@ -44,7 +44,7 @@ def _help_prompt_message(event: MessageEvent, text: str):
 
 
 def _is_digit_input(event: Event) -> bool:
-    if not isinstance(event, MessageEvent) or event.reply is not None:
+    if not isinstance(event, MessageEvent):
         return False
     return event.get_plaintext().strip().isdigit()
 
@@ -83,8 +83,10 @@ async def handle_help(  # noqa: PLR0913
         queue_namespace="help",
         queue_reply_check=lambda next_event: (
             next_event.get_session_id() == session_id
+            and getattr(next_event, "reply", None) is None
             and _is_digit_input(next_event)
         ),
+        queue_group_reply_check=_is_digit_input,
     )
 
 

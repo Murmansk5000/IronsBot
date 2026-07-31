@@ -77,6 +77,10 @@ def build_push_time_menu_handler(
                 session_id,
                 target_type,
             ),
+            queue_group_reply_check=lambda next_event: PUSH_TIME_FLOW.input_check(
+                next_event,
+                target_type,
+            ),
         )
 
     async def handle_push_time_select(
@@ -143,6 +147,7 @@ async def _handle_push_time_index(
         state,
         push_time_value_prompt(option),
         selection=False,
+        replace_menu_anchor=True,
     )
 
 
@@ -160,6 +165,7 @@ async def _handle_push_time_value(
             matcher,
             state,
             build_push_time_menu_prompt(context.target_type, options),
+            replace_menu_anchor=True,
         )
 
     if text == "0":
@@ -190,4 +196,9 @@ async def _handle_push_time_value(
         f"{result_message}\n\n"
         f"{build_push_time_menu_prompt(context.target_type, refreshed_options)}"
     )
-    await PUSH_TIME_FLOW.reject(matcher, state, prompt)
+    await PUSH_TIME_FLOW.reject(
+        matcher,
+        state,
+        prompt,
+        replace_menu_anchor=True,
+    )
