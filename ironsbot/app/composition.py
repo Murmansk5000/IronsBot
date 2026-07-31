@@ -663,6 +663,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_quotas=player_query_quotas,
         player_requests=player_requests,
         player_details=player_detail_extensions,
+        scheduler=scheduler,
+        admin_notices=admin_notices,
         release_priority=priority.release,
         settings=settings.operations.private_extensions.settings,
     )

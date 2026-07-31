@@ -112,3 +112,26 @@ async def test_send_admin_notice_skips_when_no_admin_targets(
     assert summary.succeeded == []
     assert summary.failed == []
     assert delivery.calls == []
+
+
+@pytest.mark.asyncio
+async def test_private_superuser_notice_never_uses_admin_notice_groups() -> None:
+    service, delivery = _service()
+
+    await service.send_private_to_superusers(
+        "幸运橱窗命中关注皮肤。",
+        subscription_key="private_skin_window",
+        action_name="private skin window notice",
+    )
+
+    assert delivery.calls == [{
+        "message": "幸运橱窗命中关注皮肤。",
+        "private_user_ids": [1001, 2002],
+        "group_ids": [],
+        "group_at_user_ids": [],
+        "action_name": "private skin window notice",
+        "subscription_key": "private_skin_window",
+        "bot": None,
+        "interval_seconds": 1.5,
+        "message_limiter": None,
+    }]
