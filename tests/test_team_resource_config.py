@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
@@ -33,7 +32,7 @@ def _service(
             config,
             store,
             UNUSED_HEADLESS,
-            OneBotReferenceResolver({}, aliases),
+            aliases,
             runtime.features,
             runtime.delivery,
         ),

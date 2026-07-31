@@ -41,9 +41,7 @@ PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
 SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
-SCHEDULE_ID_FORMAT_ERROR = (
-    "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
-)
+SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 BotReference = str | int
@@ -55,6 +53,9 @@ COMMAND_COOLDOWN_MESSAGE_FORMAT_ERROR = (
 )
 COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR = (
     "messaging.command_cooldown.in_progress_message must not be empty"
+)
+COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR = (
+    "messaging.command_cooldown.duplicate_message must not be empty"
 )
 COMMAND_COOLDOWN_WINDOWS_REQUIRED_ERROR = (
     "messaging.command_cooldown.windows must not be empty"
@@ -105,11 +106,6 @@ def _normalize_command_cooldown_windows(
     return sorted(windows, key=lambda item: item.window_seconds)
 
 
-COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR = (
-    "messaging.command_cooldown.duplicate_message must not be empty"
-)
-
-
 class CommandCooldownConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -123,9 +119,7 @@ class CommandCooldownConfig(BaseModel):
     duplicate_message: str = "该指令重复发送；后续重复不再提醒。"
     mention_initial_window_seconds: float = Field(default=600.0, gt=0)
     mention_initial_max_responses: int = Field(default=3, ge=1)
-    commands: dict[str, list[CommandCooldownWindowConfig]] = Field(
-        default_factory=dict
-    )
+    commands: dict[str, list[CommandCooldownWindowConfig]] = Field(default_factory=dict)
 
     @field_validator("cooldown_message")
     @classmethod
@@ -159,6 +153,14 @@ class CommandCooldownConfig(BaseModel):
             raise ValueError(COMMAND_COOLDOWN_IN_PROGRESS_REQUIRED_ERROR)
         return message
 
+    @field_validator("duplicate_message")
+    @classmethod
+    def validate_duplicate_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError(COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR)
+        return message
+
     @field_validator("windows")
     @classmethod
     def validate_windows(
@@ -190,14 +192,6 @@ class CommandCooldownConfig(BaseModel):
     ) -> tuple[CommandCooldownWindowConfig, ...]:
         return tuple(self.commands.get(command_id, self.windows))
 
-    @field_validator("duplicate_message")
-    @classmethod
-    def validate_duplicate_message(cls, value: str) -> str:
-        message = value.strip()
-        if not message:
-            raise ValueError(COMMAND_COOLDOWN_DUPLICATE_REQUIRED_ERROR)
-        return message
-
 
 class BotRoutingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -228,14 +222,13 @@ class BotRoutingConfig(BaseModel):
             for target, bot_ref in mapping.items()
             if not target.strip() or self.resolve_bot_reference(bot_ref) is None
         ]
-        if self.default_bot is not None and self.resolve_bot_reference(
-            self.default_bot
-        ) is None:
+        if (
+            self.default_bot is not None
+            and self.resolve_bot_reference(self.default_bot) is None
+        ):
             invalid_targets.append("messaging.bot_routing.default_bot")
         if invalid_targets:
-            msg = "unknown or invalid bot reference(s): " + ", ".join(
-                invalid_targets
-            )
+            msg = "unknown or invalid bot reference(s): " + ", ".join(invalid_targets)
             raise ValueError(msg)
         return self
 
@@ -332,9 +325,7 @@ class OutboundRateLimitConfig(BaseModel):
     windows: list[OutboundRateLimitWindowConfig] = Field(
         default_factory=_default_outbound_rate_limit_windows
     )
-    cooldown_message: str = (
-        "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
-    )
+    cooldown_message: str = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
     @field_validator("cooldown_message")
     @classmethod
@@ -401,9 +392,7 @@ class MeetingConfig(BaseModel):
 
     number: str = ""
     template: str = (
-        "腾讯会议\n"
-        "腾讯会议号：{meeting_number}\n"
-        "点击链接直接加入：{meeting_url}"
+        "腾讯会议\n腾讯会议号：{meeting_number}\n点击链接直接加入：{meeting_url}"
     )
     commands: NormalizedStringList = Field(default_factory=lambda: ["开播", "会议"])
 

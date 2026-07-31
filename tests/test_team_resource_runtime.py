@@ -9,7 +9,6 @@ import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
-from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.features import FeatureConfig
@@ -63,7 +62,7 @@ def _service(config: TeamResourceConfig) -> TeamResourceService:
         config,
         TeamResourceSubscriptionStore(config.subscription_path),
         HEADLESS,
-        OneBotReferenceResolver({}, {}),
+        {},
         TEST_RUNTIME.features,
         TEST_RUNTIME.delivery,
     )
@@ -251,7 +250,7 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
         config,
         store,
         HEADLESS,
-        OneBotReferenceResolver(group_aliases={}, user_aliases={}),
+        {},
         TEST_RUNTIME.features,
         TEST_RUNTIME.delivery,
     )

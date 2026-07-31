@@ -99,10 +99,7 @@ def install(
     )
 
     matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "pet_config",
-            help_ids=("pet_config.query",),
-        ),
+        policy=CommandPolicy.command("pet_config", help_ids=("pet_config.query",)),
         rule=feature_rule(features, Feature.PET_CONFIG.value)
         & startswith_or_endswith(
             prefixes=("精灵配置", "配置"),

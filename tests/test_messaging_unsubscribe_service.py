@@ -289,6 +289,10 @@ def test_build_schedule_subscription_options_marks_subscription_state(
 
 
 def test_build_push_subscription_menu_shows_subscription_state() -> None:
+    assert "server_status_push" not in {
+        option.key for option in BUILTIN_PUSH_OPTIONS
+    }
+
     options = [
         BUILTIN_PUSH_OPTIONS[0],
         PushSubscriptionOption(
@@ -305,6 +309,6 @@ def test_build_push_subscription_menu_shows_subscription_state() -> None:
     )
 
     assert "✅ 活动结束提醒" in text
-    assert "❌ 开服推送" in text
+    assert "❌ 机器人启动通知" in text
     assert "0.【退出】" in text
     assert "✅ 已订阅 · ❌ 已退订，输入序号切换" in text

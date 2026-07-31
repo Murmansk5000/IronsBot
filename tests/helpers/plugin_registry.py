@@ -109,7 +109,6 @@ def build_test_plugin_registry(
             sendpic=SimpleNamespace(commands=()),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
-                enabled=config.seer.team_resource.enabled,
                 register_jobs=lambda _scheduler: None,
             ),
             local_rank=object(),
