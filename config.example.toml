@@ -146,6 +146,9 @@ group_b = 876543210
 # ZH: 用户别名，把易读名称映射到 QQ 号。
 owner = 1234567890
 user_a = 2345678901
+# Official QQ group-management bot. Blacklisted below so its automated messages
+# never trigger bot commands or AI handling.
+qq_group_manager = 2854196310
 
 [features.bundles]
 # Default: empty table
@@ -226,6 +229,7 @@ lite = [
 # Example:
 # owner = ["all"]
 # blocked_user = ["blacklist"]
+qq_group_manager = ["blacklist"]
 
 [features.help]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
@@ -1021,19 +1025,6 @@ autocard_name = "群星牌赛季"
 # EN: Optional autocard season end time. Fill it to show autocard countdown.
 # ZH: 可选的群星牌赛季结束时间；填写后“赛季倒计时”会显示群星牌剩余时间。
 # autocard_end_time = 2026-07-17T10:00:00+08:00
-
-[seer.achievement_history]
-# Default: "data/seer/achievement_history.sqlite"
-# EN: Official ConfigPackage snapshots used by the "新增成就/新成就" comparison.
-# ZH: “新增成就/新成就”的官方配置包快照数据库；首次启用会先建立基线。
-path = "data/seer/achievement_history.sqlite"
-# Default: 32; EN: Number of official ConfigPackage snapshots retained.
-# ZH: 保留的官方配置包版本数量。
-max_snapshots = 32
-# Default: 4
-# EN: Baselines must predate the current official package by this many days.
-# ZH: 分别使用最近周五周期和指定天数回溯基线，结果按成就 ID 合并去重。
-baseline_lookback_days = 4
 
 [seer.local_rank]
 # Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
