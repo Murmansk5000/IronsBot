@@ -1213,8 +1213,8 @@ state_notice = true
 state_offline_message = "无头米米号已掉线。\n米米号：{user_id}\n状态：{reason}\n来源：{source}"
 # Default: built-in; EN: Online state notice template. ZH: 恢复在线通知模板。
 state_online_message = "无头米米号已恢复登录。\n米米号：{user_id}\n离线时长：{offline_duration}\n来源：{source}"
-# Default: "00:01,00:02"; EN: Daily reconnect check times. ZH: 每日重连检查时间。
-reconnect_check_times = "00:01,00:02"
+# Default: "00:05"; EN: Daily reconnect check times. ZH: 每日重连检查时间。
+reconnect_check_times = "00:05"
 
 [operations.startup_notice]
 # Default: true; EN: Enable startup notice. ZH: 启用启动通知。
