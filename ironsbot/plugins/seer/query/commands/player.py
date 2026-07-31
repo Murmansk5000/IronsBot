@@ -26,6 +26,7 @@ from ironsbot.services.seer.ids import (
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import extract_player_query_arg
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
@@ -68,10 +69,7 @@ async def prompt_for_unbound_player_id(
     await finish_event_reply(
         matcher,
         event,
-        (
-            "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
-            "查询未绑定的米米号时，需要在查询指令后加上米米号。"
-        ),
+        unbound_player_shortcut_message(),
     )
 
 
