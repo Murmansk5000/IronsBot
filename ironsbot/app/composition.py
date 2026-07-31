@@ -111,6 +111,7 @@ from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.operations.headless_session import HeadlessSessionFactory
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
@@ -395,6 +396,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
+    headless_sessions = HeadlessSessionFactory(
+        lambda: ClientManager(task_owner.create),
+        settings.operations.headless,
+        request_interval_seconds=(
+            settings.seer.player.request_protection.base_request_interval_seconds
+            if settings.seer.player.request_protection.enabled
+            else 0.0
+        ),
+    )
     priority = AdminPriorityService(settings.features.priority, features)
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(
@@ -656,6 +666,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         features=features,
         seer=seer,
         headless=headless,
+        headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
         render_html=render_html_template,

@@ -267,6 +267,7 @@ class SeerGame:
         if self._shutdown_requested:
             return
         operation = self.operations.format_recent()
+        semantic = self.operations.format_recent_semantic()
         request_history = self._format_request_history(limit=3)
         request_history_log = self._format_request_history()
         reason = "连接已断开"
@@ -274,6 +275,8 @@ class SeerGame:
             reason = f"{reason}\n断线前实际封包：\n{request_history}"
         if operation:
             reason = f"{reason}\n疑似触发操作：{operation}"
+        if semantic:
+            reason = f"{reason}\n对应语义请求：{semantic}"
         logger.warning(
             "%s：连接已断开%s",
             self.user_id,
