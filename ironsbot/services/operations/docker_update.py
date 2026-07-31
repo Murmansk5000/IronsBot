@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -20,6 +21,9 @@ from .docker_models import (
 
 if TYPE_CHECKING:
     from ironsbot.config.models.operations import DockerUpdateConfig
+    from ironsbot.services.operations.docker_preflight import (
+        DockerStartupPreflightStore,
+    )
 
 RestartAction = Literal["none", "process", "docker"]
 ProcessRestarter = Callable[[], Awaitable[None]]
@@ -48,6 +52,23 @@ class DockerGateway(Protocol):
         timeout_seconds: float,
     ) -> None: ...
 
+    async def container_uses_image(
+        self,
+        *,
+        container_name: str,
+        expected_image_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> bool: ...
+
+    async def remove_container(
+        self,
+        *,
+        container_id: str,
+        socket_path: str,
+        timeout_seconds: float,
+    ) -> None: ...
+
 
 class DockerUpdateService:
     def __init__(
@@ -55,10 +76,17 @@ class DockerUpdateService:
         config: DockerUpdateConfig,
         docker: DockerGateway,
         restart_process: ProcessRestarter,
+        *,
+        handoff_store: DockerStartupPreflightStore | None = None,
+        instance_id: str | None = None,
     ) -> None:
         self._config = config
         self._docker = docker
         self._restart_process = restart_process
+        self._handoff_store = handoff_store
+        self._instance_id = (
+            instance_id if instance_id is not None else os.environ.get("HOSTNAME", "")
+        )
         self._lock = asyncio.Lock()
 
     async def run_update(self) -> tuple[str, DockerUpdateResult]:
@@ -78,6 +106,40 @@ class DockerUpdateService:
             image=str(self._config.image),
             result=result,
         )
+
+    async def confirm_update_handoff(
+        self,
+        *,
+        expected_image_id: str,
+        updater_container_id: str,
+    ) -> bool:
+        """Confirm a recreated container really runs the pulled image."""
+
+        socket_path = str(self._config.docker_socket_path)
+        if not socket_path or not await self._docker.socket_exists(socket_path):
+            return False
+        async with self._lock:
+            matches = await self._docker.container_uses_image(
+                container_name=str(self._config.container_name),
+                expected_image_id=expected_image_id,
+                socket_path=socket_path,
+                timeout_seconds=float(self._config.timeout_seconds),
+            )
+            if not matches:
+                return False
+            try:
+                await self._docker.remove_container(
+                    container_id=updater_container_id,
+                    socket_path=socket_path,
+                    timeout_seconds=float(self._config.timeout_seconds),
+                )
+            except (OSError, RuntimeError):
+                logger.warning(
+                    "could not remove completed Watchtower updater: %s",
+                    updater_container_id,
+                    exc_info=True,
+                )
+            return True
 
     def _request(self, container_name: str) -> DockerUpdateRequest:
         return DockerUpdateRequest(
@@ -110,6 +172,7 @@ class DockerUpdateService:
             result=result,
         )
         if result.ok and not result.up_to_date and result.updater_container_id:
+            self._save_manual_handoff(container_name, result)
             return reply, "none"
         if result.up_to_date:
             return f"{reply}\n\n镜像已是最新，正在重启当前容器。", "docker"
@@ -123,6 +186,32 @@ class DockerUpdateService:
             else "镜像检查失败，继续普通进程重启。"
         )
         return f"{reply}\n\n{suffix}", action
+
+    def _save_manual_handoff(
+        self,
+        container_name: str,
+        result: DockerUpdateResult,
+    ) -> None:
+        if self._handoff_store is None:
+            return
+        from ironsbot.services.operations.docker_preflight import (
+            DockerStartupPreflightRecord,
+        )
+
+        try:
+            self._handoff_store.save(
+                DockerStartupPreflightRecord(
+                    container_name=container_name,
+                    image=str(self._config.image),
+                    result=result,
+                    source_instance_id=self._instance_id,
+                )
+            )
+        except OSError:
+            logger.warning(
+                "could not persist manual Docker image handoff",
+                exc_info=True,
+            )
 
     async def execute_restart(self, action: RestartAction) -> None:
         if action == "none":

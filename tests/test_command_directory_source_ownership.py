@@ -1,5 +1,6 @@
 from ironsbot.app.command_directory.operations import (
     data_sync_commands,
+    docker_update_commands,
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
@@ -63,15 +64,16 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
 
 def test_operation_examples_use_matcher_command_sources() -> None:
     status = _by_id(server_status_commands())
+    docker = _by_id(docker_update_commands())
     sync = _by_id(data_sync_commands())
 
     assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)
     assert status["server_status.admin_query"].examples == (
         ADMIN_SERVER_STATUS_COMMAND,
     )
-    assert status["server_status.restart"].examples == BOT_RESTART_COMMANDS
-    assert status["server_status.image_update"].examples == DOCKER_UPDATE_COMMANDS
-    assert status["server_status.image_check"].examples == DOCKER_CHECK_UPDATE_COMMANDS
+    assert docker["docker_update.restart"].examples == BOT_RESTART_COMMANDS
+    assert docker["docker_update.image_update"].examples == DOCKER_UPDATE_COMMANDS
+    assert docker["docker_update.image_check"].examples == DOCKER_CHECK_UPDATE_COMMANDS
     assert sync["db_sync.update"].examples == tuple(
         f"/{command}" for command in MANUAL_SYNC_COMMANDS
     )

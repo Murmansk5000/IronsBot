@@ -12,6 +12,7 @@ from ironsbot.app.command_directory.dynamic import (
 )
 from ironsbot.app.command_directory.operations import (
     data_sync_commands,
+    docker_update_commands,
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
@@ -309,6 +310,20 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             hooks=PluginHooks(
                 startup=(("db_sync", start_data_sync),),
             ),
+        ),
+        PluginDefinition(
+            id="docker_update",
+            help=HelpEntry(
+                name="镜像维护",
+                description="检查 Docker 镜像、更新镜像或重启机器人",
+                group="admin",
+                order=10,
+                visible=partial(
+                    superuser_help_visible,
+                    features=features,
+                ),
+            ),
+            commands=docker_update_commands(),
         ),
         PluginDefinition(
             id="headless_seer",

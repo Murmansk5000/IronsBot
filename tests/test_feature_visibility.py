@@ -193,6 +193,7 @@ def test_headless_notice_is_not_listed_in_private_superuser_help() -> None:
     settings.bot.superusers = ["2"]
 
     assert _private_visible("db_sync", settings=settings)
+    assert _private_visible("docker_update", settings=settings)
     assert not _private_visible("headless_notice", settings=settings)
 
 
@@ -264,3 +265,11 @@ def test_team_resource_visibility_reads_app_config() -> None:
             team_resource_enabled=False,
         ),
     )
+
+
+def test_management_help_is_private_only_for_superusers() -> None:
+    settings = _settings()
+    settings.bot.superusers = ["2"]
+
+    assert not _visible("docker_update", settings=settings, user_id=2)
+    assert _private_visible("docker_update", settings=settings, user_id=2)
