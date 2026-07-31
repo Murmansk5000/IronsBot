@@ -31,6 +31,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
     NEW_AUTOCARD_ROLES_COMMANDS,
+    NEW_AUTOCARD_SANCTUARIES_COMMANDS,
     NEW_CONTENT_COMMANDS,
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
@@ -76,7 +77,7 @@ class _NewContentAction:
     item: NewContentItem | None = None
 
 
-_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-i](?:[1-9]\d*)?|0)", re.IGNORECASE)
+_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-j](?:[1-9]\d*)?|0)", re.IGNORECASE)
 
 
 async def _finish_query(
@@ -158,6 +159,12 @@ def _install_new_content_commands(
             "autocard_role",
             NEW_AUTOCARD_ROLES_COMMANDS,
             "seer.data.new_autocard_role",
+            "seer_autocard",
+        ),
+        (
+            "autocard_sanctuary_effect",
+            NEW_AUTOCARD_SANCTUARIES_COMMANDS,
+            "seer.data.new_autocard_sanctuary_effect",
             "seer_autocard",
         ),
     )
@@ -245,6 +252,7 @@ def _available_categories(
         "achievement": None,
         "autocard_card": "seer_autocard",
         "autocard_role": "seer_autocard",
+        "autocard_sanctuary_effect": "seer_autocard",
     }
     available: list[NewContentCategory] = []
     for category in NEW_CONTENT_CATEGORIES:
@@ -307,6 +315,15 @@ def _item_description(item: NewContentItem) -> str:
     if item.category in {"autocard_card", "autocard_role"}:
         kind = "角色" if item.category == "autocard_role" else "卡牌"
         return f"{change}｜{item.entity_id}｜{kind}"
+    if item.category == "autocard_sanctuary_effect":
+        sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
+        if not sanctuary:
+            sanctuary = f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
+        pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
+        pet = f"｜精灵王：{pet_name}" if pet_name else ""
+        unlock_round = int(item.payload.get("unlock_round", 0))
+        phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
+        return f"{change}｜{sanctuary}{pet}｜{phase}"
     return f"{change}｜{item.entity_id}"
 
 
@@ -346,6 +363,11 @@ async def _send_item_detail(
     matcher: Matcher,
     event: Event,
 ) -> None:
+    if item.category == "autocard_sanctuary_effect":
+        await MessageFactory(_autocard_sanctuary_effect_detail(item)).send(
+            at_sender=isinstance(event, GroupMessageEvent)
+        )
+        return
     services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
     if not isinstance(services, _NewContentServices):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
@@ -426,6 +448,37 @@ def _achievement_detail(item: NewContentItem) -> str:
     if isinstance(titles, list) and titles:
         names = "、".join(str(title.get("name", "")) for title in titles)
         lines.append(f"关联称号：{names}")
+    return "\n".join(lines)
+
+
+def _autocard_sanctuary_effect_detail(item: NewContentItem) -> str:
+    payload = item.payload
+    sanctuary_name = str(payload.get("sanctuary_name", "")).strip()
+    sanctuary_id = int(payload.get("sanctuary_id", 0))
+    sanctuary = sanctuary_name or f"圣域 {sanctuary_id}"
+    unlock_round = int(payload.get("unlock_round", 0))
+    change = "修改" if item.change_kind == "modified" else "新增"
+    phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
+    lines = [
+        f"🃏【{item.name}】",
+        f"状态：{change}",
+        f"圣域：{sanctuary}",
+        f"阶段：{phase}",
+    ]
+    pet_name = str(payload.get("sanctuary_pet_name", "")).strip()
+    pet_id = int(payload.get("sanctuary_pet_id", 0))
+    if pet_name or pet_id:
+        pet = pet_name or "未命名精灵王"
+        suffix = f"（{pet_id}）" if pet_id else ""
+        lines.append(f"关联精灵王：{pet}{suffix}")
+    buff_id = str(payload.get("buff_id", "")).strip()
+    buff_param = str(payload.get("buff_param", "")).strip()
+    if buff_id:
+        buff = buff_id if not buff_param else f"{buff_id}（参数：{buff_param}）"
+        lines.append(f"关联 Buff：{buff}")
+    description = str(payload.get("description", "")).strip()
+    if description:
+        lines.append(f"效果：{description}")
     return "\n".join(lines)
 
 

@@ -56,7 +56,10 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
                  '{"point": 0, "titles": [{"name": "不动明王护法"}]}', 'added'),
                 ('pet_skin', 100, '测试皮肤', 100,
                  '{"pet_id": 1, "pet_name": "测试精灵", "resource_id": 100}',
-                 'modified')
+                 'modified'),
+                ('autocard_sanctuary_effect', 9, '潮涌', 9,
+                 '{"sanctuary_id": 2, "sanctuary_name": "沧岚", "unlock_round": 5}',
+                 'added')
             """
         )
         session.commit()
@@ -68,6 +71,9 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     assert snapshot.items_for("achievement")[0].payload["point"] == 0
     assert snapshot.items_for("pet_skin")[0].payload["pet_name"] == "测试精灵"
     assert snapshot.items_for("pet_skin")[0].change_kind == "modified"
+    effect = snapshot.items_for("autocard_sanctuary_effect")[0]
+    assert effect.name == "潮涌"
+    assert effect.payload["sanctuary_name"] == "沧岚"
 
 
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:
