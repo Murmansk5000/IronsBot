@@ -25,6 +25,7 @@ NewContentCategory = Literal[
     "mount",
     "autocard_card",
     "autocard_role",
+    "autocard_sanctuary_effect",
 ]
 
 NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
@@ -37,6 +38,7 @@ NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "achievement",
     "autocard_card",
     "autocard_role",
+    "autocard_sanctuary_effect",
 )
 
 CATEGORY_NAMES: dict[NewContentCategory, str] = {
@@ -49,6 +51,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "mount": "新增座驾",
     "autocard_card": "新增群星牌",
     "autocard_role": "新增群星牌角色",
+    "autocard_sanctuary_effect": "新增群星牌圣域",
 }
 
 
