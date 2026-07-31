@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -56,6 +57,7 @@ def make_query_handler(
     async def resolve_selection(
         item: PromptItem[T],
         matcher: Matcher,
+        event: Event,
     ) -> None:
         try:
             result = await select(item.value)
@@ -68,7 +70,9 @@ def make_query_handler(
             await matcher.finish(result.message)
             return
         if result.reply is not None:
-            await build_reply(result.reply).send()
+            await build_reply(result.reply).send(
+                at_sender=isinstance(event, GroupMessageEvent)
+            )
 
     async def handle(
         matcher: Matcher,

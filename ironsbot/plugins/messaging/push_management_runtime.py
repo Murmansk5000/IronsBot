@@ -86,15 +86,29 @@ class PromptFlow:
         def check(next_event: Event) -> bool:
             if not isinstance(next_event, event_type):
                 return False
-            text = next_event.get_plaintext().strip()
             return (
                 event_conversation_session_id(self.namespace, next_event) == session_id
                 and next_event.user_id != next_event.self_id
                 and getattr(next_event, "reply", None) is None
-                and (text.isdigit() if selection else bool(text))
+                and self.input_check(next_event, target_type, selection=selection)
             )
 
         return check
+
+    def input_check(
+        self,
+        event: Event,
+        target_type: PushTargetType,
+        *,
+        selection: bool = True,
+    ) -> bool:
+        event_type = (
+            GroupMessageEvent if target_type == "group" else PrivateMessageEvent
+        )
+        if not isinstance(event, event_type) or event.user_id == event.self_id:
+            return False
+        text = event.get_plaintext().strip()
+        return text.isdigit() if selection else bool(text)
 
     async def reject(
         self,
@@ -103,6 +117,7 @@ class PromptFlow:
         prompt: str,
         *,
         selection: bool = True,
+        replace_menu_anchor: bool = False,
     ) -> None:
         session_id = state.get(self.session_key)
         version = state.get(self.version_key)
@@ -113,22 +128,32 @@ class PromptFlow:
             or target_type not in {"private", "group"}
         ):
             await matcher.finish(prompt)
+        resolved_target_type = cast("PushTargetType", target_type)
         reply_check = self.reply_check(
             session_id,
-            cast("PushTargetType", target_type),
+            resolved_target_type,
             selection=selection,
         )
-        update_queued_reply_check(matcher, reply_check)
+        update_queued_reply_check(
+            matcher,
+            reply_check,
+            group_reply_check=lambda next_event: self.input_check(
+                next_event,
+                resolved_target_type,
+                selection=selection,
+            ),
+        )
         await reject_with_rule(
             matcher,
             self.rule(
                 state,
                 session_id,
                 version,
-                cast("PushTargetType", target_type),
+                resolved_target_type,
                 selection=selection,
             ),
             prompt=prompt,
+            replace_menu_anchor=replace_menu_anchor,
         )
 
 

@@ -120,11 +120,14 @@ class Prompt(Generic[T]):
 
 PROMPT_STATE_KEY = "prompt"
 RESOLVER_WITH_EVENT_PARAM_COUNT = 3
-PromptResolver: TypeAlias = Callable[[Any, Matcher], Awaitable[None]]
+PromptResolverWithoutEvent: TypeAlias = Callable[[Any, Matcher], Awaitable[None]]
 PromptResolverWithEvent: TypeAlias = Callable[
     [Any, Matcher, Event],
     Awaitable[None],
 ]
+PromptResolver: TypeAlias = (
+    PromptResolverWithoutEvent | PromptResolverWithEvent
+)
 
 
 def _is_digit_input(event: Event) -> bool:
@@ -175,6 +178,7 @@ async def enter_prompt(  # noqa: PLR0913
         queue_reply_check=lambda next_event: (
             next_event.get_session_id() == session_id and input_check(next_event)
         ),
+        queue_group_reply_check=input_check,
         queue_semantic_request_resolver=_prompt_semantic_request,
     )
 
@@ -234,7 +238,8 @@ def _create_selection_handler(
             event_resolver = cast("PromptResolverWithEvent", resolver)
             await event_resolver(item, matcher, event)
         else:
-            await resolver(item, matcher)
+            plain_resolver = cast("PromptResolverWithoutEvent", resolver)
+            await plain_resolver(item, matcher)
 
         rule = get_prompt_session_manager(matcher).make_rule(
             session_id,
