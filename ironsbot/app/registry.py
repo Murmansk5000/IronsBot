@@ -480,7 +480,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION}),
             help=HelpEntry(
                 name="战队资源订阅",
-                description="群内订阅战队，并在资源不足时定时提醒指定用户。",
+                description="订阅战队，并在资源不足时定时提醒当前会话。",
                 group="seer",
                 order=50,
                 visible=partial(
@@ -488,7 +488,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     features=features,
                     feature="team_resource_subscription",
                     enabled=config.seer.team_resource.enabled,
-                    group_only=True,
                 ),
             ),
             commands=team_resource_commands(enabled=config.seer.team_resource.enabled),
