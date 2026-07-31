@@ -83,3 +83,23 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
     assert second.allowed
     assert not repeated.allowed
     assert repeated.feedback == "该指令重复发送；后续重复不再提醒。"
+
+
+def test_prompt_supports_explicit_letter_number_keys() -> None:
+    prompt = Prompt(
+        title="新增内容",
+        items=[
+            PromptItem("新增精灵", "1 项", "category", key="a"),
+            PromptItem("莫缇", "新增｜4923", 4923, is_sub_prompt=True, key="a1"),
+        ],
+    )
+
+    request = _prompt_semantic_request(
+        group_message_event("a1"),
+        cast("Any", {"prompt": prompt}),
+    )
+
+    assert prompt.get_item_by_input("a1") is not None
+    assert prompt.get_item_by_input("1") is None
+    assert request is not None
+    assert "a1. 莫缇" in prompt.build_message()

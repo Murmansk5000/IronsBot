@@ -19,6 +19,7 @@ def commands_from_rows(
             "features_any",
             (feature,) if feature is not None else (),
         )
+        command_features_all = options.pop("features_all", ())
         access = options.pop("access", (CommandAccess(),))
         descriptors.append(
             CommandDescriptor(
@@ -28,6 +29,7 @@ def commands_from_rows(
                 examples=examples,
                 description=description,
                 features_any=command_features,
+                features_all=command_features_all,
                 access=access,
                 **options,
             )
