@@ -39,7 +39,6 @@ from ironsbot.services.seer.rank_range import (
 )
 from ironsbot.services.seer.rank_score_cache import (
     cached_score_candidate_page_starts,
-    cached_score_miss_boundary,
     fetch_rank_score_segment_from_cached_candidates,
 )
 from ironsbot.services.seer.rank_score_helpers import score_miss_proof_from_page
@@ -520,13 +519,6 @@ class RankService:
             score_search_limit=self._score_search_limit,
             rank_page_size=self.page_size,
             rank_page_start=self.page_start,
-            cached_score_miss_boundary=partial(
-                cached_score_miss_boundary,
-                get_cache_summary=self.cache.summary,
-                get_cached_score_indexes=self.cache.score_indexes,
-                get_cached_page_result=self.cache.page,
-                score_miss_proof_from_page=score_miss_proof_from_page,
-            ),
             cached_score_candidate_page_starts=partial(
                 cached_score_candidate_page_starts,
                 rank_page_start=self.page_start,

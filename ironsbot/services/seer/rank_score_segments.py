@@ -26,7 +26,6 @@ class RankScoreSegmentDependencies:
     score_search_limit: Callable[[int | None], int]
     rank_page_size: Callable[[], int]
     rank_page_start: Callable[[int], int]
-    cached_score_miss_boundary: Callable[..., RankScoreMissProof | None]
     cached_score_candidate_page_starts: Callable[..., list[int]]
     fetch_cached_candidates: Callable[..., Awaitable[RankScoreSearchResult | None]]
     score_search_probe_limit: Callable[[int], int]
@@ -88,7 +87,7 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
     result.lower_gap = proof.lower_gap
 
 
-async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
+async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     game: Any,
     *,
     key: int,
@@ -116,21 +115,6 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
     start_index = max(0, start_index)
     end_index = start_index + limit
     page_size = deps.rank_page_size()
-    cached_miss = deps.cached_score_miss_boundary(
-        key=key,
-        sub_key=sub_key,
-        target_score=target_score,
-        start_index=start_index,
-        end_index=end_index,
-        rank_offset=rank_offset,
-    )
-    if cached_miss is not None:
-        result.boundary_score = cached_miss.boundary_score
-        result.fetched_at = cached_miss.fetched_at
-        result.higher_gap = cached_miss.higher_gap
-        result.lower_gap = cached_miss.lower_gap
-        return result
-
     cached_result = await deps.fetch_cached_candidates(
         game,
         key=key,
