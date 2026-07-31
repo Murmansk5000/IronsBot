@@ -40,7 +40,7 @@ def build_service(
 def test_register_reconnect_checks_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
     service = build_service(
-        notices=HeadlessNoticeConfig(reconnect_check_times="00:01,00:02")
+        notices=HeadlessNoticeConfig(reconnect_check_times="00:05")
     )
     register_reconnect_jobs(scheduler, service)
 
@@ -48,22 +48,11 @@ def test_register_reconnect_checks_uses_standard_scheduler_fields() -> None:
         {
             "func": service.reconnect,
             "trigger": "cron",
-            "id": "headless_reconnect_check:00:01",
+            "id": "headless_reconnect_check:00:05",
             "replace_existing": True,
-            "args": ["00:01"],
+            "args": ["00:05"],
             "hour": 0,
-            "minute": 1,
-            "second": 0,
-            "timezone": "Asia/Shanghai",
-        },
-        {
-            "func": service.reconnect,
-            "trigger": "cron",
-            "id": "headless_reconnect_check:00:02",
-            "replace_existing": True,
-            "args": ["00:02"],
-            "hour": 0,
-            "minute": 2,
+            "minute": 5,
             "second": 0,
             "timezone": "Asia/Shanghai",
         },

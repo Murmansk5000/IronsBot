@@ -25,7 +25,7 @@ from ironsbot.services.team.resource import (
     TeamResourceService,
     TeamResourceSubscriptionUpdate,
 )
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -213,6 +213,47 @@ async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies() ->
     assert not await matcher.rule(
         cast("Bot", None),
         replied_event,
+        {},
+    )
+
+
+@pytest.mark.asyncio
+async def test_team_resource_private_rules_allow_enabled_user() -> None:
+    runtime = build_test_runtime(
+        feature_config=FeatureConfig(
+            user_policy={"123": ["team_resource_subscription"]},
+        )
+    )
+    service = TeamResourceService(
+        TeamResourceConfig(),
+        TeamResourceSubscriptionStore(":memory:"),
+        HEADLESS,
+        OneBotReferenceResolver({}, {}),
+        runtime.features,
+        runtime.delivery,
+    )
+    registry = runtime.matcher_registry()
+    resource.install(registry, service)
+    manage = next(
+        matcher
+        for matcher in registry.message_matchers
+        if registry.cooldown_registration(matcher)
+        == ("command", "team_resource_manage")
+    )
+    query = next(
+        matcher
+        for matcher in registry.message_matchers
+        if registry.cooldown_registration(matcher) == ("command", "team_resource_query")
+    )
+
+    assert await manage.rule(
+        cast("Bot", None),
+        private_message_event(f"订阅战队{TEAM_ID}", user_id=123),
+        {},
+    )
+    assert await query.rule(
+        cast("Bot", None),
+        private_message_event("战队", user_id=123),
         {},
     )
 

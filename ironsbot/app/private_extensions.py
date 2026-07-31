@@ -29,9 +29,12 @@ if TYPE_CHECKING:
         PrivateExtensionsConfig,
     )
     from ironsbot.core.features import FeatureService
+    from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.docker_models import DockerImageArchive
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.images import SeerImageSource
@@ -75,6 +78,7 @@ class PrivateExtensionRuntime:
     features: FeatureService
     seer: SeerQueryResources
     headless: HeadlessService
+    headless_sessions: HeadlessSessionFactory
     data: SeerDataAccess
     images: SeerImageSource
     render_html: HtmlTemplateRenderer
@@ -82,6 +86,8 @@ class PrivateExtensionRuntime:
     player_quotas: PlayerQueryQuotaService
     player_requests: PlayerRequestProtectionService
     player_details: PlayerDetailExtensionRegistry
+    scheduler: SchedulerFacade
+    admin_notices: AdminNoticeService
     release_priority: Callable[[dict[str, Any]], Any]
     settings: Mapping[str, Mapping[str, Any]]
 
