@@ -556,25 +556,6 @@ at_user_ids = [123456789]
     assert config.messaging.schedules[0].at_user_ids == [123456789]
 
 
-def test_achievement_history_lookback_days_can_be_configured(
-    tmp_path: Path,
-) -> None:
-    expected_lookback_days = 6
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[seer.achievement_history]
-baseline_lookback_days = 6
-""".strip(),
-        encoding="utf-8",
-    )
-
-    config = load_settings(config_path)
-
-    assert (
-        config.seer.achievement_history.baseline_lookback_days == expected_lookback_days
-    )
-
 
 def test_message_command_feature_registers_for_bundle_and_group_policy(
     tmp_path: Path,

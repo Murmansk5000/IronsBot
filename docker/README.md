@@ -166,7 +166,7 @@ versions if Watchtower reports that client API version 1.25 is too old.
 Push notices are split into separate subscriptions, such as bot startup,
 Docker image check, startup data sync, AI chat errors, Bilibili login notices,
 headless Seer notices, render crash notices, red packet notices, Bilibili pushes, activity
-reminders, and open-server pushes. Private users can send `TD`; group owners
+reminders. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
 
@@ -220,7 +220,7 @@ user_a = "backup_bot"
 Group and user aliases come from `[features.group_aliases]` and
 `[features.user_aliases]`; numeric IDs are also accepted. Replies to incoming
 commands keep using the bot that received the event. Bilibili, activity,
-scheduled-message, server-status, startup, and other proactive deliveries use
+scheduled-message, startup, and other proactive deliveries use
 the configured route. Routing does not filter incoming events, so avoid placing
 multiple responding bots in the same group unless you separately control which
 events each OneBot client forwards.
@@ -298,8 +298,7 @@ Feature names are used in `[features.group_policy]` and
 | `seer_activity_push` | In-game activity ending reminders. |
 | `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
 | `server_status_query` | Server status / open-server query. |
-| `server_status_push` | Server status broadcast pushes. |
-| `server_status` | `server_status_query` + `server_status_push`. |
+| `server_status` | `server_status_query` |
 | `team_resource_subscription` | Subscribed team query and low-resource @ reminders. |
 | `team_audit` | Team audit group join prompt and 24-hour follow-up. |
 | `ai_chat` | AI chat by bot mention or authorized private chat. |

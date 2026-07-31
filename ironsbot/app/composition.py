@@ -48,9 +48,6 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.sendpic import SendpicBackendProvider
-from ironsbot.integrations.storage.achievement_history import (
-    SqliteAchievementHistoryStore,
-)
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
@@ -115,7 +112,6 @@ from ironsbot.services.operations.headless_session import HeadlessSessionFactory
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
-from ironsbot.services.seer.achievement_history import AchievementHistoryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -123,6 +119,7 @@ from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.mintmark import MintmarkQueryService
+from ironsbot.services.seer.new_content import NewContentService
 from ironsbot.services.seer.peak import PeakQueryService
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
@@ -330,20 +327,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     seer_database = SeerDatabase(
         databases,
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
-    )
-    achievement_history = AchievementHistoryService(
-        seer_database,
-        SqliteAchievementHistoryStore(
-            settings.seer.achievement_history.path,
-            max_snapshots=settings.seer.achievement_history.max_snapshots,
-            baseline_lookback_days=(
-                settings.seer.achievement_history.baseline_lookback_days
-            ),
-        ),
-    )
-    databases.add_load_listener(
-        SEERAPI_DB_NAME,
-        achievement_history.capture_current_snapshot,
     )
     prompt_sessions = PromptSessionManager()
     features = FeatureService(
@@ -589,7 +572,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_database,
             seer_images,
             settings.seer.season,
-            achievement_history,
+            NewContentService(seer_database),
         ),
         CountermarkStatRankService(seer_database),
         AutocardService(seer_database),
