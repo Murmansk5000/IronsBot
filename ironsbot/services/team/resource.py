@@ -5,7 +5,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol
 
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.messaging import MessageTarget
@@ -21,8 +21,7 @@ from ironsbot.services.seer.ids import (
 from ironsbot.services.seer.team import format_team_info
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from typing import Literal
+    from collections.abc import Iterable, Sequence
 
     from ironsbot.config.models.seer import TeamResourceConfig
     from ironsbot.core.features import FeatureService
@@ -46,6 +45,22 @@ class TeamResourceResult(NamedTuple):
     team_name: str
     message: str
     resource: int
+
+
+class TeamResourceSubscriptionTarget(NamedTuple):
+    """A group or private conversation that owns resource subscriptions."""
+
+    kind: Literal["group", "private"]
+    target_id: int
+    at_user_ids: tuple[int, ...] = ()
+
+    @property
+    def group_id(self) -> int | None:
+        return self.target_id if self.kind == "group" else None
+
+    @property
+    def is_group(self) -> bool:
+        return self.kind == "group"
 
 
 class TeamResourceSubscription(NamedTuple):
@@ -76,6 +91,10 @@ class TeamResourcePrivateSubscription(NamedTuple):
     threshold: int
     created_at: str
     updated_at: str
+
+    @property
+    def at_user_ids(self) -> tuple[int, ...]:
+        return ()
 
 
 class TeamResourcePrivateSubscriptionUpdate(NamedTuple):
@@ -194,14 +213,31 @@ class TeamResourceService:
         )
 
     def allows(self, user_id: int, group_id: int) -> bool:
-        return self.enabled and self._features.is_group_feature_allowed(
+        return self.allows_target(
             user_id,
-            group_id,
-            TEAM_RESOURCE_FEATURE,
+            TeamResourceSubscriptionTarget("group", group_id),
         )
 
     def allows_private(self, user_id: int) -> bool:
-        return self.enabled and self._features.is_private_feature_allowed(
+        return self.allows_target(
+            user_id,
+            TeamResourceSubscriptionTarget("private", user_id),
+        )
+
+    def allows_target(
+        self,
+        user_id: int,
+        target: TeamResourceSubscriptionTarget,
+    ) -> bool:
+        if not self.enabled:
+            return False
+        if target.is_group:
+            return self._features.is_group_feature_allowed(
+                user_id,
+                target.target_id,
+                TEAM_RESOURCE_FEATURE,
+            )
+        return self._features.is_private_feature_allowed(
             user_id,
             TEAM_RESOURCE_FEATURE,
         )
@@ -216,7 +252,20 @@ class TeamResourceService:
         )
 
     def matches_private_query(self, text: str, *, user_id: int) -> bool:
-        return self.allows_private(user_id) and command_text_matches(
+        return self.matches_target_query(
+            text,
+            user_id=user_id,
+            target=TeamResourceSubscriptionTarget("private", user_id),
+        )
+
+    def matches_target_query(
+        self,
+        text: str,
+        *,
+        user_id: int,
+        target: TeamResourceSubscriptionTarget,
+    ) -> bool:
+        return self.allows_target(user_id, target) and command_text_matches(
             text,
             self._config.commands,
         )
@@ -257,139 +306,77 @@ class TeamResourceService:
             "“订阅战队123456”添加更多战队。"
         )
 
-    def group_subscriptions_message(self, group_id: int) -> str:
-        subscriptions = self._store.list_group(group_id)
+    def subscriptions_message(self, target: TeamResourceSubscriptionTarget) -> str:
+        subscriptions = self._subscriptions_for_target(target)
         if not subscriptions:
-            return (
-                "本群还没有订阅战队。\n"
-                "群主/管理员可发送：订阅战队123456\n"
-                "也可发送：订阅战队123456 1000 @提醒人"
-            )
+            return self._empty_subscriptions_message(target)
 
-        lines = ["本群战队订阅："]
+        lines = ["本群战队订阅：" if target.is_group else "你的战队资源订阅："]
         for index, subscription in enumerate(subscriptions, start=1):
             label = (
                 f"{subscription.team_name}（{subscription.team_id}）"
                 if subscription.team_name
                 else str(subscription.team_id)
             )
-            lines.append(
-                f"{index}. {label}｜阈值 {subscription.threshold}"
-                f"｜提醒 {_format_user_ids(subscription.at_user_ids)}"
-            )
-        lines.extend(
-            (
-                "",
-                "群主/管理员可发送：订阅战队123456 1000 @提醒人",
-                "取消订阅：取消订阅战队123456",
-            )
-        )
+            line = f"{index}. {label}｜阈值 {subscription.threshold}"
+            if target.is_group:
+                line += f"｜提醒 {_format_user_ids(subscription.at_user_ids)}"
+            lines.append(line)
+        lines.extend(("", *self._manage_usage_lines(target)))
         return "\n".join(lines)
 
-    def private_subscriptions_message(self, user_id: int) -> str:
-        subscriptions = self._store.list_user(user_id)
-        if not subscriptions:
-            return (
-                "你还没有订阅战队资源。\n"
-                "发送：订阅战队123456\n"
-                "也可发送：订阅战队123456 1000"
-            )
-
-        lines = ["你的战队资源订阅："]
-        for index, subscription in enumerate(subscriptions, start=1):
-            label = (
-                f"{subscription.team_name}（{subscription.team_id}）"
-                if subscription.team_name
-                else str(subscription.team_id)
-            )
-            lines.append(f"{index}. {label}｜阈值 {subscription.threshold}")
-        lines.extend(
-            (
-                "",
-                "发送：订阅战队123456 1000",
-                "取消订阅：取消订阅战队123456",
-            )
-        )
-        return "\n".join(lines)
-
-    def remove_subscription(self, *, group_id: int, team_id: int) -> str:
-        if not is_valid_team_id(team_id):
-            return TEAM_ID_ERROR_MESSAGE
-        deleted = self._store.delete(group_id=group_id, team_id=team_id)
-        return (
-            f"已取消本群战队订阅：{team_id}。"
-            if deleted
-            else f"本群没有订阅战队：{team_id}。"
-        )
-
-    async def add_subscription(
+    def remove_target_subscription(
         self,
         *,
-        group_id: int,
+        target: TeamResourceSubscriptionTarget,
+        team_id: int,
+    ) -> str:
+        if not is_valid_team_id(team_id):
+            return TEAM_ID_ERROR_MESSAGE
+        deleted = self._delete_subscription(target, team_id)
+        if deleted:
+            prefix = "已取消本群战队订阅" if target.is_group else "已取消战队订阅"
+            return f"{prefix}：{team_id}。"
+        prefix = "本群没有订阅战队" if target.is_group else "你没有订阅战队"
+        return f"{prefix}：{team_id}。"
+
+    async def add_target_subscription(
+        self,
+        *,
+        target: TeamResourceSubscriptionTarget,
         team_id: int,
         threshold: int | None,
-        at_user_ids: Iterable[int],
         operator_id: int,
     ) -> str:
         if not is_valid_team_id(team_id):
             return TEAM_ID_ERROR_MESSAGE
         try:
-            result = await self.query(team_id, group_id=group_id)
+            result = await self.query(team_id, group_id=target.group_id)
         except TeamResourceQueryError as error:
             return str(error)
 
         effective_threshold = threshold or self._config.default_threshold
-        effective_users = tuple(dict.fromkeys(at_user_ids)) or self.default_at_user_ids
-        self._save_subscription(
-            group_id=group_id,
+        effective_users = (
+            tuple(dict.fromkeys(target.at_user_ids)) or self.default_at_user_ids
+            if target.is_group
+            else ()
+        )
+        self._save_target_subscription(
+            target=TeamResourceSubscriptionTarget(
+                target.kind,
+                target.target_id,
+                effective_users,
+            ),
             result=result,
             threshold=effective_threshold,
-            at_user_ids=effective_users,
             operator_id=operator_id,
         )
+        prefix = "已订阅本群战队" if target.is_group else "已订阅战队"
+        reminder = _format_user_ids(effective_users) if target.is_group else "你"
         return (
-            f"已订阅本群战队：{result.team_name}（{result.team_id}）。\n"
+            f"{prefix}：{result.team_name}（{result.team_id}）。\n"
             f"资源阈值：{effective_threshold}\n"
-            f"提醒对象：{_format_user_ids(effective_users)}"
-        )
-
-    async def add_private_subscription(
-        self,
-        *,
-        user_id: int,
-        team_id: int,
-        threshold: int | None,
-    ) -> str:
-        if not is_valid_team_id(team_id):
-            return TEAM_ID_ERROR_MESSAGE
-        try:
-            result = await self.query(team_id)
-        except TeamResourceQueryError as error:
-            return str(error)
-
-        effective_threshold = threshold or self._config.default_threshold
-        self._store.upsert_private(
-            TeamResourcePrivateSubscriptionUpdate(
-                user_id=user_id,
-                team_id=result.team_id,
-                team_name=result.team_name,
-                threshold=effective_threshold,
-            )
-        )
-        return (
-            f"已订阅战队：{result.team_name}（{result.team_id}）。\n"
-            f"资源阈值：{effective_threshold}\n"
-            "提醒对象：你"
-        )
-
-    def remove_private_subscription(self, *, user_id: int, team_id: int) -> str:
-        if not is_valid_team_id(team_id):
-            return TEAM_ID_ERROR_MESSAGE
-        deleted = self._store.delete_private(user_id=user_id, team_id=team_id)
-        return (
-            f"已取消战队订阅：{team_id}。"
-            if deleted
-            else f"你没有订阅战队：{team_id}。"
+            f"提醒对象：{reminder}"
         )
 
     def answer_prompt(
@@ -420,11 +407,14 @@ class TeamResourceService:
             "",
             0,
         )
-        self._save_subscription(
-            group_id=group_id,
+        self._save_target_subscription(
+            target=TeamResourceSubscriptionTarget(
+                "group",
+                group_id,
+                at_user_ids,
+            ),
             result=result,
             threshold=self._config.default_threshold,
-            at_user_ids=at_user_ids,
             operator_id=user_id,
         )
         label = prompt.team_name or str(prompt.team_id)
@@ -435,21 +425,16 @@ class TeamResourceService:
             "还可以继续发送“订阅战队123456”添加更多战队。"
         )
 
-    async def query_group_messages(self, group_id: int) -> list[str]:
+    async def query_target_messages(
+        self,
+        target: TeamResourceSubscriptionTarget,
+    ) -> list[str]:
         return await self.query_messages(
             (
                 subscription.team_id
-                for subscription in self._store.list_group(group_id)
+                for subscription in self._subscriptions_for_target(target)
             ),
-            group_id=group_id,
-        )
-
-    async def query_private_messages(self, user_id: int) -> list[str]:
-        return await self.query_messages(
-            (
-                subscription.team_id
-                for subscription in self._store.list_user(user_id)
-            ),
+            group_id=target.group_id,
         )
 
     async def query_messages(
@@ -489,62 +474,28 @@ class TeamResourceService:
     async def scan(self) -> None:
         if not self.enabled:
             return
-        for subscription in self._store.list_all():
-            if not self._features.group_has_feature(
-                subscription.group_id,
-                TEAM_RESOURCE_FEATURE,
-            ):
+        for target, subscription in self._all_subscriptions():
+            if not self._target_has_feature(target):
                 continue
             try:
                 result = await self.query(
                     subscription.team_id,
-                    group_id=subscription.group_id,
+                    group_id=target.group_id,
                 )
             except TeamResourceQueryError:
                 continue
 
-            self._store.update_team_name(
-                group_id=subscription.group_id,
-                team_id=subscription.team_id,
-                team_name=result.team_name,
+            self._update_subscription_name(
+                target,
+                subscription.team_id,
+                result.team_name,
             )
             if result.resource >= subscription.threshold:
                 continue
             await self._delivery.send_targets(
-                [
-                    MessageTarget(
-                        "group",
-                        subscription.group_id,
-                        subscription.at_user_ids,
-                    )
-                ],
+                [MessageTarget(target.kind, target.target_id, target.at_user_ids)],
                 self._resource_notice(result, subscription),
                 action_name="team resource subscription notice",
-                interval_seconds=0,
-            )
-
-        for subscription in self._store.list_all_private():
-            if not self._features.user_has_feature(
-                subscription.user_id,
-                TEAM_RESOURCE_FEATURE,
-            ):
-                continue
-            try:
-                result = await self.query(subscription.team_id)
-            except TeamResourceQueryError:
-                continue
-
-            self._store.update_private_team_name(
-                user_id=subscription.user_id,
-                team_id=subscription.team_id,
-                team_name=result.team_name,
-            )
-            if result.resource >= subscription.threshold:
-                continue
-            await self._delivery.send_targets(
-                [MessageTarget("private", subscription.user_id)],
-                self._resource_notice(result, subscription),
-                action_name="private team resource subscription notice",
                 interval_seconds=0,
             )
 
@@ -618,24 +569,133 @@ class TeamResourceService:
         )
         return f"{line}\n{self._config.resource_message}"
 
-    def _save_subscription(
+    def _subscriptions_for_target(
+        self,
+        target: TeamResourceSubscriptionTarget,
+    ) -> Sequence[TeamResourceSubscription | TeamResourcePrivateSubscription]:
+        if target.is_group:
+            return self._store.list_group(target.target_id)
+        return self._store.list_user(target.target_id)
+
+    def _all_subscriptions(
+        self,
+    ) -> Iterable[
+        tuple[
+            TeamResourceSubscriptionTarget,
+            TeamResourceSubscription | TeamResourcePrivateSubscription,
+        ]
+    ]:
+        for subscription in self._store.list_all():
+            yield (
+                TeamResourceSubscriptionTarget(
+                    "group",
+                    subscription.group_id,
+                    subscription.at_user_ids,
+                ),
+                subscription,
+            )
+        for subscription in self._store.list_all_private():
+            yield (
+                TeamResourceSubscriptionTarget("private", subscription.user_id),
+                subscription,
+            )
+
+    def _target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
+        if target.is_group:
+            return self._features.group_has_feature(
+                target.target_id,
+                TEAM_RESOURCE_FEATURE,
+            )
+        return self._features.user_has_feature(
+            target.target_id,
+            TEAM_RESOURCE_FEATURE,
+        )
+
+    def _update_subscription_name(
+        self,
+        target: TeamResourceSubscriptionTarget,
+        team_id: int,
+        team_name: str,
+    ) -> None:
+        if target.is_group:
+            self._store.update_team_name(
+                group_id=target.target_id,
+                team_id=team_id,
+                team_name=team_name,
+            )
+            return
+        self._store.update_private_team_name(
+            user_id=target.target_id,
+            team_id=team_id,
+            team_name=team_name,
+        )
+
+    def _delete_subscription(
+        self,
+        target: TeamResourceSubscriptionTarget,
+        team_id: int,
+    ) -> bool:
+        if target.is_group:
+            return self._store.delete(group_id=target.target_id, team_id=team_id)
+        return self._store.delete_private(user_id=target.target_id, team_id=team_id)
+
+    def _save_target_subscription(
         self,
         *,
-        group_id: int,
+        target: TeamResourceSubscriptionTarget,
         result: TeamResourceResult,
         threshold: int,
-        at_user_ids: tuple[int, ...],
         operator_id: int,
     ) -> None:
+        if not target.is_group:
+            self._store.upsert_private(
+                TeamResourcePrivateSubscriptionUpdate(
+                    user_id=target.target_id,
+                    team_id=result.team_id,
+                    team_name=result.team_name,
+                    threshold=threshold,
+                )
+            )
+            return
         self._store.upsert(
             TeamResourceSubscriptionUpdate(
-                group_id=group_id,
+                group_id=target.target_id,
                 team_id=result.team_id,
                 team_name=result.team_name,
                 threshold=threshold,
-                at_user_ids=at_user_ids,
+                at_user_ids=target.at_user_ids,
                 operator_id=operator_id,
             )
+        )
+
+    def _empty_subscriptions_message(
+        self,
+        target: TeamResourceSubscriptionTarget,
+    ) -> str:
+        if target.is_group:
+            return (
+                "本群还没有订阅战队。\n"
+                "群主/管理员可发送：订阅战队123456\n"
+                "也可发送：订阅战队123456 1000 @提醒人"
+            )
+        return (
+            "你还没有订阅战队资源。\n"
+            "发送：订阅战队123456\n"
+            "也可发送：订阅战队123456 1000"
+        )
+
+    def _manage_usage_lines(
+        self,
+        target: TeamResourceSubscriptionTarget,
+    ) -> tuple[str, ...]:
+        if target.is_group:
+            return (
+                "群主/管理员可发送：订阅战队123456 1000 @提醒人",
+                "取消订阅：取消订阅战队123456",
+            )
+        return (
+            "发送：订阅战队123456 1000",
+            "取消订阅：取消订阅战队123456",
         )
 
 
@@ -671,5 +731,7 @@ def parse_team_resource_manage_command(
                 manual_mention,
             )
     return None
+
+
 def _format_user_ids(user_ids: tuple[int, ...]) -> str:
     return "、".join(str(user_id) for user_id in user_ids) if user_ids else "无"

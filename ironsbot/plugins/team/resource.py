@@ -17,6 +17,7 @@ from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
 from ironsbot.runtime.rules import no_reply
+from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
@@ -27,15 +28,11 @@ def _is_team_resource_query(
     *,
     service: TeamResourceService,
 ) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return service.matches_query(
-            event.get_plaintext(),
-            user_id=event.user_id,
-            group_id=event.group_id,
-        )
-    return isinstance(event, PrivateMessageEvent) and service.matches_private_query(
+    target = _subscription_target(event)
+    return target is not None and service.matches_target_query(
         event.get_plaintext(),
         user_id=event.user_id,
+        target=target,
     )
 
 
@@ -45,12 +42,11 @@ def _is_team_resource_manage(
     service: TeamResourceService,
 ) -> bool:
     command = service.parse_manage(event.get_plaintext())
-    if command is None:
-        return False
-    if isinstance(event, GroupMessageEvent):
-        return service.allows(event.user_id, event.group_id)
-    return isinstance(event, PrivateMessageEvent) and service.allows_private(
-        event.user_id
+    target = _subscription_target(event)
+    return (
+        command is not None
+        and target is not None
+        and service.allows_target(event.user_id, target)
     )
 
 
@@ -73,10 +69,8 @@ async def handle_team_resource_manage(
     event: MessageEvent,
     service: TeamResourceService,
 ) -> None:
-    if isinstance(event, PrivateMessageEvent):
-        await _handle_private_team_resource_manage(matcher, event, service)
-        return
-    if not isinstance(event, GroupMessageEvent):
+    target = _subscription_target(event)
+    if target is None:
         await matcher.finish()
 
     command = service.parse_manage(event.get_plaintext())
@@ -87,11 +81,14 @@ async def handle_team_resource_manage(
         await finish_event_reply(
             matcher,
             event,
-            service.group_subscriptions_message(event.group_id),
+            service.subscriptions_message(target),
         )
         return
 
-    if not can_manage_group_event(service, event):
+    if isinstance(event, GroupMessageEvent) and not can_manage_group_event(
+        service,
+        event,
+    ):
         await finish_event_reply(
             matcher,
             event,
@@ -104,13 +101,12 @@ async def handle_team_resource_manage(
         await matcher.finish()
 
     if command.action == "remove":
-        message = service.remove_subscription(
-            group_id=event.group_id,
+        message = service.remove_target_subscription(
+            target=target,
             team_id=team_id,
         )
     else:
-        at_user_ids = _at_user_ids_from_event(event)
-        if command.has_manual_mention and not at_user_ids:
+        if command.has_manual_mention and target.is_group and not target.at_user_ids:
             await finish_event_reply(
                 matcher,
                 event,
@@ -118,47 +114,11 @@ async def handle_team_resource_manage(
                 "手动输入 @QQ号 不会保存为提醒对象。",
             )
             return
-        message = await service.add_subscription(
-            group_id=event.group_id,
+        message = await service.add_target_subscription(
+            target=target,
             team_id=team_id,
             threshold=command.threshold,
-            at_user_ids=at_user_ids,
             operator_id=event.user_id,
-        )
-    await finish_event_reply(matcher, event, message)
-
-
-async def _handle_private_team_resource_manage(
-    matcher: Matcher,
-    event: PrivateMessageEvent,
-    service: TeamResourceService,
-) -> None:
-    command = service.parse_manage(event.get_plaintext())
-    if command is None:
-        await matcher.finish()
-
-    if command.action == "list":
-        await finish_event_reply(
-            matcher,
-            event,
-            service.private_subscriptions_message(event.user_id),
-        )
-        return
-
-    team_id = command.team_id
-    if team_id is None:
-        await matcher.finish()
-
-    if command.action == "remove":
-        message = service.remove_private_subscription(
-            user_id=event.user_id,
-            team_id=team_id,
-        )
-    else:
-        message = await service.add_private_subscription(
-            user_id=event.user_id,
-            team_id=team_id,
-            threshold=command.threshold,
         )
     await finish_event_reply(matcher, event, message)
 
@@ -186,20 +146,16 @@ async def handle_team_resource(
     event: MessageEvent,
     service: TeamResourceService,
 ) -> None:
-    if isinstance(event, GroupMessageEvent):
-        messages = await service.query_group_messages(event.group_id)
-        empty_message = "本群还没有订阅战队。群主/管理员可发送“订阅战队123456”添加。"
-    elif isinstance(event, PrivateMessageEvent):
-        messages = await service.query_private_messages(event.user_id)
-        empty_message = "你还没有订阅战队。可发送“订阅战队123456”添加。"
-    else:
+    target = _subscription_target(event)
+    if target is None:
         await matcher.finish()
 
+    messages = await service.query_target_messages(target)
     if not messages:
         await finish_event_reply(
             matcher,
             event,
-            empty_message,
+            service.subscriptions_message(target),
         )
         return
     await finish_message_sequence(
@@ -273,3 +229,17 @@ def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
             and (qq := str(segment.data.get("qq", ""))).isdigit()
         )
     )
+
+
+def _subscription_target(
+    event: MessageEvent,
+) -> TeamResourceSubscriptionTarget | None:
+    if isinstance(event, GroupMessageEvent):
+        return TeamResourceSubscriptionTarget(
+            "group",
+            event.group_id,
+            _at_user_ids_from_event(event),
+        )
+    if isinstance(event, PrivateMessageEvent):
+        return TeamResourceSubscriptionTarget("private", event.user_id)
+    return None

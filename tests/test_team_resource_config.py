@@ -9,6 +9,7 @@ from ironsbot.integrations.storage.team_resources import (
 from ironsbot.services.team.resource import (
     TeamResourcePrivateSubscriptionUpdate,
     TeamResourceService,
+    TeamResourceSubscriptionTarget,
     TeamResourceSubscriptionUpdate,
 )
 from tests.helpers.runtime import build_test_runtime
@@ -106,6 +107,43 @@ def test_team_resource_subscription_store_keeps_private_subscriptions_separate(
     assert subscriptions[0].team_id == TEAM_ID
     assert subscriptions[0].threshold == TEAM_RESOURCE_THRESHOLD
     assert store.list_group(OWNER_ID) == []
+
+
+def test_team_resource_service_uses_one_target_interface_for_subscriptions(
+    tmp_path: Path,
+) -> None:
+    config = TeamResourceConfig(subscription_path=tmp_path / "team_resource.sqlite")
+    service, store = _service(config, {})
+    store.upsert(
+        TeamResourceSubscriptionUpdate(
+            group_id=987654321,
+            team_id=TEAM_ID,
+            team_name="群战队",
+            threshold=TEAM_RESOURCE_THRESHOLD,
+            at_user_ids=(OWNER_ID,),
+            operator_id=OWNER_ID,
+        )
+    )
+    store.upsert_private(
+        TeamResourcePrivateSubscriptionUpdate(
+            user_id=OWNER_ID,
+            team_id=TEAM_ID,
+            team_name="私聊战队",
+            threshold=TEAM_RESOURCE_THRESHOLD,
+        )
+    )
+
+    group_message = service.subscriptions_message(
+        TeamResourceSubscriptionTarget("group", 987654321)
+    )
+    private_message = service.subscriptions_message(
+        TeamResourceSubscriptionTarget("private", OWNER_ID)
+    )
+
+    assert "群战队" in group_message
+    assert "提醒 1234567890" in group_message
+    assert "私聊战队" in private_message
+    assert "提醒" not in private_message
 
 
 def test_team_resource_store_tracks_group_prompt_once(tmp_path: Path) -> None:
