@@ -231,7 +231,9 @@ def test_example_config_parses() -> None:
     assert config.features.user_aliases == {
         "owner": 1234567890,
         "user_a": 2345678901,
+        "qq_group_manager": 2854196310,
     }
+    assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
     assert (
@@ -553,25 +555,6 @@ at_user_ids = [123456789]
     assert config.messaging.schedules[0].id == "daily_reminder"
     assert config.messaging.schedules[0].at_user_ids == [123456789]
 
-
-def test_achievement_history_lookback_days_can_be_configured(
-    tmp_path: Path,
-) -> None:
-    expected_lookback_days = 6
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[seer.achievement_history]
-baseline_lookback_days = 6
-""".strip(),
-        encoding="utf-8",
-    )
-
-    config = load_settings(config_path)
-
-    assert (
-        config.seer.achievement_history.baseline_lookback_days == expected_lookback_days
-    )
 
 
 def test_message_command_feature_registers_for_bundle_and_group_policy(

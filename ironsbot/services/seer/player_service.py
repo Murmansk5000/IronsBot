@@ -25,6 +25,7 @@ from ironsbot.services.seer.ids import (
 from ironsbot.services.seer.player_account_policy import PlayerAccountPolicyMixin
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
 from ironsbot.services.seer.player_binding import player_binding_offer_message
+from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import (
     player_query_failure_message,
     player_query_timeout_message,
@@ -620,12 +621,7 @@ class PlayerService(PlayerAccountPolicyMixin):
     ) -> QueryReply:
         player_id = command.player_id or self.default_player_id(qq_user_id)
         if player_id is None:
-            return QueryReply(
-                text=(
-                    "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
-                    "查询未绑定的米米号时，需要在查询指令后加上米米号。"
-                )
-            )
+            return QueryReply(text=unbound_player_shortcut_message())
         if not is_valid_player_id(player_id):
             return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
         cached = self._details.cached_reply(player_id, command.kind)

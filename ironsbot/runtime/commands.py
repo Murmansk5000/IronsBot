@@ -141,6 +141,7 @@ class CommandAccess:
     scope: CommandScope = "both"
     audience: CommandAudience = "regular"
     features_any: tuple[str, ...] = ()
+    features_all: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.scope not in {"group", "private", "both"}:
@@ -149,7 +150,10 @@ class CommandAccess:
             raise CommandCatalogError.invalid_audience("access")
         if self.audience == "group_manager" and self.scope == "private":
             raise CommandCatalogError.private_group_manager("access")
-        if any(not feature.strip() for feature in self.features_any):
+        if any(
+            not feature.strip()
+            for feature in (*self.features_any, *self.features_all)
+        ):
             raise CommandCatalogError.empty_features_any("access")
 
     def is_available(
@@ -162,6 +166,11 @@ class CommandAccess:
         if self.features_any and not any(
             _feature_is_allowed(features, context, feature)
             for feature in self.features_any
+        ):
+            return False
+        if any(
+            not _feature_is_allowed(features, context, feature)
+            for feature in self.features_all
         ):
             return False
         if self.audience == "group_manager":
@@ -182,6 +191,7 @@ class CommandDescriptor:
     examples: tuple[str, ...]
     description: str
     features_any: tuple[str, ...] = ()
+    features_all: tuple[str, ...] = ()
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
     interaction: CommandInteraction = "direct"
     help_level: CommandHelpLevel = "full"
@@ -200,7 +210,10 @@ class CommandDescriptor:
             raise CommandCatalogError.requires_examples(self.id)
         if not self.description.strip():
             raise CommandCatalogError.requires_description(self.id)
-        if any(not feature.strip() for feature in self.features_any):
+        if any(
+            not feature.strip()
+            for feature in (*self.features_any, *self.features_all)
+        ):
             raise CommandCatalogError.empty_features_any(self.id)
         if not self.access:
             raise CommandCatalogError.invalid_scope(self.id)
@@ -219,6 +232,11 @@ class CommandDescriptor:
         if self.features_any and not any(
             _feature_is_allowed(features, context, feature)
             for feature in self.features_any
+        ):
+            return False
+        if any(
+            not _feature_is_allowed(features, context, feature)
+            for feature in self.features_all
         ):
             return False
         return self.visible is None or self.visible(context)
@@ -306,10 +324,11 @@ class CommandCatalog:
                 for command in commands
                 for feature in (
                     *command.features_any,
+                    *command.features_all,
                     *(
                         feature
                         for access in command.access
-                        for feature in access.features_any
+                        for feature in (*access.features_any, *access.features_all)
                     ),
                 )
                 if feature not in known_feature_set
