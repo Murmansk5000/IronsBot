@@ -255,3 +255,8 @@ def test_team_recommend_feature_is_registered() -> None:
 def test_private_player_lineup_feature_is_in_all_bundle() -> None:
     assert "player_lineup_private" in FEATURE_KEYS
     assert "player_lineup_private" in FEATURE_BUNDLES["all"]
+
+
+def test_private_lucky_skin_window_feature_is_in_all_bundle() -> None:
+    assert "lucky_skin_window" in FEATURE_KEYS
+    assert "lucky_skin_window" in FEATURE_BUNDLES["all"]

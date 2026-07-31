@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
+from ironsbot.services.seer.data_query_commands import (
+    DATA_QUERY_HELP_EXAMPLES,
+)
 from ironsbot.services.seer.rank_catalog import rank_command_names
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, LOCAL_RANKS
 
@@ -172,7 +175,7 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
             (
                 (
                     "seer.data.query",
-                    ("下周预告", "新增成就", "数据版本", "赛季倒计时"),
+                    DATA_QUERY_HELP_EXAMPLES,
                     "查询赛尔数据和赛季信息",
                     {"show_in_poke": True},
                 ),

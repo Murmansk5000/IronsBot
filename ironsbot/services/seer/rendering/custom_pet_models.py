@@ -70,7 +70,8 @@ class SpecialEffectDict(TypedDict):
     name: str
     desc: str | None
     sources: list[str]
-    icon_id: int | None
+    glossary_id: int | None
+    status_id: int | None
     icon: str | None
 
 

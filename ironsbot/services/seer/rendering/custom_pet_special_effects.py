@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 EFFECT_DESCRIPTION_TABLE = "effect_description"
 SPECIAL_EFFECT_STATUS_TABLE = "special_effect_status"
+GLOSSARY_ENTRY_TABLE = "glossary_entry"
+GLOSSARY_LINK_TABLE = "glossaryentrylink"
 GLOSSARY_SOURCE = "\u5b98\u65b9\u5173\u8054\u8bcd\u6761"
 STATUS_SOURCE = "\u5b98\u65b9\u72b6\u6001\u5173\u8054"
 STATUS_NAME_SOURCE = "\u5b98\u65b9\u540c\u540d\u72b6\u6001"
@@ -90,7 +92,12 @@ def _extract_special_effects(pet: PetORM) -> list[SpecialEffectDict]:
                 name=name,
                 desc=description,
                 sources=[GLOSSARY_SOURCE],
-                icon_id=None,
+                glossary_id=(
+                    int(glossary.id)
+                    if getattr(glossary, "id", None) is not None
+                    else None
+                ),
+                status_id=None,
                 icon=None,
             ),
         )
@@ -151,6 +158,7 @@ def _add_skill_red_effects(
     effects: list[SpecialEffectDict],
 ) -> None:
     """Add exact official EffectDes terms highlighted red in this pet's skills."""
+    _ensure_effect_ids(effects)
     try:
         rows = session.execute(
             text(
@@ -188,7 +196,8 @@ def _add_skill_red_effects(
                         name=name,
                         desc=descriptions[name],
                         sources=[source],
-                        icon_id=None,
+                        glossary_id=None,
+                        status_id=None,
                         icon=None,
                     )
                     effects_by_name[name] = effect
@@ -281,13 +290,13 @@ def _upsert_status_effect(
     for effect in effects:
         if effect["name"] != name:
             continue
-        if effect["icon_id"] in (None, status_id):
+        if effect["status_id"] in (None, status_id):
             if effect["desc"] is None and description is not None:
                 effect["desc"] = description
             if source not in effect["sources"]:
                 effect["sources"].append(source)
-            if effect["icon_id"] is None:
-                effect["icon_id"] = status_id
+            if effect["status_id"] is None:
+                effect["status_id"] = status_id
             return
 
     effects.append(
@@ -295,7 +304,8 @@ def _upsert_status_effect(
             name=name,
             desc=description,
             sources=[source],
-            icon_id=status_id,
+            glossary_id=None,
+            status_id=status_id,
             icon=None,
         )
     )
@@ -306,12 +316,13 @@ def _add_named_status_icons(
     effects: list[SpecialEffectDict],
 ) -> None:
     """Attach a sign-buff icon when an already trusted effect name is unique."""
+    _ensure_effect_ids(effects)
     by_name = _fetch_status_rows_by_names(
         session,
         (effect["name"] for effect in effects),
     )
     for effect in effects:
-        if effect["icon_id"] is not None:
+        if effect["status_id"] is not None:
             continue
         rows = by_name.get(effect["name"], [])
         if len(rows) != 1:
@@ -321,7 +332,7 @@ def _add_named_status_icons(
             effect["desc"] = description
         if STATUS_NAME_SOURCE not in effect["sources"]:
             effect["sources"].append(STATUS_NAME_SOURCE)
-        effect["icon_id"] = status_id
+        effect["status_id"] = status_id
 
 
 def _add_soulmark_highlight_status_effects(
@@ -330,6 +341,7 @@ def _add_soulmark_highlight_status_effects(
     effects: list[SpecialEffectDict],
 ) -> None:
     """Use official red/green soulmark highlights as status candidates."""
+    _ensure_effect_ids(effects)
     soulmark_terms: dict[str, list[tuple[int, str]]] = {}
     for soulmark in pet.soulmark:
         context = "\n".join(
@@ -370,6 +382,7 @@ def _add_pet_linked_status_effects(
     pet_id: int,
 ) -> None:
     """Add statuses whose official record explicitly identifies this pet."""
+    _ensure_effect_ids(effects)
     try:
         rows = session.execute(
             text(
@@ -402,7 +415,8 @@ def _add_pet_linked_status_effects(
                 name=name,
                 desc=description,
                 sources=[STATUS_SOURCE],
-                icon_id=int(status_id),
+                glossary_id=None,
+                status_id=int(status_id),
                 icon=None,
             )
             effects_by_name[name] = effect
@@ -413,5 +427,211 @@ def _add_pet_linked_status_effects(
             effect["desc"] = description
         if STATUS_SOURCE not in effect["sources"]:
             effect["sources"].append(STATUS_SOURCE)
-        if effect["icon_id"] is None:
-            effect["icon_id"] = int(status_id)
+        if effect["status_id"] is None:
+            effect["status_id"] = int(status_id)
+
+
+def _ensure_effect_ids(effects: list[SpecialEffectDict]) -> None:
+    """Provide metadata defaults for effects created by older helper callers."""
+    for effect in effects:
+        effect.setdefault("glossary_id", None)
+        effect.setdefault("status_id", None)
+
+
+def _resolve_glossary_ids(
+    session: Any,
+    effects: list[SpecialEffectDict],
+) -> None:
+    """Resolve status-derived effects to an official glossary entry when unambiguous."""
+    _ensure_effect_ids(effects)
+    names = tuple(
+        dict.fromkeys(
+            effect["name"] for effect in effects if effect["glossary_id"] is None
+        )
+    )
+    if not names:
+        return
+
+    placeholders = ", ".join(f":name_{index}" for index, _ in enumerate(names))
+    params = {f"name_{index}": name for index, name in enumerate(names)}
+    try:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT id, name, desc
+                FROM {GLOSSARY_ENTRY_TABLE}
+                WHERE name IN ({placeholders})
+                ORDER BY id
+                """
+            ),
+            params,
+        ).all()
+    except SQLAlchemyError:
+        logger.debug(
+            "official glossary data is unavailable in the current SQLite release",
+            exc_info=True,
+        )
+        return
+
+    candidates: dict[str, list[tuple[int, str | None]]] = {}
+    for raw_id, raw_name, raw_description in rows:
+        name = str(raw_name or "").strip()
+        if name:
+            candidates.setdefault(name, []).append(
+                (int(raw_id), str(raw_description or "").strip() or None)
+            )
+
+    for effect in effects:
+        if effect["glossary_id"] is not None:
+            continue
+        matching = candidates.get(effect["name"], [])
+        if len(matching) == 1:
+            effect["glossary_id"] = matching[0][0]
+            continue
+        normalized_description = _normalize_effect_text(effect["desc"])
+        exact = [
+            glossary_id
+            for glossary_id, description in matching
+            if normalized_description
+            and _normalize_effect_text(description) == normalized_description
+        ]
+        if len(exact) == 1:
+            effect["glossary_id"] = exact[0]
+
+
+def _add_linked_glossary_effects(
+    session: Any,
+    effects: list[SpecialEffectDict],
+) -> None:
+    """Add one official glossary-link layer without inferring from prose."""
+    _resolve_glossary_ids(session, effects)
+    source_ids = tuple(
+        dict.fromkeys(
+            effect["glossary_id"]
+            for effect in effects
+            if effect["glossary_id"] is not None
+        )
+    )
+    if not source_ids:
+        return
+
+    placeholders = ", ".join(
+        f":source_id_{index}" for index, _ in enumerate(source_ids)
+    )
+    params = {
+        f"source_id_{index}": source_id for index, source_id in enumerate(source_ids)
+    }
+    try:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT link.source_id, target.id, target.name, target.desc
+                FROM {GLOSSARY_LINK_TABLE} AS link
+                JOIN {GLOSSARY_ENTRY_TABLE} AS target ON target.id = link.target_id
+                WHERE link.source_id IN ({placeholders})
+                  AND link.source_id <> link.target_id
+                ORDER BY link.source_id, target.id
+                """
+            ),
+            params,
+        ).all()
+    except SQLAlchemyError:
+        logger.debug(
+            "official glossary links are unavailable in the current SQLite release",
+            exc_info=True,
+        )
+        return
+
+    existing_by_id = {
+        effect["glossary_id"]: effect
+        for effect in effects
+        if effect["glossary_id"] is not None
+    }
+    for _source_id, raw_target_id, raw_name, raw_description in rows:
+        target_id = int(raw_target_id)
+        if target_id in existing_by_id:
+            continue
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        description = str(raw_description or "").strip() or None
+        matching_effect = next(
+            (
+                effect
+                for effect in effects
+                if effect["glossary_id"] is None
+                and effect["name"] == name
+                and _normalize_effect_text(effect["desc"])
+                == _normalize_effect_text(description)
+            ),
+            None,
+        )
+        if matching_effect is None:
+            matching_effect = SpecialEffectDict(
+                name=name,
+                desc=description,
+                sources=[GLOSSARY_SOURCE],
+                glossary_id=target_id,
+                status_id=None,
+                icon=None,
+            )
+            effects.append(matching_effect)
+        else:
+            matching_effect["glossary_id"] = target_id
+            if GLOSSARY_SOURCE not in matching_effect["sources"]:
+                matching_effect["sources"].append(GLOSSARY_SOURCE)
+        existing_by_id[target_id] = matching_effect
+
+
+def _sort_special_effects(effects: list[SpecialEffectDict]) -> None:
+    """Sort every effect by glossary ID, then status ID, preserving discovery order."""
+    _ensure_effect_ids(effects)
+    discovered = {id(effect): index for index, effect in enumerate(effects)}
+
+    def sort_key(effect: SpecialEffectDict) -> tuple[int, int, int]:
+        sort_id = effect["glossary_id"]
+        if sort_id is None:
+            sort_id = effect["status_id"]
+        if sort_id is None:
+            return (1, 0, discovered[id(effect)])
+        return (0, int(sort_id), discovered[id(effect)])
+
+    effects.sort(key=sort_key)
+
+
+def _deduplicate_special_effects(effects: list[SpecialEffectDict]) -> None:
+    """Merge entries that identify the same official glossary or status effect."""
+    _ensure_effect_ids(effects)
+    by_glossary_id: dict[int, SpecialEffectDict] = {}
+    by_status_id: dict[int, SpecialEffectDict] = {}
+    unique: list[SpecialEffectDict] = []
+
+    for effect in effects:
+        glossary_id = effect["glossary_id"]
+        status_id = effect["status_id"]
+        existing = (
+            by_glossary_id.get(glossary_id)
+            if glossary_id is not None
+            else by_status_id.get(status_id)
+            if status_id is not None
+            else None
+        )
+        if existing is None:
+            unique.append(effect)
+            if glossary_id is not None:
+                by_glossary_id[glossary_id] = effect
+            elif status_id is not None:
+                by_status_id[status_id] = effect
+            continue
+
+        if existing["desc"] is None and effect["desc"] is not None:
+            existing["desc"] = effect["desc"]
+        for source in effect["sources"]:
+            if source not in existing["sources"]:
+                existing["sources"].append(source)
+        if existing["status_id"] is None:
+            existing["status_id"] = status_id
+        if existing["icon"] is None and effect["icon"] is not None:
+            existing["icon"] = effect["icon"]
+
+    effects[:] = unique

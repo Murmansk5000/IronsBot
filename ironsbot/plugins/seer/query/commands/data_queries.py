@@ -11,6 +11,12 @@ from nonebot_plugin_saa import Image, MessageFactory
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data_query_commands import (
+    DATA_VERSION_COMMANDS,
+    NEW_ACHIEVEMENTS_COMMANDS,
+    SEASON_COUNTDOWN_COMMANDS,
+    WEEKLY_PREVIEW_COMMANDS,
+)
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -43,15 +49,15 @@ async def _finish_query(
 def install(group: SeerMatcherGroup) -> None:
     service: SeerDataQueryService = group.resources.data_queries
     commands = (
-        ("下周预告", "seer_data_preview", service.weekly_preview),
-        ("数据版本", "seer_data_version", service.data_version),
+        (WEEKLY_PREVIEW_COMMANDS, "seer_data_preview", service.weekly_preview),
+        (DATA_VERSION_COMMANDS, "seer_data_version", service.data_version),
         (
-            ("新增成就", "新成就"),
+            NEW_ACHIEVEMENTS_COMMANDS,
             "seer_data_new_achievements",
             service.new_achievements,
         ),
         (
-            ("赛季倒计时", "赛季时间", "赛季结束", "赛季"),
+            SEASON_COUNTDOWN_COMMANDS,
             "seer_season_countdown",
             service.season_countdown,
         ),
