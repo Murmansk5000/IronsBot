@@ -17,12 +17,11 @@ from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.team import format_team_info
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
     from typing import Literal
 
     from ironsbot.config.models.seer import TeamResourceConfig
     from ironsbot.core.features import FeatureService
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.scheduler import Scheduler
@@ -147,7 +146,7 @@ class TeamResourceService:
     _config: TeamResourceConfig
     _store: TeamResourceStore
     _headless: HeadlessService
-    _references: OneBotReferenceResolver
+    _user_aliases: Mapping[str, int]
     _features: FeatureService
     _delivery: MessageDelivery
 
@@ -157,12 +156,13 @@ class TeamResourceService:
 
     @property
     def default_at_user_ids(self) -> tuple[int, ...]:
-        return tuple(
-            self._references.resolve_users(
-                self._config.default_at_users,
-                location="seer.team_resource.default_at_users",
-            )
+        user_ids = (
+            self._user_aliases[raw] if raw in self._user_aliases else int(raw)
+            for reference in self._config.default_at_users
+            if (raw := reference.strip())
+            and (raw in self._user_aliases or raw.isdigit())
         )
+        return tuple(dict.fromkeys(user_ids))
 
     def allows(self, user_id: int, group_id: int) -> bool:
         return self.enabled and self._features.is_group_feature_allowed(

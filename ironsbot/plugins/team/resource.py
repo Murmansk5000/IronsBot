@@ -151,9 +151,6 @@ def install(
     registry: MatcherRegistry,
     service: TeamResourceService,
 ) -> None:
-    if not service.enabled:
-        return
-
     def is_manage(event: MessageEvent) -> bool:
         return _is_team_resource_manage(event, service=service)
 
