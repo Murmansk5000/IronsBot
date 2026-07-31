@@ -19,11 +19,14 @@ from ironsbot.services.seer.rendering.custom_pet_special_effects import (
     SOULMARK_STATUS_SOURCE_PREFIX,
     STATUS_NAME_SOURCE,
     STATUS_SOURCE,
+    _add_linked_glossary_effects,
     _add_named_status_icons,
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
     _add_soulmark_highlight_status_effects,
+    _deduplicate_special_effects,
     _extract_special_effects,
+    _sort_special_effects,
 )
 
 if TYPE_CHECKING:
@@ -33,6 +36,7 @@ EXPECTED_SOULMARK_COUNT = 2
 GOLDEN_VISION_STATUS_ID = 178
 KNIGHT_DUEL_LOST_BASE_STATUS_ID = 183
 KNIGHT_DUEL_LOST_UPGRADED_STATUS_ID = 184
+SIX_STAR_ARRAY_GLOSSARY_ID = 534
 
 
 def _template() -> Any:
@@ -111,7 +115,8 @@ def test_special_effects_include_only_direct_glossary_entries() -> None:
             "name": "direct-effect",
             "desc": "direct description",
             "sources": [GLOSSARY_SOURCE],
-            "icon_id": None,
+            "glossary_id": None,
+            "status_id": None,
             "icon": None,
         }
     ]
@@ -177,9 +182,7 @@ def test_skill_red_effects_restore_exact_official_terms_only() -> None:
                             info="",
                         ),
                         SimpleNamespace(
-                            analyze_info=(
-                                "[color=#f35555]星执者的其他句子[/color]"
-                            ),
+                            analyze_info=("[color=#f35555]星执者的其他句子[/color]"),
                             info="",
                         ),
                     ],
@@ -197,14 +200,16 @@ def test_skill_red_effects_restore_exact_official_terms_only() -> None:
             "name": "冥妖之悼",
             "desc": "冥妖之悼的官方说明",
             "sources": [f"{SKILL_SOURCE_PREFIX}黄泉妖偈"],
-            "icon_id": None,
+            "glossary_id": None,
+            "status_id": None,
             "icon": None,
         },
         {
             "name": "幽迹之秘",
             "desc": "幽迹之秘的官方说明",
             "sources": [f"{SKILL_SOURCE_PREFIX}黄泉妖偈"],
-            "icon_id": None,
+            "glossary_id": None,
+            "status_id": None,
             "icon": None,
         },
     ]
@@ -257,14 +262,16 @@ def test_special_effect_statuses_require_a_direct_pet_binding() -> None:
             "name": "direct-effect",
             "desc": "glossary description",
             "sources": [GLOSSARY_SOURCE, STATUS_SOURCE],
-            "icon_id": 33,
+            "glossary_id": None,
+            "status_id": 33,
             "icon": None,
         },
         {
             "name": "status-only",
             "desc": "status-only description",
             "sources": [STATUS_SOURCE],
-            "icon_id": 34,
+            "glossary_id": None,
+            "status_id": 34,
             "icon": None,
         },
     ]
@@ -304,14 +311,16 @@ def test_unique_named_status_adds_icon_to_trusted_effect() -> None:
             "name": "黄金万象",
             "desc": "glossary description",
             "sources": [GLOSSARY_SOURCE],
-            "icon_id": None,
+            "glossary_id": None,
+            "status_id": None,
             "icon": None,
         },
         {
             "name": "骑士决斗·落败",
             "desc": "ambiguous",
             "sources": [GLOSSARY_SOURCE],
-            "icon_id": None,
+            "glossary_id": None,
+            "status_id": None,
             "icon": None,
         },
     ]
@@ -319,9 +328,9 @@ def test_unique_named_status_adds_icon_to_trusted_effect() -> None:
     with Session(engine) as session:
         _add_named_status_icons(session, effects)
 
-    assert effects[0]["icon_id"] == GOLDEN_VISION_STATUS_ID
+    assert effects[0]["status_id"] == GOLDEN_VISION_STATUS_ID
     assert STATUS_NAME_SOURCE in effects[0]["sources"]
-    assert effects[1]["icon_id"] is None
+    assert effects[1]["status_id"] is None
 
 
 def test_green_soulmark_highlight_matches_status_by_description() -> None:
@@ -356,8 +365,7 @@ def test_green_soulmark_highlight_matches_status_by_description() -> None:
                 "name": "支援",
                 "base_desc": "伤害不低于300；附加100点护盾；恢复最大体力的30%",
                 "upgraded_desc": (
-                    "伤害不低于350；附加140点护盾；"
-                    "恢复最大体力的35%；天命之耀"
+                    "伤害不低于350；附加140点护盾；恢复最大体力的35%；天命之耀"
                 ),
             },
         )
@@ -388,14 +396,16 @@ def test_green_soulmark_highlight_matches_status_by_description() -> None:
             "name": "支援",
             "desc": "伤害不低于300；附加100点护盾；恢复最大体力的30%",
             "sources": [f"{SOULMARK_STATUS_SOURCE_PREFIX}1901"],
-            "icon_id": 107,
+            "glossary_id": None,
+            "status_id": 107,
             "icon": None,
         },
         {
             "name": "支援",
             "desc": "伤害不低于350；附加140点护盾；恢复最大体力的35%；天命之耀",
             "sources": [f"{SOULMARK_STATUS_SOURCE_PREFIX}1940"],
-            "icon_id": 113,
+            "glossary_id": None,
+            "status_id": 113,
             "icon": None,
         },
     ]
@@ -430,9 +440,7 @@ def test_same_status_description_falls_back_to_lowest_status_id() -> None:
             {
                 "base_status_id": KNIGHT_DUEL_LOST_BASE_STATUS_ID,
                 "upgraded_status_id": KNIGHT_DUEL_LOST_UPGRADED_STATUS_ID,
-                "desc": (
-                    "己方危机感+1；自身击败对手的回合无法触发击败类效果"
-                )
+                "desc": ("己方危机感+1；自身击败对手的回合无法触发击败类效果"),
             },
         )
 
@@ -451,7 +459,208 @@ def test_same_status_description_falls_back_to_lowest_status_id() -> None:
     with Session(engine) as session:
         _add_soulmark_highlight_status_effects(session, cast("Any", pet), effects)
 
-    assert effects[0]["icon_id"] == KNIGHT_DUEL_LOST_BASE_STATUS_ID
+    assert effects[0]["status_id"] == KNIGHT_DUEL_LOST_BASE_STATUS_ID
+
+
+def test_linked_glossary_effects_reuse_entries_and_sort_all_effects() -> None:
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE glossary_entry (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    desc TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE glossaryentrylink (
+                    source_id INTEGER NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    PRIMARY KEY (source_id, target_id)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO glossary_entry (id, name, desc)
+                VALUES
+                    (533, '四象门', '四象门说明'),
+                    (534, '六芒阵', '六芒阵说明'),
+                    (535, '八方圻', '八方圻说明')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO glossaryentrylink (source_id, target_id)
+                VALUES (533, 534), (533, 535)
+                """
+            )
+        )
+
+    effects: list[SpecialEffectDict] = [
+        {
+            "name": "状态兜底",
+            "desc": None,
+            "sources": [STATUS_SOURCE],
+            "glossary_id": None,
+            "status_id": 100,
+            "icon": None,
+        },
+        {
+            "name": "四象门",
+            "desc": "四象门说明",
+            "sources": [SKILL_SOURCE_PREFIX + "繁苍解道"],
+            "glossary_id": 533,
+            "status_id": 188,
+            "icon": None,
+        },
+        {
+            "name": "六芒阵",
+            "desc": "六芒阵说明",
+            "sources": [GLOSSARY_SOURCE],
+            "glossary_id": 534,
+            "status_id": None,
+            "icon": None,
+        },
+        {
+            "name": "六芒阵",
+            "desc": None,
+            "sources": [STATUS_SOURCE],
+            "glossary_id": 534,
+            "status_id": None,
+            "icon": None,
+        },
+        {
+            "name": "无编号兜底",
+            "desc": None,
+            "sources": [STATUS_SOURCE],
+            "glossary_id": None,
+            "status_id": None,
+            "icon": None,
+        },
+    ]
+
+    with Session(engine) as session:
+        _add_linked_glossary_effects(session, effects)
+    _deduplicate_special_effects(effects)
+    _sort_special_effects(effects)
+
+    assert [effect["name"] for effect in effects] == [
+        "状态兜底",
+        "四象门",
+        "六芒阵",
+        "八方圻",
+        "无编号兜底",
+    ]
+    six_star = next(effect for effect in effects if effect["name"] == "六芒阵")
+    assert six_star["sources"] == [GLOSSARY_SOURCE, STATUS_SOURCE]
+    assert (
+        sum(effect["glossary_id"] == SIX_STAR_ARRAY_GLOSSARY_ID for effect in effects)
+        == 1
+    )
+
+
+def test_linked_glossary_effects_skip_self_links() -> None:
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE glossary_entry (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    desc TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE glossaryentrylink (
+                    source_id INTEGER NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    PRIMARY KEY (source_id, target_id)
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO glossary_entry (id, name, desc)
+                VALUES (371, '护盾效果', '护盾说明')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO glossaryentrylink (source_id, target_id)
+                VALUES (371, 371)
+                """
+            )
+        )
+
+    effects: list[SpecialEffectDict] = [
+        {
+            "name": "护盾效果",
+            "desc": "护盾说明",
+            "sources": [GLOSSARY_SOURCE],
+            "glossary_id": 371,
+            "status_id": None,
+            "icon": None,
+        }
+    ]
+
+    with Session(engine) as session:
+        _add_linked_glossary_effects(session, effects)
+
+    assert [effect["glossary_id"] for effect in effects] == [371]
+
+
+def test_deduplicate_special_effects_uses_status_id_without_glossary_id() -> None:
+    effects: list[SpecialEffectDict] = [
+        {
+            "name": "状态效果",
+            "desc": None,
+            "sources": [STATUS_SOURCE],
+            "glossary_id": None,
+            "status_id": 188,
+            "icon": None,
+        },
+        {
+            "name": "状态效果副本",
+            "desc": "状态说明",
+            "sources": [STATUS_NAME_SOURCE],
+            "glossary_id": None,
+            "status_id": 188,
+            "icon": "data:image/png;base64,aW1hZ2U=",
+        },
+    ]
+
+    _deduplicate_special_effects(effects)
+
+    assert effects == [
+        {
+            "name": "状态效果",
+            "desc": "状态说明",
+            "sources": [STATUS_SOURCE, STATUS_NAME_SOURCE],
+            "glossary_id": None,
+            "status_id": 188,
+            "icon": "data:image/png;base64,aW1hZ2U=",
+        }
+    ]
 
 
 def test_soulmark_does_not_repeat_glossary_descriptions() -> None:
@@ -504,8 +713,7 @@ def test_soulmark_prefers_analyze_description_over_long_formatting() -> None:
         analyze_desc="[color=#f35555]短版机制[/color]",
         desc="plain description",
         desc_formatting_adjustment=(
-            "<indent=0><sprite=0><indent=16>"
-            "<color=#FFF779>很长的U端机制</color>"
+            "<indent=0><sprite=0><indent=16><color=#FFF779>很长的U端机制</color>"
         ),
         intensified=False,
         intensified_to_id=None,
@@ -561,9 +769,9 @@ def test_special_effect_template_preserves_description_newlines() -> None:
         )
     )
 
-    special_effect_desc_css = html.split(
-        ".special-effect-desc {", maxsplit=1
-    )[1].split("}", maxsplit=1)[0]
+    special_effect_desc_css = html.split(".special-effect-desc {", maxsplit=1)[1].split(
+        "}", maxsplit=1
+    )[0]
     assert "white-space: pre-line;" in special_effect_desc_css
     assert "first line\nsecond line" in html
 
