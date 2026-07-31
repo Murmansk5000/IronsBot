@@ -8,6 +8,7 @@ from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
 )
+from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
@@ -104,10 +105,7 @@ def test_unbound_player_prompt_requires_an_explicit_full_player_id(
     call = finish_reply.await_args
     assert call is not None
     message = call.args[2]
-    assert message == (
-        "尚未绑定米米号，发送“绑定米米号123456”绑定后，即可使用快捷指令。\n"
-        "查询未绑定的米米号时，需要在查询指令后加上米米号。"
-    )
+    assert message == unbound_player_shortcut_message()
 
 
 def test_binding_command_accepts_numeric_player_id() -> None:
