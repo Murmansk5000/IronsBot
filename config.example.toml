@@ -160,6 +160,7 @@ user_a = 2345678901
 # all = ["my_extension_feature"]
 standard = [
     "seer",
+    "lucky_skin_window",
     "player_lineup_private",
     "image",
     "web_activity_link",
@@ -177,6 +178,7 @@ standard = [
 lite = [
     "seer_pet",
     "seer_player",
+    "lucky_skin_window",
     "player_lineup_private",
     "seer_team",
     "seer_equipment",
