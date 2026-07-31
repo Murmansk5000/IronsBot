@@ -60,3 +60,29 @@ class AdminNoticeService:
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
         )
+
+    async def send_private_to_superusers(
+        self,
+        message: Any,
+        *,
+        subscription_key: str,
+        action_name: str,
+        bot: Any | None = None,
+        interval_seconds: float = 1.5,
+    ) -> TargetSendSummary:
+        """Send an operational notice only to configured superusers in private."""
+
+        private_user_ids = sorted(self.features.superuser_ids)
+        if not private_user_ids:
+            logger.warning(f"{action_name} has no superuser private targets")
+            return TargetSendSummary([], [])
+
+        return await self.delivery.broadcast(
+            message,
+            private_user_ids=private_user_ids,
+            group_ids=(),
+            bot=bot,
+            action_name=action_name,
+            interval_seconds=interval_seconds,
+            subscription_key=subscription_key,
+        )
