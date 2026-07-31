@@ -18,7 +18,7 @@ INVALID_RESTART_TIME_ERROR = (
 INVALID_RECONNECT_TIME_ERROR = (
     "operations.headless_notice.reconnect_check_times must contain "
     "daily HH:MM times, "
-    'for example "00:01,00:02" or ["00:01","00:02"]'
+    'for example "00:05" or ["00:05"]'
 )
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
@@ -229,7 +229,7 @@ class HeadlessNoticeConfig(BaseModel):
         "离线时长：{offline_duration}\n"
         "来源：{source}"
     )
-    reconnect_check_times: str = "00:01,00:02"
+    reconnect_check_times: str = "00:05"
 
     @field_validator("reconnect_check_times", mode="before")
     @classmethod

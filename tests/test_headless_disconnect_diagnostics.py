@@ -2,6 +2,13 @@ import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+    semantic_request_scope,
+)
 from pytest import MonkeyPatch
 
 from ironsbot.app.lifecycle import TaskOwner
@@ -49,6 +56,24 @@ def test_headless_operation_context_includes_group_id() -> None:
     ):
         assert operations.format_current() == (
             "基础资料：米米号 123456（用户操作，群：987654321）"
+        )
+
+
+def test_headless_operation_context_captures_semantic_request() -> None:
+    operations = HeadlessOperationTracker()
+    request = SemanticRequest(
+        action=ActionDefinition("seer.player.collection", "收集与排行"),
+        target=SemanticTarget("105023264", "米米号 105023264"),
+        source=SemanticRequestSource.MENU,
+    )
+
+    with (
+        semantic_request_scope(request, user_id=123456),
+        operations.track("收集查询", "米米号 105023264"),
+    ):
+        assert operations.format_recent_semantic() == (
+            "收集与排行（seer.player.collection）：米米号 105023264"
+            "（来源：menu，QQ：123456）"
         )
 
 
