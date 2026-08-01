@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters import (
@@ -61,7 +61,7 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import build_reply
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Collection
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.services.seer.data_queries import (
         DataQueryReply,
@@ -71,6 +71,7 @@ if TYPE_CHECKING:
 
 NEW_CONTENT_SNAPSHOT_KEY = "new_content_snapshot"
 NEW_CONTENT_SERVICES_KEY = "new_content_services"
+NEW_CONTENT_MENU_LAYOUT_KEY = "new_content_menu_layout"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,15 @@ class _NewContentAction:
     kind: str
     category: NewContentCategory | None = None
     item: NewContentItem | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _NewContentMenuLayout:
+    """Keep visible categories and their stable root keys separate."""
+
+    display_categories: tuple[NewContentCategory, ...]
+    root_categories: tuple[NewContentCategory, ...]
+    expanded_categories: frozenset[NewContentCategory]
 
 
 _NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-j](?:[1-9]\d*)?|0)", re.IGNORECASE)
@@ -218,6 +228,11 @@ async def _start_new_content(  # noqa: PLR0913
     if categories is not None and not set(categories).issubset(available):
         await matcher.finish("当前群未开放此新增内容分类。")
         return
+    root_categories: tuple[NewContentCategory, ...] = tuple(
+        category
+        for category in available
+        if snapshot.is_category_comparable(category) and snapshot.items_for(category)
+    )
     requested_categories: tuple[NewContentCategory, ...] = (
         categories if categories is not None else available
     )
@@ -242,16 +257,21 @@ async def _start_new_content(  # noqa: PLR0913
     if not visible_categories:
         await matcher.finish("本周暂未检测到可验证的新增或修改内容。")
         return
-    expanded_categories: Collection[str] = (
-        visible_categories
+    expanded_categories: frozenset[NewContentCategory] = (
+        frozenset(visible_categories)
         if categories is not None
-        else group.new_content.expanded_categories
+        else frozenset(
+            category
+            for category in root_categories
+            if category in group.new_content.expanded_categories
+        )
     )
-    prompt = _content_prompt(
-        snapshot,
-        visible_categories,
+    layout = _NewContentMenuLayout(
+        display_categories=visible_categories,
+        root_categories=root_categories,
         expanded_categories=expanded_categories,
     )
+    prompt = _content_prompt(snapshot, layout)
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
         pet=group.resources.pet_query,
@@ -259,6 +279,7 @@ async def _start_new_content(  # noqa: PLR0913
         equipment=group.resources.equipment,
         autocard=group.resources.autocard,
     )
+    state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
     await enter_prompt(
         matcher,
         event,
@@ -326,15 +347,16 @@ def _is_new_content_input(event: Event) -> bool:
 
 def _content_prompt(
     snapshot: NewContentSnapshot,
-    categories: tuple[NewContentCategory, ...],
-    *,
-    expanded_categories: Collection[str],
+    layout: _NewContentMenuLayout,
 ) -> Prompt[_NewContentAction]:
     choices: list[PromptItem[_NewContentAction]] = []
-    for position, category in enumerate(categories):
-        code = chr(ord("a") + position)
+    root_positions = {
+        category: position for position, category in enumerate(layout.root_categories)
+    }
+    for category in layout.display_categories:
+        code = chr(ord("a") + root_positions[category])
         items = snapshot.items_for(category)
-        expanded = category in expanded_categories
+        expanded = category in layout.expanded_categories
         choices.append(
             PromptItem(
                 f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",
@@ -343,17 +365,17 @@ def _content_prompt(
                 key=code,
             )
         )
-        if expanded:
-            choices.extend(
-                PromptItem(
-                    item.name,
-                    _item_description(item),
-                    _NewContentAction("item", category, item),
-                    is_sub_prompt=True,
-                    key=f"{code}{index}",
-                )
-                for index, item in enumerate(items, start=1)
+        choices.extend(
+            PromptItem(
+                item.name,
+                _item_description(item),
+                _NewContentAction("item", category, item),
+                is_sub_prompt=True,
+                key=f"{code}{index}",
+                is_visible=expanded,
             )
+            for index, item in enumerate(items, start=1)
+        )
     return Prompt(
         title="🆕【新增内容】输入编号查看详情：",
         items=choices,
@@ -409,14 +431,19 @@ async def _resolve_new_content_selection(
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     if action.kind == "category" and action.category is not None:
+        layout = matcher.state.get(NEW_CONTENT_MENU_LAYOUT_KEY)
+        if not isinstance(layout, _NewContentMenuLayout):
+            await matcher.finish("新增内容会话已失效，请重新发送指令。")
+            return
+        layout = replace(
+            layout,
+            expanded_categories=layout.expanded_categories | {action.category},
+        )
+        matcher.state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
         await _replace_prompt(
             matcher,
             event,
-            _content_prompt(
-                snapshot,
-                (action.category,),
-                expanded_categories=(action.category,),
-            ),
+            _content_prompt(snapshot, layout),
         )
         return
     if action.item is not None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.prompts import Prompt, PromptItem, _prompt_semantic_request
@@ -10,7 +12,7 @@ from tests.helpers.onebot_events import group_message_event
 
 
 def test_prompt_identity_uses_the_selected_stable_target() -> None:
-    prompt = Prompt(
+    prompt = Prompt[Any](
         title="选择精灵",
         action=ActionDefinition("seer_pet_info", "精灵信息查询"),
         items=[
@@ -44,7 +46,7 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
             del user_id
             return False
 
-    prompt = Prompt(
+    prompt = Prompt[Any](
         title="选择精灵",
         action=ActionDefinition("seer_pet_info", "精灵信息查询"),
         items=[
@@ -86,7 +88,7 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
 
 
 def test_prompt_supports_explicit_letter_number_keys() -> None:
-    prompt = Prompt(
+    prompt = Prompt[Any](
         title="新增内容",
         items=[
             PromptItem("新增精灵", "1 项", "category", key="a"),
@@ -103,3 +105,40 @@ def test_prompt_supports_explicit_letter_number_keys() -> None:
     assert prompt.get_item_by_input("1") is None
     assert request is not None
     assert "a1. 莫缇" in prompt.build_message()
+
+
+def test_hidden_explicit_prompt_item_remains_selectable() -> None:
+    prompt = Prompt[Any](
+        title="新增内容",
+        items=[
+            PromptItem("新增精灵", "1 项", "category", key="a"),
+            PromptItem(
+                "莫缇",
+                "新增｜4923",
+                4923,
+                is_sub_prompt=True,
+                key="a1",
+                is_visible=False,
+            ),
+        ],
+    )
+
+    request = _prompt_semantic_request(
+        group_message_event("a1"),
+        cast("Any", {"prompt": prompt}),
+    )
+
+    assert prompt.get_item_by_input("a1") is not None
+    assert request is not None
+    assert "a1. 莫缇" not in prompt.build_message()
+
+
+def test_hidden_prompt_items_require_unique_explicit_keys() -> None:
+    with pytest.raises(ValueError, match="explicit keys"):
+        Prompt[Any](
+            title="新增内容",
+            items=[
+                PromptItem("新增精灵", "1 项", "category", key="a"),
+                PromptItem("莫缇", "新增｜4923", 4923, is_visible=False),
+            ],
+        )
