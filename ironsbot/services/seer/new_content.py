@@ -19,6 +19,7 @@ NewContentCategory = Literal[
     "achievement",
     "pet",
     "pet_skin",
+    "skill",
     "mintmark",
     "suit",
     "equip",
@@ -31,6 +32,7 @@ NewContentCategory = Literal[
 NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "pet",
     "pet_skin",
+    "skill",
     "mintmark",
     "suit",
     "equip",
@@ -54,6 +56,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "achievement": "新增成就",
     "pet": "新增精灵",
     "pet_skin": "新增皮肤",
+    "skill": "新增技能",
     "mintmark": "新增刻印",
     "suit": "新增套装",
     "equip": "新增部件",
