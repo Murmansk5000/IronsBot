@@ -25,9 +25,8 @@ INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
 DEFAULT_BILI_ACCOUNT_UID = 1310714247
-DEFAULT_BILI_PUSH_MODES: dict[str, BiliPushMode] = {
-    DEFAULT_BILI_ACCOUNT_ALIAS: "full",
-}
+DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 400
+DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 250
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "恭喜",
     "恭喜.*获得",
@@ -147,7 +146,16 @@ class BiliPushConfig(BaseModel):
     accounts: _BiliAccountAliases = Field(
         default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
     )
-    modes: _BiliPushModes = Field(default_factory=lambda: dict(DEFAULT_BILI_PUSH_MODES))
+    # Per-account modes are opt-in TOML overrides. Targets otherwise inherit mode.
+    modes: _BiliPushModes = Field(default_factory=dict)
+    content_max_chars: int = Field(
+        default=DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
+        ge=1,
+    )
+    summary_max_chars: int = Field(
+        default=DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS,
+        ge=1,
+    )
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
 

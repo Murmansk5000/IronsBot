@@ -9,7 +9,8 @@ from ironsbot.core.bilibili import (
     DEFAULT_BILI_ACCOUNT_ALIAS,
     DEFAULT_BILI_ACCOUNT_UID,
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
-    DEFAULT_BILI_PUSH_MODES,
+    DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
+    DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS,
     BiliConfig,
     BiliStorageConfig,
 )
@@ -96,7 +97,14 @@ def test_bili_config_defaults_to_official_account() -> None:
     )
     assert config.push.mode == "full"
     assert config.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
-    assert config.push.modes == DEFAULT_BILI_PUSH_MODES
+    assert config.push.modes == {}
+    assert config.push.content_max_chars == DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS
+    assert config.push.summary_max_chars == DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS
+
+
+def test_bili_config_rejects_removed_default_mode() -> None:
+    with pytest.raises(ValueError, match="default_mode"):
+        _bili_config(push={"default_mode": "full"})
 
 
 def test_bili_config_accepts_alias_group_accounts() -> None:
@@ -285,8 +293,8 @@ def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:
     ).push_group_rules()
 
     assert rules[111].uids == frozenset({1310714247})
-    assert rules[111].mode == "full"
-    assert rules[111].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}
+    assert rules[111].default_mode == "full"
+    assert rules[111].modes == {}
     assert rules[222].uids == frozenset({1310714247, 375750254})
     assert rules[222].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}
 
@@ -493,6 +501,7 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
     assert str(unused_uid) not in summary
     assert "当前群订阅：" in summary
+    assert "默认（内容）" in summary
     assert "账号库：" not in summary
 
     result = await service.update_push_mode(
@@ -502,7 +511,50 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
         "链接",
     )
     assert "推送模式：链接" in result
+    assert "已自定义（链接）" in result
     assert service.mode_for_uid("group", 987654321, FIRE_BILI_UID) == "link"
+
+
+@pytest.mark.asyncio
+async def test_bili_mode_display_distinguishes_default_config_and_runtime(
+    tmp_path: Path,
+) -> None:
+    config = _bili_config(
+        push={
+            "modes": {DEFAULT_BILI_ACCOUNT_ALIAS: "link"},
+        }
+    )
+    service = _target_service(
+        config,
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
+        account_names={DEFAULT_BILI_ACCOUNT_UID: DEFAULT_BILI_ACCOUNT_NAME},
+    )
+
+    assert (
+        service.mode_display_for_uid("group", 987654321, DEFAULT_BILI_ACCOUNT_UID)
+        == "配置（链接）"
+    )
+
+    await service.update_push_mode(
+        "group",
+        987654321,
+        DEFAULT_BILI_ACCOUNT_ALIAS,
+        "内容",
+    )
+    assert (
+        service.mode_display_for_uid("group", 987654321, DEFAULT_BILI_ACCOUNT_UID)
+        == "已自定义（内容）"
+    )
+
+    result = await service.update_push_mode(
+        "group",
+        987654321,
+        DEFAULT_BILI_ACCOUNT_ALIAS,
+        "默认",
+    )
+    assert "已恢复当前群" in result
+    assert "当前生效模式：配置（链接）" in result
 
 
 @pytest.mark.asyncio

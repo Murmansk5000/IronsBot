@@ -3,6 +3,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
@@ -15,6 +17,7 @@ from ironsbot.services.bilibili.delivery import (
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
 )
+from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
 
@@ -154,6 +157,95 @@ def test_delivery_service_skips_empty_targets() -> None:
     )
 
     assert deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_long_dynamic_sends_link_then_one_shared_summary(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+    summaries: list[tuple[str, int]] = []
+
+    class RecordingDelivery:
+        async def broadcast(self, message: object, **kwargs: object) -> None:
+            sent.append({"message": message, **kwargs})
+
+    async def summarize(content: str, max_chars: int) -> str:
+        summaries.append((content, max_chars))
+        return "这是忠实摘要。"
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_message,
+        append_text_hint,
+        summary_renderer=lambda _item, _pub_ts, text: f"摘要：{text}",
+        summarize=summarize,
+        content_max_chars=10,
+        summary_max_chars=8,
+    )
+
+    await service.send(
+        _item(text="这是一条超过十个字符的长动态正文，用于验证统一摘要投递。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets(
+            full_group_ids=[1001],
+            link_group_ids=[1002],
+            full_user_ids=[],
+            link_user_ids=[],
+        ),
+    )
+
+    assert summaries == [
+        ("这是一条超过十个字符的长动态正文，用于验证统一摘要投递。", 8)
+    ]
+    assert [entry["action_name"] for entry in sent] == [
+        LINK_DYNAMIC_PUSH_ACTION,
+        f"{FULL_DYNAMIC_PUSH_ACTION} notice",
+        f"{FULL_DYNAMIC_PUSH_ACTION} summary",
+    ]
+    assert sent[0]["group_ids"] == [1002]
+    assert sent[1]["group_ids"] == [1001]
+    assert sent[2]["group_ids"] == [1001]
+    assert "原文超过 10 字，下一条发送摘要。" in str(sent[1]["message"])
+    assert sent[1].get("subscription_key") is None
+    assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
+    assert sent[2]["message"] == "摘要：这是忠实摘要。"
+
+
+@pytest.mark.asyncio
+async def test_long_dynamic_uses_original_excerpt_when_summary_unavailable(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(self, message: object, **kwargs: object) -> None:
+            sent.append({"message": message, **kwargs})
+
+    async def unavailable_summary(_content: str, _max_chars: int) -> None:
+        return None
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_message,
+        append_text_hint,
+        summary_renderer=lambda _item, _pub_ts, text: text,
+        summarize=unavailable_summary,
+        content_max_chars=10,
+        summary_max_chars=6,
+    )
+
+    await service.send(
+        _item(text="第一段内容用于验证摘要失败时发送原文节选。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert sent[-1]["message"] == "第一段内容用"
 
 
 def test_delivery_service_appends_admin_hint_once_per_day(

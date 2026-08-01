@@ -486,16 +486,24 @@ mode = "full"
 # Example: ["seer"]
 accounts = ["seer"]
 
-# Default: { seer = "full" }
-# EN: Global per-account push modes. Runtime admin overrides take priority.
-# ZH: 全局按账号别名指定推送模式；当前会话的运行时设置优先级更高。
-# Example: { seer = "full", fire = "link" }
-modes = { seer = "full" }
+# EN: Optional per-account push mode overrides. Runtime admin overrides take priority.
+# ZH: 可选的全局按账号别名推送模式覆盖；未填写时继承上面的 mode，当前会话的运行时设置优先级更高。
+# Example: { fire = "link" }
 
 # EN: Group owners/admins can override one account at runtime with:
 #     B站推送模式 <alias|public name|UID> <full|link|default>
 # ZH: 群主/管理员或私聊用户可用别名、公开昵称或 UID 修改推送模式：
 #     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
+
+# Default: 400
+# EN: Full pushes longer than this are sent as a link followed by a summary.
+# ZH: 全文动态超过此字符数时，先发送链接，再发送摘要。
+content_max_chars = 400
+
+# Default: 250
+# EN: Maximum characters in a long dynamic summary.
+# ZH: 长动态摘要最大字符数。
+summary_max_chars = 250
 
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.

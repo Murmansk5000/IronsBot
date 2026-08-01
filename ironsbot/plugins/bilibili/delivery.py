@@ -16,8 +16,6 @@ from ironsbot.services.bilibili.parser import (
 if TYPE_CHECKING:
     from ironsbot.services.bilibili.delivery import DynamicRenderMode
 
-MAX_DYNAMIC_CONTENT_CHARS = 500
-
 
 def build_dynamic_message(
     item: dict[str, Any],
@@ -41,8 +39,6 @@ def build_dynamic_message(
         )
         if mode == "full":
             content = dynamic_content(item)
-            if len(content) > MAX_DYNAMIC_CONTENT_CHARS:
-                content = f"{content[:MAX_DYNAMIC_CONTENT_CHARS]}..."
             message += MessageSegment.text(f"{content}\n")
             for image_url in dynamic_image_urls(item):
                 sanitized_url = image_url.strip().rstrip("]")
@@ -54,3 +50,26 @@ def build_dynamic_message(
         logger.error(f"failed to render Bilibili dynamic: {error}")
         return None
     return message
+
+
+def build_dynamic_summary_message(
+    item: dict[str, Any],
+    pub_ts: int,
+    summary: str,
+) -> Message | None:
+    try:
+        time_str = datetime.fromtimestamp(
+            pub_ts,
+            tz=timezone.utc,
+        ).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        return Message(
+            MessageSegment.text(
+                "📝【B站动态摘要】\n"
+                f"👤 账号：{item_author_label(item)}\n"
+                f"⏰ 发布时间: {time_str}\n\n"
+                f"{summary.strip()}"
+            )
+        )
+    except (TypeError, ValueError, KeyError) as error:
+        logger.error(f"failed to render Bilibili dynamic summary: {error}")
+        return None

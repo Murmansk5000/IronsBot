@@ -39,6 +39,11 @@ MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 AI_KEY。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 TEAM_ACTIONS = frozenset({"team_recommend", "team_resource"})
+BILIBILI_SUMMARY_PROMPT = (
+    "你是 B 站动态摘要助手。请忠实概括原文，不编造任何内容；"
+    "保留活动时间、截止时间、奖励、规则和重要事项。"
+    "只输出简洁中文摘要，不要标题、寒暄、Markdown 或链接。"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -171,6 +176,41 @@ class AiService:
             source_context,
         )
         return completion.reply or None
+
+    async def summarize_bilibili_dynamic(
+        self,
+        text: str,
+        *,
+        max_chars: int,
+    ) -> str | None:
+        """Summarize a push without chat history, memory, or feature checks."""
+        if not self._config.api_key.strip():
+            logger.warning("Bilibili dynamic summary skipped: AI_KEY is not configured")
+            return None
+
+        messages = build_messages(
+            system_prompt=BILIBILI_SUMMARY_PROMPT,
+            history_turns=0,
+            history=[],
+            memory=[],
+            prompt=text.strip(),
+        )
+        try:
+            result = await self._completion.complete(messages)
+        except AiRequestTimeoutError:
+            logger.warning("Bilibili dynamic summary timed out")
+            return None
+        except Exception:
+            logger.exception("Bilibili dynamic summary failed")
+            return None
+
+        if not result.ok or not result.reply.strip():
+            logger.warning(
+                "Bilibili dynamic summary returned no usable reply: %s",
+                result.error_detail,
+            )
+            return None
+        return _truncate_plain_text(result.reply, max_chars)
 
     @staticmethod
     def is_team_action(action: AiIntentAction) -> bool:
@@ -380,3 +420,7 @@ def _truncate_reply(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars].rstrip() + "\n\n（回复过长，已截断）"
+
+
+def _truncate_plain_text(text: str, max_chars: int) -> str:
+    return text.strip()[:max_chars].rstrip()
