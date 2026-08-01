@@ -1,15 +1,19 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from sqlmodel import Session, create_engine
 
 from ironsbot.services.seer.new_content import (
+    NEW_CONTENT_CATEGORIES,
     NewContentIndexUnavailableError,
     NewContentService,
 )
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.data import SeerDataAccess
 
 
 class FakeData:
@@ -23,7 +27,7 @@ class FakeData:
 
 
 def _service(path: Path) -> NewContentService:
-    return NewContentService(cast("object", FakeData(path)))
+    return NewContentService(cast("SeerDataAccess", FakeData(path)))
 
 
 def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
@@ -47,6 +51,13 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
             """
         )
         session.connection().exec_driver_sql(
+            """
+            CREATE TABLE new_content_category_state (
+                category TEXT, comparison_ready INTEGER, reason TEXT
+            )
+            """
+        )
+        session.connection().exec_driver_sql(
             "INSERT INTO new_content_release VALUES (1, '20260731', '2026-07-31', 1)"
         )
         session.connection().exec_driver_sql(
@@ -62,6 +73,13 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
                  'added')
             """
         )
+        session.connection().exec_driver_sql(
+            """
+            INSERT INTO new_content_category_state VALUES
+                ('pet', 1, 'ready'),
+                ('autocard_sanctuary_effect', 0, 'first_observation')
+            """
+        )
         session.commit()
 
     snapshot = service.snapshot()
@@ -74,6 +92,16 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     effect = snapshot.items_for("autocard_sanctuary_effect")[0]
     assert effect.name == "潮涌"
     assert effect.payload["sanctuary_name"] == "沧岚"
+    assert snapshot.is_category_comparable("pet") is True
+    assert snapshot.is_category_comparable("autocard_sanctuary_effect") is False
+    assert (
+        snapshot.category_state("autocard_sanctuary_effect").reason
+        == "first_observation"
+    )
+
+
+def test_new_content_order_places_mintmarks_after_pets_and_skins() -> None:
+    assert NEW_CONTENT_CATEGORIES[:4] == ("pet", "pet_skin", "mintmark", "suit")
 
 
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:
