@@ -245,10 +245,10 @@ ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
-HEADLESS_SEER_USER_ID_RANK_A=
-HEADLESS_SEER_PASSWORD_RANK_A=
-HEADLESS_SEER_USER_ID_RANK_B=
-HEADLESS_SEER_PASSWORD_RANK_B=
+HEADLESS_SEER_USER_ID_2=
+HEADLESS_SEER_PASSWORD_2=
+HEADLESS_SEER_USER_ID_3=
+HEADLESS_SEER_PASSWORD_3=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -260,7 +260,7 @@ GITHUB_WORKFLOW_TOKEN=
 | `AI_KEY` | AI chat API key. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
 | `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
-| `HEADLESS_SEER_USER_ID_<NAME>` / `HEADLESS_SEER_PASSWORD_<NAME>` | Optional additional headless worker. The template lists `_RANK_A` and `_RANK_B`; add more matching suffix pairs as needed. The primary worker is intentionally unsuffixed. |
+| `HEADLESS_SEER_USER_ID_<NAME>` / `HEADLESS_SEER_PASSWORD_<NAME>` | Optional additional headless worker. The template lists `_2` and `_3`; add more matching suffix pairs as needed. The primary worker is intentionally unsuffixed as worker 1. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
