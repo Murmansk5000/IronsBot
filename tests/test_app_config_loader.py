@@ -169,6 +169,7 @@ def _assert_default_team_audit_welcome(config: Settings) -> None:
     assert team_audit.followup_enabled
     assert team_audit.followup_after_hours == DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS
     assert "退出本审核群" in team_audit.followup_message
+    assert "还没有发送审核信息" not in team_audit.followup_message
     assert team_audit.final_followup_enabled
     assert (
         team_audit.final_followup_after_hours == DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS

@@ -669,7 +669,7 @@ followup_after_hours = 24.0
 # Default: built-in follow-up reminder.
 # EN: Follow-up message. Available placeholders: {hours}, {group_id}, {user_id}.
 # ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
-followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果已经加入主群，或者不想加入战队，请退出本审核群。"
+followup_message = "你加入战队审核群已经 {hours:g} 小时了，仍在审核群。\n审核群仅供入队审核使用；如果已完成审核、已加入主群，或不再申请加入战队，请退出本审核群。"
 
 # Default: true
 # EN: Send a final leave reminder if the newcomer is still in the audit group.
