@@ -3,11 +3,16 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.bilibili.delivery import build_dynamic_message
+from ironsbot.plugins.bilibili.delivery import (
+    build_dynamic_content_message,
+    build_dynamic_link_message,
+)
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
@@ -15,6 +20,7 @@ from ironsbot.services.bilibili.delivery import (
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
 )
+from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
 
@@ -28,6 +34,7 @@ if TYPE_CHECKING:
     )
 
 PUB_TS = 1781004683
+EXPECTED_FULL_PUSH_COUNT = 2
 
 
 def _item(
@@ -63,53 +70,24 @@ def _delivery_service(
     return BilibiliPushDeliveryService(
         cast("MessageDelivery", object()),
         subscriptions or cast("PushSubscriptionRepository", object()),
-        build_dynamic_message,
+        build_dynamic_link_message,
+        build_dynamic_content_message,
         append_text_hint,
         partial(append_fire_manual_ad_for_target, features),
     )
 
 
-def test_delivery_service_plans_full_and_link_targets(
-) -> None:
-    features = build_test_runtime(
-        feature_config=FeatureConfig(
-            group_policy={
-                "1001": ["fire_manual_ad"],
-                "1002": ["fire_manual_ad"],
-            }
-        )
-    ).features
+def test_dynamic_renderers_split_link_from_compact_content() -> None:
+    link_rendered = str(build_dynamic_link_message(_item()))
+    content_rendered = str(build_dynamic_content_message(_item()))
 
-    deliveries = _delivery_service(features).build_deliveries(
-        _item(),
-        PUB_TS,
-        BiliPushTargets(
-            full_group_ids=[1001],
-            link_group_ids=[1002],
-            full_user_ids=[2001],
-            link_user_ids=[2002],
-        ),
-    )
-
-    assert [delivery.action_name for delivery in deliveries] == [
-        FULL_DYNAMIC_PUSH_ACTION,
-        LINK_DYNAMIC_PUSH_ACTION,
-    ]
-    assert deliveries[0].group_ids == [1001]
-    assert deliveries[0].private_user_ids == [2001]
-    assert deliveries[1].group_ids == [1002]
-    assert deliveries[1].private_user_ids == [2002]
-
-    full_rendered = str(deliveries[0].message)
-    link_rendered = str(deliveries[1].message)
-    assert "正文内容" in full_rendered
-    assert "[CQ:image" in full_rendered
-    assert FIRE_MANUAL_LINK_MESSAGE not in full_rendered
-    assert BILI_PUSH_ADMIN_HINT not in full_rendered
+    assert "传送门:" in link_rendered
     assert "正文内容" not in link_rendered
-    assert "[CQ:image" not in link_rendered
-    assert FIRE_MANUAL_LINK_MESSAGE not in link_rendered
-    assert BILI_PUSH_ADMIN_HINT not in link_rendered
+    assert "账号：" not in link_rendered
+    assert "正文内容" in content_rendered
+    assert "[CQ:image" in content_rendered
+    assert "传送门:" not in content_rendered
+    assert "账号：" not in content_rendered
 
 
 def test_delivery_service_appends_fire_manual_ad_per_target(
@@ -139,21 +117,98 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
     )
 
 
-def test_delivery_service_skips_empty_targets() -> None:
-    deliveries = _delivery_service(
-        build_test_runtime().features
-    ).build_deliveries(
-        _item(),
+@pytest.mark.asyncio
+async def test_full_dynamic_always_sends_link_then_compact_content(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+    summaries: list[tuple[str, int]] = []
+
+    class RecordingDelivery:
+        async def broadcast(self, message: object, **kwargs: object) -> None:
+            sent.append({"message": message, **kwargs})
+
+    async def summarize(text: str, *, max_chars: int) -> str:
+        summaries.append((text, max_chars))
+        return "这是忠实摘要。"
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=summarize,
+        content_max_chars=10,
+        summary_max_chars=8,
+    )
+
+    await service.send(
+        _item(text="这是一条超过十个字符的长动态正文，用于验证统一摘要投递。"),
         PUB_TS,
+        1310714247,
         BiliPushTargets(
-            full_group_ids=[],
-            link_group_ids=[],
+            full_group_ids=[1001],
+            link_group_ids=[1002],
             full_user_ids=[],
             link_user_ids=[],
         ),
     )
 
-    assert deliveries == []
+    assert summaries == [
+        ("这是一条超过十个字符的长动态正文，用于验证统一摘要投递。", 8)
+    ]
+    assert [entry["action_name"] for entry in sent] == [
+        LINK_DYNAMIC_PUSH_ACTION,
+        f"{FULL_DYNAMIC_PUSH_ACTION} link",
+        FULL_DYNAMIC_PUSH_ACTION,
+    ]
+    assert sent[0]["group_ids"] == [1002]
+    assert sent[1]["group_ids"] == [1001]
+    assert sent[2]["group_ids"] == [1001]
+    assert "传送门:" in str(sent[1]["message"])
+    assert sent[1].get("subscription_key") is None
+    assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
+    assert "这是忠实摘要。" in str(sent[2]["message"])
+    assert "[CQ:image" in str(sent[2]["message"])
+
+
+@pytest.mark.asyncio
+async def test_short_full_dynamic_does_not_call_ai(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(self, message: object, **kwargs: object) -> None:
+            sent.append({"message": message, **kwargs})
+
+    async def unexpected_summary(text: str, *, max_chars: int) -> str:
+        del text, max_chars
+        raise AssertionError
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=unexpected_summary,
+        content_max_chars=100,
+        summary_max_chars=6,
+    )
+
+    await service.send(
+        _item(text="这是一条不会触发 AI 的短动态正文。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert len(sent) == EXPECTED_FULL_PUSH_COUNT
+    assert "不会触发 AI 的短动态正文" in str(sent[-1]["message"])
 
 
 def test_delivery_service_appends_admin_hint_once_per_day(
@@ -176,3 +231,33 @@ def test_delivery_service_appends_admin_hint_once_per_day(
     assert second == "正文2"
     assert other_group == f"正文3\n\n{BILI_PUSH_ADMIN_HINT}"
     assert private == "正文4"
+
+
+@pytest.mark.asyncio
+async def test_summary_callback_respects_keyword_only_max_chars() -> None:
+    # Only this pure callback method is exercised; no delivery or state store is opened.
+    calls: list[tuple[str, int]] = []
+
+    async def summarize(text: str, *, max_chars: int) -> str | None:
+        calls.append((text, max_chars))
+        return "ok"
+
+    def component_instance(*, use_ai: bool) -> BilibiliPushDeliveryService:
+        instance = object.__new__(BilibiliPushDeliveryService)
+        # Initialize this method's read set.
+        # Preserve the frozen class semantics.
+        for name, value in (
+            ("content_max_chars", 3), ("summary_max_chars", 2),
+            ("summary_use_ai", use_ai), ("summarize", summarize),
+        ):
+            object.__setattr__(instance, name, value)
+        return instance
+
+    service = component_instance(use_ai=True)
+    assert await service._content_override("long content") == "ok"
+    assert calls == [("long content", 2)]
+    assert await service._content_override("abc") is None
+    assert len(calls) == 1
+    disabled = component_instance(use_ai=False)
+    assert await disabled._content_override("long content") == "lo"
+    assert len(calls) == 1

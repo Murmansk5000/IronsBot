@@ -21,7 +21,7 @@ from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 
 from .command_rules import is_dynamic_select_reply
-from .delivery import build_dynamic_message
+from .delivery import build_dynamic_content_message
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 
@@ -141,11 +141,7 @@ async def handle_dynamic_select_action(
             )
 
         if selection.record is not None:
-            message = build_dynamic_message(
-                selection.record.item,
-                selection.record.pub_ts,
-                menu_mode=True,
-            )
+            message = build_dynamic_content_message(selection.record.item)
             if message is None:
                 await finish_event_reply(
                     matcher,
