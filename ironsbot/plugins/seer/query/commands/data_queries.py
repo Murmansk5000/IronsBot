@@ -7,10 +7,21 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from nonebot.adapters import (
+    Event,  # noqa: TC002 - NoneBot resolves callback annotations
+)
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.typing import (
+    T_State,  # noqa: TC002 - NoneBot resolves callback annotations
+)
 from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.matchers import (
+    CommandPolicy,
+    bind_async,
+    update_queued_menu_anchor,
+)
 from ironsbot.runtime.prompts import PROMPT_STATE_KEY, Prompt, PromptItem, enter_prompt
 from ironsbot.runtime.rules import no_reply
 from ironsbot.services.seer.autocard import AutocardPromptValue
@@ -20,6 +31,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
     NEW_AUTOCARD_ROLES_COMMANDS,
+    NEW_AUTOCARD_SANCTUARIES_COMMANDS,
     NEW_CONTENT_COMMANDS,
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
@@ -32,6 +44,7 @@ from ironsbot.services.seer.data_query_commands import (
 )
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.new_content import (
+    AUTOCARD_NEW_CONTENT_CATEGORIES,
     CATEGORY_NAMES,
     NEW_CONTENT_CATEGORIES,
     NewContentCategory,
@@ -47,9 +60,6 @@ from ..query_conversation import build_reply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-
-    from nonebot.adapters import Event
-    from nonebot.typing import T_State
 
     from ironsbot.services.seer.data_queries import (
         DataQueryReply,
@@ -68,7 +78,7 @@ class _NewContentAction:
     item: NewContentItem | None = None
 
 
-_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-i](?:[1-9]\d*)?|0)", re.IGNORECASE)
+_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-j](?:[1-9]\d*)?|0)", re.IGNORECASE)
 
 
 async def _finish_query(
@@ -131,29 +141,45 @@ def _install_new_content_commands(
     root.append_handler(bind_async(_start_new_content, service, None, group))
 
     commands: tuple[
-        tuple[NewContentCategory, tuple[str, ...], str, str | None], ...
+        tuple[tuple[NewContentCategory, ...], tuple[str, ...], str, str | None], ...
     ] = (
-        ("achievement", NEW_ACHIEVEMENTS_COMMANDS, "seer.data.new_achievement", None),
-        ("pet", NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
-        ("pet_skin", NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
-        ("mintmark", NEW_MINTMARKS_COMMANDS, "seer.data.new_mintmark", "seer_mintmark"),
-        ("suit", NEW_SUITS_COMMANDS, "seer.data.new_suit", "seer_equipment"),
-        ("equip", NEW_EQUIPS_COMMANDS, "seer.data.new_equip", "seer_equipment"),
-        ("mount", NEW_MOUNTS_COMMANDS, "seer.data.new_mount", "seer_equipment"),
         (
-            "autocard_card",
+            ("achievement",),
+            NEW_ACHIEVEMENTS_COMMANDS,
+            "seer.data.new_achievement",
+            None,
+        ),
+        (("pet",), NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
+        (("pet_skin",), NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
+        (
+            ("mintmark",),
+            NEW_MINTMARKS_COMMANDS,
+            "seer.data.new_mintmark",
+            "seer_mintmark",
+        ),
+        (("suit",), NEW_SUITS_COMMANDS, "seer.data.new_suit", "seer_equipment"),
+        (("equip",), NEW_EQUIPS_COMMANDS, "seer.data.new_equip", "seer_equipment"),
+        (("mount",), NEW_MOUNTS_COMMANDS, "seer.data.new_mount", "seer_equipment"),
+        (
+            AUTOCARD_NEW_CONTENT_CATEGORIES,
             NEW_AUTOCARD_CARDS_COMMANDS,
-            "seer.data.new_autocard_card",
+            "seer.data.new_autocard",
             "seer_autocard",
         ),
         (
-            "autocard_role",
+            ("autocard_role",),
             NEW_AUTOCARD_ROLES_COMMANDS,
             "seer.data.new_autocard_role",
             "seer_autocard",
         ),
+        (
+            ("autocard_sanctuary_effect",),
+            NEW_AUTOCARD_SANCTUARIES_COMMANDS,
+            "seer.data.new_autocard_sanctuary_effect",
+            "seer_autocard",
+        ),
     )
-    for category, messages, command_id, feature in commands:
+    for categories, messages, command_id, feature in commands:
         rule = root_rule
         if feature is not None:
             rule = rule & seer_feature_rule(group.features, feature)
@@ -163,12 +189,14 @@ def _install_new_content_commands(
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
-        matcher.append_handler(bind_async(_start_new_content, service, category, group))
+        matcher.append_handler(
+            bind_async(_start_new_content, service, categories, group)
+        )
 
 
 async def _start_new_content(  # noqa: PLR0913
     service: SeerDataQueryService,
-    category: NewContentCategory | None,
+    categories: tuple[NewContentCategory, ...] | None,
     group: SeerMatcherGroup,
     matcher: Matcher,
     state: T_State,
@@ -187,13 +215,20 @@ async def _start_new_content(  # noqa: PLR0913
         return
 
     available = _available_categories(group, event)
-    if category is not None and category not in available:
+    if categories is not None and not set(categories).issubset(available):
         await matcher.finish("当前群未开放此新增内容分类。")
         return
-    if category is not None and not snapshot.items_for(category):
-        await matcher.finish(f"本周暂无{CATEGORY_NAMES[category]}。")
+    if categories is not None and not any(
+        snapshot.items_for(item) for item in categories
+    ):
+        name = (
+            "新增群星牌"
+            if categories == AUTOCARD_NEW_CONTENT_CATEGORIES
+            else CATEGORY_NAMES[categories[0]]
+        )
+        await matcher.finish(f"本周暂无{name}。")
         return
-    visible_categories = tuple(
+    visible_categories: tuple[NewContentCategory, ...] = tuple(
         item for item in available if snapshot.items_for(item)
     )
     if not visible_categories:
@@ -201,8 +236,8 @@ async def _start_new_content(  # noqa: PLR0913
         return
     prompt = (
         _content_prompt(snapshot, visible_categories)
-        if category is None
-        else _content_prompt(snapshot, (category,))
+        if categories is None
+        else _content_prompt(snapshot, categories)
     )
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
@@ -237,13 +272,18 @@ def _available_categories(
         "achievement": None,
         "autocard_card": "seer_autocard",
         "autocard_role": "seer_autocard",
+        "autocard_sanctuary_effect": "seer_autocard",
     }
-    return tuple(
-        category
-        for category in NEW_CONTENT_CATEGORIES
-        if required_features[category] is None
-        or event_is_feature_allowed(group.features, event, required_features[category])
-    )
+    available: list[NewContentCategory] = []
+    for category in NEW_CONTENT_CATEGORIES:
+        required_feature = required_features[category]
+        if required_feature is None or event_is_feature_allowed(
+            group.features,
+            event,
+            required_feature,
+        ):
+            available.append(category)
+    return tuple(available)
 
 
 def _is_new_content_input(event: Event) -> bool:
@@ -295,6 +335,15 @@ def _item_description(item: NewContentItem) -> str:
     if item.category in {"autocard_card", "autocard_role"}:
         kind = "角色" if item.category == "autocard_role" else "卡牌"
         return f"{change}｜{item.entity_id}｜{kind}"
+    if item.category == "autocard_sanctuary_effect":
+        sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
+        if not sanctuary:
+            sanctuary = f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
+        pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
+        pet = f"｜精灵王：{pet_name}" if pet_name else ""
+        unlock_round = int(item.payload.get("unlock_round", 0))
+        phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
+        return f"{change}｜{sanctuary}{pet}｜{phase}"
     return f"{change}｜{item.entity_id}"
 
 
@@ -316,7 +365,7 @@ async def _resolve_new_content_selection(
         )
         return
     if action.item is not None:
-        await _send_item_detail(action.item, matcher)
+        await _send_item_detail(action.item, matcher, event)
 
 
 async def _replace_prompt(
@@ -325,29 +374,45 @@ async def _replace_prompt(
     prompt: Prompt[_NewContentAction],
 ) -> None:
     matcher.state[PROMPT_STATE_KEY] = prompt
-    await MessageFactory(prompt.build_event_message(event)).send()
+    send_result = await matcher.send(prompt.build_event_message(event))
+    update_queued_menu_anchor(matcher, event, send_result)
 
 
-async def _send_item_detail(item: NewContentItem, matcher: Matcher) -> None:
+async def _send_item_detail(
+    item: NewContentItem,
+    matcher: Matcher,
+    event: Event,
+) -> None:
+    if item.category == "autocard_sanctuary_effect":
+        await MessageFactory(_autocard_sanctuary_effect_detail(item)).send(
+            at_sender=isinstance(event, GroupMessageEvent)
+        )
+        return
     services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
     if not isinstance(services, _NewContentServices):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     if item.category == "achievement":
-        await MessageFactory(_achievement_detail(item)).send()
+        await MessageFactory(_achievement_detail(item)).send(
+            at_sender=isinstance(event, GroupMessageEvent)
+        )
         return
     try:
         if item.category in {"autocard_card", "autocard_role"}:
-            await _send_autocard_detail(item, services.autocard)
+            await _send_autocard_detail(item, services.autocard, event)
             return
         result = await _select_standard_item(item, services)
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
     if result.message:
-        await MessageFactory(result.message).send()
+        await MessageFactory(result.message).send(
+            at_sender=isinstance(event, GroupMessageEvent)
+        )
     elif result.reply is not None:
-        await build_reply(result.reply).send()
+        await build_reply(result.reply).send(
+            at_sender=isinstance(event, GroupMessageEvent)
+        )
 
 
 async def _select_standard_item(
@@ -371,7 +436,11 @@ async def _select_standard_item(
     return await services.equipment.select("equip", item.entity_id)
 
 
-async def _send_autocard_detail(item: NewContentItem, service: Any) -> None:
+async def _send_autocard_detail(
+    item: NewContentItem,
+    service: Any,
+    event: Event,
+) -> None:
     entry = service.select(
         AutocardPromptValue(
             kind="role" if item.category == "autocard_role" else "card",
@@ -383,7 +452,7 @@ async def _send_autocard_detail(item: NewContentItem, service: Any) -> None:
     message = MessageFactory(entry.text)
     if entry.image_url:
         message = MessageFactory(Image(entry.image_url)) + message
-    await message.send()
+    await message.send(at_sender=isinstance(event, GroupMessageEvent))
 
 
 def _achievement_detail(item: NewContentItem) -> str:
@@ -399,6 +468,37 @@ def _achievement_detail(item: NewContentItem) -> str:
     if isinstance(titles, list) and titles:
         names = "、".join(str(title.get("name", "")) for title in titles)
         lines.append(f"关联称号：{names}")
+    return "\n".join(lines)
+
+
+def _autocard_sanctuary_effect_detail(item: NewContentItem) -> str:
+    payload = item.payload
+    sanctuary_name = str(payload.get("sanctuary_name", "")).strip()
+    sanctuary_id = int(payload.get("sanctuary_id", 0))
+    sanctuary = sanctuary_name or f"圣域 {sanctuary_id}"
+    unlock_round = int(payload.get("unlock_round", 0))
+    change = "修改" if item.change_kind == "modified" else "新增"
+    phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
+    lines = [
+        f"🃏【{item.name}】",
+        f"状态：{change}",
+        f"圣域：{sanctuary}",
+        f"阶段：{phase}",
+    ]
+    pet_name = str(payload.get("sanctuary_pet_name", "")).strip()
+    pet_id = int(payload.get("sanctuary_pet_id", 0))
+    if pet_name or pet_id:
+        pet = pet_name or "未命名精灵王"
+        suffix = f"（{pet_id}）" if pet_id else ""
+        lines.append(f"关联精灵王：{pet}{suffix}")
+    buff_id = str(payload.get("buff_id", "")).strip()
+    buff_param = str(payload.get("buff_param", "")).strip()
+    if buff_id:
+        buff = buff_id if not buff_param else f"{buff_id}（参数：{buff_param}）"
+        lines.append(f"关联 Buff：{buff}")
+    description = str(payload.get("description", "")).strip()
+    if description:
+        lines.append(f"效果：{description}")
     return "\n".join(lines)
 
 

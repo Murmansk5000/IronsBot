@@ -134,6 +134,45 @@ def test_player_detail_uses_the_shared_shortcut_executor(
     assert continue_conversation.await_count == EXPECTED_CONVERSATION_CONTINUES
 
 
+def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
+    monkeypatch: Any,
+) -> None:
+    service = SimpleNamespace(
+        shortcut=AsyncMock(return_value=QueryReply(text="collection"))
+    )
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "_continue_player_detail_conversation",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "send_event_reply",
+        AsyncMock(),
+    )
+    replying_member = group_message_event("1", user_id=456_789)
+    state: dict[str, object] = {
+        PLAYER_ID_KEY: PLAYER_ID,
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
+    }
+
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", service),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", object()),
+            replying_member,
+            cast("Any", state),
+        )
+    )
+
+    service.shortcut.assert_awaited_once_with(
+        PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+        replying_member.user_id,
+        group_id=replying_member.group_id,
+    )
+
+
 def test_player_detail_delegates_a_registered_private_action(
     monkeypatch: Any,
 ) -> None:
