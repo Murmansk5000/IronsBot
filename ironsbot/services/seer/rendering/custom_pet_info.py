@@ -450,16 +450,27 @@ def _find_partner_upgrade_soulmark_index(
     ]
     if not candidates:
         return None
-    after_score, before_score, index = max(
+    after_score, _before_score, after_index = max(
         candidates,
         key=lambda candidate: (candidate[0] - candidate[1], candidate[0]),
     )
-    return (
-        index
-        if after_score >= PARTNER_UPGRADE_MIN_SIMILARITY
-        and after_score > before_score + PARTNER_UPGRADE_MIN_DELTA
-        else None
+    if after_score < PARTNER_UPGRADE_MIN_SIMILARITY:
+        return None
+
+    _after_score, before_score, before_index = max(
+        candidates,
+        key=lambda candidate: (candidate[1] - candidate[0], candidate[1]),
     )
+    if (
+        before_score >= PARTNER_UPGRADE_MIN_SIMILARITY
+        and before_index != after_index
+        and soulmarks[before_index]["id"] > soulmarks[after_index]["id"]
+    ):
+        # Some partner-upgrade payloads reverse the before/after text fields.
+        # When both variants match strongly, soulmark IDs are the reliable
+        # chronological fallback: the later ID is the enhanced variant.
+        return before_index
+    return after_index
 
 
 def _normalize_soulmark_text(value: str | None) -> str:

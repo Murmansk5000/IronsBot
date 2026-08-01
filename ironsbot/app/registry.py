@@ -200,6 +200,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 features,
                 resources.commands,
                 priority_service.release,
+                config.seer.new_content,
             )
         )
 

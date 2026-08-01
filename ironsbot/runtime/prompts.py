@@ -46,6 +46,7 @@ class PromptItem(NamedTuple, Generic[T]):
     is_sub_prompt: bool = False
     semantic_target: SemanticTarget | None = None
     key: str | None = None
+    is_visible: bool = True
 
 
 @dataclass
@@ -58,6 +59,14 @@ class Prompt(Generic[T]):
     def __post_init__(self) -> None:
         if not self.title.endswith("\n"):
             self.title = self.title + "\n"
+        if any(not item.is_visible for item in self.items):
+            keys = [item.key for item in self.items]
+            if any(not key for key in keys):
+                msg = "hidden prompt items require explicit keys for every item"
+                raise ValueError(msg)
+            if len(keys) != len(set(keys)):
+                msg = "hidden prompt item keys must be unique"
+                raise ValueError(msg)
 
     @overload
     def get(self, index: int) -> T | None: ...
@@ -85,6 +94,8 @@ class Prompt(Generic[T]):
         if any(item.key is not None for item in self.items):
             lines = [self.title.rstrip()]
             for item in self.items:
+                if not item.is_visible:
+                    continue
                 key = item.key or "?"
                 indent = "   " if item.is_sub_prompt else ""
                 text = f"{indent}{key}. {item.name}"

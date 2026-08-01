@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 PET_PARTNER_GROUP_TABLE = "pet_partner_group"
 PET_PARTNER_MEMBER_TABLE = "pet_partner_member"
 PET_PARTNER_UPGRADE_TABLE = "pet_partner_upgrade"
+PET_PARTNER_UPGRADE_NORMALIZED_SOURCE = (
+    "ConfigPackage/partnerEffectUpgrade.bytes#normalized-v1"
+)
 SKILL_IN_PET_TABLE = "skillinpetorm"
 SKILL_ACTIVATION_ITEM_TABLE = "skill_activation_item"
 
@@ -80,8 +83,16 @@ def load_pet_partner(session: Session, pet_id: int) -> PetPartner | None:
             COALESCE(NULLIF(cost_item.name, ''), partner_group.cost_item_name)
                 AS cost_item_name,
             partner_group.cost_item_quantity,
-            COALESCE(partner_upgrade.before_description, '') AS before_description,
-            COALESCE(partner_upgrade.after_description, '') AS after_description,
+            CASE
+                WHEN partner_upgrade.source = :normalized_upgrade_source
+                    THEN COALESCE(partner_upgrade.before_description, '')
+                ELSE COALESCE(partner_upgrade.after_description, '')
+            END AS before_description,
+            CASE
+                WHEN partner_upgrade.source = :normalized_upgrade_source
+                    THEN COALESCE(partner_upgrade.after_description, '')
+                ELSE COALESCE(partner_upgrade.before_description, '')
+            END AS after_description,
             partner_upgrade.skill_id,
             COALESCE(skill.name, '') AS skill_name,
             activation_item.id AS activation_item_id,
@@ -119,7 +130,13 @@ def load_pet_partner(session: Session, pet_id: int) -> PetPartner | None:
         """
     )
     try:
-        row = session.execute(statement, {"pet_id": pet_id}).first()
+        row = session.execute(
+            statement,
+            {
+                "pet_id": pet_id,
+                "normalized_upgrade_source": PET_PARTNER_UPGRADE_NORMALIZED_SOURCE,
+            },
+        ).first()
         if row is None:
             return None
         values = _mapping(row)

@@ -1039,6 +1039,18 @@ autocard_name = "群星牌赛季"
 # ZH: 可选的群星牌赛季结束时间；填写后“赛季倒计时”会显示群星牌剩余时间。
 # autocard_end_time = 2026-07-17T10:00:00+08:00
 
+[seer.new_content]
+# Default: []; EN: Categories expanded directly in the "新增内容" root menu.
+# ZH: “新增内容”总菜单里直接展开条目的分类；未列出的分类保持折叠。
+# Available values: achievement, pet, pet_skin, skill, mintmark, suit, equip,
+# mount, autocard_card, autocard_role, autocard_sanctuary_effect. Use all to
+# expand every category.
+# 可选值：achievement（成就）、pet（精灵）、pet_skin（皮肤）、skill（技能）、
+# mintmark（刻印）、suit（套装）、equip（部件）、mount（座驾）、
+# autocard_card（群星牌卡牌）、autocard_role（群星牌角色）、
+# autocard_sanctuary_effect（群星牌圣域）。填写 all 可展开全部分类。
+expanded_categories = []
+
 [seer.local_rank]
 # Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
 enabled = true
