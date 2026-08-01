@@ -27,7 +27,6 @@ from ironsbot.runtime.matchers import (
     bind,
     bind_async,
     get_prompt_session_manager,
-    get_reply_before_send,
 )
 from ironsbot.runtime.prompt_sessions import (
     GroupMenuAnchor,
@@ -94,20 +93,10 @@ async def test_matcher_runtime_context_keeps_live_tasks_out_of_matcher_state() -
     completed = asyncio.Event()
     task = asyncio.create_task(completed.wait())
 
-    class ReplyCoordinator:
-        def __init__(self) -> None:
-            self.task = task
-
-        async def before_send(self, _event: Event | None) -> None:
-            return None
-
-    coordinator = ReplyCoordinator()
-
     try:
         registry = MatcherRegistry(
             cooldown=cast("CommandCooldown", object()),
             priorities=object(),
-            before_reply_send=coordinator.before_send,
             prompt_session_manager=manager,
         )
         state = registry._with_runtime_hooks({})["state"]
@@ -116,7 +105,6 @@ async def test_matcher_runtime_context_keeps_live_tasks_out_of_matcher_state() -
         assert isinstance(state[RUNTIME_CONTEXT_TOKEN_STATE_KEY], str)
         assert deepcopy(state) == state
         assert get_prompt_session_manager(state) is manager
-        assert get_reply_before_send(state) is not None
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

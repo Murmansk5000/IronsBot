@@ -197,11 +197,26 @@ class PathsConfig(BaseModel):
     render_cache: Path = Path("render_cache")
 
 
+class RuntimeConcurrencyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    render_max_concurrent: int = Field(default=1, ge=1, le=4)
+
+
+class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    concurrency: RuntimeConcurrencyConfig = Field(
+        default_factory=RuntimeConcurrencyConfig
+    )
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bot: BotConfig = Field(default_factory=BotConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
     ai: AiConfig = Field(default_factory=AiConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)

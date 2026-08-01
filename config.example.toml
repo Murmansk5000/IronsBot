@@ -256,11 +256,10 @@ hint_max_per_window = 3
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
-[features.priority]
-# Default: true; EN: Enable superuser priority gate. ZH: 启用超级管理员优先级。
-enabled = true
-# Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
-wait_timeout_seconds = 300.0
+[runtime.concurrency]
+# Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
+# ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
+render_max_concurrent = 1
 
 [ai]
 # Default: "https://api.deepseek.com"

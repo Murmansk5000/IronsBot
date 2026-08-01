@@ -13,7 +13,6 @@ from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.core.features import (
     FeatureConfig,
     FeatureService,
-    SuperuserPriorityConfig,
 )
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
@@ -24,7 +23,6 @@ from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
-from ironsbot.runtime.priority import AdminPriorityService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
@@ -34,7 +32,6 @@ class TestRuntime:
     features: FeatureService
     delivery: OneBotDelivery
     admin_notices: AdminNoticeService
-    priority: AdminPriorityService
     cooldown: CommandCooldownService
     in_flight_requests: InFlightRequestService
     matcher_priorities: MatcherPriorityConfig
@@ -45,7 +42,6 @@ class TestRuntime:
         return MatcherRegistry(
             self.cooldown,
             self.matcher_priorities,
-            before_reply_send=self.priority.wait,
             prompt_session_manager=self.prompt_sessions,
             in_flight_requests=self.in_flight_requests,
         )
@@ -59,7 +55,6 @@ def build_test_runtime(  # noqa: PLR0913
     schedule_features: frozenset[str] = frozenset(),
     outbound_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe: PushUnsubscribeConfig | None = None,
-    priority_config: SuperuserPriorityConfig | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
     matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
@@ -92,10 +87,6 @@ def build_test_runtime(  # noqa: PLR0913
         features=features,
         delivery=delivery,
         admin_notices=AdminNoticeService(features, delivery),
-        priority=AdminPriorityService(
-            priority_config or SuperuserPriorityConfig(),
-            features,
-        ),
         cooldown=CommandCooldownService(
             cooldown_config or CommandCooldownConfig(),
             features,

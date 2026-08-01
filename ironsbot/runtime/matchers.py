@@ -61,7 +61,6 @@ from ironsbot.runtime.semantic_requests import (
     normalized_text_target,
 )
 
-ReplyBeforeSend = Callable[[Event | None], Awaitable[None]]
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
@@ -126,7 +125,6 @@ def bind_async(
 
 @dataclass(frozen=True, slots=True)
 class _MatcherRuntimeContext:
-    before_reply_send: ReplyBeforeSend | None
     prompt_session_manager: PromptSessionManager | None
     in_flight_requests: InFlightRequestService | None
 
@@ -152,16 +150,6 @@ def get_prompt_session_manager(
     if not isinstance(manager, PromptSessionManager):
         raise PromptSessionManagerMissingError
     return manager
-
-
-def get_reply_before_send(
-    source: Matcher | dict[Any, Any],
-) -> ReplyBeforeSend | None:
-    return (
-        None
-        if (context := _runtime_context(source)) is None
-        else context.before_reply_send
-    )
 
 
 def get_queued_conversation(
@@ -540,7 +528,6 @@ def _command_policy_label(policy: CommandPolicy) -> str:
 class MatcherRegistry:
     cooldown: CommandCooldown
     priorities: object
-    before_reply_send: ReplyBeforeSend | None = None
     prompt_session_manager: PromptSessionManager | None = None
     in_flight_requests: InFlightRequestService | None = None
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
@@ -554,14 +541,12 @@ class MatcherRegistry:
 
     def __post_init__(self) -> None:
         if (
-            self.before_reply_send is None
-            and self.prompt_session_manager is None
+            self.prompt_session_manager is None
             and self.in_flight_requests is None
         ):
             return
         token = token_urlsafe(18)
         _MATCHER_RUNTIME_CONTEXTS[token] = _MatcherRuntimeContext(
-            before_reply_send=self.before_reply_send,
             prompt_session_manager=self.prompt_session_manager,
             in_flight_requests=self.in_flight_requests,
         )

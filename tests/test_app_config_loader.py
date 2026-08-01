@@ -1109,6 +1109,6 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     )
     assert app_config.messaging.meeting.commands == ["开播", "会议"]
     assert "aliases" in app_config.operations.data_sync.sources
-    assert app_config.features.priority.enabled
     assert app_config.paths.render_cache == Path("render_cache")
+    assert app_config.runtime.concurrency.render_max_concurrent == 1
     assert app_config.seer.render.cache_max_size_mb == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
