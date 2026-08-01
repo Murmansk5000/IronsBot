@@ -79,14 +79,43 @@ class NewContentItem:
 
 
 @dataclass(frozen=True, slots=True)
+class NewContentCategoryState:
+    """Whether a category has a comparable source snapshot this week."""
+
+    category: NewContentCategory
+    comparison_ready: bool
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class NewContentSnapshot:
     baseline_established: bool
     config_version: str
     weekly_cycle: str
     items: tuple[NewContentItem, ...]
+    category_states: tuple[NewContentCategoryState, ...] = ()
 
     def items_for(self, category: NewContentCategory) -> tuple[NewContentItem, ...]:
         return tuple(item for item in self.items if item.category == category)
+
+    def category_state(self, category: NewContentCategory) -> NewContentCategoryState:
+        for state in self.category_states:
+            if state.category == category:
+                return state
+        # Older releases do not carry per-category state. Their index is still
+        # trustworthy when its legacy global baseline was completed.
+        return NewContentCategoryState(
+            category=category,
+            comparison_ready=self.baseline_established,
+            reason=(
+                "legacy_index"
+                if self.baseline_established
+                else "history_unavailable"
+            ),
+        )
+
+    def is_category_comparable(self, category: NewContentCategory) -> bool:
+        return self.category_state(category).comparison_ready
 
 
 class NewContentService:
@@ -102,8 +131,9 @@ class NewContentService:
 
 def _load_snapshot(session: Session) -> NewContentSnapshot:
     try:
+        connection = session.connection()
         release = (
-            session.connection()
+            connection
             .exec_driver_sql(
                 """
             SELECT current_config_version, weekly_cycle, baseline_established
@@ -117,7 +147,7 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
         if release is None:
             raise NewContentIndexUnavailableError
         rows = (
-            session.connection()
+            connection
             .exec_driver_sql(
                 """
             SELECT category, entity_id, name, sort_value, payload_json, change_kind
@@ -128,6 +158,27 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
             .mappings()
             .all()
         )
+        state_rows = ()
+        has_category_state = connection.exec_driver_sql(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'new_content_category_state'
+            """
+        ).first()
+        if has_category_state:
+            state_rows = (
+                connection
+                .exec_driver_sql(
+                    """
+                    SELECT category, comparison_ready, reason
+                    FROM new_content_category_state
+                    ORDER BY category
+                    """
+                )
+                .mappings()
+                .all()
+            )
     except SQLAlchemyError as error:
         raise NewContentIndexUnavailableError from error
 
@@ -152,15 +203,39 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
                 ),
             )
         )
+    category_states: list[NewContentCategoryState] = []
+    for row in state_rows:
+        category = str(row["category"])
+        if category not in NEW_CONTENT_CATEGORIES:
+            continue
+        category_states.append(
+            NewContentCategoryState(
+                category=category,  # type: ignore[arg-type]
+                comparison_ready=bool(row["comparison_ready"]),
+                reason=str(row["reason"]),
+            )
+        )
     return NewContentSnapshot(
         baseline_established=bool(release["baseline_established"]),
         config_version=str(release["current_config_version"]),
         weekly_cycle=str(release["weekly_cycle"]),
         items=tuple(items),
+        category_states=tuple(category_states),
     )
 
 
-def new_content_unavailable_message(snapshot: NewContentSnapshot | None = None) -> str:
-    if snapshot is not None and not snapshot.baseline_established:
-        return "当前数据版本仅建立了新增内容对比基线，请等待下一次官方数据更新。"
+def new_content_unavailable_message() -> str:
     return "当前数据版本尚未提供新增内容记录。"
+
+
+def new_content_category_unavailable_message(
+    snapshot: NewContentSnapshot,
+    categories: tuple[NewContentCategory, ...],
+) -> str:
+    names = "、".join(CATEGORY_NAMES[category] for category in categories)
+    states = tuple(snapshot.category_state(category) for category in categories)
+    if all(state.reason == "first_observation" for state in states):
+        return f"{names}已开始记录，当前暂无可比较的历史数据。"
+    if all(state.reason == "source_unavailable" for state in states):
+        return f"当前数据版本未提供{names}数据。"
+    return f"当前暂无可验证的{names}新增或修改内容。"
