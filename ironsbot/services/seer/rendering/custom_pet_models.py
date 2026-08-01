@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
+from typing_extensions import NotRequired
+
 
 class MintMarkDict(TypedDict):
     id: int
@@ -73,6 +75,7 @@ class SpecialEffectDict(TypedDict):
     glossary_id: int | None
     status_id: int | None
     icon: str | None
+    color: NotRequired[str]
 
 
 class PartnerItemDict(TypedDict):
