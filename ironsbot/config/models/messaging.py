@@ -411,9 +411,9 @@ class TeamAuditWelcomeConfig(BaseModel):
     followup_enabled: bool = True
     followup_after_hours: float = Field(default=24.0, gt=0)
     followup_message: str = (
-        "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n"
-        "如果想加入战队，请发送“米米号+你的米米号”供管理员审核；"
-        "如果已经加入主群，或者不想加入战队，请退出本审核群。"
+        "你加入战队审核群已经 {hours:g} 小时了，仍在审核群。\n"
+        "审核群仅供入队审核使用；如果已完成审核、已加入主群，"
+        "或不再申请加入战队，请退出本审核群。"
     )
     final_followup_enabled: bool = True
     final_followup_after_hours: float = Field(default=48.0, gt=0)
