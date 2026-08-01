@@ -100,6 +100,7 @@ def test_bili_config_defaults_to_official_account() -> None:
     assert config.push.modes == {}
     assert config.push.content_max_chars == DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS
     assert config.push.summary_max_chars == DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS
+    assert config.push.summary_use_ai
 
 
 def test_bili_config_rejects_removed_default_mode() -> None:

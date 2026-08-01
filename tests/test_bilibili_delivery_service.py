@@ -248,6 +248,45 @@ async def test_long_dynamic_uses_original_excerpt_when_summary_unavailable(
     assert sent[-1]["message"] == "第一段内容用"
 
 
+@pytest.mark.asyncio
+async def test_long_dynamic_can_skip_ai_summary_with_toml_switch(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+    summary_called = False
+
+    class RecordingDelivery:
+        async def broadcast(self, message: object, **kwargs: object) -> None:
+            sent.append({"message": message, **kwargs})
+
+    async def summarize(_content: str, _max_chars: int) -> str:
+        nonlocal summary_called
+        summary_called = True
+        return "不应调用"
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_message,
+        append_text_hint,
+        summary_renderer=lambda _item, _pub_ts, text: text,
+        summarize=summarize,
+        content_max_chars=10,
+        summary_max_chars=6,
+        summary_use_ai=False,
+    )
+
+    await service.send(
+        _item(text="第一段内容用于验证关闭 AI 后发送原文节选。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert not summary_called
+    assert sent[-1]["message"] == "第一段内容用"
+
+
 def test_delivery_service_appends_admin_hint_once_per_day(
     tmp_path: Path,
 ) -> None:

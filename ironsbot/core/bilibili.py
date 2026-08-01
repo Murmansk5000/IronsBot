@@ -156,6 +156,7 @@ class BiliPushConfig(BaseModel):
         default=DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS,
         ge=1,
     )
+    summary_use_ai: bool = True
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
 

@@ -149,6 +149,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         getattr(ai_service, "summarize_bilibili_dynamic", None),
         config.bilibili.push.content_max_chars,
         config.bilibili.push.summary_max_chars,
+        config.bilibili.push.summary_use_ai,
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,

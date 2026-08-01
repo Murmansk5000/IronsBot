@@ -505,6 +505,11 @@ content_max_chars = 400
 # ZH: 长动态摘要最大字符数。
 summary_max_chars = 250
 
+# Default: true
+# EN: Use AI to summarize long full-text dynamic pushes. When false, send an original text excerpt instead.
+# ZH: 长动态全文推送是否调用 AI 摘要；关闭后改为发送原文节选。
+summary_use_ai = true
+
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
 # ZH: 群推送目标，键可以是群别名或群号。

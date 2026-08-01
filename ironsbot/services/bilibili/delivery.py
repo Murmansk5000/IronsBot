@@ -56,6 +56,7 @@ class BilibiliPushDeliveryService:
     summarize: DynamicSummarizer | None = None
     content_max_chars: int = 400
     summary_max_chars: int = 250
+    summary_use_ai: bool = True
 
     def build_deliveries(
         self,
@@ -197,7 +198,7 @@ class BilibiliPushDeliveryService:
     async def _summary_for(self, content: str) -> str:
         summary = (
             await self.summarize(content, self.summary_max_chars)
-            if self.summarize is not None
+            if self.summary_use_ai and self.summarize is not None
             else None
         )
         return summary or content[: self.summary_max_chars].rstrip()
