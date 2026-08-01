@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 # NoneBot resolves Rule callback annotations when creating temporary matchers.
 from nonebot.adapters import Event  # noqa: TC002
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.rule import Rule
 
 if TYPE_CHECKING:
@@ -30,6 +31,34 @@ COMMAND_COOLDOWN_TOKEN_STATE_KEY = "_ironsbot_command_cooldown_token"  # nosec B
 IN_FLIGHT_REQUEST_TOKEN_STATE_KEY = "_ironsbot_in_flight_request_token"  # nosec B105
 
 
+@dataclass(frozen=True, slots=True)
+class GroupMenuAnchor:
+    """Identity of the latest group menu message emitted by the bot."""
+
+    group_id: int
+    bot_user_id: int
+    message_id: int
+
+
+def is_current_group_menu_reply(
+    event: Event,
+    anchor: GroupMenuAnchor | None,
+) -> bool:
+    """Return whether an event precisely replies to the tracked bot menu."""
+
+    if anchor is None or not isinstance(event, GroupMessageEvent):
+        return False
+    if event.group_id != anchor.group_id or event.self_id != anchor.bot_user_id:
+        return False
+    if event.user_id == event.self_id or event.reply is None:
+        return False
+    reply_sender = getattr(event.reply, "sender", None)
+    return (
+        getattr(reply_sender, "user_id", None) == anchor.bot_user_id
+        and getattr(event.reply, "message_id", None) == anchor.message_id
+    )
+
+
 @dataclass(slots=True)
 class _TemporaryMatcherState:
     state: T_State
@@ -44,7 +73,10 @@ class _QueuedConversation:
     event_session_id: str
     state: T_State
     reply_check: Callable[[Event], bool]
+    group_reply_check: Callable[[Event], bool] | None
     handlers: list[Any]
+    conversation_session_id: str | None = None
+    menu_anchor: GroupMenuAnchor | None = None
     semantic_request_resolver: QueuedSemanticRequestResolver | None = None
     request_service: InFlightRequestService | None = None
     active: bool = True
@@ -56,11 +88,31 @@ class _QueuedConversation:
         default_factory=deque
     )
 
-    def matches(self, event: Event) -> bool:
-        return self.active and self.reply_check(event)
+    def __post_init__(self) -> None:
+        if self.conversation_session_id is None:
+            self.conversation_session_id = self.event_session_id
 
-    def update_reply_check(self, reply_check: Callable[[Event], bool]) -> None:
+    def matches(self, event: Event) -> bool:
+        if not self.active:
+            return False
+        if self.reply_check(event):
+            return True
+        return (
+            self.group_reply_check is not None
+            and is_current_group_menu_reply(event, self.menu_anchor)
+            and self.group_reply_check(event)
+        )
+
+    def update_reply_check(
+        self,
+        reply_check: Callable[[Event], bool],
+        group_reply_check: Callable[[Event], bool] | None = None,
+    ) -> None:
         self.reply_check = reply_check
+        self.group_reply_check = group_reply_check
+
+    def update_menu_anchor(self, anchor: GroupMenuAnchor | None) -> None:
+        self.menu_anchor = anchor
 
     def update_semantic_request_resolver(
         self,
@@ -154,9 +206,12 @@ class PromptSessionManager:
         event_session_id: str,
         state: T_State,
         reply_check: Callable[[Event], bool],
+        group_reply_check: Callable[[Event], bool] | None = None,
         handlers: list[Any],
         semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
         request_service: InFlightRequestService | None = None,
+        conversation_session_id: str | None = None,
+        menu_anchor: GroupMenuAnchor | None = None,
     ) -> _QueuedConversation:
         key = f"{namespace}:{event_session_id}"
         if existing := self._queued_by_key.get(key):
@@ -171,7 +226,10 @@ class PromptSessionManager:
             event_session_id=event_session_id,
             state=saved_state,
             reply_check=reply_check,
+            group_reply_check=group_reply_check,
             handlers=handlers,
+            conversation_session_id=conversation_session_id,
+            menu_anchor=menu_anchor,
             semantic_request_resolver=semantic_request_resolver,
             request_service=request_service,
         )

@@ -13,8 +13,10 @@ NEW_MINTMARKS_COMMANDS = ("新增刻印",)
 NEW_SUITS_COMMANDS = ("新增套装",)
 NEW_EQUIPS_COMMANDS = ("新增部件",)
 NEW_MOUNTS_COMMANDS = ("新增座驾",)
-NEW_AUTOCARD_CARDS_COMMANDS = ("新增群星卡牌", "每周群星卡牌", "本周群星卡牌", "更新群星卡牌", "新增卡牌",)
+NEW_AUTOCARD_CARDS_COMMANDS = ("新增群星", "每周群星", "本周群星", "更新群星",)
+NEW_AUTOCARD_CARD_ONLY_COMMANDS = ("新增群星卡牌", "每周群星卡牌", "本周群星卡牌", "更新群星卡牌", "新增卡牌",)
 NEW_AUTOCARD_ROLES_COMMANDS = ("新增群星角色",)
+NEW_AUTOCARD_SANCTUARIES_COMMANDS = ("新增群星场地", "新增圣域")
 SEASON_COUNTDOWN_COMMANDS = ("赛季倒计时", "赛季时间", "赛季结束", "赛季")
 DATA_QUERY_HELP_EXAMPLES = (
     WEEKLY_PREVIEW_COMMANDS[0],

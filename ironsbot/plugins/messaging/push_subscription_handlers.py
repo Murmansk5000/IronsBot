@@ -78,6 +78,10 @@ async def handle_push_subscription_menu(
             session_id,
             target_type,
         ),
+        queue_group_reply_check=lambda next_event: PUSH_SUBSCRIPTION_FLOW.input_check(
+            next_event,
+            target_type,
+        ),
     )
 
 
@@ -124,7 +128,12 @@ async def handle_push_subscription_select(
             "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
             f"{menu_prompt}"
         )
-        await PUSH_SUBSCRIPTION_FLOW.reject(matcher, state, prompt)
+        await PUSH_SUBSCRIPTION_FLOW.reject(
+            matcher,
+            state,
+            prompt,
+            replace_menu_anchor=True,
+        )
 
     result_message = messaging.toggle_subscription(
         target_type,
@@ -137,4 +146,9 @@ async def handle_push_subscription_select(
     )
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options
     prompt = f"{result_message}\n\n{menu_prompt}"
-    await PUSH_SUBSCRIPTION_FLOW.reject(matcher, state, prompt)
+    await PUSH_SUBSCRIPTION_FLOW.reject(
+        matcher,
+        state,
+        prompt,
+        replace_menu_anchor=True,
+    )

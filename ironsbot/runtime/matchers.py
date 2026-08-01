@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import partial
@@ -51,6 +51,7 @@ from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
+    GroupMenuAnchor,
     PromptSessionManager,
 )
 from ironsbot.runtime.semantic_requests import (
@@ -189,10 +190,60 @@ def queued_conversation_is_cancelled(
 def update_queued_reply_check(
     matcher: Matcher,
     reply_check: Callable[[Event], bool],
+    *,
+    group_reply_check: Callable[[Event], bool] | None = None,
 ) -> None:
     context = get_queued_conversation(matcher)
     if context is not None:
-        context.update_reply_check(reply_check)
+        context.update_reply_check(reply_check, group_reply_check)
+
+
+def update_queued_menu_anchor(
+    matcher: Matcher,
+    event: Event,
+    send_result: object,
+) -> None:
+    """Replace the shared-reply anchor after emitting a new group menu."""
+
+    context = get_queued_conversation(matcher)
+    if context is not None:
+        context.update_menu_anchor(_group_menu_anchor(event, send_result))
+
+
+def _group_menu_anchor(
+    event: Event,
+    send_result: object,
+) -> GroupMenuAnchor | None:
+    group_id = getattr(event, "group_id", None)
+    bot_user_id = getattr(event, "self_id", None)
+    message_id = _send_result_message_id(send_result)
+    if (
+        not isinstance(group_id, int)
+        or not isinstance(bot_user_id, int)
+        or bot_user_id <= 0
+        or message_id is None
+    ):
+        return None
+    return GroupMenuAnchor(
+        group_id=group_id,
+        bot_user_id=bot_user_id,
+        message_id=message_id,
+    )
+
+
+def _send_result_message_id(send_result: object) -> int | None:
+    raw_message_id = (
+        send_result.get("message_id")
+        if isinstance(send_result, Mapping)
+        else getattr(send_result, "message_id", None)
+    )
+    if isinstance(raw_message_id, bool) or not isinstance(raw_message_id, (int, str)):
+        return None
+    try:
+        message_id = int(raw_message_id)
+    except (TypeError, ValueError):
+        return None
+    return message_id if message_id > 0 else None
 
 
 async def reject_with_rule(
@@ -201,10 +252,13 @@ async def reject_with_rule(
     prompt: T_Message | None = None,
     **kwargs: Any,
 ) -> None:
+    replace_menu_anchor = bool(kwargs.pop("replace_menu_anchor", False))
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
     if prompt is not None:
-        await matcher.send(prompt, **kwargs)
+        send_result = await matcher.send(prompt, **kwargs)
+        if replace_menu_anchor:
+            update_queued_menu_anchor(matcher, current_event.get(), send_result)
 
     if context := get_queued_conversation(matcher):
         context.keep_open = True
@@ -225,19 +279,31 @@ async def enter_prompt_loop(  # noqa: PLR0913
     *,
     queue_namespace: str | None = None,
     queue_reply_check: Callable[[Event], bool] | None = None,
+    queue_group_reply_check: Callable[[Event], bool] | None = None,
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
+    queue_event_session_id: str | None = None,
+    queue_conversation_session_id: str | None = None,
     **kwargs: Any,
 ) -> None:
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
+    event = current_event.get()
+    prompt_sent = prompt is not None
+    menu_anchor = None
     if prompt is not None:
-        await matcher.send(prompt, **kwargs)
+        send_result = await matcher.send(prompt, **kwargs)
+        menu_anchor = _group_menu_anchor(event, send_result)
     if queue_namespace is not None:
         if queue_reply_check is None:
             raise PromptLoopConfigurationError
         if context := get_queued_conversation(matcher):
             if context.namespace == queue_namespace:
-                context.update_reply_check(queue_reply_check)
+                if prompt_sent:
+                    context.update_menu_anchor(menu_anchor)
+                context.update_reply_check(
+                    queue_reply_check,
+                    queue_group_reply_check,
+                )
                 context.update_semantic_request_resolver(
                     queue_semantic_request_resolver
                 )
@@ -248,14 +314,14 @@ async def enter_prompt_loop(  # noqa: PLR0913
             )
             matcher.state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
             matcher.state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
-        event = current_event.get()
         prompt_sessions = get_prompt_session_manager(matcher)
         runtime_context = _runtime_context(matcher)
         queued = prompt_sessions.start_queued_conversation(
             namespace=queue_namespace,
-            event_session_id=event.get_session_id(),
+            event_session_id=queue_event_session_id or event.get_session_id(),
             state=matcher.state,
             reply_check=queue_reply_check,
+            group_reply_check=queue_group_reply_check,
             handlers=handlers,
             semantic_request_resolver=queue_semantic_request_resolver,
             request_service=(
@@ -263,6 +329,8 @@ async def enter_prompt_loop(  # noqa: PLR0913
                 if runtime_context is None
                 else runtime_context.in_flight_requests
             ),
+            conversation_session_id=queue_conversation_session_id,
+            menu_anchor=menu_anchor,
         )
         await _create_queued_temp_matcher(matcher, queued)
         raise FinishedException
