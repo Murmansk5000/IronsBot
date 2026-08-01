@@ -29,12 +29,17 @@ from ironsbot.runtime.matchers import (
     get_prompt_session_manager,
     get_reply_before_send,
 )
+from ironsbot.runtime.prompt_sessions import (
+    GroupMenuAnchor,
+    is_current_group_menu_reply,
+)
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
     SemanticTarget,
 )
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
     from ironsbot.runtime.matcher_contracts import CommandCooldown
@@ -176,6 +181,144 @@ async def test_queued_conversation_serializes_inputs_in_arrival_order() -> None:
 
     assert second_ticket == second_ticket_number
     context.complete(second_ticket)
+
+
+def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
+    manager = PromptSessionManager()
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+    owner = group_message_event("a", user_id=2, group_id=4, self_id=1)
+    member_reply = group_message_event(
+        "A",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        reply_sender_user_id=1,
+    )
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        state={},
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
+        and getattr(event, "reply", None) is None
+        and event.get_plaintext().strip().lower() == "a",
+        group_reply_check=lambda event: event.get_plaintext().strip().lower() == "a",
+        handlers=[],
+        menu_anchor=anchor,
+    )
+
+    assert is_current_group_menu_reply(member_reply, anchor)
+    assert context.matches(owner)
+    assert context.matches(member_reply)
+    assert not context.matches(group_message_event("a", user_id=3, group_id=4))
+    assert not context.matches(
+        group_message_event(
+            "a",
+            user_id=3,
+            group_id=4,
+            message_id=99,
+            reply_sender_user_id=1,
+        )
+    )
+    assert not context.matches(
+        group_message_event(
+            "a",
+            user_id=3,
+            group_id=4,
+            message_id=100,
+            reply_sender_user_id=2,
+        )
+    )
+    assert not context.matches(private_message_event("a", user_id=3))
+
+
+def test_group_menu_reply_uses_only_the_latest_menu_anchor() -> None:
+    manager = PromptSessionManager()
+    owner = group_message_event("a", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        state={},
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
+        and getattr(event, "reply", None) is None
+        and event.get_plaintext().strip().lower() == "a",
+        group_reply_check=lambda event: event.get_plaintext().strip().lower() == "a",
+        handlers=[],
+        menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
+    )
+    old_reply = group_message_event(
+        "a",
+        user_id=3,
+        group_id=4,
+        message_id=100,
+        reply_sender_user_id=1,
+    )
+    assert context.matches(old_reply)
+
+    context.update_menu_anchor(
+        GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=100)
+    )
+
+    assert not context.matches(old_reply)
+    assert context.matches(
+        group_message_event(
+            "a",
+            user_id=3,
+            group_id=4,
+            message_id=101,
+            reply_sender_user_id=1,
+        )
+    )
+
+
+def test_group_menu_reply_stays_closed_without_a_sent_menu_id() -> None:
+    manager = PromptSessionManager()
+    owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        state={},
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id(),
+        group_reply_check=lambda event: event.get_plaintext().strip().isdigit(),
+        handlers=[],
+    )
+
+    assert not context.matches(
+        group_message_event(
+            "1",
+            user_id=3,
+            group_id=4,
+            message_id=100,
+            reply_sender_user_id=1,
+        )
+    )
+
+
+def test_group_menu_reply_rejects_another_group_or_bot_account() -> None:
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+
+    assert not is_current_group_menu_reply(
+        group_message_event(
+            "1",
+            user_id=3,
+            group_id=5,
+            self_id=1,
+            message_id=100,
+            reply_sender_user_id=1,
+        ),
+        anchor,
+    )
+    assert not is_current_group_menu_reply(
+        group_message_event(
+            "1",
+            user_id=3,
+            group_id=4,
+            self_id=2,
+            message_id=100,
+            reply_sender_user_id=1,
+        ),
+        anchor,
+    )
 
 
 @pytest.mark.asyncio
