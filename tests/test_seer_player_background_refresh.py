@@ -248,7 +248,7 @@ def test_direct_shortcut_bypasses_and_releases_pending_background_refresh(
     assert called == ["collection"]
 
 
-def test_player_shortcut_live_reuses_background_refresh_cache() -> None:
+def test_player_shortcut_live_prefers_live_data_while_quota_is_available() -> None:
     async def run() -> None:
         reply = QueryReply(text="preheated autocard reply")
         details = SimpleNamespace(shortcut=AsyncMock(return_value=reply))
@@ -287,7 +287,7 @@ def test_player_shortcut_live_reuses_background_refresh_cache() -> None:
             game,
             PlayerShortcutCommand(kind="autocard", player_id=PLAYER_ID),
             PLAYER_ID,
-            use_cache=True,
+            use_cache=False,
             anchor_only=False,
         )
 
