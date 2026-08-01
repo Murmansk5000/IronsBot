@@ -200,7 +200,8 @@ def test_load_pet_partner_reads_cost_members_and_skill_item() -> None:
         (4329, "夜魔之神"),
         (3491, "魔灵王"),
     ]
-    assert partner.after_description == "强化后魂印"
+    assert partner.before_description == "强化后魂印"
+    assert partner.after_description == "强化前魂印"
     assert partner.skill is not None
     assert partner.skill.name == "至暗·无量空邃"
     assert partner.skill.activation_item is not None
