@@ -51,6 +51,7 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentSnapshot,
+    new_content_category_unavailable_message,
     new_content_unavailable_message,
 )
 from ironsbot.services.seer.pet_query import PetImageSelection
@@ -210,35 +211,36 @@ async def _start_new_content(  # noqa: PLR0913
     except NewContentIndexUnavailableError:
         await matcher.finish(new_content_unavailable_message())
         return
-    if not snapshot.baseline_established:
-        await matcher.finish(new_content_unavailable_message(snapshot))
-        return
 
     available = _available_categories(group, event)
     if categories is not None and not set(categories).issubset(available):
         await matcher.finish("当前群未开放此新增内容分类。")
         return
-    if categories is not None and not any(
-        snapshot.items_for(item) for item in categories
-    ):
-        name = (
-            "新增群星牌"
-            if categories == AUTOCARD_NEW_CONTENT_CATEGORIES
-            else CATEGORY_NAMES[categories[0]]
+    requested_categories: tuple[NewContentCategory, ...] = (
+        categories if categories is not None else available
+    )
+    comparable_categories: tuple[NewContentCategory, ...] = tuple(
+        category
+        for category in requested_categories
+        if snapshot.is_category_comparable(category)
+    )
+    if categories is not None and not comparable_categories:
+        await matcher.finish(
+            new_content_category_unavailable_message(snapshot, categories)
         )
-        await matcher.finish(f"本周暂无{name}。")
         return
     visible_categories: tuple[NewContentCategory, ...] = tuple(
-        item for item in available if snapshot.items_for(item)
+        category
+        for category in comparable_categories
+        if snapshot.items_for(category)
     )
-    if not visible_categories:
-        await matcher.finish("本周暂未检测到新增或修改内容。")
+    if categories is not None and not visible_categories:
+        await matcher.finish(_empty_new_content_message(snapshot, categories))
         return
-    prompt = (
-        _content_prompt(snapshot, visible_categories)
-        if categories is None
-        else _content_prompt(snapshot, categories)
-    )
+    if not visible_categories:
+        await matcher.finish("本周暂未检测到可验证的新增或修改内容。")
+        return
+    prompt = _content_prompt(snapshot, visible_categories)
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
         pet=group.resources.pet_query,
@@ -254,6 +256,26 @@ async def _start_new_content(  # noqa: PLR0913
         _resolve_new_content_selection,
         _is_new_content_input,
     )
+
+
+def _empty_new_content_message(
+    snapshot: NewContentSnapshot,
+    categories: tuple[NewContentCategory, ...],
+) -> str:
+    name = (
+        "新增群星牌"
+        if categories == AUTOCARD_NEW_CONTENT_CATEGORIES
+        else CATEGORY_NAMES[categories[0]]
+    )
+    first_observations: tuple[NewContentCategory, ...] = tuple(
+        category
+        for category in categories
+        if snapshot.category_state(category).reason == "first_observation"
+    )
+    if first_observations:
+        notice = new_content_category_unavailable_message(snapshot, first_observations)
+        return f"本周暂无{name}。{notice}"
+    return f"本周暂无{name}。"
 
 
 def _available_categories(
