@@ -255,7 +255,6 @@
         }
 
         .special-effect-name {
-            color: #60e0ff;
             font-size: 18px;
             font-weight: bold;
         }
@@ -583,7 +582,7 @@
                                 {% endif %}
                                 <div class="special-effect-body">
                                 <div class="special-effect-head">
-                                    <span class="special-effect-name">{{ effect.name }}</span>
+                                    <span class="special-effect-name" style="color: {{ effect.color | default('#f35555') }}">{{ effect.name }}</span>
                                     <span class="special-effect-sources">{{ effect.sources | join("、") }}</span>
                                 </div>
                                 {% if effect.desc %}
