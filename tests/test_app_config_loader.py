@@ -242,7 +242,7 @@ def test_example_config_parses() -> None:
     )
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
-    assert config.bilibili.push.modes == {DEFAULT_BILI_ACCOUNT_ALIAS: "full"}
+    assert config.bilibili.push.modes == {}
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]

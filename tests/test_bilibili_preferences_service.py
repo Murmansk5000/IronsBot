@@ -9,6 +9,8 @@ from ironsbot.services.bilibili.preferences import (
     normalize_push_mode_text,
 )
 
+PREFERENCE_SCHEMA_VERSION = 2
+
 
 def test_bili_push_preference_store_sets_gets_and_clears_mode(
     tmp_path: Path,
@@ -34,6 +36,34 @@ def test_bili_push_preference_store_sets_gets_and_clears_mode(
     store.clear_mode("group", 1001, 123456)
 
     assert store.get_mode("group", 1001, 123456) is None
+
+
+def test_bili_push_preference_migration_preserves_runtime_mode_overrides(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "bili_preferences.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA user_version = 1")
+        conn.execute(
+            "CREATE TABLE bili_push_preferences ("
+            "target_type TEXT NOT NULL, target_id INTEGER NOT NULL, "
+            "uid INTEGER NOT NULL, mode TEXT NOT NULL, updated_at TEXT NOT NULL, "
+            "PRIMARY KEY (target_type, target_id, uid)"
+            ")"
+        )
+        conn.execute(
+            "INSERT INTO bili_push_preferences VALUES (?, ?, ?, ?, ?)",
+            ("group", 1001, 123456, "link", "2026-08-01T00:00:00+00:00"),
+        )
+
+    store = SqliteBiliPushPreferenceStore(db_path)
+
+    assert store.get_mode("group", 1001, 123456) == "link"
+    with sqlite3.connect(db_path) as conn:
+        assert (
+            conn.execute("PRAGMA user_version").fetchone()[0]
+            == PREFERENCE_SCHEMA_VERSION
+        )
 
 
 def test_bili_push_subscription_key_and_mode_normalization() -> None:
