@@ -37,6 +37,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
     NEW_PETS_COMMANDS,
+    NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
     SEASON_COUNTDOWN_COMMANDS,
@@ -152,6 +153,7 @@ def _install_new_content_commands(
         ),
         (("pet",), NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
         (("pet_skin",), NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
+        (("skill",), NEW_SKILLS_COMMANDS, "seer.data.new_skill", "seer_pet"),
         (
             ("mintmark",),
             NEW_MINTMARKS_COMMANDS,
@@ -287,6 +289,7 @@ def _available_categories(
     required_features: dict[NewContentCategory, str | None] = {
         "pet": "seer_pet",
         "pet_skin": "seer_pet",
+        "skill": "seer_pet",
         "mintmark": "seer_mintmark",
         "suit": "seer_equipment",
         "equip": "seer_equipment",
@@ -354,6 +357,19 @@ def _item_description(item: NewContentItem) -> str:
     if item.category == "pet_skin":
         pet_name = str(item.payload.get("pet_name", ""))
         return f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
+    if item.category == "skill":
+        pets = item.payload.get("pets", [])
+        names = (
+            "、".join(
+                str(pet.get("name", "")).strip()
+                for pet in pets
+                if isinstance(pet, dict) and str(pet.get("name", "")).strip()
+            )
+            if isinstance(pets, list)
+            else ""
+        )
+        suffix = f"｜{names}" if names else ""
+        return f"{change}｜{item.entity_id}{suffix}"
     if item.category in {"autocard_card", "autocard_role"}:
         kind = "角色" if item.category == "autocard_role" else "卡牌"
         return f"{change}｜{item.entity_id}｜{kind}"
@@ -416,6 +432,11 @@ async def _send_item_detail(
         return
     if item.category == "achievement":
         await MessageFactory(_achievement_detail(item)).send(
+            at_sender=isinstance(event, GroupMessageEvent)
+        )
+        return
+    if item.category == "skill":
+        await MessageFactory(_skill_detail(item)).send(
             at_sender=isinstance(event, GroupMessageEvent)
         )
         return
@@ -491,6 +512,68 @@ def _achievement_detail(item: NewContentItem) -> str:
         names = "、".join(str(title.get("name", "")) for title in titles)
         lines.append(f"关联称号：{names}")
     return "\n".join(lines)
+
+
+def _skill_detail(item: NewContentItem) -> str:
+    payload = item.payload
+    change = "修改" if item.change_kind == "modified" else "新增"
+    lines = [
+        f"⚔️【{item.name}】",
+        f"状态：{change}",
+        f"🆔：{item.entity_id}",
+    ]
+    lines.extend(_skill_stat_lines(payload))
+    if description := str(payload.get("info", "")).strip():
+        lines.append(f"效果：{description}")
+    if related := _skill_related_pets(payload.get("pets")):
+        lines.append(f"关联精灵：{related}")
+    return "\n".join(lines)
+
+
+def _skill_stat_lines(payload: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    power = int(payload.get("power", 0))
+    max_pp = int(payload.get("max_pp", 0))
+    if power or max_pp:
+        lines.append(f"威力：{power}｜PP：{max_pp}")
+    if bool(payload.get("must_hit", False)):
+        lines.append("命中：必中")
+    elif (accuracy := int(payload.get("accuracy", 0))) > 0:
+        lines.append(f"命中：{accuracy}%")
+    if (crit_rate := int(payload.get("crit_rate", 0))) > 0:
+        lines.append(f"暴击率：{crit_rate}%")
+    if (priority := int(payload.get("priority", 0))) != 0:
+        lines.append(f"先制：{priority:+d}")
+    if (atk_num := int(payload.get("atk_num", 0))) > 1:
+        lines.append(f"攻击次数：{atk_num}")
+    return lines
+
+
+def _skill_related_pets(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    related: list[str] = []
+    for pet in value:
+        if not isinstance(pet, dict):
+            continue
+        name = str(pet.get("name", "")).strip() or "未命名精灵"
+        pet_id = int(pet.get("id", 0))
+        label = _skill_pet_label(pet)
+        suffix = f"（{pet_id}）" if pet_id else ""
+        related.append(f"{name}{suffix}{label}")
+    return "、".join(related)
+
+
+def _skill_pet_label(pet: dict[str, Any]) -> str:
+    if bool(pet.get("is_fifth", False)):
+        return "（第五技能）"
+    if bool(pet.get("is_advanced", False)):
+        return "（强化技能）"
+    if bool(pet.get("is_special", False)):
+        return "（特殊技能）"
+    if (level := int(pet.get("learning_level", 0))) > 0:
+        return f"（Lv.{level}）"
+    return ""
 
 
 def _autocard_sanctuary_effect_detail(item: NewContentItem) -> str:

@@ -68,6 +68,9 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
                 ('pet_skin', 100, '测试皮肤', 100,
                  '{"pet_id": 1, "pet_name": "测试精灵", "resource_id": 100}',
                  'modified'),
+                ('skill', 200, '测试技能', 200,
+                 '{"power": 150, "max_pp": 5, "pets": [{"id": 1, "name": "测试精灵"}]}',
+                 'added'),
                 ('autocard_sanctuary_effect', 9, '潮涌', 9,
                  '{"sanctuary_id": 2, "sanctuary_name": "沧岚", "unlock_round": 5}',
                  'added')
@@ -89,6 +92,9 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     assert snapshot.items_for("achievement")[0].payload["point"] == 0
     assert snapshot.items_for("pet_skin")[0].payload["pet_name"] == "测试精灵"
     assert snapshot.items_for("pet_skin")[0].change_kind == "modified"
+    skill = snapshot.items_for("skill")[0]
+    assert skill.name == "测试技能"
+    assert skill.payload["pets"][0]["name"] == "测试精灵"
     effect = snapshot.items_for("autocard_sanctuary_effect")[0]
     assert effect.name == "潮涌"
     assert effect.payload["sanctuary_name"] == "沧岚"
@@ -100,8 +106,14 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     )
 
 
-def test_new_content_order_places_mintmarks_after_pets_and_skins() -> None:
-    assert NEW_CONTENT_CATEGORIES[:4] == ("pet", "pet_skin", "mintmark", "suit")
+def test_new_content_order_places_skills_before_mintmarks() -> None:
+    assert NEW_CONTENT_CATEGORIES[:5] == (
+        "pet",
+        "pet_skin",
+        "skill",
+        "mintmark",
+        "suit",
+    )
 
 
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:

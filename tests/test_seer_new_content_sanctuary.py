@@ -11,6 +11,7 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _autocard_sanctuary_effect_detail,
     _content_prompt,
     _item_description,
+    _skill_detail,
 )
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
@@ -55,6 +56,29 @@ def test_sanctuary_effect_detail_explains_blessing_context() -> None:
     assert "阶段：第 5 回合祝印" in detail
     assert "关联精灵王：精灵王测试（3105）" in detail
     assert "关联 Buff：50041（参数：2）" in detail
+
+
+def test_new_skill_detail_includes_effect_and_linked_pet() -> None:
+    skill = NewContentItem(
+        category="skill",
+        entity_id=38474,
+        name="测试技能",
+        sort_value=38474,
+        payload={
+            "power": 150,
+            "max_pp": 5,
+            "accuracy": 95,
+            "priority": 1,
+            "info": "测试效果",
+            "pets": [{"id": 4927, "name": "超级噗纽", "is_fifth": True}],
+        },
+    )
+
+    assert _item_description(skill) == "新增｜38474｜超级噗纽"
+    detail = _skill_detail(skill)
+    assert "威力：150｜PP：5" in detail
+    assert "效果：测试效果" in detail
+    assert "超级噗纽（4927）（第五技能）" in detail
 
 
 def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
