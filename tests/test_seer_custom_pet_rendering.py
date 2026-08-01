@@ -291,6 +291,7 @@ def test_partition_soulmarks_uses_real_partner_upgrade_without_duplication() -> 
     }
     upgraded_soulmark: custom_pet_info.SoulmarkDict = {
         **base_soulmark,
+        "id": 200,
         "desc": "damage=100; status=upgraded (boss)",
     }
 
@@ -301,6 +302,36 @@ def test_partition_soulmarks_uses_real_partner_upgrade_without_duplication() -> 
 
     assert base == [base_soulmark]
     assert upgraded == [upgraded_soulmark]
+
+
+def test_partition_soulmarks_corrects_reversed_partner_description_fields() -> None:
+    partner = PetPartner(
+        group_id=7,
+        name="星罗拂沙",
+        cost_item_id=1,
+        cost_item_name="测试道具",
+        cost_item_quantity=1,
+        members=(),
+        before_description="new soulmark",
+        after_description="old soulmark",
+        skill=None,
+    )
+    older_soulmark: custom_pet_info.SoulmarkDict = {
+        **_soulmark_dict(1578),
+        "desc": "old soulmark",
+    }
+    newer_soulmark: custom_pet_info.SoulmarkDict = {
+        **_soulmark_dict(2079),
+        "desc": "new soulmark",
+    }
+
+    base, upgraded = custom_pet_info._partition_soulmarks(
+        [older_soulmark, newer_soulmark],
+        partner,
+    )
+
+    assert base == [older_soulmark]
+    assert upgraded == [newer_soulmark]
 
 
 def test_partition_soulmarks_uses_official_upgrade_link_before_text_matching() -> None:

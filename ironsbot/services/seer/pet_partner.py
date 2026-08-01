@@ -64,6 +64,9 @@ def _mapping(row: Any) -> Mapping[str, Any]:
 def load_pet_partner(session: Session, pet_id: int) -> PetPartner | None:
     """Load one pet's official contract-partner group.
 
+    The partner payload's before/after description columns are directionally
+    inverted, so normalize them before exposing the logical display order.
+
     The release may predate this enrichment. In that case the card simply
     omits the section instead of making unrelated pet queries fail.
     """
@@ -80,8 +83,9 @@ def load_pet_partner(session: Session, pet_id: int) -> PetPartner | None:
             COALESCE(NULLIF(cost_item.name, ''), partner_group.cost_item_name)
                 AS cost_item_name,
             partner_group.cost_item_quantity,
-            COALESCE(partner_upgrade.before_description, '') AS before_description,
-            COALESCE(partner_upgrade.after_description, '') AS after_description,
+            -- ConfigPackage labels these two values in reverse display order.
+            COALESCE(partner_upgrade.after_description, '') AS before_description,
+            COALESCE(partner_upgrade.before_description, '') AS after_description,
             partner_upgrade.skill_id,
             COALESCE(skill.name, '') AS skill_name,
             activation_item.id AS activation_item_id,
