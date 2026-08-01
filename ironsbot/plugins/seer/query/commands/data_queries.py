@@ -44,6 +44,7 @@ from ironsbot.services.seer.data_query_commands import (
 )
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.new_content import (
+    AUTOCARD_NEW_CONTENT_CATEGORIES,
     CATEGORY_NAMES,
     NEW_CONTENT_CATEGORIES,
     NewContentCategory,
@@ -140,35 +141,45 @@ def _install_new_content_commands(
     root.append_handler(bind_async(_start_new_content, service, None, group))
 
     commands: tuple[
-        tuple[NewContentCategory, tuple[str, ...], str, str | None], ...
+        tuple[tuple[NewContentCategory, ...], tuple[str, ...], str, str | None], ...
     ] = (
-        ("achievement", NEW_ACHIEVEMENTS_COMMANDS, "seer.data.new_achievement", None),
-        ("pet", NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
-        ("pet_skin", NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
-        ("mintmark", NEW_MINTMARKS_COMMANDS, "seer.data.new_mintmark", "seer_mintmark"),
-        ("suit", NEW_SUITS_COMMANDS, "seer.data.new_suit", "seer_equipment"),
-        ("equip", NEW_EQUIPS_COMMANDS, "seer.data.new_equip", "seer_equipment"),
-        ("mount", NEW_MOUNTS_COMMANDS, "seer.data.new_mount", "seer_equipment"),
         (
-            "autocard_card",
+            ("achievement",),
+            NEW_ACHIEVEMENTS_COMMANDS,
+            "seer.data.new_achievement",
+            None,
+        ),
+        (("pet",), NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
+        (("pet_skin",), NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
+        (
+            ("mintmark",),
+            NEW_MINTMARKS_COMMANDS,
+            "seer.data.new_mintmark",
+            "seer_mintmark",
+        ),
+        (("suit",), NEW_SUITS_COMMANDS, "seer.data.new_suit", "seer_equipment"),
+        (("equip",), NEW_EQUIPS_COMMANDS, "seer.data.new_equip", "seer_equipment"),
+        (("mount",), NEW_MOUNTS_COMMANDS, "seer.data.new_mount", "seer_equipment"),
+        (
+            AUTOCARD_NEW_CONTENT_CATEGORIES,
             NEW_AUTOCARD_CARDS_COMMANDS,
-            "seer.data.new_autocard_card",
+            "seer.data.new_autocard",
             "seer_autocard",
         ),
         (
-            "autocard_role",
+            ("autocard_role",),
             NEW_AUTOCARD_ROLES_COMMANDS,
             "seer.data.new_autocard_role",
             "seer_autocard",
         ),
         (
-            "autocard_sanctuary_effect",
+            ("autocard_sanctuary_effect",),
             NEW_AUTOCARD_SANCTUARIES_COMMANDS,
             "seer.data.new_autocard_sanctuary_effect",
             "seer_autocard",
         ),
     )
-    for category, messages, command_id, feature in commands:
+    for categories, messages, command_id, feature in commands:
         rule = root_rule
         if feature is not None:
             rule = rule & seer_feature_rule(group.features, feature)
@@ -178,12 +189,14 @@ def _install_new_content_commands(
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
-        matcher.append_handler(bind_async(_start_new_content, service, category, group))
+        matcher.append_handler(
+            bind_async(_start_new_content, service, categories, group)
+        )
 
 
 async def _start_new_content(  # noqa: PLR0913
     service: SeerDataQueryService,
-    category: NewContentCategory | None,
+    categories: tuple[NewContentCategory, ...] | None,
     group: SeerMatcherGroup,
     matcher: Matcher,
     state: T_State,
@@ -202,11 +215,18 @@ async def _start_new_content(  # noqa: PLR0913
         return
 
     available = _available_categories(group, event)
-    if category is not None and category not in available:
+    if categories is not None and not set(categories).issubset(available):
         await matcher.finish("当前群未开放此新增内容分类。")
         return
-    if category is not None and not snapshot.items_for(category):
-        await matcher.finish(f"本周暂无{CATEGORY_NAMES[category]}。")
+    if categories is not None and not any(
+        snapshot.items_for(item) for item in categories
+    ):
+        name = (
+            "新增群星牌"
+            if categories == AUTOCARD_NEW_CONTENT_CATEGORIES
+            else CATEGORY_NAMES[categories[0]]
+        )
+        await matcher.finish(f"本周暂无{name}。")
         return
     visible_categories: tuple[NewContentCategory, ...] = tuple(
         item for item in available if snapshot.items_for(item)
@@ -216,8 +236,8 @@ async def _start_new_content(  # noqa: PLR0913
         return
     prompt = (
         _content_prompt(snapshot, visible_categories)
-        if category is None
-        else _content_prompt(snapshot, (category,))
+        if categories is None
+        else _content_prompt(snapshot, categories)
     )
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(

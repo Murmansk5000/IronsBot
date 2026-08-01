@@ -41,6 +41,15 @@ NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "autocard_sanctuary_effect",
 )
 
+# "新增群星牌" is the umbrella view for all weekly Autocard changes.  The
+# individual categories remain available for the general new-content menu and
+# their focused commands.
+AUTOCARD_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
+    "autocard_card",
+    "autocard_role",
+    "autocard_sanctuary_effect",
+)
+
 CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "achievement": "新增成就",
     "pet": "新增精灵",
