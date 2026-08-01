@@ -1051,6 +1051,41 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     assert settings.operations.headless.password == "md5"
 
 
+def test_named_headless_worker_environment_pairs_are_loaded() -> None:
+    settings = load_settings(
+        ROOT / "config.example.toml",
+        env={
+            "HEADLESS_SEER_USER_ID": str(HEADLESS_USER_ID),
+            "HEADLESS_SEER_PASSWORD": "primary-md5",
+            "HEADLESS_SEER_USER_ID_RANK_A": "22345678",
+            "HEADLESS_SEER_PASSWORD_RANK_A": "second-md5",
+            "HEADLESS_SEER_USER_ID_CACHE_B": "32345678",
+            "HEADLESS_SEER_PASSWORD_CACHE_B": "third-md5",
+        },
+    )
+
+    assert [worker.worker_key for worker in settings.operations.headless_workers] == [
+        "CACHE_B",
+        "RANK_A",
+    ]
+    assert [worker.user_id for worker in settings.operations.headless_workers] == [
+        32345678,
+        22345678,
+    ]
+    assert [worker.password for worker in settings.operations.headless_workers] == [
+        "third-md5",
+        "second-md5",
+    ]
+
+
+def test_named_headless_worker_requires_complete_pair() -> None:
+    with pytest.raises(ValueError, match="headless worker RANK_A is missing"):
+        load_settings(
+            ROOT / "config.example.toml",
+            env={"HEADLESS_SEER_USER_ID_RANK_A": "22345678"},
+        )
+
+
 def test_docker_registry_token_must_be_set_in_environment(
     tmp_path: Path,
 ) -> None:

@@ -107,6 +107,7 @@ from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.operations.headless_pool import HeadlessPool, HeadlessWorker
 from ironsbot.services.operations.headless_session import HeadlessSessionFactory
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
@@ -181,7 +182,7 @@ class ApplicationResources:
     push_message_limiter: MessageLimiter
     admin_notices: AdminNoticeService
     activity: ActivityService
-    headless: HeadlessService
+    headless: HeadlessPool
     server_status: ServerStatusService
     subscriptions: PushUnsubscribeStore
     bilibili: BilibiliService
@@ -367,7 +368,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         push_message_limiter,
     )
-    headless = HeadlessService(
+    primary_headless = HeadlessService(
         ClientManager(task_owner.create),
         settings.operations.headless,
         settings.operations.headless_notice,
@@ -378,6 +379,31 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
+    headless_workers = [HeadlessWorker(key="primary", service=primary_headless)]
+    headless_workers.extend(
+        HeadlessWorker(
+            key=config.worker_key,
+            service=HeadlessService(
+                ClientManager(task_owner.create),
+                settings.operations.headless.model_copy(
+                    update={
+                        "user_id": config.user_id,
+                        "password": config.password,
+                    }
+                ),
+                settings.operations.headless_notice,
+                admin_notices,
+                request_interval_seconds=(
+                    settings.seer.player.request_protection.base_request_interval_seconds
+                    if settings.seer.player.request_protection.enabled
+                    else 0.0
+                ),
+                state_notifications=False,
+            ),
+        )
+        for config in settings.operations.headless_workers
+    )
+    headless = HeadlessPool(tuple(headless_workers))
     headless_sessions = HeadlessSessionFactory(
         lambda: ClientManager(task_owner.create),
         settings.operations.headless,
@@ -442,7 +468,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         TeamResourceSubscriptionStore(
             settings.seer.team_resource.subscription_path
         ),
-        headless,
+        headless.primary,
         settings.onebot_references,
         features,
         delivery,
@@ -581,7 +607,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         AutocardService(seer_database),
         SeerTeamQueryService(
             settings.seer.team,
-            headless,
+            headless.primary,
             seer_database.error_message,
             team_resource,
         ),
@@ -608,7 +634,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         PeakQueryService(
             seer_database,
-            headless,
+            headless.primary,
             partial(
                 render_peak_pool,
                 render_cache,
@@ -651,7 +677,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     private_extension_runtime = PrivateExtensionRuntime(
         features=features,
         seer=seer,
-        headless=headless,
+        headless=headless.primary,
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
@@ -701,7 +727,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         activity=activity,
         headless=headless,
         server_status=ServerStatusService(
-            headless,
+            headless.primary,
             HttpServerNoticeSource(http_clients.origin),
         ),
         subscriptions=subscriptions,

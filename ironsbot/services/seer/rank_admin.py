@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         HeadlessGame,
         HeadlessService,
     )
+    from ironsbot.services.operations.headless_pool import HeadlessPool
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
@@ -63,7 +64,7 @@ class RankAdminService:
         rank: RankService,
         local_rank: LocalRankService,
         page_refresh: RankPageRefreshService,
-        headless: HeadlessService,
+        headless: HeadlessService | HeadlessPool,
         requests: PlayerRequestProtectionService,
     ) -> None:
         self._policy = policy
@@ -168,7 +169,7 @@ class RankAdminService:
         await progress(build_rank_page_refresh_start_message(command))
         rank_keys = None if command.rank_key is None else [command.rank_key]
         result = await self._page_refresh.refresh(
-            self._headless.get_game(),
+            self._headless.get_game,
             rank_keys,
             user_id=user_id,
         )
@@ -202,7 +203,7 @@ class RankAdminService:
             )
         )
         result = await self._local_rank.refresh(
-            self._headless.get_game(),
+            self._headless.get_game,
             user_id=user_id,
         )
         return build_local_rank_refresh_result_message(

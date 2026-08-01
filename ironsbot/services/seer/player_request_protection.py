@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from ironsbot.core.tasks import TaskSpawner
-    from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.headless_pool import HeadlessPool, HeadlessWorker
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -66,13 +66,13 @@ class _QueuedRequest:
 
 
 class PlayerRequestProtectionService:
-    """Serialize live player workflows and retain a small priority queue."""
+    """Schedule live player workflows across independent headless connections."""
 
     def __init__(
         self,
         config: PlayerRequestProtectionConfig,
         features: SuperuserLookup,
-        headless: HeadlessService,
+        headless: HeadlessPool,
         spawn: TaskSpawner,
         *,
         now: Callable[[], float] | None = None,
@@ -85,7 +85,8 @@ class PlayerRequestProtectionService:
         self._priority: deque[_QueuedRequest] = deque()
         self._normal: deque[_QueuedRequest] = deque()
         self._background: deque[_QueuedRequest] = deque()
-        self._active: _QueuedRequest | None = None
+        self._active: dict[int, _QueuedRequest] = {}
+        self._draining = False
         self._by_request_key: dict[tuple[str, str], _QueuedRequest] = {}
         self._pause_until = 0.0
         self._last_disconnect_at: float | None = None
@@ -176,7 +177,12 @@ class PlayerRequestProtectionService:
         reason: str,
         source: str,
     ) -> None:
-        if connected or previous is not True or not self._config.enabled:
+        if connected:
+            self._start_next()
+            return
+        if previous is not True or not self._config.enabled:
+            return
+        if self._headless.has_connected_worker():
             return
 
         current = self._now()
@@ -214,7 +220,7 @@ class PlayerRequestProtectionService:
             self._background.append(item)
             return
 
-        waits_for_active_request = self._active is not None
+        waits_for_active_request = bool(self._active)
         if (
             waits_for_active_request
             and self._interactive_waiting_count()
@@ -236,7 +242,7 @@ class PlayerRequestProtectionService:
     def _promote(self, item: _QueuedRequest, *, priority: bool) -> None:
         """Move a pending prefetch into the interactive priority class."""
 
-        if self._active is item:
+        if item in self._active.values():
             return
         if not item.background and (item.priority or not priority):
             return
@@ -257,16 +263,34 @@ class PlayerRequestProtectionService:
         )
 
     def _start_next(self) -> None:
-        if self._active is not None:
+        if self._draining:
             return
-        next_item = self._next_item()
-        if next_item is None:
-            return
-        self._active = next_item
+        self._draining = True
         self._spawn(
-            self._execute(next_item),
-            name="seer-player-request",
+            self._drain(),
+            name="seer-player-request-dispatch",
         )
+
+    async def _drain(self) -> None:
+        try:
+            while self._has_waiting_item():
+                worker = self._headless.try_acquire()
+                if worker is None:
+                    return
+                item = self._next_item()
+                if item is None:
+                    self._headless.release(worker)
+                    return
+                self._active[id(item)] = item
+                self._spawn(
+                    self._execute(item, worker),
+                    name=f"seer-player-request:{worker.key}",
+                )
+        finally:
+            self._draining = False
+
+    def _has_waiting_item(self) -> bool:
+        return any((self._priority, self._normal, self._background))
 
     def _next_item(self) -> _QueuedRequest | None:
         for queue in (self._priority, self._normal, self._background):
@@ -276,7 +300,11 @@ class PlayerRequestProtectionService:
                     return item
         return None
 
-    async def _execute(self, item: _QueuedRequest) -> None:
+    async def _execute(
+        self,
+        item: _QueuedRequest,
+        worker: HeadlessWorker,
+    ) -> None:
         try:
             if self._paused() and item.bypass_pause:
                 await self._wait_for_reconnect()
@@ -286,7 +314,10 @@ class PlayerRequestProtectionService:
                 item.semantic_request,
                 user_id=item.user_id,
             ):
-                result = await self._run_operation(item)
+                result = await self._headless.run_on(
+                    worker,
+                    lambda: self._run_operation(item),
+                )
         except asyncio.CancelledError:
             item.future.cancel()
             raise
@@ -306,7 +337,7 @@ class PlayerRequestProtectionService:
             if not item.future.done():
                 item.future.set_result(result)
         finally:
-            self._active = None
+            self._active.pop(id(item), None)
             self._release_request_key(item)
             self._start_next()
 

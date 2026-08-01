@@ -25,7 +25,7 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
     from ironsbot.services.operations.headless import HeadlessGame
@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
+
+    HeadlessGameSource = HeadlessGame | Callable[[], HeadlessGame]
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +77,7 @@ class RankPageRefreshService:
 
     async def refresh(
         self,
-        game: HeadlessGame,
+        game: HeadlessGameSource,
         rank_keys: Sequence[str] | None = None,
         *,
         background: bool = False,
@@ -105,7 +107,7 @@ class RankPageRefreshService:
 
     async def _refresh_unlocked(
         self,
-        game: HeadlessGame,
+        game: HeadlessGameSource,
         rank_keys: Sequence[str] | None,
         *,
         background: bool,
@@ -157,15 +159,16 @@ class RankPageRefreshService:
 
     async def _refresh_target(
         self,
-        game: HeadlessGame,
+        game: HeadlessGameSource,
         target: RankPageRefreshTarget,
         *,
         background: bool,
         user_id: int | None,
     ) -> None:
         async def fetch() -> None:
+            active_game = game() if callable(game) else game
             action_name = "后台刷榜缓存" if background else "手动刷新榜单缓存"
-            with game.operations.track(
+            with active_game.operations.track(
                 action_name,
                 (
                     f"{target.rank_key} {target.start_rank}-{target.end_rank}名"
@@ -175,7 +178,7 @@ class RankPageRefreshService:
                 background=background,
             ):
                 await self.rank.fetch_range(
-                    game,
+                    active_game,
                     key=target.spec.key,
                     sub_key=target.spec.sub_key,
                     start=target.raw_start,

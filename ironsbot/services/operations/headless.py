@@ -145,6 +145,7 @@ class HeadlessService:
         admin_notices: AdminNoticeService,
         *,
         request_interval_seconds: float = 0.0,
+        state_notifications: bool = True,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
@@ -152,6 +153,7 @@ class HeadlessService:
         self._notices = notices
         self._admin_notices = admin_notices
         self._request_interval_seconds = max(request_interval_seconds, 0.0)
+        self._state_notifications = state_notifications
         self._now = now or (lambda: datetime.now(LOCAL_TZ))
         self._state = HeadlessState()
         self._state_lock = asyncio.Lock()
@@ -250,7 +252,7 @@ class HeadlessService:
             return
 
         await self.mark_unavailable(reason, source="启动检查", notify=False)
-        if self._notices.login_notice:
+        if self._state_notifications and self._notices.login_notice:
             await self._admin_notices.send(
                 self._notices.login_notice_message.format(
                     user_id=self.user_id_text,
@@ -372,7 +374,7 @@ class HeadlessService:
             source=source,
         )
 
-        if previous is None or not notify:
+        if previous is None or not notify or not self._state_notifications:
             return
         if in_headless_notice_quiet_window(now):
             logger.info(

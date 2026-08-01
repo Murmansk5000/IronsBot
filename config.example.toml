@@ -1204,6 +1204,10 @@ interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
 
 [operations.headless]
+# EN: Login credentials are environment-only. The unsuffixed HEADLESS_SEER_* pair
+# is the primary worker; add matching named suffix pairs such as _RANK_A for parallel workers.
+# ZH: 登录凭据仅通过环境变量设置。无后缀 HEADLESS_SEER_* 是主 worker；
+# 追加 _RANK_A 这类同名后缀账号对即可增加并行 worker。
 # Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
 login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
 # Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。

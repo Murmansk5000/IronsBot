@@ -22,6 +22,31 @@ class _Features:
 class _Headless:
     def __init__(self) -> None:
         self.wait_calls: list[float] = []
+        self.connected = True
+        self._workers = [SimpleNamespace(key="primary", busy=False)]
+
+    def try_acquire(self) -> SimpleNamespace | None:
+        for worker in self._workers:
+            if not worker.busy:
+                worker.busy = True
+                return worker
+        return None
+
+    def release(self, worker: SimpleNamespace) -> None:
+        worker.busy = False
+
+    async def run_on(
+        self,
+        worker: SimpleNamespace,
+        operation: Any,
+    ) -> object:
+        try:
+            return await operation()
+        finally:
+            self.release(worker)
+
+    def has_connected_worker(self) -> bool:
+        return self.connected
 
     async def wait_until_available(self, *, timeout: float) -> object:
         self.wait_calls.append(timeout)
@@ -93,6 +118,41 @@ def test_requests_run_one_at_a_time_in_arrival_order() -> None:
         assert await first_task == "first"
         assert await second_task == "second"
         assert events == ["first-start", "first-end", "second"]
+
+    asyncio.run(run())
+
+
+def test_requests_use_all_available_headless_workers() -> None:
+    async def run() -> None:
+        service, headless = _service()
+        headless._workers.append(SimpleNamespace(key="rank_a", busy=False))
+        first_started = asyncio.Event()
+        second_started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def first() -> str:
+            first_started.set()
+            await release.wait()
+            return "first"
+
+        async def second() -> str:
+            second_started.set()
+            await release.wait()
+            return "second"
+
+        first_task = asyncio.create_task(
+            service.run(first, user_id=USER_ID, label="first")
+        )
+        second_task = asyncio.create_task(
+            service.run(second, user_id=USER_ID + 1, label="second")
+        )
+        await asyncio.wait_for(
+            asyncio.gather(first_started.wait(), second_started.wait()),
+            timeout=0.2,
+        )
+        release.set()
+        assert await first_task == "first"
+        assert await second_task == "second"
 
     asyncio.run(run())
 
@@ -228,7 +288,7 @@ def test_background_request_timeout_releases_queue() -> None:
 
 def test_disconnect_pauses_normal_requests_and_clears_waiting_work() -> None:
     async def run() -> None:
-        service, _headless = _service()
+        service, headless = _service()
         started = asyncio.Event()
         release = asyncio.Event()
 
@@ -249,6 +309,7 @@ def test_disconnect_pauses_normal_requests_and_clears_waiting_work() -> None:
         )
         await asyncio.sleep(0)
 
+        headless.connected = False
         await service.on_headless_state_change(
             previous=True,
             connected=False,
@@ -269,6 +330,7 @@ def test_disconnect_pauses_normal_requests_and_clears_waiting_work() -> None:
 def test_superuser_waits_for_reconnect_during_pause() -> None:
     async def run() -> None:
         service, headless = _service()
+        headless.connected = False
         await service.on_headless_state_change(
             previous=True,
             connected=False,
