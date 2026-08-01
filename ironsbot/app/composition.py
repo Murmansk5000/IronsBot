@@ -80,7 +80,6 @@ from ironsbot.integrations.storage.team_resources import (
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
-from ironsbot.runtime.priority import AdminPriorityService
 from ironsbot.services.activity.delivery import (
     ActivityReminderDelivery,
     ActivityReminderTargets,
@@ -108,6 +107,7 @@ from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.operations.headless_pool import HeadlessPool, HeadlessWorker
 from ironsbot.services.operations.headless_session import HeadlessSessionFactory
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
@@ -144,6 +144,7 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
+from ironsbot.services.seer.render_scheduler import RenderScheduler
 from ironsbot.services.seer.rendering.custom_pet_info import (
     render_custom_pet_info,
 )
@@ -181,9 +182,8 @@ class ApplicationResources:
     push_message_limiter: MessageLimiter
     admin_notices: AdminNoticeService
     activity: ActivityService
-    headless: HeadlessService
+    headless: HeadlessPool
     server_status: ServerStatusService
-    priority: AdminPriorityService
     subscriptions: PushUnsubscribeStore
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
@@ -368,7 +368,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         push_message_limiter,
     )
-    headless = HeadlessService(
+    primary_headless = HeadlessService(
         ClientManager(task_owner.create),
         settings.operations.headless,
         settings.operations.headless_notice,
@@ -379,6 +379,31 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
+    headless_workers = [HeadlessWorker(key="primary", service=primary_headless)]
+    headless_workers.extend(
+        HeadlessWorker(
+            key=config.worker_key,
+            service=HeadlessService(
+                ClientManager(task_owner.create),
+                settings.operations.headless.model_copy(
+                    update={
+                        "user_id": config.user_id,
+                        "password": config.password,
+                    }
+                ),
+                settings.operations.headless_notice,
+                admin_notices,
+                request_interval_seconds=(
+                    settings.seer.player.request_protection.base_request_interval_seconds
+                    if settings.seer.player.request_protection.enabled
+                    else 0.0
+                ),
+                state_notifications=False,
+            ),
+        )
+        for config in settings.operations.headless_workers
+    )
+    headless = HeadlessPool(tuple(headless_workers))
     headless_sessions = HeadlessSessionFactory(
         lambda: ClientManager(task_owner.create),
         settings.operations.headless,
@@ -388,7 +413,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
-    priority = AdminPriorityService(settings.features.priority, features)
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(
         bili_data_dir / "bili_cookie_cache.txt"
@@ -444,7 +468,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         TeamResourceSubscriptionStore(
             settings.seer.team_resource.subscription_path
         ),
-        headless,
+        headless.primary,
         settings.onebot_references,
         features,
         delivery,
@@ -474,6 +498,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.paths.render_cache,
         settings.seer.render.cache_max_size_mb * 1024 * 1024,
         db_version_getter=seer_database.version,
+    )
+    render_scheduler = RenderScheduler(
+        render_html_template,
+        settings.runtime.concurrency.render_max_concurrent,
     )
     player_bindings = SqlitePlayerBindingStore(
         settings.seer.player.binding.path
@@ -566,6 +594,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         local_rank,
         rank_page_refresh,
         headless,
+        player_requests,
     )
     seer = SeerQueryResources(
         SeerDataQueryService(
@@ -578,7 +607,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         AutocardService(seer_database),
         SeerTeamQueryService(
             settings.seer.team,
-            headless,
+            headless.primary,
             seer_database.error_message,
             team_resource,
         ),
@@ -589,7 +618,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_type_matchup,
                 render_cache,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
         ),
         BattleEffectQueryService(seer_database, seer_images),
@@ -600,27 +629,27 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_custom_pet_info,
                 render_cache,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
         ),
         PeakQueryService(
             seer_database,
-            headless,
+            headless.primary,
             partial(
                 render_peak_pool,
                 render_cache,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
             partial(
                 render_peak_pool_vote,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
             partial(
                 render_peak_pet_rank,
                 images=seer_images,
-                render_html=render_html_template,
+                render_html=render_scheduler.render,
             ),
         ),
         MintmarkQueryService(
@@ -648,18 +677,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     private_extension_runtime = PrivateExtensionRuntime(
         features=features,
         seer=seer,
-        headless=headless,
+        headless=headless.primary,
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
-        render_html=render_html_template,
+        render_html=render_scheduler.render,
         error_message=seer_database.error_message,
         player_quotas=player_query_quotas,
         player_requests=player_requests,
         player_details=player_detail_extensions,
         scheduler=scheduler,
         admin_notices=admin_notices,
-        release_priority=priority.release,
         settings=settings.operations.private_extensions.settings,
     )
     docker_update = DockerUpdateService(
@@ -699,10 +727,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         activity=activity,
         headless=headless,
         server_status=ServerStatusService(
-            headless,
+            headless.primary,
             HttpServerNoticeSource(http_clients.origin),
         ),
-        priority=priority,
         subscriptions=subscriptions,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
@@ -743,7 +770,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     matchers = MatcherRegistry(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
-        before_reply_send=priority.wait,
         prompt_session_manager=prompt_sessions,
         in_flight_requests=InFlightRequestService(
             features,

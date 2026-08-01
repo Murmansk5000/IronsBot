@@ -88,7 +88,6 @@ class PrivateExtensionRuntime:
     player_details: PlayerDetailExtensionRegistry
     scheduler: SchedulerFacade
     admin_notices: AdminNoticeService
-    release_priority: Callable[[dict[str, Any]], Any]
     settings: Mapping[str, Mapping[str, Any]]
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]:

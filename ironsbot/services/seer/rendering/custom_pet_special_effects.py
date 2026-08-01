@@ -78,6 +78,32 @@ def _highlighted_terms(value: str | None, colors: Iterable[str]) -> list[str]:
     return terms
 
 
+def _assign_special_effect_colors(
+    pet: PetORM,
+    effects: list[SpecialEffectDict],
+) -> None:
+    """Use the first official highlight for an effect, with a stable fallback."""
+    colors_by_name: dict[str, str] = {}
+    names = {effect["name"] for effect in effects}
+    if names:
+        descriptions = [
+            description for description, _source in _skill_effect_texts(pet)
+        ]
+        descriptions.extend(
+            str(soulmark.analyze_desc or "") for soulmark in pet.soulmark
+        )
+        for description in descriptions:
+            for segment in AnalyzeDescParser(description).segments:
+                if not segment.colors:
+                    continue
+                for name in names:
+                    if name in segment.text and name not in colors_by_name:
+                        colors_by_name[name] = segment.colors[-1]
+
+    for effect in effects:
+        effect["color"] = colors_by_name.get(effect["name"], _SPECIAL_EFFECT_COLOR)
+
+
 def _extract_special_effects(pet: PetORM) -> list[SpecialEffectDict]:
     """Return only official glossary entries directly linked to this pet."""
     effects_by_name: dict[str, SpecialEffectDict] = {}

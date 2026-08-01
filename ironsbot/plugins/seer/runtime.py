@@ -10,6 +10,7 @@ from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.headless_pool import HeadlessPool
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
@@ -35,14 +36,14 @@ def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) 
 
 
 async def _scheduled_local_rank_refresh(
-    headless: HeadlessService,
+    headless: HeadlessService | HeadlessPool,
     service: LocalRankService,
 ) -> None:
     config = service.config
     if not config.auto_refresh:
         return
 
-    result = await service.refresh(headless.get_game(), background=True)
+    result = await service.refresh(headless.get_game, background=True)
     logger.info(
         "local rank cache auto refresh finished: "
         f"total={result.total}, "
@@ -54,7 +55,7 @@ async def _scheduled_local_rank_refresh(
 
 def register_local_rank_refresh_job(
     scheduler: Any,
-    headless: HeadlessService,
+    headless: HeadlessService | HeadlessPool,
     service: LocalRankService,
 ) -> None:
     config = service.config
@@ -69,7 +70,7 @@ def register_local_rank_refresh_job(
 
 
 async def _scheduled_rank_page_refresh(
-    headless: HeadlessService,
+    headless: HeadlessService | HeadlessPool,
     service: RankPageRefreshService,
 ) -> None:
     config = service.config
@@ -79,7 +80,7 @@ async def _scheduled_rank_page_refresh(
         logger.info("rank page cache auto refresh skipped: outside active window")
         return
 
-    result = await service.refresh(headless.get_game(), background=True)
+    result = await service.refresh(headless.get_game, background=True)
     logger.info(
         "rank page cache auto refresh finished: "
         f"total={result.total}, success={result.success}, failed={result.failed}"
@@ -88,7 +89,7 @@ async def _scheduled_rank_page_refresh(
 
 def register_rank_page_refresh_jobs(
     scheduler: Any,
-    headless: HeadlessService,
+    headless: HeadlessService | HeadlessPool,
     service: RankPageRefreshService,
 ) -> None:
     config = service.config

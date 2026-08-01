@@ -57,6 +57,7 @@ if TYPE_CHECKING:
         HeadlessGame,
         HeadlessService,
     )
+    from ironsbot.services.operations.headless_pool import HeadlessPool
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_request_protection import (
@@ -91,7 +92,7 @@ class RankQueryService:
         rank: RankService,
         local_rank: LocalRankService,
         display: RankDisplayService,
-        headless: HeadlessService,
+        headless: HeadlessService | HeadlessPool,
         policy: RankQueryPolicy,
         quotas: PlayerQueryQuotaService | None = None,
         requests: PlayerRequestProtectionService | None = None,

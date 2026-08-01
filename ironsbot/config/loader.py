@@ -38,6 +38,10 @@ _SECRET_ENV_PATHS = (
         ("operations", "docker_update", "registry_token"),
     ),
 )
+_HEADLESS_WORKER_ENV_PREFIXES = {
+    "HEADLESS_SEER_USER_ID": "user_id",
+    "HEADLESS_SEER_PASSWORD": "password",
+}
 
 
 class ConfigFileNotFoundError(FileNotFoundError):
@@ -49,6 +53,39 @@ class ConfigFileNotFoundError(FileNotFoundError):
             "请创建该文件（可参考 config.example.toml），并通过 "
             f"{CONFIG_ENV} 指向它。Docker/Unraid 默认路径为 "
             "/config/ironsbot.toml。"
+        )
+
+
+class HeadlessWorkerEnvironmentError(ValueError):
+    @classmethod
+    def duplicate(
+        cls,
+        worker_key: str,
+        key: str,
+        first_name: str,
+        second_name: str,
+    ) -> HeadlessWorkerEnvironmentError:
+        return cls(
+            f"duplicate headless worker {worker_key} {key} variables: "
+            f"{first_name} and {second_name}"
+        )
+
+    @classmethod
+    def configured_in_toml(cls) -> HeadlessWorkerEnvironmentError:
+        return cls(
+            "operations.headless_workers is managed from suffixed "
+            "HEADLESS_SEER_* environment variables"
+        )
+
+    @classmethod
+    def missing_pair(
+        cls,
+        worker_key: str,
+        missing_names: str,
+    ) -> HeadlessWorkerEnvironmentError:
+        return cls(
+            f"headless worker {worker_key} is missing environment values: "
+            f"{missing_names}"
         )
 
 
@@ -88,6 +125,73 @@ def _format_config_path(location: tuple[str | int, ...]) -> str:
         else:
             result = part
     return result
+
+
+def _headless_worker_env_entry(env_name: str) -> tuple[str, str] | None:
+    """Return a normalized worker key and field for a suffixed env variable."""
+
+    for prefix, field in _HEADLESS_WORKER_ENV_PREFIXES.items():
+        if env_name == prefix or not env_name.startswith(prefix):
+            continue
+        worker_key = env_name.removeprefix(prefix).lstrip("_").upper()
+        if worker_key:
+            return worker_key, field
+    return None
+
+
+def _inject_headless_workers(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    """Load any named headless account pairs from the process environment.
+
+    The unnumbered pair is always worker 1 and is handled by ``_SECRET_ENV_PATHS``.
+    Extra pairs use the same arbitrary suffix on both values, for example
+    ``HEADLESS_SEER_USER_ID_RANK_A`` and ``HEADLESS_SEER_PASSWORD_RANK_A``.
+    A direct suffix without an underscore is also accepted for Docker UIs that
+    prefer it. Duplicates are rejected rather than guessed.
+    """
+
+    values: dict[str, dict[str, str]] = {}
+    sources: dict[tuple[str, str], str] = {}
+    for env_name, value in env.items():
+        entry = _headless_worker_env_entry(env_name)
+        if entry is None:
+            continue
+        worker_key, key = entry
+        source_key = (worker_key, key)
+        if source_key in sources:
+            raise HeadlessWorkerEnvironmentError.duplicate(
+                worker_key,
+                key,
+                sources[source_key],
+                env_name,
+            )
+        values.setdefault(worker_key, {})[key] = value
+        sources[source_key] = env_name
+
+    if not values:
+        return
+
+    operations = data.setdefault("operations", {})
+    if not isinstance(operations, dict):
+        msg = "configuration table operations must be a TOML table"
+        raise TypeError(msg)
+    if "headless_workers" in operations:
+        raise HeadlessWorkerEnvironmentError.configured_in_toml()
+
+    workers: list[dict[str, Any]] = []
+    for worker_key, worker in sorted(values.items()):
+        missing = {"user_id", "password"}.difference(worker)
+        if missing:
+            missing_names = ", ".join(sorted(missing))
+            raise HeadlessWorkerEnvironmentError.missing_pair(
+                worker_key,
+                missing_names,
+            )
+        workers.append({"worker_key": worker_key, **worker})
+    operations["headless_workers"] = workers
 
 
 def _unknown_field_paths(data: dict[str, Any]) -> tuple[str, ...]:
@@ -138,6 +242,7 @@ def load_settings(
             path=field_path,
             env=values,
         )
+    _inject_headless_workers(data, env=values)
     unknown_paths = _unknown_field_paths(data)
     settings = Settings.model_validate(data, extra="ignore")
     _report_ignored_unknown_fields(unknown_paths)

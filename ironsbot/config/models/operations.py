@@ -260,11 +260,18 @@ class HeadlessConfig(BaseModel):
     reconnect_delay_max: float = 120.0
 
 
+class HeadlessWorkerConfig(HeadlessConfig):
+    """A persistent additional headless account supplied by environment."""
+
+    worker_key: str = Field(min_length=1)
+
+
 class OperationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_sync: DataSyncConfig = Field(default_factory=DataSyncConfig)
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
+    headless_workers: list[HeadlessWorkerConfig] = Field(default_factory=list)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
     docker_update: DockerUpdateConfig = Field(default_factory=DockerUpdateConfig)

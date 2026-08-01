@@ -19,6 +19,9 @@ from ironsbot.services.seer.rank_queries import (
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.player_request_protection import (
+        PlayerRequestProtectionService,
+    )
     from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_display import RankDisplayService
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
@@ -146,14 +149,15 @@ async def test_empty_local_rank_refresh_returns_without_headless() -> None:
         cast("LocalRankService", local_rank),
         cast("RankPageRefreshService", SimpleNamespace()),
         cast("HeadlessService", NoHeadlessAccess()),
+        cast("PlayerRequestProtectionService", SimpleNamespace()),
     )
 
     async def unused(_message: str = "") -> None:
         pytest.fail("empty cache must not report progress or release")
 
     message = await service.cache_refresh(
+        user_id=1,
         progress=unused,
-        release=unused,
     )
 
     assert message == "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。"

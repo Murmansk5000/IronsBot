@@ -146,7 +146,8 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
-  `HEADLESS_SEER_PASSWORD`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+  `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
+  `HEADLESS_SEER_PASSWORD_<名称>` 对、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -156,6 +157,8 @@ ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
+HEADLESS_SEER_USER_ID_RANK_A=
+HEADLESS_SEER_PASSWORD_RANK_A=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -442,8 +445,10 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置，阵容功能不再
-拥有独立账号、密码或重连策略。
+主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置。额外
+worker 使用相同的任意名称后缀，例如 `HEADLESS_SEER_USER_ID_RANK_A` /
+`HEADLESS_SEER_PASSWORD_RANK_A`，可按需增加任意数量；每个账号独立连接，查询和
+刷榜可并行。阵容功能仍复用主无头账号，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 

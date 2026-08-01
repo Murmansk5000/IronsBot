@@ -12,7 +12,10 @@ from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.services.seer.rendering.custom_pet_info import _extract_soulmark
+from ironsbot.services.seer.rendering.custom_pet_info import (
+    _extract_soulmark,
+    _format_analyze_desc,
+)
 from ironsbot.services.seer.rendering.custom_pet_special_effects import (
     GLOSSARY_SOURCE,
     SKILL_SOURCE_PREFIX,
@@ -24,6 +27,7 @@ from ironsbot.services.seer.rendering.custom_pet_special_effects import (
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
     _add_soulmark_highlight_status_effects,
+    _assign_special_effect_colors,
     _deduplicate_special_effects,
     _extract_special_effects,
     _sort_special_effects,
@@ -37,6 +41,7 @@ GOLDEN_VISION_STATUS_ID = 178
 KNIGHT_DUEL_LOST_BASE_STATUS_ID = 183
 KNIGHT_DUEL_LOST_UPGRADED_STATUS_ID = 184
 SIX_STAR_ARRAY_GLOSSARY_ID = 534
+REPEATED_EFFECT_COUNT = 2
 
 
 def _template() -> Any:
@@ -411,6 +416,73 @@ def test_green_soulmark_highlight_matches_status_by_description() -> None:
     ]
 
 
+def test_special_effect_colors_reuse_official_highlights_with_default() -> None:
+    pet = SimpleNamespace(
+        soulmark=[SimpleNamespace(analyze_desc="[color=#57c975]支援[/color]")],
+        skill_links=[
+            SimpleNamespace(
+                skill=SimpleNamespace(
+                    id=1,
+                    name="测试技能",
+                    info="",
+                    skill_effect=[
+                        SimpleNamespace(
+                            analyze_info="[color=#52a5f2]蓝色词条[/color]",
+                            info="",
+                        )
+                    ],
+                    friend_skill_effect=[],
+                    hide_effect=None,
+                )
+            )
+        ],
+    )
+    effects: list[SpecialEffectDict] = [
+        {
+            "name": "支援",
+            "desc": None,
+            "sources": [GLOSSARY_SOURCE],
+            "glossary_id": None,
+            "status_id": None,
+            "icon": None,
+        },
+        {
+            "name": "蓝色词条",
+            "desc": None,
+            "sources": [GLOSSARY_SOURCE],
+            "glossary_id": None,
+            "status_id": None,
+            "icon": None,
+        },
+        {
+            "name": "无色词条",
+            "desc": None,
+            "sources": [GLOSSARY_SOURCE],
+            "glossary_id": None,
+            "status_id": None,
+            "icon": None,
+        },
+    ]
+
+    _assign_special_effect_colors(cast("Any", pet), effects)
+
+    assert [effect.get("color") for effect in effects] == [
+        "#57c975",
+        "#52a5f2",
+        "#f35555",
+    ]
+
+
+def test_plain_effect_mentions_are_highlighted_every_time() -> None:
+    rendered = _format_analyze_desc(
+        "六芒阵与八方圻，六芒阵再次出现",
+        {"六芒阵": "#f35555", "八方圻": "#f35555"},
+    )
+
+    assert rendered.count('style="color:#f35555">六芒阵</b>') == REPEATED_EFFECT_COUNT
+    assert rendered.count('style="color:#f35555">八方圻</b>') == 1
+
+
 def test_same_status_description_falls_back_to_lowest_status_id() -> None:
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
@@ -738,6 +810,7 @@ def test_special_effect_template_shows_icon_and_card_style() -> None:
                     "sources": [GLOSSARY_SOURCE],
                     "icon_id": 33,
                     "icon": "data:image/png;base64,aW1hZ2U=",
+                    "color": "#57c975",
                 }
             ]
         )
@@ -747,6 +820,7 @@ def test_special_effect_template_shows_icon_and_card_style() -> None:
     assert "direct description" in html
     assert 'class="special-effect-icon"' in html
     assert 'src="data:image/png;base64,aW1hZ2U="' in html
+    assert 'style="color: #57c975"' in html
     special_effect_css = html.split(".special-effect {", maxsplit=1)[1].split(
         "}", maxsplit=1
     )[0]

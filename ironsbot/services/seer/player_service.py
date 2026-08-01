@@ -70,6 +70,7 @@ if TYPE_CHECKING:
         HeadlessGame,
         HeadlessService,
     )
+    from ironsbot.services.operations.headless_pool import HeadlessPool
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_binding import PlayerBindingStore
@@ -420,7 +421,7 @@ class PlayerService(PlayerAccountPolicyMixin):
     def __init__(  # noqa: PLR0913 - composed Seer query dependencies
         self,
         config: SeerConfig,
-        headless: HeadlessService,
+        headless: HeadlessService | HeadlessPool,
         bindings: PlayerBindingStore,
         error_message: ErrorMessageLookup,
         details: PlayerDetailService,

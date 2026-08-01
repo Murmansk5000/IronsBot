@@ -42,14 +42,11 @@ from .rank_list_context import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Callable
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
-
-    PriorityRelease = Callable[[dict[str, object]], Awaitable[None]]
-
 
 def _is_rank_list_command(
     service: RankQueryService,
@@ -129,24 +126,16 @@ async def _progress(
     await send_event_reply(matcher, event, message)
 
 
-async def _release(
-    release_priority: PriorityRelease,
-    state: T_State,
-) -> None:
-    await release_priority(state)
-
-
 async def _handle_cache_batch(
     service: RankAdminService,
-    release_priority: PriorityRelease,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
     message = await service.cache_batch(
         state[RANK_CACHE_BATCH_COMMAND_KEY],
+        user_id=int(event.user_id),
         progress=partial(_progress, matcher, event),
-        release=partial(_release, release_priority, state),
     )
     await finish_event_reply(matcher, event, message)
 
@@ -174,15 +163,14 @@ async def _handle_page_overview(
 
 async def _handle_page_refresh(
     service: RankAdminService,
-    release_priority: PriorityRelease,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
     message = await service.page_refresh(
         state[RANK_PAGE_CACHE_REFRESH_COMMAND_KEY],
+        user_id=int(event.user_id),
         progress=partial(_progress, matcher, event),
-        release=partial(_release, release_priority, state),
     )
     await finish_event_reply(matcher, event, message)
 
@@ -201,14 +189,12 @@ async def _handle_cache_status(
 
 async def _handle_cache_refresh(
     service: RankAdminService,
-    release_priority: PriorityRelease,
     matcher: Matcher,
     event: MessageEvent,
-    state: T_State,
 ) -> None:
     message = await service.cache_refresh(
+        user_id=int(event.user_id),
         progress=partial(_progress, matcher, event),
-        release=partial(_release, release_priority, state),
     )
     await finish_event_reply(matcher, event, message)
 
@@ -315,7 +301,6 @@ def install(group: SeerMatcherGroup) -> None:
         bind_async(
             _handle_cache_refresh,
             admin,
-            group.release_priority,
         )
     )
 
@@ -336,7 +321,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     cache_batch.append_handler(
-        bind_async(_handle_cache_batch, admin, group.release_priority)
+        bind_async(_handle_cache_batch, admin)
     )
 
     page_overview = group.on_fullmatch(
@@ -386,7 +371,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     page_refresh.append_handler(
-        bind_async(_handle_page_refresh, admin, group.release_priority)
+        bind_async(_handle_page_refresh, admin)
     )
 
     display_limit = group.on_message(

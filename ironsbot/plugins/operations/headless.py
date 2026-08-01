@@ -8,11 +8,12 @@ from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.headless_pool import HeadlessPool
 
 
 def register_reconnect_jobs(
     scheduler: Any,
-    service: HeadlessService,
+    service: HeadlessService | HeadlessPool,
 ) -> None:
     registry = JobRegistry(scheduler, prefix="headless_reconnect_check:")
     for scheduled_time in service.reconnect_times:

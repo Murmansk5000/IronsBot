@@ -256,11 +256,10 @@ hint_max_per_window = 3
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
-[features.priority]
-# Default: true; EN: Enable superuser priority gate. ZH: 启用超级管理员优先级。
-enabled = true
-# Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
-wait_timeout_seconds = 300.0
+[runtime.concurrency]
+# Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
+# ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
+render_max_concurrent = 1
 
 [ai]
 # Default: "https://api.deepseek.com"
@@ -670,7 +669,7 @@ followup_after_hours = 24.0
 # Default: built-in follow-up reminder.
 # EN: Follow-up message. Available placeholders: {hours}, {group_id}, {user_id}.
 # ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
-followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果已经加入主群，或者不想加入战队，请退出本审核群。"
+followup_message = "你加入战队审核群已经 {hours:g} 小时了，仍在审核群。\n审核群仅供入队审核使用；如果已完成审核、已加入主群，或不再申请加入战队，请退出本审核群。"
 
 # Default: true
 # EN: Send a final leave reminder if the newcomer is still in the audit group.
@@ -1205,6 +1204,10 @@ interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
 
 [operations.headless]
+# EN: Login credentials are environment-only. The unsuffixed HEADLESS_SEER_* pair
+# is the primary worker; add matching named suffix pairs such as _RANK_A for parallel workers.
+# ZH: 登录凭据仅通过环境变量设置。无后缀 HEADLESS_SEER_* 是主 worker；
+# 追加 _RANK_A 这类同名后缀账号对即可增加并行 worker。
 # Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
 login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
 # Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。

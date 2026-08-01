@@ -13,10 +13,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.exception import FinishedException
 
 from ironsbot.core.messaging import MessageTarget
-from ironsbot.runtime.matchers import (
-    get_reply_before_send,
-    queued_conversation_is_cancelled,
-)
+from ironsbot.runtime.matchers import queued_conversation_is_cancelled
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -68,15 +65,6 @@ def event_sender_at_user_ids(event: MessageEvent | None) -> tuple[int, ...]:
     return (event.user_id,)
 
 
-async def apply_reply_before_send(
-    matcher: Any,
-    event: MessageEvent | None,
-) -> None:
-    hook = get_reply_before_send(matcher)
-    if hook is not None:
-        await hook(event)
-
-
 async def send_matcher_message(
     matcher: Any,
     message: ReplyMessage,
@@ -84,9 +72,9 @@ async def send_matcher_message(
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
 ) -> None:
+    del event
     if queued_conversation_is_cancelled(matcher):
         return
-    await apply_reply_before_send(matcher, event)
     await matcher.send(build_message(message, at_user_ids=at_user_ids))
 
 
@@ -97,9 +85,9 @@ async def finish_matcher_message(
     at_user_ids: Iterable[int] = (),
     event: MessageEvent | None = None,
 ) -> None:
+    del event
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
-    await apply_reply_before_send(matcher, event)
     await matcher.finish(build_message(message, at_user_ids=at_user_ids))
 
 

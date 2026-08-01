@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import html
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -49,6 +50,7 @@ from .custom_pet_special_effects import (
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
     _add_soulmark_highlight_status_effects,
+    _assign_special_effect_colors,
     _deduplicate_special_effects,
     _extract_special_effects,
     _sort_special_effects,
@@ -92,12 +94,14 @@ class _PetRenderSnapshot:
 def _extract_skill(
     skill_in_pet: SkillInPetORM,
     activation_items: Mapping[int, ActivationItemDict],
+    effect_colors: Mapping[str, str] | None = None,
 ) -> list[SkillDict]:
     skill = skill_in_pet.skill
+    effect_colors = effect_colors or {}
     effects = [
         {
             "id": e.effect_id,
-            "info": AnalyzeDescParser(e.analyze_info).to_html(_ANALYZE_DESC_STYLES),
+            "info": _format_analyze_desc(e.analyze_info, effect_colors),
         }
         for e in skill.skill_effect
     ]
@@ -117,7 +121,7 @@ def _extract_skill(
         crit_rate=skill.crit_rate,
         priority=skill.priority,
         must_hit=skill.must_hit,
-        info=skill.info,
+        info=_format_plain_desc(skill.info, effect_colors),
         learning_level=skill_in_pet.learning_level,
         is_special=skill_in_pet.is_special,
         is_advanced=skill_in_pet.is_advanced,
@@ -125,7 +129,7 @@ def _extract_skill(
         effects=effects,
         activation_item=activation_item,
         friend_bonus=False,
-        hide_effect_desc=hide_effect_desc,
+        hide_effect_desc=_format_plain_desc(hide_effect_desc, effect_colors),
     )
     if len(skill.friend_skill_effect) > 0:
         friend_skill: SkillDict = {
@@ -133,7 +137,14 @@ def _extract_skill(
             "friend_bonus": True,
             "is_special": True,
             "effects": [
-                {"id": e.effect_id, "info": e.info} for e in skill.friend_skill_effect
+                {
+                    "id": e.effect_id,
+                    "info": _format_analyze_desc(
+                        e.analyze_info or e.info,
+                        effect_colors,
+                    ),
+                }
+                for e in skill.friend_skill_effect
             ],
         }
         return [result, friend_skill]
@@ -352,7 +363,10 @@ async def _load_special_effect_icons(
             effect["icon"] = to_data_uri(result.data)
 
 
-def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
+def _extract_soulmark(
+    soulmarks: list[SoulmarkORM],
+    effect_colors: Mapping[str, str] | None = None,
+) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
     # The link table has no display-order column. Soulmark IDs are allocated
     # chronologically, so use them as a stable old-to-new fallback for entries
@@ -360,7 +374,7 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
     for sm in sorted(soulmarks, key=lambda soulmark: int(soulmark.id)):
         result = SoulmarkDict(
             id=int(sm.id),
-            desc=_format_soulmark_desc(sm),
+            desc=_format_soulmark_desc(sm, effect_colors or {}),
             intensified=sm.intensified,
             intensified_to_id=sm.intensified_to_id,
             is_adv=sm.is_adv,
@@ -376,17 +390,61 @@ def _extract_soulmark(soulmarks: list[SoulmarkORM]) -> list[SoulmarkDict]:
     return results
 
 
-def _format_soulmark_desc(soulmark: SoulmarkORM) -> str:
+def _format_soulmark_desc(
+    soulmark: SoulmarkORM,
+    effect_colors: Mapping[str, str],
+) -> str:
     if soulmark.analyze_desc:
-        return AnalyzeDescParser(soulmark.analyze_desc).to_html(_ANALYZE_DESC_STYLES)
+        return _format_analyze_desc(soulmark.analyze_desc, effect_colors)
     formatting = str(getattr(soulmark, "desc_formatting_adjustment", "") or "")
     if formatting:
         desc = formatting.replace("\r\n", "|").replace("\n", "|")
         desc = _RICH_TEXT_COLOR_OPEN_RE.sub(r"[color=\1]", desc)
         desc = desc.replace("</color>", "[/color]")
         desc = _RICH_TEXT_TAG_RE.sub("", desc)
-        return AnalyzeDescParser(desc).to_html(_ANALYZE_DESC_STYLES)
-    return AnalyzeDescParser(soulmark.desc).to_html(_ANALYZE_DESC_STYLES)
+        return _format_analyze_desc(desc, effect_colors)
+    return _format_analyze_desc(soulmark.desc, effect_colors)
+
+
+def _format_analyze_desc(value: str | None, effect_colors: Mapping[str, str]) -> str:
+    """Render official colors and add resolved colors to every plain effect name."""
+    names = tuple(sorted(effect_colors, key=len, reverse=True))
+    pattern = (
+        re.compile("|".join(re.escape(name) for name in names)) if names else None
+    )
+    lines: list[str] = []
+    for line in AnalyzeDescParser(value or "").lines:
+        parts: list[str] = []
+        for segment in line.segments:
+            rendered = html.escape(segment.text)
+            if segment.colors:
+                seen: set[str] = set()
+                for color in reversed(segment.colors):
+                    if color not in seen and (
+                        styler := _ANALYZE_DESC_STYLES.get(color)
+                    ):
+                        rendered = styler(rendered)
+                        seen.add(color)
+            elif pattern is not None:
+                rendered = pattern.sub(
+                    lambda match: (
+                        f'<b style="color:{effect_colors[match.group(0)]}">'
+                        f"{html.escape(match.group(0))}</b>"
+                    ),
+                    rendered,
+                )
+            parts.append(rendered)
+        lines.append("".join(parts))
+    return "<br>".join(lines)
+
+
+def _format_plain_desc(
+    value: str | None,
+    effect_colors: Mapping[str, str],
+) -> str | None:
+    if value is None:
+        return None
+    return _format_analyze_desc(value, effect_colors)
 
 
 def _partition_soulmarks(
@@ -559,7 +617,7 @@ async def render_custom_pet_info(
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     pet_id = int(pet.id)
-    cached = cache.get("custom_pet_info_v15", str(pet_id))
+    cached = cache.get("custom_pet_info_v16", str(pet_id))
     if cached is not None:
         return cached
 
@@ -574,7 +632,6 @@ async def render_custom_pet_info(
     if session is None:
         raise RuntimeError
     activation_items = _build_activation_items(pet, session)
-    soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark)
     partner_data = load_pet_partner(session, pet_id)
     pet_partner = _build_pet_partner(partner_data, session)
     special_effects = _extract_special_effects(pet)
@@ -586,6 +643,13 @@ async def render_custom_pet_info(
     _add_named_status_icons(session, special_effects)
     _deduplicate_special_effects(special_effects)
     _sort_special_effects(special_effects)
+    _assign_special_effect_colors(pet, special_effects)
+    effect_colors = {
+        effect["name"]: color
+        for effect in special_effects
+        if (color := effect.get("color")) is not None
+    }
+    soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark, effect_colors)
     if pet_data.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
@@ -609,7 +673,7 @@ async def render_custom_pet_info(
     all_skills: list[SkillDict] = [
         skill
         for skill_list in [
-            _extract_skill(skill_link, activation_items)
+            _extract_skill(skill_link, activation_items, effect_colors)
             for skill_link in pet.skill_links
         ]
         for skill in skill_list
@@ -726,5 +790,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v15", str(pet_id), result)
+    cache.put("custom_pet_info_v16", str(pet_id), result)
     return result

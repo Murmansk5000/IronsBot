@@ -1,18 +1,5 @@
-import asyncio
-from typing import TYPE_CHECKING, cast
-
-from ironsbot.runtime.matchers import (
-    MatcherRegistry,
-    PromptSessionManager,
-)
-from ironsbot.runtime.replies import (
-    event_sender_at_user_ids,
-    send_matcher_message,
-)
+from ironsbot.runtime.replies import event_sender_at_user_ids
 from tests.helpers.onebot_events import group_message_event, private_message_event
-
-if TYPE_CHECKING:
-    from ironsbot.runtime.matcher_contracts import CommandCooldown
 
 
 def _group_event(
@@ -50,30 +37,3 @@ def test_event_sender_at_user_ids_ignores_private_sender() -> None:
 
 def test_event_sender_at_user_ids_ignores_missing_event() -> None:
     assert event_sender_at_user_ids(None) == ()
-
-
-def test_reply_uses_policy_owned_by_matcher_runtime_state() -> None:
-    calls: list[str] = []
-    event = _group_event()
-
-    async def before_send(actual_event: object) -> None:
-        assert actual_event is event
-        calls.append("before")
-
-    runtime = MatcherRegistry(
-        cooldown=cast("CommandCooldown", object()),
-        priorities=object(),
-        before_reply_send=before_send,
-        prompt_session_manager=PromptSessionManager(),
-    )
-
-    class FakeMatcher:
-        def __init__(self) -> None:
-            self.state = runtime._with_runtime_hooks({})["state"]
-
-        async def send(self, _message: object) -> None:
-            calls.append("send")
-
-    asyncio.run(send_matcher_message(FakeMatcher(), "ok", event=event))
-
-    assert calls == ["before", "send"]
