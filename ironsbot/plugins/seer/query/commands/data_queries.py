@@ -61,7 +61,7 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import build_reply
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Collection
 
     from ironsbot.services.seer.data_queries import (
         DataQueryReply,
@@ -242,7 +242,16 @@ async def _start_new_content(  # noqa: PLR0913
     if not visible_categories:
         await matcher.finish("本周暂未检测到可验证的新增或修改内容。")
         return
-    prompt = _content_prompt(snapshot, visible_categories)
+    expanded_categories: Collection[str] = (
+        visible_categories
+        if categories is not None
+        else group.new_content.expanded_categories
+    )
+    prompt = _content_prompt(
+        snapshot,
+        visible_categories,
+        expanded_categories=expanded_categories,
+    )
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
         pet=group.resources.pet_query,
@@ -318,29 +327,33 @@ def _is_new_content_input(event: Event) -> bool:
 def _content_prompt(
     snapshot: NewContentSnapshot,
     categories: tuple[NewContentCategory, ...],
+    *,
+    expanded_categories: Collection[str],
 ) -> Prompt[_NewContentAction]:
     choices: list[PromptItem[_NewContentAction]] = []
     for position, category in enumerate(categories):
         code = chr(ord("a") + position)
         items = snapshot.items_for(category)
+        expanded = category in expanded_categories
         choices.append(
             PromptItem(
-                CATEGORY_NAMES[category],
+                f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",
                 f"{len(items)} 项",
                 _NewContentAction("category", category),
                 key=code,
             )
         )
-        choices.extend(
-            PromptItem(
-                item.name,
-                _item_description(item),
-                _NewContentAction("item", category, item),
-                is_sub_prompt=True,
-                key=f"{code}{index}",
+        if expanded:
+            choices.extend(
+                PromptItem(
+                    item.name,
+                    _item_description(item),
+                    _NewContentAction("item", category, item),
+                    is_sub_prompt=True,
+                    key=f"{code}{index}",
+                )
+                for index, item in enumerate(items, start=1)
             )
-            for index, item in enumerate(items, start=1)
-        )
     return Prompt(
         title="🆕【新增内容】输入编号查看详情：",
         items=choices,
@@ -399,7 +412,11 @@ async def _resolve_new_content_selection(
         await _replace_prompt(
             matcher,
             event,
-            _content_prompt(snapshot, (action.category,)),
+            _content_prompt(
+                snapshot,
+                (action.category,),
+                expanded_categories=(action.category,),
+            ),
         )
         return
     if action.item is not None:

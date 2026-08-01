@@ -46,6 +46,19 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "logo",
     "text",
 )
+NEW_CONTENT_CATEGORY_KEYS: tuple[str, ...] = (
+    "achievement",
+    "pet",
+    "pet_skin",
+    "skill",
+    "mintmark",
+    "suit",
+    "equip",
+    "mount",
+    "autocard_card",
+    "autocard_role",
+    "autocard_sanctuary_effect",
+)
 RANK_PAGE_REFRESH_TIME_ERROR = (
     "seer.rank.page_refresh.times must contain daily HH:MM times"
 )
@@ -467,6 +480,23 @@ class SeasonCountdownConfig(BaseModel):
         raise ValueError("season time must be an ISO datetime")  # noqa: TRY003
 
 
+class NewContentMenuConfig(BaseModel):
+    """Control which new-content categories expand in the root menu."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expanded_categories: NormalizedStringList = Field(default_factory=list)
+
+    @field_validator("expanded_categories")
+    @classmethod
+    def normalize_expanded_categories(cls, value: list[str]) -> list[str]:
+        return _normalize_sections(
+            value,
+            NEW_CONTENT_CATEGORY_KEYS,
+            path="seer.new_content.expanded_categories",
+        )
+
+
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -478,3 +508,4 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
+    new_content: NewContentMenuConfig = Field(default_factory=NewContentMenuConfig)

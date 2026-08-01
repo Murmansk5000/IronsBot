@@ -103,13 +103,87 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
         items=(card, role, _effect()),
     )
 
-    prompt = _content_prompt(snapshot, AUTOCARD_NEW_CONTENT_CATEGORIES)
+    prompt = _content_prompt(
+        snapshot,
+        AUTOCARD_NEW_CONTENT_CATEGORIES,
+        expanded_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
+    )
 
     assert [item.name for item in prompt.items] == [
-        "新增群星牌",
+        "▼ 新增群星牌",
         "测试卡牌",
-        "新增群星牌角色",
+        "▼ 新增群星牌角色",
         "测试角色",
-        "新增群星牌圣域",
+        "▼ 新增群星牌圣域",
         "潮涌",
     ]
+
+
+def test_new_content_root_menu_collapses_categories_by_default() -> None:
+    pet = NewContentItem(
+        category="pet",
+        entity_id=4927,
+        name="超级噗纽",
+        sort_value=4927,
+        payload={},
+    )
+    skill = NewContentItem(
+        category="skill",
+        entity_id=38474,
+        name="金属缠绕",
+        sort_value=38474,
+        payload={},
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(pet, skill),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        ("pet", "skill"),
+        expanded_categories=(),
+    )
+
+    assert [item.name for item in prompt.items] == ["▶ 新增精灵", "▶ 新增技能"]
+    assert prompt.get_item_by_input("a1") is None
+    assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
+
+
+def test_new_content_root_menu_expands_only_configured_categories() -> None:
+    pet = NewContentItem(
+        category="pet",
+        entity_id=4927,
+        name="超级噗纽",
+        sort_value=4927,
+        payload={},
+    )
+    skill = NewContentItem(
+        category="skill",
+        entity_id=38474,
+        name="金属缠绕",
+        sort_value=38474,
+        payload={},
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(pet, skill),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        ("pet", "skill"),
+        expanded_categories=("pet",),
+    )
+
+    assert [item.name for item in prompt.items] == [
+        "▼ 新增精灵",
+        "超级噗纽",
+        "▶ 新增技能",
+    ]
+    assert prompt.get_item_by_input("a1") is not None
+    assert prompt.get_item_by_input("b1") is None
