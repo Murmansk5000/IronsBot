@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ironsbot.services.seer.render_scheduler import RenderScheduler
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from typing import Any
+
+    from ironsbot.services.seer.rendering import TemplatePath
 
 
 @pytest.mark.asyncio
@@ -17,12 +24,15 @@ async def test_render_scheduler_limits_same_resource_without_blocking_other_task
     peak_active = 0
 
     async def renderer(
-        _template_path: object,
+        template_path: TemplatePath,
         template_name: str,
-        _templates: object,
-        **_kwargs: object,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
     ) -> bytes:
         nonlocal active, peak_active
+        del template_path, templates, max_width, allow_refit
         active += 1
         peak_active = max(peak_active, active)
         if template_name == "first":
@@ -61,12 +71,15 @@ async def test_render_scheduler_allows_configured_parallel_renders() -> None:
     peak_active = 0
 
     async def renderer(
-        _template_path: object,
-        _template_name: str,
-        _templates: object,
-        **_kwargs: object,
+        template_path: TemplatePath,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
     ) -> bytes:
         nonlocal active, peak_active
+        del template_path, template_name, templates, max_width, allow_refit
         active += 1
         peak_active = max(peak_active, active)
         if active == parallel_limit:
