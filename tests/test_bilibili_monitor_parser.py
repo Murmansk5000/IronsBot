@@ -2,7 +2,7 @@ import nonebot
 
 nonebot.init()
 
-from ironsbot.plugins.bilibili.delivery import build_dynamic_message
+from ironsbot.plugins.bilibili.delivery import build_dynamic_link_message
 from ironsbot.services.bilibili.parser import (
     dynamic_items_from_response,
     dynamic_suppression_reason,
@@ -103,10 +103,10 @@ def test_target_dynamics_from_response_filters_and_sorts() -> None:
     ]
 
 
-def test_link_mode_omits_content_and_images() -> None:
+def test_link_message_omits_content_and_images() -> None:
     item = _dynamic_item(text="这是一条普通动态，正文内容应该只在全文模式里出现")
 
-    message = build_dynamic_message(item, DEFAULT_PUB_TS, mode="link")
+    message = build_dynamic_link_message(item)
 
     assert message is not None
     rendered = str(message)

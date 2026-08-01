@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
+from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
+from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
     from ironsbot.core.messaging import MessageTarget
-    from ironsbot.services.bilibili.targets import BiliPushTargets
     from ironsbot.services.messaging.delivery import (
         MessageDelivery,
         MessageLimiter,
@@ -18,7 +19,8 @@ if TYPE_CHECKING:
         PushSubscriptionRepository,
     )
 
-FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic push"
+
+FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic content push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
     "群主/管理员可发送：B站账号 / "
@@ -26,100 +28,113 @@ BILI_PUSH_ADMIN_HINT = (
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-DynamicRenderMode = Literal["full", "link"]
-DynamicRenderer = Callable[
-    [dict[str, Any], int, DynamicRenderMode],
-    Any | None,
-]
+DynamicLinkRenderer = Callable[[dict[str, Any]], Any | None]
+DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
+DynamicSummarizer = Callable[[str, int], Awaitable[str | None]]
 HintAppender = Callable[[Any, str], Any]
-
-
-@dataclass(frozen=True, slots=True)
-class DynamicPushDelivery:
-    message: Any
-    group_ids: list[int]
-    private_user_ids: list[int]
-    action_name: str
 
 
 @dataclass(frozen=True, slots=True)
 class BilibiliPushDeliveryService:
     delivery: MessageDelivery
     subscriptions: PushSubscriptionRepository
-    render: DynamicRenderer
+    render_link: DynamicLinkRenderer
+    render_content: DynamicContentRenderer
     append_hint: HintAppender
     message_limiter: MessageLimiter | None = None
-
-    def build_deliveries(
-        self,
-        item: dict[str, Any],
-        pub_ts: int,
-        targets: BiliPushTargets,
-    ) -> list[DynamicPushDelivery]:
-        deliveries: list[DynamicPushDelivery] = []
-        deliveries.extend(
-            self._mode_deliveries(
-                item,
-                pub_ts,
-                mode="full",
-                group_ids=targets.full_group_ids,
-                private_user_ids=targets.full_user_ids,
-                action_name=FULL_DYNAMIC_PUSH_ACTION,
-            )
-        )
-        deliveries.extend(
-            self._mode_deliveries(
-                item,
-                pub_ts,
-                mode="link",
-                group_ids=targets.link_group_ids,
-                private_user_ids=targets.link_user_ids,
-                action_name=LINK_DYNAMIC_PUSH_ACTION,
-            )
-        )
-        return deliveries
+    summarize: DynamicSummarizer | None = None
+    content_max_chars: int = 400
+    summary_max_chars: int = 250
+    summary_use_ai: bool = True
 
     async def send(
         self,
         item: dict[str, Any],
-        pub_ts: int,
+        _pub_ts: int,
         author_mid: int,
         targets: BiliPushTargets,
     ) -> None:
-        for planned in self.build_deliveries(item, pub_ts, targets):
-            await self.delivery.broadcast(
-                planned.message,
-                group_ids=planned.group_ids,
-                private_user_ids=planned.private_user_ids,
-                action_name=planned.action_name,
-                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-                message_limiter=self._transform_target_message,
-                subscription_key=bili_push_subscription_key(author_mid),
-            )
+        subscription_key = bili_push_subscription_key(author_mid)
+        await self._send_link_only_targets(item, author_mid, targets)
 
-    def _mode_deliveries(  # noqa: PLR0913 - explicit delivery dimensions
+        full_targets = self._subscribed_full_targets(targets, subscription_key)
+        if not full_targets.has_targets:
+            return
+
+        link_message = self.render_link(item)
+        if link_message is None:
+            return
+        await self.delivery.broadcast(
+            link_message,
+            group_ids=full_targets.full_group_ids,
+            private_user_ids=full_targets.full_user_ids,
+            action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
+            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+        )
+
+        content = dynamic_content(item)
+        content_override = await self._content_override(content)
+        content_message = self.render_content(item, content_override)
+        if content_message is None:
+            return
+        await self.delivery.broadcast(
+            content_message,
+            group_ids=targets.full_group_ids,
+            private_user_ids=targets.full_user_ids,
+            action_name=FULL_DYNAMIC_PUSH_ACTION,
+            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            message_limiter=self._transform_target_message,
+            subscription_key=subscription_key,
+        )
+
+    async def _send_link_only_targets(
         self,
         item: dict[str, Any],
-        pub_ts: int,
-        *,
-        mode: DynamicRenderMode,
-        group_ids: list[int],
-        private_user_ids: list[int],
-        action_name: str,
-    ) -> list[DynamicPushDelivery]:
-        if not group_ids and not private_user_ids:
-            return []
-        message = self.render(item, pub_ts, mode)
+        author_mid: int,
+        targets: BiliPushTargets,
+    ) -> None:
+        if not targets.link_group_ids and not targets.link_user_ids:
+            return
+        message = self.render_link(item)
         if message is None:
-            return []
-        return [
-            DynamicPushDelivery(
-                message=message,
-                group_ids=group_ids,
-                private_user_ids=private_user_ids,
-                action_name=action_name,
-            )
-        ]
+            return
+        await self.delivery.broadcast(
+            message,
+            group_ids=targets.link_group_ids,
+            private_user_ids=targets.link_user_ids,
+            action_name=LINK_DYNAMIC_PUSH_ACTION,
+            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            message_limiter=self._transform_target_message,
+            subscription_key=bili_push_subscription_key(author_mid),
+        )
+
+    async def _content_override(self, content: str) -> str | None:
+        if len(content) <= self.content_max_chars:
+            return None
+        summary = (
+            await self.summarize(content, self.summary_max_chars)
+            if self.summary_use_ai and self.summarize is not None
+            else None
+        )
+        return summary or content[: self.summary_max_chars].rstrip()
+
+    def _subscribed_full_targets(
+        self,
+        targets: BiliPushTargets,
+        subscription_key: str,
+    ) -> BiliPushTargets:
+        return BiliPushTargets(
+            full_group_ids=self.subscriptions.filter_subscribed_group_ids(
+                targets.full_group_ids,
+                subscription_key,
+            ),
+            link_group_ids=[],
+            full_user_ids=self.subscriptions.filter_subscribed_user_ids(
+                targets.full_user_ids,
+                subscription_key,
+            ),
+            link_user_ids=[],
+        )
 
     def _transform_target_message(
         self,
