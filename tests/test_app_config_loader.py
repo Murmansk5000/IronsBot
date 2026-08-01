@@ -23,6 +23,8 @@ from ironsbot.config.models.operations import (
     DockerUpdateConfig,
 )
 from ironsbot.config.models.seer import (
+    NEW_CONTENT_CATEGORY_KEYS,
+    NewContentMenuConfig,
     PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
     TeamResourceConfig,
@@ -254,6 +256,7 @@ def test_example_config_parses() -> None:
     )
     _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.commands == ["战队"]
+    assert config.seer.new_content.expanded_categories == []
     assert (
         config.seer.team_resource.subscription_path.as_posix()
         == "data/seer/team_resource_subscriptions.sqlite"
@@ -450,6 +453,19 @@ def test_rank_page_refresh_min_pages_must_not_exceed_max_pages() -> None:
 def test_rank_page_refresh_active_window_requires_start_and_end() -> None:
     with pytest.raises(ValidationError):
         RankPageRefreshConfig(active_start="07:30")
+
+
+def test_new_content_menu_config_validates_expanded_categories() -> None:
+    assert NewContentMenuConfig(
+        expanded_categories=["pet", "skill", "pet"]
+    ).expanded_categories == ["pet", "skill"]
+    all_categories = NewContentMenuConfig(expanded_categories=["all"])
+    assert all_categories.expanded_categories == list(NEW_CONTENT_CATEGORY_KEYS)
+    with pytest.raises(
+        ValidationError,
+        match=re.escape("seer.new_content.expanded_categories"),
+    ):
+        NewContentMenuConfig(expanded_categories=["unknown_category"])
 
 
 def test_missing_app_config_fails_without_mutating_disk(tmp_path: Path) -> None:
