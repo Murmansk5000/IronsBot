@@ -20,7 +20,9 @@ _SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
     "ON bili_push_preferences (uid, target_type, target_id)",
 )
-_MIGRATIONS = (SqliteMigration(1, _SCHEMA),)
+_MIGRATIONS = (
+    SqliteMigration(1, _SCHEMA),
+)
 
 
 class SqliteBiliPushPreferenceStore:

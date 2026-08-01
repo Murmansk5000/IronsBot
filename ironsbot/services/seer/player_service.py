@@ -701,7 +701,10 @@ class PlayerService(PlayerAccountPolicyMixin):
                     game,
                     command,
                     player_id,
-                    use_cache=True,
+                    # A cached preheat is only a quota fallback.  While the
+                    # user still has live-query quota, join/perform the live
+                    # request so the reply is not silently stale.
+                    use_cache=anchor_only,
                     anchor_only=anchor_only,
                 ),
                 timeout=self._config.player.detail_timeout_seconds,

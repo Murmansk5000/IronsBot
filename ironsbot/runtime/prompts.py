@@ -142,7 +142,9 @@ async def _invalidate_prompt_on_command(matcher: Matcher, event: Event) -> None:
             prompt_sessions = get_prompt_session_manager(matcher)
         except PromptSessionManagerMissingError:
             return
-        prompt_sessions.invalidate_event_conversations(event)
+        # Queued conversations own their accepted input and lifetime.  Cancelling
+        # them here lets an unrelated higher-priority matcher consume a numeric
+        # menu choice before its actual conversation handler sees it.
         prompt_sessions.invalidate(event.get_session_id())
 
 

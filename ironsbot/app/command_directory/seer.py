@@ -14,6 +14,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
     NEW_PETS_COMMANDS,
+    NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
 )
@@ -209,6 +210,12 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     {"features_all": ("seer_data", "seer_pet")},
                 ),
                 (
+                    "seer.data.new_skill",
+                    NEW_SKILLS_COMMANDS,
+                    "查看本周新增或修改的技能及关联精灵",
+                    {"features_all": ("seer_data", "seer_pet")},
+                ),
+                (
                     "seer.data.new_mintmark",
                     NEW_MINTMARKS_COMMANDS,
                     "查看本周新增刻印",
@@ -239,9 +246,9 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     {},
                 ),
                 (
-                    "seer.data.new_autocard_card",
+                    "seer.data.new_autocard",
                     NEW_AUTOCARD_CARDS_COMMANDS,
-                    "查看本周新增群星牌",
+                    "查看本周新增群星牌卡牌、角色、元素圣域与祝印",
                     {"features_all": ("seer_data", "seer_autocard")},
                 ),
                 (
