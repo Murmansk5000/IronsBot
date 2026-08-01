@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
@@ -10,66 +9,36 @@ from ironsbot.services.bilibili.parser import (
     dynamic_content,
     dynamic_image_urls,
     dynamic_url,
-    item_author_label,
 )
 
-if TYPE_CHECKING:
-    from ironsbot.services.bilibili.delivery import DynamicRenderMode
 
-
-def build_dynamic_message(
-    item: dict[str, Any],
-    pub_ts: int,
-    mode: DynamicRenderMode = "full",
-    *,
-    menu_mode: bool = False,
-) -> Message | None:
+def build_dynamic_link_message(item: dict[str, Any]) -> Message | None:
     try:
-        time_str = datetime.fromtimestamp(
-            pub_ts,
-            tz=timezone.utc,
-        ).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        tag = "B站点播详情" if menu_mode else "B站动态更新"
-        message = Message(
-            MessageSegment.text(
-                f"🔔 【{tag}】\n"
-                f"👤 账号：{item_author_label(item)}\n"
-                f"⏰ 发布时间: {time_str}\n\n"
-            )
-        )
-        if mode == "full":
-            content = dynamic_content(item)
-            message += MessageSegment.text(f"{content}\n")
-            for image_url in dynamic_image_urls(item):
-                sanitized_url = image_url.strip().rstrip("]")
-                if sanitized_url:
-                    message += MessageSegment.image(sanitized_url)
-                    message += MessageSegment.text("\n")
-        message += MessageSegment.text(f"传送门: {dynamic_url(item)}")
+        return Message(MessageSegment.text(f"传送门: {dynamic_url(item)}"))
     except (TypeError, ValueError, KeyError) as error:
-        logger.error(f"failed to render Bilibili dynamic: {error}")
+        logger.error(f"failed to render Bilibili dynamic link: {error}")
         return None
-    return message
 
 
-def build_dynamic_summary_message(
+def build_dynamic_content_message(
     item: dict[str, Any],
-    pub_ts: int,
-    summary: str,
+    content_override: str | None = None,
 ) -> Message | None:
+    """Render only a dynamic's content and images, without duplicate metadata."""
     try:
-        time_str = datetime.fromtimestamp(
-            pub_ts,
-            tz=timezone.utc,
-        ).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        return Message(
-            MessageSegment.text(
-                "📝【B站动态摘要】\n"
-                f"👤 账号：{item_author_label(item)}\n"
-                f"⏰ 发布时间: {time_str}\n\n"
-                f"{summary.strip()}"
-            )
-        )
+        message = Message()
+        content = (content_override or dynamic_content(item)).strip()
+        if content:
+            message += MessageSegment.text(content)
+        for image_url in dynamic_image_urls(item):
+            sanitized_url = image_url.strip().rstrip("]")
+            if not sanitized_url:
+                continue
+            if message:
+                message += MessageSegment.text("\n")
+            message += MessageSegment.image(sanitized_url)
     except (TypeError, ValueError, KeyError) as error:
-        logger.error(f"failed to render Bilibili dynamic summary: {error}")
+        logger.error(f"failed to render Bilibili dynamic content: {error}")
         return None
+    else:
+        return message or None
