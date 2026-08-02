@@ -39,6 +39,7 @@ from ironsbot.core.features import FeatureService
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
+ADDITIONAL_HEADLESS_USER_ID = 23456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -71,7 +72,6 @@ CUSTOM_PLAYER_REQUEST_PAUSE_SECONDS = 45.0
 CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
 CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
-DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = "data/messaging/push_unsubscriptions.sqlite"
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
 
@@ -91,11 +91,9 @@ def _assert_default_push_unsubscribe(
     assert (
         push_unsubscribe.commands,
         push_unsubscribe.restore_commands,
-        push_unsubscribe.data_path,
     ) == (
         ["td", "退订"],
         ["订阅", "恢复订阅", "推送管理"],
-        DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH,
     )
     assert "TD" in push_unsubscribe.hint
     assert "可查看本群推送订阅" in push_unsubscribe.group_hint
@@ -175,7 +173,7 @@ def _assert_default_team_audit_welcome(config: Settings) -> None:
         team_audit.final_followup_after_hours == DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS
     )
     assert "仍然还在审核群" in team_audit.final_followup_message
-    assert team_audit.followup_cache_path == "data/team_audit_welcome/pending.sqlite"
+    assert config.paths.runtime_state == Path("data/state/runtime_state.sqlite")
 
 
 def _assert_default_matcher_priorities(
@@ -258,10 +256,7 @@ def test_example_config_parses() -> None:
     _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.commands == ["战队"]
     assert config.seer.new_content.expanded_categories == []
-    assert (
-        config.seer.team_resource.subscription_path.as_posix()
-        == "data/seer/team_resource_subscriptions.sqlite"
-    )
+    assert config.paths.qq_state == Path("data/state/qq_state.sqlite")
     assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
@@ -868,12 +863,14 @@ sections = ["basic", "unknown_section"]
     assert "seer.player.sections contains unknown section(s)" in str(exc_info.value)
 
 
-def test_player_binding_path_loads(tmp_path: Path) -> None:
+def test_player_binding_uses_shared_qq_state_path(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
+[paths]
+qq_state = "data/custom-player-state.sqlite"
+
 [seer.player.binding]
-path = "data/custom-player-bindings.sqlite"
 change_cooldown_days = 5
 """.strip(),
         encoding="utf-8",
@@ -881,7 +878,7 @@ change_cooldown_days = 5
 
     config = load_settings(config_path)
 
-    assert config.seer.player.binding.path == Path("data/custom-player-bindings.sqlite")
+    assert config.paths.qq_state == Path("data/custom-player-state.sqlite")
     assert (
         config.seer.player.binding.change_cooldown_days
         == CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS
@@ -1049,6 +1046,115 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     assert settings.operations.data_sync.github_token == "gh-token"
     assert settings.operations.headless.user_id == HEADLESS_USER_ID
     assert settings.operations.headless.password == "md5"
+
+
+def test_additional_headless_workers_resolve_environment_references(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[operations.headless.workers]]
+name = "worker_2"
+user_id_env = "WORKER_2_USER_ID"
+password_env = "WORKER_2_PASSWORD"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        config_path,
+        env={
+            "WORKER_2_USER_ID": "23456789",
+            "WORKER_2_PASSWORD": "md5-worker-2",
+        },
+    )
+
+    worker = settings.operations.headless.workers[0]
+    assert worker.name == "worker_2"
+    assert worker.user_id == ADDITIONAL_HEADLESS_USER_ID
+    assert worker.password == "md5-worker-2"
+
+
+@pytest.mark.parametrize("missing_env", ["WORKER_2_USER_ID", "WORKER_2_PASSWORD"])
+def test_additional_headless_worker_requires_referenced_environment(
+    tmp_path: Path,
+    missing_env: str,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[operations.headless.workers]]
+name = "worker_2"
+user_id_env = "WORKER_2_USER_ID"
+password_env = "WORKER_2_PASSWORD"
+""".strip(),
+        encoding="utf-8",
+    )
+    env = {
+        "WORKER_2_USER_ID": "23456789",
+        "WORKER_2_PASSWORD": "md5-worker-2",
+    }
+    env.pop(missing_env)
+
+    with pytest.raises(ValueError, match=missing_env):
+        load_settings(config_path, env=env)
+
+
+def test_additional_headless_worker_rejects_inline_credentials(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[operations.headless.workers]]
+name = "worker_2"
+user_id_env = "WORKER_2_USER_ID"
+password_env = "WORKER_2_PASSWORD"
+user_id = 23456789
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"operations\.headless\.workers\[0\]"):
+        load_settings(
+            config_path,
+            env={
+                "WORKER_2_USER_ID": "23456789",
+                "WORKER_2_PASSWORD": "md5-worker-2",
+            },
+        )
+
+
+def test_additional_headless_workers_require_unique_accounts(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[operations.headless.workers]]
+name = "worker_2"
+user_id_env = "WORKER_2_USER_ID"
+password_env = "WORKER_2_PASSWORD"
+
+[[operations.headless.workers]]
+name = "worker_3"
+user_id_env = "WORKER_3_USER_ID"
+password_env = "WORKER_3_PASSWORD"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="account IDs must be unique"):
+        load_settings(
+            config_path,
+            env={
+                "WORKER_2_USER_ID": "23456789",
+                "WORKER_2_PASSWORD": "md5-worker-2",
+                "WORKER_3_USER_ID": "23456789",
+                "WORKER_3_PASSWORD": "md5-worker-3",
+            },
+        )
 
 
 def test_docker_registry_token_must_be_set_in_environment(

@@ -17,11 +17,24 @@ logger = logging.getLogger(__name__)
 class ClientManager:
     """Manage the process-wide headless Seer game client."""
 
-    def __init__(self, spawn: TaskSpawner) -> None:
+    def __init__(
+        self,
+        spawn: TaskSpawner,
+        *,
+        operations: HeadlessOperationTracker | None = None,
+    ) -> None:
         self._client: SeerGame | None = None
         self._login_lock = asyncio.Lock()
-        self._operations = HeadlessOperationTracker()
+        self._operations = operations or HeadlessOperationTracker()
         self._spawn = spawn
+
+    @property
+    def operations(self) -> HeadlessOperationTracker:
+        return self._operations
+
+    @property
+    def spawn(self) -> TaskSpawner:
+        return self._spawn
 
     def get_client(self) -> SeerGame:
         if self._client is None or self._client._impl is None:

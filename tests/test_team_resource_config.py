@@ -27,9 +27,10 @@ UNUSED_HEADLESS = cast("HeadlessService", object())
 def _service(
     config: TeamResourceConfig,
     aliases: dict[str, int],
+    state_path: Path,
 ) -> tuple[TeamResourceService, TeamResourceSubscriptionStore]:
     runtime = build_test_runtime()
-    store = TeamResourceSubscriptionStore(config.subscription_path)
+    store = TeamResourceSubscriptionStore(state_path)
     return (
         TeamResourceService(
             config,
@@ -46,11 +47,12 @@ def _service(
 def test_team_resource_subscription_store_is_used_for_group(
     tmp_path: Path,
 ) -> None:
-    config = TeamResourceConfig(
-        subscription_path=tmp_path / "team_resource.sqlite",
-        default_at_users=["owner", "2345678901"],
+    config = TeamResourceConfig(default_at_users=["owner", "2345678901"])
+    service, store = _service(
+        config,
+        {"owner": OWNER_ID},
+        tmp_path / "qq_state.sqlite",
     )
-    service, store = _service(config, {"owner": OWNER_ID})
 
     store.upsert(
         TeamResourceSubscriptionUpdate(
@@ -78,11 +80,8 @@ def test_team_resource_subscription_store_is_used_for_group(
 def test_team_resource_disabled_has_no_subscriptions(
     tmp_path: Path,
 ) -> None:
-    config = TeamResourceConfig(
-        enabled=False,
-        subscription_path=tmp_path / "team_resource.sqlite",
-    )
-    service, store = _service(config, {})
+    config = TeamResourceConfig(enabled=False)
+    service, store = _service(config, {}, tmp_path / "qq_state.sqlite")
 
     assert not service.enabled
     assert store.list_all() == []
@@ -112,8 +111,8 @@ def test_team_resource_subscription_store_keeps_private_subscriptions_separate(
 def test_team_resource_service_uses_one_target_interface_for_subscriptions(
     tmp_path: Path,
 ) -> None:
-    config = TeamResourceConfig(subscription_path=tmp_path / "team_resource.sqlite")
-    service, store = _service(config, {})
+    config = TeamResourceConfig()
+    service, store = _service(config, {}, tmp_path / "qq_state.sqlite")
     store.upsert(
         TeamResourceSubscriptionUpdate(
             group_id=987654321,

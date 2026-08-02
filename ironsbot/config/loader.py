@@ -38,8 +38,6 @@ _SECRET_ENV_PATHS = (
         ("operations", "docker_update", "registry_token"),
     ),
 )
-
-
 class ConfigFileNotFoundError(FileNotFoundError):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -76,6 +74,62 @@ def _inject_secret(
         raise ValueError(msg)
     if (value := env.get(env_name)) is not None:
         table[field] = value
+
+
+def _inject_headless_worker_secrets(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    operations = data.get("operations")
+    if not isinstance(operations, dict):
+        return
+    headless = operations.get("headless")
+    if not isinstance(headless, dict):
+        return
+    workers = headless.get("workers", [])
+    if not isinstance(workers, list):
+        return
+    for index, worker in enumerate(workers):
+        if not isinstance(worker, dict):
+            continue
+        path = f"operations.headless.workers[{index}]"
+        for field in ("user_id", "password"):
+            if field in worker:
+                message = (
+                    f"{path}.{field} is secret and must be set through "
+                    f"the worker's {field}_env reference"
+                )
+                raise ValueError(message)
+        for field in ("user_id", "password"):
+            worker[field] = _headless_worker_secret(
+                worker,
+                field=field,
+                path=path,
+                env=env,
+            )
+
+
+def _headless_worker_secret(
+    worker: dict[str, Any],
+    *,
+    field: str,
+    path: str,
+    env: Mapping[str, str],
+) -> str:
+    env_field = f"{field}_env"
+    env_name = str(worker.get(env_field) or "").strip()
+    if not env_name:
+        message = f"{path}.{env_field} must not be empty"
+        raise ValueError(message)
+    value = env.get(env_name)
+    if value is None or not str(value).strip():
+        message = (
+            f"{path}.{env_field} references missing environment variable "
+            f"{env_name}"
+        )
+        raise ValueError(message)
+    return str(value)
 
 
 def _format_config_path(location: tuple[str | int, ...]) -> str:
@@ -138,6 +192,7 @@ def load_settings(
             path=field_path,
             env=values,
         )
+    _inject_headless_worker_secrets(data, env=values)
     unknown_paths = _unknown_field_paths(data)
     settings = Settings.model_validate(data, extra="ignore")
     _report_ignored_unknown_fields(unknown_paths)

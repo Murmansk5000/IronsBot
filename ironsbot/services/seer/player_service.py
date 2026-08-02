@@ -17,6 +17,7 @@ from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.services.operations.headless_pool import HeadlessRequestPriority
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
@@ -66,10 +67,7 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.tasks import TaskSpawner
-    from ironsbot.services.operations.headless import (
-        HeadlessGame,
-        HeadlessService,
-    )
+    from ironsbot.services.operations.headless import HeadlessGame, HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_binding import PlayerBindingStore
@@ -213,19 +211,14 @@ class PlayerDetailService:
         refresh: _BackgroundRefresh,
         group_id: int | None,
     ) -> None:
-        await asyncio.gather(
-            *(
-                self._run_background_refresh_item(
-                    game,
-                    player_id=player_id,
-                    kind=kind,
-                    future=future,
-                    group_id=group_id,
-                )
-                for kind, future in refresh.replies.items()
-            ),
-            return_exceptions=True,
-        )
+        for kind, future in refresh.replies.items():
+            await self._run_background_refresh_item(
+                game,
+                player_id=player_id,
+                kind=kind,
+                future=future,
+                group_id=group_id,
+            )
 
     async def _run_background_refresh_item(
         self,
@@ -487,6 +480,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     ),
                     source=SemanticRequestSource.DIRECT,
                 ),
+                priority=HeadlessRequestPriority.BASIC,
             )
         except PlayerQueryQuotaExceededError as error:
             return cached or PlayerQueryResult(message=error.message)
@@ -777,6 +771,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         quota_action_key: str | None = None,
         semantic_request: SemanticRequest | None = None,
         allow_quota_exhausted: bool = False,
+        priority: HeadlessRequestPriority | None = None,
     ) -> Any:
         async def guarded_operation() -> Any:
             if quota_player_id is not None and quota_action_key is not None:
@@ -788,7 +783,6 @@ class PlayerService(PlayerAccountPolicyMixin):
                 if quota_message and not allow_quota_exhausted:
                     raise PlayerQueryQuotaExceededError(quota_message)
             return await operation()
-
         if self._requests is None:
             return await guarded_operation()
         return await self._requests.run(
@@ -796,4 +790,5 @@ class PlayerService(PlayerAccountPolicyMixin):
             user_id=user_id,
             label=label,
             semantic_request=semantic_request,
+            priority=priority,
         )

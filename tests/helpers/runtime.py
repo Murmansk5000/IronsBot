@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
@@ -55,6 +56,7 @@ def build_test_runtime(  # noqa: PLR0913
     schedule_features: frozenset[str] = frozenset(),
     outbound_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe: PushUnsubscribeConfig | None = None,
+    state_path: Path = Path("data/state/qq_state.sqlite"),
     cooldown_config: CommandCooldownConfig | None = None,
     matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
@@ -81,7 +83,7 @@ def build_test_runtime(  # noqa: PLR0913
                 resolved_feature_config.user_aliases,
             ),
         ),
-        PushUnsubscribeStore(push_config.data_path),
+        PushUnsubscribeStore(state_path),
     )
     return TestRuntime(
         features=features,

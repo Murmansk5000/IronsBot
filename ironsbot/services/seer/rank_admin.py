@@ -168,7 +168,7 @@ class RankAdminService:
         await progress(build_rank_page_refresh_start_message(command))
         rank_keys = None if command.rank_key is None else [command.rank_key]
         result = await self._page_refresh.refresh(
-            self._headless.get_game(),
+            self._headless.get_game,
             rank_keys,
             user_id=user_id,
         )
@@ -202,7 +202,7 @@ class RankAdminService:
             )
         )
         result = await self._local_rank.refresh(
-            self._headless.get_game(),
+            self._headless.get_game,
             user_id=user_id,
         )
         return build_local_rank_refresh_result_message(

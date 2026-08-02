@@ -58,6 +58,7 @@ PUSH_SUBSCRIPTION_SCHEMA = (
 PUSH_SUBSCRIPTION_MIGRATIONS = (
     SqliteMigration(1, PUSH_SUBSCRIPTION_SCHEMA),
 )
+MIGRATION_NAMESPACE = "push_subscriptions"
 
 
 class PushUnsubscribeStore:
@@ -419,4 +420,5 @@ class PushUnsubscribeStore:
         return SqliteDatabase(
             self.path,
             migrations=PUSH_SUBSCRIPTION_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
         ).connect()

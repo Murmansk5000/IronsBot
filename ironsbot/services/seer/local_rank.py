@@ -33,7 +33,7 @@ from ironsbot.services.seer.sequ_extra import (
 from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
     from ironsbot.services.operations.headless import HeadlessGame
@@ -226,7 +226,7 @@ class LocalRankService:
 
     async def refresh(
         self,
-        game: HeadlessGame,
+        game: HeadlessGame | Callable[[], HeadlessGame],
         player_ids: Sequence[int] | None = None,
         *,
         background: bool = False,
@@ -280,15 +280,16 @@ class LocalRankService:
     async def _refresh_player(
         self,
         *,
-        game: HeadlessGame,
+        game: HeadlessGame | Callable[[], HeadlessGame],
         peak_sub_key: int | None,
         player_id: int,
         background: bool,
         user_id: int | None,
     ) -> None:
         async def refresh_one() -> None:
+            active_game = game() if callable(game) else game
             action_name = "本地样本刷新" if background else "手动样本刷新"
-            with game.operations.track(
+            with active_game.operations.track(
                 action_name,
                 f"米米号 {player_id}",
                 source=action_name,
@@ -296,7 +297,7 @@ class LocalRankService:
             ):
                 await asyncio.wait_for(
                     self._refresh_one(
-                        game=game,
+                        game=active_game,
                         peak_sub_key=peak_sub_key,
                         player_id=player_id,
                     ),
