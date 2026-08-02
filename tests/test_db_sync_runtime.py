@@ -84,7 +84,7 @@ def _remote_build_config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
         repository="Murmansk-Seer/seerapi",
-        workflow_id="build-ironsbot-data-db.yml",
+        workflow_id="build-seerapi-data-db.yml",
     )
 
 
@@ -120,7 +120,7 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
             RemoteBuildStepConfig(
                 name="build_ironsbot_data",
                 repository="Murmansk-Seer/seerapi",
-                workflow_id="build-ironsbot-data-db.yml",
+                workflow_id="build-seerapi-data-db.yml",
             ),
         ],
     )
