@@ -145,7 +145,8 @@ services:
 
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
-  `HEADLESS_SEER_PASSWORD`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+  `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
+  `HEADLESS_SEER_PASSWORD_<名称>` 对、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -155,9 +156,19 @@ ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
+# 仅在 TOML 配置额外无头工作账号时需要
+HEADLESS_SEER_WORKER_2_USER_ID=
+HEADLESS_SEER_WORKER_2_PASSWORD=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
+
+额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
+所有健康账号会组成可互换的工作池；账号本身和密码仍只写在容器环境变量中。
+示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
+\n额外 worker 为可选项；每项声明的 `user_id_env` / `password_env` 必须与实际环境变量名一致。
+变量可使用 `_2` 或 `RANK_A` 等后缀；模板占位项不代表已有额外在线连接。
+每个配置完整且登录成功的账号独立连接，查询和刷榜可并行。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
@@ -345,10 +356,13 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 - SeerAPI / alias SQLite 缓存
 - B站 Cookie 与动态状态
 - 米米号样本排行 SQLite
-- QQ 用户默认米米号绑定 SQLite
-- 玩家查询每日额度 SQLite
+- `data/state/qq_state.sqlite`：QQ 用户与群聊低频状态，包括默认米米号、查询额度、推送偏好、榜单显示条数和战队订阅
+- `data/state/runtime_state.sqlite`：活动提醒、战队审核提醒等运行任务检查点
 - 全服榜页 SQLite 缓存
-- 皮肤价格、渲染缓存等运行数据
+- 阵容、AI 对话、B站动态历史、皮肤价格和渲染缓存等独立大数据
+
+大型缓存按生命周期保持独立；不会为了减少文件数量而把榜单事实、阵容图片 Blob 或 AI
+对话历史塞进共享状态库。
 
 ### 状态库迁移
 
@@ -490,8 +504,7 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置，阵容功能不再
-拥有独立账号、密码或重连策略。
+阵容功能仍复用主无头账号，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 
