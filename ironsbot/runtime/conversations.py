@@ -98,7 +98,8 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         queue_namespace=namespace,
         queue_reply_check=_is_same_conversation_reply,
         queue_group_reply_check=lambda next_event: (
-            isinstance(next_event, MessageEvent) and reply_check(next_event)
+            isinstance(next_event, MessageEvent)
+            and reply_check(next_event)
         ),
         queue_semantic_request_resolver=queue_semantic_request_resolver,
         queue_event_session_id=owner_event_session_id,

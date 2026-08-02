@@ -16,7 +16,7 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
@@ -188,7 +188,7 @@ def install(
                 "team_resource.list",
             ),
         ),
-        rule=Rule(is_manage) & no_reply(allow_at=True),
+        rule=Rule(is_manage) & command_input(allow_direct_mentions=True),
         priority=priority,
         block=True,
     )
@@ -200,7 +200,7 @@ def install(
         policy=CommandPolicy.exempt(
             "second-level team subscription confirmation"
         ),
-        rule=Rule(is_prompt_choice) & no_reply(),
+        rule=Rule(is_prompt_choice) & command_input(),
         priority=priority,
         block=True,
     )
@@ -213,7 +213,7 @@ def install(
             "team_resource_query",
             help_ids=("team_resource.query",),
         ),
-        rule=Rule(is_query) & no_reply(),
+        rule=Rule(is_query) & command_input(),
         priority=priority,
         block=True,
     )

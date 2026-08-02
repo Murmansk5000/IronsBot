@@ -17,7 +17,7 @@ from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, no_reply
+from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, command_input
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
     PLAYER_ID_MAX,
@@ -301,7 +301,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
@@ -315,7 +315,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_player_binding",
             help_ids=("seer.player.unbind",),
         ),
-        rule=seer_feature_rule(group.features, "seer_player") & no_reply(),
+        rule=seer_feature_rule(group.features, "seer_player") & command_input(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
@@ -325,7 +325,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.exempt("silent invalid player query blocker"),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_invalid_player_text_query)
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
@@ -337,7 +337,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_id_query)
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )

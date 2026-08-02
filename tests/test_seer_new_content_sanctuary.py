@@ -11,6 +11,7 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _autocard_sanctuary_effect_detail,
     _content_prompt,
     _item_description,
+    _NewContentMenuLayout,
     _skill_detail,
 )
 from ironsbot.services.seer.new_content import (
@@ -105,8 +106,11 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        AUTOCARD_NEW_CONTENT_CATEGORIES,
-        expanded_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
+        _NewContentMenuLayout(
+            display_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
+            root_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
+            expanded_categories=frozenset(AUTOCARD_NEW_CONTENT_CATEGORIES),
+        ),
     )
 
     assert [item.name for item in prompt.items] == [
@@ -143,12 +147,20 @@ def test_new_content_root_menu_collapses_categories_by_default() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        ("pet", "skill"),
-        expanded_categories=(),
+        _NewContentMenuLayout(
+            display_categories=("pet", "skill"),
+            root_categories=("pet", "skill"),
+            expanded_categories=frozenset(),
+        ),
     )
 
-    assert [item.name for item in prompt.items] == ["▶ 新增精灵", "▶ 新增技能"]
-    assert prompt.get_item_by_input("a1") is None
+    assert [item.name for item in prompt.items if item.is_visible] == [
+        "▶ 新增精灵",
+        "▶ 新增技能",
+    ]
+    assert prompt.get_item_by_input("a1") is not None
+    assert prompt.get_item_by_input("b1") is not None
+    assert "a1. 超级噗纽" not in prompt.build_message()
     assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
 
 
@@ -176,14 +188,99 @@ def test_new_content_root_menu_expands_only_configured_categories() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        ("pet", "skill"),
-        expanded_categories=("pet",),
+        _NewContentMenuLayout(
+            display_categories=("pet", "skill"),
+            root_categories=("pet", "skill"),
+            expanded_categories=frozenset(("pet",)),
+        ),
     )
 
-    assert [item.name for item in prompt.items] == [
+    assert [item.name for item in prompt.items if item.is_visible] == [
         "▼ 新增精灵",
         "超级噗纽",
         "▶ 新增技能",
     ]
     assert prompt.get_item_by_input("a1") is not None
-    assert prompt.get_item_by_input("b1") is None
+    assert prompt.get_item_by_input("b1") is not None
+
+
+def test_new_content_category_expansion_keeps_root_letter_keys() -> None:
+    pet = NewContentItem(
+        category="pet",
+        entity_id=4927,
+        name="超级噗纽",
+        sort_value=4927,
+        payload={},
+    )
+    skill = NewContentItem(
+        category="skill",
+        entity_id=38474,
+        name="金属缠绕",
+        sort_value=38474,
+        payload={},
+    )
+    achievement = NewContentItem(
+        category="achievement",
+        entity_id=6171016,
+        name="深海之泪",
+        sort_value=6171016,
+        payload={"point": 10},
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(pet, skill, achievement),
+    )
+    layout = _NewContentMenuLayout(
+        display_categories=("pet", "skill", "achievement"),
+        root_categories=("pet", "skill", "achievement"),
+        expanded_categories=frozenset(("achievement",)),
+    )
+
+    prompt = _content_prompt(snapshot, layout)
+
+    assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
+    assert "b. ▶ 新增技能（1 项）" in prompt.build_message()
+    assert "c. ▼ 新增成就（1 项）" in prompt.build_message()
+    assert "c1. 深海之泪" in prompt.build_message()
+
+
+def test_new_content_category_shortcut_reuses_root_letter_key() -> None:
+    pet = NewContentItem(
+        category="pet",
+        entity_id=4927,
+        name="超级噗纽",
+        sort_value=4927,
+        payload={},
+    )
+    skill = NewContentItem(
+        category="skill",
+        entity_id=38474,
+        name="金属缠绕",
+        sort_value=38474,
+        payload={},
+    )
+    achievement = NewContentItem(
+        category="achievement",
+        entity_id=6171016,
+        name="深海之泪",
+        sort_value=6171016,
+        payload={"point": 10},
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(pet, skill, achievement),
+    )
+    layout = _NewContentMenuLayout(
+        display_categories=("achievement",),
+        root_categories=("pet", "skill", "achievement"),
+        expanded_categories=frozenset(("achievement",)),
+    )
+
+    prompt = _content_prompt(snapshot, layout)
+
+    assert "c. ▼ 新增成就（1 项）" in prompt.build_message()
+    assert "c1. 深海之泪" in prompt.build_message()

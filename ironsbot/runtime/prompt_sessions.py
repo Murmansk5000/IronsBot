@@ -70,6 +70,7 @@ class _QueuedConversation:
     key: str
     namespace: str
     event_session_id: str
+    owner_user_id: int | None
     state: T_State
     reply_check: Callable[[Event], bool]
     group_reply_check: Callable[[Event], bool] | None
@@ -96,6 +97,12 @@ class _QueuedConversation:
             return False
         if self.reply_check(event):
             return True
+        if (
+            self.owner_user_id is not None
+            and getattr(event, "user_id", None) != self.owner_user_id
+            and event.get_plaintext().strip() == "0"
+        ):
+            return False
         return (
             self.group_reply_check is not None
             and is_current_group_menu_reply(event, self.menu_anchor)
@@ -204,6 +211,7 @@ class PromptSessionManager:
         namespace: str,
         event_session_id: str,
         state: T_State,
+        owner_user_id: int | None = None,
         reply_check: Callable[[Event], bool],
         group_reply_check: Callable[[Event], bool] | None = None,
         handlers: list[Any],
@@ -223,6 +231,7 @@ class PromptSessionManager:
             key=key,
             namespace=namespace,
             event_session_id=event_session_id,
+            owner_user_id=owner_user_id,
             state=saved_state,
             reply_check=reply_check,
             group_reply_check=group_reply_check,
