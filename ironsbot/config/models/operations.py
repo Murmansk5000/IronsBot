@@ -93,13 +93,13 @@ class DataSyncConfig(BaseModel):
     sources: dict[str, DataSourceConfig] = Field(
         default_factory=lambda: {
             "seerapi": DataSourceConfig(
-                url=f"{SEERAPI_DATA_RELEASE}/ironsbot-data-latest/ironsbot-data.sqlite",
+                url=f"{SEERAPI_DATA_RELEASE}/seerapi-data-latest/seerapi-data.sqlite",
                 fingerprint_url=(
-                    f"{SEERAPI_DATA_RELEASE}/ironsbot-data-latest/"
-                    "ironsbot-data.sqlite.sha256"
+                    f"{SEERAPI_DATA_RELEASE}/seerapi-data-latest/"
+                    "seerapi-data.sqlite.sha256"
                 ),
                 interval_minutes=60,
-                local_path="data/ironsbot-data.sqlite",
+                local_path="data/seerapi-data.sqlite",
             ),
             "aliases": DataSourceConfig(
                 url=f"{IRONSBOT_RELEASE}/alias-db-latest/aliases-data.sqlite",
