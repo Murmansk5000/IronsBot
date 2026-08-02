@@ -719,7 +719,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    args = _parser().parse_args(None if argv is None else list(argv))
     try:
         result = migrate_state_databases(
             data_root=args.data_root,

@@ -5,7 +5,6 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.services.seer.player_request_protection import (
-    PlayerRequestBusyError,
     PlayerRequestPausedError,
     PlayerRequestProtectionService,
 )
@@ -22,31 +21,14 @@ class _Features:
 class _Headless:
     def __init__(self) -> None:
         self.wait_calls: list[float] = []
-        self.connected = True
-        self._workers = [SimpleNamespace(key="primary", busy=False)]
+        self.cancelled_background_errors: list[Exception] = []
 
-    def try_acquire(self) -> SimpleNamespace | None:
-        for worker in self._workers:
-            if not worker.busy:
-                worker.busy = True
-                return worker
-        return None
+    @property
+    def healthy_worker_count(self) -> int:
+        return 1
 
-    def release(self, worker: SimpleNamespace) -> None:
-        worker.busy = False
-
-    async def run_on(
-        self,
-        worker: SimpleNamespace,
-        operation: Any,
-    ) -> object:
-        try:
-            return await operation()
-        finally:
-            self.release(worker)
-
-    def has_connected_worker(self) -> bool:
-        return self.connected
+    def cancel_waiting_background(self, error: Exception) -> None:
+        self.cancelled_background_errors.append(error)
 
     async def wait_until_available(self, *, timeout: float) -> object:
         self.wait_calls.append(timeout)
@@ -86,10 +68,11 @@ def _service(
     )
 
 
-def test_requests_run_one_at_a_time_in_arrival_order() -> None:
+def test_workflows_can_progress_concurrently_before_packet_scheduling() -> None:
     async def run() -> None:
         service, _headless = _service()
         started = asyncio.Event()
+        second_started = asyncio.Event()
         release = asyncio.Event()
         events: list[str] = []
 
@@ -102,6 +85,7 @@ def test_requests_run_one_at_a_time_in_arrival_order() -> None:
 
         async def second() -> str:
             events.append("second")
+            second_started.set()
             return "second"
 
         first_task = asyncio.create_task(
@@ -111,53 +95,18 @@ def test_requests_run_one_at_a_time_in_arrival_order() -> None:
         second_task = asyncio.create_task(
             service.run(second, user_id=USER_ID + 1, label="second")
         )
-        await asyncio.sleep(0)
-        assert events == ["first-start"]
+        await asyncio.wait_for(second_started.wait(), timeout=1.0)
+        assert events == ["first-start", "second"]
 
         release.set()
         assert await first_task == "first"
         assert await second_task == "second"
-        assert events == ["first-start", "first-end", "second"]
+        assert events == ["first-start", "second", "first-end"]
 
     asyncio.run(run())
 
 
-def test_requests_use_all_available_headless_workers() -> None:
-    async def run() -> None:
-        service, headless = _service()
-        headless._workers.append(SimpleNamespace(key="rank_a", busy=False))
-        first_started = asyncio.Event()
-        second_started = asyncio.Event()
-        release = asyncio.Event()
-
-        async def first() -> str:
-            first_started.set()
-            await release.wait()
-            return "first"
-
-        async def second() -> str:
-            second_started.set()
-            await release.wait()
-            return "second"
-
-        first_task = asyncio.create_task(
-            service.run(first, user_id=USER_ID, label="first")
-        )
-        second_task = asyncio.create_task(
-            service.run(second, user_id=USER_ID + 1, label="second")
-        )
-        await asyncio.wait_for(
-            asyncio.gather(first_started.wait(), second_started.wait()),
-            timeout=0.2,
-        )
-        release.set()
-        assert await first_task == "first"
-        assert await second_task == "second"
-
-    asyncio.run(run())
-
-
-def test_superuser_displaces_last_normal_request_when_queue_is_full() -> None:
+def test_superuser_bypasses_normal_workflow_capacity() -> None:
     async def run() -> None:
         service, _headless = _service(max_queued_queries=1)
         started = asyncio.Event()
@@ -190,18 +139,17 @@ def test_superuser_displaces_last_normal_request_when_queue_is_full() -> None:
             service.run(admin, user_id=ADMIN_ID, label="admin")
         )
 
-        with pytest.raises(PlayerRequestBusyError):
-            await normal_task
+        assert await normal_task == "normal"
+        assert await admin_task == "admin"
 
         release.set()
         assert await active_task == "active"
-        assert await admin_task == "admin"
-        assert events == ["active", "admin"]
+        assert events == ["normal", "admin", "active"]
 
     asyncio.run(run())
 
 
-def test_interactive_request_runs_before_waiting_background_refresh() -> None:
+def test_priority_is_delegated_to_packet_scheduler_context() -> None:
     async def run() -> None:
         service, _headless = _service()
         started = asyncio.Event()
@@ -242,9 +190,14 @@ def test_interactive_request_runs_before_waiting_background_refresh() -> None:
 
         release.set()
         assert await active_task == "active"
-        assert await interactive_task == "interactive"
         assert await background_task == "background"
-        assert events == ["active-start", "active-end", "interactive", "background"]
+        assert await interactive_task == "interactive"
+        assert events == [
+            "active-start",
+            "background",
+            "interactive",
+            "active-end",
+        ]
 
     asyncio.run(run())
 
@@ -286,40 +239,51 @@ def test_background_request_timeout_releases_queue() -> None:
     asyncio.run(run())
 
 
-def test_disconnect_pauses_normal_requests_and_clears_waiting_work() -> None:
+def test_disconnect_pauses_new_requests_and_cancels_background_work() -> None:
     async def run() -> None:
-        service, headless = _service()
+        service, _headless = _service()
         started = asyncio.Event()
         release = asyncio.Event()
+        background_started = asyncio.Event()
 
         async def active() -> str:
             started.set()
             await release.wait()
             return "active"
 
+        async def background() -> str:
+            background_started.set()
+            await asyncio.Event().wait()
+            return "background"
+
         async def queued() -> str:
-            raise AssertionError
+            return "queued"
 
         active_task = asyncio.create_task(
             service.run(active, user_id=USER_ID, label="active")
         )
         await started.wait()
-        queued_task = asyncio.create_task(
-            service.run(queued, user_id=USER_ID + 1, label="queued")
+        background_task = asyncio.create_task(
+            service.run(
+                background,
+                user_id=None,
+                label="background",
+                background=True,
+            )
         )
-        await asyncio.sleep(0)
+        await background_started.wait()
 
-        headless.connected = False
         await service.on_headless_state_change(
             previous=True,
             connected=False,
             reason="connection lost",
             source="test",
         )
-        with pytest.raises(PlayerRequestPausedError):
-            await queued_task
+        with pytest.raises(asyncio.CancelledError):
+            await background_task
         with pytest.raises(PlayerRequestPausedError):
             await service.run(queued, user_id=USER_ID + 2, label="new")
+        assert len(_headless.cancelled_background_errors) == 1
 
         release.set()
         assert await active_task == "active"
@@ -330,7 +294,6 @@ def test_disconnect_pauses_normal_requests_and_clears_waiting_work() -> None:
 def test_superuser_waits_for_reconnect_during_pause() -> None:
     async def run() -> None:
         service, headless = _service()
-        headless.connected = False
         await service.on_headless_state_change(
             previous=True,
             connected=False,

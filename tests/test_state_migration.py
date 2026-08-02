@@ -164,6 +164,7 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
     )
 
     assert result.applied
+    assert result.backup_path is not None
     assert result.backup_path == backup_root / "20260802T000000Z"
     qq_state = data_root / "state/qq_state.sqlite"
     runtime_state = data_root / "state/runtime_state.sqlite"

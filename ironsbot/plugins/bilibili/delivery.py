@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
@@ -9,12 +10,27 @@ from ironsbot.services.bilibili.parser import (
     dynamic_content,
     dynamic_image_urls,
     dynamic_url,
+    item_author_label,
 )
 
 
-def build_dynamic_link_message(item: dict[str, Any]) -> Message | None:
+def build_dynamic_link_message(
+    item: dict[str, Any],
+    pub_ts: int,
+) -> Message | None:
     try:
-        return Message(MessageSegment.text(f"传送门: {dynamic_url(item)}"))
+        time_str = datetime.fromtimestamp(
+            pub_ts,
+            tz=timezone.utc,
+        ).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        return Message(
+            MessageSegment.text(
+                "🔔 【B站动态更新】\n"
+                f"👤 账号：{item_author_label(item)}\n"
+                f"⏰ 发布时间：{time_str}\n\n"
+                f"传送门：{dynamic_url(item)}"
+            )
+        )
     except (TypeError, ValueError, KeyError) as error:
         logger.error(f"failed to render Bilibili dynamic link: {error}")
         return None

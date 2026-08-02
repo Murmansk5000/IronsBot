@@ -157,13 +157,16 @@ ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
-HEADLESS_SEER_USER_ID_2=
-HEADLESS_SEER_PASSWORD_2=
-HEADLESS_SEER_USER_ID_3=
-HEADLESS_SEER_PASSWORD_3=
+# 仅在 TOML 配置额外无头工作账号时需要
+HEADLESS_SEER_WORKER_2_USER_ID=
+HEADLESS_SEER_WORKER_2_PASSWORD=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
+
+额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
+所有健康账号会组成可互换的工作池；账号本身和密码仍只写在容器环境变量中。
+示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker

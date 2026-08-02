@@ -107,7 +107,7 @@ from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
-from ironsbot.services.operations.headless_pool import HeadlessPool, HeadlessWorker
+from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_session import HeadlessSessionFactory
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
@@ -184,7 +184,7 @@ class ApplicationResources:
     push_message_limiter: MessageLimiter
     admin_notices: AdminNoticeService
     activity: ActivityService
-    headless: HeadlessPool
+    headless: HeadlessService
     server_status: ServerStatusService
     subscriptions: PushUnsubscribeStore
     bilibili: BilibiliService
@@ -370,8 +370,25 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         push_message_limiter,
     )
-    primary_headless = HeadlessService(
-        ClientManager(task_owner.create),
+    headless_operations = HeadlessOperationTracker()
+    headless_worker_count = max(
+        1,
+        (
+            1
+            if settings.operations.headless.user_id is not None
+            and settings.operations.headless.password
+            else 0
+        )
+        + len(settings.operations.headless.workers),
+    )
+    headless = HeadlessService(
+        [
+            ClientManager(
+                task_owner.create,
+                operations=headless_operations,
+            )
+            for _ in range(headless_worker_count)
+        ],
         settings.operations.headless,
         settings.operations.headless_notice,
         admin_notices,
@@ -380,32 +397,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             if settings.seer.player.request_protection.enabled
             else 0.0
         ),
+        spawn=task_owner.create,
     )
-    headless_workers = [HeadlessWorker(key="primary", service=primary_headless)]
-    headless_workers.extend(
-        HeadlessWorker(
-            key=config.worker_key,
-            service=HeadlessService(
-                ClientManager(task_owner.create),
-                settings.operations.headless.model_copy(
-                    update={
-                        "user_id": config.user_id,
-                        "password": config.password,
-                    }
-                ),
-                settings.operations.headless_notice,
-                admin_notices,
-                request_interval_seconds=(
-                    settings.seer.player.request_protection.base_request_interval_seconds
-                    if settings.seer.player.request_protection.enabled
-                    else 0.0
-                ),
-                state_notifications=False,
-            ),
-        )
-        for config in settings.operations.headless_workers
-    )
-    headless = HeadlessPool(tuple(headless_workers))
     headless_sessions = HeadlessSessionFactory(
         lambda: ClientManager(task_owner.create),
         settings.operations.headless,
@@ -466,7 +459,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     team_resource = TeamResourceService(
         settings.seer.team_resource,
         TeamResourceSubscriptionStore(settings.paths.qq_state),
-        headless.primary,
+        headless,
         settings.onebot_references,
         features,
         delivery,
@@ -517,11 +510,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database,
         FilePetConfigImageStore(settings.pet_config.image_dir),
     )
+    local_rank_repository = SqliteLocalRankRepository(
+        settings.seer.local_rank.path,
+        settings.seer.local_rank.max_players,
+    )
     local_rank = LocalRankService(
-        SqliteLocalRankRepository(
-            settings.seer.local_rank.path,
-            settings.seer.local_rank.max_players,
-        ),
+        local_rank_repository,
         settings.seer.local_rank,
         settings.seer.player,
         rank,
@@ -551,6 +545,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         player_query_quotas,
         player_requests,
+        profile_cache=local_rank_repository,
     )
     docker_client = DockerClient()
     private_extensions = load_private_extension_catalog(
@@ -601,7 +596,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         AutocardService(seer_database),
         SeerTeamQueryService(
             settings.seer.team,
-            headless.primary,
+            headless,
             seer_database.error_message,
             team_resource,
         ),
@@ -628,7 +623,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         PeakQueryService(
             seer_database,
-            headless.primary,
+            headless,
             partial(
                 render_peak_pool,
                 render_cache,
@@ -671,7 +666,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     private_extension_runtime = PrivateExtensionRuntime(
         features=features,
         seer=seer,
-        headless=headless.primary,
+        headless=headless,
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
@@ -723,7 +718,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         activity=activity,
         headless=headless,
         server_status=ServerStatusService(
-            headless.primary,
+            headless,
             HttpServerNoticeSource(http_clients.origin),
         ),
         subscriptions=subscriptions,

@@ -44,7 +44,7 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     service = BilibiliPushDeliveryService(
         runtime.delivery,
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
-        lambda _item: Message("链接"),
+        lambda _item, _pub_ts: Message("链接"),
         lambda _item, _content: Message("动态正文"),
         append_text_hint,
         partial(append_fire_manual_ad_for_target, runtime.features),

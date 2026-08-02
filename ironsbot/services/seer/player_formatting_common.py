@@ -60,6 +60,8 @@ def format_player_identity(
 
 
 def format_online_text(online_info: Any | None) -> str:
+    if getattr(online_info, "unavailable", False):
+        return "暂未获取"
     if online_info is None:
         return "离线"
 
