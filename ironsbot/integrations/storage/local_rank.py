@@ -59,6 +59,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         columns={
             "sample_enabled": "sample_enabled INTEGER NOT NULL DEFAULT 1",
             "sampled_at": "sampled_at TEXT",
+            "reg_time": "reg_time INTEGER",
+            "reg_time_cached_at": "reg_time_cached_at TEXT",
         },
     )
     if "sampled_at" in added_columns:
@@ -192,6 +194,62 @@ class SqliteLocalRankRepository:
         with self._database.connect() as conn:
             is_sampled, player_count = self._sample_state(conn, player_id)
         return is_sampled or player_count < self.max_players
+
+    def registration_time(
+        self,
+        player_id: int,
+        *,
+        max_age_days: int = 30,
+    ) -> int | None:
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            days=max(1, max_age_days)
+        )
+        with self._database.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT reg_time, reg_time_cached_at
+                FROM players
+                WHERE user_id = ?
+                """,
+                (player_id,),
+            ).fetchone()
+        if row is None or not row["reg_time"] or not row["reg_time_cached_at"]:
+            return None
+        try:
+            cached_at = datetime.fromisoformat(str(row["reg_time_cached_at"]))
+        except ValueError:
+            return None
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.replace(tzinfo=timezone.utc)
+        if cached_at < cutoff:
+            return None
+        return int(row["reg_time"])
+
+    def upsert_registration_time(
+        self,
+        *,
+        player_id: int,
+        nick: str,
+        reg_time: int,
+    ) -> None:
+        if reg_time <= 0:
+            return
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self._database.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO players(
+                    user_id, nick, updated_at, sample_enabled, sampled_at,
+                    reg_time, reg_time_cached_at
+                )
+                VALUES (?, ?, ?, 0, NULL, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    nick = excluded.nick,
+                    reg_time = excluded.reg_time,
+                    reg_time_cached_at = excluded.reg_time_cached_at
+                """,
+                (player_id, nick, timestamp, reg_time, timestamp),
+            )
 
     def delete_player(self, player_id: int) -> None:
         with self._database.connect() as conn:
