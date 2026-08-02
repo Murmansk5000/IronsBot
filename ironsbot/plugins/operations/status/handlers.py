@@ -17,7 +17,7 @@ from nonebot.permission import SUPERUSER
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 
 from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
@@ -105,7 +105,7 @@ def install(
             "server_status_query",
             help_ids=("server_status.query",),
         ),
-        rule=no_reply(),
+        rule=command_input(),
         priority=registry.priority("server_status"),
         block=True,
     )
@@ -117,7 +117,7 @@ def install(
             "server_status_query",
             help_ids=("server_status.admin_query",),
         ),
-        rule=no_reply(),
+        rule=command_input(),
         priority=registry.priority("server_status"),
         block=True,
     )
@@ -135,7 +135,7 @@ def install(
             "server_status_admin",
             help_ids=("server_status.admin_query",),
         ),
-        rule=no_reply(),
+        rule=command_input(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
         block=True,
@@ -148,7 +148,7 @@ def install(
             "bot_restart",
             help_ids=("docker_update.restart",),
         ),
-        rule=no_reply(),
+        rule=command_input(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
         block=True,
@@ -161,7 +161,7 @@ def install(
             "bot_restart",
             help_ids=("docker_update.image_update",),
         ),
-        rule=no_reply(),
+        rule=command_input(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
         block=True,
@@ -174,7 +174,7 @@ def install(
             "bot_restart",
             help_ids=("docker_update.image_check",),
         ),
-        rule=no_reply(),
+        rule=command_input(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
         block=True,
