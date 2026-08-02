@@ -381,7 +381,7 @@ def test_player_query_prefers_live_until_quota_then_uses_cache(
     assert live_calls == _LIVE_QUERY_LIMIT
 
 
-def test_player_detail_prefers_live_until_quota_then_uses_cache(
+def test_player_detail_uses_valid_cache_without_quota_or_live_request(
     tmp_path: Path,
 ) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
@@ -394,7 +394,7 @@ def test_player_detail_prefers_live_until_quota_then_uses_cache(
     latest = QueryReply(text="old-cache")
 
     class _Details:
-        def cached_reply(self, *_args: object) -> QueryReply:
+        async def cached_or_inflight_reply(self, *_args: object) -> QueryReply:
             return latest
 
     service = PlayerService(
@@ -437,15 +437,20 @@ def test_player_detail_prefers_live_until_quota_then_uses_cache(
             kind="collection",
             player_id=DEFAULT_PLAYER_ID,
         )
-        assert (await service.shortcut(command, USER_ID)).text == "live-1"
-        assert (await service.shortcut(command, USER_ID)).text == "live-2"
-        assert (await service.shortcut(command, USER_ID)).text == "live-2"
+        assert (await service.shortcut(command, USER_ID)).text == "old-cache"
+        assert (await service.shortcut(command, USER_ID)).text == "old-cache"
+        assert (await service.shortcut(command, USER_ID)).text == "old-cache"
 
     asyncio.run(run())
-    assert live_calls == _LIVE_QUERY_LIMIT
+    assert live_calls == 0
+    assert quota.check(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="collection",
+    ).allowed
 
 
-def test_exhausted_shortcut_allows_only_confirmed_anchor_page_lookup(
+def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
     tmp_path: Path,
 ) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
@@ -459,7 +464,7 @@ def test_exhausted_shortcut_allows_only_confirmed_anchor_page_lookup(
     latest = QueryReply(text="cached reply")
 
     class _Details:
-        def cached_reply(self, *_args: object) -> QueryReply:
+        async def cached_or_inflight_reply(self, *_args: object) -> QueryReply:
             return latest
 
     service = PlayerService(
@@ -478,7 +483,7 @@ def test_exhausted_shortcut_allows_only_confirmed_anchor_page_lookup(
         quota,
         now=lambda: NOW,
     )
-    anchor_only_calls: list[bool] = []
+    live_calls = 0
 
     async def run() -> None:
         async def fetch_live(
@@ -486,10 +491,11 @@ def test_exhausted_shortcut_allows_only_confirmed_anchor_page_lookup(
             _player_id: int,
             *,
             group_id: int | None,
-            anchor_only: bool,
+            _anchor_only: bool,
         ) -> QueryReply:
             assert group_id is None
-            anchor_only_calls.append(anchor_only)
+            nonlocal live_calls
+            live_calls += 1
             return QueryReply(
                 text="fresh lightweight reply",
                 rank_lookups=(
@@ -512,10 +518,10 @@ def test_exhausted_shortcut_allows_only_confirmed_anchor_page_lookup(
             PlayerShortcutCommand(kind="collection", player_id=DEFAULT_PLAYER_ID),
             USER_ID,
         )
-        assert reply.text == "fresh lightweight reply"
+        assert reply.text == "cached reply"
 
     asyncio.run(run())
-    assert anchor_only_calls == [True]
+    assert live_calls == 0
     assert not quota.check(
         qq_user_id=USER_ID,
         player_id=DEFAULT_PLAYER_ID,
