@@ -350,6 +350,56 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 - 全服榜页 SQLite 缓存
 - 皮肤价格、渲染缓存等运行数据
 
+### 状态库迁移
+
+已有部署升级后，先停掉机器人，再用新镜像把旧的小型 SQLite 一次性迁移到两个共享状态库。
+命令默认只预览；确认输出后再加 `--apply`。迁移会先完整备份旧库，校验行数、主键和
+`PRAGMA integrity_check`，之后逐个替换目标库并清理旧库。
+每次文件替换是单独操作，不是两个数据库的联合事务；第二次失败不保证回滚第一次。
+保留备份，确认两库及迁移结果后再启动机器人。此版本直接 SQLite 上下文未全部显式关闭连接，
+Windows 文件替换可能受连接占用影响；这里不承诺该平台已完成迁移验收。
+
+Unraid 默认数据挂载为 `/mnt/user/appdata/ironsbot/data`：
+
+```bash
+docker pull murmansk5000/ironsbot:latest
+docker stop ironsbot
+
+# 预览，不修改文件
+docker run --rm --entrypoint python \
+  -v /mnt/user/appdata/ironsbot/data:/app/data \
+  murmansk5000/ironsbot:latest \
+  -m ironsbot.state_migration --data-root /app/data
+
+# 确认后执行
+docker run --rm --entrypoint python \
+  -v /mnt/user/appdata/ironsbot/data:/app/data \
+  murmansk5000/ironsbot:latest \
+  -m ironsbot.state_migration --data-root /app/data --apply
+
+docker start ironsbot
+```
+
+备份默认位于 `data/state-migration-backups/<UTC时间>/`。稳定运行 7 天后可手动删除对应备份。
+若 TOML 自定义了 `[paths].qq_state` 或 `[paths].runtime_state`，迁移时同时传入
+`--qq-state` 和 `--runtime-state`；相对路径均以 `--data-root` 为基准。
+
+迁移后从 TOML 删除以下旧字段；新版本不再读取它们：
+
+- `activity.cache_path`
+- `messaging.push_unsubscribe.data_path`
+- `messaging.team_audit_welcome.followup_cache_path`
+- `seer.player.binding.path`
+- `seer.player.query_limits.path`
+- `seer.rank.display_limit_path`
+- `seer.team_resource.subscription_path`
+- `operations.private_extensions.settings.skin_window.cache_path`
+
+`seer.player.lineup.cache_path` 不在收口范围内，阵容图片缓存仍保持独立。
+
+主数据发布文件现使用 `data/seerapi-data.sqlite`。确认新版本已成功下载并能查询最新数据后，
+旧的 `data/ironsbot-data.sqlite` 可手动删除；状态库迁移命令不会自动删除主数据文件。
+
 超级管理员发送 `/更新数据` 时，IronsBot 会先按
 `[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
 GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例流水线为：

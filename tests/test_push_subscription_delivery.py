@@ -29,16 +29,19 @@ class FakeBot:
 def test_send_target_messages_filters_unsubscribed_push_targets(
     tmp_path: Path,
 ) -> None:
+    state_path = tmp_path / "qq_state.sqlite"
     config = PushUnsubscribeConfig(
-        data_path=str(tmp_path / "push_unsubscriptions.sqlite"),
         hint="回复 TD 管理推送。",
         group_hint="群管理发送 TD 管理推送。",
     )
-    store = PushUnsubscribeStore(config.data_path)
+    store = PushUnsubscribeStore(state_path)
     store.unsubscribe_target("private", 1001, "bili_push", "bili_push")
     store.unsubscribe_target("group", 2001, "bili_push", "bili_push")
     bot = FakeBot()
-    delivery = build_test_runtime(push_unsubscribe=config).delivery
+    delivery = build_test_runtime(
+        push_unsubscribe=config,
+        state_path=state_path,
+    ).delivery
 
     summary = asyncio.run(
         delivery.send_targets(
@@ -62,13 +65,16 @@ def test_send_target_messages_filters_unsubscribed_push_targets(
 def test_send_target_messages_does_not_share_mutated_message_between_targets(
     tmp_path: Path,
 ) -> None:
+    state_path = tmp_path / "qq_state.sqlite"
     config = PushUnsubscribeConfig(
-        data_path=str(tmp_path / "push_unsubscriptions.sqlite"),
         hint="回复 TD 管理私聊推送。",
         group_hint="群主/管理员发送 TD 管理本群推送。",
     )
     bot = FakeBot()
-    delivery = build_test_runtime(push_unsubscribe=config).delivery
+    delivery = build_test_runtime(
+        push_unsubscribe=config,
+        state_path=state_path,
+    ).delivery
 
     asyncio.run(
         delivery.send_targets(
@@ -93,13 +99,16 @@ def test_send_target_messages_does_not_share_mutated_message_between_targets(
 def test_send_target_messages_appends_subscription_hint_once_per_day(
     tmp_path: Path,
 ) -> None:
+    state_path = tmp_path / "qq_state.sqlite"
     config = PushUnsubscribeConfig(
-        data_path=str(tmp_path / "push_unsubscriptions.sqlite"),
         hint="回复 TD 管理私聊推送。",
         group_hint="群主/管理员发送 TD 管理本群推送。",
     )
     bot = FakeBot()
-    delivery = build_test_runtime(push_unsubscribe=config).delivery
+    delivery = build_test_runtime(
+        push_unsubscribe=config,
+        state_path=state_path,
+    ).delivery
 
     asyncio.run(
         delivery.send_targets(

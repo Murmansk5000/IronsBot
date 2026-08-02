@@ -34,6 +34,10 @@ class SqliteMigrationError(RuntimeError):
             f"{current_version} > {target_version}"
         )
 
+    @classmethod
+    def invalid_namespace(cls, namespace: str) -> SqliteMigrationError:
+        return cls(f"SQLite migration namespace is invalid: {namespace!r}")
+
 
 @dataclass(frozen=True, slots=True)
 class SqliteMigration:
@@ -52,6 +56,7 @@ class SqliteMigration:
 class SqliteDatabase:
     path: str | Path
     migrations: tuple[SqliteMigration, ...] = ()
+    migration_namespace: str | None = None
     row_factory: RowFactory | None = None
     pragmas: bool = True
 
@@ -59,16 +64,20 @@ class SqliteDatabase:
         versions = tuple(migration.version for migration in self.migrations)
         if versions != tuple(range(1, len(versions) + 1)):
             raise SqliteMigrationError.invalid_plan(versions)
+        if self.migration_namespace is not None and not _SQLITE_IDENTIFIER_RE.fullmatch(
+            self.migration_namespace
+        ):
+            raise SqliteMigrationError.invalid_namespace(self.migration_namespace)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         resolved = resolve_sqlite_path(self.path)
-        resolved.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(resolved)
+        connection = open_sqlite_connection(resolved)
         try:
             if self.pragmas:
                 connection.execute("PRAGMA journal_mode=WAL")
                 connection.execute("PRAGMA synchronous=NORMAL")
+                connection.execute("PRAGMA busy_timeout=5000")
             if self.row_factory is not None:
                 connection.row_factory = self.row_factory
             self._apply_migrations(connection)
@@ -89,9 +98,7 @@ class SqliteDatabase:
         target_version = self.migrations[-1].version
         connection.execute("BEGIN IMMEDIATE")
         try:
-            current_version = int(
-                connection.execute("PRAGMA user_version").fetchone()[0]
-            )
+            current_version = self._current_migration_version(connection)
             _validate_database_version(
                 current_version=current_version,
                 target_version=target_version,
@@ -102,12 +109,55 @@ class SqliteDatabase:
                     connection.execute(statement)
                 if migration.callback is not None:
                     migration.callback(connection)
-                connection.execute(f"PRAGMA user_version = {migration.version}")
+                self._record_migration_version(connection, migration.version)
         except BaseException:
             connection.rollback()
             raise
         else:
             connection.commit()
+
+    def _current_migration_version(self, connection: sqlite3.Connection) -> int:
+        if self.migration_namespace is None:
+            return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+        _ensure_migration_metadata_table(connection)
+        row = connection.execute(
+            "SELECT version FROM ironsbot_schema_migrations WHERE namespace = ?",
+            (self.migration_namespace,),
+        ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def _record_migration_version(
+        self,
+        connection: sqlite3.Connection,
+        version: int,
+    ) -> None:
+        if self.migration_namespace is None:
+            connection.execute(f"PRAGMA user_version = {version}")
+            return
+
+        connection.execute(
+            """
+            INSERT INTO ironsbot_schema_migrations (namespace, version, updated_at)
+            VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            ON CONFLICT(namespace) DO UPDATE SET
+                version = excluded.version,
+                updated_at = excluded.updated_at
+            """,
+            (self.migration_namespace, version),
+        )
+
+
+def _ensure_migration_metadata_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ironsbot_schema_migrations (
+            namespace TEXT PRIMARY KEY,
+            version INTEGER NOT NULL CHECK (version >= 0),
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
 
 
 def _validate_database_version(
@@ -133,6 +183,23 @@ def resolve_sqlite_path(path: str | Path) -> Path:
     if not resolved.is_absolute():
         resolved = Path.cwd() / resolved
     return resolved
+
+
+def open_sqlite_connection(
+    path: str | Path,
+    *,
+    read_only: bool = False,
+) -> sqlite3.Connection:
+    """Open a low-level connection through the shared storage boundary."""
+    resolved = resolve_sqlite_path(path)
+    if read_only:
+        return sqlite3.connect(
+            f"{resolved.as_uri()}?mode=ro",
+            uri=True,
+            timeout=5.0,
+        )
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(resolved, timeout=5.0)
 
 
 def sqlite_table_columns(

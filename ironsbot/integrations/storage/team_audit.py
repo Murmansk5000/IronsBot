@@ -36,6 +36,7 @@ def _ensure_step_column(connection: sqlite3.Connection) -> None:
 
 
 _MIGRATIONS = (SqliteMigration(1, (_SCHEMA,), _ensure_step_column),)
+MIGRATION_NAMESPACE = "team_audit"
 
 
 class SqliteTeamAuditReminderStore:
@@ -43,6 +44,7 @@ class SqliteTeamAuditReminderStore:
         self._database = SqliteDatabase(
             path,
             migrations=_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
             row_factory=sqlite3.Row,
         )
 
