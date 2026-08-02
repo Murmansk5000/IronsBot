@@ -3,7 +3,7 @@ import hashlib
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from pytest import MonkeyPatch
@@ -19,6 +19,7 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 from ironsbot.integrations.db_sync.runner import DatabaseSync
+from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.services.operations.data_sync import DataSyncService
 
 CONNECT_ERROR_MESSAGE = "connection failed"
@@ -47,6 +48,48 @@ class FakeScheduler:
 
     def remove_job(self, job_id: str) -> None:
         self.jobs = [job for job in self.jobs if job["id"] != job_id]
+
+
+class _DownloadHeadResponse:
+    def __init__(self) -> None:
+        self.headers = {"last-modified": "Mon, 22 Jun 2026 12:00:00 GMT"}
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _DownloadStream:
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        return None
+
+    async def aiter_bytes(self, *, chunk_size: int) -> Any:
+        del chunk_size
+        yield _DownloadClient.content
+
+
+class _DownloadClient:
+    content: ClassVar[bytes] = b""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    async def head(self, *_args: object, **_kwargs: object) -> _DownloadHeadResponse:
+        return _DownloadHeadResponse()
+
+    def stream(self, *_args: object, **_kwargs: object) -> _DownloadStream:
+        return _DownloadStream()
 
 
 def _source(
@@ -469,7 +512,8 @@ def test_sync_database_uses_matching_local_cache(
     databases = DatabaseManager()
     monkeypatch.setattr(databases, "load_from_file", lambda *args: loaded.append(args))
     monkeypatch.setattr(db_sync_runner.httpx, "AsyncClient", FakeClient)
-    sync = DatabaseSync(databases)
+    cache_root = tmp_path / "cache"
+    sync = DatabaseSync(databases, cache_paths=CachePaths(cache_root))
     source = _source(
         local_path=str(db_path),
         fingerprint_url="https://example.invalid/data.sqlite.sha256",
@@ -479,3 +523,30 @@ def test_sync_database_uses_matching_local_cache(
     assert asyncio.run(sync.sync_database("same")) is True
     assert loaded == [("same", str(db_path))]
     assert sync.last_sync_statuses["same"].skipped
+    assert not cache_root.exists()
+
+
+def test_sync_database_uses_disposable_downloads_directory(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "source.sqlite"
+    with sqlite3.connect(source_path) as connection:
+        connection.execute("create table sample (id integer primary key)")
+    _DownloadClient.content = source_path.read_bytes()
+    loaded_paths: list[Path] = []
+
+    databases = DatabaseManager()
+    monkeypatch.setattr(
+        databases,
+        "load_from_file",
+        lambda _name, path: loaded_paths.append(Path(path)),
+    )
+    monkeypatch.setattr(db_sync_runner.httpx, "AsyncClient", _DownloadClient)
+    cache_root = tmp_path / "cache"
+    sync = DatabaseSync(databases, cache_paths=CachePaths(cache_root))
+    sync.register("download", _source())
+
+    assert asyncio.run(sync.sync_database("download"))
+    assert loaded_paths[0].parent == cache_root / "downloads"
+    assert not list((cache_root / "downloads").glob("*.sqlite"))

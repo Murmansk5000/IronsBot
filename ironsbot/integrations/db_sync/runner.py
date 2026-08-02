@@ -38,11 +38,13 @@ if TYPE_CHECKING:
     from ironsbot.config.models.operations import DataSourceConfig
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.db_sync.models import GetFingerprintFn
+    from ironsbot.runtime.cache_paths import CachePaths
 
 
 @dataclass(slots=True)
 class DatabaseSync:
     databases: DatabaseManager
+    cache_paths: CachePaths | None = None
     registered_syncs: dict[str, SyncEntry] = field(default_factory=dict)
     registered_local_databases: dict[str, str] = field(default_factory=dict)
     prepared_databases: set[str] = field(default_factory=set)
@@ -125,9 +127,7 @@ class DatabaseSync:
                 ),
             )
             remote = VersionInfo()
-            fd, tmp_name = tempfile.mkstemp(suffix=".sqlite")
-            os.close(fd)
-            tmp_path = AsyncPath(tmp_name)
+            tmp_path: AsyncPath | None = None
 
             try:
                 async with httpx.AsyncClient(
@@ -184,6 +184,17 @@ class DatabaseSync:
 
                 content_bytes = bytes(content)
                 content_fingerprint = _fingerprint_content(content_bytes)
+                download_directory: str | None = None
+                if self.cache_paths is not None:
+                    downloads_path = self.cache_paths.downloads_dir()
+                    downloads_path.mkdir(parents=True, exist_ok=True)
+                    download_directory = str(downloads_path)
+                fd, tmp_name = tempfile.mkstemp(
+                    suffix=".sqlite",
+                    dir=download_directory,
+                )
+                os.close(fd)
+                tmp_path = AsyncPath(tmp_name)
                 await tmp_path.write_bytes(content_bytes)
                 self.databases.load_from_file(name, str(tmp_path))
                 cache_saved, local_timestamp_after = await self._save_local_cache(
@@ -246,7 +257,8 @@ class DatabaseSync:
             else:
                 return cache_saved
             finally:
-                await tmp_path.unlink(missing_ok=True)
+                if tmp_path is not None:
+                    await tmp_path.unlink(missing_ok=True)
 
     async def run_sync_database(self, name: str) -> bool:
         if self._sync_all_lock.locked():
