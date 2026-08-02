@@ -33,6 +33,9 @@ if TYPE_CHECKING:
         HeadlessService,
     )
     from ironsbot.services.seer.local_rank import LocalRankService
+    from ironsbot.services.seer.player_request_protection import (
+        PlayerRequestProtectionService,
+    )
     from ironsbot.services.seer.rank import RankService
     from ironsbot.services.seer.rank_list_models import (
         GlobalRankSpec,
@@ -43,9 +46,6 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 ProgressReporter = Callable[[str], Awaitable[None]]
-PriorityRelease = Callable[[], Awaitable[None]]
-
-
 @dataclass(frozen=True, slots=True)
 class RankAdminPolicy:
     rank_limit: int
@@ -57,30 +57,33 @@ class RankAdminPolicy:
 
 
 class RankAdminService:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - composed runtime dependencies
         self,
         policy: RankAdminPolicy,
         rank: RankService,
         local_rank: LocalRankService,
         page_refresh: RankPageRefreshService,
         headless: HeadlessService,
+        requests: PlayerRequestProtectionService,
     ) -> None:
         self._policy = policy
         self._rank = rank
         self._local_rank = local_rank
         self._page_refresh = page_refresh
         self._headless = headless
+        self._requests = requests
 
     async def cache_batch(
         self,
         command: RankCacheBatchCommand,
         *,
+        user_id: int,
         progress: ProgressReporter,
-        release: PriorityRelease,
     ) -> str:
-        spec, item_count, requested_count = await self._cache_global_batch(
-            self._headless.get_game(),
-            command,
+        spec, item_count, requested_count = await self._requests.run(
+            lambda: self._cache_global_batch(self._headless.get_game(), command),
+            user_id=user_id,
+            label="手动缓存榜单",
         )
         if item_count <= 0:
             return build_rank_batch_no_players_message(spec)
@@ -92,7 +95,6 @@ class RankAdminService:
                 requested_count=requested_count,
             )
         )
-        await release()
         return build_rank_batch_result_message(
             spec,
             command,
@@ -160,15 +162,15 @@ class RankAdminService:
         self,
         command: RankPageCacheRefreshCommand,
         *,
+        user_id: int,
         progress: ProgressReporter,
-        release: PriorityRelease,
     ) -> str:
         await progress(build_rank_page_refresh_start_message(command))
-        await release()
         rank_keys = None if command.rank_key is None else [command.rank_key]
         result = await self._page_refresh.refresh(
             self._headless.get_game(),
             rank_keys,
+            user_id=user_id,
         )
         return build_rank_page_refresh_result_message(result)
 
@@ -186,8 +188,8 @@ class RankAdminService:
     async def cache_refresh(
         self,
         *,
+        user_id: int,
         progress: ProgressReporter,
-        release: PriorityRelease,
     ) -> str:
         before = self._local_rank.stats()
         if before.player_count <= 0:
@@ -199,8 +201,10 @@ class RankAdminService:
                 refresh_max_age_hours=self._policy.refresh_max_age_hours,
             )
         )
-        await release()
-        result = await self._local_rank.refresh(self._headless.get_game())
+        result = await self._local_rank.refresh(
+            self._headless.get_game(),
+            user_id=user_id,
+        )
         return build_local_rank_refresh_result_message(
             result,
             self._local_rank.stats(),

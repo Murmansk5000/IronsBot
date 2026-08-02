@@ -94,7 +94,6 @@ def build_test_plugin_registry(
             activity=SimpleNamespace(register_jobs=lambda _scheduler: None),
             headless=headless,
             server_status=object(),
-            priority=runtime.priority,
             subscriptions=object(),
             bilibili=SimpleNamespace(
                 targets=object(),

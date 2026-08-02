@@ -414,13 +414,6 @@ class HelpConfig(BaseModel):
         return replies
 
 
-class SuperuserPriorityConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    wait_timeout_seconds: float = Field(default=300.0, ge=0)
-
-
 class FeatureConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -431,7 +424,6 @@ class FeatureConfig(BaseModel):
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
     superuser_bypass: bool = True
     help: HelpConfig = Field(default_factory=HelpConfig)
-    priority: SuperuserPriorityConfig = Field(default_factory=SuperuserPriorityConfig)
 
     @field_validator("group_aliases", mode="before")
     @classmethod
