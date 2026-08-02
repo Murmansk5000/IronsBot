@@ -512,11 +512,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database,
         FilePetConfigImageStore(settings.pet_config.image_dir),
     )
+    local_rank_repository = SqliteLocalRankRepository(
+        settings.seer.local_rank.path,
+        settings.seer.local_rank.max_players,
+    )
     local_rank = LocalRankService(
-        SqliteLocalRankRepository(
-            settings.seer.local_rank.path,
-            settings.seer.local_rank.max_players,
-        ),
+        local_rank_repository,
         settings.seer.local_rank,
         settings.seer.player,
         rank,
@@ -546,6 +547,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         player_query_quotas,
         player_requests,
+        profile_cache=local_rank_repository,
     )
     docker_client = DockerClient()
     private_extensions = load_private_extension_catalog(
