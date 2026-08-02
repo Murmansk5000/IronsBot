@@ -148,8 +148,8 @@ data/
 /logs/
 /aliases-data.sqlite
 /aliases-data.sqlite.sha256
-/ironsbot-data.sqlite
-/ironsbot-data.sqlite.sha256
+/seerapi-data.sqlite
+/seerapi-data.sqlite.sha256
 ironsbot/custom_plugins/bilibili_monitor/bili_cookie_cache.txt
 ironsbot/custom_plugins/bilibili_monitor/bili_raw_response.json
 ironsbot/custom_plugins/bilibili_monitor/last_dynamic_time.txt

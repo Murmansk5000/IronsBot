@@ -359,7 +359,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 
 超级管理员发送 `/更新数据` 时，IronsBot 会先按
 `[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
-GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
+GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
 2. `Murmansk-Seer/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出补充 JSON。

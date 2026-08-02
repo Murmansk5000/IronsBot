@@ -292,7 +292,7 @@ def test_example_config_parses() -> None:
         "build_ironsbot_data",
     ]
     assert remote_build_steps[-1].repository == "Murmansk-Seer/seerapi"
-    assert remote_build_steps[-1].workflow_id == "build-ironsbot-data-db.yml"
+    assert remote_build_steps[-1].workflow_id == "build-seerapi-data-db.yml"
     assert remote_build_steps[0].inputs == {
         "force-update-assets": False,
         "force-update-config": False,

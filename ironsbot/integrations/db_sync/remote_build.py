@@ -14,7 +14,7 @@ FORCE_INPUT_OVERRIDES = {
     },
     ("Murmansk-Seer/config-sources", "sync-upstream.yml"): {"force": True},
     ("Murmansk-Seer/api-data", "main.yml"): {"force": True},
-    ("Murmansk-Seer/seerapi", "build-ironsbot-data-db.yml"): {"force": True},
+    ("Murmansk-Seer/seerapi", "build-seerapi-data-db.yml"): {"force": True},
 }
 logger = logging.getLogger(__name__)
 

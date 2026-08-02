@@ -96,7 +96,7 @@ def _config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
         repository="Murmansk-Seer/seerapi",
-        workflow_id="build-ironsbot-data-db.yml",
+        workflow_id="build-seerapi-data-db.yml",
         ref="main",
         timeout_seconds=30,
         poll_interval_seconds=0.01,
