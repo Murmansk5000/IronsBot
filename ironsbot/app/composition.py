@@ -80,7 +80,6 @@ from ironsbot.integrations.storage.team_resources import (
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
-from ironsbot.runtime.priority import AdminPriorityService
 from ironsbot.services.activity.delivery import (
     ActivityReminderDelivery,
     ActivityReminderTargets,
@@ -144,6 +143,7 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
+from ironsbot.services.seer.render_scheduler import RenderScheduler
 from ironsbot.services.seer.rendering.custom_pet_info import (
     render_custom_pet_info,
 )
@@ -183,7 +183,6 @@ class ApplicationResources:
     activity: ActivityService
     headless: HeadlessService
     server_status: ServerStatusService
-    priority: AdminPriorityService
     subscriptions: PushUnsubscribeStore
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
@@ -388,7 +387,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
-    priority = AdminPriorityService(settings.features.priority, features)
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(
         bili_data_dir / "bili_cookie_cache.txt"
@@ -474,6 +472,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.paths.render_cache,
         settings.seer.render.cache_max_size_mb * 1024 * 1024,
         db_version_getter=seer_database.version,
+    )
+    render_scheduler = RenderScheduler(
+        render_html_template,
+        settings.runtime.concurrency.render_max_concurrent,
     )
     player_bindings = SqlitePlayerBindingStore(
         settings.seer.player.binding.path
@@ -566,6 +568,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         local_rank,
         rank_page_refresh,
         headless,
+        player_requests,
     )
     seer = SeerQueryResources(
         SeerDataQueryService(
@@ -589,7 +592,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_type_matchup,
                 render_cache,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
         ),
         BattleEffectQueryService(seer_database, seer_images),
@@ -600,7 +603,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_custom_pet_info,
                 render_cache,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
         ),
         PeakQueryService(
@@ -610,17 +613,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_peak_pool,
                 render_cache,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
             partial(
                 render_peak_pool_vote,
                 seer_images,
-                render_html_template,
+                render_scheduler.render,
             ),
             partial(
                 render_peak_pet_rank,
                 images=seer_images,
-                render_html=render_html_template,
+                render_html=render_scheduler.render,
             ),
         ),
         MintmarkQueryService(
@@ -652,14 +655,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
-        render_html=render_html_template,
+        render_html=render_scheduler.render,
         error_message=seer_database.error_message,
         player_quotas=player_query_quotas,
         player_requests=player_requests,
         player_details=player_detail_extensions,
         scheduler=scheduler,
         admin_notices=admin_notices,
-        release_priority=priority.release,
         settings=settings.operations.private_extensions.settings,
     )
     docker_update = DockerUpdateService(
@@ -702,7 +704,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             headless,
             HttpServerNoticeSource(http_clients.origin),
         ),
-        priority=priority,
         subscriptions=subscriptions,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
@@ -743,7 +744,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     matchers = MatcherRegistry(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
-        before_reply_send=priority.wait,
         prompt_session_manager=prompt_sessions,
         in_flight_requests=InFlightRequestService(
             features,

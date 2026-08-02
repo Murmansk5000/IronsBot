@@ -90,7 +90,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.messaging.meeting import install as install_meeting
-    from ironsbot.plugins.messaging.priority import install as install_admin_priority
     from ironsbot.plugins.messaging.red_packet import (
         install as install_red_packet_notice,
     )
@@ -116,7 +115,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     activity_service = resources.activity
     headless = resources.headless
     server_status = resources.server_status
-    priority_service = resources.priority
     bilibili_service = resources.bilibili
     bilibili_login = resources.bilibili_login
     messaging = resources.messaging
@@ -199,7 +197,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 seer_resources,
                 features,
                 resources.commands,
-                priority_service.release,
                 config.seer.new_content,
             )
         )
@@ -265,13 +262,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             id="conversation_blacklist",
             features=frozenset({Feature.BLACKLIST}),
             install=partial(install_blacklist, features=features),
-        ),
-        PluginDefinition(
-            id="admin_priority",
-            install=partial(
-                install_admin_priority,
-                service=priority_service,
-            ),
         ),
         PluginDefinition(
             id="server_status",

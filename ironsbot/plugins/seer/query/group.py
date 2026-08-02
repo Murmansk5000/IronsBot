@@ -10,8 +10,6 @@ from nonebot.rule import Rule
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from nonebot.matcher import Matcher
 
     from ironsbot.config.models.seer import NewContentMenuConfig
@@ -34,7 +32,6 @@ class SeerMatcherGroup:
     resources: SeerQueryResources
     features: FeatureService
     commands: CommandCatalog
-    release_priority: Callable[[dict[str, Any]], Awaitable[None]]
     new_content: NewContentMenuConfig
 
     def on_message(

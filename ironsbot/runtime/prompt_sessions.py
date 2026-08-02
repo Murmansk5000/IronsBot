@@ -52,11 +52,10 @@ def is_current_group_menu_reply(
         return False
     if event.user_id == event.self_id or event.reply is None:
         return False
-    reply_sender = getattr(event.reply, "sender", None)
-    return (
-        getattr(reply_sender, "user_id", None) == anchor.bot_user_id
-        and getattr(event.reply, "message_id", None) == anchor.message_id
-    )
+    # The reply sender metadata is optional in OneBot events.  The tracked
+    # message ID was obtained from the bot's own send result, so it is the
+    # authoritative proof that this is a reply to the current bot menu.
+    return getattr(event.reply, "message_id", None) == anchor.message_id
 
 
 @dataclass(slots=True)

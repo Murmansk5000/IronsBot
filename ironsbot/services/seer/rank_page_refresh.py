@@ -79,6 +79,7 @@ class RankPageRefreshService:
         rank_keys: Sequence[str] | None = None,
         *,
         background: bool = False,
+        user_id: int | None = None,
     ) -> RankPageRefreshResult:
         if self._lock.locked():
             logger.info(
@@ -99,6 +100,7 @@ class RankPageRefreshService:
                 game,
                 rank_keys,
                 background=background,
+                user_id=user_id,
             )
 
     async def _refresh_unlocked(
@@ -107,6 +109,7 @@ class RankPageRefreshService:
         rank_keys: Sequence[str] | None,
         *,
         background: bool,
+        user_id: int | None,
     ) -> RankPageRefreshResult:
         targets = self.preview(rank_keys)
         if self.config.pages_per_run_min > 0 and targets:
@@ -125,6 +128,7 @@ class RankPageRefreshService:
                     game,
                     target,
                     background=background,
+                    user_id=user_id,
                 )
             except Exception as error:  # noqa: BLE001
                 result.failures.append(
@@ -157,6 +161,7 @@ class RankPageRefreshService:
         target: RankPageRefreshTarget,
         *,
         background: bool,
+        user_id: int | None,
     ) -> None:
         async def fetch() -> None:
             action_name = "后台刷榜缓存" if background else "手动刷新榜单缓存"
@@ -183,7 +188,7 @@ class RankPageRefreshService:
             return
         await self.requests.run(
             fetch,
-            user_id=None,
+            user_id=user_id,
             label="后台刷榜缓存" if background else "手动刷新榜单缓存",
             background=background,
         )
