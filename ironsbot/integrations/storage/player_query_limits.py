@@ -25,11 +25,16 @@ CREATE TABLE IF NOT EXISTS player_query_usage (
 )
 """
 _MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
+MIGRATION_NAMESPACE = "player_query_limits"
 
 
 class SqlitePlayerQueryLimitStore:
     def __init__(self, path: str | Path) -> None:
-        self._database = SqliteDatabase(path, migrations=_MIGRATIONS)
+        self._database = SqliteDatabase(
+            path,
+            migrations=_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
+        )
 
     def status(  # noqa: PLR0913
         self,
