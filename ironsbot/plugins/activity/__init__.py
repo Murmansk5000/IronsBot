@@ -14,7 +14,7 @@ from nonebot.rule import Rule
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
     is_soon_ending_seer_activity_text,
@@ -63,7 +63,7 @@ def install(
             "seer_activity_current",
             help_ids=("activity.current",),
         ),
-        rule=Rule(_is_current_seer_activity_command) & no_reply(),
+        rule=Rule(_is_current_seer_activity_command) & command_input(),
         permission=SUPERUSER,
         priority=registry.priority("activity"),
         block=True,
@@ -82,7 +82,7 @@ def install(
                 )
             )
             & Rule(_is_soon_ending_seer_activity_command)
-            & no_reply()
+            & command_input()
         ),
         priority=registry.priority("activity"),
         block=True,

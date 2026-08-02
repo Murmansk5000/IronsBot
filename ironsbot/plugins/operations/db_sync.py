@@ -14,7 +14,7 @@ from nonebot.rule import Rule
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.data_sync import DataSyncService
@@ -70,7 +70,7 @@ def install(registry: MatcherRegistry, service: DataSyncService) -> None:
             "data_sync",
             help_ids=("db_sync.update", "db_sync.force_update"),
         ),
-        rule=Rule(_is_manual_sync_command) & no_reply(),
+        rule=Rule(_is_manual_sync_command) & command_input(),
         permission=SUPERUSER,
         priority=registry.priority("db_sync"),
         block=True,

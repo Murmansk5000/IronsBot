@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.rules import command_input, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -55,7 +55,7 @@ def install(group: SeerMatcherGroup) -> None:
             rule=seer_feature_rule(group.features, "seer_equipment")
             & startswith_or_endswith(prefixes, suffixes=suffix)
             & not_rank_query
-            & no_reply(),
+            & command_input(),
             priority=group.matcher_priority("seer_equipment"),
         )
         matcher.append_handler(

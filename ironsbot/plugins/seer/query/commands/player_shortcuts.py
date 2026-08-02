@@ -16,7 +16,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
@@ -129,7 +129,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_shortcut)
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
