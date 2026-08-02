@@ -70,6 +70,7 @@ MIGRATIONS = (
     SqliteMigration(1, SCHEMA),
     SqliteMigration(2, PRIVATE_SUBSCRIPTION_SCHEMA),
 )
+MIGRATION_NAMESPACE = "team_resources"
 
 
 class TeamResourceSubscriptionStore:
@@ -310,6 +311,7 @@ class TeamResourceSubscriptionStore:
         return SqliteDatabase(
             self.path,
             migrations=MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
         ).connect()
 
 def _row_to_subscription(

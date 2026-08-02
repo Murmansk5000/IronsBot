@@ -159,6 +159,8 @@ from ironsbot.services.team.audit import TeamAuditService
 from ironsbot.services.team.resource import TeamResourceService
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nonebot.internal.driver import Driver
 
     from ironsbot.config.models.activity import ActivityConfig
@@ -235,6 +237,7 @@ class Application:
 
 def _build_activity_service(  # noqa: PLR0913 - composition root
     config: ActivityConfig,
+    runtime_state_path: Path,
     features: FeatureService,
     message_delivery: MessageDelivery,
     databases: DatabaseManager,
@@ -242,7 +245,7 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
     notice_source: UnityNoticeSource,
     message_limiter: MessageLimiter,
 ) -> ActivityService:
-    sent_store = ActivitySentStore(config.cache_path)
+    sent_store = ActivitySentStore(runtime_state_path)
     repository = ActivityRepository()
 
     def load_rows():
@@ -340,9 +343,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         features,
         task_owner.create,
     )
-    subscriptions = PushUnsubscribeStore(
-        settings.messaging.push_unsubscribe.data_path
-    )
+    subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
     delivery = OneBotDelivery(
         outbound,
         settings.messaging.push_unsubscribe,
@@ -358,6 +359,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     activity = _build_activity_service(
         settings.activity,
+        settings.paths.runtime_state,
         features,
         delivery,
         databases,
@@ -422,9 +424,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         targets=BiliTargetService(
             settings.bilibili,
             features,
-            SqliteBiliPushPreferenceStore(
-                bili_data_dir / "push_preferences.sqlite"
-            ),
+            SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
             BiliAccountNames(
                 partial(fetch_bili_account_name, http_clients.origin)
@@ -465,9 +465,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     team_resource = TeamResourceService(
         settings.seer.team_resource,
-        TeamResourceSubscriptionStore(
-            settings.seer.team_resource.subscription_path
-        ),
+        TeamResourceSubscriptionStore(settings.paths.qq_state),
         headless.primary,
         settings.onebot_references,
         features,
@@ -475,9 +473,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     team_audit = TeamAuditService(
         settings.messaging.team_audit_welcome,
-        SqliteTeamAuditReminderStore(
-            settings.messaging.team_audit_welcome.followup_cache_path
-        ),
+        SqliteTeamAuditReminderStore(settings.paths.runtime_state),
         features,
         delivery,
         OneBotGroupProbe(),
@@ -503,14 +499,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         render_html_template,
         settings.runtime.concurrency.render_max_concurrent,
     )
-    player_bindings = SqlitePlayerBindingStore(
-        settings.seer.player.binding.path
-    )
+    player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
         player_bindings,
         features,
-        SqlitePlayerQueryLimitStore(settings.seer.player.query_limits.path),
+        SqlitePlayerQueryLimitStore(settings.paths.qq_state),
     )
     player_requests = PlayerRequestProtectionService(
         settings.seer.player.request_protection,
@@ -536,7 +530,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     rank_display = RankDisplayService(
         settings.seer.rank,
         settings.onebot_references,
-        SqliteRankDisplayStore(settings.seer.rank.display_limit_path),
+        SqliteRankDisplayStore(settings.paths.qq_state),
     )
     rank_page_refresh = RankPageRefreshService(
         settings.seer.rank.page_refresh,
@@ -688,6 +682,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_details=player_detail_extensions,
         scheduler=scheduler,
         admin_notices=admin_notices,
+        qq_state_path=settings.paths.qq_state,
+        runtime_state_path=settings.paths.runtime_state,
         settings=settings.operations.private_extensions.settings,
     )
     docker_update = DockerUpdateService(

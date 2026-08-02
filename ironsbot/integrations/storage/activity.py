@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sent_activity_reminders (
 SENT_ACTIVITY_REMINDERS_MIGRATIONS = (
     SqliteMigration(1, (SENT_ACTIVITY_REMINDERS_SCHEMA,)),
 )
+MIGRATION_NAMESPACE = "activity_reminder"
 
 
 class ActivitySentStore:
@@ -36,6 +37,7 @@ class ActivitySentStore:
         self._database = SqliteDatabase(
             path,
             migrations=SENT_ACTIVITY_REMINDERS_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
         )
 
     def filter_unsent(

@@ -393,7 +393,6 @@ example = ["team_resource_subscription"]
 [seer.team_resource]
 times = ["23:00"]
 commands = ["战队"]
-subscription_path = "data/seer/team_resource_subscriptions.sqlite"
 default_threshold = 1000
 default_at_users = ["owner"]
 query_timeout_seconds = 20
@@ -410,7 +409,7 @@ Then group owners/admins manage subscriptions in QQ:
 取消订阅战队123456
 ```
 
-Keep real QQ group IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Runtime team subscriptions are stored in `subscription_path`; do not commit that database to GitHub.
+Keep real QQ group IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Runtime team subscriptions are stored in the shared `[paths].qq_state` database; do not commit that database to GitHub.
 
 ## Unraid
 

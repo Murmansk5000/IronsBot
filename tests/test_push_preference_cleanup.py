@@ -63,7 +63,7 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
     )
     messaging = MessagingService(
         MessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
+            push_unsubscribe=PushUnsubscribeConfig(),
             schedules=[
                 MessageScheduledAction(
                     id="daily",
