@@ -78,12 +78,13 @@ def _delivery_service(
 
 
 def test_dynamic_renderers_split_link_from_compact_content() -> None:
-    link_rendered = str(build_dynamic_link_message(_item()))
+    link_rendered = str(build_dynamic_link_message(_item(), PUB_TS))
     content_rendered = str(build_dynamic_content_message(_item()))
 
-    assert "传送门:" in link_rendered
+    assert "传送门：" in link_rendered
     assert "正文内容" not in link_rendered
-    assert "账号：" not in link_rendered
+    assert "账号：赛尔号" in link_rendered
+    assert "B站动态更新" in link_rendered
     assert "正文内容" in content_rendered
     assert "[CQ:image" in content_rendered
     assert "传送门:" not in content_rendered
@@ -167,11 +168,13 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     assert sent[0]["group_ids"] == [1002]
     assert sent[1]["group_ids"] == [1001]
     assert sent[2]["group_ids"] == [1001]
-    assert "传送门:" in str(sent[1]["message"])
-    assert sent[1].get("subscription_key") is None
-    assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
+    assert "B站动态更新" in str(sent[1]["message"])
+    assert "传送门：" in str(sent[1]["message"])
+    assert sent[1]["subscription_key"] == bili_push_subscription_key(1310714247)
+    assert "subscription_key" not in sent[2]
     assert "这是忠实摘要。" in str(sent[2]["message"])
     assert "[CQ:image" in str(sent[2]["message"])
+    assert "传送门：" not in str(sent[2]["message"])
 
 
 @pytest.mark.asyncio
@@ -208,6 +211,63 @@ async def test_short_full_dynamic_does_not_call_ai(
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
     assert "不会触发 AI 的短动态正文" in str(sent[-1]["message"])
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_puts_target_hints_on_link_message_only(
+    tmp_path: Path,
+) -> None:
+    sent: list[object] = []
+
+    class ApplyingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            *,
+            group_ids: list[int],
+            private_user_ids: list[int],
+            **kwargs: object,
+        ) -> None:
+            limiter = kwargs.get("message_limiter")
+            for group_id in group_ids:
+                target = MessageTarget("group", group_id)
+                sent.append(
+                    limiter(message, target) if callable(limiter) else message
+                )
+            for user_id in private_user_ids:
+                target = MessageTarget("private", user_id)
+                sent.append(
+                    limiter(message, target) if callable(limiter) else message
+                )
+
+    runtime = build_test_runtime(
+        feature_config=FeatureConfig(group_policy={"1001": ["fire_manual_ad"]})
+    )
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", ApplyingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        partial(append_fire_manual_ad_for_target, runtime.features),
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert len(sent) == EXPECTED_FULL_PUSH_COUNT
+    assert "B站动态更新" in str(sent[0])
+    assert "传送门：" in str(sent[0])
+    assert FIRE_MANUAL_LINK_MESSAGE in str(sent[0])
+    assert BILI_PUSH_ADMIN_HINT in str(sent[0])
+    assert "正文内容" in str(sent[1])
+    assert "传送门：" not in str(sent[1])
+    assert FIRE_MANUAL_LINK_MESSAGE not in str(sent[1])
+    assert BILI_PUSH_ADMIN_HINT not in str(sent[1])
 
 
 def test_delivery_service_appends_admin_hint_once_per_day(

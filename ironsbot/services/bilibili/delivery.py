@@ -28,7 +28,7 @@ BILI_PUSH_ADMIN_HINT = (
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-DynamicLinkRenderer = Callable[[dict[str, Any]], Any | None]
+DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
 DynamicSummarizer = Callable[[str, int], Awaitable[str | None]]
 HintAppender = Callable[[Any, str], Any]
@@ -50,18 +50,18 @@ class BilibiliPushDeliveryService:
     async def send(
         self,
         item: dict[str, Any],
-        _pub_ts: int,
+        pub_ts: int,
         author_mid: int,
         targets: BiliPushTargets,
     ) -> None:
         subscription_key = bili_push_subscription_key(author_mid)
-        await self._send_link_only_targets(item, author_mid, targets)
+        await self._send_link_only_targets(item, pub_ts, author_mid, targets)
 
         full_targets = self._subscribed_full_targets(targets, subscription_key)
         if not full_targets.has_targets:
             return
 
-        link_message = self.render_link(item)
+        link_message = self.render_link(item, pub_ts)
         if link_message is None:
             return
         await self.delivery.broadcast(
@@ -70,6 +70,8 @@ class BilibiliPushDeliveryService:
             private_user_ids=full_targets.full_user_ids,
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            message_limiter=self._transform_target_message,
+            subscription_key=subscription_key,
         )
 
         content = dynamic_content(item)
@@ -83,19 +85,18 @@ class BilibiliPushDeliveryService:
             private_user_ids=targets.full_user_ids,
             action_name=FULL_DYNAMIC_PUSH_ACTION,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-            message_limiter=self._transform_target_message,
-            subscription_key=subscription_key,
         )
 
     async def _send_link_only_targets(
         self,
         item: dict[str, Any],
+        pub_ts: int,
         author_mid: int,
         targets: BiliPushTargets,
     ) -> None:
         if not targets.link_group_ids and not targets.link_user_ids:
             return
-        message = self.render_link(item)
+        message = self.render_link(item, pub_ts)
         if message is None:
             return
         await self.delivery.broadcast(
