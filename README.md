@@ -146,7 +146,8 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
-  `HEADLESS_SEER_PASSWORD`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+  `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
+  `HEADLESS_SEER_PASSWORD_<名称>` 对、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -156,9 +157,16 @@ ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
+# 仅在 TOML 配置额外无头工作账号时需要
+HEADLESS_SEER_WORKER_2_USER_ID=
+HEADLESS_SEER_WORKER_2_PASSWORD=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
+
+额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
+所有健康账号会组成可互换的工作池；账号本身和密码仍只写在容器环境变量中。
+示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
@@ -347,14 +355,64 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 - SeerAPI / alias SQLite 缓存
 - B站 Cookie 与动态状态
 - 米米号样本排行 SQLite
-- QQ 用户默认米米号绑定 SQLite
-- 玩家查询每日额度 SQLite
+- `data/state/qq_state.sqlite`：QQ 用户与群聊低频状态，包括默认米米号、查询额度、推送偏好、榜单显示条数和战队订阅
+- `data/state/runtime_state.sqlite`：活动提醒、战队审核提醒、幸运橱窗等运行任务检查点
 - 全服榜页 SQLite 缓存
-- 皮肤价格、渲染缓存等运行数据
+- 阵容、AI 对话、B站动态历史、皮肤价格和渲染缓存等独立大数据
+
+大型缓存按生命周期保持独立；不会为了减少文件数量而把榜单事实、阵容图片 Blob 或 AI
+对话历史塞进共享状态库。
+
+### 状态库迁移
+
+已有部署升级后，先停掉机器人，再用新镜像把旧的小型 SQLite 一次性迁移到两个共享状态库。
+命令默认只预览；确认输出后再加 `--apply`。迁移会先完整备份旧库，校验行数、主键和
+`PRAGMA integrity_check`，成功后才原子安装新库并移除旧库。
+
+Unraid 默认数据挂载为 `/mnt/user/appdata/ironsbot/data`：
+
+```bash
+docker pull murmansk5000/ironsbot:latest
+docker stop ironsbot
+
+# 预览，不修改文件
+docker run --rm --entrypoint python \
+  -v /mnt/user/appdata/ironsbot/data:/app/data \
+  murmansk5000/ironsbot:latest \
+  -m ironsbot.state_migration --data-root /app/data
+
+# 确认后执行
+docker run --rm --entrypoint python \
+  -v /mnt/user/appdata/ironsbot/data:/app/data \
+  murmansk5000/ironsbot:latest \
+  -m ironsbot.state_migration --data-root /app/data --apply
+
+docker start ironsbot
+```
+
+备份默认位于 `data/state-migration-backups/<UTC时间>/`。稳定运行 7 天后可手动删除对应备份。
+若 TOML 自定义了 `[paths].qq_state` 或 `[paths].runtime_state`，迁移时同时传入
+`--qq-state` 和 `--runtime-state`；相对路径均以 `--data-root` 为基准。
+
+迁移后从 TOML 删除以下旧字段；新版本不再读取它们：
+
+- `activity.cache_path`
+- `messaging.push_unsubscribe.data_path`
+- `messaging.team_audit_welcome.followup_cache_path`
+- `seer.player.binding.path`
+- `seer.player.query_limits.path`
+- `seer.rank.display_limit_path`
+- `seer.team_resource.subscription_path`
+- `operations.private_extensions.settings.skin_window.cache_path`
+
+`seer.player.lineup.cache_path` 不在收口范围内，阵容图片缓存仍保持独立。
+
+主数据发布文件现使用 `data/seerapi-data.sqlite`。确认新版本已成功下载并能查询最新数据后，
+旧的 `data/ironsbot-data.sqlite` 可手动删除；状态库迁移命令不会自动删除主数据文件。
 
 超级管理员发送 `/更新数据` 时，IronsBot 会先按
 `[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
-GitHub Actions 流水线，再下载最新 `ironsbot-data.sqlite`。默认示例流水线为：
+GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
 2. `Murmansk-Seer/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出补充 JSON。
@@ -442,8 +500,11 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置，阵容功能不再
-拥有独立账号、密码或重连策略。
+主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置。额外
+worker 使用相同的任意后缀。模板默认提供 worker 1（无后缀）、2、3 三个账号；之后复制
+`HEADLESS_SEER_USER_ID_2` / `HEADLESS_SEER_PASSWORD_2` 的格式即可增加任意数量。
+也可以按用途改用 `RANK_A` 这类名称后缀。每个账号独立连接，查询和刷榜可并行。阵容功能
+仍复用主无头账号，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 

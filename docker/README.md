@@ -245,6 +245,9 @@ ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
 HEADLESS_SEER_USER_ID=
 HEADLESS_SEER_PASSWORD=
+# Add only when [[operations.headless.workers]] references these names.
+HEADLESS_SEER_WORKER_2_USER_ID=
+HEADLESS_SEER_WORKER_2_PASSWORD=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -256,6 +259,8 @@ GITHUB_WORKFLOW_TOKEN=
 | `AI_KEY` | AI chat API key. |
 | `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
 | `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
+| `HEADLESS_SEER_WORKER_*_USER_ID` | Additional interchangeable query account referenced by `[[operations.headless.workers]]`. |
+| `HEADLESS_SEER_WORKER_*_PASSWORD` | Password for the corresponding additional query account. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
@@ -388,7 +393,6 @@ example = ["team_resource_subscription"]
 [seer.team_resource]
 times = ["23:00"]
 commands = ["战队"]
-subscription_path = "data/seer/team_resource_subscriptions.sqlite"
 default_threshold = 1000
 default_at_users = ["owner"]
 query_timeout_seconds = 20
@@ -405,7 +409,7 @@ Then group owners/admins manage subscriptions in QQ:
 取消订阅战队123456
 ```
 
-Keep real QQ group IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Runtime team subscriptions are stored in `subscription_path`; do not commit that database to GitHub.
+Keep real QQ group IDs in a mounted config file outside the repository, such as an Unraid appdata directory. Runtime team subscriptions are stored in the shared `[paths].qq_state` database; do not commit that database to GitHub.
 
 ## Unraid
 

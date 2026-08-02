@@ -121,10 +121,20 @@ log_file = "logs/ironsbot.log"
 # EN: ERROR/CRITICAL log path.
 # ZH: ERROR/CRITICAL 独立日志路径。
 error_log_file = "logs/ironsbot.error.log"
-# Default: "render_cache"
-# EN: Rendered image cache directory.
-# ZH: 渲染图片缓存目录。
-render_cache = "render_cache"
+# Default: "cache"
+# EN: Root directory for disposable caches. It may be deleted safely.
+# ZH: 可安全整体删除的临时缓存根目录。
+cache_root = "cache"
+# Default: "data/state/qq_state.sqlite"
+# EN: Consolidated low-volume QQ user and group state.
+# ZH: QQ 用户与群聊低频状态统一数据库；保存绑定、额度、退订、偏好和订阅。
+qq_state = "data/state/qq_state.sqlite"
+# Default: "data/state/runtime_state.sqlite"
+# EN: Consolidated operational checkpoint state.
+# ZH: 运行任务状态统一数据库；保存活动提醒、审核提醒等检查点。
+runtime_state = "data/state/runtime_state.sqlite"
+# Existing deployments must migrate the old small state databases while the
+# bot is stopped. See README "状态库迁移"; do not move files by hand.
 
 [features]
 # Default: true
@@ -256,11 +266,10 @@ hint_max_per_window = 3
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
-[features.priority]
-# Default: true; EN: Enable superuser priority gate. ZH: 启用超级管理员优先级。
-enabled = true
-# Default: 300.0; EN: Normal event wait timeout seconds. ZH: 普通用户等待超管处理的超时秒数。
-wait_timeout_seconds = 300.0
+[runtime.concurrency]
+# Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
+# ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
+render_max_concurrent = 1
 
 [ai]
 # Default: "https://api.deepseek.com"
@@ -404,12 +413,6 @@ grace_minutes = 15
 # ZH: 是否只读取活动中心展示的活动。
 # Example: true
 only_shown = true
-
-# Default: "data/activity_reminder/sent.sqlite"
-# EN: SQLite path recording sent reminders.
-# ZH: 已发送活动提醒记录数据库。
-# Example: "data/activity/sent.sqlite"
-cache_path = "data/activity_reminder/sent.sqlite"
 
 # Default: built-in reminder template.
 # EN: Reminder message template.
@@ -581,10 +584,6 @@ commands = ["td", "退订"]
 # EN: Commands that open the push subscription management menu.
 # ZH: 打开推送订阅管理菜单的口令。
 restore_commands = ["订阅", "恢复订阅", "推送管理"]
-# Default: "data/messaging/push_unsubscriptions.sqlite"
-# EN: SQLite path for push unsubscribe records.
-# ZH: 推送退订记录 SQLite 路径。
-data_path = "data/messaging/push_unsubscriptions.sqlite"
 # Default: built-in hint.
 # EN: Hint appended to private pushes.
 # ZH: 追加到私聊推送末尾的退订提示。
@@ -670,7 +669,7 @@ followup_after_hours = 24.0
 # Default: built-in follow-up reminder.
 # EN: Follow-up message. Available placeholders: {hours}, {group_id}, {user_id}.
 # ZH: 二次提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
-followup_message = "你加入战队审核群已经 {hours:g} 小时了，还没有发送审核信息。\n如果想加入战队，请发送“米米号+你的米米号”供管理员审核；如果已经加入主群，或者不想加入战队，请退出本审核群。"
+followup_message = "你加入战队审核群已经 {hours:g} 小时了，仍在审核群。\n审核群仅供入队审核使用；如果已完成审核、已加入主群，或不再申请加入战队，请退出本审核群。"
 
 # Default: true
 # EN: Send a final leave reminder if the newcomer is still in the audit group.
@@ -686,11 +685,6 @@ final_followup_after_hours = 48.0
 # EN: Final reminder message. Available placeholders: {hours}, {group_id}, {user_id}.
 # ZH: 最终退群提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
 final_followup_message = "你加入战队审核群已经 {hours:g} 小时了，仍然还在审核群。\n如果已经加入主群，或者不想加入战队，请退出本审核群。"
-
-# Default: "data/team_audit_welcome/pending.sqlite"
-# EN: SQLite path used to persist pending reminders across restarts.
-# ZH: 保存待发送 24/48 小时提醒的 SQLite 路径，防止机器人重启后丢失提醒。
-followup_cache_path = "data/team_audit_welcome/pending.sqlite"
 
 [messaging.sendpic]
 # Default: null/omitted
@@ -788,10 +782,6 @@ detail_timeout_seconds = 90.0
 sections = ["all"]
 
 [seer.player.binding]
-# Default: "data/seer/player_bindings.sqlite"
-# EN: Stores each QQ user's default Seer player ID and first-query choice.
-# ZH: 保存每个 QQ 用户的默认米米号及首次查询选择。
-path = "data/seer/player_bindings.sqlite"
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
 # ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
 change_cooldown_days = 3
@@ -812,10 +802,6 @@ unbound_daily_limit = 1
 # EN: Whether superusers bypass these daily budgets.
 # ZH: 超级管理员是否绕过每日额度。
 superuser_bypass = true
-# EN: SQLite state file for daily usage records.
-# ZH: 每日查询额度记录的 SQLite 文件。
-path = "data/seer/player_query_limits.sqlite"
-
 [seer.player.request_protection]
 # Default: true. EN: Serialize live player-related requests to one workflow at a time.
 # ZH: 默认开启。所有玩家相关实时请求同时只执行一个，避免无头客户端并发封包。
@@ -917,10 +903,6 @@ max_display_limit = 100
 # EN: Optional per-group display defaults. Keys can be group aliases or QQ group IDs.
 # ZH: 可选的按群默认显示条数；键可以写群别名或 QQ 群号。
 display_limits = {}
-# Default: "data/seer/rank_display_limits.sqlite"
-# EN: Runtime group overrides set by group owners/admins.
-# ZH: 群主/管理员在群内修改榜单默认显示条数后的持久化 SQLite。
-display_limit_path = "data/seer/rank_display_limits.sqlite"
 # 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
 [seer.rank.player_lookup]
 # Default: 8; EN: Timeout for one official leaderboard page request.
@@ -1039,6 +1021,18 @@ autocard_name = "群星牌赛季"
 # ZH: 可选的群星牌赛季结束时间；填写后“赛季倒计时”会显示群星牌剩余时间。
 # autocard_end_time = 2026-07-17T10:00:00+08:00
 
+[seer.new_content]
+# Default: []; EN: Categories expanded directly in the "新增内容" root menu.
+# ZH: “新增内容”总菜单里直接展开条目的分类；未列出的分类保持折叠。
+# Available values: achievement, pet, pet_skin, skill, mintmark, suit, equip,
+# mount, autocard_card, autocard_role, autocard_sanctuary_effect. Use all to
+# expand every category.
+# 可选值：achievement（成就）、pet（精灵）、pet_skin（皮肤）、skill（技能）、
+# mintmark（刻印）、suit（套装）、equip（部件）、mount（座驾）、
+# autocard_card（群星牌卡牌）、autocard_role（群星牌角色）、
+# autocard_sanctuary_effect（群星牌圣域）。填写 all 可展开全部分类。
+expanded_categories = []
+
 [seer.local_rank]
 # Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
 enabled = true
@@ -1071,10 +1065,6 @@ enabled = true
 times = []
 # Default: ["战队"]; EN: Subscribed team query commands. ZH: 本群订阅战队查询口令。
 commands = ["战队"]
-# Default: "data/seer/team_resource_subscriptions.sqlite"
-# EN: Runtime subscription database. Group owners/admins manage team IDs in QQ.
-# ZH: 运行时订阅数据库；群主/管理员在 QQ 群里添加或取消订阅，不再写 TOML。
-subscription_path = "data/seer/team_resource_subscriptions.sqlite"
 # Default: 1000; EN: Default low-resource threshold for new QQ-managed subscriptions.
 # ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。
 default_threshold = 1000
@@ -1126,13 +1116,13 @@ interval_enabled = true
 
 [operations.data_sync.sources.seerapi]
 # Default: IronsBot data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
-url = "https://github.com/Murmansk-Seer/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite"
+url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite"
 # Default: IronsBot data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
-fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/ironsbot-data-latest/ironsbot-data.sqlite.sha256"
+fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
 # Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
 interval_minutes = 60
-# Default: "data/ironsbot-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
-local_path = "data/ironsbot-data.sqlite"
+# Default: "data/seerapi-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
+local_path = "data/seerapi-data.sqlite"
 
 [operations.data_sync.sources.seerapi.remote_build]
 # Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
@@ -1180,7 +1170,7 @@ inputs = { debug_enabled = false, force = false }
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
 repository = "Murmansk-Seer/seerapi"
-workflow_id = "build-ironsbot-data-db.yml"
+workflow_id = "build-seerapi-data-db.yml"
 ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
@@ -1193,6 +1183,11 @@ interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
 
 [operations.headless]
+# EN: Login credentials are environment-only. The unsuffixed HEADLESS_SEER_* pair
+# is worker 1; the environment template includes workers _2 and _3, and more
+# matching suffix pairs can be added for parallel workers.
+# ZH: 登录凭据仅通过环境变量设置。无后缀 HEADLESS_SEER_* 是主 worker；
+# 环境变量模板默认包含 worker 2、3，追加同名后缀账号对即可增加并行 worker。
 # Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
 login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
 # Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。
@@ -1205,6 +1200,17 @@ reconnect_retries = -1
 reconnect_delay = 5.0
 # Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
 reconnect_delay_max = 120.0
+# EN: Additional public-query workers are interchangeable. Their account ID and
+# password are read only from the named environment variables.
+# ZH: 可继续增加可互换的公共查询账号；米米号和密码只从指定环境变量读取。
+# [[operations.headless.workers]]
+# name = "worker_2"
+# user_id_env = "HEADLESS_SEER_WORKER_2_USER_ID"
+# password_env = "HEADLESS_SEER_WORKER_2_PASSWORD"
+# [[operations.headless.workers]]
+# name = "worker_3"
+# user_id_env = "HEADLESS_SEER_WORKER_3_USER_ID"
+# password_env = "HEADLESS_SEER_WORKER_3_PASSWORD"
 
 [operations.headless_notice]
 # EN: Notices are sent to superusers and admin_notice groups.
