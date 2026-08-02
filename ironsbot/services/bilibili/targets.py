@@ -50,7 +50,8 @@ class BiliTargetRule:
     def configured_mode_for_uid(self, uid: int) -> BiliPushMode | None:
         if uid not in self.uids:
             return None
-        return self.modes.get(uid, self.target_mode)
+        configured_mode = self.modes.get(uid)
+        return configured_mode if configured_mode is not None else self.target_mode
 
 @dataclass(frozen=True, slots=True)
 class BiliPushTargets:

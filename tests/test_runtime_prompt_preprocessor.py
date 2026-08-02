@@ -18,7 +18,11 @@ def test_command_preprocessor_keeps_queued_conversations_open(
 
     event = SimpleNamespace(get_session_id=lambda: "group_1_user_2")
     matcher = SimpleNamespace(priority=1)
-    asyncio.run(prompts._invalidate_prompt_on_command(matcher, event))
+
+    async def invoke_preprocessor() -> None:
+        await prompts._invalidate_prompt_on_command(matcher, event)
+
+    asyncio.run(invoke_preprocessor())
 
     manager.invalidate.assert_called_once_with("group_1_user_2")
     manager.invalidate_event_conversations.assert_not_called()
