@@ -885,6 +885,30 @@ change_cooldown_days = 5
     )
 
 
+def test_cache_root_accepts_relative_and_absolute_paths(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[paths]
+cache_root = "runtime-cache"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert load_settings(config_path).paths.cache_root == Path("runtime-cache")
+
+    absolute_root = tmp_path / "absolute-cache"
+    config_path.write_text(
+        f"""
+[paths]
+cache_root = "{absolute_root.as_posix()}"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert load_settings(config_path).paths.cache_root == absolute_root
+
+
 def test_removed_player_binding_field_is_ignored(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1216,6 +1240,6 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     )
     assert app_config.messaging.meeting.commands == ["开播", "会议"]
     assert "aliases" in app_config.operations.data_sync.sources
-    assert app_config.paths.render_cache == Path("render_cache")
+    assert app_config.paths.cache_root == Path("cache")
     assert app_config.runtime.concurrency.render_max_concurrent == 1
     assert app_config.seer.render.cache_max_size_mb == DEFAULT_RENDER_CACHE_MAX_SIZE_MB

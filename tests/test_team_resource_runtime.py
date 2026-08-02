@@ -192,7 +192,7 @@ def test_team_resource_manage_uses_command_cooldown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies() -> None:
+async def test_team_resource_manage_rule_allows_manual_mentions_and_replies() -> None:
     message = Message(
         [
             MessageSegment.text(f"订阅战队{TEAM_ID} {TEAM_THRESHOLD} "),
@@ -213,7 +213,7 @@ async def test_team_resource_manage_rule_allows_qq_mentions_but_not_replies() ->
         event,
         {},
     )
-    assert not await matcher.rule(
+    assert await matcher.rule(
         cast("Bot", None),
         replied_event,
         {},

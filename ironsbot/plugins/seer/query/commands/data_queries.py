@@ -23,7 +23,7 @@ from ironsbot.runtime.matchers import (
     update_queued_menu_anchor,
 )
 from ironsbot.runtime.prompts import PROMPT_STATE_KEY, Prompt, PromptItem, enter_prompt
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.seer.autocard import AutocardPromptValue
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_query_commands import (
@@ -120,7 +120,7 @@ def install(group: SeerMatcherGroup) -> None:
             service.season_countdown,
         ),
     )
-    rule = seer_feature_rule(group.features, "seer_data") & no_reply()
+    rule = seer_feature_rule(group.features, "seer_data") & command_input()
     for messages, command_id, operation in commands:
         matcher = group.on_fullmatch(
             messages,
@@ -140,7 +140,7 @@ def _install_new_content_commands(
     group: SeerMatcherGroup,
     service: SeerDataQueryService,
 ) -> None:
-    root_rule = seer_feature_rule(group.features, "seer_data") & no_reply()
+    root_rule = seer_feature_rule(group.features, "seer_data") & command_input()
     root = group.on_fullmatch(
         NEW_CONTENT_COMMANDS,
         policy=CommandPolicy.command(

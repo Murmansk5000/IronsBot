@@ -94,7 +94,6 @@ registry.install_postprocessor()
 runtime_paths = [
     pathlib.Path("data"),
     pathlib.Path("cache"),
-    pathlib.Path("render_cache"),
 ]
 created_paths = [path.as_posix() for path in runtime_paths if path.exists()]
 created_db_files = [

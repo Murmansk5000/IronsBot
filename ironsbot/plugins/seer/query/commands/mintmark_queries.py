@@ -2,7 +2,7 @@
 """Mintmark and gem query matchers."""
 
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.rules import command_input, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -20,7 +20,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("刻印")
         & not_rank_query
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_mintmark"),
     )
     mintmark_matcher.append_handler(
@@ -39,7 +39,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & startswith_or_endswith("宝石")
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_mintmark"),
     )
     gem_matcher.append_handler(

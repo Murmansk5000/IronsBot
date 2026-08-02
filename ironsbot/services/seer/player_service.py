@@ -174,6 +174,22 @@ class PlayerDetailService:
         self._store_reply(player_id, command.kind, reply)
         return reply
 
+    async def cached_or_inflight_reply(
+        self,
+        player_id: int,
+        kind: PlayerShortcutKind,
+    ) -> QueryReply | None:
+        if (cached := self._cached_reply(player_id, kind)) is not None:
+            return cached
+        refresh = self._background_refreshes.get(player_id)
+        if refresh is not None and self._refresh_expired(refresh):
+            self._expire_background_refresh(player_id, refresh)
+            refresh = None
+        future = None if refresh is None else refresh.replies.get(kind)
+        if future is None:
+            return None
+        return (await asyncio.shield(future)) or self._cached_reply(player_id, kind)
+
     async def _fetch_shortcut(
         self,
         game: HeadlessGame,
@@ -290,13 +306,6 @@ class PlayerDetailService:
         self._cached_replies.pop(cache_key, None)
         return None
 
-    def cached_reply(
-        self,
-        player_id: int,
-        kind: PlayerShortcutKind,
-    ) -> QueryReply | None:
-        return self._cached_reply(player_id, kind)
-
     def _store_reply(
         self,
         player_id: int,
@@ -318,16 +327,6 @@ class PlayerDetailService:
         for cache_key, cached in tuple(self._cached_replies.items()):
             if cached.expires_at <= now:
                 self._cached_replies.pop(cache_key, None)
-
-    def has_cached_or_inflight(
-        self,
-        player_id: int,
-        kind: PlayerShortcutKind,
-    ) -> bool:
-        if self._cached_reply(player_id, kind) is not None:
-            return True
-        refresh = self._background_refreshes.get(player_id)
-        return refresh is not None and kind in refresh.replies
 
     def has_inflight_refresh(
         self,
@@ -622,7 +621,12 @@ class PlayerService(PlayerAccountPolicyMixin):
             return QueryReply(text=unbound_player_shortcut_message())
         if not is_valid_player_id(player_id):
             return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
-        cached = self._details.cached_reply(player_id, command.kind)
+        cached = await self._details.cached_or_inflight_reply(
+            player_id,
+            command.kind,
+        )
+        if cached is not None:
+            return cached
         try:
             quota_message = self._check_quota(
                 qq_user_id=qq_user_id,
@@ -649,20 +653,20 @@ class PlayerService(PlayerAccountPolicyMixin):
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
-            return cached or QueryReply(text=error.message)
+            return QueryReply(text=error.message)
         except PLAYER_REQUEST_ERRORS as error:
-            return cached or QueryReply(text=player_request_protection_message(error))
+            return QueryReply(text=player_request_protection_message(error))
         except (TimeoutError, asyncio.TimeoutError):
-            return cached or QueryReply(text=player_query_timeout_message(player_id))
+            return QueryReply(text=player_query_timeout_message(player_id))
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
-            return cached or QueryReply(text=self.format_error(player_id, error))
+            return QueryReply(text=self.format_error(player_id, error))
         except Exception as error:  # noqa: BLE001
-            return cached or QueryReply(
+            return QueryReply(
                 text=player_query_failure_message(player_id, error)
             )
         if quota_message:
             if not message.rank_lookup_is_lightweight:
-                return cached or QueryReply(text=quota_message)
+                return QueryReply(text=quota_message)
             return message
         if message.rank_lookup_should_charge_quota:
             self._record_successful_quota(
@@ -699,10 +703,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     game,
                     command,
                     player_id,
-                    # A cached preheat is only a quota fallback.  While the
-                    # user still has live-query quota, join/perform the live
-                    # request so the reply is not silently stale.
-                    use_cache=anchor_only,
+                    use_cache=False,
                     anchor_only=anchor_only,
                 ),
                 timeout=self._config.player.detail_timeout_seconds,

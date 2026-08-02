@@ -191,12 +191,12 @@ def test_background_refresh_reports_inflight_section(
         assert service.has_inflight_refresh(PLAYER_ID, "collection")
 
         release.set()
-        reply = await service.shortcut(
-            game,
-            PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+        reply = await service.cached_or_inflight_reply(
             PLAYER_ID,
+            "collection",
         )
 
+        assert reply is not None
         assert reply.text == "collection reply"
         assert not service.has_inflight_refresh(PLAYER_ID, "collection")
 

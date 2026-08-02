@@ -304,9 +304,14 @@ async def enter_prompt_loop(  # noqa: PLR0913
             matcher.state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
         prompt_sessions = get_prompt_session_manager(matcher)
         runtime_context = _runtime_context(matcher)
+        raw_owner_user_id = getattr(event, "user_id", None)
+        owner_user_id = (
+            raw_owner_user_id if isinstance(raw_owner_user_id, int) else None
+        )
         queued = prompt_sessions.start_queued_conversation(
             namespace=queue_namespace,
             event_session_id=queue_event_session_id or event.get_session_id(),
+            owner_user_id=owner_user_id,
             state=matcher.state,
             reply_check=queue_reply_check,
             group_reply_check=queue_group_reply_check,
