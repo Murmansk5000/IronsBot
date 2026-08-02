@@ -181,7 +181,15 @@ def _session_with_pet_partner() -> Session:
                     source,
                     updated_at
                 )
-                VALUES (4329, 15, '强化前魂印', '强化后魂印', 36696, 'test', 0)
+                VALUES (
+                    4329,
+                    15,
+                    '强化前魂印',
+                    '强化后魂印',
+                    36696,
+                    'ConfigPackage/partnerEffectUpgrade.bytes#normalized-v1',
+                    0
+                )
                 """
             )
         )
@@ -200,12 +208,34 @@ def test_load_pet_partner_reads_cost_members_and_skill_item() -> None:
         (4329, "夜魔之神"),
         (3491, "魔灵王"),
     ]
-    assert partner.before_description == "强化后魂印"
-    assert partner.after_description == "强化前魂印"
+    assert partner.before_description == "强化前魂印"
+    assert partner.after_description == "强化后魂印"
     assert partner.skill is not None
     assert partner.skill.name == "至暗·无量空邃"
     assert partner.skill.activation_item is not None
     assert partner.skill.activation_item.name == "梦夜之源"
+
+
+def test_load_pet_partner_keeps_legacy_releases_in_display_order() -> None:
+    with _session_with_pet_partner() as session:
+        session.execute(
+            text(
+                """
+                UPDATE pet_partner_upgrade
+                SET
+                    before_description = '强化后魂印',
+                    after_description = '强化前魂印',
+                    source = 'ConfigPackage/partnerEffectUpgrade.bytes'
+                WHERE pet_id = 4329
+                """
+            )
+        )
+        session.commit()
+        partner = load_pet_partner(session, 4329)
+
+    assert partner is not None
+    assert partner.before_description == "强化前魂印"
+    assert partner.after_description == "强化后魂印"
 
 
 def test_load_pet_partner_allows_an_older_database_without_tables() -> None:
