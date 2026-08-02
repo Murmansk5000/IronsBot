@@ -358,14 +358,13 @@ class PushUnsubscribeConfig(BaseModel):
     restore_commands: NormalizedStringList = Field(
         default_factory=lambda: ["订阅", "恢复订阅", "推送管理"]
     )
-    data_path: str = "data/messaging/push_unsubscriptions.sqlite"
     hint: str = "回复 TD 可管理推送订阅。"
     group_hint: str = (
         "发送 TD、订阅 或 推送管理 可查看本群推送订阅；"
         "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
     )
 
-    @field_validator("data_path", "hint", "group_hint")
+    @field_validator("hint", "group_hint")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         text = value.strip()
@@ -421,13 +420,10 @@ class TeamAuditWelcomeConfig(BaseModel):
         "你加入战队审核群已经 {hours:g} 小时了，仍然还在审核群。\n"
         "如果已经加入主群，或者不想加入战队，请退出本审核群。"
     )
-    followup_cache_path: str = "data/team_audit_welcome/pending.sqlite"
-
     @field_validator(
         "message",
         "followup_message",
         "final_followup_message",
-        "followup_cache_path",
     )
     @classmethod
     def validate_message(cls, value: str) -> str:

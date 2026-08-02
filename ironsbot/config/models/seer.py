@@ -161,7 +161,6 @@ def _normalize_int_mapping(value: object) -> object:
 class PlayerBindingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    path: SQLitePath = Path("data/seer/player_bindings.sqlite")
     change_cooldown_days: int = Field(default=3, ge=0)
 
 
@@ -173,7 +172,6 @@ class PlayerQueryLimitsConfig(BaseModel):
     other_target_action_daily_limit: int = Field(default=1, ge=0)
     unbound_daily_limit: int = Field(default=1, ge=0)
     superuser_bypass: bool = True
-    path: SQLitePath = Path("data/seer/player_query_limits.sqlite")
 
 
 class PlayerRequestProtectionConfig(BaseModel):
@@ -373,7 +371,6 @@ class RankQueryConfig(BaseModel):
         le=MAX_RANK_DISPLAY_LIMIT,
     )
     display_limits: dict[str, int] = Field(default_factory=dict)
-    display_limit_path: SQLitePath = Path("data/seer/rank_display_limits.sqlite")
     page_cache: bool = True
     page_cache_ttl_seconds: int = Field(default=3600, ge=0)
     allow_stale_cache: bool = True
@@ -438,7 +435,6 @@ class TeamResourceConfig(BaseModel):
     enabled: bool = True
     times: list[str] = Field(default_factory=list)
     commands: NormalizedStringList = Field(default_factory=lambda: ["战队"])
-    subscription_path: SQLitePath = Path("data/seer/team_resource_subscriptions.sqlite")
     default_threshold: int = Field(default=1000, ge=0)
     default_at_users: OneBotReferenceList = Field(default_factory=list)
     query_timeout_seconds: int = Field(default=20, gt=0)

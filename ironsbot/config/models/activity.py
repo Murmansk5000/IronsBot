@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ironsbot.core.commands import positive_int_list
@@ -18,7 +16,6 @@ class ActivityConfig(BaseModel):
     lead_hours: list[int] = Field(default_factory=lambda: [11, 1])
     grace_minutes: int = Field(default=15, ge=1)
     only_shown: bool = True
-    cache_path: Path = Path("data/activity_reminder/sent.sqlite")
     message: str = DEFAULT_ACTIVITY_MESSAGE
     notice_timeout_seconds: float = Field(
         default=DEFAULT_ACTIVITY_NOTICE_TIMEOUT_SECONDS,

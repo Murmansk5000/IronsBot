@@ -34,12 +34,14 @@ def test_database_creates_parent_and_applies_pragmas(tmp_path: Path) -> None:
     with SqliteDatabase(path).connect() as connection:
         journal_mode = connection.execute("PRAGMA journal_mode").fetchone()
         synchronous = connection.execute("PRAGMA synchronous").fetchone()
+        busy_timeout = connection.execute("PRAGMA busy_timeout").fetchone()
 
     assert path.exists()
     assert journal_mode is not None
     assert str(journal_mode[0]).lower() == "wal"
     assert synchronous is not None
     assert int(synchronous[0]) == 1
+    assert busy_timeout == (5000,)
 
 
 def test_database_closes_connection(tmp_path: Path) -> None:
@@ -75,6 +77,77 @@ def test_database_applies_migrations_once(tmp_path: Path) -> None:
         assert connection.execute("SELECT id FROM sample").fetchall() == [(1,)]
 
     assert callback_runs == [1]
+
+
+def test_namespaced_migrations_share_one_database(tmp_path: Path) -> None:
+    path = tmp_path / "state.sqlite"
+    first = SqliteDatabase(
+        path,
+        migrations=(
+            SqliteMigration(1, ("CREATE TABLE first_state (id INTEGER)",)),
+        ),
+        migration_namespace="first_state",
+    )
+    second = SqliteDatabase(
+        path,
+        migrations=(
+            SqliteMigration(1, ("CREATE TABLE second_state (id INTEGER)",)),
+        ),
+        migration_namespace="second_state",
+    )
+
+    with first.connect():
+        pass
+    with second.connect() as connection:
+        versions = connection.execute(
+            "SELECT namespace, version FROM ironsbot_schema_migrations "
+            "ORDER BY namespace"
+        ).fetchall()
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+
+    assert versions == [("first_state", 1), ("second_state", 1)]
+    assert {"first_state", "second_state"}.issubset(tables)
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (0,)
+
+
+def test_namespaced_migration_rejects_only_newer_matching_namespace(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "state.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE ironsbot_schema_migrations ("
+            "namespace TEXT PRIMARY KEY, version INTEGER NOT NULL, "
+            "updated_at TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO ironsbot_schema_migrations VALUES ('first', 2, '')"
+        )
+        connection.execute(
+            "INSERT INTO ironsbot_schema_migrations VALUES ('second', 1, '')"
+        )
+
+    first = SqliteDatabase(
+        path,
+        migrations=(SqliteMigration(1, ("CREATE TABLE first (id INTEGER)",)),),
+        migration_namespace="first",
+    )
+    second = SqliteDatabase(
+        path,
+        migrations=(SqliteMigration(1, ("CREATE TABLE second (id INTEGER)",)),),
+        migration_namespace="second",
+    )
+
+    with pytest.raises(SqliteMigrationError, match="2 > 1"), first.connect():
+        pass
+    with second.connect():
+        pass
 
 
 def test_unversioned_database_is_migrated_without_losing_rows(

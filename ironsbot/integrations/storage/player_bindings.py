@@ -34,11 +34,16 @@ _MIGRATIONS = (
         ),
     ),
 )
+MIGRATION_NAMESPACE = "player_bindings"
 
 
 class SqlitePlayerBindingStore:
     def __init__(self, path: str | Path) -> None:
-        self._database = SqliteDatabase(path, migrations=_MIGRATIONS)
+        self._database = SqliteDatabase(
+            path,
+            migrations=_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
+        )
 
     def get(self, qq_user_id: int) -> PlayerBindingState:
         with self._database.connect() as conn:

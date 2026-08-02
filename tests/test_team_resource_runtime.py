@@ -59,10 +59,13 @@ HEADLESS = HeadlessService(
 )
 
 
-def _service(config: TeamResourceConfig) -> TeamResourceService:
+def _service(
+    config: TeamResourceConfig,
+    state_path: Path = Path("data/state/qq_state.sqlite"),
+) -> TeamResourceService:
     return TeamResourceService(
         config,
-        TeamResourceSubscriptionStore(config.subscription_path),
+        TeamResourceSubscriptionStore(state_path),
         HEADLESS,
         OneBotReferenceResolver({}, {}),
         TEST_RUNTIME.features,
@@ -263,10 +266,8 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    config = TeamResourceConfig(
-        subscription_path=tmp_path / "team_resource.sqlite",
-    )
-    store = TeamResourceSubscriptionStore(config.subscription_path)
+    config = TeamResourceConfig()
+    store = TeamResourceSubscriptionStore(tmp_path / "qq_state.sqlite")
     store.upsert(
         TeamResourceSubscriptionUpdate(
             group_id=GROUP_ID,
