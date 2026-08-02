@@ -20,6 +20,12 @@ INVALID_RECONNECT_TIME_ERROR = (
     "daily HH:MM times, "
     'for example "00:05" or ["00:05"]'
 )
+HEADLESS_WORKER_NAME_UNIQUE_ERROR = (
+    "operations.headless.workers names must be unique"
+)
+HEADLESS_WORKER_ACCOUNT_UNIQUE_ERROR = (
+    "operations.headless worker account IDs must be unique"
+)
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 WorkflowInputValue = str | int | float | bool
@@ -247,6 +253,37 @@ class HeadlessNoticeConfig(BaseModel):
         )
 
 
+class HeadlessWorkerConfig(BaseModel):
+    """Additional homogeneous query account resolved from environment variables."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    user_id_env: str
+    password_env: str
+    user_id: int | None = Field(default=None, ge=10001, exclude=True, repr=False)
+    password: str | None = Field(default=None, exclude=True, repr=False)
+
+    @field_validator("name", "user_id_env", "password_env")
+    @classmethod
+    def normalize_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            message = "additional headless worker fields must not be empty"
+            raise ValueError(message)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_resolved_credentials(self) -> Self:
+        if self.user_id is None or not self.password:
+            message = (
+                f"headless worker {self.name!r} credentials were not resolved "
+                "from its configured environment variables"
+            )
+            raise ValueError(message)
+        return self
+
+
 class HeadlessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -258,12 +295,24 @@ class HeadlessConfig(BaseModel):
     reconnect_retries: int = -1
     reconnect_delay: float = 5.0
     reconnect_delay_max: float = 120.0
+    workers: list[HeadlessWorkerConfig] = Field(default_factory=list)
 
-
-class HeadlessWorkerConfig(HeadlessConfig):
-    """A persistent additional headless account supplied by environment."""
-
-    worker_key: str = Field(min_length=1)
+    @model_validator(mode="after")
+    def validate_worker_identity(self) -> Self:
+        names = [worker.name for worker in self.workers]
+        if len(names) != len(set(names)):
+            raise ValueError(HEADLESS_WORKER_NAME_UNIQUE_ERROR)
+        account_ids = [
+            account_id
+            for account_id in (
+                self.user_id,
+                *(worker.user_id for worker in self.workers),
+            )
+            if account_id is not None
+        ]
+        if len(account_ids) != len(set(account_ids)):
+            raise ValueError(HEADLESS_WORKER_ACCOUNT_UNIQUE_ERROR)
+        return self
 
 
 class OperationsConfig(BaseModel):
@@ -271,7 +320,6 @@ class OperationsConfig(BaseModel):
 
     data_sync: DataSyncConfig = Field(default_factory=DataSyncConfig)
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
-    headless_workers: list[HeadlessWorkerConfig] = Field(default_factory=list)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
     docker_update: DockerUpdateConfig = Field(default_factory=DockerUpdateConfig)

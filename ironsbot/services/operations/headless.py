@@ -2,25 +2,30 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
+from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
+)
+from ironsbot.services.operations.headless_pool import (
+    HeadlessRequestDispatcher,
+    HeadlessWorkerSlot,
+    PooledHeadlessGame,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
-    from ironsbot.services.operations.headless_activity import (
-        HeadlessOperationTracker,
-    )
 
 logger = getLogger(__name__)
 
@@ -88,6 +93,13 @@ class HeadlessGame(Protocol):
 
     async def get_team_info(self, team_id: int) -> Any: ...
 
+    async def send_and_wait(
+        self,
+        command_id: Any,
+        *body: object,
+        timeout: float | None = None,
+    ) -> Any: ...
+
 
 class HeadlessClient(Protocol):
     def get_client(self) -> HeadlessGame: ...
@@ -101,6 +113,15 @@ class HeadlessClient(Protocol):
 class HeadlessState:
     connected: bool | None = None
     offline_since: datetime | None = None
+
+
+@dataclass(slots=True)
+class _HeadlessWorkerRuntime:
+    name: str
+    user_id: int
+    password: str
+    client: HeadlessClient
+    state: HeadlessState
 
 
 def in_headless_notice_quiet_window(now: datetime) -> bool:
@@ -139,7 +160,7 @@ def _format_offline_duration(delta: timedelta | None) -> str:
 class HeadlessService:
     def __init__(  # noqa: PLR0913 - composed runtime dependencies
         self,
-        client: HeadlessClient,
+        client: HeadlessClient | Sequence[HeadlessClient],
         connection: HeadlessConfig,
         notices: HeadlessNoticeConfig,
         admin_notices: AdminNoticeService,
@@ -147,43 +168,114 @@ class HeadlessService:
         request_interval_seconds: float = 0.0,
         state_notifications: bool = True,
         now: Callable[[], datetime] | None = None,
+        spawn: TaskSpawner | None = None,
     ) -> None:
-        self._client = client
         self._connection = connection
         self._notices = notices
         self._admin_notices = admin_notices
         self._request_interval_seconds = max(request_interval_seconds, 0.0)
         self._state_notifications = state_notifications
         self._now = now or (lambda: datetime.now(LOCAL_TZ))
+        clients = (
+            list(client)
+            if isinstance(client, Sequence)
+            else [client]
+        )
+        credentials: list[tuple[str, int, str]] = []
+        if connection.user_id is not None and connection.password:
+            credentials.append(
+                ("primary", int(connection.user_id), str(connection.password))
+            )
+        credentials.extend(
+            (worker.name, int(worker.user_id), str(worker.password))
+            for worker in connection.workers
+            if worker.user_id is not None and worker.password
+        )
+        if len(clients) < max(1, len(credentials)):
+            message = "not enough headless clients for configured workers"
+            raise ValueError(message)
+        self._workers = [
+            _HeadlessWorkerRuntime(
+                name=name,
+                user_id=user_id,
+                password=password,
+                client=clients[index],
+                state=HeadlessState(),
+            )
+            for index, (name, user_id, password) in enumerate(credentials)
+        ]
         self._state = HeadlessState()
         self._state_lock = asyncio.Lock()
         self._available = asyncio.Event()
         self._state_listeners: list[HeadlessStateListener] = []
+        operations = (
+            getattr(clients[0], "operations", None)
+            if clients
+            else None
+        ) or HeadlessOperationTracker()
+        client_spawner = getattr(clients[0], "spawn", None) if clients else None
+        task_spawner = spawn or cast(
+            "TaskSpawner",
+            client_spawner or asyncio.create_task,
+        )
+        self._dispatcher = HeadlessRequestDispatcher(
+            [
+                HeadlessWorkerSlot(
+                    name=worker.name,
+                    user_id=worker.user_id,
+                    client=worker.client,
+                )
+                for worker in self._workers
+            ],
+            task_spawner,
+        )
+        self._game = PooledHeadlessGame(self._dispatcher, operations)
 
     @property
     def configured(self) -> bool:
-        return (
-            self._connection.user_id is not None
-            and bool(self._connection.password)
-        )
+        return bool(self._workers)
 
     @property
     def user_id_text(self) -> str:
-        return str(self._connection.user_id or "未配置")
+        return ", ".join(str(worker.user_id) for worker in self._workers) or "未配置"
+
+    @property
+    def healthy_worker_count(self) -> int:
+        return self._dispatcher.healthy_worker_count
+
+    @property
+    def configured_worker_count(self) -> int:
+        return self._dispatcher.configured_worker_count
 
     @property
     def reconnect_times(self) -> list[str]:
         return self._notices.parsed_reconnect_check_times
 
     def login_failure_reason(self) -> str | None:
+        failures = [
+            failure
+            for worker in self._workers
+            if (failure := self._worker_failure(worker)) is not None
+        ]
+        if len(failures) == len(self._workers):
+            if len(failures) == 1 and len(self._workers) == 1:
+                return failures[0].partition(": ")[2]
+            return "；".join(failures) or HEADLESS_CONFIG_MISSING_MESSAGE
+        return None
+
+    @staticmethod
+    def _worker_failure(worker: _HeadlessWorkerRuntime) -> str | None:
         try:
-            self._client.get_client()
+            worker.client.get_client()
         except Exception as error:  # noqa: BLE001
-            return str(error)
+            return f"{worker.name}({worker.user_id}): {error}"
         return None
 
     def get_game(self) -> HeadlessGame:
-        return self._client.get_client()
+        if self.healthy_worker_count <= 0:
+            message = "Headless Seer worker pool is unavailable"
+            raise NotLoggedInError(message)
+        return self._game
 
     def add_state_listener(self, listener: HeadlessStateListener) -> None:
         self._state_listeners.append(listener)
@@ -200,35 +292,77 @@ class HeadlessService:
         return self.get_game()
 
     async def login(self) -> int:
+        if not self._workers:
+            raise RuntimeError(HEADLESS_CONFIG_MISSING_MESSAGE)
+        results = await asyncio.gather(
+            *(self._login_worker(worker) for worker in self._workers),
+            return_exceptions=True,
+        )
+        successful = [
+            int(result)
+            for result in results
+            if isinstance(result, int)
+        ]
+        if not successful:
+            errors = "；".join(
+                str(result)
+                for result in results
+                if isinstance(result, BaseException)
+            )
+            raise RuntimeError(errors or "无头工作账号均未登录成功")
+        self._dispatcher.dispatch()
+        logger.info(
+            "headless worker pool ready: healthy=%s configured=%s accounts=%s",
+            self.healthy_worker_count,
+            self.configured_worker_count,
+            ",".join(str(user_id) for user_id in successful),
+        )
+        return successful[0]
+
+    async def _login_worker(self, worker: _HeadlessWorkerRuntime) -> int:
         try:
-            game = self._client.get_client()
+            game = worker.client.get_client()
             if game.is_logged_in:
-                return int(game.user_id)
+                await self._record_worker_state(
+                    worker,
+                    connected=True,
+                    reason="",
+                    source="登录复用",
+                    notify=False,
+                )
+                return worker.user_id
         except (DisconnectedError, NotLoggedInError):
             pass
-
-        user_id = self._connection.user_id
-        password = self._connection.password
-        if user_id is None or not password:
-            raise RuntimeError(HEADLESS_CONFIG_MISSING_MESSAGE)
-
-        game = await self._client.login(
+        game = await worker.client.login(
             HeadlessLoginRequest(
-                user_id=user_id,
-                password=password,
+                user_id=worker.user_id,
+                password=worker.password,
                 login_server_url=self._connection.login_server_addr,
                 heartbeat_interval=self._connection.heartbeat_interval,
                 request_timeout_seconds=self._connection.request_timeout_seconds,
                 reconnect_retries=self._connection.reconnect_retries,
                 reconnect_delay=self._connection.reconnect_delay,
                 reconnect_delay_max=self._connection.reconnect_delay_max,
-                state_notifier=self.mark_game_state,
+                state_notifier=lambda **kwargs: self._mark_worker_game_state(
+                    worker,
+                    **kwargs,
+                ),
                 request_interval_seconds=self._request_interval_seconds,
             )
         )
         if not game.is_logged_in:
-            raise RuntimeError("登录未完成，已进入自动重连")
-        return user_id
+            message = (
+                f"{worker.name}({worker.user_id}) 登录未完成，已进入自动重连"
+            )
+            raise RuntimeError(message)
+        await self._record_worker_state(
+            worker,
+            connected=True,
+            reason="",
+            source="登录成功",
+            notify=False,
+        )
+        return worker.user_id
 
     async def start(self) -> None:
         if not self.configured:
@@ -237,10 +371,11 @@ class HeadlessService:
         try:
             await self.login()
         except Exception:
-            logger.exception("无头客户端登录失败")
+            logger.exception("无头工作池登录失败")
 
     async def shutdown(self) -> None:
-        self._client.shutdown()
+        for worker in self._workers:
+            worker.client.shutdown()
 
     async def check_on_connect(self) -> None:
         if not self.configured:
@@ -248,10 +383,10 @@ class HeadlessService:
 
         reason = self.login_failure_reason()
         if reason is None:
-            await self.mark_available(source="启动检查", notify=False)
+            await self._refresh_worker_states(source="启动检查", notify=False)
             return
 
-        await self.mark_unavailable(reason, source="启动检查", notify=False)
+        await self._refresh_worker_states(source="启动检查", notify=False)
         if self._state_notifications and self._notices.login_notice:
             await self._admin_notices.send(
                 self._notices.login_notice_message.format(
@@ -270,33 +405,23 @@ class HeadlessService:
 
         reason = self.login_failure_reason()
         if reason is None:
-            await self.mark_available(
-                source=f"定时检测 {scheduled_time}",
-                notify=False,
+            await self._refresh_worker_states(
+                source=f"定时检测 {scheduled_time}", notify=False
             )
             return
 
-        await self.mark_unavailable(
-            reason,
-            source=f"定时检测 {scheduled_time}",
-        )
+        await self._refresh_worker_states(source=f"定时检测 {scheduled_time}")
         try:
-            user_id = await self.login()
-        except Exception as error:
+            await self.login()
+        except Exception:
             logger.exception(
                 "headless reconnect check failed at %s",
                 scheduled_time,
             )
-            await self.mark_unavailable(
-                str(error),
-                source=f"定时重连 {scheduled_time}",
-            )
+            await self._refresh_worker_states(source=f"定时重连 {scheduled_time}")
             return
 
-        await self.mark_available(
-            source=f"定时重连 {scheduled_time}",
-            user_id=user_id,
-        )
+        await self._refresh_worker_states(source=f"定时重连 {scheduled_time}")
 
     async def mark_available(
         self,
@@ -305,28 +430,45 @@ class HeadlessService:
         user_id: int | None = None,
         notify: bool = True,
     ) -> None:
-        await self._record_state(
-            connected=True,
-            reason="",
-            source=source,
-            user_id=user_id,
-            notify=notify,
-        )
+        worker = self._worker_for_user_id(user_id)
+        if worker is None and user_id is None:
+            if len(self._workers) == 1:
+                worker = self._workers[0]
+            else:
+                await self._refresh_worker_states(source=source, notify=notify)
+                return
+        if worker is not None:
+            await self._record_worker_state(
+                worker,
+                connected=True,
+                reason="",
+                source=source,
+                notify=notify,
+            )
 
     async def mark_unavailable(
         self,
         reason: str,
         *,
         source: str,
+        user_id: int | None = None,
         notify: bool = True,
     ) -> None:
-        await self._record_state(
-            connected=False,
-            reason=reason,
-            source=source,
-            user_id=None,
-            notify=notify,
-        )
+        worker = self._worker_for_user_id(user_id)
+        if worker is None and user_id is None:
+            if len(self._workers) == 1:
+                worker = self._workers[0]
+            else:
+                await self._refresh_worker_states(source=source, notify=notify)
+                return
+        if worker is not None:
+            await self._record_worker_state(
+                worker,
+                connected=False,
+                reason=reason,
+                source=source,
+                notify=notify,
+            )
 
     async def mark_game_state(
         self,
@@ -336,50 +478,105 @@ class HeadlessService:
         source: str,
         user_id: int | None,
     ) -> None:
-        await self._record_state(
+        worker = self._worker_for_user_id(user_id)
+        if worker is None:
+            logger.warning("unknown headless worker state update: user_id=%s", user_id)
+            return
+        await self._record_worker_state(
+            worker,
             connected=connected,
             reason=reason,
             source=source,
-            user_id=user_id,
             notify=True,
         )
 
-    async def _record_state(
+    async def _mark_worker_game_state(
         self,
+        worker: _HeadlessWorkerRuntime,
         *,
         connected: bool,
         reason: str,
         source: str,
         user_id: int | None,
+    ) -> None:
+        del user_id
+        await self._record_worker_state(
+            worker,
+            connected=connected,
+            reason=reason,
+            source=source,
+            notify=True,
+        )
+
+    async def _refresh_worker_states(
+        self,
+        *,
+        source: str,
+        notify: bool = True,
+    ) -> None:
+        for worker in self._workers:
+            connected = True
+            reason = ""
+            try:
+                worker.client.get_client()
+            except Exception as error:  # noqa: BLE001
+                connected = False
+                reason = str(error)
+            await self._record_worker_state(
+                worker,
+                connected=connected,
+                reason=reason,
+                source=source,
+                notify=notify,
+            )
+
+    async def _record_worker_state(
+        self,
+        worker: _HeadlessWorkerRuntime,
+        *,
+        connected: bool,
+        reason: str,
+        source: str,
         notify: bool,
     ) -> None:
         now = self._now()
         async with self._state_lock:
-            previous = self._state.connected
-            if previous == connected:
+            worker_previous = worker.state.connected
+            if worker_previous == connected:
                 return
+            worker_offline_since = worker.state.offline_since
+            worker.state.connected = connected
+            worker.state.offline_since = None if connected else now
 
-            offline_since = self._state.offline_since
-            self._state.connected = connected
-            self._state.offline_since = None if connected else now
-            if connected:
+            aggregate_previous = self._state.connected
+            aggregate_connected = any(
+                item.state.connected is True for item in self._workers
+            )
+            self._state.connected = aggregate_connected
+            if aggregate_connected:
                 self._available.set()
             else:
                 self._available.clear()
+                self._state.offline_since = self._state.offline_since or now
+            if aggregate_connected and not aggregate_previous:
+                self._state.offline_since = None
 
-        await self._notify_state_listeners(
-            previous=previous,
-            connected=connected,
-            reason=reason,
-            source=source,
-        )
+        if aggregate_previous != aggregate_connected:
+            await self._notify_state_listeners(
+                previous=aggregate_previous,
+                connected=aggregate_connected,
+                reason=reason,
+                source=source,
+            )
+        if connected:
+            self._dispatcher.dispatch()
 
-        if previous is None or not notify or not self._state_notifications:
+        if worker_previous is None or not notify or not self._state_notifications:
             return
         if in_headless_notice_quiet_window(now):
             logger.info(
                 "headless state notice suppressed by quiet window: %s -> %s (%s)",
-                previous,
+                worker_previous,
                 connected,
                 source,
             )
@@ -395,12 +592,12 @@ class HeadlessService:
         )
         await self._admin_notices.send(
             message_template.format(
-                user_id=user_id or self.user_id_text,
+                user_id=worker.user_id,
                 reason=reason.strip() or "状态未知",
                 source=source.strip() or "状态检测",
                 offline_duration=_format_offline_duration(
-                    now - offline_since
-                    if connected and offline_since is not None
+                    now - worker_offline_since
+                    if connected and worker_offline_since is not None
                     else None
                 ),
             ),
@@ -408,6 +605,29 @@ class HeadlessService:
             interval_seconds=1.2,
             subscription_key="headless_seer_notice",
         )
+
+    def _worker_for_user_id(
+        self,
+        user_id: int | None,
+    ) -> _HeadlessWorkerRuntime | None:
+        if user_id is None:
+            return None
+        return next(
+            (worker for worker in self._workers if worker.user_id == user_id),
+            None,
+        )
+
+    def _first_healthy_worker(self) -> _HeadlessWorkerRuntime | None:
+        for worker in self._workers:
+            try:
+                worker.client.get_client()
+            except Exception:  # noqa: BLE001
+                continue
+            return worker
+        return self._workers[0] if len(self._workers) == 1 else None
+
+    def cancel_waiting_background(self, error: Exception) -> None:
+        self._dispatcher.cancel_waiting_background(error)
 
     async def _notify_state_listeners(
         self,

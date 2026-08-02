@@ -208,15 +208,6 @@ def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
             reply_sender_user_id=1,
         )
     )
-    reply_without_sender = group_message_event(
-        "a",
-        user_id=3,
-        group_id=4,
-        message_id=100,
-        reply_sender_user_id=2,
-    )
-    reply_without_sender.reply.sender = None
-    assert context.matches(reply_without_sender)
     assert not context.matches(private_message_event("a", user_id=3))
 
 

@@ -32,7 +32,6 @@ if TYPE_CHECKING:
         HeadlessGame,
         HeadlessService,
     )
-    from ironsbot.services.operations.headless_pool import HeadlessPool
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
@@ -64,7 +63,7 @@ class RankAdminService:
         rank: RankService,
         local_rank: LocalRankService,
         page_refresh: RankPageRefreshService,
-        headless: HeadlessService | HeadlessPool,
+        headless: HeadlessService,
         requests: PlayerRequestProtectionService,
     ) -> None:
         self._policy = policy

@@ -1200,6 +1200,17 @@ reconnect_retries = -1
 reconnect_delay = 5.0
 # Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
 reconnect_delay_max = 120.0
+# EN: Additional public-query workers are interchangeable. Their account ID and
+# password are read only from the named environment variables.
+# ZH: 可继续增加可互换的公共查询账号；米米号和密码只从指定环境变量读取。
+# [[operations.headless.workers]]
+# name = "worker_2"
+# user_id_env = "HEADLESS_SEER_WORKER_2_USER_ID"
+# password_env = "HEADLESS_SEER_WORKER_2_PASSWORD"
+# [[operations.headless.workers]]
+# name = "worker_3"
+# user_id_env = "HEADLESS_SEER_WORKER_3_USER_ID"
+# password_env = "HEADLESS_SEER_WORKER_3_PASSWORD"
 
 [operations.headless_notice]
 # EN: Notices are sent to superusers and admin_notice groups.
