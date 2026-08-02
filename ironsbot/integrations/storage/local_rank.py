@@ -76,7 +76,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
-_MIGRATIONS = (SqliteMigration(1, _BASE_SCHEMA, _migrate),)
+_MIGRATIONS = (
+    SqliteMigration(1, _BASE_SCHEMA, _migrate),
+    # Registration-time caching was introduced after deployed databases had
+    # already recorded schema version 1. Re-run the idempotent column repair
+    # so those databases receive the new profile-cache columns on startup.
+    SqliteMigration(2, callback=_migrate),
+)
 
 
 class SqliteLocalRankRepository:
