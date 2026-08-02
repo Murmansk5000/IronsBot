@@ -163,7 +163,7 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
         items=tuple(sections),
         footer=(
             f"{HELP_SELECTION_FOOTER}\n"
-            "⚠️ 请直接发送指令；回复机器人消息不会触发功能。"
+            "⚠️ 可引用消息后直接发送指令；引用中的 @ 会被忽略。"
         ),
     )
 

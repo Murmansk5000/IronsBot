@@ -17,7 +17,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
@@ -222,7 +222,7 @@ async def _handle_display_limit(
 def install(group: SeerMatcherGroup) -> None:
     query = group.resources.rank_queries
     admin = group.resources.rank_admin
-    feature_rule = seer_feature_rule(group.features, "seer_rank") & no_reply()
+    feature_rule = seer_feature_rule(group.features, "seer_rank") & command_input()
     priority = group.matcher_priority("seer_rank")
 
     list_matcher = group.on_message(

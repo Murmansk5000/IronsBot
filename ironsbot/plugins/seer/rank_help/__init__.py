@@ -11,7 +11,7 @@ from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.seer.rank_help import format_rank_help
 
 RANK_HELP_COMMANDS = (
@@ -55,7 +55,7 @@ def install(
         rule=Rule(
             lambda event: event_is_feature_allowed(features, event, "seer_rank")
         )
-        & no_reply(),
+        & command_input(),
         priority=registry.priority("seer_rank_help"),
         block=True,
     )

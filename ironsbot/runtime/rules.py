@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # ruff: noqa: FBT001, FBT002
 import re
+from enum import IntEnum
 from typing import Literal
 
 from nonebot.adapters import Event
@@ -111,59 +112,94 @@ def startswith_or_endswith(
     return Rule(StartswithOrEndswithRule(prefixes, suffixes, ignorecase))
 
 
-class NoReply:
-    """仅匹配没有回复消息的规则。"""
+class MessageInputRoute(IntEnum):
+    """Message routing precedence shared by command and mention entry points."""
 
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "NoReply()"
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, NoReply)
-
-    def __hash__(self) -> int:
-        return hash(())
-
-    async def __call__(self, event: Event, _: T_State) -> bool:
-        reply = getattr(event, "reply", None)
-        return reply is None
+    DIRECT_COMMAND = 10
+    DIRECT_MENTION = 20
+    REPLY_COMMAND = 30
 
 
-def no_reply(*, allow_at: bool = False) -> Rule:
-    """Ignore QQ reply messages and, by default, messages containing ``@``.
+def message_input_route(event: Event) -> MessageInputRoute:
+    """Classify input once so reply handling always wins over mentions.
 
-    Commands which intentionally parse mention segments must opt in with
-    ``allow_at=True``. This keeps ordinary commands from being triggered by
-    text addressed to another user.
+    A quoted message is an explicit command context.  Its own ``@`` segments
+    are deliberately ignored by normal command routing; ``mentions_bot`` has
+    the same early-return rule for AI/@ handling.
     """
 
-    rule = Rule(NoReply())
-    return rule if allow_at else rule & Rule(NoAt())
+    if getattr(event, "reply", None) is not None:
+        return MessageInputRoute.REPLY_COMMAND
+    message = getattr(event, "message", None)
+    if message is not None and any(
+        getattr(segment, "type", None) == "at" for segment in message
+    ):
+        return MessageInputRoute.DIRECT_MENTION
+    return MessageInputRoute.DIRECT_COMMAND
 
 
-class NoAt:
-    """仅匹配没有 @ 段的消息，避免 @机器人/他人 后面的文本误触发命令。"""
+class CommandInput:
+    """Match commands from direct text and quoted text, with explicit @ policy."""
+
+    __slots__ = ("allow_direct_mentions",)
+
+    def __init__(self, *, allow_direct_mentions: bool = False) -> None:
+        self.allow_direct_mentions = allow_direct_mentions
+
+    def __repr__(self) -> str:
+        return (
+            "CommandInput("
+            f"allow_direct_mentions={self.allow_direct_mentions})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, CommandInput)
+            and self.allow_direct_mentions == other.allow_direct_mentions
+        )
+
+    def __hash__(self) -> int:
+        return hash(self.allow_direct_mentions)
+
+    async def __call__(self, event: Event, _: T_State) -> bool:
+        route = message_input_route(event)
+        return (
+            self.allow_direct_mentions
+            or route != MessageInputRoute.DIRECT_MENTION
+        )
+
+
+def command_input(*, allow_direct_mentions: bool = False) -> Rule:
+    """Allow direct commands and quoted commands.
+
+    A direct message containing any ``@`` is reserved for the mention route.
+    A quoted message has higher priority, so its ``@`` is ignored and only the
+    text newly sent by the user is parsed as a command.
+    """
+
+    return Rule(CommandInput(allow_direct_mentions=allow_direct_mentions))
+
+
+class DirectMessageOnly:
+    """Match natural-language input only when it is not a quoted message."""
 
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "NoAt()"
+        return "DirectMessageOnly()"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, NoAt)
+        return isinstance(other, DirectMessageOnly)
 
     def __hash__(self) -> int:
         return hash(())
 
     async def __call__(self, event: Event, _: T_State) -> bool:
-        message = getattr(event, "message", None)
-        if message is None:
-            return True
+        route = message_input_route(event)
+        return route is MessageInputRoute.DIRECT_COMMAND
 
-        for segment in message:
-            if getattr(segment, "type", None) != "at":
-                continue
-            return False
 
-        return True
+def direct_message_only() -> Rule:
+    """Allow direct natural-language input while ignoring all quoted messages."""
+
+    return Rule(DirectMessageOnly())

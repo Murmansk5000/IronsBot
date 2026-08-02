@@ -20,7 +20,7 @@ from ironsbot.runtime.replies import (
     finish_event_reply,
     send_event_reply,
 )
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 
 from .menu import (
     HELP_ENTRIES_KEY,
@@ -154,7 +154,7 @@ def install(
     matcher = registry.on_fullmatch(
         "帮助",
         policy=CommandPolicy.command("help", help_ids=("help",)),
-        rule=no_reply(),
+        rule=command_input(),
         priority=registry.priority("help"),
         block=True,
     )

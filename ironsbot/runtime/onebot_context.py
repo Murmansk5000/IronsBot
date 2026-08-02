@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
 from ironsbot.runtime.commands import CommandContext
+from ironsbot.runtime.rules import MessageInputRoute, message_input_route
 
 _AT_PATTERNS = (
     re.compile(r"\[CQ:at,qq=([^\]]+)\]"),
@@ -44,7 +45,7 @@ def _message_has_bot_at(message: Any, self_id: str) -> bool:
 
 
 def mentions_bot(event: GroupMessageEvent) -> bool:
-    if event.reply is not None:
+    if message_input_route(event) is MessageInputRoute.REPLY_COMMAND:
         return False
 
     self_id = str(event.self_id or "")

@@ -8,7 +8,7 @@ from ironsbot.core.features import FeatureService
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.messaging.meeting import build_meeting_reply
 
 
@@ -45,7 +45,7 @@ def install(
 
     matcher = registry.on_message(
         policy=CommandPolicy.command("meeting", help_ids=("meeting",)),
-        rule=Rule(is_meeting_command) & no_reply(),
+        rule=Rule(is_meeting_command) & command_input(),
         priority=registry.priority("meeting"),
         block=True,
     )
