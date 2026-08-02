@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # ruff: noqa: FBT001, FBT002
 import re
+from enum import IntEnum
 from typing import Literal
 
 from nonebot.adapters import Event
@@ -111,8 +112,76 @@ def startswith_or_endswith(
     return Rule(StartswithOrEndswithRule(prefixes, suffixes, ignorecase))
 
 
+class MessageInputRoute(IntEnum):
+    """Message routing precedence shared by command and mention entry points."""
+
+    DIRECT_COMMAND = 10
+    DIRECT_MENTION = 20
+    REPLY_COMMAND = 30
+
+
+def message_input_route(event: Event) -> MessageInputRoute:
+    """Classify input once so reply handling always wins over mentions.
+
+    A quoted message is an explicit command context.  Its own ``@`` segments
+    are deliberately ignored by normal command routing; ``mentions_bot`` has
+    the same early-return rule for AI/@ handling.
+    """
+
+    if getattr(event, "reply", None) is not None:
+        return MessageInputRoute.REPLY_COMMAND
+    message = getattr(event, "message", None)
+    if message is not None and any(
+        getattr(segment, "type", None) == "at" for segment in message
+    ):
+        return MessageInputRoute.DIRECT_MENTION
+    return MessageInputRoute.DIRECT_COMMAND
+
+
+class CommandInput:
+    """Match commands from direct text and quoted text, with explicit @ policy."""
+
+    __slots__ = ("allow_direct_mentions",)
+
+    def __init__(self, *, allow_direct_mentions: bool = False) -> None:
+        self.allow_direct_mentions = allow_direct_mentions
+
+    def __repr__(self) -> str:
+        return (
+            "CommandInput("
+            f"allow_direct_mentions={self.allow_direct_mentions})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, CommandInput)
+            and self.allow_direct_mentions == other.allow_direct_mentions
+        )
+
+    def __hash__(self) -> int:
+        return hash(self.allow_direct_mentions)
+
+    async def __call__(self, event: Event, _: T_State) -> bool:
+        route = message_input_route(event)
+        return (
+            self.allow_direct_mentions
+            or route != MessageInputRoute.DIRECT_MENTION
+        )
+
+
+def command_input(*, allow_direct_mentions: bool = False) -> Rule:
+    """Allow direct commands and quoted commands.
+
+    A direct message containing any ``@`` is reserved for the mention route.
+    A quoted message has higher priority, so its ``@`` is ignored and only the
+    text newly sent by the user is parsed as a command.
+    """
+
+    return Rule(CommandInput(allow_direct_mentions=allow_direct_mentions))
+
+
 class DirectMessageOnly:
-    """Match direct messages without reply or ``@`` segments."""
+    """Match natural-language input only when it is not a quoted message."""
 
     __slots__ = ()
 
@@ -126,76 +195,11 @@ class DirectMessageOnly:
         return hash(())
 
     async def __call__(self, event: Event, _: T_State) -> bool:
-        reply = getattr(event, "reply", None)
-        return reply is None
+        route = message_input_route(event)
+        return route is MessageInputRoute.DIRECT_COMMAND
 
 
 def direct_message_only() -> Rule:
-    """Restrict natural-language handling to non-reply, non-mention input."""
+    """Allow direct natural-language input while ignoring all quoted messages."""
 
-    return Rule(DirectMessageOnly()) & Rule(NoAt())
-
-
-class CommandInput:
-    """Accept command input after replies while keeping direct mentions isolated."""
-
-    __slots__ = ("allow_direct_mentions",)
-
-    def __init__(self, *, allow_direct_mentions: bool = False) -> None:
-        self.allow_direct_mentions = allow_direct_mentions
-
-    def __repr__(self) -> str:
-        return f"CommandInput(allow_direct_mentions={self.allow_direct_mentions})"
-
-    def __eq__(self, other: object) -> bool:
-        return (
-            isinstance(other, CommandInput)
-            and self.allow_direct_mentions == other.allow_direct_mentions
-        )
-
-    def __hash__(self) -> int:
-        return hash(self.allow_direct_mentions)
-
-    async def __call__(self, event: Event, state: T_State) -> bool:
-        if getattr(event, "reply", None) is not None:
-            return True
-        return self.allow_direct_mentions or await NoAt()(event, state)
-
-
-def command_input(*, allow_direct_mentions: bool = False) -> Rule:
-    """Accept explicit commands, including commands sent after a reply.
-
-    A direct message containing ``@`` remains reserved for mention handling,
-    unless the command explicitly parses a manual ``@`` target itself.
-    When the message replies to another message, only the new message content
-    is parsed by matchers and its mention segments are intentionally ignored.
-    """
-
-    return Rule(CommandInput(allow_direct_mentions=allow_direct_mentions))
-
-
-class NoAt:
-    """仅匹配没有 @ 段的消息，避免 @机器人/他人 后面的文本误触发命令。"""
-
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "NoAt()"
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, NoAt)
-
-    def __hash__(self) -> int:
-        return hash(())
-
-    async def __call__(self, event: Event, _: T_State) -> bool:
-        message = getattr(event, "message", None)
-        if message is None:
-            return True
-
-        for segment in message:
-            if getattr(segment, "type", None) != "at":
-                continue
-            return False
-
-        return True
+    return Rule(DirectMessageOnly())
