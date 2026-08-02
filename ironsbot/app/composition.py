@@ -77,6 +77,7 @@ from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStor
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
+from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
@@ -322,7 +323,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
     databases = DatabaseManager()
-    database_sync = DatabaseSync(databases)
+    cache_paths = CachePaths(settings.paths.cache_root)
+    database_sync = DatabaseSync(databases, cache_paths=cache_paths)
     task_owner = TaskOwner()
     for name, source in settings.operations.data_sync.sources.items():
         database_sync.register(name, source)
@@ -484,7 +486,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     seer_images = HttpSeerImageSource(http_clients)
     render_cache = FileRenderCache(
-        settings.paths.render_cache,
+        cache_paths.render_dir(),
         settings.seer.render.cache_max_size_mb * 1024 * 1024,
         db_version_getter=seer_database.version,
     )
@@ -679,6 +681,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         admin_notices=admin_notices,
         qq_state_path=settings.paths.qq_state,
         runtime_state_path=settings.paths.runtime_state,
+        cache_paths=cache_paths,
         settings=settings.operations.private_extensions.settings,
     )
     docker_update = DockerUpdateService(

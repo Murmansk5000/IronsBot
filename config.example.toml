@@ -121,10 +121,10 @@ log_file = "logs/ironsbot.log"
 # EN: ERROR/CRITICAL log path.
 # ZH: ERROR/CRITICAL 独立日志路径。
 error_log_file = "logs/ironsbot.error.log"
-# Default: "render_cache"
-# EN: Rendered image cache directory.
-# ZH: 渲染图片缓存目录。
-render_cache = "render_cache"
+# Default: "cache"
+# EN: Root directory for disposable caches. It may be deleted safely.
+# ZH: 可安全整体删除的临时缓存根目录。
+cache_root = "cache"
 # Default: "data/state/qq_state.sqlite"
 # EN: Consolidated low-volume QQ user and group state.
 # ZH: QQ 用户与群聊低频状态统一数据库；保存绑定、额度、退订、偏好和订阅。

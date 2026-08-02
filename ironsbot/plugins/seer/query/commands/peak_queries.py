@@ -11,7 +11,7 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import command_input
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
@@ -107,7 +107,7 @@ async def _handle_pet_rank(
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.peak_query
-    rule = seer_feature_rule(group.features, "seer_peak") & no_reply()
+    rule = seer_feature_rule(group.features, "seer_peak") & command_input()
     priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(

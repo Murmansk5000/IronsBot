@@ -111,16 +111,16 @@ def startswith_or_endswith(
     return Rule(StartswithOrEndswithRule(prefixes, suffixes, ignorecase))
 
 
-class NoReply:
-    """仅匹配没有回复消息的规则。"""
+class DirectMessageOnly:
+    """Match direct messages without reply or ``@`` segments."""
 
     __slots__ = ()
 
     def __repr__(self) -> str:
-        return "NoReply()"
+        return "DirectMessageOnly()"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, NoReply)
+        return isinstance(other, DirectMessageOnly)
 
     def __hash__(self) -> int:
         return hash(())
@@ -130,16 +130,48 @@ class NoReply:
         return reply is None
 
 
-def no_reply(*, allow_at: bool = False) -> Rule:
-    """Ignore QQ reply messages and, by default, messages containing ``@``.
+def direct_message_only() -> Rule:
+    """Restrict natural-language handling to non-reply, non-mention input."""
 
-    Commands which intentionally parse mention segments must opt in with
-    ``allow_at=True``. This keeps ordinary commands from being triggered by
-    text addressed to another user.
+    return Rule(DirectMessageOnly()) & Rule(NoAt())
+
+
+class CommandInput:
+    """Accept command input after replies while keeping direct mentions isolated."""
+
+    __slots__ = ("allow_direct_mentions",)
+
+    def __init__(self, *, allow_direct_mentions: bool = False) -> None:
+        self.allow_direct_mentions = allow_direct_mentions
+
+    def __repr__(self) -> str:
+        return f"CommandInput(allow_direct_mentions={self.allow_direct_mentions})"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, CommandInput)
+            and self.allow_direct_mentions == other.allow_direct_mentions
+        )
+
+    def __hash__(self) -> int:
+        return hash(self.allow_direct_mentions)
+
+    async def __call__(self, event: Event, state: T_State) -> bool:
+        if getattr(event, "reply", None) is not None:
+            return True
+        return self.allow_direct_mentions or await NoAt()(event, state)
+
+
+def command_input(*, allow_direct_mentions: bool = False) -> Rule:
+    """Accept explicit commands, including commands sent after a reply.
+
+    A direct message containing ``@`` remains reserved for mention handling,
+    unless the command explicitly parses a manual ``@`` target itself.
+    When the message replies to another message, only the new message content
+    is parsed by matchers and its mention segments are intentionally ignored.
     """
 
-    rule = Rule(NoReply())
-    return rule if allow_at else rule & Rule(NoAt())
+    return Rule(CommandInput(allow_direct_mentions=allow_direct_mentions))
 
 
 class NoAt:

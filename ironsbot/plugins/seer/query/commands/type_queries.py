@@ -2,7 +2,7 @@
 """Element type and battle effect query matchers."""
 
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.runtime.rules import no_reply, startswith_or_endswith
+from ironsbot.runtime.rules import command_input, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -18,7 +18,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_type")
         & startswith_or_endswith("属性")
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_type"),
     )
     type_matcher.append_handler(
@@ -41,7 +41,7 @@ def install(group: SeerMatcherGroup) -> None:
             ("异常", "查询异常状态"),
             suffixes="异常",
         )
-        & no_reply(),
+        & command_input(),
         priority=group.matcher_priority("seer_type"),
     )
     effect_matcher.append_handler(

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
+    from ironsbot.runtime.cache_paths import CachePaths
     from ironsbot.runtime.plugins import PluginDefinition
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.docker_models import DockerImageArchive
@@ -90,6 +91,7 @@ class PrivateExtensionRuntime:
     admin_notices: AdminNoticeService
     qq_state_path: Path
     runtime_state_path: Path
+    cache_paths: CachePaths
     settings: Mapping[str, Mapping[str, Any]]
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]:

@@ -12,7 +12,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.onebot_context import build_notice_source
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import no_reply
+from ironsbot.runtime.rules import direct_message_only
 
 from .team_actions import run_team_action
 
@@ -122,7 +122,7 @@ def install(
             _resolve_action_command_id,
             help_ids=command_help_ids,
         ),
-        rule=Rule(match_action) & no_reply(),
+        rule=Rule(match_action) & direct_message_only(),
         priority=registry.priority("ai_intent"),
         block=True,
     )
