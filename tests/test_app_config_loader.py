@@ -71,7 +71,6 @@ CUSTOM_PLAYER_REQUEST_PAUSE_SECONDS = 45.0
 CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
 CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
-DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH = "data/messaging/push_unsubscriptions.sqlite"
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 TEAM_RESOURCE_THRESHOLD = 2000
 
@@ -91,11 +90,9 @@ def _assert_default_push_unsubscribe(
     assert (
         push_unsubscribe.commands,
         push_unsubscribe.restore_commands,
-        push_unsubscribe.data_path,
     ) == (
         ["td", "退订"],
         ["订阅", "恢复订阅", "推送管理"],
-        DEFAULT_PUSH_UNSUBSCRIBE_DATA_PATH,
     )
     assert "TD" in push_unsubscribe.hint
     assert "可查看本群推送订阅" in push_unsubscribe.group_hint
@@ -175,7 +172,6 @@ def _assert_default_team_audit_welcome(config: Settings) -> None:
         team_audit.final_followup_after_hours == DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS
     )
     assert "仍然还在审核群" in team_audit.final_followup_message
-    assert team_audit.followup_cache_path == "data/team_audit_welcome/pending.sqlite"
 
 
 def _assert_default_matcher_priorities(
@@ -258,10 +254,6 @@ def test_example_config_parses() -> None:
     _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.commands == ["战队"]
     assert config.seer.new_content.expanded_categories == []
-    assert (
-        config.seer.team_resource.subscription_path.as_posix()
-        == "data/seer/team_resource_subscriptions.sqlite"
-    )
     assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
@@ -278,6 +270,8 @@ def test_example_config_parses() -> None:
     _assert_default_docker_update(config.operations.docker_update)
     assert config.paths.log_file == Path("logs/ironsbot.log")
     assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
+    assert config.paths.qq_state == Path("data/state/qq_state.sqlite")
+    assert config.paths.runtime_state == Path("data/state/runtime_state.sqlite")
     _assert_default_file_logging(config)
     _assert_default_player_request_protection(config.seer.player.request_protection)
     _assert_default_matcher_priorities(config.bot.matcher_priority)
@@ -868,12 +862,15 @@ sections = ["basic", "unknown_section"]
     assert "seer.player.sections contains unknown section(s)" in str(exc_info.value)
 
 
-def test_player_binding_path_loads(tmp_path: Path) -> None:
+def test_state_paths_load(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
+[paths]
+qq_state = "data/custom-qq-state.sqlite"
+runtime_state = "data/custom-runtime-state.sqlite"
+
 [seer.player.binding]
-path = "data/custom-player-bindings.sqlite"
 change_cooldown_days = 5
 """.strip(),
         encoding="utf-8",
@@ -881,7 +878,8 @@ change_cooldown_days = 5
 
     config = load_settings(config_path)
 
-    assert config.seer.player.binding.path == Path("data/custom-player-bindings.sqlite")
+    assert config.paths.qq_state == Path("data/custom-qq-state.sqlite")
+    assert config.paths.runtime_state == Path("data/custom-runtime-state.sqlite")
     assert (
         config.seer.player.binding.change_cooldown_days
         == CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS

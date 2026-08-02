@@ -125,6 +125,16 @@ error_log_file = "logs/ironsbot.error.log"
 # EN: Rendered image cache directory.
 # ZH: 渲染图片缓存目录。
 render_cache = "render_cache"
+# Default: "data/state/qq_state.sqlite"
+# EN: Consolidated low-volume QQ user and group state.
+# ZH: QQ 用户与群聊低频状态统一数据库；保存绑定、额度、退订、偏好和订阅。
+qq_state = "data/state/qq_state.sqlite"
+# Default: "data/state/runtime_state.sqlite"
+# EN: Consolidated operational checkpoint state.
+# ZH: 运行任务状态统一数据库；保存活动提醒、审核提醒等检查点。
+runtime_state = "data/state/runtime_state.sqlite"
+# Existing deployments must migrate the old small state databases while the
+# bot is stopped. See README "状态库迁移"; do not move files by hand.
 
 [features]
 # Default: true
@@ -404,12 +414,6 @@ grace_minutes = 15
 # Example: true
 only_shown = true
 
-# Default: "data/activity_reminder/sent.sqlite"
-# EN: SQLite path recording sent reminders.
-# ZH: 已发送活动提醒记录数据库。
-# Example: "data/activity/sent.sqlite"
-cache_path = "data/activity_reminder/sent.sqlite"
-
 # Default: built-in reminder template.
 # EN: Reminder message template.
 # ZH: 活动提醒消息模板。
@@ -580,10 +584,6 @@ commands = ["td", "退订"]
 # EN: Commands that open the push subscription management menu.
 # ZH: 打开推送订阅管理菜单的口令。
 restore_commands = ["订阅", "恢复订阅", "推送管理"]
-# Default: "data/messaging/push_unsubscriptions.sqlite"
-# EN: SQLite path for push unsubscribe records.
-# ZH: 推送退订记录 SQLite 路径。
-data_path = "data/messaging/push_unsubscriptions.sqlite"
 # Default: built-in hint.
 # EN: Hint appended to private pushes.
 # ZH: 追加到私聊推送末尾的退订提示。
@@ -686,11 +686,6 @@ final_followup_after_hours = 48.0
 # ZH: 最终退群提醒文案；可用占位符：{hours}、{group_id}、{user_id}；机器人会先 @ 新人。
 final_followup_message = "你加入战队审核群已经 {hours:g} 小时了，仍然还在审核群。\n如果已经加入主群，或者不想加入战队，请退出本审核群。"
 
-# Default: "data/team_audit_welcome/pending.sqlite"
-# EN: SQLite path used to persist pending reminders across restarts.
-# ZH: 保存待发送 24/48 小时提醒的 SQLite 路径，防止机器人重启后丢失提醒。
-followup_cache_path = "data/team_audit_welcome/pending.sqlite"
-
 [messaging.sendpic]
 # Default: null/omitted
 # EN: CNB repository for configured image backend. Token stays in env.
@@ -787,10 +782,6 @@ detail_timeout_seconds = 90.0
 sections = ["all"]
 
 [seer.player.binding]
-# Default: "data/seer/player_bindings.sqlite"
-# EN: Stores each QQ user's default Seer player ID and first-query choice.
-# ZH: 保存每个 QQ 用户的默认米米号及首次查询选择。
-path = "data/seer/player_bindings.sqlite"
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
 # ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
 change_cooldown_days = 3
@@ -811,10 +802,6 @@ unbound_daily_limit = 1
 # EN: Whether superusers bypass these daily budgets.
 # ZH: 超级管理员是否绕过每日额度。
 superuser_bypass = true
-# EN: SQLite state file for daily usage records.
-# ZH: 每日查询额度记录的 SQLite 文件。
-path = "data/seer/player_query_limits.sqlite"
-
 [seer.player.request_protection]
 # Default: true. EN: Serialize live player-related requests to one workflow at a time.
 # ZH: 默认开启。所有玩家相关实时请求同时只执行一个，避免无头客户端并发封包。
@@ -916,10 +903,6 @@ max_display_limit = 100
 # EN: Optional per-group display defaults. Keys can be group aliases or QQ group IDs.
 # ZH: 可选的按群默认显示条数；键可以写群别名或 QQ 群号。
 display_limits = {}
-# Default: "data/seer/rank_display_limits.sqlite"
-# EN: Runtime group overrides set by group owners/admins.
-# ZH: 群主/管理员在群内修改榜单默认显示条数后的持久化 SQLite。
-display_limit_path = "data/seer/rank_display_limits.sqlite"
 # 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
 [seer.rank.player_lookup]
 # Default: 8; EN: Timeout for one official leaderboard page request.
@@ -1082,10 +1065,6 @@ enabled = true
 times = []
 # Default: ["战队"]; EN: Subscribed team query commands. ZH: 本群订阅战队查询口令。
 commands = ["战队"]
-# Default: "data/seer/team_resource_subscriptions.sqlite"
-# EN: Runtime subscription database. Group owners/admins manage team IDs in QQ.
-# ZH: 运行时订阅数据库；群主/管理员在 QQ 群里添加或取消订阅，不再写 TOML。
-subscription_path = "data/seer/team_resource_subscriptions.sqlite"
 # Default: 1000; EN: Default low-resource threshold for new QQ-managed subscriptions.
 # ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。
 default_threshold = 1000

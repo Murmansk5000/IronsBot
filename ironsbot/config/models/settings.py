@@ -195,6 +195,8 @@ class PathsConfig(BaseModel):
     log_file: Path = Path("logs/ironsbot.log")
     error_log_file: Path = Path("logs/ironsbot.error.log")
     render_cache: Path = Path("render_cache")
+    qq_state: Path = Path("data/state/qq_state.sqlite")
+    runtime_state: Path = Path("data/state/runtime_state.sqlite")
 
 
 class RuntimeConcurrencyConfig(BaseModel):

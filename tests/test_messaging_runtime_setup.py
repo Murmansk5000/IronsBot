@@ -114,7 +114,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     ) = None,
 ) -> MessagingService:
     config = MessageConfig(
-        push_unsubscribe=PushUnsubscribeConfig(data_path=str(data_path)),
+        push_unsubscribe=PushUnsubscribeConfig(),
         commands=commands or [],
         schedules=schedules or [],
     )
@@ -124,6 +124,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
             user_policy=user_policy or {},
         ),
         superuser_ids=superusers,
+        state_path=data_path,
     )
     return MessagingService(
         config,

@@ -19,11 +19,16 @@ CREATE TABLE IF NOT EXISTS group_rank_display_limits (
 )
 """
 _MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
+MIGRATION_NAMESPACE = "rank_display"
 
 
 class SqliteRankDisplayStore:
     def __init__(self, path: str | Path) -> None:
-        self._database = SqliteDatabase(path, migrations=_MIGRATIONS)
+        self._database = SqliteDatabase(
+            path,
+            migrations=_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
+        )
 
     def get(self, group_id: int) -> int | None:
         try:

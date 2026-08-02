@@ -40,13 +40,13 @@ def build_test_bilibili_service(
             )
         }
     )
-    push_config = PushUnsubscribeConfig(
-        data_path=str(data_dir / "push_unsubscriptions.sqlite")
-    )
+    push_config = PushUnsubscribeConfig()
+    state_path = data_dir / "qq_state.sqlite"
     runtime = build_test_runtime(
         feature_config=feature_config,
         superuser_ids=superuser_ids,
         push_unsubscribe=push_config,
+        state_path=state_path,
     )
     return BilibiliService(
         config=resolved,
@@ -54,9 +54,9 @@ def build_test_bilibili_service(
             resolved,
             runtime.features,
             SqliteBiliPushPreferenceStore(
-                data_dir / "push_preferences.sqlite"
+                state_path
             ),
-            PushUnsubscribeStore(push_config.data_path),
+            PushUnsubscribeStore(state_path),
         ),
         cookie_store=FileBiliCookieStore(data_dir / "bili_cookie_cache.txt"),
         history=SqliteBiliDynamicHistoryStore(

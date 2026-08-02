@@ -23,11 +23,16 @@ _SCHEMA = (
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
 )
+MIGRATION_NAMESPACE = "bilibili_preferences"
 
 
 class SqliteBiliPushPreferenceStore:
     def __init__(self, path: str | Path) -> None:
-        self._database = SqliteDatabase(path, migrations=_MIGRATIONS)
+        self._database = SqliteDatabase(
+            path,
+            migrations=_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
+        )
 
     def get_mode(
         self,
