@@ -101,6 +101,11 @@ def build_test_plugin_registry(
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,
             ),
+            lucky_skin_window=SimpleNamespace(
+                enabled=False,
+                is_eligible_user=lambda _user_id: False,
+                account_for_user=lambda _user_id: None,
+            ),
             messaging=SimpleNamespace(
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,

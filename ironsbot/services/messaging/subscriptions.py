@@ -70,6 +70,8 @@ class PushDeliverySubscriptions(Protocol):
         target_type: PushTargetType,
         target_id: int,
         hint_key: str,
+        *,
+        today: str | None = None,
     ) -> bool: ...
 
 
