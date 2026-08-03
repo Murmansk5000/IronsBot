@@ -146,7 +146,8 @@ services:
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
   `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
-  `HEADLESS_SEER_PASSWORD_<名称>` 对、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+  `HEADLESS_SEER_PASSWORD_<名称>` 对、TOML 引用的自定义账号变量、
+  `SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -159,6 +160,8 @@ HEADLESS_SEER_PASSWORD=
 # 仅在 TOML 配置额外无头工作账号时需要
 HEADLESS_SEER_WORKER_2_USER_ID=
 HEADLESS_SEER_WORKER_2_PASSWORD=
+# 每个幸运橱窗米米号使用 LUCKY_WINDOW_SEER_PASSWORD_<米米号>。
+LUCKY_WINDOW_SEER_PASSWORD_105023264=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -314,7 +317,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `query` | 常用查询组合：赛尔查询、精灵配置图、图片、榜单、B站查询、活动查询、开服查询。 |
 | `seer` | 全部赛尔查询子功能总开关。 |
 | `seer_player` | 米米号绑定、玩家基础信息及收集/巅峰/群星牌快捷查询。 |
-| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤。 |
+| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户，TD 可退订每日私聊提醒。 |
 | `player_lineup_private` | 查询公开阵容；群聊和私聊都使用这个独立权限。 |
 | `seer_team` | 战队 ID 查询。 |
 | `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |
@@ -338,7 +341,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `bili` | `bili_query` + `bili_push`。 |
 | `seer_activity_query` | 游戏内快结束活动手动查询；`/当前活动` 为超级管理员专用。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
-| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
+| `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |
 | `server_status` | `server_status_query`。 |
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
@@ -405,7 +408,6 @@ docker start ironsbot
 - `seer.player.query_limits.path`
 - `seer.rank.display_limit_path`
 - `seer.team_resource.subscription_path`
-- `operations.private_extensions.settings.skin_window.cache_path`
 
 `seer.player.lineup.cache_path` 不在收口范围内，阵容图片缓存仍保持独立。
 

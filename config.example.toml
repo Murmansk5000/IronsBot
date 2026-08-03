@@ -66,7 +66,7 @@ superusers = []
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
 ai_group_at = -10
-ai_mention_guard = -5
+bot_mention_block = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3
@@ -123,7 +123,7 @@ log_file = "logs/ironsbot.log"
 error_log_file = "logs/ironsbot.error.log"
 # Default: "cache"
 # EN: Root directory for disposable caches. It may be deleted safely.
-# ZH: 可安全整体删除的临时缓存根目录。
+# ZH: 可安全整体删除的临时缓存根目录；幸运橱窗当天缓存位于 cache/runtime/。
 cache_root = "cache"
 # Default: "data/state/qq_state.sqlite"
 # EN: Consolidated low-volume QQ user and group state.
@@ -838,18 +838,6 @@ enabled = false
 # ZH: 后台预热结果在内存中的保留秒数。
 cache_ttl_seconds = 300.0
 
-# [seer.player.lineup] moved to operations.private_extensions.settings.player_lineup
-# The public image renders a labelled blank 12-slot preview. Real lineup data
-# is available only after the optional private extension package is installed.
-# The extension reuses this bot's one headless Seer login; it does not start a
-# second API container or a second login.
-# Default: 15.0; EN: In-process private lineup packet timeout seconds. ZH: 私有阵容封包超时秒数。
-# timeout_seconds = 15.0
-# Default: "data/seer/player_lineup_cache.sqlite"
-# EN: Persists each player's last successful lineup reply without automatic expiry.
-# ZH: 永久保存每个玩家最后一次成功阵容结果；实时查询成功时覆盖。
-# cache_path = "data/seer/player_lineup_cache.sqlite"
-
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。
@@ -1162,9 +1150,9 @@ startup_trigger_remote_build = false
 interval_enabled = true
 
 [operations.data_sync.sources.seerapi]
-# Default: IronsBot data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
+# Default: SeerAPI data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
 url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite"
-# Default: IronsBot data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
+# Default: SeerAPI data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
 fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
 # Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
 interval_minutes = 60
