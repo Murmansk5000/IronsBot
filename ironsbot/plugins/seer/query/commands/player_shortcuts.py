@@ -63,8 +63,11 @@ async def _is_player_shortcut(
     if command is None:
         return False
     if command.player_reference is not None:
+        player_reference = command.player_reference
+        group_id = getattr(event, "group_id", None)
         player_id = dependencies.player_accounts.resolve_player_id(
-            command.player_reference
+            player_reference,
+            group_id=group_id if isinstance(group_id, int) else None,
         )
         if player_id is None:
             return False

@@ -503,13 +503,14 @@ class NewContentMenuConfig(BaseModel):
 
 
 class PlayerAccountConfig(BaseModel):
-    """Named Seer account available to headless services and command aliases."""
+    """Named Seer account available to headless services and scoped aliases."""
 
     model_config = ConfigDict(extra="forbid")
 
     player_id: int = Field(ge=PLAYER_ID_MIN, le=PLAYER_ID_MAX)
     name: str
     aliases: list[str] = Field(default_factory=list)
+    public: bool = False
     query_worker: bool = False
     password: str | None = Field(default=None, exclude=True, repr=False)
 
@@ -524,10 +525,20 @@ class PlayerAccountConfig(BaseModel):
     @field_validator("aliases")
     @classmethod
     def normalize_aliases(cls, value: list[str]) -> list[str]:
-        normalized = [str(alias).strip() for alias in value]
-        if any(not alias for alias in normalized):
-            raise ValueError(PLAYER_ACCOUNT_ALIASES_ERROR)
-        return list(dict.fromkeys(normalized))
+        return _normalize_player_account_aliases(
+            value,
+            error=PLAYER_ACCOUNT_ALIASES_ERROR,
+        )
+
+def _normalize_player_account_aliases(
+    value: list[str],
+    *,
+    error: str,
+) -> list[str]:
+    normalized = [str(alias).strip() for alias in value]
+    if any(not alias for alias in normalized):
+        raise ValueError(error)
+    return list(dict.fromkeys(normalized))
 
 
 class LuckySkinWindowAccountConfig(BaseModel):
@@ -577,6 +588,7 @@ class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     player_accounts: list[PlayerAccountConfig] = Field(default_factory=list)
+    player_account_aliases: dict[str, list[str]] = Field(default_factory=dict)
     player: PlayerQueryConfig = Field(default_factory=PlayerQueryConfig)
     team: TeamQueryConfig = Field(default_factory=TeamQueryConfig)
     mintmark: MintmarkQueryConfig = Field(default_factory=MintmarkQueryConfig)

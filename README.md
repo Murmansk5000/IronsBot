@@ -154,17 +154,21 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
-# 为 [[seer.player_accounts]] 中需要登录的账号设置密码 MD5。
+# 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
 
-每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和
-`query_worker`。需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量。
+每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名、`public` 和
+`query_worker`。需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量，填写明文即可；
+机器人仅在内存中将其转换为旧登录接口所需的 MD5。
 `query_worker = true` 的账号组成可互换的公共查询池；幸运橱窗仅引用账号库中的账号，
 使用独立短时会话，不占用公共查询池。
+`public = true` 时，账号的文字 `name` / `aliases` 可在任意会话查询；`public = false` 时，只有
+`[seer.player_account_aliases]` 声明的群可使用它们，其他位置仍可直接填写数字米米号。绑定时必须
+直接填写数字米米号。
 多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
 所有公共查询账号会组成可互换的工作池；米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
@@ -175,7 +179,7 @@ GITHUB_WORKFLOW_TOKEN=
 
 1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
 2. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。
-3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；密码不写入 TOML。
+3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；填写明文密码，不写入 TOML。
 4. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
 5. QQ 用户将默认米米号绑定为该账号的 `player_id`。
 

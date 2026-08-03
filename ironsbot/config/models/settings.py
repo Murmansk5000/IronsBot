@@ -287,7 +287,17 @@ class Settings(BaseModel):
 
     @property
     def player_accounts(self) -> PlayerAccountRegistry:
-        return build_player_account_registry(self.seer.player_accounts)
+        groups: dict[int, list[str]] = {}
+        for group_ref, account_refs in self.seer.player_account_aliases.items():
+            group_id = self.onebot_references.resolve_group(
+                group_ref,
+                location=f"seer.player_account_aliases.{group_ref}",
+            )
+            groups.setdefault(group_id, []).extend(account_refs)
+        return build_player_account_registry(
+            self.seer.player_accounts,
+            private_alias_groups=groups,
+        )
 
     @property
     def superuser_ids(self) -> frozenset[int]:
