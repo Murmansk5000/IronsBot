@@ -772,6 +772,13 @@ mention_initial_max_responses = 3
 # player_lineup_private = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_rank_score = []
 
+# Seer account library. Passwords always use SEER_PASSWORD_<player_id> in the
+# container environment. `name` and `aliases` are also accepted by player
+# commands, for example: 米米号示例账号.
+# ZH: 赛尔账号库。密码统一放在容器环境变量 SEER_PASSWORD_<player_id>；name 和
+# aliases 也可作为米米号查询口令，例如“米米号示例账号”。query_worker=true 的账号
+# 自动加入公共无头查询池。
+#
 # [[seer.player_accounts]]
 # player_id = 123456789
 # name = "sample_worker"
@@ -850,8 +857,6 @@ enabled = false
 # ZH: 后台预热结果在内存中的保留秒数。
 cache_ttl_seconds = 300.0
 
-# EN: Manual cache misses require owner confirmation before the dedicated login; cancellation does not log in.
-# ZH: 手动无缓存时先由当前所有者确认；取消不登录，当日缓存命中不登录。
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。手动查询当天无缓存时会先确认登录。
