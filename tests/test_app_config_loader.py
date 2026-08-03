@@ -7,7 +7,12 @@ from types import ModuleType
 import pytest
 from pydantic import ValidationError
 
-from ironsbot.config.loader import CONFIG_ENV, ConfigFileNotFoundError, load_settings
+from ironsbot.config.loader import (
+    CONFIG_ENV,
+    LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX,
+    ConfigFileNotFoundError,
+    load_settings,
+)
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
@@ -980,13 +985,16 @@ time = "0:2"
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
 player_id = 105023264
-password_env = "MUR_PASSWORD"
 watched_skin_ids = [1400538]
 """.strip(),
         encoding="utf-8",
     )
 
-    env = {"MUR_PASSWORD": "secret"}
+    password_env_name = (
+        f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+        f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
+    )
+    env = {password_env_name: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
     assert config.seer.lucky_skin_window.time == "00:02"
@@ -1007,7 +1015,6 @@ watched_skin_ids = [1400538]
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
 player_id = 105023265
-password_env = "OTHER_PASSWORD"
 """,
         encoding="utf-8",
     )
@@ -1016,7 +1023,7 @@ password_env = "OTHER_PASSWORD"
             config_path,
             env={
                 **env,
-                "OTHER_PASSWORD": "secret-2",
+                f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}105023265": "secret-2",
             },
         )
 
@@ -1037,12 +1044,10 @@ enabled = true
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
 player_id = 105023264
-password_env = "OWNER_PASSWORD"
 
 [[seer.lucky_skin_window.accounts]]
 user = "friend"
 player_id = 105023264
-password_env = "FRIEND_PASSWORD"
 """.strip(),
         encoding="utf-8",
     )
@@ -1051,8 +1056,10 @@ password_env = "FRIEND_PASSWORD"
         load_settings(
             config_path,
             env={
-                "OWNER_PASSWORD": "secret-1",
-                "FRIEND_PASSWORD": "secret-2",
+                (
+                    f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+                    f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
+                ): "secret",
             },
         )
 
@@ -1071,7 +1078,7 @@ time = "24:02"
         load_settings(config_path)
 
 
-def test_lucky_skin_window_requires_referenced_password(
+def test_lucky_skin_window_requires_dedicated_password(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
@@ -1080,13 +1087,36 @@ def test_lucky_skin_window_requires_referenced_password(
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
 player_id = 105023264
-password_env = "MUR_PASSWORD"
 """.strip(),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="MUR_PASSWORD"):
+    with pytest.raises(
+        ValueError,
+        match=f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
+    ):
         load_settings(config_path, env={})
+
+
+def test_lucky_skin_window_does_not_use_custom_password_env(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id = 105023264
+password_env = "OLD_PASSWORD_NAME"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
+    ):
+        load_settings(config_path, env={"OLD_PASSWORD_NAME": "secret"})
 
 
 def test_lucky_skin_window_rejects_inline_credentials(tmp_path: Path) -> None:
@@ -1096,7 +1126,6 @@ def test_lucky_skin_window_rejects_inline_credentials(tmp_path: Path) -> None:
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
 player_id = 105023264
-password_env = "MUR_PASSWORD"
 password = "secret"
 """.strip(),
         encoding="utf-8",
@@ -1108,7 +1137,12 @@ password = "secret"
     ):
         load_settings(
             config_path,
-            env={"MUR_PASSWORD": "secret"},
+            env={
+                (
+                    f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+                    f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
+                ): "secret",
+            },
         )
 
 

@@ -248,8 +248,8 @@ HEADLESS_SEER_PASSWORD=
 # Add only when [[operations.headless.workers]] references these names.
 HEADLESS_SEER_WORKER_2_USER_ID=
 HEADLESS_SEER_WORKER_2_PASSWORD=
-# Use the name referenced by seer.lucky_skin_window.accounts.password_env.
-MUR_PASSWORD=
+# Add one variable per lucky-window player ID configured in TOML.
+LUCKY_WINDOW_SEER_PASSWORD_105023264=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -263,7 +263,7 @@ GITHUB_WORKFLOW_TOKEN=
 | `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
 | `HEADLESS_SEER_WORKER_*_USER_ID` | Additional interchangeable query account referenced by `[[operations.headless.workers]]`. |
 | `HEADLESS_SEER_WORKER_*_PASSWORD` | Password for the corresponding additional query account. |
-| Custom lucky-window password variables | Password names referenced by `password_env`; player IDs remain in TOML. These accounts use isolated short-lived sessions. |
+| `LUCKY_WINDOW_SEER_PASSWORD_<player_id>` | Password for the matching TOML lucky-window player ID. These accounts use isolated short-lived sessions. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 

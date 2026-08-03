@@ -841,11 +841,12 @@ cache_ttl_seconds = 300.0
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。
-# Every account opens an isolated short-lived session from its named environment
-# variables. It never occupies or replaces a public-query worker. A successful
-# result is cached for the day, including across bot restarts. Different lucky-
-# window accounts run one at a time to avoid concurrent dedicated logins.
-# ZH: 每个账号使用其指定环境变量建立隔离的短时会话，不占用也不替换公共查询
+# Every account opens an isolated short-lived session using its player-ID-derived
+# password environment variable. It never occupies or replaces a public-query
+# worker. A successful result is cached for the day, including across bot
+# restarts. Different lucky-window accounts run one at a time to avoid
+# concurrent dedicated logins.
+# ZH: 每个账号使用固定规则的环境变量建立隔离的短时会话，不占用也不替换公共查询
 # worker。不同橱窗账号严格串行登录和查询；当天首次成功结果会落盘缓存，机器人
 # 重启后也不会重复登录。
 enabled = false
@@ -857,19 +858,19 @@ timezone = "Asia/Shanghai"
 timeout_seconds = 15.0
 # Add one table per QQ user allowed to query and receive this player's window.
 # `user` accepts a [features.user_aliases] alias or QQ ID. `player_id` is safe
-# to keep in TOML; `password_env` is a freely chosen environment-variable name.
-# The user must bind the same player ID.
+# to keep in TOML. The matching password must use the fixed environment-variable
+# name LUCKY_WINDOW_SEER_PASSWORD_<player_id>. The user must bind the same ID.
 # `watched_skin_ids` only adds a ★ marker. The user also needs lucky_skin_window
 # in their user policy; group use additionally needs it in the group policy.
 # ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号，
-# player_id 可直接写入 TOML；password_env 可自定义环境变量名，真实密码不得写入 TOML；
-# 用户必须绑定该米米号。watched_skin_ids 只标记 ★ 关注。用户策略还需
+# player_id 可直接写入 TOML；密码必须写入固定名称
+# LUCKY_WINDOW_SEER_PASSWORD_<player_id> 的环境变量，真实密码不得写入 TOML；用户必须绑定
+# 该米米号。watched_skin_ids 只标记 ★ 关注。用户策略还需
 # 启用 lucky_skin_window；群聊还需要在该群策略中启用。
 #
 # [[seer.lucky_skin_window.accounts]]
 # user = "owner"
 # player_id = 105023264
-# password_env = "MUR_PASSWORD"
 # watched_skin_ids = [1400538, 1400761]
 
 # [seer.player.lineup] moved to operations.private_extensions.settings.player_lineup

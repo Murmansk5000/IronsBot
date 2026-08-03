@@ -170,14 +170,12 @@ def _service(
                 LuckySkinWindowAccountConfig(
                     user="owner",
                     player_id=90001,
-                    password_env="OWNER_PASSWORD",
                     password="owner-secret",
                     watched_skin_ids=[101],
                 ),
                 LuckySkinWindowAccountConfig(
                     user="friend",
                     player_id=90002,
-                    password_env="FRIEND_PASSWORD",
                     password="friend-secret",
                     watched_skin_ids=[102],
                 ),

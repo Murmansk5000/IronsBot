@@ -504,11 +504,10 @@ class LuckySkinWindowAccountConfig(BaseModel):
 
     user: str | int
     player_id: int = Field(ge=10001)
-    password_env: str
     password: str = Field(exclude=True, repr=False)
     watched_skin_ids: list[int] = Field(default_factory=list)
 
-    @field_validator("password_env", "password")
+    @field_validator("password")
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
         normalized = value.strip()
