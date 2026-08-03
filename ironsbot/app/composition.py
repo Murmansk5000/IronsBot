@@ -153,6 +153,7 @@ from ironsbot.services.seer.render_scheduler import RenderScheduler
 from ironsbot.services.seer.rendering.custom_pet_info import (
     render_custom_pet_info,
 )
+from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
@@ -574,6 +575,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless,
         player_requests,
     )
+    autocard = AutocardService(seer_database)
     seer = SeerQueryResources(
         SeerDataQueryService(
             seer_database,
@@ -582,7 +584,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             NewContentService(seer_database),
         ),
         CountermarkStatRankService(seer_database),
-        AutocardService(seer_database),
+        autocard,
         SeerTeamQueryService(
             settings.seer.team,
             headless,
@@ -639,6 +641,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_detail_extensions,
         rank_queries,
         rank_admin,
+        partial(
+            render_new_content_menu,
+            render_cache,
+            seer_database,
+            seer_images,
+            autocard,
+            render_scheduler.render,
+        ),
     )
     ai = AiService(
         settings.ai,

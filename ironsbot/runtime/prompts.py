@@ -166,6 +166,7 @@ async def enter_prompt(  # noqa: PLR0913
     prompt: Prompt[Any],
     resolver: PromptResolver,
     input_check: Callable[[Event], bool] | None = None,
+    prompt_message: str | Message | None = None,
 ) -> None:
     """发送 Prompt 并进入选择循环（替代 ``matcher.got``）。"""
     state[PROMPT_STATE_KEY] = prompt
@@ -186,7 +187,11 @@ async def enter_prompt(  # noqa: PLR0913
         matcher,
         handlers=[handler],
         rule=rule,
-        prompt=prompt.build_event_message(event),
+        prompt=(
+            prompt.build_event_message(event)
+            if prompt_message is None
+            else prompt_message
+        ),
         queue_namespace="selection_prompt",
         queue_reply_check=lambda next_event: (
             next_event.get_session_id() == session_id and input_check(next_event)
