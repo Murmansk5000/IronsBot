@@ -14,7 +14,6 @@ from ironsbot.services.seer.rank_cache_messages import (
     build_rank_batch_result_message,
     build_rank_batch_start_message,
 )
-from ironsbot.services.seer.rank_list_formatting import batch_raw_start
 from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_cache_overview_message,
     build_rank_page_cache_status_message,
@@ -229,7 +228,7 @@ class RankAdminService:
                 game,
                 key=spec.key,
                 sub_key=spec.sub_key,
-                start=batch_raw_start(spec, command.start_rank),
+                start=command.start_rank - 1,
                 count=count,
                 use_cache=False,
             )

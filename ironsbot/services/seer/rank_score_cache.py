@@ -51,7 +51,6 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
     target_score: int,
     start_index: int,
     end_index: int,
-    rank_offset: int,
     result: RankScoreSearchResult,
     candidate_starts: list[int],
     sample_limit: int | None,
@@ -161,8 +160,8 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
         if sample_indexes is None
         else set(matching_indexes).intersection(sample_indexes)
     )
-    result.start_rank = first_index + 1 + rank_offset
-    result.end_rank = last_index + 1 + rank_offset
+    result.start_rank = first_index + 1
+    result.end_rank = last_index + 1
     result.total_count = len(matching_indexes)
     result.truncated = False
 

@@ -47,8 +47,8 @@ def format_global_rank_score_message(
         return "\n".join(lines)
 
     shown = _score_items_for_display(result.items, display_limit)
-    start_rank = result.start_rank or shown[0].rank_index + 1 + spec.rank_offset
-    end_rank = result.end_rank or shown[-1].rank_index + 1 + spec.rank_offset
+    start_rank = result.start_rank or shown[0].rank_index + 1
+    end_rank = result.end_rank or shown[-1].rank_index + 1
     lines = [
         (
             f"{spec.title}（{score_text}，第 {start_rank}-{end_rank} 名，"

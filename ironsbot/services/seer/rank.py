@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -10,11 +10,15 @@ from ironsbot.services.seer import rank_summary
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
     AUTOCARD_RANK_SUB_KEY,
-    PET_KIND_RANK_ANOMALY_COUNT,
     PET_KIND_RANK_KEY,
     PET_KIND_RANK_SUB_KEY,
-    is_pet_kind_rank_anomaly_user,
 )
+from ironsbot.services.seer.rank_exclusion_lookups import (
+    fetch_visible_rank_range,
+    fetch_visible_score_segment,
+    finalize_visible_lookup,
+)
+from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
 from ironsbot.services.seer.rank_pagination import (
@@ -139,6 +143,20 @@ class RankService:
     cache: RankPageCache
     peak_season_start: Callable[[], datetime | None]
     fetch_online_page: Callable[..., Awaitable[list[RankEntry]]]
+    exclusions: RankExclusionPolicy | None = field(default=None)
+
+    def __post_init__(self) -> None:
+        if self.exclusions is None:
+            object.__setattr__(
+                self,
+                "exclusions",
+                RankExclusionPolicy.from_config(self.config.exclusions),
+            )
+
+    @property
+    def exclusion_policy(self) -> RankExclusionPolicy:
+        assert self.exclusions is not None
+        return self.exclusions
 
     def page_size(self) -> int:
         return configured_page_size(self.config.page_size)
@@ -339,6 +357,26 @@ class RankService:
             fetch_rank_page_result=self.fetch_page_result,
         )
 
+    async def fetch_visible_range_result(  # noqa: PLR0913
+        self,
+        game: HeadlessGame,
+        *,
+        rank_key: str,
+        key: int,
+        sub_key: int,
+        start_rank: int,
+        count: int,
+    ) -> RankPageResult:
+        return await fetch_visible_rank_range(
+            self,
+            game,
+            rank_key=rank_key,
+            key=key,
+            sub_key=sub_key,
+            start_rank=start_rank,
+            count=count,
+        )
+
     async def find_rank(  # noqa: PLR0913
         self,
         game: HeadlessGame,
@@ -352,6 +390,10 @@ class RankService:
         search_limit: int | None = None,
         anchor_only: bool = False,
     ) -> RankLookupResult:
+        rank_key = self.exclusion_policy.rank_key_for_protocol(
+            key=key,
+            sub_key=sub_key,
+        )
         score_target = (
             target_score
             if target_score is not None and target_score > 0
@@ -369,6 +411,10 @@ class RankService:
             searched_limit=limit,
             queried=limit > 0,
         )
+        if self.exclusion_policy.excludes_from_public_rank(rank_key, user_id):
+            result.excluded = True
+            result.score = score_target
+            return result
         cached = await find_rank_by_cached_position(
             game,
             user_id=user_id,
@@ -385,10 +431,17 @@ class RankService:
             anchor_only=anchor_only,
         )
         if cached is not None or limit <= 0 or anchor_only:
-            return cached or result
+            return await finalize_visible_lookup(
+                self,
+                game,
+                rank_key=rank_key,
+                key=key,
+                sub_key=sub_key,
+                result=cached or result,
+            )
         if score_target is not None:
             result.cost.used_score_search = True
-            return await find_rank_by_score(
+            result = await find_rank_by_score(
                 game,
                 user_id=user_id,
                 key=key,
@@ -402,16 +455,25 @@ class RankService:
                 fetch_rank_item=self.fetch_item,
                 fetch_rank_page=self.fetch_page,
             )
-        result.cost.used_full_scan = True
-        return await find_rank_by_linear_scan(
+        else:
+            result.cost.used_full_scan = True
+            result = await find_rank_by_linear_scan(
+                game,
+                user_id=user_id,
+                key=key,
+                sub_key=sub_key,
+                limit=limit,
+                page_size=page_size,
+                result=result,
+                fetch_rank_page=self.fetch_page,
+            )
+        return await finalize_visible_lookup(
+            self,
             game,
-            user_id=user_id,
+            rank_key=rank_key,
             key=key,
             sub_key=sub_key,
-            limit=limit,
-            page_size=page_size,
             result=result,
-            fetch_rank_page=self.fetch_page,
         )
 
     async def find_pet_kind_rank(
@@ -423,88 +485,26 @@ class RankService:
         search_limit: int | None,
         anchor_only: bool = False,
     ) -> RankLookupResult:
-        real_limit = (
-            self._score_search_limit(search_limit)
-            if pet_kind_count > 0
-            else self._online_search_limit(search_limit)
-        )
-        raw_limit = real_limit + PET_KIND_RANK_ANOMALY_COUNT
-        result = RankLookupResult(
-            title="精灵图鉴",
-            score_name="精灵",
-            score=pet_kind_count or None,
-            searched_limit=real_limit,
-            queried=real_limit > 0,
-        )
-        if is_pet_kind_rank_anomaly_user(user_id):
-            result.rank = 0
-            result.score = result.score or 0
-            return result
-
-        page_size = self.page_size()
-        cached = await find_rank_by_cached_position(
+        result = await self.find_rank(
             game,
             user_id=user_id,
+            title="精灵图鉴",
+            score_name="精灵",
             key=PET_KIND_RANK_KEY,
             sub_key=PET_KIND_RANK_SUB_KEY,
-            page_size=page_size,
-            result=result,
-            get_cached_rank_item=partial(self.cache.item, allow_stale=True),
-            rank_window_page_starts=partial(
-                rank_window_page_starts,
-                window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
-            ),
-            fetch_rank_page=self.fetch_page_result,
+            target_score=pet_kind_count or None,
+            search_limit=search_limit,
             anchor_only=anchor_only,
         )
-        if cached is not None:
-            cached.searched_limit = real_limit
-            if cached.rank is not None:
-                cached.rank = max(
-                    0,
-                    cached.rank - PET_KIND_RANK_ANOMALY_COUNT,
-                )
-            return cached
-        if real_limit <= 0 or anchor_only:
-            return result
-
-        if pet_kind_count > 0:
-            result.cost.used_score_search = True
-            result = await find_rank_by_score(
-                game,
-                user_id=user_id,
-                key=PET_KIND_RANK_KEY,
-                sub_key=PET_KIND_RANK_SUB_KEY,
-                target_score=pet_kind_count,
-                limit=raw_limit,
-                page_size=page_size,
-                result=result,
-                score_search_probe_limit=self._probe_limit,
-                score_search_tie_page_limit=self._tie_page_limit,
-                fetch_rank_item=self.fetch_item,
-                fetch_rank_page=self.fetch_page,
-            )
-        else:
-            result.cost.used_full_scan = True
-            result = await find_rank_by_linear_scan(
-                game,
-                user_id=user_id,
-                key=PET_KIND_RANK_KEY,
-                sub_key=PET_KIND_RANK_SUB_KEY,
-                limit=raw_limit,
-                page_size=page_size,
-                result=result,
-                fetch_rank_page=self.fetch_page,
-            )
-        result.searched_limit = real_limit
-        if result.rank is not None:
-            result.rank = max(0, result.rank - PET_KIND_RANK_ANOMALY_COUNT)
+        if result.score is None and pet_kind_count > 0:
+            result.score = pet_kind_count
         return result
 
     async def fetch_score_segment(  # noqa: PLR0913
         self,
         game: HeadlessGame,
         *,
+        rank_key: str | None = None,
         key: int,
         sub_key: int,
         title: str,
@@ -512,9 +512,20 @@ class RankService:
         target_score: int,
         search_limit: int | None = None,
         start_index: int = 0,
-        rank_offset: int = 0,
         sample_limit: int | None = None,
     ) -> RankScoreSearchResult:
+        if rank_key is not None and self.exclusion_policy.excluded_user_ids(rank_key):
+            return await fetch_visible_score_segment(
+                self,
+                game,
+                rank_key=rank_key,
+                key=key,
+                sub_key=sub_key,
+                title=title,
+                score_name=score_name,
+                target_score=target_score,
+                search_limit=search_limit,
+            )
         dependencies = RankScoreSegmentDependencies(
             score_search_limit=self._score_search_limit,
             rank_page_size=self.page_size,
@@ -547,7 +558,6 @@ class RankService:
             target_score=target_score,
             search_limit=search_limit,
             start_index=start_index,
-            rank_offset=rank_offset,
             sample_limit=sample_limit,
             deps=dependencies,
         )
