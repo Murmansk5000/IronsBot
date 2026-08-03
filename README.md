@@ -174,6 +174,17 @@ GITHUB_WORKFLOW_TOKEN=
 所有公共查询账号会组成可互换的工作池；幸运橱窗的米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
+### 幸运橱窗
+
+幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的 QQ 用户开放。需要：
+
+1. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、`player_id` 和可选的 `watched_skin_ids`。
+2. 在容器环境变量设置 `LUCKY_WINDOW_SEER_PASSWORD_<player_id>`；密码不写入 TOML。
+3. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
+4. QQ 用户将默认米米号绑定为同一个 `player_id`。
+
+每天配置的 `time` 到达时，机器人会自动登录该专用账号，读取当天四个皮肤并向未在 `TD` 退订的用户私聊通知。手动发送“橱窗”时，若当天已有缓存会直接返回；没有缓存时，机器人会先说明将登录的绑定米米号，只有回复“是”或“y”后才会登录查询。回复“否”或“n”取消本次查询。
+
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
 Desktop 可以把任意可写目录挂载到 `/config`：
@@ -318,7 +329,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `query` | 常用查询组合：赛尔查询、精灵配置图、图片、榜单、B站查询、活动查询、开服查询。 |
 | `seer` | 全部赛尔查询子功能总开关。 |
 | `seer_player` | 米米号绑定、玩家基础信息及收集/巅峰/群星牌快捷查询。 |
-| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户，TD 可退订每日私聊提醒。 |
+| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户。无当天缓存时，用户确认登录后才查询；TD 可退订每日私聊提醒。 |
 | `player_lineup_private` | 查询公开阵容；群聊和私聊都使用这个独立权限。 |
 | `seer_team` | 战队 ID 查询。 |
 | `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |

@@ -21,6 +21,7 @@ from ironsbot.integrations.storage.lucky_skin_window import (
 )
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.plugins.seer import lucky_skin_window as lucky_skin_window_plugin
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
 )
@@ -171,6 +172,25 @@ class _Delivery:
         return None
 
 
+class _PluginService:
+    def __init__(self, *, cached: object | None) -> None:
+        self.cached = cached
+        self.queries = 0
+
+    def cached_for_user(self, _user_id: int) -> object | None:
+        return self.cached
+
+    def account_for_user(self, _user_id: int) -> SimpleNamespace:
+        return SimpleNamespace(player_id=90001)
+
+    async def check_for_user(self, _user_id: int) -> object:
+        self.queries += 1
+        return object()
+
+    def format_result(self, _result: object, *, user_id: int) -> str:
+        return f"橱窗结果：{user_id}"
+
+
 def _service(
     tmp_path: Path,
 ) -> tuple[
@@ -300,6 +320,109 @@ def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) 
     assert cached.from_cache
     assert len(sessions.opens) == 1
     assert len(game.calls) == 1
+
+
+def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
+    service, game, _delivery, _bindings, sessions = _service(tmp_path)
+
+    assert service.cached_for_user(1001) is None
+    assert sessions.opens == []
+    assert game.calls == []
+
+    asyncio.run(service.check_for_user(1001))
+    cached = service.cached_for_user(1001)
+
+    assert cached is not None
+    assert cached.from_cache
+    assert len(sessions.opens) == 1
+
+
+def test_manual_query_prompts_before_a_missing_daily_cache_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _PluginService(cached=None)
+    prompts: list[dict[str, object]] = []
+
+    async def enter_conversation(*_args: object, **kwargs: object) -> None:
+        prompts.append(kwargs)
+
+    monkeypatch.setattr(
+        lucky_skin_window_plugin,
+        "enter_event_reply_conversation",
+        enter_conversation,
+    )
+
+    asyncio.run(
+        lucky_skin_window_plugin._handle_query(
+            cast("Any", service),
+            cast("Any", object()),
+            cast("Any", SimpleNamespace(user_id=1001)),
+        )
+    )
+
+    assert service.queries == 0
+    assert len(prompts) == 1
+    assert "米米号：90001" in str(prompts[0]["prompt"])
+    assert "回复“是”或“y”确认" in str(prompts[0]["prompt"])
+
+
+def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _PluginService(cached=object())
+    replies: list[str] = []
+
+    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
+        replies.append(message)
+
+    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
+
+    asyncio.run(
+        lucky_skin_window_plugin._handle_query(
+            cast("Any", service),
+            cast("Any", object()),
+            cast("Any", SimpleNamespace(user_id=1001)),
+        )
+    )
+
+    assert service.queries == 0
+    assert replies == ["橱窗结果：1001"]
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected_queries", "expected_message"),
+    [
+        ("否", 0, "已取消幸运橱窗查询。"),
+        ("y", 1, "橱窗结果：1001"),
+    ],
+)
+def test_lucky_window_login_confirmation_controls_dedicated_login(
+    monkeypatch: pytest.MonkeyPatch,
+    reply: str,
+    expected_queries: int,
+    expected_message: str,
+) -> None:
+    service = _PluginService(cached=None)
+    replies: list[str] = []
+
+    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
+        replies.append(message)
+
+    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
+
+    asyncio.run(
+        lucky_skin_window_plugin._handle_login_confirmation(
+            cast("Any", service),
+            cast("Any", object()),
+            cast(
+                "Any",
+                SimpleNamespace(user_id=1001, get_plaintext=lambda: reply),
+            ),
+        )
+    )
+
+    assert service.queries == expected_queries
+    assert replies == [expected_message]
 
 
 def test_cache_deletes_previous_days_at_the_first_new_day_lookup(

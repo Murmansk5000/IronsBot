@@ -202,6 +202,11 @@ class LuckySkinWindowService:
             return cached
         return await self._check(account, background=False)
 
+    def cached_for_user(self, user_id: int) -> LuckySkinWindowResult | None:
+        """Return today's result without opening the dedicated game session."""
+        account = self._validated_account_for_user(user_id)
+        return self._cached_result(account.player_id)
+
     async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
         if not self.enabled:
             return

@@ -840,7 +840,7 @@ cache_ttl_seconds = 300.0
 
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
-# ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。
+# ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。手动查询当天无缓存时会先确认登录。
 # Every account opens an isolated short-lived session using its player-ID-derived
 # password environment variable. It never occupies or replaces a public-query
 # worker. A successful result is cached for the day, including across bot
@@ -862,7 +862,7 @@ timeout_seconds = 15.0
 # name LUCKY_WINDOW_SEER_PASSWORD_<player_id>. The user must bind the same ID.
 # `watched_skin_ids` only adds a ★ marker. The user also needs lucky_skin_window
 # in their user policy; group use additionally needs it in the group policy.
-# ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号，
+# ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；手动查询当天无缓存时会先请该用户确认登录。
 # player_id 可直接写入 TOML；密码必须写入固定名称
 # LUCKY_WINDOW_SEER_PASSWORD_<player_id> 的环境变量，真实密码不得写入 TOML；用户必须绑定
 # 该米米号。watched_skin_ids 只标记 ★ 关注。用户策略还需
