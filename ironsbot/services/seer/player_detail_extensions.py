@@ -24,6 +24,7 @@ class PlayerDetailExtensionAction:
     feature: str
     label: str
     aliases: tuple[str, ...]
+    command_help_id: str
     query: PlayerDetailActionQuery
     action: ActionDefinition
 
@@ -36,8 +37,16 @@ class PlayerDetailExtensionRegistry:
 
     def register(self, action: PlayerDetailExtensionAction) -> None:
         label = action.label.strip()
-        if not action.id or not action.feature or not label:
-            msg = "player detail extension action requires id, feature, and label"
+        if (
+            not action.id
+            or not action.feature
+            or not label
+            or not action.command_help_id.strip()
+        ):
+            msg = (
+                "player detail extension action requires id, feature, label, "
+                "and command_help_id"
+            )
             raise ValueError(msg)
         if "【" in label or "】" in label:
             msg = "player detail extension labels must not include menu brackets"
@@ -78,6 +87,7 @@ class PlayerDetailExtensionRegistry:
             feature=action.feature,
             label=label,
             aliases=aliases,
+            command_help_id=action.command_help_id.strip(),
             query=action.query,
             action=action.action,
         )
@@ -100,6 +110,32 @@ class PlayerDetailExtensionRegistry:
             if action is not None and alias in action.aliases:
                 return action
         return None
+
+    def resolve_direct_command(
+        self,
+        text: str,
+    ) -> tuple[PlayerDetailExtensionAction, str] | None:
+        """Resolve an extension action and its optional player reference.
+
+        Direct command parsing stays in the public runtime so extensions only
+        receive a validated numeric player ID when their query is invoked.
+        """
+
+        normalized = _normalize_command(text)
+        matches = sorted(
+            (
+                (alias, action)
+                for action in self._actions.values()
+                for alias in action.aliases
+                if normalized.startswith(alias)
+            ),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        )
+        if not matches:
+            return None
+        alias, action = matches[0]
+        return action, normalized[len(alias) :]
 
 
 def _normalize_command(value: str) -> str:

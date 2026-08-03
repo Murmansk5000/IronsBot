@@ -58,6 +58,7 @@ def test_player_info_prompt_includes_visible_private_extension(
             feature="private_feature",
             label="private action",
             aliases=("private",),
+            command_help_id="private.action",
             query=AsyncMock(return_value=QueryReply(text="private reply")),
             action=ActionDefinition("private_action", "private action"),
         )
@@ -303,6 +304,7 @@ def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_mem
             feature="private_feature",
             label="private action",
             aliases=("private",),
+            command_help_id="private.action",
             query=action_query,
             action=ActionDefinition("private_action", "private action"),
         )
@@ -359,6 +361,7 @@ def test_player_detail_delegates_a_registered_private_action(
             feature="private_feature",
             label="private action",
             aliases=("private",),
+            command_help_id="private.action",
             query=action_query,
             action=ActionDefinition("private_action", "private action"),
         )
@@ -421,6 +424,7 @@ def test_player_detail_extension_declares_a_semantic_action() -> None:
             feature="private_feature",
             label="private action",
             aliases=("private",),
+            command_help_id="private.action",
             query=AsyncMock(),
             action=ActionDefinition("private_action", "阵容"),
         )
