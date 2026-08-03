@@ -175,7 +175,7 @@ def test_score_rank_lookup_uses_rank_limit_not_online_limit(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="achievement",
             score_name="score",
             key=17,
@@ -217,7 +217,7 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="autocard",
             score_name="score",
             key=240,
@@ -251,7 +251,7 @@ def test_score_rank_lookup_rejects_target_below_boundary(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="achievement",
             score_name="score",
             key=17,
@@ -291,7 +291,7 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
         requested_pages.append((start, end))
         return [
             RankItem(
-                id=105023264 if rank_index == BINARY_TARGET_INDEX else rank_index,
+                id=712345678 if rank_index == BINARY_TARGET_INDEX else rank_index,
                 score=RANK_LIMIT - rank_index,
             )
             for rank_index in range(start, end + 1)
@@ -303,7 +303,7 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="achievement",
             score_name="score",
             key=17,
@@ -358,7 +358,7 @@ def test_score_rank_lookup_limits_tied_score_page_scan(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="achievement",
             score_name="score",
             key=17,
@@ -1052,7 +1052,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
     rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
     requested_ranges: list[tuple[int, int]] = []
     cached_item = CachedRankLookup(
-        id=105023264,
+        id=712345678,
         nick="cached",
         score=CACHED_SCORE,
         rank_index=LOOKUP_INDEX,
@@ -1074,7 +1074,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
         requested_ranges.append((start, end))
         assert use_cache is False
         return [
-            RankItem(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
+            RankItem(id=712345678, nick="fresh", score=CACHED_SCORE + 1),
         ]
 
     monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
@@ -1082,7 +1082,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="book",
             score_name="score",
             key=156,
@@ -1103,7 +1103,7 @@ def test_cached_rank_without_target_score_is_verified_nearby(
     rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
     requested_ranges: list[tuple[int, int]] = []
     cached_item = CachedRankLookup(
-        id=105023264,
+        id=712345678,
         nick="cached",
         score=CACHED_SCORE,
         rank_index=LOOKUP_INDEX,
@@ -1124,7 +1124,7 @@ def test_cached_rank_without_target_score_is_verified_nearby(
         _ = (key, sub_key, use_cache)
         requested_ranges.append((start, end))
         return [
-            RankItem(id=105023264, nick="fresh", score=CACHED_SCORE + 1),
+            RankItem(id=712345678, nick="fresh", score=CACHED_SCORE + 1),
         ]
 
     monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
@@ -1132,7 +1132,7 @@ def test_cached_rank_without_target_score_is_verified_nearby(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="autocard",
             score_name="score",
             key=156,
@@ -1151,7 +1151,7 @@ def test_cached_rank_confirms_its_own_page_before_expanding(
     rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
     requested_ranges: list[tuple[int, int]] = []
     cached_item = CachedRankLookup(
-        id=105023264,
+        id=712345678,
         nick="cached",
         score=CACHED_SCORE,
         rank_index=109,
@@ -1168,7 +1168,7 @@ def test_cached_rank_confirms_its_own_page_before_expanding(
     ) -> list[RankItem]:
         requested_ranges.append((start, end))
         items = [RankItem(id=index, score=20_000 - index) for index in range(100)]
-        items[49] = RankItem(id=105023264, nick="moved", score=CACHED_SCORE + 5)
+        items[49] = RankItem(id=712345678, nick="moved", score=CACHED_SCORE + 5)
         return items
 
     monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
@@ -1176,7 +1176,7 @@ def test_cached_rank_confirms_its_own_page_before_expanding(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="book",
             score_name="score",
             key=156,
@@ -1197,7 +1197,7 @@ def test_anchor_only_rank_lookup_never_expands_beyond_cached_page(
     rank, cache = _build_rank(online_limit=ONLINE_LIMIT, page_size=100)
     requested_ranges: list[tuple[int, int]] = []
     cached_item = CachedRankLookup(
-        id=105023264,
+        id=712345678,
         nick="cached",
         score=CACHED_SCORE,
         rank_index=109,
@@ -1220,7 +1220,7 @@ def test_anchor_only_rank_lookup_never_expands_beyond_cached_page(
     result = asyncio.run(
         rank.find_rank(
             GAME,
-            user_id=105023264,
+            user_id=712345678,
             title="book",
             score_name="score",
             key=156,
