@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -144,11 +145,18 @@ def _inject_player_account_passwords(  # noqa: C901, PLR0912
                     required[player_id] = (entry, account_path)
 
     for player_id, (entry, path) in required.items():
-        entry["password"] = _environment_secret(
-            f"{SEER_PASSWORD_ENV_PREFIX}{player_id}",
-            path=f"{path}.password",
-            env=env,
+        entry["password"] = _normalize_player_password(
+            _environment_secret(
+                f"{SEER_PASSWORD_ENV_PREFIX}{player_id}",
+                path=f"{path}.password",
+                env=env,
+            )
         )
+
+
+def _normalize_player_password(value: str) -> str:
+    """Return the credential format expected by the legacy Seer login API."""
+    return hashlib.md5(value.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def _configured_player_id(entry: dict[str, Any]) -> int | None:

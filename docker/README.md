@@ -243,7 +243,8 @@ and `logs/` paths live under the current working directory.
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
-# Add one password MD5 per [[seer.player_accounts]] player ID that logs in.
+# Add the plain password for each [[seer.player_accounts]] player ID that logs in.
+# IronsBot converts it to MD5 in memory.
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
@@ -255,7 +256,7 @@ GITHUB_WORKFLOW_TOKEN=
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `AI_KEY` | AI chat API key. |
-| `SEER_PASSWORD_<player_id>` | Password MD5 for a configured Seer account. Query workers and isolated lucky-window sessions both use this name. |
+| `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
