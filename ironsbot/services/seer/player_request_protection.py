@@ -12,7 +12,9 @@ from ironsbot.core.semantic_requests import SemanticRequest, semantic_request_sc
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestPriority,
     HeadlessRequestPriorityState,
+    HeadlessWorkflowState,
     headless_request_priority_scope,
+    headless_workflow_scope,
 )
 from ironsbot.services.operations.request_feedback import send_request_feedback
 
@@ -67,11 +69,12 @@ class _QueuedRequest:
     timeout_seconds: float | None
     semantic_request: SemanticRequest | None = None
     priority_state: HeadlessRequestPriorityState | None = None
+    workflow: HeadlessWorkflowState | None = None
     task: asyncio.Task[Any] | None = None
 
 
 class PlayerRequestProtectionService:
-    """Serialize live player workflows and retain a small priority queue."""
+    """Coordinate semantic player workflows over the shared packet pool."""
 
     def __init__(
         self,
@@ -89,6 +92,7 @@ class PlayerRequestProtectionService:
         self._now = now or monotonic
         self._active: list[_QueuedRequest] = []
         self._by_request_key: dict[tuple[str, str], _QueuedRequest] = {}
+        self._workflow_sequence = 0
         self._pause_until = 0.0
         self._last_disconnect_at: float | None = None
 
@@ -107,14 +111,10 @@ class PlayerRequestProtectionService:
         is_superuser = (
             user_id is not None and self._features.is_superuser(user_id)
         )
-        request_priority = (
-            HeadlessRequestPriority.SUPERUSER
-            if is_superuser and self._config.superuser_priority
-            else priority
-            if priority is not None
-            else HeadlessRequestPriority.BACKGROUND
-            if background
-            else HeadlessRequestPriority.INTERACTIVE
+        request_priority = self._request_priority(
+            is_superuser=is_superuser,
+            background=background,
+            priority=priority,
         )
         if not self._config.enabled:
             await send_request_feedback(queued=False)
@@ -158,6 +158,14 @@ class PlayerRequestProtectionService:
                         )
                     raise
 
+        priority_state = HeadlessRequestPriorityState(request_priority)
+        workflow = HeadlessWorkflowState(
+            sequence=self._workflow_sequence,
+            label=label,
+            user_id=user_id,
+            priority_state=priority_state,
+        )
+        self._workflow_sequence += 1
         item = _QueuedRequest(
             label=label,
             operation=cast("Callable[[], Awaitable[Any]]", operation),
@@ -167,12 +175,22 @@ class PlayerRequestProtectionService:
             background=background,
             timeout_seconds=timeout_seconds,
             semantic_request=semantic_request,
-            priority_state=HeadlessRequestPriorityState(request_priority),
+            priority_state=priority_state,
+            workflow=workflow,
         )
         self._admit(item)
         if request_key:
             self._by_request_key[request_key] = item
         self._active.append(item)
+        logger.info(
+            "player workflow admitted: ticket=%s label=%s priority=%s "
+            "user=%s background=%s",
+            workflow.sequence,
+            label,
+            request_priority.name.lower(),
+            user_id,
+            background,
+        )
         item.task = self._spawn(
             self._execute(item),
             name=f"seer-player-request:{label}",
@@ -227,7 +245,10 @@ class PlayerRequestProtectionService:
         state = item.priority_state
         if item.background or state is None:
             return
-        if state.priority is HeadlessRequestPriority.SUPERUSER:
+        if state.priority in (
+            HeadlessRequestPriority.SUPERUSER_BASIC,
+            HeadlessRequestPriority.SUPERUSER_DETAIL,
+        ):
             return
         foreground_capacity = max(1, self._headless.healthy_worker_count)
         active_foreground = sum(
@@ -246,6 +267,23 @@ class PlayerRequestProtectionService:
         ):
             raise PlayerRequestBusyError
 
+    def _request_priority(
+        self,
+        *,
+        is_superuser: bool,
+        background: bool,
+        priority: HeadlessRequestPriority | None,
+    ) -> HeadlessRequestPriority:
+        if background:
+            return HeadlessRequestPriority.BACKGROUND
+        if is_superuser and self._config.superuser_priority:
+            if priority is HeadlessRequestPriority.BASIC:
+                return HeadlessRequestPriority.SUPERUSER_BASIC
+            return HeadlessRequestPriority.SUPERUSER_DETAIL
+        if priority is not None:
+            return priority
+        return HeadlessRequestPriority.INTERACTIVE
+
     @staticmethod
     def _promote(
         item: _QueuedRequest,
@@ -261,6 +299,7 @@ class PlayerRequestProtectionService:
         self,
         item: _QueuedRequest,
     ) -> None:
+        outcome = "cancelled"
         try:
             if self._paused() and item.bypass_pause:
                 await self._wait_for_reconnect()
@@ -278,12 +317,22 @@ class PlayerRequestProtectionService:
                     priority_state.priority,
                     state=priority_state,
                 ),
+                headless_workflow_scope(
+                    item.workflow
+                    or HeadlessWorkflowState(
+                        sequence=-1,
+                        label=item.label,
+                        user_id=item.user_id,
+                        priority_state=priority_state,
+                    ),
+                ),
             ):
                 result = await self._run_operation(item)
         except asyncio.CancelledError:
             item.future.cancel()
             raise
         except asyncio.TimeoutError as error:
+            outcome = "timed_out"
             logger.warning(
                 "player request timed out: label=%s background=%s timeout=%.1fs",
                 item.label,
@@ -293,17 +342,36 @@ class PlayerRequestProtectionService:
             if not item.future.done():
                 item.future.set_exception(error)
         except Exception as error:  # noqa: BLE001
+            outcome = type(error).__name__
             if not item.future.done():
                 item.future.set_exception(error)
         else:
+            outcome = "completed"
             if not item.future.done():
                 item.future.set_result(result)
         finally:
+            workflow = item.workflow
+            if workflow is not None:
+                logger.info(
+                    "player workflow finished: ticket=%s label=%s priority=%s "
+                    "user=%s packets=%s queued_packets=%s elapsed=%.3fs outcome=%s",
+                    workflow.sequence,
+                    workflow.label,
+                    workflow.priority_state.priority.name.lower(),
+                    workflow.user_id,
+                    workflow.packet_count,
+                    workflow.queued_packet_count,
+                    monotonic() - workflow.queued_at,
+                    outcome,
+                )
             if item in self._active:
                 self._active.remove(item)
             self._release_request_key(item)
 
-    async def _run_operation(self, item: _QueuedRequest) -> Any:
+    async def _run_operation(  # noqa: C901 - timeout ownership stays centralized
+        self,
+        item: _QueuedRequest,
+    ) -> Any:
         if item.timeout_seconds is None:
             return await item.operation()
 
@@ -314,7 +382,42 @@ class PlayerRequestProtectionService:
             execute_operation(),
             name=f"seer-player-request-operation:{item.label}",
         )
+        workflow = item.workflow
+        if workflow is None:
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(operation_task),
+                    timeout=item.timeout_seconds,
+                )
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                operation_task.cancel()
+                raise
+
+        submitted_task = self._spawn(
+            workflow.packet_submitted.wait(),
+            name=f"seer-player-workflow-submitted:{item.label}",
+        )
+        start_task: asyncio.Task[Any] | None = None
         try:
+            done, _pending = await asyncio.wait(
+                {operation_task, submitted_task},
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=item.timeout_seconds,
+            )
+            if operation_task in done:
+                return operation_task.result()
+            if not done:
+                self._raise_operation_timeout()
+            start_task = self._spawn(
+                workflow.started.wait(),
+                name=f"seer-player-workflow-start:{item.label}",
+            )
+            done, _pending = await asyncio.wait(
+                {operation_task, start_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if operation_task in done:
+                return operation_task.result()
             return await asyncio.wait_for(
                 asyncio.shield(operation_task),
                 timeout=item.timeout_seconds,
@@ -322,6 +425,15 @@ class PlayerRequestProtectionService:
         except (asyncio.CancelledError, asyncio.TimeoutError):
             operation_task.cancel()
             raise
+        finally:
+            if not submitted_task.done():
+                submitted_task.cancel()
+            if start_task is not None and not start_task.done():
+                start_task.cancel()
+
+    @staticmethod
+    def _raise_operation_timeout() -> NoReturn:
+        raise asyncio.TimeoutError
 
     async def _wait_for_reconnect(self) -> None:
         try:

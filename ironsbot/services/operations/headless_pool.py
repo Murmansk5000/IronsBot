@@ -31,7 +31,10 @@ MAX_PACKET_ATTEMPTS = 2
 
 
 class HeadlessRequestPriority(IntEnum):
-    SUPERUSER = 0
+    SUPERUSER_BASIC = 0
+    SUPERUSER_DETAIL = 5
+    # Keep the established name for callers that mean any superuser detail.
+    SUPERUSER = SUPERUSER_DETAIL
     BASIC = 10
     INTERACTIVE = 20
     BACKGROUND = 30
@@ -77,6 +80,53 @@ def current_headless_request_priority() -> HeadlessRequestPriorityState:
     )
 
 
+@dataclass(slots=True)
+class HeadlessWorkflowState:
+    """One semantic player workflow sharing the public packet pool."""
+
+    sequence: int
+    label: str
+    user_id: int | None
+    priority_state: HeadlessRequestPriorityState
+    queued_at: float = field(default_factory=monotonic)
+    first_packet_at: float | None = None
+    queued_packet_count: int = 0
+    packet_count: int = 0
+    packet_submitted: asyncio.Event = field(default_factory=asyncio.Event)
+    started: asyncio.Event = field(default_factory=asyncio.Event)
+
+    def mark_packet_submitted(self) -> None:
+        self.queued_packet_count += 1
+        self.packet_submitted.set()
+
+    def mark_packet_dispatched(self) -> None:
+        self.packet_count += 1
+        if self.first_packet_at is None:
+            self.first_packet_at = monotonic()
+            self.started.set()
+
+
+_workflow_state: ContextVar[HeadlessWorkflowState | None] = ContextVar(
+    "headless_workflow_state",
+    default=None,
+)
+
+
+@contextmanager
+def headless_workflow_scope(
+    workflow: HeadlessWorkflowState,
+) -> Iterator[HeadlessWorkflowState]:
+    token = _workflow_state.set(workflow)
+    try:
+        yield workflow
+    finally:
+        _workflow_state.reset(token)
+
+
+def current_headless_workflow() -> HeadlessWorkflowState | None:
+    return _workflow_state.get()
+
+
 class HeadlessPoolClient(Protocol):
     def get_client(self) -> Any: ...
 
@@ -104,6 +154,7 @@ class _PacketRequest:
     operation: Callable[[Any], Awaitable[Any]]
     future: asyncio.Future[_PacketOutcome]
     priority_state: HeadlessRequestPriorityState
+    workflow: HeadlessWorkflowState | None
     context: Context
     queued_at: float
     excluded_workers: set[str] = field(default_factory=set)
@@ -131,6 +182,7 @@ class HeadlessRequestDispatcher:
         self._pending: deque[_PacketRequest] = deque()
         self._sequence = 0
         self._active_background = 0
+        self._dispatch_scheduled = False
 
     @property
     def healthy_worker_count(self) -> int:
@@ -146,6 +198,14 @@ class HeadlessRequestDispatcher:
             not worker.active and worker.game() is not None
             for worker in self._workers
         )
+
+    @property
+    def pending_request_counts(self) -> dict[HeadlessRequestPriority, int]:
+        counts = dict.fromkeys(HeadlessRequestPriority, 0)
+        for request in self._pending:
+            if not request.future.cancelled():
+                counts[request.priority_state.priority] += 1
+        return counts
 
     @property
     def primary_user_id(self) -> int:
@@ -166,12 +226,16 @@ class HeadlessRequestDispatcher:
         label: str,
     ) -> T:
         loop = asyncio.get_running_loop()
+        workflow = current_headless_workflow()
+        if workflow is not None:
+            workflow.mark_packet_submitted()
         request = _PacketRequest(
             sequence=self._sequence,
             label=label,
             operation=cast("Callable[[Any], Awaitable[Any]]", operation),
             future=loop.create_future(),
             priority_state=current_headless_request_priority(),
+            workflow=workflow,
             context=copy_context(),
             queued_at=monotonic(),
         )
@@ -207,12 +271,16 @@ class HeadlessRequestDispatcher:
             request.active_worker = worker.name
             request.attempts += 1
             priority = request.priority_state.priority
+            if request.workflow is not None:
+                request.workflow.mark_packet_dispatched()
             if priority is HeadlessRequestPriority.BACKGROUND:
                 self._active_background += 1
             wait_seconds = monotonic() - request.queued_at
             logger.info(
-                "headless packet scheduled: label=%s priority=%s worker=%s "
-                "queue_wait=%.3fs attempt=%s",
+                "headless packet scheduled: workflow=%s ticket=%s label=%s "
+                "priority=%s worker=%s queue_wait=%.3fs attempt=%s",
+                request.workflow.label if request.workflow is not None else "direct",
+                request.workflow.sequence if request.workflow is not None else "-",
                 request.label,
                 priority.name.lower(),
                 worker.name,
@@ -284,7 +352,13 @@ class HeadlessRequestDispatcher:
             return None
         selected = min(
             candidates,
-            key=lambda item: (item.priority_state.priority, item.sequence),
+            key=lambda item: (
+                item.priority_state.priority,
+                item.workflow.sequence
+                if item.workflow is not None
+                else item.sequence,
+                item.sequence,
+            ),
         )
         self._pending.remove(selected)
         return selected
@@ -343,7 +417,22 @@ class HeadlessRequestDispatcher:
             if retry and not request.future.done():
                 request.queued_at = monotonic()
                 self._pending.appendleft(request)
-            self.dispatch()
+            # Let the completed workflow enqueue its next dependent packet
+            # before backfilled work competes for this newly idle worker.
+            await asyncio.sleep(0)
+            self._schedule_dispatch()
+
+    def _schedule_dispatch(self) -> None:
+        if self._dispatch_scheduled:
+            return
+        self._dispatch_scheduled = True
+        asyncio.get_running_loop().call_soon(self._dispatch_after_completion)
+
+    def _dispatch_after_completion(self) -> None:
+        if not self._dispatch_scheduled:
+            return
+        self._dispatch_scheduled = False
+        self.dispatch()
 
     def _has_healthy_alternative(self, request: _PacketRequest) -> bool:
         return any(

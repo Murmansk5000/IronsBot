@@ -877,8 +877,8 @@ cache_ttl_seconds = 300.0
 # restarts. Different lucky-window accounts run one at a time to avoid
 # concurrent dedicated logins.
 # ZH: 每个账号使用固定规则的环境变量建立隔离的短时会话，不占用也不替换公共查询
-# worker。不同橱窗账号严格串行登录和查询；当天首次成功结果会落盘缓存，机器人
-# 重启后也不会重复登录。
+# worker。不同橱窗账号严格串行登录和查询；每个账号当天首次成功结果会落盘缓存，
+# 机器人重启后也不会重复登录。
 enabled = false
 # Default: "00:02"; EN: Daily check time in HH:MM. ZH: 每日检查时间，格式 HH:MM。
 time = "00:02"
@@ -981,9 +981,6 @@ total_timeout_seconds = 60
 # Default: 1; EN: Retries for a timed-out page after other boards get a turn.
 # ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
 page_retry_count = 1
-# Default: 1; EN: Consecutive leaderboard pages per board before rotating.
-# ZH: 同一个榜每次轮到时连续查询的页数；设为 1 最公平，设为 2/3 可减少轮转次数。
-pages_per_turn = 1
 # Default: omitted/null.
 # EN: Leave unset to follow the official peak season automatically.
 #     Set only as a temporary diagnostic override.
