@@ -90,8 +90,10 @@ class FakeSubscriptions:
         target_type: str,
         target_id: int,
         hint_key: str,
+        *,
+        today: str | None = None,
     ) -> bool:
-        del target_type, target_id, hint_key
+        del target_type, target_id, hint_key, today
         return True
 
     def target_unsubscribed_keys(

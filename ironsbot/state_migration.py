@@ -29,8 +29,6 @@ from ironsbot.integrations.storage.push_subscriptions import (
 )
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.sqlite import (
-    SqliteDatabase,
-    SqliteMigration,
     open_sqlite_connection,
     quote_sqlite_identifier,
 )
@@ -54,9 +52,7 @@ QQ_STATE_NAMESPACES = frozenset(
         "team_resources",
     }
 )
-RUNTIME_STATE_NAMESPACES = frozenset(
-    {"activity_reminder", "skin_window", "team_audit"}
-)
+RUNTIME_STATE_NAMESPACES = frozenset({"activity_reminder", "team_audit"})
 
 
 class StateMigrationError(RuntimeError):
@@ -168,25 +164,11 @@ LEGACY_SOURCES = (
         "runtime",
         ("pending_team_audit_reminders",),
     ),
-    LegacySource(
-        "seer/lucky_skin_window.sqlite",
-        "runtime",
-        ("lucky_skin_window_daily_cache",),
-    ),
     LegacySource("messaging/private_push_unsubscriptions.sqlite", None),
     LegacySource("messaging/reply_limits.sqlite", None),
     LegacySource("message_actions/reply_limits.sqlite", None),
     LegacySource("seer/achievement_history.sqlite", None),
 )
-
-_SKIN_WINDOW_SCHEMA = """
-CREATE TABLE IF NOT EXISTS lucky_skin_window_daily_cache (
-    day TEXT PRIMARY KEY,
-    skin_ids_json TEXT NOT NULL,
-    recorded_at TEXT NOT NULL
-)
-"""
-
 
 def migrate_state_databases(  # noqa: PLR0913
     *,
@@ -326,12 +308,6 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
 
     ActivitySentStore(runtime_state).filter_unsent([])
     SqliteTeamAuditReminderStore(runtime_state).list_all()
-    with SqliteDatabase(
-        runtime_state,
-        migrations=(SqliteMigration(1, (_SKIN_WINDOW_SCHEMA,)),),
-        migration_namespace="skin_window",
-    ).connect():
-        pass
 
 
 def _backup_legacy_sources(

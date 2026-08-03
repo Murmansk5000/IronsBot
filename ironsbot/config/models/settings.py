@@ -39,6 +39,16 @@ VALID_LOG_LEVELS = {
 }
 
 
+class SettingsReferenceError(ValueError):
+    @classmethod
+    def duplicate_lucky_skin_window_user(cls) -> SettingsReferenceError:
+        return cls("seer.lucky_skin_window.accounts must not repeat a user")
+
+    @classmethod
+    def duplicate_lucky_skin_window_player(cls) -> SettingsReferenceError:
+        return cls("seer.lucky_skin_window.accounts must not repeat a player_id")
+
+
 class MatcherPriorityConfigError(ValueError):
     @classmethod
     def ai_mention_order(cls) -> MatcherPriorityConfigError:
@@ -303,6 +313,19 @@ class Settings(BaseModel):
             resolve=references.resolve_user,
             location="bilibili.push.users",
         )
+        lucky_users: set[int] = set()
+        lucky_player_ids: set[int] = set()
+        for index, account in enumerate(self.seer.lucky_skin_window.accounts):
+            user_id = references.resolve_user(
+                account.user,
+                location=f"seer.lucky_skin_window.accounts[{index}].user",
+            )
+            if user_id in lucky_users:
+                raise SettingsReferenceError.duplicate_lucky_skin_window_user()
+            lucky_users.add(user_id)
+            if account.player_id in lucky_player_ids:
+                raise SettingsReferenceError.duplicate_lucky_skin_window_player()
+            lucky_player_ids.add(account.player_id)
         self._validate_mapping_refs(
             self.messaging.bot_routing.groups,
             resolve=references.resolve_group,
