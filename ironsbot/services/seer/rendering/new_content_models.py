@@ -26,3 +26,4 @@ class _ItemDetails:
     type_name: str = ""
     gender_name: str = ""
     skill: SkillDict | None = None
+    friend_skill: SkillDict | None = None

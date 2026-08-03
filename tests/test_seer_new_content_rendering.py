@@ -34,7 +34,7 @@ class _Cache:
 
 class _Data:
     @contextmanager
-    def query(self, operation: object) -> Iterator[dict[int, object]]:
+    def query(self, operation: object) -> Iterator[object]:
         yield operation(object())  # type: ignore[operator]
 
 
@@ -47,12 +47,25 @@ class _RichData(_Data):
     title = object()
     type_combination = object()
 
-    def __init__(self, records: dict[tuple[object, int], object]) -> None:
+    def __init__(
+        self,
+        records: dict[tuple[object, int], object],
+        *,
+        skills: dict[int, object] | None = None,
+    ) -> None:
         self.records = records
+        self.skills = skills or {}
 
     @contextmanager
     def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
         yield self.records.get((getter, entity_id))
+
+    @contextmanager
+    def query(self, operation: object) -> Iterator[object]:
+        session = SimpleNamespace(
+            get=lambda _model, skill_id: self.skills.get(skill_id),
+        )
+        yield operation(session)  # type: ignore[operator]
 
 
 class _Images:
@@ -289,13 +302,21 @@ def test_skill_menu_details_match_pet_skill_fields() -> None:
     expected_accuracy = 95
     expected_priority = 2
     expected_crit_rate = 25
+    effect = SimpleNamespace(effect_id=31, analyze_info="造成固定伤害", info="")
+    friend_effect = SimpleNamespace(effect_id=32, analyze_info="恢复自身体力", info="")
+    skill = SimpleNamespace(
+        skill_effect=[effect],
+        friend_skill_effect=[friend_effect],
+        hide_effect=SimpleNamespace(description="隐藏效果说明"),
+    )
     data = _RichData(
         {
             (
                 _RichData.type_combination,
                 electric_type_id,
             ): SimpleNamespace(name="电"),
-        }
+        },
+        skills={10001: skill},
     )
     details = new_content_rendering._item_details(
         data,  # type: ignore[arg-type]
@@ -328,6 +349,11 @@ def test_skill_menu_details_match_pet_skill_fields() -> None:
     assert details.skill["priority"] == expected_priority
     assert details.skill["crit_rate"] == expected_crit_rate
     assert details.skill["info"] == "测试技能效果"
+    assert details.skill["effects"] == [{"id": 31, "info": "造成固定伤害"}]
+    assert details.skill["hide_effect_desc"] == "隐藏效果说明"
+    assert details.friend_skill is not None
+    assert details.friend_skill["friend_bonus"] is True
+    assert details.friend_skill["effects"] == [{"id": 32, "info": "恢复自身体力"}]
 
 
 def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:
