@@ -108,8 +108,10 @@ async def validate_player_id(
 ) -> None:
     numeric_player_id = None
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
+        player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
         numeric_player_id = dependencies.player_accounts.resolve_player_id(
-            str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
+            player_reference,
+            group_id=event_group_id(event),
         )
         if numeric_player_id is None:
             await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
@@ -156,9 +158,15 @@ async def handle_player_binding_command(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    player_id = dependencies.player_accounts.resolve_player_id(
-        str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    )
+    player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
+    if not player_reference.isdecimal():
+        await finish_event_reply(
+            matcher,
+            event,
+            "绑定米米号请直接填写数字米米号，例如“绑定米米号123456”。",
+        )
+        return
+    player_id = dependencies.player_accounts.resolve_player_id(player_reference)
     if player_id is None:
         await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
     result = await dependencies.player.bind_player(

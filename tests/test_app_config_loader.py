@@ -1,3 +1,4 @@
+import hashlib
 import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
@@ -46,6 +47,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
 ADDITIONAL_HEADLESS_USER_ID = 23456789
+PRIVATE_ALIAS_PLAYER_ID = 34567890
+PLAYER_ALIAS_GROUP_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -1008,7 +1011,10 @@ watched_skin_ids = [1400538]
     )
     assert (
         config.player_accounts.resolve("sample_account", location="test").password
-        == "secret"
+        == hashlib.md5(
+            b"secret",
+            usedforsecurity=False,
+        ).hexdigest()
     )
     assert config.onebot_references.resolve_user(
         config.seer.lucky_skin_window.accounts[0].user,
@@ -1275,7 +1281,7 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     assert settings.operations.data_sync.github_token == "gh-token"
 
 
-def test_player_accounts_resolve_names_and_environment_passwords(
+def test_player_accounts_resolve_names_and_hash_environment_passwords(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
@@ -1285,26 +1291,132 @@ def test_player_accounts_resolve_names_and_environment_passwords(
 player_id = 23456789
 name = "worker_two"
 aliases = ["worker alias", "测试无头"]
+public = true
 query_worker = true
 """.strip(),
         encoding="utf-8",
     )
 
+    plaintext = "worker secret"
+    expected_digest = hashlib.md5(
+        plaintext.encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()
     settings = load_settings(
         config_path,
         env={
-            "SEER_PASSWORD_23456789": "md5-worker-2",
+            "SEER_PASSWORD_23456789": plaintext,
         },
     )
 
     worker = settings.player_accounts.resolve("测试无头", location="test")
     assert worker.name == "worker_two"
     assert worker.player_id == ADDITIONAL_HEADLESS_USER_ID
-    assert worker.password == "md5-worker-2"
+    assert worker.password == expected_digest
     assert settings.player_accounts.query_workers == (worker,)
     assert (
         settings.player_accounts.resolve_player_id("worker alias")
         == worker.player_id
+    )
+
+    hexadecimal_plaintext = "0123456789abcdef0123456789abcdef"
+    hexadecimal_settings = load_settings(
+        config_path,
+        env={"SEER_PASSWORD_23456789": hexadecimal_plaintext},
+    )
+    assert (
+        hexadecimal_settings.player_accounts.resolve(
+            "worker_two",
+            location="test",
+        ).password
+        == hashlib.md5(
+            hexadecimal_plaintext.encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()
+    )
+
+
+def test_player_account_aliases_can_be_public_or_group_scoped(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+allowed_group = 123456789
+
+[[seer.player_accounts]]
+player_id = 23456789
+name = "public_account"
+aliases = ["公开账号"]
+public = true
+
+[[seer.player_accounts]]
+player_id = 34567890
+name = "private_account"
+aliases = ["私有账号"]
+public = false
+
+[seer.player_account_aliases]
+allowed_group = ["private_account"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    accounts = load_settings(config_path, env={}).player_accounts
+
+    assert accounts.resolve_player_id("公开账号") == ADDITIONAL_HEADLESS_USER_ID
+    assert accounts.resolve_player_id("public_account") == ADDITIONAL_HEADLESS_USER_ID
+    assert accounts.resolve_player_id("私有账号") is None
+    assert accounts.resolve_player_id("private_account") is None
+    assert (
+        accounts.resolve_player_id("私有账号", group_id=PLAYER_ALIAS_GROUP_ID)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+    assert (
+        accounts.resolve_player_id("private_account", group_id=PLAYER_ALIAS_GROUP_ID)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+    assert (
+        accounts.resolve_player_id(str(PRIVATE_ALIAS_PLAYER_ID))
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+
+
+def test_player_account_alias_group_all_grants_every_private_account(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+allowed_group = 123456789
+
+[[seer.player_accounts]]
+player_id = 23456789
+name = "first_account"
+aliases = ["第一个"]
+
+[[seer.player_accounts]]
+player_id = 34567890
+name = "second_account"
+aliases = ["第二个"]
+
+[seer.player_account_aliases]
+allowed_group = ["all"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    accounts = load_settings(config_path, env={}).player_accounts
+
+    assert (
+        accounts.resolve_player_id("第一个", group_id=PLAYER_ALIAS_GROUP_ID)
+        == ADDITIONAL_HEADLESS_USER_ID
+    )
+    assert (
+        accounts.resolve_player_id("second_account", group_id=PLAYER_ALIAS_GROUP_ID)
+        == PRIVATE_ALIAS_PLAYER_ID
     )
 
 
