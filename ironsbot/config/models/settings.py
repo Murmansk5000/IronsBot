@@ -20,6 +20,10 @@ from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
+from ironsbot.config.player_accounts import (
+    PlayerAccountRegistry,
+    build_player_account_registry,
+)
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
 from ironsbot.core.features import FeatureConfig, validate_feature_config
@@ -45,8 +49,18 @@ class SettingsReferenceError(ValueError):
         return cls("seer.lucky_skin_window.accounts must not repeat a user")
 
     @classmethod
-    def duplicate_lucky_skin_window_player(cls) -> SettingsReferenceError:
-        return cls("seer.lucky_skin_window.accounts must not repeat a player_id")
+    def duplicate_lucky_skin_window_account(cls) -> SettingsReferenceError:
+        return cls("seer.lucky_skin_window.accounts must not repeat an account")
+
+    @classmethod
+    def missing_player_account_password(
+        cls,
+        player_id: int,
+    ) -> SettingsReferenceError:
+        return cls(
+            "seer.player_accounts "
+            f"requires environment variable SEER_PASSWORD_{player_id}"
+        )
 
 
 class MatcherPriorityConfigError(ValueError):
@@ -272,6 +286,10 @@ class Settings(BaseModel):
         )
 
     @property
+    def player_accounts(self) -> PlayerAccountRegistry:
+        return build_player_account_registry(self.seer.player_accounts)
+
+    @property
     def superuser_ids(self) -> frozenset[int]:
         return frozenset(
             self.onebot_references.resolve_users(
@@ -282,6 +300,12 @@ class Settings(BaseModel):
 
     def _validate_onebot_references(self) -> None:
         references = self.onebot_references
+        accounts = self.player_accounts
+        for account in accounts.query_workers:
+            if account.password is None:
+                raise SettingsReferenceError.missing_player_account_password(
+                    account.player_id
+                )
         references.resolve_users(self.bot.superusers, location="bot.superusers")
         self._validate_policy_refs(
             self.features.group_policy,
@@ -314,7 +338,7 @@ class Settings(BaseModel):
             location="bilibili.push.users",
         )
         lucky_users: set[int] = set()
-        lucky_player_ids: set[int] = set()
+        lucky_accounts: set[int] = set()
         for index, account in enumerate(self.seer.lucky_skin_window.accounts):
             user_id = references.resolve_user(
                 account.user,
@@ -323,9 +347,20 @@ class Settings(BaseModel):
             if user_id in lucky_users:
                 raise SettingsReferenceError.duplicate_lucky_skin_window_user()
             lucky_users.add(user_id)
-            if account.player_id in lucky_player_ids:
-                raise SettingsReferenceError.duplicate_lucky_skin_window_player()
-            lucky_player_ids.add(account.player_id)
+            configured_account = accounts.resolve(
+                account.account,
+                location=f"seer.lucky_skin_window.accounts[{index}].account",
+            )
+            if configured_account.player_id in lucky_accounts:
+                raise SettingsReferenceError.duplicate_lucky_skin_window_account()
+            lucky_accounts.add(configured_account.player_id)
+            if (
+                self.seer.lucky_skin_window.enabled
+                and configured_account.password is None
+            ):
+                raise SettingsReferenceError.missing_player_account_password(
+                    configured_account.player_id
+                )
         self._validate_mapping_refs(
             self.messaging.bot_routing.groups,
             resolve=references.resolve_group,

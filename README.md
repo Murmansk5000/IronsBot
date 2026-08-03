@@ -145,10 +145,8 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
-  `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
-  `HEADLESS_SEER_PASSWORD_<名称>` 对、TOML 引用的自定义账号变量、
-  `SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
+  `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -156,32 +154,30 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
-HEADLESS_SEER_USER_ID=
-HEADLESS_SEER_PASSWORD=
-# 仅在 TOML 配置额外无头工作账号时需要
-HEADLESS_SEER_WORKER_2_USER_ID=
-HEADLESS_SEER_WORKER_2_PASSWORD=
-# 每个幸运橱窗米米号使用 LUCKY_WINDOW_SEER_PASSWORD_<米米号>。
-LUCKY_WINDOW_SEER_PASSWORD_105023264=
+# 为 [[seer.player_accounts]] 中需要登录的账号设置密码 MD5。
+SEER_PASSWORD_123456789=
+SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
 
-额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
-幸运橱窗账号通过 `[[seer.lucky_skin_window.accounts]]` 的 `player_id` 配置；密码使用
-`LUCKY_WINDOW_SEER_PASSWORD_<player_id>` 环境变量。它们使用独立短时会话，不占用公共查询池。
+每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和
+`query_worker`。需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量。
+`query_worker = true` 的账号组成可互换的公共查询池；幸运橱窗仅引用账号库中的账号，
+使用独立短时会话，不占用公共查询池。
 多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
-所有公共查询账号会组成可互换的工作池；幸运橱窗的米米号写在 TOML，密码只写在容器环境变量中。
+所有公共查询账号会组成可互换的工作池；米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
 ### 幸运橱窗
 
 幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的 QQ 用户开放。需要：
 
-1. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、`player_id` 和可选的 `watched_skin_ids`。
-2. 在容器环境变量设置 `LUCKY_WINDOW_SEER_PASSWORD_<player_id>`；密码不写入 TOML。
-3. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
-4. QQ 用户将默认米米号绑定为同一个 `player_id`。
+1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
+2. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。
+3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；密码不写入 TOML。
+4. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
+5. QQ 用户将默认米米号绑定为该账号的 `player_id`。
 
 每天配置的 `time` 到达时，机器人会自动登录该专用账号，读取当天四个皮肤并向未在 `TD` 退订的用户私聊通知。手动发送“橱窗”时，若当天已有缓存会直接返回；没有缓存时，机器人会先说明将登录的绑定米米号，只有回复“是”或“y”后才会登录查询。回复“否”或“n”取消本次查询。
 
@@ -516,11 +512,9 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置。额外
-worker 使用相同的任意后缀。模板默认提供 worker 1（无后缀）、2、3 三个账号；之后复制
-`HEADLESS_SEER_USER_ID_2` / `HEADLESS_SEER_PASSWORD_2` 的格式即可增加任意数量。
-也可以按用途改用 `RANK_A` 这类名称后缀。每个账号独立连接，查询和刷榜可并行。阵容功能
-仍复用主无头账号，不单独登录。
+公共无头账号由 `[[seer.player_accounts]]` 中 `query_worker = true` 的条目决定；
+每个账号密码使用 `SEER_PASSWORD_<player_id>`。每个账号独立连接，查询和刷榜可并行；
+阵容功能复用公共账号池，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 

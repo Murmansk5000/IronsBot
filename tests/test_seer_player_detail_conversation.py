@@ -71,7 +71,7 @@ def test_player_info_prompt_includes_visible_private_extension(
                 cast("Any", object()),
                 extensions,
                 cast("Any", object()),
-                group_message_event("player105023264"),
+                group_message_event("player712345678"),
                 cast("Any", state),
                 player_id=PLAYER_ID,
                 player_message="player",

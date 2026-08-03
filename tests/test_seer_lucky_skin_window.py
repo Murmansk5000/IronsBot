@@ -13,7 +13,9 @@ import pytest
 from ironsbot.config.models.seer import (
     LuckySkinWindowAccountConfig,
     LuckySkinWindowConfig,
+    PlayerAccountConfig,
 )
+from ironsbot.config.player_accounts import build_player_account_registry
 from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.storage.lucky_skin_window import (
@@ -211,19 +213,31 @@ def _service(
             accounts=[
                 LuckySkinWindowAccountConfig(
                     user="owner",
-                    player_id=90001,
-                    password="owner-secret",
+                    account="owner_account",
                     watched_skin_ids=[101],
                 ),
                 LuckySkinWindowAccountConfig(
                     user="friend",
-                    player_id=90002,
-                    password="friend-secret",
+                    account="friend_account",
                     watched_skin_ids=[102],
                 ),
             ],
         ),
         OneBotReferenceResolver({}, {"owner": 1001, "friend": 1002}),
+        build_player_account_registry(
+            [
+                PlayerAccountConfig(
+                    player_id=90001,
+                    name="owner_account",
+                    password="owner-secret",
+                ),
+                PlayerAccountConfig(
+                    player_id=90002,
+                    name="friend_account",
+                    password="friend-secret",
+                ),
+            ]
+        ),
         cast("FeatureService", _Features()),
         cast("Any", sessions),
         cast("SeerDataAccess", _Data()),

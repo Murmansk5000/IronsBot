@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from ironsbot.core.commands import normalize_command_text, strip_command_prefix
 from ironsbot.services.seer.ids import is_valid_player_id
@@ -22,6 +23,9 @@ from ironsbot.services.seer.rank_list_models import (
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
@@ -83,18 +87,26 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
     return RankScoreCommand(rank_key=rank_key, score=score)
 
 
-def parse_rank_player_command(text: str) -> RankPlayerCommand | None:
+def parse_rank_player_command(
+    text: str,
+    *,
+    resolve_player_id: Callable[[str], int | None] | None = None,
+) -> RankPlayerCommand | None:
     command = normalize_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
 
     kind, rank_key, suffix = parsed
-    if kind != "global" or re.fullmatch(r"\d+", suffix) is None:
+    if kind != "global" or not suffix:
         return None
-
-    player_id = int(suffix)
-    if not is_valid_player_id(player_id):
+    if resolve_player_id is not None:
+        player_id = resolve_player_id(suffix)
+    elif suffix.isdecimal():
+        player_id = int(suffix) if is_valid_player_id(int(suffix)) else None
+    else:
+        player_id = None
+    if player_id is None:
         return None
     return RankPlayerCommand(rank_key=rank_key, player_id=player_id)
 

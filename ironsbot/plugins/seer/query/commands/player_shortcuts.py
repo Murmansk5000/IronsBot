@@ -53,10 +53,25 @@ def _build_shortcut_reply_message(reply: QueryReply) -> str | Message:
     return message
 
 
-async def _is_player_shortcut(event: Event, state: T_State) -> bool:
+async def _is_player_shortcut(
+    event: Event,
+    state: T_State,
+    *,
+    dependencies: PlayerCommandDependencies,
+) -> bool:
     command = parse_player_shortcut_command(event.get_plaintext())
     if command is None:
         return False
+    if command.player_reference is not None:
+        player_id = dependencies.player_accounts.resolve_player_id(
+            command.player_reference
+        )
+        if player_id is None:
+            return False
+        command = PlayerShortcutCommand(
+            kind=command.kind,
+            player_id=player_id,
+        )
     state[_SHORTCUT_COMMAND_KEY] = command
     return True
 
@@ -130,6 +145,12 @@ def _shortcut_semantic_request(
 
 
 def install(group: SeerMatcherGroup) -> None:
+    dependencies = PlayerCommandDependencies(
+        group.resources.player,
+        group.features,
+        group.resources.player_detail_extensions,
+        group.player_accounts,
+    )
     matcher = group.on_message(
         policy=CommandPolicy.command(
             _shortcut_command_id,
@@ -141,7 +162,11 @@ def install(group: SeerMatcherGroup) -> None:
             ),
         ),
         rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(_is_player_shortcut)
+        & Rule(lambda event, state: _is_player_shortcut(
+            event,
+            state,
+            dependencies=dependencies,
+        ))
         & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
@@ -149,10 +174,6 @@ def install(group: SeerMatcherGroup) -> None:
     matcher.append_handler(
         bind_async(
             handle_player_shortcut,
-            PlayerCommandDependencies(
-                group.resources.player,
-                group.features,
-                group.resources.player_detail_extensions,
-            ),
+            dependencies,
         )
     )

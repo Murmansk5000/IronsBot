@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
+from ironsbot.config.player_accounts import PlayerAccount
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.plugins.operations.headless import register_reconnect_jobs
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
@@ -30,9 +31,18 @@ def build_service(
     runtime = build_test_runtime()
     return HeadlessService(
         ClientManager(runtime.tasks.create),
-        HeadlessConfig(user_id=USER_ID, password="md5"),
+        HeadlessConfig(),
         notices or HeadlessNoticeConfig(),
         runtime.admin_notices,
+        accounts=(
+            PlayerAccount(
+                player_id=USER_ID,
+                name="test_worker",
+                aliases=(),
+                query_worker=True,
+                password="md5",
+            ),
+        ),
         now=now,  # type: ignore[arg-type]
     )
 

@@ -23,7 +23,7 @@ from ironsbot.services.seer.rank_models import (
     RankLookupResult,
 )
 
-PLAYER_ID = 105023264
+PLAYER_ID = 712345678
 TEAM_ID = 987654321
 REG_TIME = 946684800
 
@@ -101,7 +101,7 @@ def test_format_player_identity_team_vip_and_online_text() -> None:
     user_info = UserInfo(team_id=TEAM_ID, team_is_show=False, vip=1, vip_level=6)
     online_info = OnlineInfo(server_id=1, map_type=2, map_id=3)
 
-    assert format_player_identity(PLAYER_ID, "赛小息") == "米米号：105023264（赛小息）"
+    assert format_player_identity(PLAYER_ID, "赛小息") == "米米号：712345678（赛小息）"
     assert (
         format_team_text(user_info, "测试战队") == "测试战队（战队ID：987654321，隐藏）"
     )
@@ -279,7 +279,7 @@ def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     )
 
     assert "🤖【玩家信息】" in message
-    assert "米米号：105023264（赛小息）" in message
+    assert "米米号：712345678（赛小息）" in message
     assert "注册时间：2000年1月1日 08:00:00" in message
     assert "战队：未加入" in message
     assert "在线状态失败" in message

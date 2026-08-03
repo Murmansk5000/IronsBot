@@ -772,6 +772,25 @@ mention_initial_max_responses = 3
 # player_lineup_private = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_rank_score = []
 
+# Seer account library. Passwords always use SEER_PASSWORD_<player_id> in the
+# container environment. `name` and `aliases` are also accepted by player
+# commands, for example: 米米号示例账号.
+# ZH: 赛尔账号库。密码统一放在容器环境变量 SEER_PASSWORD_<player_id>；name 和
+# aliases 也可作为米米号查询口令，例如“米米号示例账号”。query_worker=true 的账号
+# 自动加入公共无头查询池。
+#
+# [[seer.player_accounts]]
+# player_id = 123456789
+# name = "sample_worker"
+# aliases = ["示例无头", "示例查询账号"]
+# query_worker = true
+#
+# [[seer.player_accounts]]
+# player_id = 987654321
+# name = "sample_window"
+# aliases = ["示例橱窗账号"]
+# query_worker = false
+
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
 timeout_seconds = 30.0
@@ -856,28 +875,26 @@ time = "00:02"
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
-# Add one table per QQ user allowed to query and receive this player's window.
-# `user` accepts a [features.user_aliases] alias or QQ ID. `player_id` is safe
-# to keep in TOML. The matching password must use the fixed environment-variable
-# name LUCKY_WINDOW_SEER_PASSWORD_<player_id>. The user must bind the same ID.
-# `watched_skin_ids` only adds a ★ marker. The user also needs lucky_skin_window
-# in their user policy; group use additionally needs it in the group policy.
-# ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；手动查询当天无缓存时会先请该用户确认登录。
-# player_id 可直接写入 TOML；密码必须写入固定名称
-# LUCKY_WINDOW_SEER_PASSWORD_<player_id> 的环境变量，真实密码不得写入 TOML；用户必须绑定
-# 该米米号。watched_skin_ids 只标记 ★ 关注。用户策略还需
-# 启用 lucky_skin_window；群聊还需要在该群策略中启用。
+# Add one table per QQ user allowed to query and receive a configured account's
+# window. `user` accepts a [features.user_aliases] alias or QQ ID. `account`
+# refers to a `seer.player_accounts` name, alias, or player ID; the user must
+# bind that same player ID. `watched_skin_ids` only adds a ★ marker. The user
+# also needs lucky_skin_window in their user policy; group use additionally
+# needs it in the group policy.
+# ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；
+# account 引用 seer.player_accounts 中的 name、aliases 或米米号，用户必须绑定
+# 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 只标记
+# ★ 关注。用户策略还需启用 lucky_skin_window；群聊还需要在该群策略中启用。
 #
 # [[seer.lucky_skin_window.accounts]]
 # user = "owner"
-# player_id = 105023264
+# account = "sample_window"
 # watched_skin_ids = [1400538, 1400761]
 
-# [seer.player.lineup] moved to operations.private_extensions.settings.player_lineup
 # The public image renders a labelled blank 12-slot preview. Real lineup data
 # is available only after the optional private extension package is installed.
-# The extension reuses this bot's one headless Seer login; it does not start a
-# second API container or a second login.
+# The extension reuses this bot's public headless query-worker pool; it does
+# not start a separate API container or dedicated login configuration.
 # Default: 15.0; EN: In-process private lineup packet timeout seconds. ZH: 私有阵容封包超时秒数。
 # timeout_seconds = 15.0
 # Default: "data/seer/player_lineup_cache.sqlite"
@@ -1218,11 +1235,10 @@ interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
 
 [operations.headless]
-# EN: Login credentials are environment-only. The unsuffixed HEADLESS_SEER_* pair
-# is worker 1; the environment template includes workers _2 and _3, and more
-# matching suffix pairs can be added for parallel workers.
-# ZH: 登录凭据仅通过环境变量设置。无后缀 HEADLESS_SEER_* 是主 worker；
-# 环境变量模板默认包含 worker 2、3，追加同名后缀账号对即可增加并行 worker。
+# EN: Connection, heartbeat, timeout, and reconnect parameters for every public
+# query worker. Configure worker identities in [[seer.player_accounts]].
+# ZH: 所有公共无头查询账号共用的连接、心跳、超时与重连参数；账号身份在
+# [[seer.player_accounts]] 中配置。
 # Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
 login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
 # Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。
@@ -1235,18 +1251,6 @@ reconnect_retries = -1
 reconnect_delay = 5.0
 # Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
 reconnect_delay_max = 120.0
-# EN: Additional public-query workers are interchangeable. Their account ID and
-# password are read only from the named environment variables.
-# ZH: 可继续增加可互换的公共查询账号；米米号和密码只从指定环境变量读取。
-# [[operations.headless.workers]]
-# name = "worker_2"
-# user_id_env = "HEADLESS_SEER_WORKER_2_USER_ID"
-# password_env = "HEADLESS_SEER_WORKER_2_PASSWORD"
-# [[operations.headless.workers]]
-# name = "worker_3"
-# user_id_env = "HEADLESS_SEER_WORKER_3_USER_ID"
-# password_env = "HEADLESS_SEER_WORKER_3_PASSWORD"
-
 [operations.headless_notice]
 # EN: Notices are sent to superusers and admin_notice groups.
 # ZH: 这些通知会发送给超级管理员和 admin_notice 管理群。
