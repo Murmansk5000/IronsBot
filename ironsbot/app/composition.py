@@ -58,6 +58,9 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
+from ironsbot.integrations.storage.lucky_skin_watch import (
+    SqliteLuckySkinWatchPreferenceStore,
+)
 from ironsbot.integrations.storage.lucky_skin_window import (
     SqliteLuckySkinWindowCache,
 )
@@ -386,6 +389,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database,
         player_bindings,
         subscriptions,
+        SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             cache_paths.runtime_dir() / "lucky_skin_window.sqlite"
         ),
