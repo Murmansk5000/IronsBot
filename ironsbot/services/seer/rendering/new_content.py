@@ -23,8 +23,11 @@ from ironsbot.services.seer.new_content import (
 from ironsbot.services.seer.render_paths import (
     NEW_CONTENT_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
+    SHARED_TEMPLATE_PATH,
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
+
+from .custom_pet_models import SkillDict
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
@@ -51,6 +54,7 @@ class NewContentMenuItemDict(TypedDict):
     is_category: bool
     expanded: bool
     image: str | None
+    skill: SkillDict | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,7 @@ class _ItemDetails:
     gender_id: int | None = None
     type_name: str = ""
     gender_name: str = ""
+    skill: SkillDict | None = None
 
 
 _EQUIP_PART_TYPE_NAMES = {
@@ -131,6 +136,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                 "is_category": True,
                 "expanded": expanded,
                 "image": None,
+                "skill": None,
             }
         )
         if expanded:
@@ -156,6 +162,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                         "is_category": False,
                         "expanded": False,
                         "image": None,
+                        "skill": details.skill,
                     }
                 )
                 item_rows.append((row_index, item, details))
@@ -177,12 +184,19 @@ async def render_new_content_menu(  # noqa: PLR0913
         if _item_requires_image(item) and image is None:
             cacheable = False
 
+    skill_type_icons = await _load_skill_type_icons(
+        images,
+        item_rows,
+        image_results,
+    )
+
     result = await render_html(
-        template_path=NEW_CONTENT_TEMPLATE_PATH,
+        template_path=[NEW_CONTENT_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
         templates={
             "content_date": snapshot.weekly_cycle,
             "items": rows,
+            "skill_type_icons": skill_type_icons,
         },
         max_width=1080,
         allow_refit=False,
@@ -190,6 +204,31 @@ async def render_new_content_menu(  # noqa: PLR0913
     if cacheable:
         cache.put("new_content", content_key, result)
     return result
+
+
+async def _load_skill_type_icons(
+    images: SeerImageSource,
+    item_rows: list[tuple[int, NewContentItem, _ItemDetails]],
+    image_results: list[tuple[str | None, str | None]],
+) -> dict[int | str, str]:
+    """Build the icon map expected by the shared pet skill-card macro."""
+
+    type_icons: dict[int | str, str] = {"prop": ""}
+    has_attribute_skill = False
+    for (_row_index, _item, details), (_image, type_icon) in zip(
+        item_rows,
+        image_results,
+        strict=True,
+    ):
+        if details.skill is None:
+            continue
+        type_icons[details.skill["type_id"]] = type_icon or ""
+        has_attribute_skill |= (
+            details.skill["category_id"] == _SKILL_CATEGORY_ATTRIBUTE
+        )
+    if has_attribute_skill:
+        type_icons["prop"] = await _type_icon(images, "prop") or ""
+    return type_icons
 
 
 async def _item_visuals(
@@ -208,11 +247,15 @@ async def _item_visuals(
 
 async def _type_icon(
     images: SeerImageSource,
-    type_id: int | None,
+    type_id: int | str | None,
 ) -> str | None:
     if type_id is None:
         return None
     try:
+        if isinstance(type_id, str):
+            return to_data_uri(
+                await images.fetch("element_type", type_id, fallback=False)  # type: ignore[arg-type]
+            )
         return await _fetch_data_uri(images, "element_type", type_id)
     except ImageSourceError:
         return None
@@ -228,6 +271,7 @@ def _item_details(
     resolvers = {
         "pet": lambda: _pet_details(data, item),
         "pet_skin": lambda: _skin_details(data, item),
+        "skill": lambda: _skill_details(data, item),
         "mintmark": lambda: _mintmark_details(data, item),
         "suit": lambda: _suit_details(data, item),
         "equip": lambda: _equip_details(data, item),
@@ -286,6 +330,57 @@ def _skin_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
                 "" if pet is None else _gender_name(str(pet.gender.name))
             ),
         )
+
+
+def _skill_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
+    payload = item.payload
+    type_id = _payload_int(payload, "type_id")
+    type_name = ""
+    if type_id > 0:
+        with data.get(data.type_combination, type_id) as skill_type:
+            if skill_type is not None:
+                type_name = str(skill_type.name)
+    category_name = _SKILL_CATEGORY_NAMES.get(
+        _payload_int(payload, "category_id"),
+        "未知分类",
+    )
+    must_hit = bool(payload.get("must_hit", False))
+    raw_crit_rate = payload.get("crit_rate")
+    crit_rate = (
+        _payload_int(payload, "crit_rate")
+        if isinstance(raw_crit_rate, int | float | str)
+        else None
+    )
+    skill = SkillDict(
+        id=item.entity_id,
+        name=item.name,
+        type_id=type_id,
+        type_name=type_name,
+        category_id=_payload_int(payload, "category_id"),
+        category_name=category_name,
+        power=_payload_int(payload, "power"),
+        max_pp=_payload_int(payload, "max_pp"),
+        accuracy="必中" if must_hit else _payload_int(payload, "accuracy"),
+        crit_rate=crit_rate,
+        priority=_payload_int(payload, "priority"),
+        must_hit=must_hit,
+        info=str(payload.get("info", "")).strip() or None,
+        learning_level=None,
+        is_special=False,
+        is_advanced=False,
+        is_fifth=False,
+        effects=[],
+        activation_item=None,
+        friend_bonus=False,
+        hide_effect_desc=None,
+    )
+    return _ItemDetails(
+        metadata="",
+        description=_skill_related_pets(payload.get("pets")),
+        type_id=type_id or None,
+        type_name=type_name,
+        skill=skill,
+    )
 
 
 def _mintmark_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
@@ -422,6 +517,35 @@ def _six_stats(attributes: object) -> tuple[tuple[str, str], ...]:
             ("体力", "hp"),
         )
     )
+
+
+_SKILL_CATEGORY_NAMES = {
+    1: "物理攻击",
+    2: "特殊攻击",
+    4: "属性技能",
+}
+_SKILL_CATEGORY_ATTRIBUTE = 4
+
+
+def _payload_int(payload: dict[str, object], key: str) -> int:
+    value = payload.get(key, 0)
+    if not isinstance(value, int | float | str):
+        return 0
+    try:
+        return int(value)
+    except ValueError:
+        return 0
+
+
+def _skill_related_pets(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    names = [
+        str(pet.get("name", "")).strip()
+        for pet in value
+        if isinstance(pet, dict) and str(pet.get("name", "")).strip()
+    ]
+    return f"关联精灵：{'、'.join(names)}" if names else ""
 
 
 def _two_column_stats(attributes: object) -> tuple[tuple[str, str], ...]:

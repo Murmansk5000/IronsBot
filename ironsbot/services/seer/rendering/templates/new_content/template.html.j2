@@ -1,4 +1,5 @@
 <!doctype html>
+{% from "skill_card_macro.html.j2" import skill_card %}
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -35,6 +36,11 @@
       padding: 10px 14px; background: #0c2744; border-left: 3px solid #3d88c8;
     }
     .item.no-image { min-height: 58px; }
+    .item.skill-item { min-height: 0; }
+    .skill-content { flex: 1; min-width: 0; }
+    .skill-item .sk-card { margin: 0; }
+    .skill-links { margin: 6px 0 0; color: #8dc9eb; font-size: 12px; }
+    {% include "skill_card.css" %}
     .thumbnail-frame {
       display: flex; align-items: center;
       justify-content: center; margin-right: 13px; padding: 3px;
@@ -66,6 +72,9 @@
       display: flex; flex-wrap: nowrap; gap: 3px;
       margin-top: 3px;
     }
+    .stat-grid.skill { flex-wrap: wrap; margin-top: 0; }
+    .stat-grid.skill .stat { flex: 0 0 auto; }
+    .stat-grid.skill .stat span::after { content: "："; }
     .stat-grid.two-column { display: flex; flex-direction: column; gap: 3px; }
     .stat-row { display: flex; gap: 3px; }
     .stat-row .stat { flex: 1 1 0; }
@@ -109,8 +118,14 @@
             <div class="category-count">{{ item.description }}</div>
           </div>
         {% else %}
-          <div class="item{% if not item.image %} no-image{% endif %}">
+          <div class="item{% if not item.image %} no-image{% endif %}{% if item.skill %} skill-item{% endif %}">
             <div class="key">{{ item.code }}</div>
+            {% if item.skill %}
+              <div class="skill-content">
+                {{ skill_card(item.skill, skill_type_icons) }}
+                {% if item.description %}<div class="skill-links">{{ item.description }}</div>{% endif %}
+              </div>
+            {% else %}
             {% if item.image %}
               <div class="thumbnail-frame {{ item.image_layout }}"><img class="thumbnail" src="{{ item.image }}"></div>
             {% endif %}
@@ -132,6 +147,13 @@
               </div>
               {% if item.side_title or item.side_description or item.stats_total or item.stats %}
                 <aside class="content-side">
+                {% if item.stats_layout == "skill" and item.stats %}
+                  <div class="stat-grid skill">
+                    {% for label, value in item.stats %}
+                      <div class="stat"><span>{{ label }}</span><strong>{{ value }}</strong></div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
                 {% if item.side_title %}<div class="side-title">{{ item.side_title }}</div>{% endif %}
                 {% if item.side_description %}<div class="side-description">{{ item.side_description }}</div>{% endif %}
                 {% if item.stats_total %}<div class="stat-total">总和：{{ item.stats_total }}</div>{% endif %}
@@ -145,7 +167,7 @@
                       </div>
                     {% endfor %}
                   </div>
-                {% elif item.stats %}
+                {% elif item.stats and item.stats_layout != "skill" %}
                   <div class="stat-grid">
                     {% for label, value in item.stats %}
                       <div class="stat"><span>{{ label }}</span><strong>{{ value }}</strong></div>
@@ -155,6 +177,7 @@
                 </aside>
               {% endif %}
             </div>
+            {% endif %}
           </div>
         {% endif %}
       {% endfor %}

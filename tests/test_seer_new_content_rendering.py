@@ -45,6 +45,7 @@ class _RichData(_Data):
     suit = object()
     equip = object()
     title = object()
+    type_combination = object()
 
     def __init__(self, records: dict[tuple[object, int], object]) -> None:
         self.records = records
@@ -279,6 +280,54 @@ def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     )
     assert details.stats_layout == "two_column"
     assert details.stats_total == "650"
+
+
+def test_skill_menu_details_match_pet_skill_fields() -> None:
+    electric_type_id = 5
+    expected_power = 150
+    expected_pp = 5
+    expected_accuracy = 95
+    expected_priority = 2
+    expected_crit_rate = 25
+    data = _RichData(
+        {
+            (
+                _RichData.type_combination,
+                electric_type_id,
+            ): SimpleNamespace(name="电"),
+        }
+    )
+    details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        _item(
+            "skill",
+            10001,
+            type_id=electric_type_id,
+            category_id=1,
+            power=expected_power,
+            max_pp=expected_pp,
+            accuracy=expected_accuracy,
+            crit_rate=expected_crit_rate,
+            priority=expected_priority,
+            atk_num=1,
+            info="测试技能效果",
+            pets=[{"id": 70, "name": "雷伊"}],
+        ),
+    )
+
+    assert details.metadata == ""
+    assert details.type_id == electric_type_id
+    assert details.type_name == "电"
+    assert details.description == "关联精灵：雷伊"
+    assert details.skill is not None
+    assert details.skill["category_name"] == "物理攻击"
+    assert details.skill["power"] == expected_power
+    assert details.skill["max_pp"] == expected_pp
+    assert details.skill["accuracy"] == expected_accuracy
+    assert details.skill["priority"] == expected_priority
+    assert details.skill["crit_rate"] == expected_crit_rate
+    assert details.skill["info"] == "测试技能效果"
 
 
 def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:

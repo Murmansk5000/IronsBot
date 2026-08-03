@@ -99,7 +99,6 @@ FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
         }
     ),
     "bili": frozenset({"bili_query", "bili_push"}),
-    "activity": frozenset({"seer_activity_query", "seer_activity_push"}),
     "seer_activity": frozenset({"seer_activity_query", "seer_activity_push"}),
     "server_status": frozenset({"server_status_query"}),
     "text": frozenset({"text", "web_activity_link", "seerinfo"}),

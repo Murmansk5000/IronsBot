@@ -305,7 +305,7 @@ Feature names are used in `[features.group_policy]` and
 | `bili` | `bili_query` + `bili_push`. |
 | `seer_activity_query` | In-game activity and ending-soon activity queries. |
 | `seer_activity_push` | In-game activity ending reminders. |
-| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
+| `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
 | `server_status_query` | Server status / open-server query. |
 | `server_status_push` | Server status broadcast pushes. |
 | `server_status` | `server_status_query` + `server_status_push`. |

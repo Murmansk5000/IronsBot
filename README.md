@@ -343,7 +343,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `bili` | `bili_query` + `bili_push`。 |
 | `seer_activity_query` | 游戏内快结束活动手动查询；`/当前活动` 为超级管理员专用。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
-| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
+| `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |
 | `server_status` | `server_status_query`。 |
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
