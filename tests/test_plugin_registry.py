@@ -70,6 +70,7 @@ def test_registry_is_the_lifecycle_order_authority() -> None:
         "team_resource_jobs",
         "local_rank_jobs",
         "rank_page_jobs",
+        "lucky_skin_window_schedule",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "scheduler",
