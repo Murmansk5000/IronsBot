@@ -132,6 +132,44 @@ class NewContentService:
             return snapshot
 
 
+def format_new_content_item_description(item: NewContentItem) -> str:
+    """Keep text and rendered new-content menus on the same item wording."""
+
+    change = "修改" if item.change_kind == "modified" else "新增"
+    if item.category == "achievement":
+        point = int(item.payload.get("point", 0))
+        titles = item.payload.get("titles", [])
+        title_text = f"｜称号：{titles[0].get('name', '')}" if titles else ""
+        return f"{change}｜{item.entity_id}｜{point} 点{title_text}"
+    if item.category == "pet_skin":
+        pet_name = str(item.payload.get("pet_name", ""))
+        return f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
+    if item.category == "skill":
+        pets = item.payload.get("pets", [])
+        names = (
+            "、".join(
+                str(pet.get("name", "")).strip()
+                for pet in pets
+                if isinstance(pet, dict) and str(pet.get("name", "")).strip()
+            )
+            if isinstance(pets, list)
+            else ""
+        )
+        return f"{change}｜{item.entity_id}{f'｜{names}' if names else ''}"
+    if item.category in {"autocard_card", "autocard_role"}:
+        kind = "角色" if item.category == "autocard_role" else "卡牌"
+        return f"{change}｜{item.entity_id}｜{kind}"
+    if item.category == "autocard_sanctuary_effect":
+        sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
+        sanctuary = sanctuary or f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
+        pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
+        pet = f"｜精灵王：{pet_name}" if pet_name else ""
+        unlock_round = int(item.payload.get("unlock_round", 0))
+        phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
+        return f"{change}｜{sanctuary}{pet}｜{phase}"
+    return f"{change}｜{item.entity_id}"
+
+
 def _load_snapshot(session: Session) -> NewContentSnapshot:
     try:
         connection = session.connection()

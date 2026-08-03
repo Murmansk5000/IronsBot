@@ -1,0 +1,372 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
+
+from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
+from ironsbot.services.seer.new_content import (
+    NewContentCategory,
+    NewContentItem,
+    NewContentSnapshot,
+)
+from ironsbot.services.seer.rendering import new_content as new_content_rendering
+from ironsbot.services.seer.rendering.new_content import render_new_content_menu
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator, Mapping
+
+
+class _Cache:
+    def __init__(self) -> None:
+        self.saved: bytes | None = None
+
+    def get(self, category: str, key: str) -> bytes | None:
+        del category, key
+        return None
+
+    def put(self, category: str, key: str, data: bytes) -> None:
+        del category, key
+        self.saved = data
+
+
+class _Data:
+    @contextmanager
+    def query(self, operation: object) -> Iterator[dict[int, object]]:
+        yield operation(object())  # type: ignore[operator]
+
+
+class _RichData(_Data):
+    pet = object()
+    pet_skin = object()
+    mintmark = object()
+    suit = object()
+    equip = object()
+    title = object()
+
+    def __init__(self, records: dict[tuple[object, int], object]) -> None:
+        self.records = records
+
+    @contextmanager
+    def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
+        yield self.records.get((getter, entity_id))
+
+
+class _Images:
+    def __init__(self, *, fail_keys: set[tuple[str, str]] | None = None) -> None:
+        self.fail_keys = fail_keys or set()
+        self.requests: list[tuple[str, str]] = []
+
+    async def fetch(
+        self,
+        kind: str,
+        key: str,
+        *,
+        fallback: bool = True,
+    ) -> bytes:
+        del fallback
+        self.requests.append((kind, key))
+        if (kind, key) in self.fail_keys:
+            from ironsbot.services.seer.images import ImageSourceError
+
+            raise ImageSourceError("missing")
+        return f"{kind}:{key}".encode()
+
+    async def fetch_url(self, url: str) -> bytes:
+        self.requests.append(("url", url))
+        return url.encode()
+
+
+class _Autocard:
+    def __init__(
+        self,
+        entries: dict[tuple[str, int], AutocardEntry] | None = None,
+    ) -> None:
+        self.entries = entries or {}
+
+    def select(self, value: AutocardPromptValue) -> AutocardEntry:
+        if entry := self.entries.get((value.kind, value.item_id)):
+            return entry
+        item_id = value.item_id
+        kind = value.kind
+        return AutocardEntry(
+            kind=kind,
+            item_id=item_id,
+            name="测试群星牌",
+            text="",
+            image_url=f"https://assets.example/{kind}-{item_id}.png",
+        )
+
+
+def _item(
+    category: NewContentCategory,
+    entity_id: int,
+    **payload: Any,
+) -> NewContentItem:
+    return NewContentItem(
+        category=category,
+        entity_id=entity_id,
+        name=f"条目 {entity_id}",
+        sort_value=entity_id,
+        payload=payload,
+    )
+
+
+def _attributes() -> SimpleNamespace:
+    attributes = SimpleNamespace(
+        atk=120,
+        sp_atk=100,
+        spd=110,
+        def_=95,
+        sp_def=90,
+        hp=135,
+        total=650,
+    )
+    attributes.round = lambda: attributes
+    return attributes
+
+
+@pytest.mark.asyncio
+async def test_render_new_content_menu_uses_category_specific_thumbnails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    images = _Images()
+    monkeypatch.setattr(
+        new_content_rendering,
+        "load_skin_image_resolutions",
+        lambda _session, _skin_ids: {
+            856: SimpleNamespace(head_resource_id=1856),
+        },
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260803",
+        weekly_cycle="2026-08-03",
+        items=(
+            _item("pet", 1, resource_id=101),
+            _item("pet_skin", 856, resource_id=856),
+            _item("mintmark", 2),
+            _item("suit", 3),
+            _item("equip", 4),
+            _item("mount", 5),
+            _item("achievement", 6, titles=[{"id": 601, "name": "称号"}]),
+            _item("skill", 7),
+            _item("autocard_card", 8),
+            _item("autocard_role", 9),
+            _item("autocard_sanctuary_effect", 10),
+        ),
+    )
+    categories = cast(
+        "tuple[NewContentCategory, ...]",
+        tuple(item.category for item in snapshot.items),
+    )
+
+    result = await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        images,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        categories,
+        categories,
+        frozenset(categories),
+    )
+
+    rows = captured["items"]
+    row_by_code = {row["code"]: row for row in rows}
+    assert result == b"menu-image"
+    assert row_by_code["a1"]["image"] is not None
+    assert row_by_code["h1"]["image"] is None  # 技能不显示图片
+    assert row_by_code["k1"]["image"] is None  # 圣域不伪造图片
+    assert ("pet_head", "101") in images.requests
+    assert ("pet_head", "1856") in images.requests
+    assert ("mintmark", "2") in images.requests
+    assert ("suit", "3") in images.requests
+    assert ("equip", "4") in images.requests
+    assert ("equip", "5") in images.requests
+    assert ("title", "601") in images.requests
+    assert ("url", "https://assets.example/card-8.png") in images.requests
+    assert ("url", "https://assets.example/role-9.png") in images.requests
+
+
+@pytest.mark.asyncio
+async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260803",
+        weekly_cycle="2026-08-03",
+        items=(_item("mintmark", 2),),
+    )
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(fail_keys={("mintmark", "2")}),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("mintmark",),
+        ("mintmark",),
+        frozenset(("mintmark",)),
+    )
+
+    item_row = next(row for row in captured["items"] if row["code"] == "a1")
+    assert item_row["name"] == "条目 2"
+    assert item_row["image"] is None
+
+
+def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
+    water_type_id = 3
+    attributes = _attributes()
+    pet = SimpleNamespace(
+        id=4926,
+        type=SimpleNamespace(id=water_type_id, name="水"),
+        gender=SimpleNamespace(id=1, name="雄"),
+        encyclopedia=SimpleNamespace(introduction="官方精灵简介"),
+        base_stats=SimpleNamespace(to_model=lambda: attributes),
+    )
+    data = _RichData({(_RichData.pet, 4926): pet})
+
+    details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        _item("pet", 4926),
+    )
+
+    assert details.metadata == "ID: 4926"
+    assert details.description == "官方精灵简介"
+    assert details.type_id == water_type_id
+    assert details.gender_id == 1
+    assert details.type_name == "水"
+    assert details.gender_name == "雄"
+    assert details.stats == (
+        ("攻击", "120"),
+        ("防御", "95"),
+        ("特攻", "100"),
+        ("特防", "90"),
+        ("速度", "110"),
+        ("体力", "135"),
+    )
+    assert details.stats_layout == "two_column"
+    assert details.stats_total == "650"
+
+
+def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:
+    suit = SimpleNamespace(id=447, suit_desc="晨曦之星战甲官方简介")
+    equip = SimpleNamespace(
+        id=333,
+        part_type=SimpleNamespace(name="头部"),
+        suit=SimpleNamespace(name="晨曦之星战甲"),
+        bonus=SimpleNamespace(desc="部件官方效果"),
+    )
+    data = _RichData(
+        {
+            (_RichData.suit, 447): suit,
+            (_RichData.equip, 333): equip,
+        }
+    )
+
+    suit_details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        _item("suit", 447),
+    )
+    equip_details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        _item("equip", 333),
+    )
+
+    assert suit_details.description == ""
+    assert suit_details.side_title == "套装效果"
+    assert suit_details.side_description == "晨曦之星战甲官方简介"
+    assert equip_details.metadata == "ID：333｜类型：头部｜套装：晨曦之星战甲"
+    assert equip_details.description == "部件官方效果"
+
+
+def test_autocard_menu_details_keep_intro_left_and_skills_right() -> None:
+    role = AutocardEntry(
+        kind="role",
+        item_id=8,
+        name="破界者",
+        text="",
+        image_url="",
+        description="如果界限定义了存在，那么打破界限的人，是在毁灭这个世界，还是在重新定义自己？",
+        skill_name="破界",
+        skill_text="造成 3 点伤害。",
+        skill_upgrade="伤害提升至 5 点。",
+    )
+    details = new_content_rendering._item_details(
+        _Data(),  # type: ignore[arg-type]
+        _Autocard({("role", 8): role}),  # type: ignore[arg-type]
+        _item("autocard_role", 8),
+    )
+
+    assert details.metadata == "ID：8｜角色"
+    assert details.description == role.description
+    assert details.side_title == "技能：破界"
+    assert details.side_description == "造成 3 点伤害。\n升级：伤害提升至 5 点。"
+
+
+@pytest.mark.asyncio
+async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
+    images = _Images()
+    card = AutocardEntry(
+        kind="card",
+        item_id=98,
+        name="布布种子",
+        text="",
+        image_url="https://assets.example/card-98.png",
+    )
+    autocard = _Autocard({("card", 98): card})
+
+    pet_image = await new_content_rendering._sanctuary_item_image(
+        images,  # type: ignore[arg-type]
+        autocard,  # type: ignore[arg-type]
+        _item("autocard_sanctuary_effect", 1, sanctuary_pet_id=70),
+    )
+    card_image = await new_content_rendering._sanctuary_item_image(
+        images,  # type: ignore[arg-type]
+        autocard,  # type: ignore[arg-type]
+        _item(
+            "autocard_sanctuary_effect",
+            2,
+            target_type="card",
+            target_id=98,
+        ),
+    )
+
+    assert pet_image is not None
+    assert card_image is not None
+    assert ("pet_head", "70") in images.requests
+    assert ("url", "https://assets.example/card-98.png") in images.requests

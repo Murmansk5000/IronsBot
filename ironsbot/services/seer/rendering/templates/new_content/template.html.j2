@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #071426; }
+    body {
+      color: #eaf6ff;
+      font-family: "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+    }
+    .panel { width: 100%; padding: 24px; }
+    .header {
+      display: flex; align-items: end; justify-content: space-between;
+      padding: 0 4px 16px; border-bottom: 2px solid #4796d8;
+      margin-bottom: 14px;
+    }
+    .title { font-size: 29px; font-weight: 800; letter-spacing: 1px; }
+    .cycle { color: #8bb9e4; font-size: 13px; }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .category {
+      display: flex; align-items: center; min-height: 54px; padding: 10px 14px;
+      background: linear-gradient(90deg, #184d82, #10345b);
+      border: 1px solid #4995d4; border-radius: 4px;
+    }
+    .key {
+      flex: 0 0 42px; color: #91e7ff; font-weight: 800; font-size: 21px;
+      text-transform: lowercase;
+    }
+    .category-name { flex: 1; font-size: 20px; font-weight: 700; }
+    .category-count { color: #a9cde8; font-size: 15px; }
+    .arrow { margin-right: 8px; color: #86e6ff; }
+    .item {
+      display: flex; align-items: stretch; min-height: 100px; margin-left: 16px;
+      padding: 10px 14px; background: #0c2744; border-left: 3px solid #3d88c8;
+    }
+    .item.no-image { min-height: 58px; }
+    .thumbnail-frame {
+      flex: 0 0 100px; height: 82px; display: flex; align-items: center;
+      justify-content: center; margin-right: 13px; padding: 3px;
+      background: #071426; border: 1px solid #315f8a; border-radius: 3px;
+    }
+    .thumbnail {
+      display: block; max-width: 92px; max-height: 74px; width: auto; height: auto;
+      object-fit: contain;
+    }
+    .content { display: flex; min-width: 0; flex: 1; gap: 16px; }
+    .content-main { min-width: 0; flex: 1 1 auto; padding-top: 1px; }
+    .content-side {
+      flex: 0 0 330px; min-width: 0; padding-left: 14px;
+      border-left: 1px solid #285878;
+    }
+    .item-name { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+    .metadata {
+      display: flex; align-items: center; gap: 4px; margin-top: 2px;
+      color: #8dc9eb; font-size: 12px; overflow-wrap: anywhere;
+    }
+    .metadata-icon { width: 16px; height: 16px; object-fit: contain; }
+    .item-description {
+      margin-top: 4px; color: #b5d1e4; font-size: 13px; line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .stat-grid {
+      display: flex; flex-wrap: nowrap; gap: 3px;
+      margin-top: 3px;
+    }
+    .stat-grid.two-column { display: flex; flex-direction: column; gap: 3px; }
+    .stat-row { display: flex; gap: 3px; }
+    .stat-row .stat { flex: 1 1 0; }
+    .stat {
+      display: flex; justify-content: space-between;
+      min-width: 0;
+      gap: 2px; padding: 2px 3px;
+      color: #9dc7df; background: #102f50; border: 1px solid #285878; font-size: 11px;
+    }
+    .stat span { white-space: nowrap; }
+    .stat strong { color: #f4dc8f; font-weight: 700; }
+    .stat-total {
+      margin-top: 7px; color: #f4dc8f; font-size: 12px; font-weight: 700;
+      text-align: right;
+    }
+    .side-title { color: #a5dcff; font-size: 13px; font-weight: 700; }
+    .side-description {
+      margin-top: 5px; color: #b5d1e4; font-size: 13px; line-height: 1.35;
+      overflow-wrap: anywhere; white-space: pre-line;
+    }
+    .footer {
+      margin-top: 16px; padding: 12px; text-align: center; color: #b7d3e8;
+      border-top: 1px solid #285b87; font-size: 14px;
+    }
+    .footer kbd { padding: 1px 6px; color: #dff7ff; background: #1b5385; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <header class="header">
+      <div class="title">🆕 新增内容</div>
+      <div class="cycle">本周周期：{{ weekly_cycle }}</div>
+    </header>
+    <section class="list">
+      {% for item in items %}
+        {% if item.is_category %}
+          <div class="category">
+            <div class="key">{{ item.code }}</div>
+            <div class="arrow">{{ '▼' if item.expanded else '▶' }}</div>
+            <div class="category-name">{{ item.name }}</div>
+            <div class="category-count">{{ item.description }}</div>
+          </div>
+        {% else %}
+          <div class="item{% if not item.image %} no-image{% endif %}">
+            <div class="key">{{ item.code }}</div>
+            {% if item.image %}
+              <div class="thumbnail-frame"><img class="thumbnail" src="{{ item.image }}"></div>
+            {% endif %}
+            <div class="content">
+              <div class="content-main">
+                <div class="item-name">{{ item.name }}</div>
+                {% if item.metadata or item.type_icon or item.gender_icon %}
+                  <div class="metadata">
+                    {{ item.metadata }}
+                    {% if item.type_icon %}
+                      <span>|</span><img class="metadata-icon" src="{{ item.type_icon }}">{{ item.type_name }}
+                    {% endif %}
+                    {% if item.gender_icon %}
+                      <span>|</span><img class="metadata-icon" src="{{ item.gender_icon }}">{{ item.gender_name }}
+                    {% endif %}
+                  </div>
+                {% endif %}
+                {% if item.description %}<div class="item-description">{{ item.description }}</div>{% endif %}
+              </div>
+              {% if item.side_title or item.side_description or item.stats_total or item.stats %}
+                <aside class="content-side">
+                {% if item.side_title %}<div class="side-title">{{ item.side_title }}</div>{% endif %}
+                {% if item.side_description %}<div class="side-description">{{ item.side_description }}</div>{% endif %}
+                {% if item.stats_total %}<div class="stat-total">总和：{{ item.stats_total }}</div>{% endif %}
+                {% if item.stats_layout == "two_column" and item.stats %}
+                  <div class="stat-grid two-column">
+                    {% for row in item.stats|batch(2) %}
+                      <div class="stat-row">
+                        {% for label, value in row %}
+                          <div class="stat"><span>{{ label }}</span><strong>{{ value }}</strong></div>
+                        {% endfor %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% elif item.stats %}
+                  <div class="stat-grid">
+                    {% for label, value in item.stats %}
+                      <div class="stat"><span>{{ label }}</span><strong>{{ value }}</strong></div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                </aside>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </section>
+    <footer class="footer">发送 <kbd>a</kbd> 展开分类，发送 <kbd>a1</kbd> 查看详情，发送 <kbd>0</kbd> 退出</footer>
+  </main>
+</body>
+</html>
