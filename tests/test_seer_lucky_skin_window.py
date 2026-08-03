@@ -41,7 +41,29 @@ if TYPE_CHECKING:
 
 EXPECTED_COMMAND_ID = 45866
 EXPECTED_DAILY_NOTICES = 2
-EXPECTED_REQUEST_PREFIX = (668, 0, 0, 18, 203247)
+EXPECTED_REQUEST = (
+    0,
+    0,
+    18,
+    203247,
+    31101,
+    31102,
+    31103,
+    31104,
+    108937,
+    108938,
+    108939,
+    108940,
+    108941,
+    108942,
+    108943,
+    401009,
+    401010,
+    401007,
+    401008,
+    351005,
+    351004,
+)
 
 
 class _Features:
@@ -223,10 +245,7 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
 
     assert len(game.calls) == EXPECTED_DAILY_NOTICES
     assert {command_id for command_id, _body in game.calls} == {EXPECTED_COMMAND_ID}
-    assert all(
-        body[: len(EXPECTED_REQUEST_PREFIX)] == EXPECTED_REQUEST_PREFIX
-        for _command_id, body in game.calls
-    )
+    assert all(body == EXPECTED_REQUEST for _command_id, body in game.calls)
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
     messages = {
         targets[0].target_id: message
