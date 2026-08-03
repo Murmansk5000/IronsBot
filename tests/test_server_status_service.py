@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.services.operations.headless_errors import NotLoggedInError
+from ironsbot.services.operations.headless_pool import HeadlessRequestPriority
 from ironsbot.services.operations.server_status import ServerStatusService
 
 if TYPE_CHECKING:
@@ -22,6 +23,11 @@ class FakeHeadless:
         self.unavailable: list[tuple[str, str]] = []
         self.healthy_worker_count = 2 if connected else 0
         self.configured_worker_count = 3
+        self.idle_worker_count = 1 if connected else 0
+        self.pending_request_counts = {
+            HeadlessRequestPriority.BASIC: 2,
+            HeadlessRequestPriority.BACKGROUND: 1,
+        }
 
     def get_game(self) -> object:
         if not self.connected:
@@ -121,7 +127,8 @@ async def test_headless_instance_status_reports_public_and_dedicated_counts() ->
         dedicated_sessions=cast("HeadlessSessionFactory", FakeDedicatedSessions()),
     ).query_headless_instances()
 
-    assert "公共查询池：2/3 在线" in result.message
+    assert "公共查询池：2/3 在线，1 空闲" in result.message
+    assert "公共查询等待：基础资料 2、后台预热 1" in result.message
     assert "临时专用会话：2 在线" in result.message
     assert "当前合计：4 在线" in result.message
     assert "幸运橱窗 1" in result.message

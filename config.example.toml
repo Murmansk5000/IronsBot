@@ -981,9 +981,6 @@ total_timeout_seconds = 60
 # Default: 1; EN: Retries for a timed-out page after other boards get a turn.
 # ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
 page_retry_count = 1
-# Default: 1; EN: Consecutive leaderboard pages per board before rotating.
-# ZH: 同一个榜每次轮到时连续查询的页数；设为 1 最公平，设为 2/3 可减少轮转次数。
-pages_per_turn = 1
 # Default: omitted/null.
 # EN: Leave unset to follow the official peak season automatically.
 #     Set only as a temporary diagnostic override.

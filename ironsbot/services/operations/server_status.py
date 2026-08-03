@@ -12,6 +12,7 @@ from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.operations.headless_pool import HeadlessRequestPriority
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
@@ -69,6 +70,7 @@ class ServerStatusService:
     async def query_headless_instances(self) -> ServerStatusResult:
         public_online = self._headless.healthy_worker_count
         public_configured = self._headless.configured_worker_count
+        public_idle = self._headless.idle_worker_count
         dedicated_online = (
             self._dedicated_sessions.active_session_count
             if self._dedicated_sessions is not None
@@ -76,10 +78,17 @@ class ServerStatusService:
         )
         lines = [
             "🛠【无头实例状态】",
-            f"公共查询池：{public_online}/{public_configured} 在线",
+            (
+                "公共查询池："
+                f"{public_online}/{public_configured} 在线，{public_idle} 空闲"
+            ),
             f"临时专用会话：{dedicated_online} 在线",
             f"当前合计：{public_online + dedicated_online} 在线",
         ]
+        pending = getattr(self._headless, "pending_request_counts", {})
+        queued = _format_public_pool_queue(pending)
+        if queued:
+            lines.append(f"公共查询等待：{queued}")
         if self._dedicated_sessions is not None:
             labels = self._dedicated_sessions.active_sessions_by_label
             if labels:
@@ -90,7 +99,6 @@ class ServerStatusService:
                 lines.append(f"专用会话明细：{details}")
         lines.append("临时专用会话会在对应查询完成后立即下线。")
         return ServerStatusResult(message="\n".join(lines))
-
     async def query_normal(self) -> ServerStatusResult:
         now = datetime.now(LOCAL_TZ)
         status = self._headless_status()
@@ -173,6 +181,23 @@ class ServerStatusService:
         if notice_text:
             return notice_text
         return "可能还在维护、开服波动，或登录服/网络暂时不稳定。"
+
+
+def _format_public_pool_queue(
+    counts: dict[HeadlessRequestPriority, int],
+) -> str:
+    labels = (
+        (HeadlessRequestPriority.SUPERUSER_BASIC, "超管基础"),
+        (HeadlessRequestPriority.SUPERUSER_DETAIL, "超管详情"),
+        (HeadlessRequestPriority.BASIC, "基础资料"),
+        (HeadlessRequestPriority.INTERACTIVE, "主动详情"),
+        (HeadlessRequestPriority.BACKGROUND, "后台预热"),
+    )
+    return "、".join(
+        f"{label} {count}"
+        for priority, label in labels
+        if (count := counts.get(priority, 0))
+    )
 
 
 def _build_open_reply(

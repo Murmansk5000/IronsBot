@@ -229,14 +229,18 @@ class PlayerDetailService:
         refresh: _BackgroundRefresh,
         group_id: int | None,
     ) -> None:
-        for kind, future in refresh.replies.items():
-            await self._run_background_refresh_item(
-                game,
-                player_id=player_id,
-                kind=kind,
-                future=future,
-                group_id=group_id,
+        await asyncio.gather(
+            *(
+                self._run_background_refresh_item(
+                    game,
+                    player_id=player_id,
+                    kind=kind,
+                    future=future,
+                    group_id=group_id,
+                )
+                for kind, future in refresh.replies.items()
             )
+        )
 
     async def _run_background_refresh_item(
         self,

@@ -339,14 +339,13 @@ class RankPageRefreshConfig(BaseModel):
 
 
 class PlayerRankLookupConfig(BaseModel):
-    """Bounded fair scheduling for rank sections in player detail replies."""
+    """Bounded parallel scheduling for rank sections in player detail replies."""
 
     model_config = ConfigDict(extra="forbid")
 
     page_timeout_seconds: float = Field(default=8, gt=0)
     total_timeout_seconds: float = Field(default=60, gt=0)
     page_retry_count: int = Field(default=1, ge=0, le=3)
-    pages_per_turn: int = Field(default=1, ge=1, le=5)
 
     @model_validator(mode="after")
     def validate_budget(self) -> "PlayerRankLookupConfig":

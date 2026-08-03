@@ -16,6 +16,7 @@ from ironsbot.services.operations.headless_errors import (
 )
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestDispatcher,
+    HeadlessRequestPriority,
     HeadlessWorkerSlot,
     PooledHeadlessGame,
 )
@@ -247,6 +248,12 @@ class HeadlessService:
     @property
     def idle_worker_count(self) -> int:
         return self._dispatcher.idle_worker_count
+
+    @property
+    def pending_request_counts(self) -> dict[HeadlessRequestPriority, int]:
+        """Ready public-pool packets grouped by their effective priority."""
+
+        return self._dispatcher.pending_request_counts
 
     @property
     def reconnect_times(self) -> list[str]:
