@@ -309,9 +309,10 @@ The authoritative TOML top-level schema is:
 ```
 
 Nested models may live in separate files, but they are reachable only through
-`Settings`. Every model uses `extra="forbid"`. Unknown fields, unknown
-features, unknown account references, incomplete actions, and invalid section
-names fail startup with their exact configuration path.
+`Settings`. Every model uses `extra="forbid"`. The TOML loader reports and
+ignores unknown fields; invalid known values, unknown features, unknown account
+references, incomplete actions, and invalid section names fail startup with
+their exact configuration path.
 
 The loader has no cache, cleanup pass, fallback schema, or automatic mutation.
 Missing TOML is a deployment concern: the
@@ -325,18 +326,15 @@ are limited to the configuration location and secrets:
 APP_CONFIG_PATH
 ONEBOT_ACCESS_TOKEN
 AI_KEY
-HEADLESS_SEER_USER_ID
-HEADLESS_SEER_PASSWORD
+SEER_PASSWORD_<player_id>
 SENDPIC_CNB_TOKEN
 GITHUB_WORKFLOW_TOKEN
-<credential names referenced by *_env fields in TOML>
 ```
 
-The loader explicitly maps fixed variables and credential references such as
-`user_id_env`, `player_id_env`, and `password_env` into the single `Settings`
-model. No component reads `os.environ`, NoneBot driver config, or dotenv files
-after bootstrap. A new account credential must reuse this loader mechanism;
-services and plugins must not read environment variables directly.
+The loader injects `SEER_PASSWORD_<player_id>` for configured Seer accounts
+that need a login. No component reads `os.environ`, NoneBot driver config, or
+dotenv files after bootstrap. Services and plugins receive credentials only
+through `Settings` and the account registry.
 
 `config.example.toml` and `.env.example` are the only tracked configuration
 templates. Development and production use the same schema. Docker Compose,
