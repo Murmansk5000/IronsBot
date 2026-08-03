@@ -41,7 +41,7 @@ from ironsbot.runtime.plugins import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
-from ironsbot.services.messaging.mention_guard import MentionGuardService
+from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
@@ -133,7 +133,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     docker_update_service = resources.docker_update
     startup_notice_service = resources.startup_notice
     help_hint_service = resources.help_hint
-    mention_guard_service = MentionGuardService(config.messaging.command_cooldown)
+    bot_mention_block_service = BotMentionBlockService(
+        config.messaging.command_cooldown
+    )
     bili_notice_sender = partial(send_bili_login_notice, admin_notices)
     bili_auth_invalid = partial(
         bilibili_login.notify_required,
@@ -629,7 +631,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     service=ai_service,
                     features=features,
                     group_aliases=config.features.group_aliases,
-                    mention_guard_service=mention_guard_service,
+                    bot_mention_block_service=bot_mention_block_service,
                 )
                 if config.ai.api_key.strip()
                 else None

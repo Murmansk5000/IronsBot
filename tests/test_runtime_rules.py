@@ -2,91 +2,115 @@
 import asyncio
 from typing import cast
 
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
+from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
+from nonebot.rule import Rule
 
+from ironsbot.runtime.message_input import (
+    MessageInputKind,
+    message_input_context,
+)
 from ironsbot.runtime.rules import (
-    CommandInput,
-    DirectMessageOnly,
-    MessageInputRoute,
-    command_input,
-    direct_message_only,
-    message_input_route,
+    bot_mention,
+    explicit_command,
+    member_target_command,
+    member_targets_command,
+    natural_language,
 )
 from tests.helpers.onebot_events import group_message_event
 
 
-def _matches_command_input(
-    event: GroupMessageEvent,
-    *,
-    allow_direct_mentions: bool = False,
-) -> bool:
-    return asyncio.run(
-        CommandInput(allow_direct_mentions=allow_direct_mentions)(event, {})
+def _matches(rule: Rule, event: Event) -> bool:
+    return asyncio.run(rule(cast("Bot", None), event, {}))
+
+
+def _mentioned_message(*, bot_id: int = 1) -> Message:
+    return Message(
+        [
+            MessageSegment.at(bot_id),
+            MessageSegment.at(456),
+            MessageSegment.text("帮助"),
+        ]
     )
 
 
-def _matches_direct_message(event: GroupMessageEvent) -> bool:
-    return asyncio.run(DirectMessageOnly()(event, {}))
+def test_message_input_context_uses_fixed_routing_precedence() -> None:
+    direct = group_message_event("帮助")
+    member = group_message_event(
+        message=Message([MessageSegment.at(456), MessageSegment.text("帮助")])
+    )
+    bot = group_message_event(message=_mentioned_message())
+    reply = group_message_event(
+        message=_mentioned_message(),
+        reply_sender_user_id=789,
+    )
+
+    assert message_input_context(direct).kind is MessageInputKind.DIRECT
+    assert message_input_context(member).kind is MessageInputKind.MEMBER_MENTION
+    assert message_input_context(bot).kind is MessageInputKind.BOT_MENTION
+    assert message_input_context(reply).kind is MessageInputKind.REPLY
 
 
-def test_direct_plain_text_is_a_command_input() -> None:
-    event = group_message_event(message=Message("帮助"))
+def test_explicit_commands_accept_replies_but_not_current_member_mentions() -> None:
+    plain = group_message_event("帮助")
+    direct_member = group_message_event(
+        message=Message([MessageSegment.at(456), MessageSegment.text("帮助")])
+    )
+    direct_bot = group_message_event(message=_mentioned_message())
+    reply_with_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("帮助")]),
+        reply_sender_user_id=789,
+    )
+    reply_with_member = group_message_event(
+        message=Message([MessageSegment.at(456), MessageSegment.text("帮助")]),
+        reply_sender_user_id=789,
+    )
 
-    assert message_input_route(event) is MessageInputRoute.DIRECT_COMMAND
-    assert _matches_command_input(event)
-    assert _matches_direct_message(event)
+    assert _matches(explicit_command(), plain)
+    assert not _matches(explicit_command(), direct_member)
+    assert not _matches(explicit_command(), direct_bot)
+    assert _matches(explicit_command(), reply_with_bot)
+    assert not _matches(explicit_command(), reply_with_member)
 
 
-def test_direct_mentions_are_reserved_for_the_mention_route() -> None:
-    event = group_message_event(
+def test_member_target_strategies_are_the_only_member_mention_opt_in() -> None:
+    direct_member = group_message_event(
+        message=Message([MessageSegment.text("收集"), MessageSegment.at(456)])
+    )
+    two_members = group_message_event(
         message=Message(
             [
-                MessageSegment.at(2947993138),
-                MessageSegment.text("帮助"),
+                MessageSegment.text("订阅战队123"),
+                MessageSegment.at(456),
+                MessageSegment.at(789),
             ]
         )
     )
-
-    assert message_input_route(event) is MessageInputRoute.DIRECT_MENTION
-    assert not _matches_command_input(event)
-    assert not _matches_direct_message(event)
-    assert _matches_command_input(event, allow_direct_mentions=True)
-
-
-def test_reply_has_priority_over_mentions_and_is_a_command_input() -> None:
-    event = group_message_event(
-        message=Message(
-            [
-                MessageSegment.at(2947993138),
-                MessageSegment.text("帮助"),
-            ]
-        ),
-        reply_sender_user_id=456,
+    direct_bot_and_member = group_message_event(message=_mentioned_message())
+    reply_member = group_message_event(
+        message=Message([MessageSegment.text("收集"), MessageSegment.at(456)]),
+        reply_sender_user_id=789,
     )
 
-    assert message_input_route(event) is MessageInputRoute.REPLY_COMMAND
-    assert _matches_command_input(event)
-    assert not _matches_direct_message(event)
+    assert _matches(member_target_command(), direct_member)
+    assert _matches(member_targets_command(), two_members)
+    assert _matches(member_target_command(), reply_member)
+    assert not _matches(member_target_command(), direct_bot_and_member)
+    assert not _matches(member_targets_command(), direct_bot_and_member)
 
 
-def test_command_input_rule_exposes_same_priority_policy() -> None:
-    mentioned_event = group_message_event(
-        message=Message(
-            [
-                MessageSegment.text("订阅战队1234567 1000 "),
-                MessageSegment.at(123),
-            ]
-        )
+def test_bot_mentions_and_natural_language_have_disjoint_routes() -> None:
+    direct = group_message_event("你好")
+    direct_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("你好")])
     )
-    replied_event = group_message_event(
-        message=mentioned_event.message,
-        reply_sender_user_id=456,
+    reply_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("帮助")]),
+        reply_sender_user_id=789,
     )
 
-    bot = cast("Bot", None)
-    assert not asyncio.run(command_input()(bot, mentioned_event, {}))
-    assert asyncio.run(
-        command_input(allow_direct_mentions=True)(bot, mentioned_event, {})
-    )
-    assert asyncio.run(command_input()(bot, replied_event, {}))
-    assert not asyncio.run(direct_message_only()(bot, replied_event, {}))
+    assert _matches(natural_language(), direct)
+    assert not _matches(natural_language(), direct_bot)
+    assert not _matches(natural_language(), reply_bot)
+    assert _matches(bot_mention(), direct_bot)
+    assert not _matches(bot_mention(), reply_bot)

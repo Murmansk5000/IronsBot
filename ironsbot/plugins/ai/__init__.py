@@ -14,13 +14,14 @@ from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
 from ironsbot.runtime.onebot_context import build_notice_source, mentions_bot
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
+from ironsbot.runtime.rules import bot_mention
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
-    from ironsbot.services.messaging.mention_guard import MentionGuardService
+    from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 RESERVED_PRIVATE_COMMANDS = {
@@ -103,7 +104,7 @@ def install(
     service: AiService,
     features: FeatureService,
     group_aliases: Mapping[str, int],
-    mention_guard_service: MentionGuardService,
+    bot_mention_block_service: BotMentionBlockService,
 ) -> None:
     async def run_ai_chat(
         matcher: Matcher,
@@ -147,7 +148,8 @@ def install(
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.group",)),
-        rule=Rule(bind(_capture_group_ai_prompt, features=features)),
+        rule=bot_mention()
+        & Rule(bind(_capture_group_ai_prompt, features=features)),
         priority=registry.pre_command_priority("ai_group_at"),
         block=True,
     )
@@ -157,7 +159,7 @@ def install(
         matcher: Matcher,
         event: GroupMessageEvent,
     ) -> None:
-        decision = mention_guard_service.admit(event.user_id)
+        decision = bot_mention_block_service.admit(event.user_id)
         if decision.allowed:
             message = _build_guard_message(event)
         elif decision.feedback is not None:
@@ -166,12 +168,11 @@ def install(
             raise FinishedException
         await finish_event_reply(matcher, event, message)
 
-    mention_guard_matcher = registry.on_message(
+    bot_mention_block_matcher = registry.on_message(
         policy=CommandPolicy.exempt("non-AI direct mention guard"),
-        rule=Rule(
-            lambda event: _should_guard_non_ai_group_mention(features, event)
-        ),
-        priority=registry.pre_command_priority("ai_mention_guard"),
+        rule=bot_mention()
+        & Rule(lambda event: _should_guard_non_ai_group_mention(features, event)),
+        priority=registry.pre_command_priority("bot_mention_block"),
         block=True,
     )
-    mention_guard_matcher.append_handler(handle_non_ai_group_at_bot)
+    bot_mention_block_matcher.append_handler(handle_non_ai_group_at_bot)

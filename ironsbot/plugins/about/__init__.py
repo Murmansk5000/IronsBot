@@ -5,7 +5,7 @@ from nonebot.matcher import Matcher
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command
 
 ABOUT_MESSAGE = """
 🤖 IronsBot
@@ -48,7 +48,7 @@ def install(registry: MatcherRegistry) -> None:
     matcher = registry.on_fullmatch(
         "关于",
         policy=CommandPolicy.command("about", help_ids=("about",)),
-        rule=command_input(),
+        rule=explicit_command(),
         priority=registry.priority("about"),
         block=True,
     )

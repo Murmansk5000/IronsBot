@@ -66,7 +66,7 @@ superusers = []
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
 ai_group_at = -10
-ai_mention_guard = -5
+bot_mention_block = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3

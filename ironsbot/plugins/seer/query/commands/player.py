@@ -17,7 +17,11 @@ from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, command_input
+from ironsbot.runtime.rules import (
+    BOT_COMMAND_ARG_KEY,
+    explicit_command,
+    member_target_command,
+)
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
     PLAYER_ID_MAX,
@@ -42,6 +46,7 @@ from .player_context import (
     PLAYER_QUERY_IS_EXPLICIT_KEY,
 )
 from .player_detail_conversation import send_player_info_with_detail_prompt
+from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -107,24 +112,28 @@ async def validate_player_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
+    numeric_player_id = None
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
-        player_id = await parse_numeric_id(
+        numeric_player_id = await parse_numeric_id(
             matcher,
             state,
             min_value=PLAYER_ID_MIN,
             max_value=PLAYER_ID_MAX,
             error_message=PLAYER_ID_ERROR_MESSAGE,
         )
-    else:
-        player_id = dependencies.player.default_player_id(event.user_id)
-        if player_id is None:
-            await prompt_for_unbound_player_id(
-                dependencies,
-                matcher,
-                event,
-            )
-            return
-    state[PLAYER_ID_KEY] = player_id
+    target = resolve_player_target(
+        event,
+        numeric_player_id=numeric_player_id,
+        binding_for_user=dependencies.player.default_player_id,
+    )
+    if target.error is not None:
+        await finish_event_reply(matcher, event, target.error)
+        return
+    if target.player_id is None:
+        await prompt_for_unbound_player_id(dependencies, matcher, event)
+        return
+    state[PLAYER_ID_KEY] = target.player_id
+    state[PLAYER_QUERY_IS_EXPLICIT_KEY] = target.offer_binding
 
 
 async def handle_player(
@@ -301,7 +310,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
-        & command_input(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
@@ -315,7 +324,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_player_binding",
             help_ids=("seer.player.unbind",),
         ),
-        rule=seer_feature_rule(group.features, "seer_player") & command_input(),
+        rule=seer_feature_rule(group.features, "seer_player") & explicit_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
@@ -325,7 +334,7 @@ def install(group: SeerMatcherGroup) -> None:
         policy=CommandPolicy.exempt("silent invalid player query blocker"),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_invalid_player_text_query)
-        & command_input(),
+        & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
@@ -337,7 +346,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_id_query)
-        & command_input(),
+        & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )

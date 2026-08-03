@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from nonebot.rule import Rule
 
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind, bind_async
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command
 
 from .account_commands import (
     handle_bili_accounts_action,
@@ -36,7 +36,7 @@ def install(
 ) -> None:
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query", help_ids=("bilibili.dynamic",)),
-        rule=Rule(bind(is_dynamic_menu_command, features)) & command_input(),
+        rule=Rule(bind(is_dynamic_menu_command, features)) & explicit_command(),
         priority=registry.priority("bilibili"),
         block=True,
     )
@@ -50,7 +50,7 @@ def install(
 
     update_dynamic = registry.on_message(
         policy=CommandPolicy.command("bili_refresh", help_ids=("bilibili.refresh",)),
-        rule=Rule(bind(is_update_dynamic_command, features)) & command_input(),
+        rule=Rule(bind(is_update_dynamic_command, features)) & explicit_command(),
         priority=registry.priority("bilibili"),
         block=True,
     )
@@ -64,7 +64,7 @@ def install(
 
     bili_account = registry.on_message(
         policy=CommandPolicy.command("bili_accounts", help_ids=("bilibili.accounts",)),
-        rule=Rule(bind(is_bili_account_command, features)) & command_input(),
+        rule=Rule(bind(is_bili_account_command, features)) & explicit_command(),
         priority=registry.priority("bilibili"),
         block=True,
     )
@@ -77,7 +77,7 @@ def install(
             "bili_push_mode",
             help_ids=("bilibili.push_mode", "bilibili.private_push_mode"),
         ),
-        rule=Rule(bind(is_bili_push_mode_command, features)) & command_input(),
+        rule=Rule(bind(is_bili_push_mode_command, features)) & explicit_command(),
         priority=registry.priority("bilibili"),
         block=True,
     )
