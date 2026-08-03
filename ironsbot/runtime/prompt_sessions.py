@@ -27,6 +27,9 @@ if TYPE_CHECKING:
 TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
 QUEUED_CONVERSATION_TOKEN_STATE_KEY = "_ironsbot_queued_conversation_token"
 QUEUED_CONVERSATION_TICKET_STATE_KEY = "_ironsbot_queued_conversation_ticket"
+QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY = (
+    "_ironsbot_queued_conversation_shared_reply"
+)
 COMMAND_COOLDOWN_TOKEN_STATE_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
 IN_FLIGHT_REQUEST_TOKEN_STATE_KEY = "_ironsbot_in_flight_request_token"  # nosec B105
 
@@ -77,6 +80,7 @@ class _QueuedConversation:
     handlers: list[Any]
     conversation_session_id: str | None = None
     menu_anchor: GroupMenuAnchor | None = None
+    allow_group_reply_exit: bool = False
     semantic_request_resolver: QueuedSemanticRequestResolver | None = None
     request_service: InFlightRequestService | None = None
     active: bool = True
@@ -101,10 +105,22 @@ class _QueuedConversation:
             self.owner_user_id is not None
             and getattr(event, "user_id", None) != self.owner_user_id
             and event.get_plaintext().strip() == "0"
+            and not self.allow_group_reply_exit
         ):
             return False
         return (
             self.group_reply_check is not None
+            and is_current_group_menu_reply(event, self.menu_anchor)
+            and self.group_reply_check(event)
+        )
+
+    def is_shared_group_reply(self, event: Event) -> bool:
+        """Return whether this event is a different member using this menu."""
+
+        return (
+            self.owner_user_id is not None
+            and getattr(event, "user_id", None) != self.owner_user_id
+            and self.group_reply_check is not None
             and is_current_group_menu_reply(event, self.menu_anchor)
             and self.group_reply_check(event)
         )
@@ -119,6 +135,9 @@ class _QueuedConversation:
 
     def update_menu_anchor(self, anchor: GroupMenuAnchor | None) -> None:
         self.menu_anchor = anchor
+
+    def update_allow_group_reply_exit(self, *, allowed: bool) -> None:
+        self.allow_group_reply_exit = allowed
 
     def update_semantic_request_resolver(
         self,
@@ -219,6 +238,7 @@ class PromptSessionManager:
         request_service: InFlightRequestService | None = None,
         conversation_session_id: str | None = None,
         menu_anchor: GroupMenuAnchor | None = None,
+        allow_group_reply_exit: bool = False,
     ) -> _QueuedConversation:
         key = f"{namespace}:{event_session_id}"
         if existing := self._queued_by_key.get(key):
@@ -238,6 +258,7 @@ class PromptSessionManager:
             handlers=handlers,
             conversation_session_id=conversation_session_id,
             menu_anchor=menu_anchor,
+            allow_group_reply_exit=allow_group_reply_exit,
             semantic_request_resolver=semantic_request_resolver,
             request_service=request_service,
         )
@@ -274,6 +295,18 @@ class PromptSessionManager:
     def cancel_queued_conversation(self, state: T_State) -> None:
         if context := self.queued_conversation(state):
             self._cancel_queued_conversation(context)
+
+    def detach_queued_conversation(self, state: T_State) -> _QueuedConversation | None:
+        """Release this matcher state without closing the retained conversation."""
+
+        context = self.queued_conversation(state)
+        ticket = state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
+        state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
+        state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
+        if context is not None and isinstance(ticket, int):
+            context.keep_open = True
+            context.complete(ticket)
+        return context
 
     def queued_conversation_is_cancelled(self, state: T_State) -> bool:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)

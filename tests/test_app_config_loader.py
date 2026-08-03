@@ -183,8 +183,8 @@ def _assert_default_matcher_priorities(
 ) -> None:
     assert matcher_priority.seer_query < matcher_priority.ai_chat
     assert matcher_priority.ai_group_at < 0
-    assert matcher_priority.ai_mention_guard < 0
-    assert matcher_priority.ai_group_at < matcher_priority.ai_mention_guard
+    assert matcher_priority.bot_mention_block < 0
+    assert matcher_priority.ai_group_at < matcher_priority.bot_mention_block
     assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
     assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
     assert matcher_priority.sendpic < matcher_priority.seer_pet

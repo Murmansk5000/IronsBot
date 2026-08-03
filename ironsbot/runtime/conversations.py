@@ -49,6 +49,8 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
     reply_check: EventReplyCheck,
     prompt: str | Message | None = None,
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
+    group_reply_check: EventReplyCheck | None = None,
+    allow_group_reply_exit: bool = False,
 ) -> None:
     queued = get_queued_conversation(matcher)
     if queued is not None and queued.namespace == namespace:
@@ -90,6 +92,13 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         version,
         _is_same_conversation_reply,
     )
+
+    def _is_group_menu_reply(next_event: Event) -> bool:
+        if not isinstance(next_event, MessageEvent):
+            return False
+        check = group_reply_check or reply_check
+        return check(next_event)
+
     await enter_prompt_loop(
         matcher,
         handlers=handlers,
@@ -97,10 +106,8 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         prompt=prompt_message,
         queue_namespace=namespace,
         queue_reply_check=_is_same_conversation_reply,
-        queue_group_reply_check=lambda next_event: (
-            isinstance(next_event, MessageEvent)
-            and reply_check(next_event)
-        ),
+        queue_group_reply_check=_is_group_menu_reply,
+        queue_allow_group_reply_exit=allow_group_reply_exit,
         queue_semantic_request_resolver=queue_semantic_request_resolver,
         queue_event_session_id=owner_event_session_id,
         queue_conversation_session_id=session_id,

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Per-user response policy for direct mentions in non-AI groups."""
+"""Per-user response policy for direct bot mentions outside AI-enabled groups."""
 
 from __future__ import annotations
 
@@ -7,10 +7,7 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import Protocol
 
-from ironsbot.core.response_admission import (
-    FeedbackOnce,
-    ResponseAdmissionDecision,
-)
+from ironsbot.core.response_admission import FeedbackOnce, ResponseAdmissionDecision
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 
@@ -20,7 +17,7 @@ class _MentionCycle:
     feedback: FeedbackOnce = field(default_factory=FeedbackOnce)
 
 
-class MentionGuardConfig(Protocol):
+class BotMentionBlockConfig(Protocol):
     duplicate_window_seconds: float
     duplicate_message: str
     mention_initial_window_seconds: float
@@ -28,10 +25,10 @@ class MentionGuardConfig(Protocol):
 
 
 @dataclass(slots=True)
-class MentionGuardService:
-    """Reply once, warn once, then stay silent for each user-minute cycle."""
+class BotMentionBlockService:
+    """Reply once, warn once, then stay silent for direct bot mentions."""
 
-    config: MentionGuardConfig
+    config: BotMentionBlockConfig
     limiter: SlidingWindowRateLimiter = field(default_factory=SlidingWindowRateLimiter)
     _cycles: dict[int, _MentionCycle] = field(default_factory=dict)
 
@@ -50,7 +47,7 @@ class MentionGuardService:
             )
 
         remaining = self.limiter.hit(
-            "non_ai_mention_guard",
+            "non_ai_bot_mention_block",
             user_id,
             window_seconds=self.config.mention_initial_window_seconds,
             max_events=self.config.mention_initial_max_responses,
