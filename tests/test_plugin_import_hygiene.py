@@ -32,8 +32,6 @@ def _subprocess_env() -> dict[str, str]:
             "APP_CONFIG_PATH": str(ROOT / "config.example.toml"),
             "GITHUB_WORKFLOW_TOKEN": "",
             "ONEBOT_ACCESS_TOKEN": "",
-            "HEADLESS_SEER_PASSWORD": "",
-            "HEADLESS_SEER_USER_ID": "",
             "SENDPIC_CNB_TOKEN": "",
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONIOENCODING": "utf-8",

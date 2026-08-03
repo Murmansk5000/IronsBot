@@ -203,6 +203,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 features,
                 resources.commands,
                 config.seer.new_content,
+                config.player_accounts,
             )
         )
 

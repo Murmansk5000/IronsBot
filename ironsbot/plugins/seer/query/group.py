@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
     from ironsbot.config.models.seer import NewContentMenuConfig
+    from ironsbot.config.player_accounts import PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
@@ -33,6 +34,7 @@ class SeerMatcherGroup:
     features: FeatureService
     commands: CommandCatalog
     new_content: NewContentMenuConfig
+    player_accounts: PlayerAccountRegistry
 
     def on_message(
         self,

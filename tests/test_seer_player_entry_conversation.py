@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
+from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.plugins.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
@@ -13,6 +14,8 @@ from ironsbot.services.seer.player_service import PendingPlayerQuery
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
+
+_ACCOUNT_PLAYER_ID = 949105380
 
 
 def test_player_conversation_flows_share_one_session() -> None:
@@ -130,6 +133,51 @@ def test_binding_command_captures_invalid_player_id_for_error_reply() -> None:
     assert state[player.BOT_COMMAND_ARG_KEY] == "abc"
 
 
+def test_player_commands_resolve_configured_account_names() -> None:
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="sample_player",
+                aliases=("示例账号",),
+                query_worker=False,
+                password=None,
+            ),
+        )
+    )
+    service = SimpleNamespace(default_player_id=lambda _user_id: None)
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+        player_accounts=registry,
+    )
+    state: dict[str, object] = {}
+    event = group_message_event("米米号示例账号")
+
+    assert asyncio.run(player._is_player_id_query(event, state))
+    asyncio.run(
+        player.validate_player_id(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+    assert state[player.PLAYER_ID_KEY] == _ACCOUNT_PLAYER_ID
+
+    shortcut_state: dict[str, object] = {}
+    assert asyncio.run(
+        player_shortcuts._is_player_shortcut(
+            group_message_event("收集sample_player"),
+            shortcut_state,
+            dependencies=dependencies,
+        )
+    )
+    assert shortcut_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
+        PlayerShortcutCommand("collection", _ACCOUNT_PLAYER_ID)
+    )
+
+
 def test_shortcut_without_default_shows_explicit_player_id_help(
     monkeypatch: Any,
 ) -> None:
@@ -208,7 +256,7 @@ def test_shortcut_sends_loading_reply_before_query(
 
 
 def test_shortcut_semantic_request_uses_the_bound_player() -> None:
-    service = SimpleNamespace(default_player_id=lambda _user_id: 105_023_264)
+    service = SimpleNamespace(default_player_id=lambda _user_id: 712_345_678)
     event = group_message_event("收集")
     state: dict[str, object] = {
         player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
@@ -226,5 +274,5 @@ def test_shortcut_semantic_request_uses_the_bound_player() -> None:
     assert request is not None
     assert (request.action.id, request.target.key) == (
         "seer.player.collection",
-        "105023264",
+        "712345678",
     )

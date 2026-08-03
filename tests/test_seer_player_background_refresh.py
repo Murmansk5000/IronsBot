@@ -17,7 +17,7 @@ from ironsbot.services.seer.player_service import (
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 
-PLAYER_ID = 105023264
+PLAYER_ID = 712345678
 
 
 def _service(

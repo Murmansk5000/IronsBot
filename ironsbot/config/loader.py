@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from ironsbot.config.models.settings import Settings
+from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.seer_ids import is_valid_player_id
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -22,13 +24,10 @@ TOMLDecodeError = tomllib.TOMLDecodeError
 
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
-LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX = "LUCKY_WINDOW_SEER_PASSWORD_"
-_MIN_SEER_PLAYER_ID = 10001
+SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
     ("AI_KEY", ("ai", "api_key")),
-    ("HEADLESS_SEER_USER_ID", ("operations", "headless", "user_id")),
-    ("HEADLESS_SEER_PASSWORD", ("operations", "headless", "password")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
     ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
     (
@@ -78,63 +77,7 @@ def _inject_secret(
         table[field] = value
 
 
-def _inject_referenced_credentials(
-    entries: object,
-    *,
-    path: str,
-    id_field: str,
-    id_env_field: str,
-    env: Mapping[str, str],
-) -> None:
-    if not isinstance(entries, list):
-        return
-    for index, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            continue
-        entry_path = f"{path}[{index}]"
-        for field in (id_field, "password"):
-            if field in entry:
-                env_field = id_env_field if field == id_field else "password_env"
-                message = (
-                    f"{entry_path}.{field} is secret and must be set through "
-                    f"the entry's {env_field} reference"
-                )
-                raise ValueError(message)
-        entry[id_field] = _referenced_secret(
-            entry,
-            env_field=id_env_field,
-            path=entry_path,
-            env=env,
-        )
-        entry["password"] = _referenced_secret(
-            entry,
-            env_field="password_env",
-            path=entry_path,
-            env=env,
-        )
-
-
-def _inject_headless_worker_secrets(
-    data: dict[str, Any],
-    *,
-    env: Mapping[str, str],
-) -> None:
-    operations = data.get("operations")
-    if not isinstance(operations, dict):
-        return
-    headless = operations.get("headless")
-    if not isinstance(headless, dict):
-        return
-    _inject_referenced_credentials(
-        headless.get("workers", []),
-        path="operations.headless.workers",
-        id_field="user_id",
-        id_env_field="user_id_env",
-        env=env,
-    )
-
-
-def _inject_lucky_skin_window_secrets(
+def _inject_player_account_passwords(  # noqa: C901, PLR0912
     data: dict[str, Any],
     *,
     env: Mapping[str, str],
@@ -142,30 +85,73 @@ def _inject_lucky_skin_window_secrets(
     seer = data.get("seer")
     if not isinstance(seer, dict):
         return
-    lucky_skin_window = seer.get("lucky_skin_window")
-    if not isinstance(lucky_skin_window, dict):
-        return
-    entries = lucky_skin_window.get("accounts", [])
+    entries = seer.get("player_accounts", [])
     if not isinstance(entries, list):
         return
+
+    accounts_by_reference: dict[str, tuple[int, dict[str, Any], str]] = {}
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             continue
-        path = f"seer.lucky_skin_window.accounts[{index}]"
+        path = f"seer.player_accounts[{index}]"
         if "password" in entry:
-            message = f"{path}.password is secret and must use its environment variable"
+            message = (
+                f"{path}.password is secret and must be set with "
+                f"{SEER_PASSWORD_ENV_PREFIX}<player_id>"
+            )
             raise ValueError(message)
-        player_id = _configured_lucky_skin_window_player_id(entry)
+        player_id = _configured_player_id(entry)
         if player_id is None:
             continue
+        accounts_by_reference[str(player_id)] = (player_id, entry, path)
+        for field in ("name", "aliases"):
+            raw_values = (
+                (entry.get(field),)
+                if field == "name"
+                else entry.get(field, [])
+            )
+            if not isinstance(raw_values, (list, tuple)):
+                continue
+            for raw_value in raw_values:
+                value = normalize_command_text(str(raw_value))
+                if value:
+                    accounts_by_reference[value] = (player_id, entry, path)
+
+    required: dict[int, tuple[dict[str, Any], str]] = {}
+    for player_id, entry, path in accounts_by_reference.values():
+        if entry.get("query_worker") is True:
+            required[player_id] = (entry, path)
+
+    lucky_skin_window = seer.get("lucky_skin_window")
+    if isinstance(lucky_skin_window, dict):
+        subscriptions = lucky_skin_window.get("accounts", [])
+        if isinstance(subscriptions, list):
+            for index, subscription in enumerate(subscriptions):
+                if not isinstance(subscription, dict):
+                    continue
+                path = f"seer.lucky_skin_window.accounts[{index}]"
+                if "password" in subscription:
+                    raise ValueError(  # noqa: TRY003
+                        f"{path}.password is secret and is not a supported field"
+                    )
+                if lucky_skin_window.get("enabled") is not True:
+                    continue
+                raw_reference = subscription.get("account")
+                normalized = normalize_command_text(str(raw_reference or ""))
+                account = accounts_by_reference.get(normalized)
+                if account is not None:
+                    player_id, entry, account_path = account
+                    required[player_id] = (entry, account_path)
+
+    for player_id, (entry, path) in required.items():
         entry["password"] = _environment_secret(
-            f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{player_id}",
+            f"{SEER_PASSWORD_ENV_PREFIX}{player_id}",
             path=f"{path}.password",
             env=env,
         )
 
 
-def _configured_lucky_skin_window_player_id(entry: dict[str, Any]) -> int | None:
+def _configured_player_id(entry: dict[str, Any]) -> int | None:
     value = entry.get("player_id")
     if value is None:
         return None
@@ -173,21 +159,7 @@ def _configured_lucky_skin_window_player_id(entry: dict[str, Any]) -> int | None
         player_id = int(value)
     except (TypeError, ValueError):
         return None
-    return player_id if player_id >= _MIN_SEER_PLAYER_ID else None
-
-
-def _referenced_secret(
-    entry: dict[str, Any],
-    *,
-    env_field: str,
-    path: str,
-    env: Mapping[str, str],
-) -> str:
-    env_name = str(entry.get(env_field) or "").strip()
-    if not env_name:
-        message = f"{path}.{env_field} must not be empty"
-        raise ValueError(message)
-    return _environment_secret(env_name, path=f"{path}.{env_field}", env=env)
+    return player_id if is_valid_player_id(player_id) else None
 
 
 def _environment_secret(
@@ -265,8 +237,7 @@ def load_settings(
             path=field_path,
             env=values,
         )
-    _inject_headless_worker_secrets(data, env=values)
-    _inject_lucky_skin_window_secrets(data, env=values)
+    _inject_player_account_passwords(data, env=values)
     unknown_paths = _unknown_field_paths(data)
     settings = Settings.model_validate(data, extra="ignore")
     _report_ignored_unknown_fields(unknown_paths)
