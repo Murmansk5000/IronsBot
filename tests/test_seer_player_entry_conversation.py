@@ -142,10 +142,11 @@ def test_player_commands_resolve_configured_account_names() -> None:
                 aliases=("示例账号",),
                 query_worker=False,
                 password=None,
+                public=True,
             ),
         )
     )
-    service = SimpleNamespace(default_player_id=lambda _user_id: None)
+    service = SimpleNamespace(default_player_id=lambda _user_id: _ACCOUNT_PLAYER_ID)
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
         cast("Any", object()),
@@ -176,6 +177,30 @@ def test_player_commands_resolve_configured_account_names() -> None:
     assert shortcut_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
         PlayerShortcutCommand("collection", _ACCOUNT_PLAYER_ID)
     )
+
+
+def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
+    service = SimpleNamespace(bind_player=AsyncMock())
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            group_message_event("绑定米米号示例账号"),
+            {player.BOT_COMMAND_ARG_KEY: "示例账号"},
+        )
+    )
+
+    call = finish_reply.await_args
+    assert call is not None
+    assert call.args[2].startswith("绑定米米号请直接填写数字")
+    service.bind_player.assert_not_awaited()
 
 
 def test_shortcut_without_default_shows_explicit_player_id_help(

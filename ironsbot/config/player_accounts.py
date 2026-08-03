@@ -10,7 +10,7 @@ from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.seer_ids import is_valid_player_id
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 
 class PlayerAccountReferenceError(ValueError):
@@ -56,6 +56,7 @@ class PlayerAccount:
     aliases: tuple[str, ...]
     query_worker: bool
     password: str | None
+    public: bool = False
 
     @property
     def display(self) -> str:
@@ -63,11 +64,17 @@ class PlayerAccount:
 
 
 class PlayerAccountRegistry:
-    """Resolve numeric IDs and configured account names to stable player IDs."""
+    """Resolve numeric IDs plus public and group-scoped account aliases."""
 
-    def __init__(self, accounts: Iterable[PlayerAccount]) -> None:
+    def __init__(
+        self,
+        accounts: Iterable[PlayerAccount],
+        *,
+        private_alias_groups: Mapping[int, Iterable[str]] | None = None,
+    ) -> None:
         by_player_id: dict[int, PlayerAccount] = {}
-        by_name: dict[str, PlayerAccount] = {}
+        by_reference: dict[str, PlayerAccount] = {}
+        public_by_name: dict[str, PlayerAccount] = {}
         for account in accounts:
             if account.player_id in by_player_id:
                 raise PlayerAccountReferenceError.duplicate_player_id(
@@ -80,14 +87,24 @@ class PlayerAccountRegistry:
                     value,
                     location="seer.player_accounts",
                 )
-                if normalized in by_name:
+                if normalized in by_reference:
                     raise PlayerAccountReferenceError.duplicate_name(
                         "seer.player_accounts",
                         value,
                     )
-                by_name[normalized] = account
+                by_reference[normalized] = account
+            if account.public:
+                for value in (account.name, *account.aliases):
+                    public_by_name[_normalize_name(
+                        value,
+                        location="seer.player_accounts",
+                    )] = account
         self._by_player_id = by_player_id
-        self._by_name = by_name
+        self._by_reference = by_reference
+        self._public_by_name = public_by_name
+        self._private_by_group = self._build_private_alias_groups(
+            private_alias_groups or {},
+        )
 
     @property
     def accounts(self) -> tuple[PlayerAccount, ...]:
@@ -111,13 +128,18 @@ class PlayerAccountRegistry:
             if account is None:
                 raise PlayerAccountReferenceError.unknown_account(location, value)
             return account
-        account = self._by_name.get(normalize_command_text(value))
+        account = self._by_reference.get(normalize_command_text(value))
         if account is None:
             raise PlayerAccountReferenceError.unknown_account(location, value)
         return account
 
-    def resolve_player_id(self, value: object) -> int | None:
-        """Resolve a user command target; unknown text remains a normal miss."""
+    def resolve_player_id(
+        self,
+        value: object,
+        *,
+        group_id: int | None = None,
+    ) -> int | None:
+        """Resolve a user command target without exposing private aliases globally."""
 
         text = str(value).strip()
         if not text:
@@ -125,15 +147,40 @@ class PlayerAccountRegistry:
         if text.isdecimal():
             player_id = int(text)
             return player_id if is_valid_player_id(player_id) else None
-        account = self._by_name.get(normalize_command_text(text))
+        normalized = normalize_command_text(text)
+        account = self._public_by_name.get(normalized)
+        if account is None and group_id is not None:
+            account = self._private_by_group.get(group_id, {}).get(normalized)
         return account.player_id if account is not None else None
 
     def account_for_player_id(self, player_id: int) -> PlayerAccount | None:
         return self._by_player_id.get(player_id)
 
+    def _build_private_alias_groups(
+        self,
+        group_references: Mapping[int, Iterable[str]],
+    ) -> dict[int, dict[str, PlayerAccount]]:
+        groups: dict[int, dict[str, PlayerAccount]] = {}
+        for group_id, references in group_references.items():
+            aliases = groups.setdefault(group_id, {})
+            for reference in references:
+                if reference == "all":
+                    accounts = self.accounts
+                else:
+                    accounts = (self.resolve(
+                        reference,
+                        location=f"seer.player_account_aliases.{group_id}",
+                    ),)
+                for account in accounts:
+                    for value in (account.name, *account.aliases):
+                        aliases[normalize_command_text(value)] = account
+        return groups
+
 
 def build_player_account_registry(
     entries: Iterable[object],
+    *,
+    private_alias_groups: Mapping[int, Iterable[str]] | None = None,
 ) -> PlayerAccountRegistry:
     """Build a registry from Pydantic config entries without coupling to models."""
 
@@ -162,9 +209,13 @@ def build_player_account_registry(
                 aliases=aliases,
                 query_worker=bool(getattr(entry, "query_worker", False)),
                 password=_optional_password(getattr(entry, "password", None)),
+                public=bool(getattr(entry, "public", False)),
             )
         )
-    return PlayerAccountRegistry(accounts)
+    return PlayerAccountRegistry(
+        accounts,
+        private_alias_groups=private_alias_groups,
+    )
 
 
 def _normalize_name(value: str, *, location: str) -> str:

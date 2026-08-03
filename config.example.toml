@@ -772,24 +772,37 @@ mention_initial_max_responses = 3
 # player_lineup_private = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_rank_score = []
 
-# Seer account library. Passwords always use SEER_PASSWORD_<player_id> in the
-# container environment. `name` and `aliases` are also accepted by player
-# commands, for example: 米米号示例账号.
-# ZH: 赛尔账号库。密码统一放在容器环境变量 SEER_PASSWORD_<player_id>；name 和
-# aliases 也可作为米米号查询口令，例如“米米号示例账号”。query_worker=true 的账号
+# Seer account library. Set the plain password in SEER_PASSWORD_<player_id>;
+# IronsBot converts it to the legacy login MD5 in memory. `public = true` makes
+# an account's `name` and `aliases` usable in every conversation. Private accounts
+# only expose those aliases to groups listed in [seer.player_account_aliases].
+# ZH: 赛尔账号库。密码统一放在容器环境变量 SEER_PASSWORD_<player_id>；填写明文即可，
+# IronsBot 会在内存中转换为旧登录接口所需的 MD5。public=true 时，name 和 aliases 可在
+# 任意会话中用于查询；public=false 时，仅 [seer.player_account_aliases] 声明的群可用这些
+# 别名，其他位置仍可直接填写数字米米号。绑定米米号必须直接填写数字。query_worker=true 的账号
 # 自动加入公共无头查询池。
 #
 # [[seer.player_accounts]]
 # player_id = 123456789
 # name = "sample_worker"
 # aliases = ["示例无头", "示例查询账号"]
+# public = false
 # query_worker = true
 #
 # [[seer.player_accounts]]
 # player_id = 987654321
 # name = "sample_window"
 # aliases = ["示例橱窗账号"]
+# public = true
 # query_worker = false
+
+# EN: Group-scoped private account aliases. Keys accept a group alias or group ID;
+# values are account names, aliases, or the single value "all".
+# ZH: 群内私有账号别名。key 可写群别名或群号；值可写账号 name、aliases，或单独写 "all"
+# 以向该群开放全部账号别名。
+# [seer.player_account_aliases]
+# group_a = ["sample_worker"]
+# group_b = ["all"]
 
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
