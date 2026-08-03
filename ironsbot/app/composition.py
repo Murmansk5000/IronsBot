@@ -347,16 +347,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         push_message_limiter,
     )
     headless_operations = HeadlessOperationTracker()
-    headless_worker_count = max(
-        1,
-        (
-            1
-            if settings.operations.headless.user_id is not None
-            and settings.operations.headless.password
-            else 0
-        )
-        + len(settings.operations.headless.workers),
-    )
+    player_accounts = settings.player_accounts
+    headless_worker_count = max(1, len(player_accounts.query_workers))
     headless = HeadlessService(
         [
             ClientManager(
@@ -368,6 +360,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.operations.headless,
         settings.operations.headless_notice,
         admin_notices,
+        accounts=player_accounts.query_workers,
         request_interval_seconds=(
             settings.seer.player.request_protection.base_request_interval_seconds
             if settings.seer.player.request_protection.enabled
@@ -387,6 +380,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         settings.onebot_references,
+        player_accounts,
         features,
         headless_sessions,
         seer_database,
@@ -679,6 +673,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         qq_state_path=settings.paths.qq_state,
         runtime_state_path=settings.paths.runtime_state,
         cache_paths=cache_paths,
+        player_accounts=player_accounts,
         settings=settings.operations.private_extensions.settings,
     )
     docker_update = DockerUpdateService(

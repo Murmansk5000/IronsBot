@@ -63,16 +63,16 @@ def test_headless_operation_context_captures_semantic_request() -> None:
     operations = HeadlessOperationTracker()
     request = SemanticRequest(
         action=ActionDefinition("seer.player.collection", "收集与排行"),
-        target=SemanticTarget("105023264", "米米号 105023264"),
+        target=SemanticTarget("712345678", "米米号 712345678"),
         source=SemanticRequestSource.MENU,
     )
 
     with (
         semantic_request_scope(request, user_id=123456),
-        operations.track("收集查询", "米米号 105023264"),
+        operations.track("收集查询", "米米号 712345678"),
     ):
         assert operations.format_recent_semantic() == (
-            "收集与排行（seer.player.collection）：米米号 105023264"
+            "收集与排行（seer.player.collection）：米米号 712345678"
             "（来源：menu，QQ：123456）"
         )
 

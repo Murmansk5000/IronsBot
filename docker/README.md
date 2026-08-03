@@ -243,13 +243,10 @@ and `logs/` paths live under the current working directory.
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
-HEADLESS_SEER_USER_ID=
-HEADLESS_SEER_PASSWORD=
-# Add only when [[operations.headless.workers]] references these names.
-HEADLESS_SEER_WORKER_2_USER_ID=
-HEADLESS_SEER_WORKER_2_PASSWORD=
-# Add one variable per lucky-window player ID configured in TOML.
-LUCKY_WINDOW_SEER_PASSWORD_105023264=
+# Add the plain password for each [[seer.player_accounts]] player ID that logs in.
+# IronsBot converts it to MD5 in memory.
+SEER_PASSWORD_123456789=
+SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -259,11 +256,7 @@ GITHUB_WORKFLOW_TOKEN=
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `AI_KEY` | AI chat API key. |
-| `HEADLESS_SEER_USER_ID` | Optional Seer account ID for headless login. |
-| `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
-| `HEADLESS_SEER_WORKER_*_USER_ID` | Additional interchangeable query account referenced by `[[operations.headless.workers]]`. |
-| `HEADLESS_SEER_WORKER_*_PASSWORD` | Password for the corresponding additional query account. |
-| `LUCKY_WINDOW_SEER_PASSWORD_<player_id>` | Password for the matching TOML lucky-window player ID. These accounts use isolated short-lived sessions. |
+| `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 

@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         DockerUpdateConfig,
         PrivateExtensionsConfig,
     )
+    from ironsbot.config.player_accounts import PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.cache_paths import CachePaths
@@ -92,6 +93,7 @@ class PrivateExtensionRuntime:
     qq_state_path: Path
     runtime_state_path: Path
     cache_paths: CachePaths
+    player_accounts: PlayerAccountRegistry
     settings: Mapping[str, Mapping[str, Any]]
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]:

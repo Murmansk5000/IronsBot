@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
 PlayerShortcutKind = Literal["collection", "peak", "autocard"]
 logger = logging.getLogger(__name__)
-_SHORTCUT_RE = re.compile(r"^(收集|巅峰|群星牌)(\d*)$")
+_SHORTCUT_RE = re.compile(r"^(收集|巅峰|群星牌)(.*)$")
 _KIND_BY_COMMAND: dict[str, PlayerShortcutKind] = {
     "收集": "collection",
     "巅峰": "peak",
@@ -115,6 +115,7 @@ _PEAK_METRIC_KEYS = frozenset(
 class PlayerShortcutCommand:
     kind: PlayerShortcutKind
     player_id: int | None
+    player_reference: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,10 +156,16 @@ def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
     match = _SHORTCUT_RE.fullmatch(normalized)
     if match is None:
         return None
-    command, player_id_text = match.groups()
+    command, player_reference = match.groups()
+    player_reference = player_reference.strip()
     return PlayerShortcutCommand(
         kind=_KIND_BY_COMMAND[command],
-        player_id=int(player_id_text) if player_id_text else None,
+        player_id=int(player_reference) if player_reference.isdecimal() else None,
+        player_reference=(
+            player_reference
+            if player_reference and not player_reference.isdecimal()
+            else None
+        ),
     )
 
 

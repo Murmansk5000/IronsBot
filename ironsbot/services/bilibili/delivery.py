@@ -27,6 +27,7 @@ BILI_PUSH_ADMIN_HINT = (
     "B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
+DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
@@ -46,6 +47,7 @@ class BilibiliPushDeliveryService:
     content_max_chars: int = 400
     summary_max_chars: int = 250
     summary_use_ai: bool = True
+    can_query_history: Callable[[MessageTarget], bool] | None = None
 
     async def send(
         self,
@@ -144,6 +146,8 @@ class BilibiliPushDeliveryService:
     ) -> Any:
         if self.message_limiter is not None:
             message = self.message_limiter(message, target)
+        if self.can_query_history is not None and self.can_query_history(target):
+            message = self.append_hint(message, DYNAMIC_HISTORY_HINT)
         if target.target_type != "group":
             return message
         group_id = target.target_id

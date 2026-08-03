@@ -253,9 +253,9 @@ def test_parse_rank_player_command_treats_plain_digits_as_player_id() -> None:
         rank_key="成就点数",
         player_id=123456,
     )
-    assert parse_rank_player_command("群星之巅榜148758762") == RankPlayerCommand(
+    assert parse_rank_player_command("群星之巅榜712345678") == RankPlayerCommand(
         rank_key="群星牌",
-        player_id=148758762,
+        player_id=712345678,
     )
     assert parse_rank_player_command("竞技榜123456") == RankPlayerCommand(
         rank_key="竞技段位",
@@ -266,6 +266,18 @@ def test_parse_rank_player_command_treats_plain_digits_as_player_id() -> None:
     assert parse_rank_player_command("成就榜5000点") is None
     assert parse_rank_player_command("群星牌榜26") is None
     assert parse_rank_player_command("竞技榜49999") is None
+
+
+def test_parse_rank_player_command_can_resolve_configured_account_alias() -> None:
+    assert parse_rank_player_command(
+        "群星之巅榜sample_player",
+        resolve_player_id=lambda reference: (
+            712345678 if reference == "sample_player" else None
+        ),
+    ) == RankPlayerCommand(
+        rank_key="群星牌",
+        player_id=712345678,
+    )
 
 
 @pytest.mark.parametrize(

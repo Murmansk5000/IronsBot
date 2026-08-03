@@ -1,3 +1,4 @@
+import hashlib
 import re
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 
 from ironsbot.config.loader import (
     CONFIG_ENV,
-    LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX,
+    SEER_PASSWORD_ENV_PREFIX,
     ConfigFileNotFoundError,
     load_settings,
 )
@@ -46,6 +47,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
 ADDITIONAL_HEADLESS_USER_ID = 23456789
+PRIVATE_ALIAS_PLAYER_ID = 34567890
+PLAYER_ALIAS_GROUP_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
@@ -68,7 +71,7 @@ DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
 LUCKY_SKIN_WINDOW_OWNER_ID = 123456789
-LUCKY_SKIN_WINDOW_PLAYER_ID = 105023264
+LUCKY_SKIN_WINDOW_PLAYER_ID = 712345678
 DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
 DEFAULT_PLAYER_REQUEST_INTERVAL_SECONDS = 1.2
 DEFAULT_PLAYER_REQUEST_PAUSE_SECONDS = 60.0
@@ -982,27 +985,37 @@ owner = 123456789
 enabled = true
 time = "0:2"
 
+[[seer.player_accounts]]
+player_id = 712345678
+name = "sample_account"
+
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
-player_id = 105023264
+account = "sample_account"
 watched_skin_ids = [1400538]
 """.strip(),
         encoding="utf-8",
     )
 
-    password_env_name = (
-        f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+    account_password_env = (
+        f"{SEER_PASSWORD_ENV_PREFIX}"
         f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
     )
-    env = {password_env_name: "secret"}
+    env = {account_password_env: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
     assert config.seer.lucky_skin_window.time == "00:02"
     assert (
-        config.seer.lucky_skin_window.accounts[0].player_id
-        == LUCKY_SKIN_WINDOW_PLAYER_ID
+        config.seer.lucky_skin_window.accounts[0].account
+        == "sample_account"
     )
-    assert config.seer.lucky_skin_window.accounts[0].password == "secret"
+    assert (
+        config.player_accounts.resolve("sample_account", location="test").password
+        == hashlib.md5(
+            b"secret",
+            usedforsecurity=False,
+        ).hexdigest()
+    )
     assert config.onebot_references.resolve_user(
         config.seer.lucky_skin_window.accounts[0].user,
         location="test",
@@ -1014,7 +1027,7 @@ watched_skin_ids = [1400538]
 
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
-player_id = 105023265
+account = "sample_account"
 """,
         encoding="utf-8",
     )
@@ -1023,7 +1036,7 @@ player_id = 105023265
             config_path,
             env={
                 **env,
-                f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}105023265": "secret-2",
+                f"{SEER_PASSWORD_ENV_PREFIX}712345679": "secret-2",
             },
         )
 
@@ -1043,21 +1056,25 @@ enabled = true
 
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
-player_id = 105023264
+account = "sample_account"
 
 [[seer.lucky_skin_window.accounts]]
 user = "friend"
-player_id = 105023264
+account = "sample_account"
+
+[[seer.player_accounts]]
+player_id = 712345678
+name = "sample_account"
 """.strip(),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="must not repeat a player_id"):
+    with pytest.raises(ValidationError, match="must not repeat an account"):
         load_settings(
             config_path,
             env={
                 (
-                    f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+                    f"{SEER_PASSWORD_ENV_PREFIX}"
                     f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
                 ): "secret",
             },
@@ -1086,19 +1103,26 @@ def test_lucky_skin_window_requires_dedicated_password(
         """
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
-player_id = 105023264
+account = "sample_account"
+
+[seer.lucky_skin_window]
+enabled = true
+
+[[seer.player_accounts]]
+player_id = 712345678
+name = "sample_account"
 """.strip(),
         encoding="utf-8",
     )
 
     with pytest.raises(
         ValueError,
-        match=f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
+        match=f"{SEER_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
     ):
         load_settings(config_path, env={})
 
 
-def test_lucky_skin_window_does_not_use_custom_password_env(
+def test_lucky_skin_window_requires_the_standard_account_password(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
@@ -1106,15 +1130,21 @@ def test_lucky_skin_window_does_not_use_custom_password_env(
         """
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
-player_id = 105023264
-password_env = "OLD_PASSWORD_NAME"
+account = "sample_account"
+
+[seer.lucky_skin_window]
+enabled = true
+
+[[seer.player_accounts]]
+player_id = 712345678
+name = "sample_account"
 """.strip(),
         encoding="utf-8",
     )
 
     with pytest.raises(
         ValueError,
-        match=f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
+        match=f"{SEER_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
     ):
         load_settings(config_path, env={"OLD_PASSWORD_NAME": "secret"})
 
@@ -1125,7 +1155,7 @@ def test_lucky_skin_window_rejects_inline_credentials(tmp_path: Path) -> None:
         """
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
-player_id = 105023264
+account = "sample_account"
 password = "secret"
 """.strip(),
         encoding="utf-8",
@@ -1138,10 +1168,7 @@ password = "secret"
         load_settings(
             config_path,
             env={
-                (
-                    f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
-                    f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
-                ): "secret",
+                f"{SEER_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}": "secret",
             },
         )
 
@@ -1244,8 +1271,6 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
         "AI_KEY": "sk-test",
         "SENDPIC_CNB_TOKEN": "cnb-token",
         "GITHUB_WORKFLOW_TOKEN": "gh-token",
-        "HEADLESS_SEER_USER_ID": str(HEADLESS_USER_ID),
-        "HEADLESS_SEER_PASSWORD": "md5",
     }
 
     settings = load_settings(ROOT / "config.example.toml", env=env)
@@ -1254,117 +1279,226 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     assert settings.ai.api_key == "sk-test"
     assert settings.messaging.sendpic.cnb_token == "cnb-token"
     assert settings.operations.data_sync.github_token == "gh-token"
-    assert settings.operations.headless.user_id == HEADLESS_USER_ID
-    assert settings.operations.headless.password == "md5"
 
 
-def test_additional_headless_workers_resolve_environment_references(
+def test_player_accounts_resolve_names_and_hash_environment_passwords(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[operations.headless.workers]]
-name = "worker_2"
-user_id_env = "WORKER_2_USER_ID"
-password_env = "WORKER_2_PASSWORD"
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+aliases = ["worker alias", "测试无头"]
+public = true
+query_worker = true
 """.strip(),
         encoding="utf-8",
     )
 
+    plaintext = "worker secret"
+    expected_digest = hashlib.md5(
+        plaintext.encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()
     settings = load_settings(
         config_path,
         env={
-            "WORKER_2_USER_ID": "23456789",
-            "WORKER_2_PASSWORD": "md5-worker-2",
+            "SEER_PASSWORD_23456789": plaintext,
         },
     )
 
-    worker = settings.operations.headless.workers[0]
-    assert worker.name == "worker_2"
-    assert worker.user_id == ADDITIONAL_HEADLESS_USER_ID
-    assert worker.password == "md5-worker-2"
-
-
-@pytest.mark.parametrize("missing_env", ["WORKER_2_USER_ID", "WORKER_2_PASSWORD"])
-def test_additional_headless_worker_requires_referenced_environment(
-    tmp_path: Path,
-    missing_env: str,
-) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[[operations.headless.workers]]
-name = "worker_2"
-user_id_env = "WORKER_2_USER_ID"
-password_env = "WORKER_2_PASSWORD"
-""".strip(),
-        encoding="utf-8",
+    worker = settings.player_accounts.resolve("测试无头", location="test")
+    assert worker.name == "worker_two"
+    assert worker.player_id == ADDITIONAL_HEADLESS_USER_ID
+    assert worker.password == expected_digest
+    assert settings.player_accounts.query_workers == (worker,)
+    assert (
+        settings.player_accounts.resolve_player_id("worker alias")
+        == worker.player_id
     )
-    env = {
-        "WORKER_2_USER_ID": "23456789",
-        "WORKER_2_PASSWORD": "md5-worker-2",
-    }
-    env.pop(missing_env)
 
-    with pytest.raises(ValueError, match=missing_env):
-        load_settings(config_path, env=env)
+    hexadecimal_plaintext = "0123456789abcdef0123456789abcdef"
+    hexadecimal_settings = load_settings(
+        config_path,
+        env={"SEER_PASSWORD_23456789": hexadecimal_plaintext},
+    )
+    assert (
+        hexadecimal_settings.player_accounts.resolve(
+            "worker_two",
+            location="test",
+        ).password
+        == hashlib.md5(
+            hexadecimal_plaintext.encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()
+    )
 
 
-def test_additional_headless_worker_rejects_inline_credentials(
+def test_player_account_aliases_can_be_public_or_group_scoped(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[operations.headless.workers]]
-name = "worker_2"
-user_id_env = "WORKER_2_USER_ID"
-password_env = "WORKER_2_PASSWORD"
-user_id = 23456789
+[features.group_aliases]
+allowed_group = 123456789
+
+[[seer.player_accounts]]
+player_id = 23456789
+name = "public_account"
+aliases = ["公开账号"]
+public = true
+
+[[seer.player_accounts]]
+player_id = 34567890
+name = "private_account"
+aliases = ["私有账号"]
+public = false
+
+[seer.player_account_aliases]
+allowed_group = ["private_account"]
 """.strip(),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match=r"operations\.headless\.workers\[0\]"):
-        load_settings(
-            config_path,
-            env={
-                "WORKER_2_USER_ID": "23456789",
-                "WORKER_2_PASSWORD": "md5-worker-2",
-            },
-        )
+    accounts = load_settings(config_path, env={}).player_accounts
+
+    assert accounts.resolve_player_id("公开账号") == ADDITIONAL_HEADLESS_USER_ID
+    assert accounts.resolve_player_id("public_account") == ADDITIONAL_HEADLESS_USER_ID
+    assert accounts.resolve_player_id("私有账号") is None
+    assert accounts.resolve_player_id("private_account") is None
+    assert (
+        accounts.resolve_player_id("私有账号", group_id=PLAYER_ALIAS_GROUP_ID)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+    assert (
+        accounts.resolve_player_id("private_account", group_id=PLAYER_ALIAS_GROUP_ID)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+    assert (
+        accounts.resolve_player_id(str(PRIVATE_ALIAS_PLAYER_ID))
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
 
 
-def test_additional_headless_workers_require_unique_accounts(
+def test_player_account_alias_group_all_grants_every_private_account(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
-[[operations.headless.workers]]
-name = "worker_2"
-user_id_env = "WORKER_2_USER_ID"
-password_env = "WORKER_2_PASSWORD"
+[features.group_aliases]
+allowed_group = 123456789
 
-[[operations.headless.workers]]
-name = "worker_3"
-user_id_env = "WORKER_3_USER_ID"
-password_env = "WORKER_3_PASSWORD"
+[[seer.player_accounts]]
+player_id = 23456789
+name = "first_account"
+aliases = ["第一个"]
+
+[[seer.player_accounts]]
+player_id = 34567890
+name = "second_account"
+aliases = ["第二个"]
+
+[seer.player_account_aliases]
+allowed_group = ["all"]
 """.strip(),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="account IDs must be unique"):
-        load_settings(
-            config_path,
-            env={
-                "WORKER_2_USER_ID": "23456789",
-                "WORKER_2_PASSWORD": "md5-worker-2",
-                "WORKER_3_USER_ID": "23456789",
-                "WORKER_3_PASSWORD": "md5-worker-3",
-            },
-        )
+    accounts = load_settings(config_path, env={}).player_accounts
+
+    assert (
+        accounts.resolve_player_id("第一个", group_id=PLAYER_ALIAS_GROUP_ID)
+        == ADDITIONAL_HEADLESS_USER_ID
+    )
+    assert (
+        accounts.resolve_player_id("second_account", group_id=PLAYER_ALIAS_GROUP_ID)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+
+
+def test_query_worker_requires_standard_password_environment(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+query_worker = true
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="SEER_PASSWORD_23456789"):
+        load_settings(config_path, env={})
+
+
+def test_player_accounts_reject_inline_credentials(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+password = "md5-worker-2"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"seer\.player_accounts\[0\]\.password"):
+        load_settings(config_path, env={})
+
+
+def test_player_accounts_require_unique_player_ids_and_aliases(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_three"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="repeats player_id"):
+        load_settings(config_path, env={})
+
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+aliases = ["shared_alias"]
+
+[[seer.player_accounts]]
+player_id = 34567890
+name = "shared_alias"
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="repeats player account name or alias"):
+        load_settings(config_path, env={})
+
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "123456"
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="must not use a numeric name or alias"):
+        load_settings(config_path, env={})
 
 
 def test_docker_registry_token_must_be_set_in_environment(

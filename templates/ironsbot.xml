@@ -10,7 +10,7 @@
   <Support>https://github.com/Murmansk5000/IronsBot/issues</Support>
   <Project>https://github.com/Murmansk5000/IronsBot</Project>
   <Overview>EN: IronsBot is a NoneBot2 / OneBot v11 QQ bot image for Seer queries, group replies, Bilibili monitoring, activity reminders, AI chat, and Unraid deployment. Behavior and runtime settings live in /config/ironsbot.toml; environment variables contain only the config path and secrets. ZH: IronsBot 是基于 NoneBot2 / OneBot v11 的 QQ 机器人镜像，提供赛尔号查询、群聊回复、B 站动态监控、活动提醒和 AI 聊天等功能。行为与运行配置写在 /config/ironsbot.toml，环境变量只保存配置路径和密钥。</Overview>
-  <Description>EN: Create /config/ironsbot.toml from the current config.example.toml before startup. IronsBot strictly validates this file and never creates, repairs, or rewrites it. Runtime data is stored in /app/data and file logs can be stored in /app/logs. Mount the Docker socket for image checks, self-update, or optional private extension package pulls. ZH: 启动前请根据当前 config.example.toml 创建 /config/ironsbot.toml。IronsBot 会严格校验该文件，不会自动生成、修复或改写配置。运行数据保存在 /app/data，文件日志可保存在 /app/logs。镜像检查、容器自更新或拉取可选私有扩展包时需要挂载 Docker socket。</Description>
+  <Description>EN: Create /config/ironsbot.toml from the current config.example.toml before startup. IronsBot validates known fields and logs unknown fields. For each account declared as a query worker or lucky-window account, add a masked SEER_PASSWORD_ followed by its player ID environment variable in Unraid. Runtime data is stored in /app/data and file logs can be stored in /app/logs. Mount the Docker socket for image checks, self-update, or optional private extension package pulls. ZH: 启动前请根据当前 config.example.toml 创建 /config/ironsbot.toml。IronsBot 会校验已知字段并记录未知字段。对每个在 TOML 中声明为无头查询或幸运橱窗账号的米米号，请在 Unraid 中添加一个名为 SEER_PASSWORD_加该米米号的密码 MD5 环境变量。运行数据保存在 /app/data，文件日志可保存在 /app/logs。镜像检查、容器自更新或拉取可选私有扩展包时需要挂载 Docker socket。</Description>
   <Category>Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Murmansk5000/IronsBot/main/templates/ironsbot.xml</TemplateURL>
@@ -23,8 +23,8 @@ Current deployment contract / 当前部署约定:
 - ZH: 所有行为与运行设置，包括超级管理员、监听地址、命令前缀和日志，统一写在 /config/ironsbot.toml。
 - EN: Environment variables are limited to APP_CONFIG_PATH and secret variables.
 - ZH: 环境变量只保留 APP_CONFIG_PATH 和密钥变量。
-- EN: Missing or obsolete TOML fails startup; no compatibility or automatic repair is provided.
-- ZH: TOML 缺失或包含旧字段时会阻止启动，不提供旧配置兼容或自动修复。
+- EN: Follow config.example.toml for the current configuration fields.
+- ZH: 请以 config.example.toml 为准填写当前配置字段。
   </Changes>
   <Config Name="Host WebSocket Port" Target="8080" Default="8085" Mode="tcp" Description="EN: Host port mapped to the fixed container port 8080. Point the OneBot reverse WebSocket to this host port. ZH: WebSocket 主机端口，映射到固定的容器内 8080；OneBot 反向 WebSocket 连接此主机端口。" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="IronsBot Data" Target="/app/data" Default="/mnt/user/appdata/ironsbot/data" Mode="rw" Description="EN: Persistent runtime data, including caches, cookies, and SQLite databases. ZH: 持久化运行数据目录，用于保存缓存、Cookie 和 SQLite 数据库。" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ironsbot/data</Config>
@@ -33,8 +33,6 @@ Current deployment contract / 当前部署约定:
   <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="rw" Description="EN: Optional. Enables image checks, container restart/update, and private extension package pulls. This grants control over the host Docker engine. ZH: 可选。用于通过 Docker API 或 Watchtower 检查镜像、重启或更新容器，也用于拉取私有扩展包；挂载后容器可控制宿主机 Docker。" Type="Path" Display="advanced" Required="false" Mask="false">/var/run/docker.sock</Config>
   <Config Name="IronsBot Config Path" Target="APP_CONFIG_PATH" Default="/config/ironsbot.toml" Mode="" Description="EN: Required path to the strict TOML config. ZH: 必填，严格 TOML 配置文件路径。" Type="Variable" Display="always" Required="true" Mask="false">/config/ironsbot.toml</Config>
   <Config Name="OneBot Access Token" Target="ONEBOT_ACCESS_TOKEN" Default="" Mode="" Description="EN: OneBot connection token; it must match NapCat. ZH: OneBot 连接令牌，必须与 NapCat 一致。" Type="Variable" Display="always" Required="true" Mask="true" />
-  <Config Name="Headless Seer User ID" Target="HEADLESS_SEER_USER_ID" Default="" Mode="" Description="EN: Optional Seer account ID for headless login. ZH: 可选，无头登录使用的米米号。" Type="Variable" Display="always" Required="false" Mask="false" />
-  <Config Name="Headless Seer Password" Target="HEADLESS_SEER_PASSWORD" Default="" Mode="" Description="EN: Optional Seer password MD5 for headless login. ZH: 可选，无头登录使用的密码 MD5。" Type="Variable" Display="always" Required="false" Mask="true" />
   <Config Name="AI Chat API Key" Target="AI_KEY" Default="" Mode="" Description="EN: Optional OpenAI-compatible API key. ZH: 可选，OpenAI 兼容 AI 接口密钥。" Type="Variable" Display="always" Required="false" Mask="true" />
   <Config Name="SendPic CNB Token" Target="SENDPIC_CNB_TOKEN" Default="" Mode="" Description="EN: Optional CNB token for configured SendPic repositories. ZH: 可选，SendPic 使用 CNB 仓库时的访问令牌。" Type="Variable" Display="advanced" Required="false" Mask="true" />
   <Config Name="GitHub Workflow Token" Target="GITHUB_WORKFLOW_TOKEN" Default="" Mode="" Description="EN: Optional token for operations.data_sync remote builds. ZH: 可选，operations.data_sync 远程构建使用的 GitHub Token。" Type="Variable" Display="advanced" Required="false" Mask="true" />
