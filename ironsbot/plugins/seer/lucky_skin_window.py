@@ -16,6 +16,7 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -25,6 +26,7 @@ from ironsbot.core.semantic_requests import (
 )
 from ironsbot.core.time import daily_time_parts
 from ironsbot.runtime.commands import CommandDescriptor
+from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition, PluginHooks
 from ironsbot.runtime.replies import finish_event_reply
@@ -45,6 +47,7 @@ if TYPE_CHECKING:
 _COMMANDS = ("幸运橱窗", "橱窗")
 _ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
 _JOB_PREFIX = "lucky_skin_window:"
+_LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +66,9 @@ def plugin_definition(
             group="seer",
             order=16,
             visible=partial(_help_visible, service=service, features=features),
-            notes=("发送“橱窗”查看；可在“TD”中退订每日提醒。",),
+            notes=(
+                "发送“橱窗”查看；当天无缓存时，确认登录后查询；可在“TD”中退订每日提醒。",
+            ),
         ),
         commands=(
             CommandDescriptor(
@@ -145,6 +150,65 @@ def _semantic_request(
 
 
 async def _handle_query(
+    service: LuckySkinWindowService,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    try:
+        cached = service.cached_for_user(event.user_id)
+    except LuckySkinWindowNotConfiguredError:
+        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
+        return
+    except LuckySkinWindowBindingError as error:
+        await finish_event_reply(
+            matcher,
+            event,
+            f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再查询。",
+        )
+        return
+
+    if cached is not None:
+        await finish_event_reply(
+            matcher,
+            event,
+            service.format_result(cached, user_id=event.user_id),
+        )
+        return
+
+    account = service.account_for_user(event.user_id)
+    if account is None:
+        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
+        return
+
+    await enter_event_reply_conversation(
+        matcher,
+        event,
+        namespace=_LOGIN_CONFIRMATION_NAMESPACE,
+        handlers=[bind_async(_handle_login_confirmation, service)],
+        reply_check=lambda reply_event: parse_confirmation(reply_event.get_plaintext())
+        is not None,
+        prompt=(
+            "今日幸运橱窗尚未获取，需要登录已绑定的米米号："
+            f"{account.player_id} 查询。\n"
+            "是否继续？\n"
+            "回复“是”或“y”确认，回复“否”或“n”取消。"
+        ),
+    )
+
+
+async def _handle_login_confirmation(
+    service: LuckySkinWindowService,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    confirmed = parse_confirmation(event.get_plaintext())
+    if confirmed is not True:
+        await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
+        return
+    await _query_and_reply(service, matcher, event)
+
+
+async def _query_and_reply(
     service: LuckySkinWindowService,
     matcher: Matcher,
     event: MessageEvent,

@@ -35,8 +35,9 @@ logger = logging.getLogger(__name__)
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
 _GET_LUCKY_SKIN_WINDOW = 45866
 _REQUEST = (
-    # Captured from the official client before the two reserved zero fields.
-    668,
+    # The official-client capture includes 668 in the packet head's result
+    # field. SeerGame derives that value from its connection state, so it must
+    # not be copied into this request body.
     0,
     0,
     18,
@@ -200,6 +201,11 @@ class LuckySkinWindowService:
         if cached := self._cached_result(account.player_id):
             return cached
         return await self._check(account, background=False)
+
+    def cached_for_user(self, user_id: int) -> LuckySkinWindowResult | None:
+        """Return today's result without opening the dedicated game session."""
+        account = self._validated_account_for_user(user_id)
+        return self._cached_result(account.player_id)
 
     async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
         if not self.enabled:
