@@ -15,6 +15,7 @@ from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -140,6 +141,13 @@ class HeadlessRequestDispatcher:
         return len(self._workers)
 
     @property
+    def idle_worker_count(self) -> int:
+        return sum(
+            not worker.active and worker.game() is not None
+            for worker in self._workers
+        )
+
+    @property
     def primary_user_id(self) -> int:
         healthy = next(
             (worker for worker in self._workers if worker.game() is not None),
@@ -170,6 +178,7 @@ class HeadlessRequestDispatcher:
         self._sequence += 1
         self._pending.append(request)
         self.dispatch()
+        await send_request_feedback(queued=request.active_worker is None)
         try:
             outcome = await asyncio.shield(request.future)
         except asyncio.CancelledError:

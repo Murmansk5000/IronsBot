@@ -21,6 +21,7 @@ from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.config.player_accounts import (
+    PlayerAccount,
     PlayerAccountRegistry,
     build_player_account_registry,
 )
@@ -56,9 +57,11 @@ class SettingsReferenceError(ValueError):
     def missing_player_account_password(
         cls,
         player_id: int,
+        *,
+        location: str = "seer.player_accounts",
     ) -> SettingsReferenceError:
         return cls(
-            "seer.player_accounts "
+            f"{location} "
             f"requires environment variable SEER_PASSWORD_{player_id}"
         )
 
@@ -300,6 +303,25 @@ class Settings(BaseModel):
         )
 
     @property
+    def headless_accounts(self) -> tuple[PlayerAccount, ...]:
+        accounts = self.player_accounts
+        resolved: list[PlayerAccount] = []
+        seen: set[int] = set()
+        for index, reference in enumerate(self.operations.headless.accounts):
+            location = f"operations.headless.accounts[{index}]"
+            account = accounts.resolve(reference, location=location)
+            if account.player_id in seen:
+                continue
+            if account.password is None:
+                raise SettingsReferenceError.missing_player_account_password(
+                    account.player_id,
+                    location=location,
+                )
+            seen.add(account.player_id)
+            resolved.append(account)
+        return tuple(resolved)
+
+    @property
     def superuser_ids(self) -> frozenset[int]:
         return frozenset(
             self.onebot_references.resolve_users(
@@ -311,11 +333,7 @@ class Settings(BaseModel):
     def _validate_onebot_references(self) -> None:
         references = self.onebot_references
         accounts = self.player_accounts
-        for account in accounts.query_workers:
-            if account.password is None:
-                raise SettingsReferenceError.missing_player_account_password(
-                    account.player_id
-                )
+        _ = self.headless_accounts
         references.resolve_users(self.bot.superusers, location="bot.superusers")
         self._validate_policy_refs(
             self.features.group_policy,

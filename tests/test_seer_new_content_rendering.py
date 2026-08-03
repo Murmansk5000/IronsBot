@@ -191,24 +191,27 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
         tuple(item.category for item in snapshot.items),
     )
 
-    result = await render_new_content_menu(
-        _Cache(),  # type: ignore[arg-type]
-        _Data(),  # type: ignore[arg-type]
-        images,  # type: ignore[arg-type]
-        _Autocard(),  # type: ignore[arg-type]
-        render_html,
-        snapshot,
-        categories,
-        categories,
-        frozenset(categories),
-    )
+    rendered_rows: dict[NewContentCategory, Any] = {}
+    for category in categories:
+        captured.clear()
+        result = await render_new_content_menu(
+            _Cache(),  # type: ignore[arg-type]
+            _Data(),  # type: ignore[arg-type]
+            images,  # type: ignore[arg-type]
+            _Autocard(),  # type: ignore[arg-type]
+            render_html,
+            snapshot,
+            (category,),
+            category,
+        )
+        assert result == b"menu-image"
+        row = captured["items"][0]
+        assert row["code"] == "1"
+        rendered_rows[category] = row
 
-    rows = captured["items"]
-    row_by_code = {row["code"]: row for row in rows}
-    assert result == b"menu-image"
-    assert row_by_code["a1"]["image"] is not None
-    assert row_by_code["h1"]["image"] is None  # 技能不显示图片
-    assert row_by_code["k1"]["image"] is None  # 圣域不伪造图片
+    assert rendered_rows["pet"]["image"] is not None
+    assert rendered_rows["skill"]["image"] is None  # 技能不显示图片
+    assert rendered_rows["autocard_sanctuary_effect"]["image"] is None
     assert ("pet_head", "101") in images.requests
     assert ("pet_head", "1856") in images.requests
     assert ("mintmark", "2") in images.requests
@@ -250,11 +253,10 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
         render_html,
         snapshot,
         ("mintmark",),
-        ("mintmark",),
-        frozenset(("mintmark",)),
+        "mintmark",
     )
 
-    item_row = next(row for row in captured["items"] if row["code"] == "a1")
+    item_row = next(row for row in captured["items"] if row["code"] == "1")
     assert item_row["name"] == "条目 2"
     assert item_row["image"] is None
 
@@ -354,6 +356,42 @@ def test_skill_menu_details_match_pet_skill_fields() -> None:
     assert details.friend_skill is not None
     assert details.friend_skill["friend_bonus"] is True
     assert details.friend_skill["effects"] == [{"id": 32, "info": "恢复自身体力"}]
+
+
+def test_skill_menu_details_format_official_rich_text() -> None:
+    effect = SimpleNamespace(
+        effect_id=31,
+        analyze_info=(
+            "[sprite name=iconHit]4回合内免疫所有异常状态，"
+            "[color=#52a5f2]反弹[/color]所有受到的异常状态"
+        ),
+        info="",
+    )
+    skill = SimpleNamespace(
+        skill_effect=[effect],
+        friend_skill_effect=[],
+        hide_effect=None,
+    )
+    data = _RichData({}, skills={10001: skill})
+
+    details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        _item(
+            "skill",
+            10001,
+            info="[sprite name=iconHit]技能说明",
+        ),
+    )
+
+    assert details.skill is not None
+    effect_text = details.skill["effects"][0]["info"]
+    assert "[sprite" not in effect_text
+    assert "[color" not in effect_text
+    assert "[/color]" not in effect_text
+    assert "反弹" in effect_text
+    assert "color:#52a5f2" in effect_text
+    assert details.skill["info"] == "技能说明"
 
 
 def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:

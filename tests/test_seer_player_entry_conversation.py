@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
+
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.seer.query.commands import player, player_shortcuts
@@ -10,6 +12,7 @@ from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -78,6 +81,7 @@ def test_pending_confirmation_reuses_the_fetched_player(
         event.user_id,
         pending,
         accepted=True,
+        replacing_existing=False,
     )
     send_pending.assert_awaited_once_with(
         dependencies,
@@ -85,6 +89,47 @@ def test_pending_confirmation_reuses_the_fetched_player(
         event,
         state,
         pending,
+    )
+
+
+def test_pending_replacement_confirmation_marks_the_existing_binding(
+    monkeypatch: Any,
+) -> None:
+    pending = PendingPlayerQuery(
+        player_id=949105380,
+        user_info=SimpleNamespace(nick="测试玩家"),
+        more_info=object(),
+        player_message="玩家详情",
+        section_plan=cast("Any", object()),
+    )
+    replacement = player.PlayerBindingState(10001, 777777, "旧账号")
+    service = SimpleNamespace(save_binding_choice=Mock())
+    send_pending = AsyncMock()
+    monkeypatch.setattr(player, "_send_pending_player_query", send_pending)
+    event = group_message_event("否")
+    state: dict[str, object] = {
+        player.PLAYER_BINDING_PENDING_KEY: pending,
+        player.PLAYER_BINDING_REPLACEMENT_KEY: replacement,
+    }
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+
+    asyncio.run(
+        player.handle_player_binding_choice(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    service.save_binding_choice.assert_called_once_with(
+        event.user_id,
+        pending,
+        accepted=False,
+        replacing_existing=True,
     )
 
 
@@ -140,7 +185,6 @@ def test_player_commands_resolve_configured_account_names() -> None:
                 player_id=_ACCOUNT_PLAYER_ID,
                 name="sample_player",
                 aliases=("示例账号",),
-                query_worker=False,
                 password=None,
                 public=True,
             ),
@@ -155,7 +199,7 @@ def test_player_commands_resolve_configured_account_names() -> None:
     state: dict[str, object] = {}
     event = group_message_event("米米号示例账号")
 
-    assert asyncio.run(player._is_player_id_query(event, state))
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
     asyncio.run(
         player.validate_player_id(
             dependencies,
@@ -191,6 +235,76 @@ def test_player_commands_resolve_configured_account_names() -> None:
     )
 
 
+def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+
+    assert not asyncio.run(
+        player._is_player_id_query(
+            dependencies,
+            group_message_event("米米号是多少"),
+            {},
+        )
+    )
+    assert not asyncio.run(
+        player._is_player_id_query(
+            dependencies,
+            group_message_event("米米号未知别名"),
+            {},
+        )
+    )
+
+
+def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    event = group_message_event(
+        "米米号是多少",
+        message=Message(
+            MessageSegment.at(456789)
+            + MessageSegment.text(" 米米号是多少")
+        ),
+    )
+
+    assert not asyncio.run(player._is_player_id_query(dependencies, event, {}))
+
+
+def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> None:
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    state: dict[str, object] = {}
+
+    assert asyncio.run(
+        player._is_player_id_query(
+            dependencies,
+            group_message_event("米米号12"),
+            state,
+        )
+    )
+    assert state[player.BOT_COMMAND_ARG_KEY] == "12"
+
+
+def test_player_shortcut_ignores_unknown_account_suffix() -> None:
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+
+    assert not asyncio.run(
+        player_shortcuts._is_player_shortcut(
+            group_message_event("收集未知别名"),
+            {},
+            dependencies=dependencies,
+        )
+    )
+
+
 def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
     monkeypatch: Any,
 ) -> None:
@@ -200,7 +314,6 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
                 player_id=_ACCOUNT_PLAYER_ID,
                 name="sample_player",
                 aliases=("示例账号",),
-                query_worker=False,
                 password=None,
                 public=True,
             ),
@@ -303,9 +416,13 @@ def test_shortcut_without_default_shows_explicit_player_id_help(
 def test_shortcut_sends_loading_reply_before_query(
     monkeypatch: Any,
 ) -> None:
+    async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
+        await send_request_feedback(queued=False)
+        return QueryReply(text="查询结果")
+
     service = SimpleNamespace(
         default_player_id=lambda _user_id: 949105380,
-        shortcut=AsyncMock(return_value=QueryReply(text="查询结果")),
+        shortcut=AsyncMock(side_effect=shortcut),
     )
     loading_reply = AsyncMock()
     finish_reply = AsyncMock()
@@ -342,6 +459,79 @@ def test_shortcut_sends_loading_reply_before_query(
         group_id=event.group_id,
     )
     finish_reply.assert_awaited_once()
+
+
+def test_shortcut_reports_when_the_first_packet_is_queued(
+    monkeypatch: Any,
+) -> None:
+    async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
+        await send_request_feedback(queued=True)
+        return QueryReply(text="查询结果")
+
+    service = SimpleNamespace(
+        default_player_id=lambda _user_id: 949105380,
+        shortcut=AsyncMock(side_effect=shortcut),
+    )
+    loading_reply = AsyncMock()
+    monkeypatch.setattr(player_shortcuts, "send_event_reply", loading_reply)
+    monkeypatch.setattr(player_shortcuts, "finish_event_reply", AsyncMock())
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+
+    asyncio.run(
+        player_shortcuts.handle_player_shortcut(
+            dependencies,
+            cast("Any", object()),
+            group_message_event("收集"),
+            {
+                player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
+                    kind="collection",
+                    player_id=None,
+                )
+            },
+        )
+    )
+
+    loading_reply.assert_awaited_once()
+    call = loading_reply.await_args
+    assert call is not None
+    assert call.args[2] == (
+        "⏳ 已收到：收集与排行，已加入队列，完成后会直接发送结果。"
+    )
+
+
+def test_shortcut_cache_hit_does_not_send_loading_reply(
+    monkeypatch: Any,
+) -> None:
+    service = SimpleNamespace(
+        default_player_id=lambda _user_id: 949105380,
+        shortcut=AsyncMock(return_value=QueryReply(text="缓存结果")),
+    )
+    loading_reply = AsyncMock()
+    monkeypatch.setattr(player_shortcuts, "send_event_reply", loading_reply)
+    monkeypatch.setattr(player_shortcuts, "finish_event_reply", AsyncMock())
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+
+    asyncio.run(
+        player_shortcuts.handle_player_shortcut(
+            dependencies,
+            cast("Any", object()),
+            group_message_event("群星牌"),
+            {
+                player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
+                    kind="autocard",
+                    player_id=None,
+                )
+            },
+        )
+    )
+
+    loading_reply.assert_not_awaited()
 
 
 def test_shortcut_semantic_request_uses_the_bound_player() -> None:

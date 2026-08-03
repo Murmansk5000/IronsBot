@@ -14,6 +14,7 @@ from ironsbot.services.operations.headless_pool import (
     HeadlessRequestPriorityState,
     headless_request_priority_scope,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -116,6 +117,7 @@ class PlayerRequestProtectionService:
             else HeadlessRequestPriority.INTERACTIVE
         )
         if not self._config.enabled:
+            await send_request_feedback(queued=False)
             with (
                 semantic_request_scope(semantic_request, user_id=user_id),
                 headless_request_priority_scope(request_priority),
@@ -136,6 +138,7 @@ class PlayerRequestProtectionService:
                 joined_background = existing.background
                 if not background:
                     self._promote(existing, request_priority)
+                await send_request_feedback(queued=False)
                 try:
                     return cast("T", await asyncio.shield(existing.future))
                 except Exception:

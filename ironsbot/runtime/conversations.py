@@ -51,6 +51,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     group_reply_check: EventReplyCheck | None = None,
     allow_group_reply_exit: bool = False,
+    parallel: bool = False,
 ) -> None:
     queued = get_queued_conversation(matcher)
     if queued is not None and queued.namespace == namespace:
@@ -108,6 +109,7 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
         queue_reply_check=_is_same_conversation_reply,
         queue_group_reply_check=_is_group_menu_reply,
         queue_allow_group_reply_exit=allow_group_reply_exit,
+        queue_parallel=parallel,
         queue_semantic_request_resolver=queue_semantic_request_resolver,
         queue_event_session_id=owner_event_session_id,
         queue_conversation_session_id=session_id,

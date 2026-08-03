@@ -5,10 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypedDict
-
-from seerapi_models import SkillORM
+from typing import TYPE_CHECKING, TypedDict
 
 from ironsbot.services.seer.autocard import (
     AutocardEntry,
@@ -29,13 +26,23 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
-from .custom_pet_models import SkillDict
+from .new_content_skill_details import (
+    SKILL_CATEGORY_ATTRIBUTE as _SKILL_CATEGORY_ATTRIBUTE,
+)
+from .new_content_skill_details import (
+    NewContentItemDetails as _ItemDetails,
+)
+from .new_content_skill_details import (
+    load_new_content_skill_details as _skill_details,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.new_content import NewContentItem
     from ironsbot.services.seer.render_cache import RenderCache
 
     from . import HtmlTemplateRenderer
+    from .custom_pet_models import SkillDict
 
 
 class NewContentMenuItemDict(TypedDict):
@@ -60,32 +67,6 @@ class NewContentMenuItemDict(TypedDict):
     friend_skill: SkillDict | None
 
 
-@dataclass(frozen=True, slots=True)
-class _ItemDetails:
-    """Small, category-specific facts shown beside a weekly content thumbnail."""
-
-    metadata: str
-    description: str
-    side_title: str = ""
-    side_description: str = ""
-    stats: tuple[tuple[str, str], ...] = ()
-    stats_layout: str = "inline"
-    stats_total: str = ""
-    type_id: int | None = None
-    gender_id: int | None = None
-    type_name: str = ""
-    gender_name: str = ""
-    skill: SkillDict | None = None
-    friend_skill: SkillDict | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _SkillEffectDetails:
-    effects: list[dict[str, Any]]
-    friend_effects: list[dict[str, Any]]
-    hide_effect_desc: str | None
-
-
 _EQUIP_PART_TYPE_NAMES = {
     0: "头部",
     1: "眼部",
@@ -105,80 +86,74 @@ async def render_new_content_menu(  # noqa: PLR0913
     render_html: HtmlTemplateRenderer,
     snapshot: NewContentSnapshot,
     display_categories: tuple[NewContentCategory, ...],
-    root_categories: tuple[NewContentCategory, ...],
-    expanded_categories: frozenset[NewContentCategory],
+    focused_category: NewContentCategory | None,
 ) -> bytes:
     """Render the active categories and items without requiring every asset."""
 
     content_key = _cache_key(
         snapshot,
         display_categories,
-        root_categories,
-        expanded_categories,
+        focused_category,
     )
     if cached := cache.get("new_content", content_key):
         return cached
 
-    root_positions = {
-        category: position for position, category in enumerate(root_categories)
-    }
     rows: list[NewContentMenuItemDict] = []
     item_rows: list[tuple[int, NewContentItem, _ItemDetails]] = []
-    for category in display_categories:
-        code = chr(ord("a") + root_positions[category])
-        items = snapshot.items_for(category)
-        expanded = category in expanded_categories
-        rows.append(
-            {
-                "code": code,
-                "name": CATEGORY_NAMES[category],
-                "description": f"{len(items)} 项",
-                "metadata": "",
-                "side_title": "",
-                "side_description": "",
-                "stats": (),
-                "stats_layout": "inline",
-                "stats_total": "",
-                "type_name": "",
-                "gender_name": "",
-                "type_icon": None,
-                "gender_icon": None,
-                "image_layout": "square",
-                "is_category": True,
-                "expanded": expanded,
-                "image": None,
-                "skill": None,
-                "friend_skill": None,
-            }
-        )
-        if expanded:
-            for index, item in enumerate(items, start=1):
-                row_index = len(rows)
-                details = _item_details(data, autocard, item)
-                rows.append(
-                    {
-                        "code": f"{code}{index}",
-                        "name": item.name,
-                        "description": details.description,
-                        "metadata": details.metadata,
-                        "side_title": details.side_title,
-                        "side_description": details.side_description,
-                        "stats": details.stats,
-                        "stats_layout": details.stats_layout,
-                        "stats_total": details.stats_total,
-                        "type_name": details.type_name,
-                        "gender_name": details.gender_name,
-                        "type_icon": None,
-                        "gender_icon": _gender_icon_data_uri(details.gender_id),
-                        "image_layout": _item_image_layout(item),
-                        "is_category": False,
-                        "expanded": False,
-                        "image": None,
-                        "skill": details.skill,
-                        "friend_skill": details.friend_skill,
-                    }
-                )
-                item_rows.append((row_index, item, details))
+    if focused_category is not None:
+        for index, item in enumerate(snapshot.items_for(focused_category), start=1):
+            details = _item_details(data, autocard, item)
+            rows.append(
+                {
+                    "code": str(index),
+                    "name": item.name,
+                    "description": details.description,
+                    "metadata": details.metadata,
+                    "side_title": details.side_title,
+                    "side_description": details.side_description,
+                    "stats": details.stats,
+                    "stats_layout": details.stats_layout,
+                    "stats_total": details.stats_total,
+                    "type_name": details.type_name,
+                    "gender_name": details.gender_name,
+                    "type_icon": None,
+                    "gender_icon": _gender_icon_data_uri(details.gender_id),
+                    "image_layout": _item_image_layout(item),
+                    "is_category": False,
+                    "expanded": False,
+                    "image": None,
+                    "skill": details.skill,
+                    "friend_skill": details.friend_skill,
+                }
+            )
+            item_rows.append((len(rows) - 1, item, details))
+    else:
+        for index, category in enumerate(display_categories):
+            code = chr(ord("a") + index)
+            items = snapshot.items_for(category)
+            rows.append(
+                {
+                    "code": code,
+                    "name": CATEGORY_NAMES[category],
+                    "description": f"{len(items)} 项",
+                    "metadata": "",
+                    "side_title": "",
+                    "side_description": "",
+                    "stats": (),
+                    "stats_layout": "inline",
+                    "stats_total": "",
+                    "type_name": "",
+                    "gender_name": "",
+                    "type_icon": None,
+                    "gender_icon": None,
+                    "image_layout": "square",
+                    "is_category": True,
+                    "expanded": False,
+                    "image": None,
+                    "skill": None,
+                    "friend_skill": None,
+                }
+            )
 
     image_results = await asyncio.gather(
         *(
@@ -345,110 +320,6 @@ def _skin_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
         )
 
 
-def _skill_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
-    payload = item.payload
-    type_id = _payload_int(payload, "type_id")
-    type_name = ""
-    if type_id > 0:
-        with data.get(data.type_combination, type_id) as skill_type:
-            if skill_type is not None:
-                type_name = str(skill_type.name)
-    category_name = _SKILL_CATEGORY_NAMES.get(
-        _payload_int(payload, "category_id"),
-        "未知分类",
-    )
-    must_hit = bool(payload.get("must_hit", False))
-    raw_crit_rate = payload.get("crit_rate")
-    crit_rate = (
-        _payload_int(payload, "crit_rate")
-        if isinstance(raw_crit_rate, int | float | str)
-        else None
-    )
-    effect_details = _load_skill_effect_details(data, item.entity_id)
-    skill = SkillDict(
-        id=item.entity_id,
-        name=item.name,
-        type_id=type_id,
-        type_name=type_name,
-        category_id=_payload_int(payload, "category_id"),
-        category_name=category_name,
-        power=_payload_int(payload, "power"),
-        max_pp=_payload_int(payload, "max_pp"),
-        accuracy="必中" if must_hit else _payload_int(payload, "accuracy"),
-        crit_rate=crit_rate,
-        priority=_payload_int(payload, "priority"),
-        must_hit=must_hit,
-        info=str(payload.get("info", "")).strip() or None,
-        learning_level=None,
-        is_special=False,
-        is_advanced=False,
-        is_fifth=False,
-        effects=effect_details.effects,
-        activation_item=None,
-        friend_bonus=False,
-        hide_effect_desc=effect_details.hide_effect_desc,
-    )
-    friend_skill: SkillDict | None = None
-    if effect_details.friend_effects:
-        friend_skill = {
-            **skill,
-            "effects": effect_details.friend_effects,
-            "friend_bonus": True,
-            "is_special": True,
-        }
-    return _ItemDetails(
-        metadata="",
-        description=_skill_related_pets(payload.get("pets")),
-        type_id=type_id or None,
-        type_name=type_name,
-        skill=skill,
-        friend_skill=friend_skill,
-    )
-
-
-def _load_skill_effect_details(
-    data: SeerDataAccess,
-    skill_id: int,
-) -> _SkillEffectDetails:
-    """Load the same official effect relation rendered on pet skill cards."""
-
-    try:
-        with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
-            if skill is None:
-                return _SkillEffectDetails([], [], None)
-            return _SkillEffectDetails(
-                effects=_skill_effect_rows(skill.skill_effect),
-                friend_effects=_skill_effect_rows(skill.friend_skill_effect),
-                hide_effect_desc=_skill_hide_effect_text(skill),
-            )
-    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
-        return _SkillEffectDetails([], [], None)
-
-
-def _skill_effect_rows(effects: object) -> list[dict[str, Any]]:
-    if not isinstance(effects, list):
-        return []
-    return [
-        {"id": effect.effect_id, "info": text}
-        for effect in effects
-        if (text := _skill_effect_text(effect))
-    ]
-
-
-def _skill_hide_effect_text(skill: object) -> str | None:
-    hide_effect = getattr(skill, "hide_effect", None)
-    if hide_effect is None:
-        return None
-    description = str(getattr(hide_effect, "description", "") or "").strip()
-    return description or None
-
-
-def _skill_effect_text(effect: object) -> str:
-    return str(
-        getattr(effect, "analyze_info", None) or getattr(effect, "info", "")
-    ).strip()
-
-
 def _mintmark_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
     with data.get(data.mintmark, item.entity_id) as mintmark:
         if mintmark is None:
@@ -585,35 +456,6 @@ def _six_stats(attributes: object) -> tuple[tuple[str, str], ...]:
     )
 
 
-_SKILL_CATEGORY_NAMES = {
-    1: "物理攻击",
-    2: "特殊攻击",
-    4: "属性技能",
-}
-_SKILL_CATEGORY_ATTRIBUTE = 4
-
-
-def _payload_int(payload: dict[str, object], key: str) -> int:
-    value = payload.get(key, 0)
-    if not isinstance(value, int | float | str):
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0
-
-
-def _skill_related_pets(value: object) -> str:
-    if not isinstance(value, list):
-        return ""
-    names = [
-        str(pet.get("name", "")).strip()
-        for pet in value
-        if isinstance(pet, dict) and str(pet.get("name", "")).strip()
-    ]
-    return f"关联精灵：{'、'.join(names)}" if names else ""
-
-
 def _two_column_stats(attributes: object) -> tuple[tuple[str, str], ...]:
     """Pair physical/special stats into the right-side 3x2 mintmark table."""
 
@@ -673,15 +515,13 @@ def _gender_name(value: str) -> str:
 def _cache_key(
     snapshot: NewContentSnapshot,
     categories: tuple[NewContentCategory, ...],
-    root_categories: tuple[NewContentCategory, ...],
-    expanded: frozenset[NewContentCategory],
+    focused_category: NewContentCategory | None,
 ) -> str:
     raw = "|".join(
         (
             snapshot.config_version,
             ",".join(categories),
-            ",".join(root_categories),
-            ",".join(sorted(expanded)),
+            focused_category or "root",
         )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

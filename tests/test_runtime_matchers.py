@@ -171,6 +171,43 @@ async def test_queued_conversation_serializes_inputs_in_arrival_order() -> None:
     context.complete(second_ticket)
 
 
+@pytest.mark.asyncio
+async def test_parallel_queued_conversation_reserves_fifo_tickets_without_waiting(
+) -> None:
+    second_ticket_number = 2
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_1_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+        parallel=True,
+    )
+
+    first_ticket = await context.acquire()
+    assert first_ticket == 1
+    context.mark_dispatched(first_ticket)
+    second_ticket = await asyncio.wait_for(context.acquire(), timeout=0.1)
+    assert second_ticket == second_ticket_number
+    context.mark_dispatched(second_ticket)
+
+    context.complete(2)
+    context.complete(1)
+
+
+def test_queued_conversation_claims_each_onebot_message_once() -> None:
+    manager = PromptSessionManager()
+    event = group_message_event("1", message_id=42)
+
+    assert manager.claim_input(event)
+    assert not manager.claim_input(event)
+    assert manager.claim_input(group_message_event("2", message_id=43))
+    assert manager.claim_input(
+        group_message_event("1", self_id=2, message_id=42)
+    )
+
+
 def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
     manager = PromptSessionManager()
     anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
@@ -436,6 +473,46 @@ async def test_queued_conversation_cancellation_drops_pending_inputs() -> None:
     state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = first_ticket
     manager.finish_queued_conversation(state)
     assert not manager.queued_conversation_is_cancelled(state)
+
+
+@pytest.mark.asyncio
+async def test_parallel_cancellation_suppresses_every_active_ticket() -> None:
+    second_ticket_number = 2
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_1_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+        parallel=True,
+    )
+    first_ticket = await context.acquire()
+    assert first_ticket == 1
+    context.mark_dispatched(first_ticket)
+    second_ticket = await context.acquire()
+    assert second_ticket == second_ticket_number
+    context.mark_dispatched(second_ticket)
+    probe: T_State = {QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token}
+
+    manager.cancel_queued_conversation(probe)
+    assert manager.queued_conversation_is_cancelled(probe)
+
+    manager.finish_queued_conversation(
+        {
+            QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+            QUEUED_CONVERSATION_TICKET_STATE_KEY: first_ticket,
+        }
+    )
+    assert manager.queued_conversation_is_cancelled(probe)
+
+    manager.finish_queued_conversation(
+        {
+            QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+            QUEUED_CONVERSATION_TICKET_STATE_KEY: second_ticket,
+        }
+    )
+    assert not manager.queued_conversation_is_cancelled(probe)
 
 
 @pytest.mark.asyncio

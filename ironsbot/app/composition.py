@@ -351,7 +351,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     headless_operations = HeadlessOperationTracker()
     player_accounts = settings.player_accounts
-    headless_worker_count = max(1, len(player_accounts.query_workers))
+    headless_accounts = settings.headless_accounts
+    headless_worker_count = len(headless_accounts)
     headless = HeadlessService(
         [
             ClientManager(
@@ -363,7 +364,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.operations.headless,
         settings.operations.headless_notice,
         admin_notices,
-        accounts=player_accounts.query_workers,
+        accounts=headless_accounts,
         request_interval_seconds=(
             settings.seer.player.request_protection.base_request_interval_seconds
             if settings.seer.player.request_protection.enabled
@@ -390,9 +391,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
         subscriptions,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
-        SqliteLuckySkinWindowCache(
-            cache_paths.runtime_dir() / "lucky_skin_window.sqlite"
-        ),
+        SqliteLuckySkinWindowCache(settings.paths.runtime_state),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(

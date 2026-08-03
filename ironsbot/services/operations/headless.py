@@ -188,7 +188,7 @@ class HeadlessService:
             for account in accounts
             if account.password is not None
         ]
-        if len(clients) < max(1, len(credentials)):
+        if len(clients) < len(credentials):
             message = "not enough headless clients for configured workers"
             raise ValueError(message)
         self._workers = [
@@ -243,6 +243,10 @@ class HeadlessService:
     @property
     def configured_worker_count(self) -> int:
         return self._dispatcher.configured_worker_count
+
+    @property
+    def idle_worker_count(self) -> int:
+        return self._dispatcher.idle_worker_count
 
     @property
     def reconnect_times(self) -> list[str]:

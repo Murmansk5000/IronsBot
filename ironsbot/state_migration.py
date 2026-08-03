@@ -18,6 +18,9 @@ from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
+from ironsbot.integrations.storage.lucky_skin_window import (
+    SqliteLuckySkinWindowCache,
+)
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -52,7 +55,9 @@ QQ_STATE_NAMESPACES = frozenset(
         "team_resources",
     }
 )
-RUNTIME_STATE_NAMESPACES = frozenset({"activity_reminder", "team_audit"})
+RUNTIME_STATE_NAMESPACES = frozenset(
+    {"activity_reminder", "skin_window", "team_audit"}
+)
 
 
 class StateMigrationError(RuntimeError):
@@ -307,6 +312,7 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
     TeamResourceSubscriptionStore(qq_state).list_all()
 
     ActivitySentStore(runtime_state).filter_unsent([])
+    SqliteLuckySkinWindowCache(runtime_state).initialize()
     SqliteTeamAuditReminderStore(runtime_state).list_all()
 
 

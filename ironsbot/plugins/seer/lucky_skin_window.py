@@ -426,8 +426,10 @@ async def _handle_watch_selection(
     operation: str,
     item: PromptItem[LuckySkinWatchItem],
     matcher: Matcher,
-    event: MessageEvent,
+    event: Event,
 ) -> None:
+    if not isinstance(event, MessageEvent):
+        return
     await finish_event_reply(
         matcher,
         event,

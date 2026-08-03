@@ -15,7 +15,6 @@ def test_cache_paths_do_not_create_directories_when_resolved(tmp_path: Path) -> 
     assert not (root / "downloads").exists()
     assert not (root / "http").exists()
     assert not (root / "assets").exists()
-    assert not (root / "runtime").exists()
 
 
 def test_cache_paths_supports_each_disposable_category(tmp_path: Path) -> None:
@@ -24,7 +23,6 @@ def test_cache_paths_supports_each_disposable_category(tmp_path: Path) -> None:
     assert paths.downloads_dir() == tmp_path / "custom-cache" / "downloads"
     assert paths.http_dir() == tmp_path / "custom-cache" / "http"
     assert paths.assets_dir() == tmp_path / "custom-cache" / "assets"
-    assert paths.runtime_dir() == tmp_path / "custom-cache" / "runtime"
 
 
 def test_render_cache_recreates_deleted_cache_root(tmp_path: Path) -> None:

@@ -55,6 +55,11 @@ class SqliteLuckySkinWindowCache:
             migration_namespace="skin_window",
         )
 
+    def initialize(self) -> None:
+        """Create or migrate the persistent store without reading a player row."""
+        with self._database.connect():
+            pass
+
     def get(self, *, player_id: int) -> tuple[int, ...] | None:
         with self._database.connect() as connection:
             row = connection.execute(

@@ -250,6 +250,7 @@ class HeadlessNoticeConfig(BaseModel):
 class HeadlessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    accounts: list[str | int] = Field(default_factory=list)
     login_server_addr: str = "https://seer-login-ip.61.com/unity-ip.txt"
     heartbeat_interval: float = 300
     request_timeout_seconds: float = Field(default=20.0, gt=0)

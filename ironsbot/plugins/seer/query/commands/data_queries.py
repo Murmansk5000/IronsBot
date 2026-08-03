@@ -86,15 +86,13 @@ class _NewContentAction:
 
 @dataclass(frozen=True, slots=True)
 class _NewContentMenuLayout:
-    """Keep visible categories and their stable root keys separate."""
+    """Describe either the category root or one focused numeric category list."""
 
     display_categories: tuple[NewContentCategory, ...]
-    root_categories: tuple[NewContentCategory, ...]
-    expanded_categories: frozenset[NewContentCategory]
     focused_category: NewContentCategory | None = None
 
 
-_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-j](?:[1-9]\d*)?|0)", re.IGNORECASE)
+_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-z]|[1-9]\d*|0)", re.IGNORECASE)
 
 
 async def _finish_query(
@@ -232,11 +230,6 @@ async def _start_new_content(  # noqa: PLR0913
     if categories is not None and not set(categories).issubset(available):
         await matcher.finish("当前群未开放此新增内容分类。")
         return
-    root_categories: tuple[NewContentCategory, ...] = tuple(
-        category
-        for category in available
-        if snapshot.is_category_comparable(category) and snapshot.items_for(category)
-    )
     requested_categories: tuple[NewContentCategory, ...] = (
         categories if categories is not None else available
     )
@@ -261,19 +254,8 @@ async def _start_new_content(  # noqa: PLR0913
     if not visible_categories:
         await matcher.finish("本周暂未检测到可验证的新增或修改内容。")
         return
-    expanded_categories: frozenset[NewContentCategory] = (
-        frozenset(visible_categories)
-        if categories is not None
-        else frozenset(
-            category
-            for category in root_categories
-            if category in group.new_content.expanded_categories
-        )
-    )
     layout = _NewContentMenuLayout(
         display_categories=visible_categories,
-        root_categories=root_categories,
-        expanded_categories=expanded_categories,
         focused_category=(
             categories[0]
             if categories is not None and len(categories) == 1
@@ -370,31 +352,16 @@ def _content_prompt(
         return _focused_content_prompt(snapshot, layout)
 
     choices: list[PromptItem[_NewContentAction]] = []
-    root_positions = {
-        category: position for position, category in enumerate(layout.root_categories)
-    }
-    for category in layout.display_categories:
-        code = chr(ord("a") + root_positions[category])
+    for index, category in enumerate(layout.display_categories):
+        code = chr(ord("a") + index)
         items = snapshot.items_for(category)
-        expanded = category in layout.expanded_categories
         choices.append(
             PromptItem(
-                f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",
+                f"▶ {CATEGORY_NAMES[category]}",
                 f"{len(items)} 项",
                 _NewContentAction("category", category),
                 key=code,
             )
-        )
-        choices.extend(
-            PromptItem(
-                item.name,
-                _item_description(item),
-                _NewContentAction("item", category, item),
-                is_sub_prompt=True,
-                key=f"{code}{index}",
-                is_visible=expanded,
-            )
-            for index, item in enumerate(items, start=1)
         )
     return Prompt(
         title="🆕【新增内容】输入编号查看详情：",
@@ -410,18 +377,13 @@ def _focused_content_prompt(
     if category is None:
         msg = "focused new-content prompt requires a category"
         raise ValueError(msg)
-    root_positions = {
-        current: position for position, current in enumerate(layout.root_categories)
-    }
-    code = chr(ord("a") + root_positions[category])
     choices = [
         PromptItem(
             item.name,
             _item_description(item),
             _NewContentAction("item", category, item),
-            key=f"{code}{index}",
         )
-        for index, item in enumerate(snapshot.items_for(category), start=1)
+        for item in snapshot.items_for(category)
     ]
     return Prompt(
         title=f"🆕【{CATEGORY_NAMES[category]}】输入编号查看详情：",
@@ -436,7 +398,6 @@ def _focus_new_content_category(
     return replace(
         layout,
         display_categories=(category,),
-        expanded_categories=layout.expanded_categories | {category},
         focused_category=category,
     )
 
@@ -511,8 +472,7 @@ async def _render_content_prompt(
         image = await renderer(
             snapshot,
             layout.display_categories,
-            layout.root_categories,
-            layout.expanded_categories,
+            layout.focused_category,
         )
     except Exception:
         logger.exception("new content menu rendering failed; falling back to text")
