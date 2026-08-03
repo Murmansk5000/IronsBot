@@ -68,6 +68,7 @@ def test_player_detail_prompt_assigns_standard_menu_numbers_in_registration_orde
         feature="private_feature",
         label="private action",
         aliases=("private",),
+        command_help_id="private.action",
         query=AsyncMock(return_value=QueryReply(text="ok")),
         action=ActionDefinition("private_action", "private action"),
     )
@@ -112,6 +113,7 @@ def test_player_detail_prompt_uses_registered_extension_actions() -> None:
         feature="private_feature",
         label="private action",
         aliases=("private",),
+        command_help_id="private.action",
         query=AsyncMock(return_value=QueryReply(text="ok")),
         action=ActionDefinition("private_action", "private action"),
     )

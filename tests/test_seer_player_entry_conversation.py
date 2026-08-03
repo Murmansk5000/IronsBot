@@ -4,10 +4,15 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
+)
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionAction,
+    PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
@@ -29,17 +34,12 @@ def test_pending_binding_choice_accepts_only_confirmation_replies() -> None:
     assert player._parse_pending_binding_choice("是", 949105380) is True
     assert player._parse_pending_binding_choice("n", 949105380) is False
     assert (
-        player._parse_pending_binding_choice("绑定米米号949105380", 949105380)
-        is None
+        player._parse_pending_binding_choice("绑定米米号949105380", 949105380) is None
     )
     assert (
-        player._parse_pending_binding_choice("更改米米号949105380", 949105380)
-        is None
+        player._parse_pending_binding_choice("更改米米号949105380", 949105380) is None
     )
-    assert (
-        player._parse_pending_binding_choice("绑定米米号123456", 949105380)
-        is None
-    )
+    assert player._parse_pending_binding_choice("绑定米米号123456", 949105380) is None
 
 
 def test_pending_confirmation_reuses_the_fetched_player(
@@ -189,6 +189,58 @@ def test_player_commands_resolve_configured_account_names() -> None:
     assert peak_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
         PlayerShortcutCommand("peak", _ACCOUNT_PLAYER_ID)
     )
+
+
+def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
+    monkeypatch: Any,
+) -> None:
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="sample_player",
+                aliases=("示例账号",),
+                query_worker=False,
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="private_lineup",
+            feature="player_lineup_private",
+            label="阵容",
+            aliases=("阵容",),
+            command_help_id="private_player_lineup.query",
+            query=AsyncMock(return_value=QueryReply(text="ok")),
+            action=ActionDefinition("private_lineup", "阵容"),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", object()),
+        cast("Any", object()),
+        extensions,
+        accounts,
+    )
+    monkeypatch.setattr(
+        player_shortcuts,
+        "event_is_feature_allowed",
+        lambda *_args: True,
+    )
+    state: dict[str, object] = {}
+
+    assert asyncio.run(
+        player_shortcuts._is_player_extension_shortcut(
+            group_message_event("阵容示例账号"),
+            state,
+            dependencies=dependencies,
+        )
+    )
+    command = state[player_shortcuts._EXTENSION_SHORTCUT_COMMAND_KEY]
+    assert isinstance(command, player_shortcuts.PlayerExtensionShortcutCommand)
+    assert command.player_id == _ACCOUNT_PLAYER_ID
 
 
 def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
