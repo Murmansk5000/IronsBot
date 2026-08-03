@@ -112,23 +112,6 @@ def _seed_legacy_state(root: Path) -> None:
         ),
     )
     _execute(
-        root / "seer/lucky_skin_window.sqlite",
-        (
-            """
-            CREATE TABLE lucky_skin_window_daily_cache (
-                day TEXT PRIMARY KEY,
-                skin_ids_json TEXT NOT NULL,
-                recorded_at TEXT NOT NULL
-            )
-            """,
-            """
-            INSERT INTO lucky_skin_window_daily_cache VALUES (
-                '2026-08-01', '[1,2,3,4]', '2026-08-01T00:02:00+08:00'
-            )
-            """,
-        ),
-    )
-    _execute(
         root / "messaging/reply_limits.sqlite",
         ("CREATE TABLE group_reply_line_limits (group_id INTEGER PRIMARY KEY)",),
     )
@@ -207,16 +190,13 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
         assert connection.execute(
             "SELECT activity_id FROM sent_activity_reminders"
         ).fetchall() == [(7,)]
-        assert connection.execute(
-            "SELECT skin_ids_json FROM lucky_skin_window_daily_cache"
-        ).fetchall() == [("[1,2,3,4]",)]
         namespaces = {
             str(row[0])
             for row in connection.execute(
                 "SELECT namespace FROM ironsbot_schema_migrations"
             )
         }
-        assert namespaces == {"activity_reminder", "skin_window", "team_audit"}
+        assert namespaces == {"activity_reminder", "team_audit"}
 
     repeated = migrate_state_databases(data_root=data_root, apply=True)
     assert repeated.already_migrated

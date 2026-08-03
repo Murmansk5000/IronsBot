@@ -120,8 +120,8 @@ async def test_private_superuser_notice_never_uses_admin_notice_groups() -> None
 
     await service.send_private_to_superusers(
         "幸运橱窗命中关注皮肤。",
-        subscription_key="private_skin_window",
-        action_name="private skin window notice",
+        subscription_key="daily_private_notice",
+        action_name="daily private notice",
     )
 
     assert delivery.calls == [{
@@ -129,8 +129,8 @@ async def test_private_superuser_notice_never_uses_admin_notice_groups() -> None
         "private_user_ids": [1001, 2002],
         "group_ids": [],
         "group_at_user_ids": [],
-        "action_name": "private skin window notice",
-        "subscription_key": "private_skin_window",
+        "action_name": "daily private notice",
+        "subscription_key": "daily_private_notice",
         "bot": None,
         "interval_seconds": 1.5,
         "message_limiter": None,

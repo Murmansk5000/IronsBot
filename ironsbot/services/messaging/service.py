@@ -55,10 +55,10 @@ class MessagingService:
     _store: PushSubscriptionRepository
     _features: FeatureService
     _delivery: MessageDelivery
-    _extra_push_options: Callable[
-        [PushTargetType, int],
-        list[PushSubscriptionOption],
-    ]
+    _extra_push_options: tuple[
+        Callable[[PushTargetType, int], list[PushSubscriptionOption]],
+        ...,
+    ] = ()
     _push_message_limiter: MessageLimiter | None = None
     _prepare_extra_push_options: (
         Callable[[PushTargetType, int], Awaitable[str | None]] | None
@@ -116,8 +116,13 @@ class MessagingService:
         target_type: PushTargetType,
         target_id: int,
     ) -> list[PushSubscriptionOption]:
+        extra_options = [
+            option
+            for provider in self._extra_push_options
+            for option in provider(target_type, target_id)
+        ]
         return [
-            *self._extra_push_options(target_type, target_id),
+            *extra_options,
             *self._builtin_subscription_options(target_type, target_id),
             *self._schedule_subscription_options(target_type, target_id),
         ]

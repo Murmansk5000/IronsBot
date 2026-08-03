@@ -77,7 +77,7 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         store,
         runtime.features,
         runtime.delivery,
-        lambda _target_type, _target_id: [],
+        (lambda _target_type, _target_id: [],),
     )
     asyncio.run(messaging.start(cast("Scheduler", object())))
 
