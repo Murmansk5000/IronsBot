@@ -23,6 +23,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
+from ironsbot.core.time import daily_time_parts
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
@@ -265,6 +266,7 @@ def _register_schedule(
     if not service.enabled:
         return
     config = service.config
+    daily_hour, daily_minute = daily_time_parts(config.time)
     JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
         service.clear_previous_days,
         "cron",
@@ -278,8 +280,8 @@ def _register_schedule(
         partial(service.send_daily_notifications, delivery),
         "cron",
         job_id="daily",
-        hour=config.hour,
-        minute=config.minute,
+        hour=daily_hour,
+        minute=daily_minute,
         second=0,
         timezone=config.timezone,
     )

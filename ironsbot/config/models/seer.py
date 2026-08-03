@@ -17,7 +17,7 @@ from ironsbot.core.commands import NormalizedStringList, string_list
 from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
     OneBotReferenceList,
 )
-from ironsbot.core.time import normalized_daily_times
+from ironsbot.core.time import normalize_daily_time, normalized_daily_times
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -80,6 +80,7 @@ TEAM_RESOURCE_TIME_ERROR = "seer.team_resource.times must contain daily HH:MM ti
 LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR = (
     "seer.lucky_skin_window watched_skin_ids must be positive"
 )
+LUCKY_SKIN_WINDOW_TIME_ERROR = "seer.lucky_skin_window.time must use HH:MM"
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
     "01:15",
     "01:45",
@@ -519,11 +520,15 @@ class LuckySkinWindowConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    hour: int = Field(default=0, ge=0, le=23)
-    minute: int = Field(default=2, ge=0, le=59)
+    time: str = "00:02"
     timezone: str = "Asia/Shanghai"
     timeout_seconds: float = Field(default=15.0, gt=0)
     accounts: list[LuckySkinWindowAccountConfig] = Field(default_factory=list)
+
+    @field_validator("time")
+    @classmethod
+    def normalize_time(cls, value: str) -> str:
+        return normalize_daily_time(value, error_message=LUCKY_SKIN_WINDOW_TIME_ERROR)
 
     @field_validator("timezone")
     @classmethod

@@ -974,6 +974,7 @@ owner = 123456789
 
 [seer.lucky_skin_window]
 enabled = true
+time = "0:2"
 
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
@@ -985,6 +986,7 @@ watched_skin_ids = [1400538]
 
     config = load_settings(config_path)
     assert config.seer.lucky_skin_window.enabled
+    assert config.seer.lucky_skin_window.time == "00:02"
     assert config.onebot_references.resolve_user(
         config.seer.lucky_skin_window.accounts[0].user,
         location="test",
@@ -1029,6 +1031,20 @@ player_id = 105023264
     )
 
     with pytest.raises(ValidationError, match="must not repeat a player_id"):
+        load_settings(config_path)
+
+
+def test_lucky_skin_window_rejects_invalid_time(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.lucky_skin_window]
+time = "24:02"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="time must use HH:MM"):
         load_settings(config_path)
 
 
