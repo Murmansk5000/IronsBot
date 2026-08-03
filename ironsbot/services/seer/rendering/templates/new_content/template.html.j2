@@ -123,6 +123,7 @@
             {% if item.skill %}
               <div class="skill-content">
                 {{ skill_card(item.skill, skill_type_icons) }}
+                {% if item.friend_skill %}{{ skill_card(item.friend_skill, skill_type_icons) }}{% endif %}
                 {% if item.description %}<div class="skill-links">{{ item.description }}</div>{% endif %}
               </div>
             {% else %}
