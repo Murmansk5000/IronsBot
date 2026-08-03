@@ -445,3 +445,39 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
     assert card_image is not None
     assert ("pet_head", "70") in images.requests
     assert ("url", "https://assets.example/card-98.png") in images.requests
+
+
+def test_skill_menu_details_format_official_rich_text() -> None:
+    effect = SimpleNamespace(
+        effect_id=31,
+        analyze_info=(
+            "[sprite name=iconHit]4回合内免疫所有异常状态，"
+            "[color=#52a5f2]反弹[/color]所有受到的异常状态"
+        ),
+        info="",
+    )
+    skill = SimpleNamespace(
+        skill_effect=[effect],
+        friend_skill_effect=[],
+        hide_effect=None,
+    )
+    data = _RichData({}, skills={10001: skill})
+
+    details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        _item(
+            "skill",
+            10001,
+            info="[sprite name=iconHit]技能说明",
+        ),
+    )
+
+    assert details.skill is not None
+    effect_text = details.skill["effects"][0]["info"]
+    assert "[sprite" not in effect_text
+    assert "[color" not in effect_text
+    assert "[/color]" not in effect_text
+    assert "反弹" in effect_text
+    assert "color:#52a5f2" in effect_text
+    assert details.skill["info"] == "技能说明"
