@@ -26,11 +26,19 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
-from .new_content_models import _ItemDetails
-from .new_content_skill_details import _skill_details
+from .new_content_skill_details import (
+    SKILL_CATEGORY_ATTRIBUTE as _SKILL_CATEGORY_ATTRIBUTE,
+)
+from .new_content_skill_details import (
+    NewContentItemDetails as _ItemDetails,
+)
+from .new_content_skill_details import (
+    load_new_content_skill_details as _skill_details,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.new_content import NewContentItem
     from ironsbot.services.seer.render_cache import RenderCache
 
     from . import HtmlTemplateRenderer
@@ -57,6 +65,10 @@ class NewContentMenuItemDict(TypedDict):
     image: str | None
     skill: SkillDict | None
     friend_skill: SkillDict | None
+
+
+
+
 
 
 _EQUIP_PART_TYPE_NAMES = {
@@ -122,7 +134,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                 "image": None,
                 "skill": None,
                 "friend_skill": None,
-            },
+            }
         )
         if expanded:
             for index, item in enumerate(items, start=1):
@@ -149,7 +161,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                         "image": None,
                         "skill": details.skill,
                         "friend_skill": details.friend_skill,
-                    },
+                    }
                 )
                 item_rows.append((row_index, item, details))
 
@@ -157,7 +169,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         *(
             _item_visuals(data, images, autocard, item, details)
             for _row_index, item, details in item_rows
-        ),
+        )
     )
     cacheable = True
     for (row_index, item, _details), (image, type_icon) in zip(
@@ -209,7 +221,9 @@ async def _load_skill_type_icons(
         if details.skill is None:
             continue
         type_icons[details.skill["type_id"]] = type_icon or ""
-        has_attribute_skill |= details.skill["category_id"] == _SKILL_CATEGORY_ATTRIBUTE
+        has_attribute_skill |= (
+            details.skill["category_id"] == _SKILL_CATEGORY_ATTRIBUTE
+        )
     if has_attribute_skill:
         type_icons["prop"] = await _type_icon(images, "prop") or ""
     return type_icons
@@ -238,7 +252,7 @@ async def _type_icon(
     try:
         if isinstance(type_id, str):
             return to_data_uri(
-                await images.fetch("element_type", type_id, fallback=False),  # type: ignore[arg-type]
+                await images.fetch("element_type", type_id, fallback=False)  # type: ignore[arg-type]
             )
         return await _fetch_data_uri(images, "element_type", type_id)
     except ImageSourceError:
@@ -302,16 +316,28 @@ def _skin_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
         pet = skin.pet
         return _ItemDetails(
             metadata=(
-                f"ID\uff1a{skin.id}\uff5c绑定精灵\uff1a{pet.name}"
+                f"ID：{skin.id}｜绑定精灵：{pet.name}"
                 if pet is not None
-                else f"ID\uff1a{skin.id}"
+                else f"ID：{skin.id}"
             ),
             description=str(getattr(skin, "description", "") or "暂无官方简介"),
             type_id=None if pet is None else int(pet.type.id),
             gender_id=None if pet is None else int(pet.gender.id),
             type_name="" if pet is None else str(pet.type.name),
-            gender_name=("" if pet is None else _gender_name(str(pet.gender.name))),
+            gender_name=(
+                "" if pet is None else _gender_name(str(pet.gender.name))
+            ),
         )
+
+
+
+
+
+
+
+
+
+
 
 
 def _mintmark_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
@@ -320,7 +346,7 @@ def _mintmark_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetail
             return _fallback_details(item)
         attributes = _mintmark_attributes(mintmark)
         return _ItemDetails(
-            metadata=f"ID\uff1a{mintmark.id}",
+            metadata=f"ID：{mintmark.id}",
             # The six stat cells are the useful compact summary here. The
             # raw part description repeats those values and makes the row
             # needlessly tall; full details remain available via the item.
@@ -336,7 +362,7 @@ def _suit_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
         if suit is None:
             return _fallback_details(item)
         return _ItemDetails(
-            metadata=f"ID\uff1a{suit.id}",
+            metadata=f"ID：{suit.id}",
             description="",
             side_title="套装效果",
             side_description=str(suit.suit_desc or "暂无官方简介").strip(),
@@ -358,7 +384,7 @@ def _equip_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
             else "暂无官方简介"
         )
         return _ItemDetails(
-            metadata=f"ID\uff1a{equip.id}\uff5c类型\uff1a{part_name}\uff5c套装\uff1a{suit_name}",
+            metadata=f"ID：{equip.id}｜类型：{part_name}｜套装：{suit_name}",
             description=description,
         )
 
@@ -377,9 +403,9 @@ def _achievement_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDet
             if title is not None and title.ability_desc:
                 bonus = str(title.ability_desc).strip()
     point = int(item.payload.get("point", 0))
-    suffix = f"\uff5c称号\uff1a{title_name}" if title_name else ""
+    suffix = f"｜称号：{title_name}" if title_name else ""
     return _ItemDetails(
-        metadata=f"成就 ID\uff1a{item.entity_id}\uff5c{point} 点{suffix}",
+        metadata=f"成就 ID：{item.entity_id}｜{point} 点{suffix}",
         description="",
         side_title="称号加成",
         side_description=bonus,
@@ -394,22 +420,19 @@ def _autocard_details(
         AutocardPromptValue(
             kind="role" if item.category == "autocard_role" else "card",
             item_id=item.entity_id,
-        ),
+        )
     )
     if entry is None:
         return _fallback_details(item)
     skill_lines = [entry.skill_text]
     if entry.skill_upgrade:
-        skill_lines.append(f"升级\uff1a{entry.skill_upgrade}")
+        skill_lines.append(f"升级：{entry.skill_upgrade}")
     side_description = "\n".join(line for line in skill_lines if line)
     return _ItemDetails(
-        metadata=(
-            f"ID\uff1a{entry.item_id}\uff5c"
-            f"{'角色' if entry.kind == 'role' else '卡牌'}"
-        ),
+        metadata=f"ID：{entry.item_id}｜{'角色' if entry.kind == 'role' else '卡牌'}",
         description=entry.description,
         side_title=(
-            f"技能\uff1a{entry.skill_name}"
+            f"技能：{entry.skill_name}"
             if entry.skill_name
             else ("技能效果" if side_description else "")
         ),
@@ -423,16 +446,18 @@ def _fallback_details(item: NewContentItem) -> _ItemDetails:
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
         phase = int(item.payload.get("unlock_round", 0))
         return _ItemDetails(
-            metadata=f"ID\uff1a{item.entity_id}",
+            metadata=f"ID：{item.entity_id}",
             description=(
-                f"圣域\uff1a{sanctuary or '未命名'}\uff5c"
+                f"圣域：{sanctuary or '未命名'}｜"
                 f"{'基础圣域' if phase == 0 else f'第 {phase} 回合祝印'}"
             ),
             side_title="圣域效果",
-            side_description=str(item.payload.get("description", "") or "暂无官方说明"),
+            side_description=str(
+                item.payload.get("description", "") or "暂无官方说明"
+            ),
         )
     return _ItemDetails(
-        metadata=f"{change}\uff5cID\uff1a{item.entity_id}",
+        metadata=f"{change}｜ID：{item.entity_id}",
         description="暂无官方简介",
     )
 
@@ -451,7 +476,10 @@ def _six_stats(attributes: object) -> tuple[tuple[str, str], ...]:
     )
 
 
-_SKILL_CATEGORY_ATTRIBUTE = 4
+
+
+
+
 
 
 def _two_column_stats(attributes: object) -> tuple[tuple[str, str], ...]:
@@ -522,7 +550,7 @@ def _cache_key(
             ",".join(categories),
             ",".join(root_categories),
             ",".join(sorted(expanded)),
-        ),
+        )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
@@ -589,7 +617,7 @@ def _item_requires_image(item: NewContentItem) -> bool:
         isinstance(titles, list)
         and titles
         and isinstance(titles[0], dict)
-        and titles[0].get("id", titles[0].get("title_id", 0)),
+        and titles[0].get("id", titles[0].get("title_id", 0))
     )
 
 
@@ -602,7 +630,7 @@ async def _autocard_item_image(
         AutocardPromptValue(
             kind="role" if item.category == "autocard_role" else "card",
             item_id=item.entity_id,
-        ),
+        )
     )
     return await _autocard_entry_image(images, entry)
 
@@ -616,7 +644,9 @@ async def _sanctuary_item_image(
 
     relation_kind, resource_id = _sanctuary_relation(item.payload)
     if relation_kind == "card":
-        entry = autocard.select(AutocardPromptValue(kind="card", item_id=resource_id))
+        entry = autocard.select(
+            AutocardPromptValue(kind="card", item_id=resource_id)
+        )
         return await _autocard_entry_image(images, entry)
     if relation_kind == "pet":
         return await _fetch_data_uri(images, "pet_head", resource_id)
@@ -630,7 +660,7 @@ def _sanctuary_relation(payload: dict[str, object]) -> tuple[str, int]:
         payload.get("target_type")
         or payload.get("source_type")
         or payload.get("entity_type")
-        or "",
+        or ""
     ).casefold()
     card_id = _payload_id(
         payload,
@@ -687,7 +717,7 @@ def _payload_id(payload: dict[str, object], *keys: str) -> int:
 
 def _skin_head_resource_id(data: SeerDataAccess, item: NewContentItem) -> int:
     with data.query(
-        lambda session: load_skin_image_resolutions(session, (item.entity_id,)),
+        lambda session: load_skin_image_resolutions(session, (item.entity_id,))
     ) as resolutions:
         resolution = resolutions.get(item.entity_id)
     return (
