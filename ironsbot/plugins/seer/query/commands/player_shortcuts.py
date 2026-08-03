@@ -23,12 +23,14 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     execute_player_shortcut,
     parse_player_shortcut_command,
+    player_request_admission_message,
     player_shortcut_semantic_request,
 )
 
@@ -179,11 +181,19 @@ async def handle_player_extension_shortcut(
     if target.player_id is None:
         await finish_event_reply(matcher, event, unbound_player_shortcut_message())
         return
-    reply = await command.action.query(
-        target.player_id,
-        event.user_id,
-        event_group_id(event),
-    )
+    async def send_status(label: str, *, queued: bool) -> None:
+        await send_event_reply(
+            matcher,
+            event,
+            player_request_admission_message(label, queued=queued),
+        )
+
+    with request_feedback_scope(command.action.action.label, send_status):
+        reply = await command.action.query(
+            target.player_id,
+            event.user_id,
+            event_group_id(event),
+        )
     await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
 
 

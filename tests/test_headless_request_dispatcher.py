@@ -14,6 +14,7 @@ from ironsbot.services.operations.headless_pool import (
     PooledHeadlessGame,
     headless_request_priority_scope,
 )
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -182,3 +183,40 @@ async def test_failed_packet_retries_on_another_healthy_worker() -> None:
     assert result == f"{SECOND_WORKER_ID}:retry"
     assert events == [(10000, "retry"), (SECOND_WORKER_ID, "retry")]
     assert game.user_id == SECOND_WORKER_ID
+
+
+@pytest.mark.asyncio
+async def test_request_feedback_reflects_actual_worker_dispatch_state() -> None:
+    game, _events, started = _pool(1)
+    release = asyncio.Event()
+    feedback: list[tuple[str, bool]] = []
+
+    async def send_feedback(label: str, *, queued: bool) -> None:
+        feedback.append((label, queued))
+
+    with request_feedback_scope("first", send_feedback):
+        first = asyncio.create_task(game.step("first", release))
+    await started.setdefault("first", asyncio.Event()).wait()
+
+    with request_feedback_scope("second", send_feedback):
+        second = asyncio.create_task(game.step("second"))
+    await asyncio.sleep(0)
+
+    assert feedback == [("first", False), ("second", True)]
+    release.set()
+    await asyncio.gather(first, second)
+
+
+@pytest.mark.asyncio
+async def test_request_feedback_is_sent_only_for_the_first_packet() -> None:
+    game, _events, _started = _pool(1)
+    feedback: list[tuple[str, bool]] = []
+
+    async def send_feedback(label: str, *, queued: bool) -> None:
+        feedback.append((label, queued))
+
+    with request_feedback_scope("workflow", send_feedback):
+        await game.step("first")
+        await game.step("second")
+
+    assert feedback == [("workflow", False)]

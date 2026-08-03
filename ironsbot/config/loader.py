@@ -119,9 +119,21 @@ def _inject_player_account_passwords(  # noqa: C901, PLR0912
                     accounts_by_reference[value] = (player_id, entry, path)
 
     required: dict[int, tuple[dict[str, Any], str]] = {}
-    for player_id, entry, path in accounts_by_reference.values():
-        if entry.get("query_worker") is True:
-            required[player_id] = (entry, path)
+    operations = data.get("operations")
+    headless = operations.get("headless") if isinstance(operations, dict) else None
+    headless_accounts = (
+        headless.get("accounts", []) if isinstance(headless, dict) else []
+    )
+    if isinstance(headless_accounts, list):
+        for index, raw_reference in enumerate(headless_accounts):
+            reference = normalize_command_text(str(raw_reference).strip())
+            account = accounts_by_reference.get(reference)
+            if account is not None:
+                player_id, entry, _account_path = account
+                required[player_id] = (
+                    entry,
+                    f"operations.headless.accounts[{index}]",
+                )
 
     lucky_skin_window = seer.get("lucky_skin_window")
     if isinstance(lucky_skin_window, dict):

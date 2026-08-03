@@ -18,6 +18,7 @@ from ironsbot.services.operations.headless_errors import (
     SocketRecvError,
 )
 from ironsbot.services.operations.headless_pool import HeadlessRequestPriority
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
@@ -25,7 +26,6 @@ from ironsbot.services.seer.ids import (
 )
 from ironsbot.services.seer.player_account_policy import PlayerAccountPolicyMixin
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
-from ironsbot.services.seer.player_binding import player_binding_offer_message
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_profile_cache import NullPlayerProfileCache
 from ironsbot.services.seer.player_query import (
@@ -508,6 +508,16 @@ class PlayerService(PlayerAccountPolicyMixin):
         group_id: int | None = None,
     ) -> PlayerQueryResult:
         """Validate a player ID, save it as default, and return its info."""
+        binding = self._bindings.get(qq_user_id)
+        if binding.player_id == player_id:
+            nick = f"（{binding.player_nick}）" if binding.player_nick else ""
+            return PlayerQueryResult(
+                message=f"当前已绑定该米米号：{player_id}{nick}。"
+            )
+        if binding.player_id is not None:
+            change_error = self._binding_change_error(qq_user_id)
+            if change_error:
+                return PlayerQueryResult(message=change_error)
         result = await self.query(
             player_id,
             qq_user_id=qq_user_id,
@@ -518,41 +528,15 @@ class PlayerService(PlayerAccountPolicyMixin):
             return result
 
         pending = result.pending
+        if binding.player_id is not None:
+            return PlayerQueryResult(
+                pending=pending,
+                offer_binding=True,
+                binding_replacement=binding,
+            )
         status = self._save_binding(qq_user_id, pending)
         pending.player_message = f"{status}\n\n{pending.player_message}"
         return PlayerQueryResult(pending=pending)
-
-    def save_binding_choice(
-        self,
-        qq_user_id: int,
-        pending: PendingPlayerQuery,
-        *,
-        accepted: bool,
-    ) -> str:
-        if accepted:
-            status = self._save_binding(qq_user_id, pending)
-        else:
-            try:
-                self._bindings.decline(qq_user_id=qq_user_id)
-                status = "已跳过默认米米号设置。"
-            except Exception as error:
-                logger.exception("保存米米号绑定选择失败")
-                status = f"⚠️ 默认米米号设置保存失败：{error}"
-        pending.player_message = f"{status}\n\n{pending.player_message}"
-        return status
-
-    def binding_offer(self, pending: PendingPlayerQuery) -> str:
-        limits = self._config.player.query_limits
-        return player_binding_offer_message(
-            pending.player_id,
-            str(pending.user_info.nick),
-            unbound_daily_limit=(
-                limits.unbound_daily_limit if limits.enabled else None
-            ),
-            bound_default_daily_limit=(
-                limits.bound_default_daily_limit if limits.enabled else None
-            ),
-        )
 
     def record_returned_query(
         self,
@@ -790,6 +774,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     raise PlayerQueryQuotaExceededError(quota_message)
             return await operation()
         if self._requests is None:
+            await send_request_feedback(queued=False)
             return await guarded_operation()
         return await self._requests.run(
             guarded_operation,

@@ -54,7 +54,6 @@ class PlayerAccount:
     player_id: int
     name: str
     aliases: tuple[str, ...]
-    query_worker: bool
     password: str | None
     public: bool = False
 
@@ -109,12 +108,6 @@ class PlayerAccountRegistry:
     @property
     def accounts(self) -> tuple[PlayerAccount, ...]:
         return tuple(self._by_player_id.values())
-
-    @property
-    def query_workers(self) -> tuple[PlayerAccount, ...]:
-        return tuple(
-            account for account in self.accounts if account.query_worker
-        )
 
     def resolve(self, reference: object, *, location: str) -> PlayerAccount:
         value = str(reference).strip()
@@ -207,7 +200,6 @@ def build_player_account_registry(
                 player_id=player_id,
                 name=name,
                 aliases=aliases,
-                query_worker=bool(getattr(entry, "query_worker", False)),
                 password=_optional_password(getattr(entry, "password", None)),
                 public=bool(getattr(entry, "public", False)),
             )

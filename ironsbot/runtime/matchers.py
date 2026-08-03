@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from inspect import Signature, signature
 from secrets import token_urlsafe
+from time import monotonic
 from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 
 from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
@@ -33,8 +34,10 @@ if TYPE_CHECKING:
         SemanticRequestResolver,
     )
     from ironsbot.runtime.prompt_sessions import _QueuedConversation
+    from ironsbot.runtime.semantic_requests import SemanticRequest
 from ironsbot.runtime.matcher_contracts import (
     CommandPolicyError,
+    default_semantic_request,
     static_command_id,
 )
 from ironsbot.runtime.prompt_errors import (
@@ -48,18 +51,13 @@ from ironsbot.runtime.prompt_sessions import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
 )
 from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
     GroupMenuAnchor,
     PromptSessionManager,
-)
-from ironsbot.runtime.semantic_requests import (
-    ActionDefinition,
-    SemanticRequest,
-    SemanticRequestSource,
-    normalized_text_target,
 )
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
@@ -249,8 +247,8 @@ async def reject_with_rule(
         if replace_menu_anchor:
             update_queued_menu_anchor(matcher, current_event.get(), send_result)
 
-    if context := get_queued_conversation(matcher):
-        context.keep_open = True
+    if get_queued_conversation(matcher) is not None:
+        matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
         raise FinishedException
 
     matcher.remain_handlers.insert(0, current_handler.get())
@@ -270,6 +268,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
     queue_reply_check: Callable[[Event], bool] | None = None,
     queue_group_reply_check: Callable[[Event], bool] | None = None,
     queue_allow_group_reply_exit: bool = False,
+    queue_parallel: bool = False,
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     queue_event_session_id: str | None = None,
     queue_conversation_session_id: str | None = None,
@@ -300,7 +299,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
                 context.update_semantic_request_resolver(
                     queue_semantic_request_resolver
                 )
-                context.keep_open = True
+                matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
                 raise FinishedException
             get_prompt_session_manager(matcher).cancel_queued_conversation(
                 matcher.state
@@ -330,6 +329,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
             conversation_session_id=queue_conversation_session_id,
             menu_anchor=menu_anchor,
             allow_group_reply_exit=queue_allow_group_reply_exit,
+            parallel=queue_parallel,
         )
         await _create_queued_temp_matcher(matcher, queued)
         raise FinishedException
@@ -414,6 +414,18 @@ async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     if not isinstance(event, MessageEvent):
         raise FinishedException
 
+    prompt_sessions = get_prompt_session_manager(_state)
+    if not prompt_sessions.claim_input(event):
+        logger.debug(
+            "queued conversation input already claimed: namespace=%s "
+            "session=%s user=%s message_id=%s",
+            context.namespace,
+            context.event_session_id,
+            event.user_id,
+            event.message_id,
+        )
+        raise FinishedException
+
     is_shared_group_reply = context.is_shared_group_reply(event)
     if event.get_plaintext().strip() == "0":
         if is_shared_group_reply and context.allow_group_reply_exit:
@@ -430,6 +442,7 @@ async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
             )
         await matcher.finish("已退出当前选择。")
 
+    request: SemanticRequest | None = None
     request_token: object | None = None
     if context.semantic_request_resolver is not None:
         if is_shared_group_reply:
@@ -446,20 +459,26 @@ async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
             )
             if not decision.allowed:
                 await _create_queued_temp_matcher(matcher, context)
-                context.keep_open = True
+                _state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
                 if decision.feedback is not None:
                     await _send_in_flight_feedback(matcher, event, decision.feedback)
                 raise FinishedException
             request_token = decision.token
 
-    await _create_queued_temp_matcher(matcher, context)
+    reservation = context.reserve(request_token)
+    if reservation is None:
+        raise FinishedException
+    ticket, ready = reservation
+    queued_at = monotonic()
+    waited = not ready.done()
     try:
-        ticket = await context.acquire(request_token)
+        await _create_queued_temp_matcher(matcher, context)
+        await ready
     except BaseException:
-        if request_token is not None and context.request_service is not None:
-            context.request_service.release(request_token)
+        context.abort(ticket)
         raise
-    if ticket is None:
+    if not context.active:
+        context.abort(ticket)
         raise FinishedException
     _state.clear()
     _state.update(context.state)
@@ -469,6 +488,22 @@ async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
         _state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
     if request_token is not None:
         _state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_token
+    context.mark_dispatched(ticket)
+    action_id = (
+        request.action.id if request is not None else "none"
+    )
+    logger.info(
+        "queued conversation input dispatched: namespace=%s session=%s "
+        "user=%s message_id=%s ticket=%s action=%s waited=%s queue_wait=%.3fs",
+        context.namespace,
+        context.event_session_id,
+        event.user_id,
+        event.message_id,
+        ticket,
+        action_id,
+        waited,
+        monotonic() - queued_at,
+    )
 
 
 async def _send_in_flight_feedback(
@@ -709,11 +744,11 @@ class MatcherRegistry:
             request = (
                 policy.semantic_request(event, state)
                 if policy.semantic_request is not None
-                else _default_semantic_request(
+                else default_semantic_request(
                     command_id=normalized_id,
                     label=str(label),
                     event=event,
-                    _state=state,
+                    state=state,
                 )
             )
             if request is not None:
@@ -754,24 +789,3 @@ class MatcherRegistry:
         state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = self._runtime_context_token
         updated["state"] = state
         return updated
-
-
-def _default_semantic_request(
-    *,
-    command_id: str,
-    label: str,
-    event: MessageEvent,
-    _state: T_State,
-) -> SemanticRequest | None:
-    target = normalized_text_target(event.get_plaintext())
-    if target is None:
-        return None
-    return SemanticRequest(
-        action=ActionDefinition(
-            id=command_id,
-            label=label,
-            cooldown_key=command_id,
-        ),
-        target=target,
-        source=SemanticRequestSource.DIRECT,
-    )

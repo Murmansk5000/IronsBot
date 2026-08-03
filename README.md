@@ -161,10 +161,11 @@ SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
 
-每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名、`public` 和
-`query_worker`。需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量，填写明文即可；
+每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和 `public`。
+需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量，填写明文即可；
 机器人仅在内存中将其转换为旧登录接口所需的 MD5。
-`query_worker = true` 的账号组成可互换的公共查询池；幸运橱窗仅引用账号库中的账号，
+`[operations.headless].accounts` 引用的账号组成可互换的公共查询池，支持账号名称、别名和
+数字米米号；幸运橱窗仅引用账号库中的账号，
 使用独立短时会话，不占用公共查询池。
 `public = true` 时，账号的文字 `name` / `aliases` 可在任意会话查询；`public = false` 时，只有
 `[seer.player_account_aliases]` 声明的群可使用它们，其他位置仍可直接填写数字米米号。绑定时必须
@@ -516,7 +517,7 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-公共无头账号由 `[[seer.player_accounts]]` 中 `query_worker = true` 的条目决定；
+公共无头账号由 `[operations.headless].accounts` 中的账号引用决定；
 每个账号密码使用 `SEER_PASSWORD_<player_id>`。每个账号独立连接，查询和刷榜可并行；
 阵容功能复用公共账号池，不单独登录。
 

@@ -11,7 +11,11 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
-from ironsbot.services.seer.player_binding import player_binding_offer_message
+from ironsbot.services.seer.player_binding import (
+    PlayerBindingState,
+    player_binding_offer_message,
+    player_binding_replacement_offer_message,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
@@ -65,6 +69,19 @@ def test_player_binding_offer_omits_quota_hint_without_an_increase() -> None:
     assert "实时数据的每日额度可从" not in message
 
 
+def test_player_binding_replacement_offer_names_both_accounts() -> None:
+    message = player_binding_replacement_offer_message(
+        10001,
+        "旧账号",
+        _PLAYER_ID,
+        "测试玩家",
+    )
+
+    assert "当前默认米米号：10001（旧账号）" in message
+    assert "已查到米米号：123456（测试玩家）" in message
+    assert "保留当前绑定" in message
+
+
 class _UnboundPlayerBindingStore:
     def get(self, _qq_user_id: int) -> SimpleNamespace:
         return SimpleNamespace(player_id=None)
@@ -98,6 +115,9 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         section_plan=cast("Any", object()),
     )
     service = object.__new__(PlayerService)
+    service._bindings = SimpleNamespace(  # type: ignore[attr-defined]
+        get=Mock(return_value=PlayerBindingState(10001))
+    )
     service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
     service._save_binding = Mock(return_value="已设置默认米米号：123456。")
 
@@ -121,8 +141,83 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
     assert pending.player_message.startswith("已设置默认米米号：123456。\n\n")
 
 
+def test_rebinding_the_same_player_skips_query_and_keeps_binding() -> None:
+    service = object.__new__(PlayerService)
+    service._bindings = SimpleNamespace(  # type: ignore[attr-defined]
+        get=Mock(
+            return_value=PlayerBindingState(
+                10001,
+                _PLAYER_ID,
+                "测试玩家",
+                choice_completed=True,
+                last_changed_at=datetime(2026, 8, 3, tzinfo=timezone.utc),
+            )
+        )
+    )
+    service.query = AsyncMock()
+
+    result = asyncio.run(service.bind_player(_PLAYER_ID, qq_user_id=10001))
+
+    assert result.message == "当前已绑定该米米号：123456（测试玩家）。"
+    service.query.assert_not_awaited()
+
+
+def test_rebinding_a_different_player_requires_confirmation() -> None:
+    pending = PendingPlayerQuery(
+        player_id=_PLAYER_ID,
+        user_info=SimpleNamespace(nick="测试玩家"),
+        more_info=object(),
+        player_message="玩家信息",
+        section_plan=cast("Any", object()),
+    )
+    previous = PlayerBindingState(
+        10001,
+        777777,
+        "旧账号",
+        choice_completed=True,
+    )
+    service = object.__new__(PlayerService)
+    service._bindings = SimpleNamespace(get=Mock(return_value=previous))  # type: ignore[attr-defined]
+    service._binding_change_error = Mock(return_value="")
+    service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
+    service._save_binding = Mock()
+
+    result = asyncio.run(service.bind_player(_PLAYER_ID, qq_user_id=10001))
+
+    assert result.pending is pending
+    assert result.offer_binding is True
+    assert result.binding_replacement == previous
+    service._save_binding.assert_not_called()
+
+
+def test_declining_a_rebinding_keeps_the_existing_binding() -> None:
+    pending = PendingPlayerQuery(
+        player_id=_PLAYER_ID,
+        user_info=SimpleNamespace(nick="测试玩家"),
+        more_info=object(),
+        player_message="玩家信息",
+        section_plan=cast("Any", object()),
+    )
+    bindings = SimpleNamespace(decline=Mock())
+    service = object.__new__(PlayerService)
+    service._bindings = bindings  # type: ignore[attr-defined]
+
+    result = service.save_binding_choice(
+        10001,
+        pending,
+        accepted=False,
+        replacing_existing=True,
+    )
+
+    assert result == "已保留当前默认米米号。"
+    bindings.decline.assert_not_called()
+
+
 def test_direct_binding_returns_invalid_player_error_without_saving() -> None:
     service = object.__new__(PlayerService)
+    service._bindings = SimpleNamespace(  # type: ignore[attr-defined]
+        get=Mock(return_value=PlayerBindingState(10001))
+    )
     service.query = AsyncMock(
         return_value=PlayerQueryResult(message="❌ 米米号无效，请输入数字。")
     )
@@ -234,3 +329,24 @@ def test_binding_change_cooldown_uses_three_beijing_calendar_days(
         now=lambda: datetime(2026, 7, 26, 0, 0, tzinfo=china_timezone),
     )
     assert service_after_cooldown.unbind(10003) == "已解除默认米米号。"
+
+
+def test_rebinding_same_player_does_not_refresh_last_changed_at(tmp_path: Path) -> None:
+    store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    first_changed_at = datetime(2026, 8, 1, 12, tzinfo=timezone.utc)
+    store.bind(
+        qq_user_id=10003,
+        player_id=_PLAYER_ID,
+        player_nick="测试玩家",
+        changed_at=first_changed_at,
+    )
+    store.bind(
+        qq_user_id=10003,
+        player_id=_PLAYER_ID,
+        player_nick="新昵称",
+        changed_at=datetime(2026, 8, 3, 12, tzinfo=timezone.utc),
+    )
+
+    binding = store.get(10003)
+    assert binding.last_changed_at == first_changed_at
+    assert binding.player_nick == "测试玩家"

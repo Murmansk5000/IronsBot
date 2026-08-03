@@ -29,7 +29,9 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (  # noqa: TC001
+    PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_query import (
@@ -47,6 +49,7 @@ from ironsbot.services.seer.player_service import PlayerService  # noqa: TC001
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     execute_player_shortcut,
+    player_request_admission_message,
     player_shortcut_semantic_request,
 )
 
@@ -132,10 +135,11 @@ async def handle_player_detail_reply(  # noqa: PLR0913
         raise FinishedException
 
     if extension_action is not None:
-        reply = await extension_action.query(
-            player_id,
-            event.user_id,
-            event_group_id(event),
+        reply = await _query_extension_action(
+            extension_action,
+            matcher,
+            event,
+            player_id=player_id,
         )
         await _continue_player_detail_conversation(
             service,
@@ -174,6 +178,28 @@ async def handle_player_detail_reply(  # noqa: PLR0913
         state,
         prompt=message,
     )
+
+
+async def _query_extension_action(
+    action: PlayerDetailExtensionAction,
+    matcher: Matcher,
+    event: MessageEvent,
+    *,
+    player_id: int,
+) -> QueryReply:
+    async def send_status(label: str, *, queued: bool) -> None:
+        await send_event_reply(
+            matcher,
+            event,
+            player_request_admission_message(label, queued=queued),
+        )
+
+    with request_feedback_scope(action.action.label, send_status):
+        return await action.query(
+            player_id,
+            event.user_id,
+            event_group_id(event),
+        )
 
 
 async def send_player_info_with_detail_prompt(  # noqa: PLR0913
@@ -233,6 +259,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
                     prompt_plan.accepted_commands,
                 ),
                 allow_group_reply_exit=True,
+                parallel=True,
                 queue_semantic_request_resolver=partial(
                     _player_detail_semantic_request,
                     extensions,
@@ -275,6 +302,7 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
         prompt=prompt,
         group_reply_check=_player_detail_group_reply_check(features, commands),
         allow_group_reply_exit=True,
+        parallel=True,
         queue_semantic_request_resolver=partial(
             _player_detail_semantic_request,
             extensions,
