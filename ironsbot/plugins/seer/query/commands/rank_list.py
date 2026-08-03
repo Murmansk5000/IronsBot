@@ -76,6 +76,25 @@ def _store_command(
     return True
 
 
+def _is_rank_player_command(
+    group: SeerMatcherGroup,
+    event: Event,
+    state: T_State,
+) -> bool:
+    return _store_command(
+        partial(
+            parse_rank_player_command,
+            resolve_player_id=partial(
+                group.player_accounts.resolve_player_id,
+                group_id=event_group_id(event),
+            ),
+        ),
+        RANK_PLAYER_COMMAND_KEY,
+        event,
+        state,
+    )
+
+
 async def _handle_list(
     service: RankQueryService,
     matcher: Matcher,
@@ -247,16 +266,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("rank.global_collection", "rank.global_peak"),
         ),
         rule=feature_rule
-        & Rule(
-            bind(
-                _store_command,
-                partial(
-                    parse_rank_player_command,
-                    resolve_player_id=group.player_accounts.resolve_player_id,
-                ),
-                RANK_PLAYER_COMMAND_KEY,
-            )
-        ),
+        & Rule(bind(_is_rank_player_command, group)),
         priority=priority,
     )
     player_matcher.append_handler(bind_async(_handle_player, query))
