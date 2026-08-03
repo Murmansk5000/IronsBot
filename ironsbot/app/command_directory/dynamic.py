@@ -58,8 +58,7 @@ def configured_message_commands(
             examples=(
                 _schedule_label(
                     action.name,
-                    action.hour,
-                    action.minute,
+                    action.time,
                     action.day_of_week,
                 ),
             ),
@@ -120,13 +119,11 @@ def configured_message_commands(
 
 def _schedule_label(
     name: str,
-    hour: int,
-    minute: int,
+    time: str,
     day_of_week: str | None,
 ) -> str:
     title = name or "定时推送"
-    clock = f"{hour:02d}:{minute:02d}"
-    timing = f"每天 {clock}" if day_of_week is None else f"每周 {day_of_week} {clock}"
+    timing = f"每天 {time}" if day_of_week is None else f"每周 {day_of_week} {time}"
     return f"{title}（{timing}）"
 
 

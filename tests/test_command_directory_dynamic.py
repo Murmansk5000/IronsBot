@@ -11,8 +11,7 @@ def test_message_schedule_is_documented_as_automatic_not_a_command() -> None:
                     name="每日签到提醒",
                     feature="custom_reminder",
                     message="提醒内容",
-                    hour=23,
-                    minute=5,
+                    time="23:05",
                 )
             ]
         )

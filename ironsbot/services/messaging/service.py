@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
@@ -330,8 +331,7 @@ class CommandAction(Protocol):
 
 
 class ScheduledAction(Protocol):
-    hour: int
-    minute: int
+    time: str
     day_of_week: str | None
 
 
@@ -342,9 +342,10 @@ def build_schedule_job_id(prefix: str, index: int, raw_id: str) -> str:
 
 
 def build_schedule_trigger_kwargs(task: ScheduledAction) -> dict[str, Any]:
+    hour, minute = daily_time_parts(task.time)
     trigger_kwargs: dict[str, Any] = {
-        "hour": task.hour,
-        "minute": task.minute,
+        "hour": hour,
+        "minute": minute,
         "second": 0,
     }
     if task.day_of_week:

@@ -71,15 +71,13 @@ def _schedule(
     *,
     at_user_ids: Sequence[str | int] | None = None,
     schedule_id: str = "daily",
-    hour: int = 23,
-    minute: int = 0,
+    time: str = "23:00",
 ) -> MessageScheduledAction:
     return MessageScheduledAction(
         id=schedule_id,
         message=message,
         at_user_ids=list(at_user_ids or []),
-        hour=hour,
-        minute=minute,
+        time=time,
     )
 
 
@@ -578,8 +576,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         message="group push",
         at_user_ids=[],
         id="daily",
-        hour=23,
-        minute=0,
+        time="23:00",
     )
     scheduler = FakeScheduler()
 

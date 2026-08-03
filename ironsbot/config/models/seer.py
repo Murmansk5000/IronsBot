@@ -63,6 +63,7 @@ NEW_CONTENT_CATEGORY_KEYS: tuple[str, ...] = (
 RANK_PAGE_REFRESH_TIME_ERROR = (
     "seer.rank.page_refresh.times must contain daily HH:MM times"
 )
+LOCAL_RANK_REFRESH_TIME_ERROR = "seer.local_rank.time must use HH:MM"
 RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR = (
     "seer.rank.page_refresh.interval_offset_minutes must be smaller than "
     "interval_minutes"
@@ -430,12 +431,36 @@ class LocalRankConfig(BaseModel):
     max_players: int = Field(default=5000, ge=1)
     batch_limit: int = Field(default=100, ge=1)
     auto_refresh: bool = True
-    refresh_hour: int = Field(default=3, ge=0, le=23)
-    refresh_minute: int = Field(default=30, ge=0, le=59)
+    time: str = "03:30"
     refresh_limit: int = Field(default=300, ge=1)
     refresh_max_age_hours: int = Field(default=24, ge=0)
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
     path: SQLitePath = Path("data/seer/player_query_cache.sqlite")
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_time_fields(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        legacy_hour = data.pop("refresh_hour", None)
+        legacy_minute = data.pop("refresh_minute", None)
+        if data.get("time") is not None or legacy_hour is None:
+            return data
+
+        try:
+            hour = int(legacy_hour)
+            minute = int(legacy_minute) if legacy_minute is not None else 0
+        except (TypeError, ValueError) as exc:
+            raise ValueError(LOCAL_RANK_REFRESH_TIME_ERROR) from exc
+        data["time"] = f"{hour:02d}:{minute:02d}"
+        return data
+
+    @field_validator("time")
+    @classmethod
+    def normalize_time(cls, value: str) -> str:
+        return normalize_daily_time(value, error_message=LOCAL_RANK_REFRESH_TIME_ERROR)
 
 
 class TeamResourceConfig(BaseModel):

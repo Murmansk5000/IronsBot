@@ -14,6 +14,7 @@ from ironsbot.core.messaging import SendpicBehaviorConfig
 from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
     OneBotReferenceList,
 )
+from ironsbot.core.time import normalize_daily_time
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
@@ -43,6 +44,7 @@ PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
 SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
 SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
+SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 BotReference = str | int
 COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR = (
@@ -290,9 +292,33 @@ class MessageCommandAction(BaseMessageAction):
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
     at_user_ids: OneBotReferenceList = Field(default_factory=list)
-    hour: int = Field(ge=0, le=23)
-    minute: int = Field(default=0, ge=0, le=59)
+    time: str
     day_of_week: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_time_fields(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        legacy_hour = data.pop("hour", None)
+        legacy_minute = data.pop("minute", None)
+        if data.get("time") is not None or legacy_hour is None:
+            return data
+
+        try:
+            hour = int(legacy_hour)
+            minute = int(legacy_minute) if legacy_minute is not None else 0
+        except (TypeError, ValueError) as exc:
+            raise ValueError(SCHEDULE_TIME_ERROR) from exc
+        data["time"] = f"{hour:02d}:{minute:02d}"
+        return data
+
+    @field_validator("time")
+    @classmethod
+    def normalize_time(cls, value: str) -> str:
+        return normalize_daily_time(value, error_message=SCHEDULE_TIME_ERROR)
 
     @model_validator(mode="after")
     def validate_schedule_id(self) -> Self:
