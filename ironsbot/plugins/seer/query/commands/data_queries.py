@@ -88,6 +88,7 @@ class _NewContentMenuLayout:
     display_categories: tuple[NewContentCategory, ...]
     root_categories: tuple[NewContentCategory, ...]
     expanded_categories: frozenset[NewContentCategory]
+    focused_category: NewContentCategory | None = None
 
 
 _NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-j](?:[1-9]\d*)?|0)", re.IGNORECASE)
@@ -270,6 +271,11 @@ async def _start_new_content(  # noqa: PLR0913
         display_categories=visible_categories,
         root_categories=root_categories,
         expanded_categories=expanded_categories,
+        focused_category=(
+            categories[0]
+            if categories is not None and len(categories) == 1
+            else None
+        ),
     )
     prompt = _content_prompt(snapshot, layout)
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
@@ -349,6 +355,9 @@ def _content_prompt(
     snapshot: NewContentSnapshot,
     layout: _NewContentMenuLayout,
 ) -> Prompt[_NewContentAction]:
+    if layout.focused_category is not None:
+        return _focused_content_prompt(snapshot, layout)
+
     choices: list[PromptItem[_NewContentAction]] = []
     root_positions = {
         category: position for position, category in enumerate(layout.root_categories)
@@ -379,6 +388,45 @@ def _content_prompt(
     return Prompt(
         title="🆕【新增内容】输入编号查看详情：",
         items=choices,
+    )
+
+
+def _focused_content_prompt(
+    snapshot: NewContentSnapshot,
+    layout: _NewContentMenuLayout,
+) -> Prompt[_NewContentAction]:
+    category = layout.focused_category
+    if category is None:
+        msg = "focused new-content prompt requires a category"
+        raise ValueError(msg)
+    root_positions = {
+        current: position for position, current in enumerate(layout.root_categories)
+    }
+    code = chr(ord("a") + root_positions[category])
+    choices = [
+        PromptItem(
+            item.name,
+            _item_description(item),
+            _NewContentAction("item", category, item),
+            key=f"{code}{index}",
+        )
+        for index, item in enumerate(snapshot.items_for(category), start=1)
+    ]
+    return Prompt(
+        title=f"🆕【{CATEGORY_NAMES[category]}】输入编号查看详情：",
+        items=choices,
+    )
+
+
+def _focus_new_content_category(
+    layout: _NewContentMenuLayout,
+    category: NewContentCategory,
+) -> _NewContentMenuLayout:
+    return replace(
+        layout,
+        display_categories=(category,),
+        expanded_categories=layout.expanded_categories | {category},
+        focused_category=category,
     )
 
 
@@ -435,10 +483,7 @@ async def _resolve_new_content_selection(
         if not isinstance(layout, _NewContentMenuLayout):
             await matcher.finish("新增内容会话已失效，请重新发送指令。")
             return
-        layout = replace(
-            layout,
-            expanded_categories=layout.expanded_categories | {action.category},
-        )
+        layout = _focus_new_content_category(layout, action.category)
         matcher.state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
         await _replace_prompt(
             matcher,

@@ -10,6 +10,7 @@ except ValueError:
 from ironsbot.plugins.seer.query.commands.data_queries import (
     _autocard_sanctuary_effect_detail,
     _content_prompt,
+    _focus_new_content_category,
     _item_description,
     _NewContentMenuLayout,
     _skill_detail,
@@ -204,7 +205,7 @@ def test_new_content_root_menu_expands_only_configured_categories() -> None:
     assert prompt.get_item_by_input("b1") is not None
 
 
-def test_new_content_category_expansion_keeps_root_letter_keys() -> None:
+def test_new_content_category_selection_opens_a_focused_stable_key_menu() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -232,18 +233,21 @@ def test_new_content_category_expansion_keeps_root_letter_keys() -> None:
         weekly_cycle="2026-07-31",
         items=(pet, skill, achievement),
     )
-    layout = _NewContentMenuLayout(
+    root_layout = _NewContentMenuLayout(
         display_categories=("pet", "skill", "achievement"),
         root_categories=("pet", "skill", "achievement"),
         expanded_categories=frozenset(("achievement",)),
     )
+    layout = _focus_new_content_category(root_layout, "achievement")
 
     prompt = _content_prompt(snapshot, layout)
 
-    assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
-    assert "b. ▶ 新增技能（1 项）" in prompt.build_message()
-    assert "c. ▼ 新增成就（1 项）" in prompt.build_message()
+    assert prompt.title == "🆕【新增成就】输入编号查看详情：\n"
     assert "c1. 深海之泪" in prompt.build_message()
+    assert "a. ▶ 新增精灵" not in prompt.build_message()
+    assert "b. ▶ 新增技能" not in prompt.build_message()
+    assert prompt.get_item_by_input("c1") is not None
+    assert prompt.get_item_by_input("a1") is None
 
 
 def test_new_content_category_shortcut_reuses_root_letter_key() -> None:
@@ -278,9 +282,11 @@ def test_new_content_category_shortcut_reuses_root_letter_key() -> None:
         display_categories=("achievement",),
         root_categories=("pet", "skill", "achievement"),
         expanded_categories=frozenset(("achievement",)),
+        focused_category="achievement",
     )
 
     prompt = _content_prompt(snapshot, layout)
 
-    assert "c. ▼ 新增成就（1 项）" in prompt.build_message()
+    assert "a. " not in prompt.build_message()
+    assert "b. " not in prompt.build_message()
     assert "c1. 深海之泪" in prompt.build_message()

@@ -1147,9 +1147,9 @@ startup_trigger_remote_build = false
 interval_enabled = true
 
 [operations.data_sync.sources.seerapi]
-# Default: IronsBot data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
+# Default: SeerAPI data release URL. EN: SQLite download URL. ZH: SQLite 下载地址。
 url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite"
-# Default: IronsBot data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
+# Default: SeerAPI data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
 fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
 # Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
 interval_minutes = 60
