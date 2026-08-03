@@ -838,6 +838,8 @@ enabled = false
 # ZH: 后台预热结果在内存中的保留秒数。
 cache_ttl_seconds = 300.0
 
+# EN: Manual cache misses require owner confirmation before the dedicated login; cancellation does not log in.
+# ZH: 手动无缓存时先由当前所有者确认；取消不登录，当日缓存命中不登录。
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。
