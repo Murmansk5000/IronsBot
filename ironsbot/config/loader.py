@@ -22,6 +22,8 @@ TOMLDecodeError = tomllib.TOMLDecodeError
 
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
+LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX = "LUCKY_WINDOW_SEER_PASSWORD_"
+_MIN_SEER_PLAYER_ID = 10001
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
     ("AI_KEY", ("ai", "api_key")),
@@ -143,13 +145,35 @@ def _inject_lucky_skin_window_secrets(
     lucky_skin_window = seer.get("lucky_skin_window")
     if not isinstance(lucky_skin_window, dict):
         return
-    _inject_referenced_credentials(
-        lucky_skin_window.get("accounts", []),
-        path="seer.lucky_skin_window.accounts",
-        id_field="player_id",
-        id_env_field="player_id_env",
-        env=env,
-    )
+    entries = lucky_skin_window.get("accounts", [])
+    if not isinstance(entries, list):
+        return
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        path = f"seer.lucky_skin_window.accounts[{index}]"
+        if "password" in entry:
+            message = f"{path}.password is secret and must use its environment variable"
+            raise ValueError(message)
+        player_id = _configured_lucky_skin_window_player_id(entry)
+        if player_id is None:
+            continue
+        entry["password"] = _environment_secret(
+            f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{player_id}",
+            path=f"{path}.password",
+            env=env,
+        )
+
+
+def _configured_lucky_skin_window_player_id(entry: dict[str, Any]) -> int | None:
+    value = entry.get("player_id")
+    if value is None:
+        return None
+    try:
+        player_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return player_id if player_id >= _MIN_SEER_PLAYER_ID else None
 
 
 def _referenced_secret(
@@ -163,11 +187,19 @@ def _referenced_secret(
     if not env_name:
         message = f"{path}.{env_field} must not be empty"
         raise ValueError(message)
+    return _environment_secret(env_name, path=f"{path}.{env_field}", env=env)
+
+
+def _environment_secret(
+    env_name: str,
+    *,
+    path: str,
+    env: Mapping[str, str],
+) -> str:
     value = env.get(env_name)
     if value is None or not str(value).strip():
         message = (
-            f"{path}.{env_field} references missing environment variable "
-            f"{env_name}"
+            f"{path} references missing environment variable {env_name}"
         )
         raise ValueError(message)
     return str(value)
