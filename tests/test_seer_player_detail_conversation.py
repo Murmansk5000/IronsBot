@@ -9,7 +9,14 @@ from unittest.mock import AsyncMock
 from nonebot.exception import FinishedException
 
 from ironsbot.plugins.seer.query.commands import player_detail_conversation
-from ironsbot.plugins.seer.query.commands.player_context import PLAYER_ID_KEY
+from ironsbot.plugins.seer.query.commands.player_context import (
+    PLAYER_DETAIL_MENU_CONTEXT_KEY,
+    PLAYER_ID_KEY,
+    PlayerDetailMenuContext,
+)
+from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
+)
 from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
@@ -110,6 +117,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
             cast("Any", service),
             PlayerDetailExtensionRegistry(),
             cast("Any", object()),
+            cast("Any", object()),
             event,
             cast("Any", state),
         )
@@ -124,6 +132,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
         player_detail_conversation.handle_player_detail_reply(
             cast("Any", service),
             PlayerDetailExtensionRegistry(),
+            cast("Any", object()),
             cast("Any", object()),
             event,
             cast("Any", state),
@@ -161,6 +170,7 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
             cast("Any", service),
             PlayerDetailExtensionRegistry(),
             cast("Any", object()),
+            cast("Any", object()),
             replying_member,
             cast("Any", state),
         )
@@ -171,6 +181,171 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
         replying_member.user_id,
         group_id=replying_member.group_id,
     )
+
+
+def test_shared_player_menu_reply_creates_the_replying_members_context(
+    monkeypatch: Any,
+) -> None:
+    class PromptSessions:
+        def detach_queued_conversation(self, state: dict[str, object]) -> None:
+            state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
+
+    service = SimpleNamespace(
+        shortcut=AsyncMock(return_value=QueryReply(text="collection"))
+    )
+    continue_conversation = AsyncMock()
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "get_prompt_session_manager",
+        lambda _matcher: PromptSessions(),
+    )
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "_continue_player_detail_conversation",
+        continue_conversation,
+    )
+    monkeypatch.setattr(player_detail_conversation, "send_event_reply", AsyncMock())
+    features = SimpleNamespace(
+        is_group_feature_allowed=lambda *_args: True,
+    )
+    event = group_message_event("1", user_id=456_789)
+    state: dict[str, object] = {
+        QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY: True,
+        PLAYER_ID_KEY: PLAYER_ID,
+        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
+            player_id=PLAYER_ID,
+            has_collection=True,
+            has_peak=False,
+            has_autocard=False,
+        ),
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
+    }
+
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", service),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", features),
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    service.shortcut.assert_awaited_once_with(
+        PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+        event.user_id,
+        group_id=event.group_id,
+    )
+    assert state[PLAYER_ID_KEY] == PLAYER_ID
+    assert state[PLAYER_DETAIL_COMMANDS_KEY] == ("1", "0")
+    continue_conversation.assert_awaited_once()
+
+
+def test_shared_player_menu_exit_only_exits_the_replying_member(
+    monkeypatch: Any,
+) -> None:
+    class PromptSessions:
+        def detach_queued_conversation(self, state: dict[str, object]) -> None:
+            state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
+
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "get_prompt_session_manager",
+        lambda _matcher: PromptSessions(),
+    )
+    monkeypatch.setattr(player_detail_conversation, "finish_event_reply", finish_reply)
+    features = SimpleNamespace(is_group_feature_allowed=lambda *_args: True)
+    event = group_message_event("0", user_id=456_789)
+    matcher = cast("Any", object())
+    state: dict[str, object] = {
+        QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY: True,
+        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
+            player_id=PLAYER_ID,
+            has_collection=True,
+            has_peak=False,
+            has_autocard=False,
+        ),
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
+    }
+
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", object()),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", features),
+            matcher,
+            event,
+            cast("Any", state),
+        )
+    )
+
+    finish_reply.assert_awaited_once_with(
+        matcher,
+        event,
+        "已退出米米号详情查询。",
+    )
+
+
+def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_member(
+    monkeypatch: Any,
+) -> None:
+    class PromptSessions:
+        def detach_queued_conversation(self, state: dict[str, object]) -> None:
+            state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
+
+    action_query = AsyncMock(return_value=QueryReply(text="private reply"))
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="private_action",
+            feature="private_feature",
+            label="private action",
+            aliases=("private",),
+            query=action_query,
+            action=ActionDefinition("private_action", "private action"),
+        )
+    )
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "get_prompt_session_manager",
+        lambda _matcher: PromptSessions(),
+    )
+    monkeypatch.setattr(player_detail_conversation, "finish_event_reply", finish_reply)
+    features = SimpleNamespace(
+        is_group_feature_allowed=lambda _user_id, _group_id, feature: (
+            feature == "seer_player"
+        )
+    )
+    event = group_message_event("2", user_id=456_789)
+    matcher = cast("Any", object())
+    state: dict[str, object] = {
+        QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY: True,
+        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
+            player_id=PLAYER_ID,
+            has_collection=True,
+            has_peak=False,
+            has_autocard=False,
+        ),
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
+        PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY: (("2", "private_action"),),
+    }
+
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", object()),
+            extensions,
+            cast("Any", features),
+            matcher,
+            event,
+            cast("Any", state),
+        )
+    )
+
+    action_query.assert_not_awaited()
+    finish_reply.assert_awaited_once_with(matcher, event, "该功能当前未对你开放。")
 
 
 def test_player_detail_delegates_a_registered_private_action(
@@ -205,6 +380,7 @@ def test_player_detail_delegates_a_registered_private_action(
             cast("Any", object()),
             extensions,
             cast("Any", object()),
+            cast("Any", object()),
             event,
             cast("Any", state),
         )
@@ -225,6 +401,7 @@ def test_player_detail_semantic_request_matches_direct_shortcuts() -> None:
 
     request = player_detail_conversation._player_detail_semantic_request(
         PlayerDetailExtensionRegistry(),
+        cast("Any", object()),
         event,
         cast("Any", state),
     )
@@ -256,6 +433,7 @@ def test_player_detail_extension_declares_a_semantic_action() -> None:
 
     request = player_detail_conversation._player_detail_semantic_request(
         extensions,
+        cast("Any", object()),
         event,
         cast("Any", state),
     )

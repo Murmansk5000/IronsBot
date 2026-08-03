@@ -2,7 +2,7 @@
 """Pet query matchers."""
 
 from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.runtime.rules import command_input, startswith_or_endswith
+from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -23,7 +23,7 @@ def install(group: SeerMatcherGroup) -> None:
         )
         & not_rank_query
         & not_fixed_image_command
-        & command_input(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_pet"),
     )
     image_matcher.append_handler(
@@ -47,7 +47,7 @@ def install(group: SeerMatcherGroup) -> None:
         )
         & not_rank_query
         & not_fixed_image_command
-        & command_input(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_pet"),
     )
     info_matcher.append_handler(
