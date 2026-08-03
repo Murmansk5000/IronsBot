@@ -214,6 +214,57 @@ async def test_short_full_dynamic_does_not_call_ai(
 
 
 @pytest.mark.asyncio
+async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(self, message: object, **kwargs: object) -> None:
+            sent.append({"message": message, **kwargs})
+
+    subscriptions = PushUnsubscribeStore(
+        tmp_path / "push_unsubscriptions.sqlite"
+    )
+    subscription_key = bili_push_subscription_key(1310714247)
+    subscriptions.unsubscribe_target(
+        "group",
+        1001,
+        subscription_key,
+        "bili_push",
+    )
+    subscriptions.unsubscribe_target(
+        "private",
+        2001,
+        subscription_key,
+        "bili_push",
+    )
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        subscriptions,
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets(
+            full_group_ids=[1001, 1002],
+            link_group_ids=[],
+            full_user_ids=[2001, 2002],
+            link_user_ids=[],
+        ),
+    )
+
+    assert len(sent) == EXPECTED_FULL_PUSH_COUNT
+    assert [entry["group_ids"] for entry in sent] == [[1002], [1002]]
+    assert [entry["private_user_ids"] for entry in sent] == [[2002], [2002]]
+
+
+@pytest.mark.asyncio
 async def test_full_dynamic_puts_target_hints_on_link_message_only(
     tmp_path: Path,
 ) -> None:
