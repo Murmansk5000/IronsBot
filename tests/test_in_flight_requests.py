@@ -136,11 +136,11 @@ def test_in_flight_request_superusers_bypass_reservations() -> None:
 
     first = service.admit(
         user_id=USER_ID,
-        request=_request("seer.player.collection", "105023264"),
+        request=_request("seer.player.collection", "712345678"),
     )
     second = service.admit(
         user_id=USER_ID,
-        request=_request("seer.player.collection", "105023264"),
+        request=_request("seer.player.collection", "712345678"),
     )
 
     assert first.allowed and first.token is None
