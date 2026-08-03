@@ -1,9 +1,43 @@
+import ast
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_async_rule_checkers_are_not_hidden_by_sync_lambdas() -> None:
+    offenders: list[str] = []
+
+    for path in (ROOT / "ironsbot" / "plugins").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        async_functions = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef)
+        }
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "Rule"
+            ):
+                continue
+            for argument in node.args:
+                if not (
+                    isinstance(argument, ast.Lambda)
+                    and isinstance(argument.body, ast.Call)
+                    and isinstance(argument.body.func, ast.Name)
+                    and argument.body.func.id in async_functions
+                ):
+                    continue
+                offenders.append(
+                    f"{path.relative_to(ROOT)}:{argument.lineno} "
+                    f"wraps async {argument.body.func.id} in a sync lambda"
+                )
+
+    assert offenders == []
 
 
 def _subprocess_env() -> dict[str, str]:

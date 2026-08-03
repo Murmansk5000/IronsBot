@@ -564,7 +564,7 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 # resets TD and push-time preferences for that schedule.
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, message, hour, minute,
+# Example task fields: id, name, enabled, feature, message, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
@@ -1107,10 +1107,8 @@ max_players = 5000
 batch_limit = 100
 # Default: true; EN: Enable scheduled refresh. ZH: 启用定时刷新。
 auto_refresh = true
-# Default: 3; EN: Refresh hour. ZH: 刷新小时。
-refresh_hour = 3
-# Default: 30; EN: Refresh minute. ZH: 刷新分钟。
-refresh_minute = 30
+# Default: "03:30"; EN: Daily refresh time. ZH: 每日刷新时间。
+time = "03:30"
 # Default: 300; EN: Refresh count limit. ZH: 单次刷新数量上限。
 refresh_limit = 300
 # Default: 24; EN: Refresh entries older than this many hours. ZH: 刷新超过多少小时的样本。

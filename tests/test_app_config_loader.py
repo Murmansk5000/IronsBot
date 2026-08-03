@@ -330,15 +330,28 @@ def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
         MessageScheduledAction(
             message="私聊定时推送",
-            hour=23,
+            time="23:00",
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
         MessageScheduledAction(
             id="每日 提醒",
             message="私聊定时推送",
-            hour=23,
+            time="23:00",
         )
+
+
+def test_scheduled_push_migrates_legacy_hour_and_minute() -> None:
+    action = MessageScheduledAction.model_validate(
+        {
+            "id": "daily",
+            "message": "私聊定时推送",
+            "hour": 23,
+            "minute": 5,
+        }
+    )
+
+    assert action.time == "23:05"
 
 
 def test_scheduled_push_ids_are_globally_unique() -> None:
@@ -348,12 +361,12 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
                 MessageScheduledAction(
                     id="daily",
                     message="私聊定时推送",
-                    hour=23,
+                    time="23:00",
                 ),
                 MessageScheduledAction(
                     id="daily",
                     message="群聊定时推送",
-                    hour=23,
+                    time="23:00",
                 ),
             ],
         )
@@ -564,8 +577,7 @@ at_user_ids = [123456789]
 [[messaging.schedules]]
 id = "daily_reminder"
 name = "Daily reminder"
-hour = 23
-minute = 0
+time = "23:00"
 message = "daily message"
 feature = "text_push"
 at_user_ids = [123456789]
@@ -635,7 +647,7 @@ owner = ["custom_reminder"]
 
 [[messaging.schedules]]
 id = "custom_reminder"
-hour = 23
+time = "23:00"
 message = "remember"
 feature = "custom_reminder"
 """.strip(),
@@ -748,8 +760,7 @@ at_user_ids = ["at_user", "202"]
 
 [[messaging.schedules]]
 id = "custom_schedule"
-hour = 12
-minute = 0
+time = "12:00"
 message = "scheduled reply"
 feature = "private_extension"
 at_user_ids = ["at_user", 202]
