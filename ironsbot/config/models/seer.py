@@ -498,13 +498,23 @@ class NewContentMenuConfig(BaseModel):
 
 
 class LuckySkinWindowAccountConfig(BaseModel):
-    """One QQ user's approved player binding for lucky-window notices."""
+    """One QQ user's isolated lucky-window account credentials."""
 
     model_config = ConfigDict(extra="forbid")
 
     user: str | int
     player_id: int = Field(ge=10001)
+    password: str = Field(exclude=True, repr=False)
     watched_skin_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("password")
+    @classmethod
+    def normalize_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            message = "lucky skin window credential fields must not be empty"
+            raise ValueError(message)
+        return normalized
 
     @field_validator("watched_skin_ids")
     @classmethod

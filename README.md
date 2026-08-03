@@ -164,7 +164,10 @@ GITHUB_WORKFLOW_TOKEN=
 ```
 
 额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
-所有健康账号会组成可互换的工作池；账号本身和密码仍只写在容器环境变量中。
+幸运橱窗账号通过 `[[seer.lucky_skin_window.accounts]]` 的 `player_id` 配置；密码使用
+`LUCKY_WINDOW_SEER_PASSWORD_<player_id>` 环境变量。它们使用独立短时会话，不占用公共查询池。
+多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
+所有公共查询账号会组成可互换的工作池；幸运橱窗的米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
