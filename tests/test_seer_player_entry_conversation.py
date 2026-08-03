@@ -178,6 +178,18 @@ def test_player_commands_resolve_configured_account_names() -> None:
         PlayerShortcutCommand("collection", _ACCOUNT_PLAYER_ID)
     )
 
+    peak_state: dict[str, object] = {}
+    assert asyncio.run(
+        player_shortcuts._is_player_shortcut(
+            group_message_event("巅峰示例账号"),
+            peak_state,
+            dependencies=dependencies,
+        )
+    )
+    assert peak_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
+        PlayerShortcutCommand("peak", _ACCOUNT_PLAYER_ID)
+    )
+
 
 def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
     finish_reply = AsyncMock()
