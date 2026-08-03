@@ -166,7 +166,7 @@ versions if Watchtower reports that client API version 1.25 is too old.
 Push notices are split into separate subscriptions, such as bot startup,
 Docker image check, startup data sync, AI chat errors, Bilibili login notices,
 headless Seer notices, render crash notices, red packet notices, Bilibili pushes, activity
-reminders. Private users can send `TD`; group owners
+reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
 
@@ -220,7 +220,7 @@ user_a = "backup_bot"
 Group and user aliases come from `[features.group_aliases]` and
 `[features.user_aliases]`; numeric IDs are also accepted. Replies to incoming
 commands keep using the bot that received the event. Bilibili, activity,
-scheduled-message, startup, and other proactive deliveries use
+scheduled-message, server-status, startup, and other proactive deliveries use
 the configured route. Routing does not filter incoming events, so avoid placing
 multiple responding bots in the same group unless you separately control which
 events each OneBot client forwards.
@@ -301,9 +301,10 @@ Feature names are used in `[features.group_policy]` and
 | `bili` | `bili_query` + `bili_push`. |
 | `seer_activity_query` | In-game activity and ending-soon activity queries. |
 | `seer_activity_push` | In-game activity ending reminders. |
-| `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
+| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
 | `server_status_query` | Server status / open-server query. |
-| `server_status` | `server_status_query` |
+| `server_status_push` | Server status broadcast pushes. |
+| `server_status` | `server_status_query` + `server_status_push`. |
 | `team_resource_subscription` | Subscribed team query and low-resource @ reminders. |
 | `team_audit` | Team audit group join prompt and 24-hour follow-up. |
 | `ai_chat` | AI chat by bot mention or authorized private chat. |
@@ -351,10 +352,6 @@ mode = "link"
 # B站推送模式 seer 链接
 # Public Bilibili names and numeric UIDs are also accepted.
 ```
-
-Extra workers are optional. Each configured user_id_env/password_env must exactly match
-the supplied environment-variable names; _2 and WORKER-style names are examples, not
-automatic discovery rules or proof of successful additional connections.
 
 ### Behavior Config Validation
 

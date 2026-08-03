@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard import AutocardService
@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.data_queries import SeerDataQueryService
     from ironsbot.services.seer.equipment import EquipmentQueryService
     from ironsbot.services.seer.mintmark import MintmarkQueryService
+    from ironsbot.services.seer.new_content import (
+        NewContentCategory,
+        NewContentSnapshot,
+    )
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.player_detail_extensions import (
@@ -22,6 +26,16 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_queries import RankQueryService
     from ironsbot.services.seer.team import SeerTeamQueryService
     from ironsbot.services.seer.type_query import TypeQueryService
+
+
+class NewContentMenuRenderer(Protocol):
+    async def __call__(
+        self,
+        snapshot: NewContentSnapshot,
+        display_categories: tuple[NewContentCategory, ...],
+        root_categories: tuple[NewContentCategory, ...],
+        expanded_categories: frozenset[NewContentCategory],
+    ) -> bytes: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,3 +54,4 @@ class SeerQueryResources:
     player_detail_extensions: PlayerDetailExtensionRegistry
     rank_queries: RankQueryService
     rank_admin: RankAdminService
+    new_content_menu: NewContentMenuRenderer
