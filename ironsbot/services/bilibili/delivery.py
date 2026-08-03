@@ -81,8 +81,8 @@ class BilibiliPushDeliveryService:
             return
         await self.delivery.broadcast(
             content_message,
-            group_ids=targets.full_group_ids,
-            private_user_ids=targets.full_user_ids,
+            group_ids=full_targets.full_group_ids,
+            private_user_ids=full_targets.full_user_ids,
             action_name=FULL_DYNAMIC_PUSH_ACTION,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
         )
