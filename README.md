@@ -338,7 +338,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `bili` | `bili_query` + `bili_push`。 |
 | `seer_activity_query` | 游戏内快结束活动手动查询；`/当前活动` 为超级管理员专用。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
-| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
+| `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |
 | `server_status` | `server_status_query`。 |
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
@@ -355,6 +355,9 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 `user` 对应 QQ 用户引用，`player_id` 须与该用户当前绑定一致；绑定只提供查询关联，不验证账号所有权，管理员代绑也不单独授予登录授权。
 当天缓存命中直接返回；无缓存且公共无头账号已登录时可直接查询。仅未登录时进入原确认流程，
 明确确认后才调用登录并查询，拒绝确认不触发登录。默认 `enabled = false`，空账号列表不会启用服务。
+
+`activity` 已不再是内置组合；引用旧内置名称的配置需改用 `seer_activity`。
+此版本不会自动迁移用户策略；如自行定义同名自定义组合，仍须通过原有引用校验。
 
 ## 数据与缓存
 

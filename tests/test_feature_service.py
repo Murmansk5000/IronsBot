@@ -59,6 +59,14 @@ def test_feature_service_reads_query_bundle() -> None:
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
 
 
+def test_seer_activity_is_the_only_activity_feature_bundle() -> None:
+    assert "seer_activity" in FEATURE_BUNDLES
+    assert "activity" not in FEATURE_BUNDLES
+    assert FEATURE_BUNDLES["seer_activity"] == frozenset(
+        {"seer_activity_query", "seer_activity_push"},
+    )
+
+
 def test_feature_service_expands_configured_bundles() -> None:
     feature_config = FeatureConfig(
         group_aliases={"main": 123},
