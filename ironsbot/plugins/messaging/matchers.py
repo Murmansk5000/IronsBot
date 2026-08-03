@@ -15,7 +15,7 @@ from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
 )
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
@@ -85,7 +85,7 @@ def install(
                 help_ids=command_help_ids,
             ),
             rule=Rule(bind(match_message_command, messaging=messaging))
-            & command_input(),
+            & explicit_command(),
             priority=registry.priority("message_commands"),
             block=True,
         )
@@ -98,13 +98,16 @@ def install(
             "second-level subscription toggle conversation"
         ),
         rule=Rule(bind(match_push_subscription_command, messaging=messaging))
-        & command_input(),
+        & explicit_command(),
         priority=_message_subscription_priority(registry),
         block=True,
     )
     push_time_matcher = registry.on_message(
         policy=CommandPolicy.exempt("second-level push time conversation"),
-        rule=Rule(bind(match_push_time_command, messaging=messaging)) & command_input(),
+        rule=(
+            Rule(bind(match_push_time_command, messaging=messaging))
+            & explicit_command()
+        ),
         priority=_message_subscription_priority(registry),
         block=True,
     )

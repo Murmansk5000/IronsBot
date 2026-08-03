@@ -68,6 +68,7 @@ ironsbot/
   runtime/
     conversations.py
     feature_policy.py
+    message_input.py
     matchers.py
     onebot_context.py
     params.py
@@ -210,6 +211,37 @@ Creation requires one explicit command policy:
 The registry installs command cooldown admission when the matcher is created.
 There is no second pass that imports matcher objects by string reference.
 
+## Message Input Routing
+
+`runtime.message_input.MessageInputContext` is the only interpreter for a
+newly received OneBot message. It records the new text, reply metadata, a bot
+mention, and ordinary member mentions once, then classifies the message in
+this fixed order:
+
+1. reply;
+2. direct bot mention;
+3. direct ordinary-member mention;
+4. direct text without a mention.
+
+The quoted message body and its mentions never participate in this decision.
+Mentions newly sent after a quote still follow the declared strategy: for
+example, a quoted `收集@成员` is a valid `member_target_command`, while an
+`@成员` contained in the quoted message itself is ignored.
+Matchers declare one input strategy instead of inspecting message segments:
+
+- `explicit_command` accepts direct commands and replies, except a current
+  ordinary-member mention;
+- `member_target_command` and `member_targets_command` are the only command
+  strategies allowed to consume current ordinary-member mentions;
+- `bot_mention` is reserved for direct AI and bot-mention-block handling;
+- `natural_language` accepts only direct text with no mention.
+
+An anchored prompt keeps the direct owner path and may additionally allow a
+different group member to reply to the bot's latest menu message. The prompt
+framework identifies that input as a shared menu reply; business code may
+derive a new caller-owned conversation from the stored menu target, but never
+reassigns or closes the original owner's conversation.
+
 External NoneBot dependencies are represented by definitions in the same
 ordered registry. Their `install` callable may delegate to NoneBot's external
 plugin loader, but no other code loads plugins. Lifecycle-only definitions
@@ -351,7 +383,10 @@ semantics for:
 
 The following behavioral invariants are frozen:
 
-- replies to bot messages do not accidentally trigger ordinary commands;
+- quoted commands read only newly sent text; direct bot mentions remain
+  reserved for AI or bot-mention-block handling;
+- a group member can use a shared menu only by exactly replying to the latest
+  bot menu anchor, never through a bare selection or an old menu;
 - group and private feature policy remains explicit;
 - superuser bypass follows the configured policy;
 - group owner/admin/superuser checks remain consistent;

@@ -21,7 +21,7 @@ from ironsbot.runtime.matchers import (
 )
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import command_input, startswith_or_endswith
+from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
 from ironsbot.services.seer.autocard import (
     AUTOCARD_QUERY_PREFIXES,
     AUTOCARD_QUERY_SUFFIXES,
@@ -204,7 +204,7 @@ def install(group: SeerMatcherGroup) -> None:
             suffixes=AUTOCARD_QUERY_SUFFIXES,
         )
         & not_rank_query
-        & command_input(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_autocard"),
     )
     matcher.append_handler(

@@ -48,6 +48,7 @@ from ironsbot.runtime.prompt_sessions import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
 )
 from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
@@ -268,6 +269,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
     queue_namespace: str | None = None,
     queue_reply_check: Callable[[Event], bool] | None = None,
     queue_group_reply_check: Callable[[Event], bool] | None = None,
+    queue_allow_group_reply_exit: bool = False,
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     queue_event_session_id: str | None = None,
     queue_conversation_session_id: str | None = None,
@@ -291,6 +293,9 @@ async def enter_prompt_loop(  # noqa: PLR0913
                 context.update_reply_check(
                     queue_reply_check,
                     queue_group_reply_check,
+                )
+                context.update_allow_group_reply_exit(
+                    allowed=queue_allow_group_reply_exit
                 )
                 context.update_semantic_request_resolver(
                     queue_semantic_request_resolver
@@ -324,6 +329,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
             ),
             conversation_session_id=queue_conversation_session_id,
             menu_anchor=menu_anchor,
+            allow_group_reply_exit=queue_allow_group_reply_exit,
         )
         await _create_queued_temp_matcher(matcher, queued)
         raise FinishedException
@@ -396,7 +402,7 @@ async def _create_queued_temp_matcher(
     )
 
 
-async def _capture_queued_conversation_input(  # noqa: C901
+async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     matcher: Matcher,
     event: Event,
     _state: T_State,
@@ -408,7 +414,14 @@ async def _capture_queued_conversation_input(  # noqa: C901
     if not isinstance(event, MessageEvent):
         raise FinishedException
 
+    is_shared_group_reply = context.is_shared_group_reply(event)
     if event.get_plaintext().strip() == "0":
+        if is_shared_group_reply and context.allow_group_reply_exit:
+            await _create_queued_temp_matcher(matcher, context)
+            _state.clear()
+            _state.update(context.state)
+            _state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
+            return
         get_prompt_session_manager(_state).cancel_queued_conversation(_state)
         if getattr(event, "group_id", None) is not None:
             await matcher.finish(
@@ -419,7 +432,12 @@ async def _capture_queued_conversation_input(  # noqa: C901
 
     request_token: object | None = None
     if context.semantic_request_resolver is not None:
-        request = context.semantic_request_resolver(event, context.state)
+        if is_shared_group_reply:
+            context.state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
+        try:
+            request = context.semantic_request_resolver(event, context.state)
+        finally:
+            context.state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
         request_service = context.request_service
         if request is not None and request_service is not None:
             decision = request_service.admit(
@@ -447,6 +465,8 @@ async def _capture_queued_conversation_input(  # noqa: C901
     _state.update(context.state)
     _state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
     _state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
+    if is_shared_group_reply:
+        _state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
     if request_token is not None:
         _state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_token
 

@@ -13,7 +13,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 
 from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
@@ -65,7 +65,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
         & Rule(bind(_match_command, service))
-        & command_input(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_mintmark"),
     )
     matcher.append_handler(bind_async(_handle_command, service))

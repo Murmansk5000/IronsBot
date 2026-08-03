@@ -29,7 +29,7 @@ from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition, PluginHooks
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowBindingError,
@@ -251,7 +251,7 @@ def _install(
             semantic_request=partial(_semantic_request, service),
         ),
         rule=Rule(bind_async(_matches_query, service=service, features=features))
-        & command_input(),
+        & explicit_command(),
         priority=registry.priority("seer_query"),
         block=True,
     )

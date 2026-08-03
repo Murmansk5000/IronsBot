@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -10,12 +9,8 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
 from ironsbot.runtime.commands import CommandContext
-from ironsbot.runtime.rules import MessageInputRoute, message_input_route
+from ironsbot.runtime.message_input import message_input_context
 
-_AT_PATTERNS = (
-    re.compile(r"\[CQ:at,qq=([^\]]+)\]"),
-    re.compile(r"\[at:qq=([^\],\]]+)"),
-)
 NOTICE_MESSAGE_MAX_CHARS = 300
 
 
@@ -36,33 +31,9 @@ def command_context(event: MessageEvent) -> CommandContext:
     )
 
 
-def _message_has_bot_at(message: Any, self_id: str) -> bool:
-    return bool(message) and any(
-        getattr(segment, "type", "") == "at"
-        and str(getattr(segment, "data", {}).get("qq", "")) == self_id
-        for segment in message
-    )
-
-
 def mentions_bot(event: GroupMessageEvent) -> bool:
-    if message_input_route(event) is MessageInputRoute.REPLY_COMMAND:
-        return False
-
-    self_id = str(event.self_id or "")
-    if not self_id:
-        return False
-    if _message_has_bot_at(event.get_message(), self_id) or _message_has_bot_at(
-        event.original_message,
-        self_id,
-    ):
-        return True
-    if any(
-        match.group(1).strip() == self_id
-        for pattern in _AT_PATTERNS
-        for match in pattern.finditer(str(event.raw_message or ""))
-    ):
-        return True
-    return bool(event.is_tome())
+    context = message_input_context(event)
+    return context.mentions_bot and not context.is_reply
 
 
 async def build_notice_source(
