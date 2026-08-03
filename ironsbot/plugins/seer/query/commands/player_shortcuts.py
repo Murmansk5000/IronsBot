@@ -165,11 +165,7 @@ def install(group: SeerMatcherGroup) -> None:
             ),
         ),
         rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(lambda event, state: _is_player_shortcut(
-            event,
-            state,
-            dependencies=dependencies,
-        ))
+        & Rule(bind_async(_is_player_shortcut, dependencies=dependencies))
         & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
