@@ -63,7 +63,7 @@ ws://ironsbot:8080/onebot/v11/ws
 
 多个 QQ 机器人可以分别运行 NapCat，并把每个 NapCat 的 OneBot v11 反向
 WebSocket 都连接到同一个 IronsBot 地址。普通查询由收到事件的机器人回复；
-B站、活动、定时消息、管理通知等主动推送可以按群或用户选择发送机器人：
+B站、活动、定时消息、开服与管理通知等主动推送可以按群或用户选择发送机器人：
 
 ```toml
 [messaging.bot_routing]
@@ -135,7 +135,7 @@ services:
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
-- 推送：B站动态、游戏活动和战队资源。
+- 推送：B站动态、游戏活动、开服状态和战队资源。
 - AI：聊天、提及保护、意图识别和模板动作。
 - 运维：数据同步、无头登录、启动通知、定时重启和 Docker 更新。
 
@@ -166,9 +166,6 @@ GITHUB_WORKFLOW_TOKEN=
 额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
 所有健康账号会组成可互换的工作池；账号本身和密码仍只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
-\n额外 worker 为可选项；每项声明的 `user_id_env` / `password_env` 必须与实际环境变量名一致。
-变量可使用 `_2` 或 `RANK_A` 等后缀；模板占位项不代表已有额外在线连接。
-每个配置完整且登录成功的账号独立连接，查询和刷榜可并行。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
@@ -338,7 +335,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `bili` | `bili_query` + `bili_push`。 |
 | `seer_activity_query` | 游戏内快结束活动手动查询；`/当前活动` 为超级管理员专用。 |
 | `seer_activity_push` | 游戏内活动结束提醒推送。 |
-| `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
+| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`。 |
 | `server_status_query` | 开服查询、服务器状态查询。 |
 | `server_status` | `server_status_query`。 |
 | `team_resource_subscription` | 战队资源订阅：群内 `战队` 查询订阅战队，低资源定时 @ 提醒。 |
@@ -349,15 +346,6 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `fire_manual_ad` | 主动推送末尾追加火火手册链接。 |
 | `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
-
-原生幸运橱窗需在 `[seer.lucky_skin_window]` 显式启用，并通过
-`[[seer.lucky_skin_window.accounts]]` 配置 `user`、`player_id` 和可选 `watched_skin_ids`。
-`user` 对应 QQ 用户引用，`player_id` 须与该用户当前绑定一致；绑定只提供查询关联，不验证账号所有权，管理员代绑也不单独授予登录授权。
-当天缓存命中直接返回；无缓存且公共无头账号已登录时可直接查询。仅未登录时进入原确认流程，
-明确确认后才调用登录并查询，拒绝确认不触发登录。默认 `enabled = false`，空账号列表不会启用服务。
-
-`activity` 已不再是内置组合；引用旧内置名称的配置需改用 `seer_activity`。
-此版本不会自动迁移用户策略；如自行定义同名自定义组合，仍须通过原有引用校验。
 
 ## 数据与缓存
 
@@ -378,10 +366,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 
 已有部署升级后，先停掉机器人，再用新镜像把旧的小型 SQLite 一次性迁移到两个共享状态库。
 命令默认只预览；确认输出后再加 `--apply`。迁移会先完整备份旧库，校验行数、主键和
-`PRAGMA integrity_check`，之后逐个替换目标库并清理旧库。
-每次文件替换是单独操作，不是两个数据库的联合事务；第二次失败不保证回滚第一次。
-保留备份，确认两库及迁移结果后再启动机器人。此版本直接 SQLite 上下文未全部显式关闭连接，
-Windows 文件替换可能受连接占用影响；这里不承诺该平台已完成迁移验收。
+`PRAGMA integrity_check`，成功后才原子安装新库并移除旧库。
 
 Unraid 默认数据挂载为 `/mnt/user/appdata/ironsbot/data`：
 
@@ -514,7 +499,11 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
 凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-阵容功能仍复用主无头账号，不单独登录。
+主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置。额外
+worker 使用相同的任意后缀。模板默认提供 worker 1（无后缀）、2、3 三个账号；之后复制
+`HEADLESS_SEER_USER_ID_2` / `HEADLESS_SEER_PASSWORD_2` 的格式即可增加任意数量。
+也可以按用途改用 `RANK_A` 这类名称后缀。每个账号独立连接，查询和刷榜可并行。阵容功能
+仍复用主无头账号，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 
