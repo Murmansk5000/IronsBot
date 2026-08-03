@@ -7,7 +7,12 @@ from types import ModuleType
 import pytest
 from pydantic import ValidationError
 
-from ironsbot.config.loader import CONFIG_ENV, ConfigFileNotFoundError, load_settings
+from ironsbot.config.loader import (
+    CONFIG_ENV,
+    LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX,
+    ConfigFileNotFoundError,
+    load_settings,
+)
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
@@ -63,6 +68,7 @@ DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
 LUCKY_SKIN_WINDOW_OWNER_ID = 123456789
+LUCKY_SKIN_WINDOW_PLAYER_ID = 105023264
 DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
 DEFAULT_PLAYER_REQUEST_INTERVAL_SECONDS = 1.2
 DEFAULT_PLAYER_REQUEST_PAUSE_SECONDS = 60.0
@@ -984,9 +990,19 @@ watched_skin_ids = [1400538]
         encoding="utf-8",
     )
 
-    config = load_settings(config_path)
+    password_env_name = (
+        f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+        f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
+    )
+    env = {password_env_name: "secret"}
+    config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
     assert config.seer.lucky_skin_window.time == "00:02"
+    assert (
+        config.seer.lucky_skin_window.accounts[0].player_id
+        == LUCKY_SKIN_WINDOW_PLAYER_ID
+    )
+    assert config.seer.lucky_skin_window.accounts[0].password == "secret"
     assert config.onebot_references.resolve_user(
         config.seer.lucky_skin_window.accounts[0].user,
         location="test",
@@ -1003,7 +1019,13 @@ player_id = 105023265
         encoding="utf-8",
     )
     with pytest.raises(ValidationError, match="must not repeat a user"):
-        load_settings(config_path)
+        load_settings(
+            config_path,
+            env={
+                **env,
+                f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}105023265": "secret-2",
+            },
+        )
 
 
 def test_lucky_skin_window_rejects_duplicate_configured_player_id(
@@ -1031,7 +1053,15 @@ player_id = 105023264
     )
 
     with pytest.raises(ValidationError, match="must not repeat a player_id"):
-        load_settings(config_path)
+        load_settings(
+            config_path,
+            env={
+                (
+                    f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+                    f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
+                ): "secret",
+            },
+        )
 
 
 def test_lucky_skin_window_rejects_invalid_time(tmp_path: Path) -> None:
@@ -1046,6 +1076,74 @@ time = "24:02"
 
     with pytest.raises(ValidationError, match="time must use HH:MM"):
         load_settings(config_path)
+
+
+def test_lucky_skin_window_requires_dedicated_password(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id = 105023264
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
+    ):
+        load_settings(config_path, env={})
+
+
+def test_lucky_skin_window_does_not_use_custom_password_env(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id = 105023264
+password_env = "OLD_PASSWORD_NAME"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}",
+    ):
+        load_settings(config_path, env={"OLD_PASSWORD_NAME": "secret"})
+
+
+def test_lucky_skin_window_rejects_inline_credentials(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id = 105023264
+password = "secret"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"seer\.lucky_skin_window\.accounts\[0\]\.password",
+    ):
+        load_settings(
+            config_path,
+            env={
+                (
+                    f"{LUCKY_SKIN_WINDOW_PASSWORD_ENV_PREFIX}"
+                    f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
+                ): "secret",
+            },
+        )
 
 
 def test_player_request_protection_loads(tmp_path: Path) -> None:
