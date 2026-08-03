@@ -10,13 +10,20 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.core.features import FeatureService  # noqa: TC001
 from ironsbot.runtime.conversations import (
     command_reply_check,
     enter_event_reply_conversation,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import bind_async
+from ironsbot.runtime.matchers import (
+    bind_async,
+    get_prompt_session_manager,
+)
 from ironsbot.runtime.onebot_context import event_group_id
+from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
+)
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
@@ -43,12 +50,16 @@ from ironsbot.services.seer.player_shortcuts import (
     player_shortcut_semantic_request,
 )
 
-from .player_context import PLAYER_DETAIL_NAMESPACE, PLAYER_ID_KEY
+from .player_context import (
+    PLAYER_DETAIL_MENU_CONTEXT_KEY,
+    PLAYER_DETAIL_NAMESPACE,
+    PLAYER_ID_KEY,
+    PlayerDetailMenuContext,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
 
@@ -60,13 +71,39 @@ _SHORTCUT_KINDS = {
 _SELECTION_PAIR_LENGTH = 2
 
 
-async def handle_player_detail_reply(
+async def handle_player_detail_reply(  # noqa: PLR0913
     service: PlayerService,
     extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
+    is_shared_reply = bool(state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY))
+    shared_reply = _take_shared_menu_reply(matcher, state)
+    source_selection = _selected_player_detail_action(
+        extensions,
+        event.get_plaintext(),
+        state,
+    )
+    if is_shared_reply and shared_reply is None:
+        await finish_event_reply(matcher, event, "该菜单已失效，请重新查询米米号。")
+        return
+    if shared_reply is not None:
+        _configure_player_detail_state(
+            features,
+            extensions,
+            event,
+            state,
+            shared_reply,
+        )
+        if not is_player_detail_exit(event.get_plaintext()) and (
+            source_selection
+            != _selected_player_detail_action(extensions, event.get_plaintext(), state)
+        ):
+            await finish_event_reply(matcher, event, "该功能当前未对你开放。")
+            return
+
     if is_player_detail_exit(event.get_plaintext()):
         await finish_event_reply(matcher, event, "已退出米米号详情查询。")
         return
@@ -103,6 +140,7 @@ async def handle_player_detail_reply(
         await _continue_player_detail_conversation(
             service,
             extensions,
+            features,
             matcher,
             event,
             state,
@@ -130,6 +168,7 @@ async def handle_player_detail_reply(
     await _continue_player_detail_conversation(
         service,
         extensions,
+        features,
         matcher,
         event,
         state,
@@ -152,25 +191,18 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
     has_autocard: bool = False,
     on_sent: Callable[[], None] | None = None,
 ) -> None:
-    state[PLAYER_ID_KEY] = player_id
-    for detail_key in _SHORTCUT_KINDS:
-        state.pop(detail_key, None)
-
-    visible_extensions = tuple(
-        action
-        for action in extensions.actions()
-        if event_is_feature_allowed(features, event, action.feature)
+    prompt_plan = _configure_player_detail_state(
+        features,
+        extensions,
+        event,
+        state,
+        PlayerDetailMenuContext(
+            player_id=player_id,
+            has_collection=has_collection,
+            has_peak=has_peak,
+            has_autocard=has_autocard,
+        ),
     )
-    prompt_plan = plan_player_detail_prompt(
-        has_collection=has_collection,
-        has_peak=has_peak,
-        has_autocard=has_autocard,
-        supports_conversation=isinstance(event, MessageEvent),
-        extension_actions=visible_extensions,
-    )
-    state[PLAYER_DETAIL_COMMANDS_KEY] = prompt_plan.accepted_commands
-    state[PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY] = prompt_plan.builtin_selections
-    state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] = prompt_plan.extension_selections
     prompt = "\n".join((player_message, *prompt_plan.prompt_lines))
 
     try:
@@ -186,12 +218,25 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
                 matcher,
                 event,
                 namespace=PLAYER_DETAIL_NAMESPACE,
-                handlers=[bind_async(handle_player_detail_reply, service, extensions)],
+                handlers=[
+                    bind_async(
+                        handle_player_detail_reply,
+                        service,
+                        extensions,
+                        features,
+                    )
+                ],
                 reply_check=command_reply_check(prompt_plan.accepted_commands),
                 prompt=prompt,
+                group_reply_check=_player_detail_group_reply_check(
+                    features,
+                    prompt_plan.accepted_commands,
+                ),
+                allow_group_reply_exit=True,
                 queue_semantic_request_resolver=partial(
                     _player_detail_semantic_request,
                     extensions,
+                    features,
                 ),
             )
     except FinishedException:
@@ -206,6 +251,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
 async def _continue_player_detail_conversation(  # noqa: PLR0913
     service: PlayerService,
     extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -222,12 +268,17 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
         matcher,
         event,
         namespace=PLAYER_DETAIL_NAMESPACE,
-        handlers=[bind_async(handle_player_detail_reply, service, extensions)],
+        handlers=[
+            bind_async(handle_player_detail_reply, service, extensions, features)
+        ],
         reply_check=command_reply_check(commands),
         prompt=prompt,
+        group_reply_check=_player_detail_group_reply_check(features, commands),
+        allow_group_reply_exit=True,
         queue_semantic_request_resolver=partial(
             _player_detail_semantic_request,
             extensions,
+            features,
         ),
     )
 
@@ -265,8 +316,82 @@ def _resolve_player_detail_extension_action(
     return extensions.get(selection_ids.get(selection, ""))
 
 
+def _selected_player_detail_action(
+    extensions: PlayerDetailExtensionRegistry,
+    text_value: str,
+    state: T_State,
+) -> str | None:
+    if action := _resolve_player_detail_extension_action(extensions, text_value, state):
+        return action.id
+    if detail_request := resolve_player_detail_reply(
+        text_value,
+        selections=_stored_player_detail_selections(
+            state,
+            PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY,
+        ),
+    ):
+        return detail_request.key
+    return None
+
+
+def _take_shared_menu_reply(
+    matcher: Matcher,
+    state: T_State,
+) -> PlayerDetailMenuContext | None:
+    if not state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY):
+        return None
+    context = state.get(PLAYER_DETAIL_MENU_CONTEXT_KEY)
+    get_prompt_session_manager(matcher).detach_queued_conversation(state)
+    return context if isinstance(context, PlayerDetailMenuContext) else None
+
+
+def _configure_player_detail_state(
+    features: FeatureService,
+    extensions: PlayerDetailExtensionRegistry,
+    event: Event,
+    state: T_State,
+    menu_context: PlayerDetailMenuContext,
+):
+    state[PLAYER_ID_KEY] = menu_context.player_id
+    state[PLAYER_DETAIL_MENU_CONTEXT_KEY] = menu_context
+    for detail_key in _SHORTCUT_KINDS:
+        state.pop(detail_key, None)
+
+    visible_extensions = tuple(
+        action
+        for action in extensions.actions()
+        if event_is_feature_allowed(features, event, action.feature)
+    )
+    prompt_plan = plan_player_detail_prompt(
+        has_collection=menu_context.has_collection,
+        has_peak=menu_context.has_peak,
+        has_autocard=menu_context.has_autocard,
+        supports_conversation=isinstance(event, MessageEvent),
+        extension_actions=visible_extensions,
+    )
+    state[PLAYER_DETAIL_COMMANDS_KEY] = prompt_plan.accepted_commands
+    state[PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY] = prompt_plan.builtin_selections
+    state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] = prompt_plan.extension_selections
+    return prompt_plan
+
+
+def _player_detail_group_reply_check(
+    features: FeatureService,
+    commands: tuple[str, ...],
+):
+    command_check = command_reply_check(commands)
+
+    def _check(event: MessageEvent) -> bool:
+        return event_is_feature_allowed(features, event, "seer_player") and (
+            is_player_detail_exit(event.get_plaintext()) or command_check(event)
+        )
+
+    return _check
+
+
 def _player_detail_semantic_request(
     extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
     event: MessageEvent,
     state: T_State,
 ) -> SemanticRequest | None:
@@ -280,6 +405,11 @@ def _player_detail_semantic_request(
         state,
     )
     if extension_action is not None:
+        if (
+            state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)
+            and not event_is_feature_allowed(features, event, extension_action.feature)
+        ):
+            return None
         return SemanticRequest(
             action=extension_action.action,
             target=player_shortcut_semantic_request(

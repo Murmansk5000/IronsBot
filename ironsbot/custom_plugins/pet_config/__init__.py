@@ -16,7 +16,7 @@ from ironsbot.runtime.feature_policy import (
 )
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition
-from ironsbot.runtime.rules import command_input, startswith_or_endswith
+from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 if TYPE_CHECKING:
@@ -107,7 +107,7 @@ def install(
         )
         & not_rank_query
         & not_fixed_image_command
-        & command_input(),
+        & explicit_command(),
         priority=registry.priority("pet_config"),
         block=True,
     )
