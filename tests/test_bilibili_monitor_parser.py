@@ -4,6 +4,7 @@ nonebot.init()
 
 from ironsbot.plugins.bilibili.delivery import build_dynamic_link_message
 from ironsbot.services.bilibili.parser import (
+    dynamic_content,
     dynamic_items_from_response,
     dynamic_suppression_reason,
     find_target_dynamics,
@@ -113,3 +114,9 @@ def test_link_message_omits_content_and_images() -> None:
     assert "传送门：https://t.bilibili.com/1211894957538803730" in rendered
     assert "正文内容" not in rendered
     assert "[CQ:image" not in rendered
+
+
+def test_dynamic_content_has_no_synthetic_text_for_image_only_dynamic() -> None:
+    item = _dynamic_item(text="")
+
+    assert dynamic_content(item) == ""

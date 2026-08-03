@@ -16,6 +16,7 @@ from ironsbot.plugins.bilibili.delivery import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
+    DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 
 PUB_TS = 1781004683
 EXPECTED_FULL_PUSH_COUNT = 2
+QUERY_ENABLED_GROUP_ID = 1001
 
 
 def _item(
@@ -83,8 +85,8 @@ def test_dynamic_renderers_split_link_from_compact_content() -> None:
 
     assert "传送门：" in link_rendered
     assert "正文内容" not in link_rendered
-    assert "账号：赛尔号" in link_rendered
-    assert "B站动态更新" in link_rendered
+    assert "【赛尔号】发布了一条B站动态" in link_rendered
+    assert "UID：1310714247" in link_rendered
     assert "正文内容" in content_rendered
     assert "[CQ:image" in content_rendered
     assert "传送门:" not in content_rendered
@@ -115,6 +117,29 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
     )
     assert FIRE_MANUAL_LINK_MESSAGE not in str(
         service._transform_target_message("正文", MessageTarget("private", 2002))
+    )
+
+
+def test_delivery_service_only_appends_history_hint_for_query_targets(
+    tmp_path: Path,
+) -> None:
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", object()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        can_query_history=lambda target: target.target_id == QUERY_ENABLED_GROUP_ID,
+    )
+
+    assert DYNAMIC_HISTORY_HINT in str(
+        service._transform_target_message(
+            "正文",
+            MessageTarget("group", QUERY_ENABLED_GROUP_ID),
+        )
+    )
+    assert DYNAMIC_HISTORY_HINT not in str(
+        service._transform_target_message("正文", MessageTarget("group", 1002))
     )
 
 
@@ -168,7 +193,7 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     assert sent[0]["group_ids"] == [1002]
     assert sent[1]["group_ids"] == [1001]
     assert sent[2]["group_ids"] == [1001]
-    assert "B站动态更新" in str(sent[1]["message"])
+    assert "【赛尔号】发布了一条B站动态" in str(sent[1]["message"])
     assert "传送门：" in str(sent[1]["message"])
     assert sent[1]["subscription_key"] == bili_push_subscription_key(1310714247)
     assert "subscription_key" not in sent[2]
@@ -311,7 +336,7 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
     )
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
-    assert "B站动态更新" in str(sent[0])
+    assert "【赛尔号】发布了一条B站动态" in str(sent[0])
     assert "传送门：" in str(sent[0])
     assert FIRE_MANUAL_LINK_MESSAGE in str(sent[0])
     assert BILI_PUSH_ADMIN_HINT in str(sent[0])
@@ -319,6 +344,16 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
     assert "传送门：" not in str(sent[1])
     assert FIRE_MANUAL_LINK_MESSAGE not in str(sent[1])
     assert BILI_PUSH_ADMIN_HINT not in str(sent[1])
+
+
+def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None:
+    item = _item(text="")
+
+    rendered = str(build_dynamic_content_message(item))
+
+    assert "发布了一条动态" not in rendered
+    assert "回复“动态”查询历史动态" not in rendered
+    assert "[CQ:image" in rendered
 
 
 def test_delivery_service_appends_admin_hint_once_per_day(
