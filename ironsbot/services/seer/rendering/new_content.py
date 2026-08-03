@@ -56,6 +56,7 @@ class NewContentMenuItemDict(TypedDict):
     expanded: bool
     image: str | None
     skill: SkillDict | None
+    friend_skill: SkillDict | None
 
 
 _EQUIP_PART_TYPE_NAMES = {
@@ -120,6 +121,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                 "expanded": expanded,
                 "image": None,
                 "skill": None,
+                "friend_skill": None,
             },
         )
         if expanded:
@@ -146,6 +148,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                         "expanded": False,
                         "image": None,
                         "skill": details.skill,
+                        "friend_skill": details.friend_skill,
                     },
                 )
                 item_rows.append((row_index, item, details))

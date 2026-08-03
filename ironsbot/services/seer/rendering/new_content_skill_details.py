@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from seerapi_models import SkillORM
 
 from .custom_pet_models import SkillDict
 from .new_content_models import _ItemDetails
@@ -11,6 +14,13 @@ from .new_content_models import _ItemDetails
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.new_content import NewContentItem
+
+
+@dataclass(frozen=True, slots=True)
+class _SkillEffectDetails:
+    effects: list[dict[str, Any]]
+    friend_effects: list[dict[str, Any]]
+    hide_effect_desc: str | None
 
 
 def _skill_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
@@ -32,6 +42,7 @@ def _skill_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
         if isinstance(raw_crit_rate, int | float | str)
         else None
     )
+    effect_details = _load_skill_effect_details(data, item.entity_id)
     skill = SkillDict(
         id=item.entity_id,
         name=item.name,
@@ -50,18 +61,70 @@ def _skill_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
         is_special=False,
         is_advanced=False,
         is_fifth=False,
-        effects=[],
+        effects=effect_details.effects,
         activation_item=None,
         friend_bonus=False,
-        hide_effect_desc=None,
+        hide_effect_desc=effect_details.hide_effect_desc,
     )
+    friend_skill: SkillDict | None = None
+    if effect_details.friend_effects:
+        friend_skill = {
+            **skill,
+            "effects": effect_details.friend_effects,
+            "friend_bonus": True,
+            "is_special": True,
+        }
     return _ItemDetails(
         metadata="",
         description=_skill_related_pets(payload.get("pets")),
         type_id=type_id or None,
         type_name=type_name,
         skill=skill,
+        friend_skill=friend_skill,
     )
+
+
+def _load_skill_effect_details(
+    data: SeerDataAccess,
+    skill_id: int,
+) -> _SkillEffectDetails:
+    """Load the same official effect relation rendered on pet skill cards."""
+
+    try:
+        with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
+            if skill is None:
+                return _SkillEffectDetails([], [], None)
+            return _SkillEffectDetails(
+                effects=_skill_effect_rows(skill.skill_effect),
+                friend_effects=_skill_effect_rows(skill.friend_skill_effect),
+                hide_effect_desc=_skill_hide_effect_text(skill),
+            )
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+        return _SkillEffectDetails([], [], None)
+
+
+def _skill_effect_rows(effects: object) -> list[dict[str, Any]]:
+    if not isinstance(effects, list):
+        return []
+    return [
+        {"id": effect.effect_id, "info": text}
+        for effect in effects
+        if (text := _skill_effect_text(effect))
+    ]
+
+
+def _skill_hide_effect_text(skill: object) -> str | None:
+    hide_effect = getattr(skill, "hide_effect", None)
+    if hide_effect is None:
+        return None
+    description = str(getattr(hide_effect, "description", "") or "").strip()
+    return description or None
+
+
+def _skill_effect_text(effect: object) -> str:
+    return str(
+        getattr(effect, "analyze_info", None) or getattr(effect, "info", ""),
+    ).strip()
 
 
 _SKILL_CATEGORY_NAMES = {
