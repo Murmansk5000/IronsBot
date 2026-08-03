@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
-import html
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
@@ -13,7 +12,6 @@ from seerapi_models.mintmark import PetMintmarkLink, SkillMintmarkLink
 from sqlalchemy.orm import object_session
 from sqlmodel import col, select
 
-from ironsbot.services.ai.analysis_parser import AnalyzeDescParser
 from ironsbot.services.seer.images import (
     SeerImageSource,
     fetch_optional_image,
@@ -29,6 +27,10 @@ from ironsbot.services.seer.render_paths import (
 )
 
 from . import HtmlTemplateRenderer
+from .analyze_description import (
+    format_analyze_description,
+    format_plain_analyze_description,
+)
 from .custom_pet_models import (
     ActivationItemDict,
     ActivationItemPriceDict,
@@ -60,13 +62,6 @@ SPECIAL_SOULMARK_PET_ID = 2500
 HIDDEN_SKILL_ID = 19002
 PARTNER_UPGRADE_MIN_SIMILARITY = 0.8
 PARTNER_UPGRADE_MIN_DELTA = 0.01
-_ANALYZE_DESC_STYLES: dict[str, Callable[..., str]] = {
-    "#f35555": lambda t: f'<b style="color:#f35555">{t}</b>',
-    "#57c975": lambda t: f'<b style="color:#57c975">{t}</b>',
-    "#52a5f2": lambda t: f'<b style="color:#52a5f2">{t}</b>',
-    "#64F9FA": lambda t: f'<b style="color:#64F9FA">{t}</b>',
-    "#FFF779": lambda t: f'<b style="color:#FFF779">{t}</b>',
-}
 _RICH_TEXT_COLOR_OPEN_RE = re.compile(r"<color=(#[0-9a-fA-F]{6})>")
 _RICH_TEXT_TAG_RE = re.compile(r"</?[^>]+>")
 logger = logging.getLogger(__name__)
@@ -407,44 +402,14 @@ def _format_soulmark_desc(
 
 
 def _format_analyze_desc(value: str | None, effect_colors: Mapping[str, str]) -> str:
-    """Render official colors and add resolved colors to every plain effect name."""
-    names = tuple(sorted(effect_colors, key=len, reverse=True))
-    pattern = (
-        re.compile("|".join(re.escape(name) for name in names)) if names else None
-    )
-    lines: list[str] = []
-    for line in AnalyzeDescParser(value or "").lines:
-        parts: list[str] = []
-        for segment in line.segments:
-            rendered = html.escape(segment.text)
-            if segment.colors:
-                seen: set[str] = set()
-                for color in reversed(segment.colors):
-                    if color not in seen and (
-                        styler := _ANALYZE_DESC_STYLES.get(color)
-                    ):
-                        rendered = styler(rendered)
-                        seen.add(color)
-            elif pattern is not None:
-                rendered = pattern.sub(
-                    lambda match: (
-                        f'<b style="color:{effect_colors[match.group(0)]}">'
-                        f"{html.escape(match.group(0))}</b>"
-                    ),
-                    rendered,
-                )
-            parts.append(rendered)
-        lines.append("".join(parts))
-    return "<br>".join(lines)
+    return format_analyze_description(value, effect_colors)
 
 
 def _format_plain_desc(
     value: str | None,
     effect_colors: Mapping[str, str],
 ) -> str | None:
-    if value is None:
-        return None
-    return _format_analyze_desc(value, effect_colors)
+    return format_plain_analyze_description(value, effect_colors)
 
 
 def _partition_soulmarks(
