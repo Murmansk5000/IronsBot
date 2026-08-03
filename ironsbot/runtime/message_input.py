@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
+
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
@@ -84,8 +86,13 @@ def message_input_context(event: Event) -> MessageInputContext:
         has_any_mention = True
         if self_id and self_id in raw_targets:
             mentions_bot = True
+    # OneBot adapters may remove a group @ segment before matcher rules run and
+    # leave only ``to_me``. Private messages can also be marked ``to_me`` by
+    # transports, but are ordinary direct input rather than a bot mention.
     to_me = getattr(event, "is_tome", False)
-    if bool(to_me() if callable(to_me) else to_me):
+    if isinstance(event, GroupMessageEvent) and bool(
+        to_me() if callable(to_me) else to_me
+    ):
         mentions_bot = True
 
     try:

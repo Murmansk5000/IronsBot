@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
 _GET_LUCKY_SKIN_WINDOW = 45866
 _REQUEST = (
+    # Captured from the official client before the two reserved zero fields.
+    668,
     0,
     0,
     18,

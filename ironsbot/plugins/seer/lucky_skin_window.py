@@ -2,6 +2,7 @@
 # ruff: noqa: TC002
 from __future__ import annotations
 
+import logging
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -48,6 +49,7 @@ _COMMANDS = ("幸运橱窗", "橱窗")
 _ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
 _JOB_PREFIX = "lucky_skin_window:"
 _LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
+logger = logging.getLogger(__name__)
 
 
 def plugin_definition(
@@ -180,7 +182,12 @@ async def _handle_query(
     except TimeoutError:
         await finish_event_reply(matcher, event, "❌ 幸运橱窗查询超时，请稍后再试。")
         return
-    except LuckySkinWindowError:
+    except LuckySkinWindowError as error:
+        logger.warning(
+            "lucky skin window query unavailable: user_id=%s error=%s",
+            event.user_id,
+            error,
+        )
         await finish_event_reply(
             matcher,
             event,
