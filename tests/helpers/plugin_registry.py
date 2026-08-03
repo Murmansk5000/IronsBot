@@ -96,7 +96,9 @@ def build_test_plugin_registry(
             server_status=object(),
             subscriptions=object(),
             bilibili=SimpleNamespace(
-                targets=object(),
+                targets=SimpleNamespace(
+                    can_target_query_history=lambda _target: False,
+                ),
             ),
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,
