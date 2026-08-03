@@ -20,7 +20,7 @@ from ironsbot.services.seer.local_rank_models import (
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
 )
-from ironsbot.services.seer.rank_constants import is_pet_kind_rank_anomaly_user
+from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
 from ironsbot.services.seer.rank_peak import (
     build_peak_rating_score,
 )
@@ -109,7 +109,21 @@ class LocalRankService:
     player_config: PlayerQueryConfig
     rank: RankService
     requests: PlayerRequestProtectionService | None = None
+    exclusions: RankExclusionPolicy | None = None
     _write_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+
+    def __post_init__(self) -> None:
+        if self.exclusions is None:
+            self.exclusions = RankExclusionPolicy.from_config()
+
+    @property
+    def exclusion_policy(self) -> RankExclusionPolicy:
+        assert self.exclusions is not None
+        return self.exclusions
+
+    def remove_excluded_samples(self) -> None:
+        for user_id in self.exclusion_policy.taomee_internal_user_ids:
+            self.repository.delete_player(user_id)
 
     def entries(
         self,
@@ -147,9 +161,10 @@ class LocalRankService:
         return self.repository.stats(LOCAL_METRICS)
 
     def can_cache(self, player_id: int) -> bool:
-        return not is_pet_kind_rank_anomaly_user(
-            player_id
-        ) and self.repository.can_cache(player_id)
+        return (
+            not self.exclusion_policy.excludes_from_sample(player_id)
+            and self.repository.can_cache(player_id)
+        )
 
     async def upsert_metrics(
         self,
@@ -161,7 +176,7 @@ class LocalRankService:
         clear_metric_keys: frozenset[str] = frozenset(),
     ) -> LocalRankSummary:
         async with self._write_lock:
-            if is_pet_kind_rank_anomaly_user(player_id):
+            if self.exclusion_policy.excludes_from_sample(player_id):
                 self.repository.delete_player(player_id)
                 return LocalRankSummary()
 

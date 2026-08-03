@@ -41,7 +41,6 @@ def score_gap_from_page(
     items: list[Any],
     page_start: int,
     score: int,
-    rank_offset: int,
 ) -> RankScoreGap | None:
     matching_items = [
         rank_score_search_item(item, page_start + offset)
@@ -56,8 +55,8 @@ def score_gap_from_page(
     page_end = page_start + len(items) - 1
     return RankScoreGap(
         score=score,
-        start_rank=first_index + 1 + rank_offset,
-        end_rank=last_index + 1 + rank_offset,
+        start_rank=first_index + 1,
+        end_rank=last_index + 1,
         total_count=len(matching_items),
         truncated=first_index == page_start or last_index == page_end,
         items=matching_items,
@@ -69,7 +68,6 @@ def score_miss_proof_from_page(
     items: list[Any],
     page_start: int,
     target_score: int,
-    rank_offset: int,
     fetched_at: float,
 ) -> RankScoreMissProof | None:
     if not items:
@@ -98,12 +96,10 @@ def score_miss_proof_from_page(
             items=items,
             page_start=page_start,
             score=higher_score,
-            rank_offset=rank_offset,
         ),
         lower_gap=score_gap_from_page(
             items=items,
             page_start=page_start,
             score=lower_score,
-            rank_offset=rank_offset,
         ),
     )
