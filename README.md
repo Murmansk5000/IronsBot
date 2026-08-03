@@ -166,11 +166,12 @@ SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
 
-额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
-幸运橱窗账号通过 `[[seer.lucky_skin_window.accounts]]` 的 `player_id` 配置；密码使用
-`LUCKY_WINDOW_SEER_PASSWORD_<player_id>` 环境变量。它们使用独立短时会话，不占用公共查询池。
+每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和
+`query_worker`。需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量。
+`query_worker = true` 的账号组成可互换的公共查询池；幸运橱窗仅引用账号库中的账号，
+使用独立短时会话，不占用公共查询池。
 多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
-所有公共查询账号会组成可互换的工作池；幸运橱窗的米米号写在 TOML，密码只写在容器环境变量中。
+所有公共查询账号会组成可互换的工作池；米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
@@ -508,12 +509,7 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 不需要改成私有镜像。Docker socket、上述两个容器变量，以及 `enabled = true` 都是必要条件；
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
-凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-主无头账号仍由 `HEADLESS_SEER_USER_ID` 和 `HEADLESS_SEER_PASSWORD` 配置。额外
-worker 使用相同的任意后缀。模板默认提供 worker 1（无后缀）、2、3 三个账号；之后复制
-`HEADLESS_SEER_USER_ID_2` / `HEADLESS_SEER_PASSWORD_2` 的格式即可增加任意数量。
-也可以按用途改用 `RANK_A` 这类名称后缀。每个账号独立连接，查询和刷榜可并行。阵容功能
-仍复用主无头账号，不单独登录。
+公共无头账号由 `seer.player_accounts` 中 `query_worker = true` 的条目决定；需要登录的账号使用固定 `SEER_PASSWORD_<player_id>` 环境变量。本阶段仍传入旧登录接口使用的 MD5，尚未引入后继明文规范化。每个账号独立连接，阵容复用公共池，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 

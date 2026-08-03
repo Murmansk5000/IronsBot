@@ -38,7 +38,7 @@ def _seed_legacy_state(root: Path) -> None:
             """,
             """
             INSERT INTO player_bindings VALUES (
-                1234567890, 148758762, '示例玩家', 1,
+                1234567890, 812345678, '示例玩家', 1,
                 '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z',
                 '2026-01-02T00:00:00Z'
             )
@@ -163,7 +163,7 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
     with sqlite3.connect(qq_state) as connection:
         assert connection.execute(
             "SELECT player_id, player_nick FROM player_bindings"
-        ).fetchall() == [(148758762, "示例玩家")]
+        ).fetchall() == [(812345678, "示例玩家")]
         assert connection.execute(
             "SELECT subscription_key, feature FROM push_unsubscriptions "
             "ORDER BY subscription_key"

@@ -250,7 +250,10 @@ def install(group: SeerMatcherGroup) -> None:
         & Rule(
             bind(
                 _store_command,
-                parse_rank_player_command,
+                partial(
+                    parse_rank_player_command,
+                    resolve_player_id=group.player_accounts.resolve_player_id,
+                ),
                 RANK_PLAYER_COMMAND_KEY,
             )
         ),

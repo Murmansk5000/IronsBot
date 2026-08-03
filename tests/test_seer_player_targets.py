@@ -72,7 +72,7 @@ def test_player_target_rejects_ambiguous_member_target_forms() -> None:
         )
     )
     member_and_number = group_message_event(
-        message=Message([MessageSegment.text("收集105023264"), MessageSegment.at(456)])
+        message=Message([MessageSegment.text("收集712345678"), MessageSegment.at(456)])
     )
 
     multiple = resolve_player_target(

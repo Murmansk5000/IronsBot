@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
+    from ironsbot.config.player_accounts import PlayerAccount
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
@@ -165,6 +166,7 @@ class HeadlessService:
         notices: HeadlessNoticeConfig,
         admin_notices: AdminNoticeService,
         *,
+        accounts: Sequence[PlayerAccount] = (),
         request_interval_seconds: float = 0.0,
         state_notifications: bool = True,
         now: Callable[[], datetime] | None = None,
@@ -181,16 +183,11 @@ class HeadlessService:
             if isinstance(client, Sequence)
             else [client]
         )
-        credentials: list[tuple[str, int, str]] = []
-        if connection.user_id is not None and connection.password:
-            credentials.append(
-                ("primary", int(connection.user_id), str(connection.password))
-            )
-        credentials.extend(
-            (worker.name, int(worker.user_id), str(worker.password))
-            for worker in connection.workers
-            if worker.user_id is not None and worker.password
-        )
+        credentials = [
+            (account.name, account.player_id, str(account.password))
+            for account in accounts
+            if account.password is not None
+        ]
         if len(clients) < max(1, len(credentials)):
             message = "not enough headless clients for configured workers"
             raise ValueError(message)

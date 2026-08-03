@@ -17,6 +17,7 @@ from ironsbot.core.commands import NormalizedStringList, string_list
 from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
     OneBotReferenceList,
 )
+from ironsbot.core.seer_ids import PLAYER_ID_MAX, PLAYER_ID_MIN
 from ironsbot.core.time import normalize_daily_time, normalized_daily_times
 
 if TYPE_CHECKING:
@@ -81,6 +82,10 @@ LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR = (
     "seer.lucky_skin_window watched_skin_ids must be positive"
 )
 LUCKY_SKIN_WINDOW_TIME_ERROR = "seer.lucky_skin_window.time must use HH:MM"
+PLAYER_ACCOUNT_NAME_ERROR = "seer.player_accounts name must not be empty"
+PLAYER_ACCOUNT_ALIASES_ERROR = (
+    "seer.player_accounts aliases must not contain empty values"
+)
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
     "01:15",
     "01:45",
@@ -497,24 +502,42 @@ class NewContentMenuConfig(BaseModel):
         )
 
 
+class PlayerAccountConfig(BaseModel):
+    """Named Seer account available to headless services and command aliases."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: int = Field(ge=PLAYER_ID_MIN, le=PLAYER_ID_MAX)
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    query_worker: bool = False
+    password: str | None = Field(default=None, exclude=True, repr=False)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(PLAYER_ACCOUNT_NAME_ERROR)
+        return normalized
+
+    @field_validator("aliases")
+    @classmethod
+    def normalize_aliases(cls, value: list[str]) -> list[str]:
+        normalized = [str(alias).strip() for alias in value]
+        if any(not alias for alias in normalized):
+            raise ValueError(PLAYER_ACCOUNT_ALIASES_ERROR)
+        return list(dict.fromkeys(normalized))
+
+
 class LuckySkinWindowAccountConfig(BaseModel):
-    """One QQ user's isolated lucky-window account credentials."""
+    """One QQ user's account-library subscription for lucky-window checks."""
 
     model_config = ConfigDict(extra="forbid")
 
     user: str | int
-    player_id: int = Field(ge=10001)
-    password: str = Field(exclude=True, repr=False)
+    account: str | int
     watched_skin_ids: list[int] = Field(default_factory=list)
-
-    @field_validator("password")
-    @classmethod
-    def normalize_required_strings(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            message = "lucky skin window credential fields must not be empty"
-            raise ValueError(message)
-        return normalized
 
     @field_validator("watched_skin_ids")
     @classmethod
@@ -553,6 +576,7 @@ class LuckySkinWindowConfig(BaseModel):
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    player_accounts: list[PlayerAccountConfig] = Field(default_factory=list)
     player: PlayerQueryConfig = Field(default_factory=PlayerQueryConfig)
     team: TeamQueryConfig = Field(default_factory=TeamQueryConfig)
     mintmark: MintmarkQueryConfig = Field(default_factory=MintmarkQueryConfig)

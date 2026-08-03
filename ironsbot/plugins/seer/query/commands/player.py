@@ -12,6 +12,7 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
@@ -24,8 +25,6 @@ from ironsbot.runtime.rules import (
 )
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
-    PLAYER_ID_MAX,
-    PLAYER_ID_MIN,
 )
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -38,7 +37,6 @@ from ironsbot.services.seer.player_service import (
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from ._args import parse_numeric_id
 from .player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_BINDING_PENDING_KEY,
@@ -58,6 +56,9 @@ class PlayerCommandDependencies:
     features: FeatureService
     detail_extensions: PlayerDetailExtensionRegistry = field(
         default_factory=PlayerDetailExtensionRegistry
+    )
+    player_accounts: PlayerAccountRegistry = field(
+        default_factory=lambda: PlayerAccountRegistry(())
     )
 
 
@@ -85,16 +86,9 @@ async def _is_player_id_query(event: Event, state: T_State) -> bool:
     if not arg:
         state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
         return True
-    if not arg.isdigit():
-        return False
     state[BOT_COMMAND_ARG_KEY] = arg
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
     return True
-
-
-async def _is_invalid_player_text_query(event: Event) -> bool:
-    arg = extract_player_query_arg(event.get_plaintext())
-    return arg is not None and bool(arg) and not arg.isdigit()
 
 
 async def _is_binding_command(event: Event, state: T_State) -> bool:
@@ -114,13 +108,11 @@ async def validate_player_id(
 ) -> None:
     numeric_player_id = None
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
-        numeric_player_id = await parse_numeric_id(
-            matcher,
-            state,
-            min_value=PLAYER_ID_MIN,
-            max_value=PLAYER_ID_MAX,
-            error_message=PLAYER_ID_ERROR_MESSAGE,
+        numeric_player_id = dependencies.player_accounts.resolve_player_id(
+            str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
         )
+        if numeric_player_id is None:
+            await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
     target = resolve_player_target(
         event,
         numeric_player_id=numeric_player_id,
@@ -164,13 +156,11 @@ async def handle_player_binding_command(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    player_id = await parse_numeric_id(
-        matcher,
-        state,
-        min_value=PLAYER_ID_MIN,
-        max_value=PLAYER_ID_MAX,
-        error_message=PLAYER_ID_ERROR_MESSAGE,
+    player_id = dependencies.player_accounts.resolve_player_id(
+        str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
     )
+    if player_id is None:
+        await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
     result = await dependencies.player.bind_player(
         player_id,
         qq_user_id=event.user_id,
@@ -302,6 +292,7 @@ def install(group: SeerMatcherGroup) -> None:
         service,
         group.features,
         group.resources.player_detail_extensions,
+        group.player_accounts,
     )
     binding_matcher = group.on_message(
         policy=CommandPolicy.command(
@@ -329,15 +320,6 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     unbind_matcher.append_handler(bind_async(handle_player_unbind, service))
-
-    group.on_message(
-        policy=CommandPolicy.exempt("silent invalid player query blocker"),
-        rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(_is_invalid_player_text_query)
-        & member_target_command(),
-        priority=group.matcher_priority("seer_player"),
-        block=True,
-    )
 
     query_matcher = group.on_message(
         policy=CommandPolicy.command(
