@@ -5,9 +5,14 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
+from ironsbot.core.rank_exclusions import (
+    DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
+    DEFAULT_TAOMEE_INTERNAL_USER_IDS,
+)
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.local_rank_formatting import format_metric_display
+from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
 from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
@@ -82,3 +87,47 @@ async def test_upsert_local_rank_metrics_clears_unconfirmed_peak_metrics(
     )
     assert peak_entries == []
     assert [entry.user_id for entry in achievement_entries] == [123456]
+
+
+@pytest.mark.asyncio
+async def test_local_samples_only_exclude_taomee_internal_accounts(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "local-rank.sqlite"
+    config = LocalRankConfig(path=path)
+    repository = SqliteLocalRankRepository(path, config.max_players)
+    service = LocalRankService(
+        repository,
+        config,
+        PlayerQueryConfig(),
+        cast("RankService", object()),
+        exclusions=RankExclusionPolicy.from_config(),
+    )
+    taomee_user = DEFAULT_TAOMEE_INTERNAL_USER_IDS[0]
+    pet_kind_only_anomaly = DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK[
+        "精灵图鉴"
+    ][0]
+
+    assert not service.can_cache(taomee_user)
+    assert service.can_cache(pet_kind_only_anomaly)
+
+    await service.upsert_metrics(
+        player_id=taomee_user,
+        nick="内部号",
+        current_metrics={"book_score": {"value": 9_999}},
+        peak_sub_key=None,
+    )
+    await service.upsert_metrics(
+        player_id=pet_kind_only_anomaly,
+        nick="正常异常号",
+        current_metrics={"book_score": {"value": 8_888}},
+        peak_sub_key=None,
+    )
+
+    entries, _sample_count = service.entries(
+        "book_score",
+        limit=10,
+        start_rank=1,
+        season_sub_key=None,
+    )
+    assert [entry.user_id for entry in entries] == [pet_kind_only_anomaly]

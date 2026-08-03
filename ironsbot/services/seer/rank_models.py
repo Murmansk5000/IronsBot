@@ -41,6 +41,7 @@ class RankLookupResult:
     score_name: str
     rank: int | None = None
     score: int | None = None
+    excluded: bool = False
     searched_limit: int = 0
     queried: bool = False
     failure: str | None = None

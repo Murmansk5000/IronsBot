@@ -40,6 +40,10 @@ from ironsbot.core.bilibili import (
     DEFAULT_BILI_ACCOUNT_UID,
 )
 from ironsbot.core.features import FeatureService
+from ironsbot.core.rank_exclusions import (
+    DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
+    DEFAULT_TAOMEE_INTERNAL_USER_IDS,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AI_CHAT_PRIORITY = 200
@@ -204,6 +208,15 @@ def _assert_default_matcher_priorities(
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
 
 
+def _assert_example_rank_exclusions(config: Settings) -> None:
+    exclusions = config.seer.rank.exclusions
+    assert exclusions.taomee_internal_user_ids == DEFAULT_TAOMEE_INTERNAL_USER_IDS
+    assert exclusions.user_ids_by_rank["精灵图鉴"] == (
+        DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK["精灵图鉴"]
+    )
+    assert exclusions.user_ids_by_rank["成就点数"] == ()
+
+
 def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert "群星牌" in config.rank_keys
     assert "竞技段位" in config.rank_keys
@@ -270,6 +283,7 @@ def test_example_config_parses() -> None:
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
     assert config.seer.rank.max_display_limit == DEFAULT_RANK_MAX_DISPLAY_LIMIT
     assert config.seer.rank.display_limits == {}
+    _assert_example_rank_exclusions(config)
     _assert_example_rank_page_refresh(config.seer.rank.page_refresh)
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
