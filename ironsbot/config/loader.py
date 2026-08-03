@@ -143,13 +143,22 @@ def _inject_lucky_skin_window_secrets(
     lucky_skin_window = seer.get("lucky_skin_window")
     if not isinstance(lucky_skin_window, dict):
         return
-    _inject_referenced_credentials(
-        lucky_skin_window.get("accounts", []),
-        path="seer.lucky_skin_window.accounts",
-        id_field="player_id",
-        id_env_field="player_id_env",
-        env=env,
-    )
+    entries = lucky_skin_window.get("accounts", [])
+    if not isinstance(entries, list):
+        return
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        path = f"seer.lucky_skin_window.accounts[{index}]"
+        if "password" in entry:
+            message = f"{path}.password is secret and must use password_env"
+            raise ValueError(message)
+        entry["password"] = _referenced_secret(
+            entry,
+            env_field="password_env",
+            path=path,
+            env=env,
+        )
 
 
 def _referenced_secret(
