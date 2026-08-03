@@ -25,6 +25,7 @@ from .command_text import (
     DISABLED_BARE_ADMIN_COMMAND,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
+    HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
 from .commands import handle_admin_status, handle_normal_status
@@ -89,6 +90,16 @@ def install(
         await send_event_reply(matcher, event, message)
         await docker_service.execute_restart(restart_action)
 
+    async def handle_headless_instance_status(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await finish_event_reply(
+            matcher,
+            event,
+            (await server_status.query_headless_instances()).message,
+        )
+
     async def handle_check_image_update(
         matcher: Matcher,
         event: MessageEvent,
@@ -141,6 +152,19 @@ def install(
         block=True,
     )
     admin_matcher.append_handler(handle_admin_server_status)
+
+    headless_status_matcher = registry.on_fullmatch(
+        HEADLESS_INSTANCE_STATUS_COMMANDS,
+        policy=CommandPolicy.command(
+            "headless_instance_status",
+            help_ids=("server_status.headless_instances",),
+        ),
+        rule=explicit_command(),
+        permission=SUPERUSER,
+        priority=registry.priority("server_status_admin"),
+        block=True,
+    )
+    headless_status_matcher.append_handler(handle_headless_instance_status)
 
     restart_matcher = registry.on_fullmatch(
         BOT_RESTART_COMMANDS,

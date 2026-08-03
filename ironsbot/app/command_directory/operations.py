@@ -11,6 +11,7 @@ from ironsbot.plugins.operations.status.command_text import (
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
+    HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
@@ -43,6 +44,16 @@ def server_status_commands() -> tuple[CommandDescriptor, ...]:
                     {
                         "features_any": ("server_status_query",),
                         "access": (CommandAccess(audience="superuser"),),
+                    },
+                ),
+                (
+                    "server_status.headless_instances",
+                    HEADLESS_INSTANCE_STATUS_COMMANDS,
+                    "查看公共查询池与临时专用会话的当前在线实例数",
+                    {
+                        "access": (
+                            CommandAccess(scope="private", audience="superuser"),
+                        )
                     },
                 ),
             ),
