@@ -24,6 +24,7 @@ from ironsbot.config.models.operations import (
 )
 from ironsbot.config.models.seer import (
     NEW_CONTENT_CATEGORY_KEYS,
+    LuckySkinWindowConfig,
     NewContentMenuConfig,
     PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
@@ -61,6 +62,7 @@ DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
+LUCKY_SKIN_WINDOW_OWNER_ID = 123456789
 DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
 DEFAULT_PLAYER_REQUEST_INTERVAL_SECONDS = 1.2
 DEFAULT_PLAYER_REQUEST_PAUSE_SECONDS = 60.0
@@ -256,6 +258,7 @@ def test_example_config_parses() -> None:
     _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.commands == ["战队"]
     assert config.seer.new_content.expanded_categories == []
+    assert config.seer.lucky_skin_window == LuckySkinWindowConfig()
     assert config.paths.qq_state == Path("data/state/qq_state.sqlite")
     assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
@@ -958,6 +961,75 @@ def test_player_background_refresh_defaults_disabled(tmp_path: Path) -> None:
     config = load_settings(config_path)
 
     assert not config.seer.player.background_refresh.enabled
+
+
+def test_lucky_skin_window_resolves_user_alias_and_rejects_duplicates(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.user_aliases]
+owner = 123456789
+
+[seer.lucky_skin_window]
+enabled = true
+
+[[seer.lucky_skin_window.accounts]]
+user = "owner"
+player_id = 105023264
+watched_skin_ids = [1400538]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+    assert config.seer.lucky_skin_window.enabled
+    assert config.onebot_references.resolve_user(
+        config.seer.lucky_skin_window.accounts[0].user,
+        location="test",
+    ) == LUCKY_SKIN_WINDOW_OWNER_ID
+
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + """
+
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id = 105023265
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="must not repeat a user"):
+        load_settings(config_path)
+
+
+def test_lucky_skin_window_rejects_duplicate_configured_player_id(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.user_aliases]
+owner = 123456789
+friend = 987654321
+
+[seer.lucky_skin_window]
+enabled = true
+
+[[seer.lucky_skin_window.accounts]]
+user = "owner"
+player_id = 105023264
+
+[[seer.lucky_skin_window.accounts]]
+user = "friend"
+player_id = 105023264
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="must not repeat a player_id"):
+        load_settings(config_path)
 
 
 def test_player_request_protection_loads(tmp_path: Path) -> None:

@@ -312,7 +312,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `query` | 常用查询组合：赛尔查询、精灵配置图、图片、榜单、B站查询、活动查询、开服查询。 |
 | `seer` | 全部赛尔查询子功能总开关。 |
 | `seer_player` | 米米号绑定、玩家基础信息及收集/巅峰/群星牌快捷查询。 |
-| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤。 |
+| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户，TD 可退订每日私聊提醒。 |
 | `player_lineup_private` | 查询公开阵容；群聊和私聊都使用这个独立权限。 |
 | `seer_team` | 战队 ID 查询。 |
 | `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |
@@ -403,7 +403,6 @@ docker start ironsbot
 - `seer.player.query_limits.path`
 - `seer.rank.display_limit_path`
 - `seer.team_resource.subscription_path`
-- `operations.private_extensions.settings.skin_window.cache_path`
 
 `seer.player.lineup.cache_path` 不在收口范围内，阵容图片缓存仍保持独立。
 

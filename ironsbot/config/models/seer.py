@@ -77,6 +77,9 @@ RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
 )
 PLAYER_RANK_LOOKUP_TIMEOUT_ERROR = "player lookup total timeout must cover one page"
 TEAM_RESOURCE_TIME_ERROR = "seer.team_resource.times must contain daily HH:MM times"
+LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR = (
+    "seer.lucky_skin_window watched_skin_ids must be positive"
+)
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
     "01:15",
     "01:45",
@@ -493,6 +496,45 @@ class NewContentMenuConfig(BaseModel):
         )
 
 
+class LuckySkinWindowAccountConfig(BaseModel):
+    """One QQ user's approved player binding for lucky-window notices."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user: str | int
+    player_id: int = Field(ge=10001)
+    watched_skin_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("watched_skin_ids")
+    @classmethod
+    def normalize_watched_skin_ids(cls, value: list[int]) -> list[int]:
+        if any(skin_id <= 0 for skin_id in value):
+            raise ValueError(LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR)
+        return list(dict.fromkeys(value))
+
+
+class LuckySkinWindowConfig(BaseModel):
+    """Daily public lucky-window lookup and per-user delivery policy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    hour: int = Field(default=0, ge=0, le=23)
+    minute: int = Field(default=2, ge=0, le=59)
+    timezone: str = "Asia/Shanghai"
+    timeout_seconds: float = Field(default=15.0, gt=0)
+    accounts: list[LuckySkinWindowAccountConfig] = Field(default_factory=list)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo
+
+        normalized = value.strip()
+        ZoneInfo(normalized)
+        return normalized
+
+
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -505,3 +547,6 @@ class SeerConfig(BaseModel):
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
     new_content: NewContentMenuConfig = Field(default_factory=NewContentMenuConfig)
+    lucky_skin_window: LuckySkinWindowConfig = Field(
+        default_factory=LuckySkinWindowConfig
+    )

@@ -13,11 +13,11 @@ from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.app.private_extensions import (
-    PrivateExtensionCatalog,
     PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
 from ironsbot.app.registry import build_plugin_registry
+from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
@@ -58,6 +58,9 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
+from ironsbot.integrations.storage.lucky_skin_window import (
+    SqliteLuckySkinWindowCache,
+)
 from ironsbot.integrations.storage.pet_config_images import (
     FilePetConfigImageStore,
 )
@@ -119,6 +122,7 @@ from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankServ
 from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.local_rank import LocalRankService
+from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.new_content import NewContentService
 from ironsbot.services.seer.peak import PeakQueryService
@@ -171,43 +175,11 @@ if TYPE_CHECKING:
         MessageDelivery,
         MessageLimiter,
     )
-    from ironsbot.services.messaging.service import MessagingService
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
-@dataclass(frozen=True, slots=True)
-class ApplicationResources:
-    features: FeatureService
-    outbound: GroupOutboundRateLimitService
-    delivery: MessageDelivery
-    push_message_limiter: MessageLimiter
-    admin_notices: AdminNoticeService
-    activity: ActivityService
-    headless: HeadlessService
-    server_status: ServerStatusService
-    subscriptions: PushUnsubscribeStore
-    bilibili: BilibiliService
-    bilibili_login: BilibiliLoginService
-    messaging: MessagingService
-    sendpic: SendpicService
-    team_audit: TeamAuditService
-    team_resource: TeamResourceService
-    local_rank: LocalRankService
-    rank_page_refresh: RankPageRefreshService
-    seer: SeerQueryResources
-    pet_config: PetConfigQueryService
-    ai: AiService
-    data_sync: DataSyncService
-    docker_update: DockerUpdateService
-    startup_notice: StartupNoticeService
-    commands: CommandCatalog
-    help_hint: HelpHintService
-    private_extensions: PrivateExtensionCatalog
-    private_extension_runtime: PrivateExtensionRuntime
-
-
 @dataclass(slots=True)
 class Application:
     settings: Settings
@@ -346,6 +318,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         task_owner.create,
     )
     subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
+    player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
     delivery = OneBotDelivery(
         outbound,
         settings.messaging.push_unsubscribe,
@@ -410,6 +383,18 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
+    lucky_skin_window = LuckySkinWindowService(
+        settings.seer.lucky_skin_window,
+        settings.onebot_references,
+        features,
+        headless,
+        seer_database,
+        player_bindings,
+        subscriptions,
+        SqliteLuckySkinWindowCache(
+            cache_paths.runtime_dir() / "lucky_skin_window.sqlite"
+        ),
+    )
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(
         bili_data_dir / "bili_cookie_cache.txt"
@@ -445,7 +430,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions,
         features,
         delivery,
-        bilibili.targets.subscription_options,
+        (
+            bilibili.targets.subscription_options,
+            lucky_skin_window.subscription_options,
+        ),
         _push_message_limiter=push_message_limiter,
         _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
@@ -494,7 +482,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         render_html_template,
         settings.runtime.concurrency.render_max_concurrent,
     )
-    player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
         player_bindings,
@@ -727,6 +714,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions=subscriptions,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
+        lucky_skin_window=lucky_skin_window,
         messaging=messaging,
         sendpic=sendpic,
         team_audit=team_audit,
