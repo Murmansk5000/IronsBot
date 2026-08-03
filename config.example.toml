@@ -877,8 +877,8 @@ cache_ttl_seconds = 300.0
 # restarts. Different lucky-window accounts run one at a time to avoid
 # concurrent dedicated logins.
 # ZH: 每个账号使用固定规则的环境变量建立隔离的短时会话，不占用也不替换公共查询
-# worker。不同橱窗账号严格串行登录和查询；当天首次成功结果会落盘缓存，机器人
-# 重启后也不会重复登录。
+# worker。不同橱窗账号严格串行登录和查询；每个账号当天首次成功结果会落盘缓存，
+# 机器人重启后也不会重复登录。
 enabled = false
 # Default: "00:02"; EN: Daily check time in HH:MM. ZH: 每日检查时间，格式 HH:MM。
 time = "00:02"
