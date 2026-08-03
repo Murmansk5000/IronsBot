@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: MIT
 # ruff: noqa: FBT001, FBT002
 import re
-from enum import IntEnum
 from typing import Literal
 
 from nonebot.adapters import Event
 from nonebot.consts import ENDSWITH_KEY, STARTSWITH_KEY
 from nonebot.rule import Rule
 from nonebot.typing import T_State
+
+from ironsbot.runtime.message_input import MessageInputKind, message_input_context
 
 BOT_COMMAND_ARG_KEY: Literal["_irons_bot_command_arg"] = "_irons_bot_command_arg"
 
@@ -112,94 +113,89 @@ def startswith_or_endswith(
     return Rule(StartswithOrEndswithRule(prefixes, suffixes, ignorecase))
 
 
-class MessageInputRoute(IntEnum):
-    """Message routing precedence shared by command and mention entry points."""
+class _InputStrategy:
+    """Declarative command admission with a narrow, explicit @ contract."""
 
-    DIRECT_COMMAND = 10
-    DIRECT_MENTION = 20
-    REPLY_COMMAND = 30
+    __slots__ = ("allow_member_mentions", "many_members", "name")
 
-
-def message_input_route(event: Event) -> MessageInputRoute:
-    """Classify input once so reply handling always wins over mentions.
-
-    A quoted message is an explicit command context.  Its own ``@`` segments
-    are deliberately ignored by normal command routing; ``mentions_bot`` has
-    the same early-return rule for AI/@ handling.
-    """
-
-    if getattr(event, "reply", None) is not None:
-        return MessageInputRoute.REPLY_COMMAND
-    message = getattr(event, "message", None)
-    if message is not None and any(
-        getattr(segment, "type", None) == "at" for segment in message
-    ):
-        return MessageInputRoute.DIRECT_MENTION
-    return MessageInputRoute.DIRECT_COMMAND
-
-
-class CommandInput:
-    """Match commands from direct text and quoted text, with explicit @ policy."""
-
-    __slots__ = ("allow_direct_mentions",)
-
-    def __init__(self, *, allow_direct_mentions: bool = False) -> None:
-        self.allow_direct_mentions = allow_direct_mentions
+    def __init__(
+        self,
+        name: str,
+        *,
+        allow_member_mentions: bool = False,
+        many_members: bool = False,
+    ) -> None:
+        self.name = name
+        self.allow_member_mentions = allow_member_mentions
+        self.many_members = many_members
 
     def __repr__(self) -> str:
-        return (
-            "CommandInput("
-            f"allow_direct_mentions={self.allow_direct_mentions})"
-        )
+        return self.name
 
     def __eq__(self, other: object) -> bool:
         return (
-            isinstance(other, CommandInput)
-            and self.allow_direct_mentions == other.allow_direct_mentions
+            isinstance(other, _InputStrategy)
+            and self.name == other.name
+            and self.allow_member_mentions == other.allow_member_mentions
+            and self.many_members == other.many_members
         )
 
     def __hash__(self) -> int:
-        return hash(self.allow_direct_mentions)
+        return hash((self.name, self.allow_member_mentions, self.many_members))
 
     async def __call__(self, event: Event, _: T_State) -> bool:
-        route = message_input_route(event)
-        return (
-            self.allow_direct_mentions
-            or route != MessageInputRoute.DIRECT_MENTION
+        context = message_input_context(event)
+        if self.name == "natural_language":
+            return context.kind is MessageInputKind.DIRECT
+        if context.kind is MessageInputKind.BOT_MENTION:
+            return False
+        if context.kind is MessageInputKind.MEMBER_MENTION:
+            return self.allow_member_mentions
+        if context.kind is MessageInputKind.REPLY:
+            return self.allow_member_mentions or not context.has_member_mentions
+        return True
+
+
+def explicit_command() -> Rule:
+    """Accept explicit commands, never direct or quoted ordinary-member @."""
+
+    return Rule(_InputStrategy("explicit_command"))
+
+
+def member_target_command() -> Rule:
+    """Accept commands that explicitly allow one mentioned member target."""
+
+    return Rule(
+        _InputStrategy(
+            "member_target_command",
+            allow_member_mentions=True,
         )
+    )
 
 
-def command_input(*, allow_direct_mentions: bool = False) -> Rule:
-    """Allow direct commands and quoted commands.
+def member_targets_command() -> Rule:
+    """Accept commands that intentionally manage mentioned member targets."""
 
-    A direct message containing any ``@`` is reserved for the mention route.
-    A quoted message has higher priority, so its ``@`` is ignored and only the
-    text newly sent by the user is parsed as a command.
-    """
-
-    return Rule(CommandInput(allow_direct_mentions=allow_direct_mentions))
-
-
-class DirectMessageOnly:
-    """Match natural-language input only when it is not a quoted message."""
-
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "DirectMessageOnly()"
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, DirectMessageOnly)
-
-    def __hash__(self) -> int:
-        return hash(())
-
-    async def __call__(self, event: Event, _: T_State) -> bool:
-        route = message_input_route(event)
-        return route is MessageInputRoute.DIRECT_COMMAND
+    return Rule(
+        _InputStrategy(
+            "member_targets_command",
+            allow_member_mentions=True,
+            many_members=True,
+        )
+    )
 
 
-def direct_message_only() -> Rule:
-    """Allow direct natural-language input while ignoring all quoted messages."""
+def bot_mention() -> Rule:
+    """Accept direct bot mentions only; quoted text remains explicit input."""
 
-    return Rule(DirectMessageOnly())
+    async def _matches(event: Event, _: T_State) -> bool:
+        context = message_input_context(event)
+        return context.kind is MessageInputKind.BOT_MENTION
+
+    return Rule(_matches)
+
+
+def natural_language() -> Rule:
+    """Allow natural language only when it is direct and has no @ segments."""
+
+    return Rule(_InputStrategy("natural_language"))

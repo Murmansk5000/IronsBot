@@ -15,7 +15,7 @@ from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import command_input, startswith_or_endswith
+from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
 from ironsbot.services.seer.team import TeamQueryActor
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -71,7 +71,7 @@ def install(group: SeerMatcherGroup) -> None:
             suffixes=(),
         )
         & Rule(bind(_capture_team_ids, service))
-        & command_input(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_team"),
     )
     matcher.append_handler(

@@ -14,9 +14,10 @@ from nonebot.rule import Rule
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command, member_targets_command
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
@@ -188,7 +189,7 @@ def install(
                 "team_resource.list",
             ),
         ),
-        rule=Rule(is_manage) & command_input(allow_direct_mentions=True),
+        rule=Rule(is_manage) & member_targets_command(),
         priority=priority,
         block=True,
     )
@@ -200,7 +201,7 @@ def install(
         policy=CommandPolicy.exempt(
             "second-level team subscription confirmation"
         ),
-        rule=Rule(is_prompt_choice) & command_input(),
+        rule=Rule(is_prompt_choice) & explicit_command(),
         priority=priority,
         block=True,
     )
@@ -213,7 +214,7 @@ def install(
             "team_resource_query",
             help_ids=("team_resource.query",),
         ),
-        rule=Rule(is_query) & command_input(),
+        rule=Rule(is_query) & explicit_command(),
         priority=priority,
         block=True,
     )
@@ -221,14 +222,7 @@ def install(
 
 
 def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
-    return tuple(
-        dict.fromkeys(
-            int(qq)
-            for segment in event.message
-            if segment.type == "at"
-            and (qq := str(segment.data.get("qq", ""))).isdigit()
-        )
-    )
+    return message_input_context(event).member_user_ids
 
 
 def _subscription_target(

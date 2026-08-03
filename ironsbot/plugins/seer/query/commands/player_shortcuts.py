@@ -16,7 +16,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import member_target_command
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
@@ -31,6 +31,7 @@ from ironsbot.services.seer.player_shortcuts import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies
+from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_service import PlayerService
@@ -68,6 +69,15 @@ async def handle_player_shortcut(
 ) -> None:
     service = dependencies.player
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
+    target = resolve_player_target(
+        event,
+        numeric_player_id=command.player_id,
+        binding_for_user=service.default_player_id,
+    )
+    if target.error is not None:
+        await finish_event_reply(matcher, event, target.error)
+        return
+    command = PlayerShortcutCommand(kind=command.kind, player_id=target.player_id)
 
     async def send_status(message: str) -> None:
         await send_event_reply(matcher, event, message)
@@ -101,9 +111,12 @@ def _shortcut_semantic_request(
     state: T_State,
 ) -> SemanticRequest | None:
     command = state.get(_SHORTCUT_COMMAND_KEY)
-    player_id = getattr(command, "player_id", None)
-    if not isinstance(player_id, int):
-        player_id = service.default_player_id(event.user_id)
+    target = resolve_player_target(
+        event,
+        numeric_player_id=getattr(command, "player_id", None),
+        binding_for_user=service.default_player_id,
+    )
+    player_id = target.player_id
     kind = getattr(command, "kind", None)
     if not isinstance(player_id, int) or not is_valid_player_id(player_id):
         return None
@@ -129,7 +142,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_player_shortcut)
-        & command_input(),
+        & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )

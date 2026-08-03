@@ -37,6 +37,7 @@ def group_message_event(  # noqa: PLR0913
     raw_message: str | None = None,
     to_me: bool = False,
     reply_sender_user_id: int | None = None,
+    reply_message_id: int | None = None,
 ) -> GroupMessageEvent:
     event_message = message or Message(text)
     event = GroupMessageEvent(
@@ -56,11 +57,14 @@ def group_message_event(  # noqa: PLR0913
         to_me=to_me,
     )
     if reply_sender_user_id is not None:
+        resolved_reply_message_id = (
+            message_id - 1 if reply_message_id is None else reply_message_id
+        )
         event.reply = Reply(
             time=0,
             message_type="group",
-            message_id=message_id - 1,
-            real_id=message_id - 1,
+            message_id=resolved_reply_message_id,
+            real_id=resolved_reply_message_id,
             sender=Sender(user_id=reply_sender_user_id),
             message=Message("reply"),
         )
@@ -69,13 +73,14 @@ def group_message_event(  # noqa: PLR0913
     return event
 
 
-def group_at_message_event(
+def group_at_message_event(  # noqa: PLR0913
     *,
     self_id: int = 1,
     user_id: int = 123,
     group_id: int = 456,
     message_id: int = 3,
     reply_sender_user_id: int | None = None,
+    reply_message_id: int | None = None,
 ) -> GroupMessageEvent:
     return GroupMessageEvent(
         time=0,
@@ -95,8 +100,16 @@ def group_at_message_event(
             Reply(
                 time=0,
                 message_type="group",
-                message_id=message_id - 1,
-                real_id=message_id - 1,
+                message_id=(
+                    message_id - 1
+                    if reply_message_id is None
+                    else reply_message_id
+                ),
+                real_id=(
+                    message_id - 1
+                    if reply_message_id is None
+                    else reply_message_id
+                ),
                 sender=Sender(user_id=reply_sender_user_id),
                 message=Message("reply"),
             )

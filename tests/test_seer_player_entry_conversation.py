@@ -200,7 +200,7 @@ def test_shortcut_sends_loading_reply_before_query(
     assert loading_call is not None
     assert "巅峰之战正在查询" in loading_call.args[2]
     service.shortcut.assert_awaited_once_with(
-        state[player_shortcuts._SHORTCUT_COMMAND_KEY],
+        PlayerShortcutCommand(kind="peak", player_id=949105380),
         event.user_id,
         group_id=event.group_id,
     )

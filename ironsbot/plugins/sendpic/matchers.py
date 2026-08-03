@@ -11,7 +11,7 @@ from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS, PicConfig
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import command_input
+from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     InvalidImageArgumentError,
@@ -36,7 +36,7 @@ def install_fixed_images(
             rule=Rule(
                 lambda event: event_is_feature_allowed(features, event, "image")
             )
-            & command_input(),
+            & explicit_command(),
             priority=registry.priority("sendpic"),
             block=True,
         )
@@ -80,7 +80,7 @@ def create_image_command(
         rule=Rule(
             lambda event: event_is_feature_allowed(features, event, "image")
         )
-        & command_input(),
+        & explicit_command(),
     )
     template = config.message_template
 

@@ -264,6 +264,62 @@ def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:
     assert context.matches(owner_direct_exit)
 
 
+def test_group_menu_can_explicitly_allow_a_member_to_exit_their_own_copy() -> None:
+    manager = PromptSessionManager()
+    owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={"owner": owner.user_id},
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id(),
+        group_reply_check=lambda event: event.get_plaintext().strip() in {"1", "0"},
+        handlers=[],
+        menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
+        allow_group_reply_exit=True,
+    )
+    member_exit = group_message_event(
+        "0",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        reply_sender_user_id=1,
+    )
+
+    assert context.matches(member_exit)
+    assert context.is_shared_group_reply(member_exit)
+
+
+@pytest.mark.asyncio
+async def test_detaching_a_shared_reply_keeps_the_owner_conversation_active() -> None:
+    expected_next_ticket = 2
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_4_user_2",
+        owner_user_id=2,
+        state={"owner": 2},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+    ticket = await context.acquire()
+    assert ticket == 1
+    state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+        QUEUED_CONVERSATION_TICKET_STATE_KEY: ticket,
+    }
+
+    detached = manager.detach_queued_conversation(state)
+
+    assert detached is context
+    assert context.active
+    assert state == {}
+    next_ticket = await context.acquire()
+    assert next_ticket == expected_next_ticket
+    context.complete(next_ticket)
+
+
 def test_group_menu_reply_uses_only_the_latest_menu_anchor() -> None:
     manager = PromptSessionManager()
     owner = group_message_event("a", user_id=2, group_id=4, self_id=1)
