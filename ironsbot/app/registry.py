@@ -61,7 +61,6 @@ class PluginRegistryError(ValueError):
 
 OPTIONAL_PRIVATE_FEATURES = frozenset(
     {
-        Feature.LUCKY_SKIN_WINDOW,
         Feature.PLAYER_LINEUP_PRIVATE,
     }
 )
@@ -100,6 +99,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.operations.status.handlers import (
         install as install_server_status,
     )
+    from ironsbot.plugins.seer.lucky_skin_window import (
+        plugin_definition as lucky_skin_window_plugin,
+    )
     from ironsbot.plugins.seer.rank_help import install as install_rank_help
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
@@ -123,6 +125,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
+    lucky_skin_window_service = resources.lucky_skin_window
     seer_resources = resources.seer
     pet_config_service = resources.pet_config
     ai_service = resources.ai
@@ -745,6 +748,12 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 features=features,
                 commands=resources.commands,
             ),
+        ),
+        lucky_skin_window_plugin(
+            lucky_skin_window_service,
+            features,
+            delivery,
+            scheduler,
         ),
     )
     private_definitions = resources.private_extensions.load_plugin_definitions(

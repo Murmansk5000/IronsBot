@@ -132,7 +132,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         store or PushUnsubscribeStore(data_path),
         resources.features,
         resources.delivery,
-        extra_push_options or (lambda _target_type, _target_id: []),
+        (extra_push_options or (lambda _target_type, _target_id: []),),
         _push_message_limiter=partial(
             append_fire_manual_ad_for_target,
             resources.features,
