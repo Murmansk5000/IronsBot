@@ -388,7 +388,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.seer.lucky_skin_window,
         settings.onebot_references,
         features,
-        headless,
+        headless_sessions,
         seer_database,
         player_bindings,
         subscriptions,
@@ -720,6 +720,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         server_status=ServerStatusService(
             headless,
             HttpServerNoticeSource(http_clients.origin),
+            dedicated_sessions=headless_sessions,
         ),
         subscriptions=subscriptions,
         bilibili=bilibili,

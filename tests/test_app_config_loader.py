@@ -63,6 +63,7 @@ DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
 LUCKY_SKIN_WINDOW_OWNER_ID = 123456789
+LUCKY_SKIN_WINDOW_PLAYER_ID = 105023264
 DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
 DEFAULT_PLAYER_REQUEST_INTERVAL_SECONDS = 1.2
 DEFAULT_PLAYER_REQUEST_PAUSE_SECONDS = 60.0
@@ -978,15 +979,22 @@ time = "0:2"
 
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
-player_id = 105023264
+player_id_env = "MUR_ID"
+password_env = "MUR_PASSWORD"
 watched_skin_ids = [1400538]
 """.strip(),
         encoding="utf-8",
     )
 
-    config = load_settings(config_path)
+    env = {"MUR_ID": "105023264", "MUR_PASSWORD": "secret"}
+    config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
     assert config.seer.lucky_skin_window.time == "00:02"
+    assert (
+        config.seer.lucky_skin_window.accounts[0].player_id
+        == LUCKY_SKIN_WINDOW_PLAYER_ID
+    )
+    assert config.seer.lucky_skin_window.accounts[0].password == "secret"
     assert config.onebot_references.resolve_user(
         config.seer.lucky_skin_window.accounts[0].user,
         location="test",
@@ -998,12 +1006,20 @@ watched_skin_ids = [1400538]
 
 [[seer.lucky_skin_window.accounts]]
 user = 123456789
-player_id = 105023265
+player_id_env = "OTHER_ID"
+password_env = "OTHER_PASSWORD"
 """,
         encoding="utf-8",
     )
     with pytest.raises(ValidationError, match="must not repeat a user"):
-        load_settings(config_path)
+        load_settings(
+            config_path,
+            env={
+                **env,
+                "OTHER_ID": "105023265",
+                "OTHER_PASSWORD": "secret-2",
+            },
+        )
 
 
 def test_lucky_skin_window_rejects_duplicate_configured_player_id(
@@ -1021,17 +1037,27 @@ enabled = true
 
 [[seer.lucky_skin_window.accounts]]
 user = "owner"
-player_id = 105023264
+player_id_env = "OWNER_ID"
+password_env = "OWNER_PASSWORD"
 
 [[seer.lucky_skin_window.accounts]]
 user = "friend"
-player_id = 105023264
+player_id_env = "FRIEND_ID"
+password_env = "FRIEND_PASSWORD"
 """.strip(),
         encoding="utf-8",
     )
 
     with pytest.raises(ValidationError, match="must not repeat a player_id"):
-        load_settings(config_path)
+        load_settings(
+            config_path,
+            env={
+                "OWNER_ID": "105023264",
+                "OWNER_PASSWORD": "secret-1",
+                "FRIEND_ID": "105023264",
+                "FRIEND_PASSWORD": "secret-2",
+            },
+        )
 
 
 def test_lucky_skin_window_rejects_invalid_time(tmp_path: Path) -> None:
@@ -1046,6 +1072,51 @@ time = "24:02"
 
     with pytest.raises(ValidationError, match="time must use HH:MM"):
         load_settings(config_path)
+
+
+@pytest.mark.parametrize("missing_env", ["MUR_ID", "MUR_PASSWORD"])
+def test_lucky_skin_window_requires_referenced_credentials(
+    tmp_path: Path,
+    missing_env: str,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id_env = "MUR_ID"
+password_env = "MUR_PASSWORD"
+""".strip(),
+        encoding="utf-8",
+    )
+    env = {"MUR_ID": "105023264", "MUR_PASSWORD": "secret"}
+    env.pop(missing_env)
+
+    with pytest.raises(ValueError, match=missing_env):
+        load_settings(config_path, env=env)
+
+
+def test_lucky_skin_window_rejects_inline_credentials(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.lucky_skin_window.accounts]]
+user = 123456789
+player_id_env = "MUR_ID"
+password_env = "MUR_PASSWORD"
+player_id = 105023264
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"seer\.lucky_skin_window\.accounts\[0\]\.player_id",
+    ):
+        load_settings(
+            config_path,
+            env={"MUR_ID": "105023264", "MUR_PASSWORD": "secret"},
+        )
 
 
 def test_player_request_protection_loads(tmp_path: Path) -> None:

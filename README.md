@@ -147,7 +147,8 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 - 配置位置：`APP_CONFIG_PATH`
 - 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
   `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
-  `HEADLESS_SEER_PASSWORD_<名称>` 对、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+  `HEADLESS_SEER_PASSWORD_<名称>` 对、TOML 引用的自定义账号变量、
+  `SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -160,11 +161,17 @@ HEADLESS_SEER_PASSWORD=
 # 仅在 TOML 配置额外无头工作账号时需要
 HEADLESS_SEER_WORKER_2_USER_ID=
 HEADLESS_SEER_WORKER_2_PASSWORD=
+# 幸运橱窗可在 TOML 中自定义这两个环境变量名。
+MUR_ID=
+MUR_PASSWORD=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
 
 额外的公共查询无头账号通过 `[[operations.headless.workers]]` 声明环境变量名。
+幸运橱窗账号通过 `[[seer.lucky_skin_window.accounts]]` 的 `player_id_env` 与
+`password_env` 声明环境变量名，并使用独立短时会话，不占用公共查询池。
+多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
 所有健康账号会组成可互换的工作池；账号本身和密码仍只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 

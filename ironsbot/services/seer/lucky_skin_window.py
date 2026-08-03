@@ -13,10 +13,6 @@ from zoneinfo import ZoneInfo
 
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
-from ironsbot.services.operations.headless_pool import (
-    HeadlessRequestPriority,
-    headless_request_priority_scope,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -29,7 +25,8 @@ if TYPE_CHECKING:
     from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
-    from ironsbot.services.operations.headless import HeadlessGame, HeadlessService
+    from ironsbot.services.operations.headless import HeadlessGame
+    from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
@@ -89,10 +86,6 @@ class LuckySkinWindowNotConfiguredError(LuckySkinWindowError):
     pass
 
 
-class LuckySkinWindowLoginRequiredError(LuckySkinWindowError):
-    pass
-
-
 class LuckySkinWindowBindingError(LuckySkinWindowError):
     pass
 
@@ -132,7 +125,7 @@ class LuckySkinWindowService:
         config: LuckySkinWindowConfig,
         references: OneBotReferenceResolver,
         features: FeatureService,
-        headless: HeadlessService,
+        headless_sessions: HeadlessSessionFactory,
         data: SeerDataAccess,
         bindings: PlayerBindingStore,
         subscriptions: PushSubscriptionRepository,
@@ -142,7 +135,7 @@ class LuckySkinWindowService:
     ) -> None:
         self._config = config
         self._features = features
-        self._headless = headless
+        self._headless_sessions = headless_sessions
         self._data = data
         self._bindings = bindings
         self._subscriptions = subscriptions
@@ -155,7 +148,7 @@ class LuckySkinWindowService:
             ): account
             for index, account in enumerate(config.accounts)
         }
-        self._locks: dict[int, asyncio.Lock] = {}
+        self._query_lock = asyncio.Lock()
         self._memory: dict[int, tuple[int, ...]] = {}
         self._cache_day: str | None = None
 
@@ -206,20 +199,7 @@ class LuckySkinWindowService:
         account = self._validated_account_for_user(user_id)
         if cached := self._cached_result(account.player_id):
             return cached
-        if self._headless.healthy_worker_count <= 0:
-            raise LuckySkinWindowLoginRequiredError
-        return await self._check(account.player_id, background=False)
-
-    async def login_and_check_for_user(
-        self,
-        user_id: int,
-    ) -> LuckySkinWindowResult:
-        account = self._validated_account_for_user(user_id)
-        if cached := self._cached_result(account.player_id):
-            return cached
-        if self._headless.healthy_worker_count <= 0:
-            await self._headless.login()
-        return await self._check(account.player_id, background=False)
+        return await self._check(account, background=False)
 
     async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
         if not self.enabled:
@@ -238,22 +218,10 @@ class LuckySkinWindowService:
         )
         if not target_ids:
             return
-        if self._headless.healthy_worker_count <= 0:
-            try:
-                await self._headless.login()
-            except Exception:
-                logger.exception("lucky skin window scheduled login failed")
-                for user_id in target_ids:
-                    await self._send_daily_notice(
-                        delivery,
-                        user_id,
-                        "❌ 幸运橱窗数据暂时不可用，请稍后使用“橱窗”查询。",
-                    )
-                return
         for user_id in target_ids:
             account = self._accounts[user_id]
             try:
-                result = await self._check(account.player_id, background=True)
+                result = await self._check(account, background=True)
                 message = self.format_result(result, user_id=user_id)
             except Exception:
                 logger.exception(
@@ -297,27 +265,25 @@ class LuckySkinWindowService:
 
     async def _check(
         self,
-        player_id: int,
+        account: LuckySkinWindowAccountConfig,
         *,
         background: bool,
     ) -> LuckySkinWindowResult:
+        player_id = account.player_id
         day = self.day_key()
         if cached := self._cached_result(player_id):
             return cached
 
-        lock = self._locks.setdefault(player_id, asyncio.Lock())
-        async with lock:
+        # asyncio.Lock wakes waiters in arrival order, so dedicated account
+        # logins never overlap even when scheduled and manual checks coincide.
+        async with self._query_lock:
             if cached := self._cached_result(player_id):
                 return cached
-            priority = (
-                HeadlessRequestPriority.BACKGROUND
-                if background
-                else HeadlessRequestPriority.INTERACTIVE
-            )
-            with headless_request_priority_scope(priority):
-                game = await self._headless.wait_until_available(
-                    timeout=self._config.timeout_seconds,
-                )
+            async with self._headless_sessions.open(
+                user_id=player_id,
+                password=account.password,
+                label="幸运橱窗",
+            ) as game:
                 skin_ids = await _fetch_skin_ids(
                     game,
                     timeout_seconds=self._config.timeout_seconds,
@@ -388,7 +354,7 @@ async def _fetch_skin_ids(
     try:
         with game.operations.track(
             "幸运橱窗检查",
-            source="公共功能",
+            source="幸运橱窗专用会话",
             background=background,
         ):
             _head, payload = await game.send_and_wait(

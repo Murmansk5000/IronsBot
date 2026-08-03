@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date
 from struct import pack
 from types import SimpleNamespace
@@ -28,7 +28,6 @@ from ironsbot.services.operations.headless_activity import HeadlessOperationTrac
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
     LuckySkinWindowBindingError,
-    LuckySkinWindowLoginRequiredError,
     LuckySkinWindowService,
 )
 
@@ -38,7 +37,6 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
-    from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.data import SeerDataAccess
 
 EXPECTED_COMMAND_ID = 45866
@@ -83,21 +81,31 @@ class _Game:
         return None, pack(f"!{len(values)}I", *values)
 
 
-class _Headless:
+class _Sessions:
     def __init__(self, game: _Game) -> None:
         self.game = game
-        self.timeouts: list[float] = []
-        self.healthy_worker_count = 1
-        self.login_calls = 0
+        self.opens: list[tuple[int, str, str]] = []
+        self.open_delay = 0.0
+        self.active = 0
+        self.max_active = 0
 
-    async def wait_until_available(self, *, timeout: float) -> _Game:
-        self.timeouts.append(timeout)
-        return self.game
-
-    async def login(self) -> int:
-        self.login_calls += 1
-        self.healthy_worker_count = 1
-        return 1
+    @asynccontextmanager
+    async def open(
+        self,
+        *,
+        user_id: int,
+        password: str,
+        label: str = "extension",
+    ):
+        self.opens.append((user_id, password, label))
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            if self.open_delay:
+                await asyncio.sleep(self.open_delay)
+            yield self.game
+        finally:
+            self.active -= 1
 
 
 class _Delivery:
@@ -148,32 +156,38 @@ def _service(
     _Game,
     _Delivery,
     SqlitePlayerBindingStore,
-    _Headless,
+    _Sessions,
 ]:
     bindings = SqlitePlayerBindingStore(tmp_path / "qq_state.sqlite")
     bindings.bind(qq_user_id=1001, player_id=90001, player_nick="甲")
     bindings.bind(qq_user_id=1002, player_id=90002, player_nick="乙")
     game = _Game()
-    headless = _Headless(game)
+    sessions = _Sessions(game)
     service = LuckySkinWindowService(
         LuckySkinWindowConfig(
             enabled=True,
             accounts=[
                 LuckySkinWindowAccountConfig(
                     user="owner",
+                    player_id_env="OWNER_PLAYER_ID",
+                    password_env="OWNER_PASSWORD",
                     player_id=90001,
+                    password="owner-secret",
                     watched_skin_ids=[101],
                 ),
                 LuckySkinWindowAccountConfig(
                     user="friend",
+                    player_id_env="FRIEND_PLAYER_ID",
+                    password_env="FRIEND_PASSWORD",
                     player_id=90002,
+                    password="friend-secret",
                     watched_skin_ids=[102],
                 ),
             ],
         ),
         OneBotReferenceResolver({}, {"owner": 1001, "friend": 1002}),
         cast("FeatureService", _Features()),
-        cast("HeadlessService", headless),
+        cast("Any", sessions),
         cast("SeerDataAccess", _Data()),
         bindings,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
@@ -182,7 +196,7 @@ def _service(
         ),
         today=lambda: date(2026, 8, 3),
     )
-    return service, game, _Delivery(), bindings, headless
+    return service, game, _Delivery(), bindings, sessions
 
 
 def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
@@ -251,29 +265,25 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     assert service.subscription_options("private", 1001) == []
 
 
-def test_manual_query_requires_confirmation_before_logging_in(tmp_path: Path) -> None:
-    service, game, _delivery, _bindings, headless = _service(tmp_path)
-    headless.healthy_worker_count = 0
+def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
+    service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    with pytest.raises(LuckySkinWindowLoginRequiredError):
-        asyncio.run(service.check_for_user(1001))
-    assert headless.login_calls == 0
-    assert game.calls == []
+    asyncio.run(service.check_for_user(1001))
 
-    asyncio.run(service.login_and_check_for_user(1001))
-    assert headless.login_calls == 1
+    assert sessions.opens == [
+        (90001, "owner-secret", "幸运橱窗")
+    ]
     assert len(game.calls) == 1
 
 
 def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) -> None:
-    service, game, _delivery, _bindings, headless = _service(tmp_path)
+    service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
     asyncio.run(service.check_for_user(1001))
-    headless.healthy_worker_count = 0
     cached = asyncio.run(service.check_for_user(1001))
 
     assert cached.from_cache
-    assert headless.login_calls == 0
+    assert len(sessions.opens) == 1
     assert len(game.calls) == 1
 
 
@@ -295,11 +305,34 @@ def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
 
 
 def test_daily_notice_logs_in_automatically(tmp_path: Path) -> None:
-    service, game, delivery, _bindings, headless = _service(tmp_path)
-    headless.healthy_worker_count = 0
+    service, game, delivery, _bindings, sessions = _service(tmp_path)
 
     asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
 
-    assert headless.login_calls == 1
+    assert sessions.opens == [
+        (90001, "owner-secret", "幸运橱窗"),
+        (90002, "friend-secret", "幸运橱窗"),
+    ]
     assert len(game.calls) == EXPECTED_DAILY_NOTICES
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
+
+
+def test_different_accounts_never_open_dedicated_sessions_concurrently(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    sessions.open_delay = 0.01
+
+    async def check_both() -> None:
+        await asyncio.gather(
+            service.check_for_user(1001),
+            service.check_for_user(1002),
+        )
+
+    asyncio.run(check_both())
+
+    assert sessions.max_active == 1
+    assert [user_id for user_id, _password, _label in sessions.opens] == [
+        90001,
+        90002,
+    ]

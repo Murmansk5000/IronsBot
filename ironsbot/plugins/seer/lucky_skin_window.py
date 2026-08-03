@@ -16,7 +16,6 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -26,7 +25,6 @@ from ironsbot.core.semantic_requests import (
 )
 from ironsbot.core.time import daily_time_parts
 from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition, PluginHooks
 from ironsbot.runtime.replies import finish_event_reply
@@ -35,7 +33,6 @@ from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowBindingError,
     LuckySkinWindowError,
-    LuckySkinWindowLoginRequiredError,
     LuckySkinWindowNotConfiguredError,
     LuckySkinWindowService,
 )
@@ -48,7 +45,6 @@ if TYPE_CHECKING:
 _COMMANDS = ("幸运橱窗", "橱窗")
 _ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
 _JOB_PREFIX = "lucky_skin_window:"
-_LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
 logger = logging.getLogger(__name__)
 
 
@@ -155,20 +151,6 @@ async def _handle_query(
 ) -> None:
     try:
         result = await service.check_for_user(event.user_id)
-    except LuckySkinWindowLoginRequiredError:
-        await enter_event_reply_conversation(
-            matcher,
-            event,
-            namespace=_LOGIN_CONFIRMATION_NAMESPACE,
-            handlers=[bind_async(_handle_login_confirmation, service)],
-            reply_check=lambda reply: parse_confirmation(reply.get_plaintext())
-            is not None,
-            prompt=(
-                "公共无头账号当前未登录。是否现在登录后查询幸运橱窗？\n"
-                "回复“是”或“y”确认，回复“否”或“n”取消。"
-            ),
-        )
-        return
     except LuckySkinWindowNotConfiguredError:
         await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
         return
@@ -196,47 +178,6 @@ async def _handle_query(
         return
     except Exception:  # noqa: BLE001 - the game protocol must not leak errors
         await finish_event_reply(matcher, event, "❌ 幸运橱窗查询失败，请稍后再试。")
-        return
-    await finish_event_reply(
-        matcher,
-        event,
-        service.format_result(result, user_id=event.user_id),
-    )
-
-
-async def _handle_login_confirmation(
-    service: LuckySkinWindowService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    confirmed = parse_confirmation(event.get_plaintext())
-    if confirmed is None:
-        return
-    if not confirmed:
-        await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
-        return
-    try:
-        result = await service.login_and_check_for_user(event.user_id)
-    except LuckySkinWindowBindingError as error:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再查询。",
-        )
-        return
-    except LuckySkinWindowError:
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 幸运橱窗数据暂时不可用，请稍后再试。",
-        )
-        return
-    except Exception:  # noqa: BLE001 - headless login details must not leak
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 公共无头登录或查询失败，请稍后再试。",
-        )
         return
     await finish_event_reply(
         matcher,

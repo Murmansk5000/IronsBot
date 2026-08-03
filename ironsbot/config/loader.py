@@ -76,6 +76,42 @@ def _inject_secret(
         table[field] = value
 
 
+def _inject_referenced_credentials(
+    entries: object,
+    *,
+    path: str,
+    id_field: str,
+    id_env_field: str,
+    env: Mapping[str, str],
+) -> None:
+    if not isinstance(entries, list):
+        return
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        entry_path = f"{path}[{index}]"
+        for field in (id_field, "password"):
+            if field in entry:
+                env_field = id_env_field if field == id_field else "password_env"
+                message = (
+                    f"{entry_path}.{field} is secret and must be set through "
+                    f"the entry's {env_field} reference"
+                )
+                raise ValueError(message)
+        entry[id_field] = _referenced_secret(
+            entry,
+            env_field=id_env_field,
+            path=entry_path,
+            env=env,
+        )
+        entry["password"] = _referenced_secret(
+            entry,
+            env_field="password_env",
+            path=entry_path,
+            env=env,
+        )
+
+
 def _inject_headless_worker_secrets(
     data: dict[str, Any],
     *,
@@ -87,38 +123,43 @@ def _inject_headless_worker_secrets(
     headless = operations.get("headless")
     if not isinstance(headless, dict):
         return
-    workers = headless.get("workers", [])
-    if not isinstance(workers, list):
-        return
-    for index, worker in enumerate(workers):
-        if not isinstance(worker, dict):
-            continue
-        path = f"operations.headless.workers[{index}]"
-        for field in ("user_id", "password"):
-            if field in worker:
-                message = (
-                    f"{path}.{field} is secret and must be set through "
-                    f"the worker's {field}_env reference"
-                )
-                raise ValueError(message)
-        for field in ("user_id", "password"):
-            worker[field] = _headless_worker_secret(
-                worker,
-                field=field,
-                path=path,
-                env=env,
-            )
+    _inject_referenced_credentials(
+        headless.get("workers", []),
+        path="operations.headless.workers",
+        id_field="user_id",
+        id_env_field="user_id_env",
+        env=env,
+    )
 
 
-def _headless_worker_secret(
-    worker: dict[str, Any],
+def _inject_lucky_skin_window_secrets(
+    data: dict[str, Any],
     *,
-    field: str,
+    env: Mapping[str, str],
+) -> None:
+    seer = data.get("seer")
+    if not isinstance(seer, dict):
+        return
+    lucky_skin_window = seer.get("lucky_skin_window")
+    if not isinstance(lucky_skin_window, dict):
+        return
+    _inject_referenced_credentials(
+        lucky_skin_window.get("accounts", []),
+        path="seer.lucky_skin_window.accounts",
+        id_field="player_id",
+        id_env_field="player_id_env",
+        env=env,
+    )
+
+
+def _referenced_secret(
+    entry: dict[str, Any],
+    *,
+    env_field: str,
     path: str,
     env: Mapping[str, str],
 ) -> str:
-    env_field = f"{field}_env"
-    env_name = str(worker.get(env_field) or "").strip()
+    env_name = str(entry.get(env_field) or "").strip()
     if not env_name:
         message = f"{path}.{env_field} must not be empty"
         raise ValueError(message)
@@ -193,6 +234,7 @@ def load_settings(
             env=values,
         )
     _inject_headless_worker_secrets(data, env=values)
+    _inject_lucky_skin_window_secrets(data, env=values)
     unknown_paths = _unknown_field_paths(data)
     settings = Settings.model_validate(data, extra="ignore")
     _report_ignored_unknown_fields(unknown_paths)
