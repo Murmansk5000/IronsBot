@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ironsbot.services.operations.headless import (
@@ -13,7 +14,7 @@ from ironsbot.services.operations.headless import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AsyncIterator, Callable, Mapping
 
     from ironsbot.config.models.operations import HeadlessConfig
 
@@ -38,6 +39,15 @@ class HeadlessSessionFactory:
         self._client_factory = client_factory
         self._connection = connection
         self._request_interval_seconds = max(request_interval_seconds, 0.0)
+        self._active_sessions: dict[str, int] = {}
+
+    @property
+    def active_session_count(self) -> int:
+        return sum(self._active_sessions.values())
+
+    @property
+    def active_sessions_by_label(self) -> Mapping[str, int]:
+        return MappingProxyType(dict(self._active_sessions))
 
     @asynccontextmanager
     async def open(
@@ -45,10 +55,13 @@ class HeadlessSessionFactory:
         *,
         user_id: int,
         password: str,
+        label: str = "extension",
     ) -> AsyncIterator[HeadlessGame]:
         """Log in a dedicated account once and always disconnect afterwards."""
 
         client = self._client_factory()
+        online = False
+        normalized_label = label.strip() or "extension"
         try:
             game = await client.login(
                 HeadlessLoginRequest(
@@ -66,6 +79,16 @@ class HeadlessSessionFactory:
             )
             if not game.is_logged_in:
                 raise RuntimeError(DEDICATED_SESSION_LOGIN_INCOMPLETE)
+            self._active_sessions[normalized_label] = (
+                self._active_sessions.get(normalized_label, 0) + 1
+            )
+            online = True
             yield game
         finally:
+            if online:
+                remaining = self._active_sessions[normalized_label] - 1
+                if remaining > 0:
+                    self._active_sessions[normalized_label] = remaining
+                else:
+                    self._active_sessions.pop(normalized_label, None)
             client.shutdown()
