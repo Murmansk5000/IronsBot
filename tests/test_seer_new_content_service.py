@@ -116,6 +116,12 @@ def test_new_content_order_places_skills_before_mintmarks() -> None:
     )
 
 
+def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
+    from ironsbot.services.seer.new_content import _current_content_date
+
+    assert _current_content_date("20260730210447", "2026-07-24") == "2026-07-31"
+
+
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:
     with pytest.raises(NewContentIndexUnavailableError):
         _service(tmp_path / "empty.sqlite").snapshot()

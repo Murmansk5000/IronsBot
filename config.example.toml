@@ -772,11 +772,6 @@ mention_initial_max_responses = 3
 # player_lineup_private = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_rank_score = []
 
-# Native opt-in; account mappings are deployment-specific, never inferred from QQ binding.
-[seer.lucky_skin_window]
-enabled = false
-accounts = []
-
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
 timeout_seconds = 30.0

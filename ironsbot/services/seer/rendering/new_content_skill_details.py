@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Skill facts using this snapshot's original payload and effect contracts."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from .custom_pet_models import SkillDict
+from .new_content_models import _ItemDetails
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.new_content import NewContentItem
+
+
+def _skill_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
+    payload = item.payload
+    type_id = _payload_int(payload, "type_id")
+    type_name = ""
+    if type_id > 0:
+        with data.get(data.type_combination, type_id) as skill_type:
+            if skill_type is not None:
+                type_name = str(skill_type.name)
+    category_name = _SKILL_CATEGORY_NAMES.get(
+        _payload_int(payload, "category_id"),
+        "未知分类",
+    )
+    must_hit = bool(payload.get("must_hit", False))
+    raw_crit_rate = payload.get("crit_rate")
+    crit_rate = (
+        _payload_int(payload, "crit_rate")
+        if isinstance(raw_crit_rate, int | float | str)
+        else None
+    )
+    skill = SkillDict(
+        id=item.entity_id,
+        name=item.name,
+        type_id=type_id,
+        type_name=type_name,
+        category_id=_payload_int(payload, "category_id"),
+        category_name=category_name,
+        power=_payload_int(payload, "power"),
+        max_pp=_payload_int(payload, "max_pp"),
+        accuracy="必中" if must_hit else _payload_int(payload, "accuracy"),
+        crit_rate=crit_rate,
+        priority=_payload_int(payload, "priority"),
+        must_hit=must_hit,
+        info=str(payload.get("info", "")).strip() or None,
+        learning_level=None,
+        is_special=False,
+        is_advanced=False,
+        is_fifth=False,
+        effects=[],
+        activation_item=None,
+        friend_bonus=False,
+        hide_effect_desc=None,
+    )
+    return _ItemDetails(
+        metadata="",
+        description=_skill_related_pets(payload.get("pets")),
+        type_id=type_id or None,
+        type_name=type_name,
+        skill=skill,
+    )
+
+
+_SKILL_CATEGORY_NAMES = {
+    1: "物理攻击",
+    2: "特殊攻击",
+    4: "属性技能",
+}
+
+
+def _payload_int(payload: dict[str, object], key: str) -> int:
+    value = payload.get(key, 0)
+    if not isinstance(value, int | float | str):
+        return 0
+    try:
+        return int(value)
+    except ValueError:
+        return 0
+
+
+def _skill_related_pets(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    names = [
+        str(pet.get("name", "")).strip()
+        for pet in value
+        if isinstance(pet, dict) and str(pet.get("name", "")).strip()
+    ]
+    return f"关联精灵\uff1a{'、'.join(names)}" if names else ""
