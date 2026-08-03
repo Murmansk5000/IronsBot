@@ -710,6 +710,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         server_status=ServerStatusService(
             headless,
             HttpServerNoticeSource(http_clients.origin),
+            dedicated_sessions=headless_sessions,
         ),
         subscriptions=subscriptions,
         bilibili=bilibili,

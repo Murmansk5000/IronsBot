@@ -10,6 +10,7 @@ from ironsbot.services.operations.server_status import ServerStatusService
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.operations.server_status import ServerNoticeSource
 
 
@@ -19,6 +20,8 @@ class FakeHeadless:
         self.login_result = login_result
         self.available: list[tuple[str, int | None]] = []
         self.unavailable: list[tuple[str, str]] = []
+        self.healthy_worker_count = 2 if connected else 0
+        self.configured_worker_count = 3
 
     def get_game(self) -> object:
         if not self.connected:
@@ -38,7 +41,17 @@ class FakeHeadless:
 
     async def login(self) -> int:
         self.connected = True
+        self.healthy_worker_count = 1
         return self.login_result
+
+
+class FakeDedicatedSessions:
+    def __init__(self) -> None:
+        self.active_session_count = 2
+        self.active_sessions_by_label = {
+            "幸运橱窗": 1,
+            "extension": 1,
+        }
 
 
 class FakeNotices:
@@ -97,3 +110,18 @@ async def test_admin_status_reconnects_before_querying_notice() -> None:
     result = await service(headless, FakeNotices()).query_admin()
     assert "重连结果：已登录米米号 456" in result.message
     assert headless.available[-1] == ("/开服查询重连", 456)
+
+
+@pytest.mark.asyncio
+async def test_headless_instance_status_reports_public_and_dedicated_counts() -> None:
+    headless = FakeHeadless(connected=True)
+    result = await ServerStatusService(
+        cast("HeadlessService", headless),
+        cast("ServerNoticeSource", FakeNotices()),
+        dedicated_sessions=cast("HeadlessSessionFactory", FakeDedicatedSessions()),
+    ).query_headless_instances()
+
+    assert "公共查询池：2/3 在线" in result.message
+    assert "临时专用会话：2 在线" in result.message
+    assert "当前合计：4 在线" in result.message
+    assert "幸运橱窗 1" in result.message
