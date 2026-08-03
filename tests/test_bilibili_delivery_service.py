@@ -225,7 +225,7 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
             sent.append({"message": message, **kwargs})
 
     subscriptions = PushUnsubscribeStore(
-        tmp_path / "push_unsubscriptions.sqlite",
+        tmp_path / "push_unsubscriptions.sqlite"
     )
     subscription_key = bili_push_subscription_key(1310714247)
     subscriptions.unsubscribe_target(
