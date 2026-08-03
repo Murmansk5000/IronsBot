@@ -10,7 +10,8 @@ from ironsbot.services.bilibili.parser import (
     dynamic_content,
     dynamic_image_urls,
     dynamic_url,
-    item_author_label,
+    item_author_mid,
+    item_author_name,
 )
 
 
@@ -19,14 +20,16 @@ def build_dynamic_link_message(
     pub_ts: int,
 ) -> Message | None:
     try:
+        author_name = item_author_name(item)
+        author_mid = item_author_mid(item)
         time_str = datetime.fromtimestamp(
             pub_ts,
             tz=timezone.utc,
         ).astimezone().strftime("%Y-%m-%d %H:%M:%S")
         return Message(
             MessageSegment.text(
-                "🔔 【B站动态更新】\n"
-                f"👤 账号：{item_author_label(item)}\n"
+                f"🔔 【{author_name}】发布了一条B站动态\n"
+                f"👤 UID：{author_mid or '未知'}\n"
                 f"⏰ 发布时间：{time_str}\n\n"
                 f"传送门：{dynamic_url(item)}"
             )

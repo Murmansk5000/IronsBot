@@ -161,10 +161,9 @@ def dynamic_text_pieces(item: dict[str, Any]) -> list[str]:
 
 
 def dynamic_content(item: dict[str, Any]) -> str:
-    content = "\n".join(dynamic_text_pieces(item)).strip()
-    if content:
-        return content
-    return f"{item_author_name(item)}发布了一条动态\n回复“动态”查询历史动态"
+    """Return only text actually present in the dynamic itself."""
+
+    return "\n".join(dynamic_text_pieces(item)).strip()
 
 
 def dynamic_brief(item: dict[str, Any]) -> str:

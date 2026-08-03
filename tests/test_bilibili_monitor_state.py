@@ -15,6 +15,7 @@ from ironsbot.core.bilibili import (
     BiliStorageConfig,
 )
 from ironsbot.core.features import FeatureConfig, FeatureService
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -227,6 +228,16 @@ def test_group_query_still_requires_bili_feature() -> None:
         user_id=1,
         group_id=987654321,
     ) == []
+
+
+def test_history_hint_requires_target_query_feature() -> None:
+    service = _target_service(
+        BiliConfig(),
+        _features({"987654321": ["bili_query"], "876543210": ["bili_push"]}),
+    )
+
+    assert service.can_target_query_history(MessageTarget("group", 987654321))
+    assert not service.can_target_query_history(MessageTarget("group", 876543210))
 
 
 def test_group_query_uses_group_subscription_rule() -> None:
