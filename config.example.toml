@@ -891,13 +891,17 @@ timeout_seconds = 15.0
 # Add one table per QQ user allowed to query and receive a configured account's
 # window. `user` accepts a [features.user_aliases] alias or QQ ID. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must
-# bind that same player ID. `watched_skin_ids` only adds a ★ marker. The user
-# also needs lucky_skin_window in their user policy; group use additionally
-# needs it in the group policy.
+# bind that same player ID. `watched_skin_ids` accepts either the skin table ID
+# or its 140xxxx resource ID and seeds the user's watch list only once. Users
+# can later manage that list with QQ commands. Watching only adds a ★ marker.
+# The user also needs lucky_skin_window in their user policy; group use
+# additionally needs it in the group policy.
 # ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；
 # account 引用 seer.player_accounts 中的 name、aliases 或米米号，用户必须绑定
-# 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 只标记
-# ★ 关注。用户策略还需启用 lucky_skin_window；群聊还需要在该群策略中启用。
+# 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 可填写
+# 皮肤表 ID 或 140xxxx 资源 ID，仅在首次使用时初始化关注列表；之后可通过 QQ 指令
+# 修改。关注只标记 ★，不会过滤每日四个皮肤。用户策略还需启用
+# lucky_skin_window；群聊还需要在该群策略中启用。
 #
 # [[seer.lucky_skin_window.accounts]]
 # user = "owner"

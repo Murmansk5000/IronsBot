@@ -7,9 +7,13 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import partial
 from struct import unpack
 from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
+
+from seerapi_models import PetSkinORM
+from sqlmodel import Session, col, select
 
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
@@ -75,6 +79,12 @@ class LuckySkinWindowCache(Protocol):
     ) -> tuple[int, ...]: ...
 
 
+class LuckySkinWatchPreferenceStore(Protocol):
+    def get(self, qq_user_id: int) -> tuple[int, ...] | None: ...
+
+    def set(self, qq_user_id: int, skin_ids: tuple[int, ...]) -> None: ...
+
+
 class LuckySkinWindowError(RuntimeError):
     @classmethod
     def packet_request_failed(cls) -> LuckySkinWindowError:
@@ -106,6 +116,7 @@ class LuckySkinWindowPayloadError(LuckySkinWindowError):
 @dataclass(frozen=True, slots=True)
 class LuckySkinWindowOffer:
     skin_id: int
+    resource_id: int
     name: str
     watched: bool
 
@@ -116,6 +127,13 @@ class LuckySkinWindowResult:
     player_id: int
     offers: tuple[LuckySkinWindowOffer, ...]
     from_cache: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LuckySkinWatchItem:
+    skin_id: int
+    resource_id: int
+    name: str
 
 
 class LuckySkinWindowService:
@@ -129,6 +147,7 @@ class LuckySkinWindowService:
         data: SeerDataAccess,
         bindings: PlayerBindingStore,
         subscriptions: PushSubscriptionRepository,
+        watch_preferences: LuckySkinWatchPreferenceStore,
         cache: LuckySkinWindowCache,
         *,
         today: Callable[[], date] | None = None,
@@ -139,6 +158,7 @@ class LuckySkinWindowService:
         self._data = data
         self._bindings = bindings
         self._subscriptions = subscriptions
+        self._watch_preferences = watch_preferences
         self._cache = cache
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
         self._accounts = {
@@ -201,6 +221,68 @@ class LuckySkinWindowService:
                 ),
             )
         ]
+
+    def watched_skins(self, user_id: int) -> tuple[LuckySkinWatchItem, ...]:
+        skin_ids = self._watched_skin_ids(user_id)
+        if not skin_ids:
+            return ()
+        with self._data.get_many(self._data.pet_skin, set(skin_ids)) as skins:
+            return tuple(
+                _watch_item(skins.get(skin_id), skin_id)
+                for skin_id in skin_ids
+            )
+
+    def resolve_watch_candidates(
+        self,
+        user_id: int,
+        arg: str,
+    ) -> tuple[LuckySkinWatchItem, ...]:
+        self._validated_account_for_user(user_id)
+        normalized = arg.strip()
+        if not normalized:
+            return ()
+        if normalized.isdigit():
+            return self._skin_items_for_references((int(normalized),))
+        with self._data.resolve(self._data.pet_skin, normalized) as skins:
+            return tuple(
+                LuckySkinWatchItem(
+                    skin_id=int(skin.id),
+                    resource_id=int(skin.resource_id),
+                    name=str(skin.name),
+                )
+                for skin in sorted(skins, key=lambda item: int(item.id))
+            )
+
+    def add_watched_skin(self, user_id: int, skin_id: int) -> bool:
+        current = self._watched_skin_ids(user_id)
+        if skin_id in current:
+            return False
+        self._watch_preferences.set(user_id, (*current, skin_id))
+        return True
+
+    def remove_watched_skin(self, user_id: int, skin_id: int) -> bool:
+        current = self._watched_skin_ids(user_id)
+        if skin_id not in current:
+            return False
+        self._watch_preferences.set(
+            user_id,
+            tuple(value for value in current if value != skin_id),
+        )
+        return True
+
+    def clear_watched_skins(self, user_id: int) -> bool:
+        current = self._watched_skin_ids(user_id)
+        self._watch_preferences.set(user_id, ())
+        return bool(current)
+
+    def reset_watched_skins(
+        self,
+        user_id: int,
+    ) -> tuple[LuckySkinWatchItem, ...]:
+        self._validated_account_for_user(user_id)
+        defaults = self._default_watched_skin_ids(user_id)
+        self._watch_preferences.set(user_id, defaults)
+        return self.watched_skins(user_id)
 
     async def check_for_user(self, user_id: int) -> LuckySkinWindowResult:
         account = self._validated_account_for_user(user_id)
@@ -336,25 +418,99 @@ class LuckySkinWindowService:
         *,
         from_cache: bool,
     ) -> LuckySkinWindowResult:
-        with self._data.get_many(self._data.pet_skin, set(skin_ids)) as skins:
-            offers = tuple(
-                LuckySkinWindowOffer(
-                    skin_id=skin_id,
-                    name=_skin_name(skins.get(skin_id), skin_id),
-                    watched=False,
-                )
-                for skin_id in skin_ids
+        resolved = self._skin_items_by_reference(skin_ids)
+        offers = tuple(
+            LuckySkinWindowOffer(
+                skin_id=(item.skin_id if item is not None else reference),
+                resource_id=(item.resource_id if item is not None else 0),
+                name=(item.name if item is not None else f"皮肤 {reference}"),
+                watched=False,
             )
+            for reference in skin_ids
+            for item in (resolved.get(reference),)
+        )
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(self, result: LuckySkinWindowResult, *, user_id: int) -> str:
-        subscription, _account = self._accounts[user_id]
-        watched_ids = frozenset(subscription.watched_skin_ids)
+        watched_ids = frozenset(self._watched_skin_ids(user_id))
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
         for index, offer in enumerate(result.offers, start=1):
             marker = " ★ 关注" if offer.skin_id in watched_ids else ""
-            lines.append(f"{index}. {offer.name}（皮肤ID：{offer.skin_id}）{marker}")
+            identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
+            lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
         return "\n".join(lines)
+
+    def _watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
+        self._validated_account_for_user(user_id)
+        stored = self._watch_preferences.get(user_id)
+        if stored is not None:
+            return stored
+        defaults = self._default_watched_skin_ids(user_id)
+        self._watch_preferences.set(user_id, defaults)
+        return defaults
+
+    def _default_watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
+        subscription, _account = self._accounts[user_id]
+        references = tuple(subscription.watched_skin_ids)
+        if not references:
+            return ()
+        resolved = self._skin_items_by_reference(references)
+        missing = tuple(value for value in references if value not in resolved)
+        if missing:
+            logger.warning(
+                "lucky skin watch defaults could not be resolved: "
+                "user_id=%s references=%s",
+                user_id,
+                missing,
+            )
+        return tuple(
+            dict.fromkeys(
+                resolved[reference].skin_id
+                for reference in references
+                if reference in resolved
+            )
+        )
+
+    def _skin_items_for_references(
+        self,
+        references: tuple[int, ...],
+    ) -> tuple[LuckySkinWatchItem, ...]:
+        resolved = self._skin_items_by_reference(references)
+        return tuple(
+            resolved[reference]
+            for reference in references
+            if reference in resolved
+        )
+
+    def _skin_items_by_reference(
+        self,
+        references: tuple[int, ...],
+    ) -> dict[int, LuckySkinWatchItem]:
+        if not references:
+            return {}
+        with self._data.get_many(self._data.pet_skin, set(references)) as by_id:
+            resolved = {
+                reference: _watch_item(skin, reference)
+                for reference in references
+                if (skin := by_id.get(reference)) is not None
+            }
+        unresolved = frozenset(
+            reference for reference in references if reference not in resolved
+        )
+        if not unresolved:
+            return resolved
+        with self._data.query(
+            partial(_load_skin_records_by_resource_id, references=unresolved)
+        ) as skins:
+            by_resource_id = {int(skin.resource_id): skin for skin in skins}
+            resolved.update(
+                {
+                    reference: _watch_item(skin, reference)
+                    for reference in unresolved
+                    if (skin := by_resource_id.get(reference)) is not None
+                }
+            )
+        return resolved
 
 
 async def _fetch_skin_ids(
@@ -398,6 +554,27 @@ def _required_password(account: PlayerAccount) -> str:
     return account.password
 
 
-def _skin_name(skin: object | None, skin_id: int) -> str:
-    name = getattr(skin, "name", "")
-    return str(name) if isinstance(name, str) and name else f"皮肤 {skin_id}"
+def _load_skin_records_by_resource_id(
+    session: Session,
+    *,
+    references: frozenset[int],
+) -> tuple[PetSkinORM, ...]:
+    if not references:
+        return ()
+    statement = select(PetSkinORM).where(col(PetSkinORM.resource_id).in_(references))
+    return tuple(session.exec(statement).all())
+
+
+def _watch_item(skin: object | None, fallback_id: int) -> LuckySkinWatchItem:
+    if skin is None:
+        return LuckySkinWatchItem(fallback_id, 0, f"皮肤 {fallback_id}")
+    skin_id = int(getattr(skin, "id", fallback_id))
+    resource_id = int(getattr(skin, "resource_id", 0) or 0)
+    name = str(getattr(skin, "name", "") or f"皮肤 {skin_id}")
+    return LuckySkinWatchItem(skin_id, resource_id, name)
+
+
+def _skin_identifiers(skin_id: int, resource_id: int) -> str:
+    if resource_id > 0 and resource_id != skin_id:
+        return f"皮肤ID：{skin_id}，资源ID：{resource_id}"
+    return f"皮肤ID：{skin_id}"
