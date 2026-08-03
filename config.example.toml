@@ -841,11 +841,13 @@ cache_ttl_seconds = 300.0
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。
-# When no public session is healthy, the command asks its user to confirm login
-# first. The scheduled check at the configured time logs in automatically when
-# at least one eligible subscriber needs a notice.
-# ZH: 公共无头未登录时，口令会先要求发起用户确认登录；配置时间的定时检查会在
-# 至少有一位符合条件的订阅用户时自动登录。
+# Every account opens an isolated short-lived session from its named environment
+# variables. It never occupies or replaces a public-query worker. A successful
+# result is cached for the day, including across bot restarts. Different lucky-
+# window accounts run one at a time to avoid concurrent dedicated logins.
+# ZH: 每个账号使用其指定环境变量建立隔离的短时会话，不占用也不替换公共查询
+# worker。不同橱窗账号严格串行登录和查询；当天首次成功结果会落盘缓存，机器人
+# 重启后也不会重复登录。
 enabled = false
 # Default: "00:02"; EN: Daily check time in HH:MM. ZH: 每日检查时间，格式 HH:MM。
 time = "00:02"
@@ -854,20 +856,20 @@ timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
 # Add one table per QQ user allowed to query and receive this player's window.
-# `user` accepts a [features.user_aliases] alias or QQ ID. The user must bind
-# exactly the same `player_id`; every configured player_id must be unique, and
-# no password belongs in TOML. Any healthy public headless session reads that
-# player's daily result. `watched_skin_ids` only adds a ★ marker to that user's
-# notice. The user also needs lucky_skin_window
+# `user` accepts a [features.user_aliases] alias or QQ ID. `player_id_env` and
+# `password_env` are freely chosen environment-variable names; the credentials
+# themselves must not be written in TOML. The user must bind the same player ID.
+# `watched_skin_ids` only adds a ★ marker. The user also needs lucky_skin_window
 # in their user policy; group use additionally needs it in the group policy.
 # ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号，
-# 必须已绑定完全相同且唯一的 player_id；TOML 不保存密码。任一健康公共无头会话都会
-# 读取该米米号当天的橱窗结果；watched_skin_ids 只为该用户标记 ★ 关注。用户策略还需启用
-# lucky_skin_window；群聊还需要在该群策略中启用。
+# player_id_env 与 password_env 可自定义环境变量名，真实米米号和密码不得写入 TOML；
+# 用户必须绑定该环境变量解析出的米米号。watched_skin_ids 只标记 ★ 关注。用户策略还需
+# 启用 lucky_skin_window；群聊还需要在该群策略中启用。
 #
 # [[seer.lucky_skin_window.accounts]]
 # user = "owner"
-# player_id = 105023264
+# player_id_env = "MUR_ID"
+# password_env = "MUR_PASSWORD"
 # watched_skin_ids = [1400538, 1400761]
 
 # [seer.player.lineup] moved to operations.private_extensions.settings.player_lineup

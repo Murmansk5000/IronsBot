@@ -58,11 +58,20 @@ def test_dedicated_session_uses_isolated_client_and_never_reconnects() -> None:
     )
 
     async def run() -> None:
-        async with factory.open(user_id=USER_ID, password="secret") as game:
+        assert factory.active_session_count == 0
+        async with factory.open(
+            user_id=USER_ID,
+            password="secret",
+            label="lucky_skin_window",
+        ) as game:
             assert game.user_id == USER_ID
+            assert factory.active_session_count == 1
+            assert factory.active_sessions_by_label == {"lucky_skin_window": 1}
 
     asyncio.run(run())
 
+    assert factory.active_session_count == 0
+    assert factory.active_sessions_by_label == {}
     assert client.shutdown_calls == 1
     request = client.request
     assert request is not None

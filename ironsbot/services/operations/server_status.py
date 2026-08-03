@@ -15,6 +15,7 @@ from ironsbot.services.operations.headless_errors import (
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.headless_session import HeadlessSessionFactory
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 DEFAULT_UPDATE_WEEKDAY = 4
@@ -58,9 +59,37 @@ class ServerStatusService:
         self,
         headless: HeadlessService,
         notices: ServerNoticeSource,
+        *,
+        dedicated_sessions: HeadlessSessionFactory | None = None,
     ) -> None:
         self._headless = headless
         self._notices = notices
+        self._dedicated_sessions = dedicated_sessions
+
+    async def query_headless_instances(self) -> ServerStatusResult:
+        public_online = self._headless.healthy_worker_count
+        public_configured = self._headless.configured_worker_count
+        dedicated_online = (
+            self._dedicated_sessions.active_session_count
+            if self._dedicated_sessions is not None
+            else 0
+        )
+        lines = [
+            "🛠【无头实例状态】",
+            f"公共查询池：{public_online}/{public_configured} 在线",
+            f"临时专用会话：{dedicated_online} 在线",
+            f"当前合计：{public_online + dedicated_online} 在线",
+        ]
+        if self._dedicated_sessions is not None:
+            labels = self._dedicated_sessions.active_sessions_by_label
+            if labels:
+                details = "、".join(
+                    f"{label} {count}"
+                    for label, count in sorted(labels.items())
+                )
+                lines.append(f"专用会话明细：{details}")
+        lines.append("临时专用会话会在对应查询完成后立即下线。")
+        return ServerStatusResult(message="\n".join(lines))
 
     async def query_normal(self) -> ServerStatusResult:
         now = datetime.now(LOCAL_TZ)

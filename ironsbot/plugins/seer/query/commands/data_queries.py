@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from nonebot.adapters import (
     Event,  # noqa: TC002 - NoneBot resolves callback annotations
 )
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import (
     T_State,  # noqa: TC002 - NoneBot resolves callback annotations
@@ -52,6 +53,7 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentSnapshot,
+    format_new_content_item_description,
     new_content_category_unavailable_message,
     new_content_unavailable_message,
 )
@@ -72,6 +74,7 @@ if TYPE_CHECKING:
 NEW_CONTENT_SNAPSHOT_KEY = "new_content_snapshot"
 NEW_CONTENT_SERVICES_KEY = "new_content_services"
 NEW_CONTENT_MENU_LAYOUT_KEY = "new_content_menu_layout"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,6 +287,7 @@ async def _start_new_content(  # noqa: PLR0913
         mintmark=group.resources.mintmark,
         equipment=group.resources.equipment,
         autocard=group.resources.autocard,
+        menu_renderer=group.resources.new_content_menu,
     )
     state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
     await enter_prompt(
@@ -293,6 +297,13 @@ async def _start_new_content(  # noqa: PLR0913
         prompt,
         _resolve_new_content_selection,
         _is_new_content_input,
+        prompt_message=await _render_content_prompt(
+            prompt,
+            snapshot,
+            layout,
+            group.resources.new_content_menu,
+            event,
+        ),
     )
 
 
@@ -431,41 +442,7 @@ def _focus_new_content_category(
 
 
 def _item_description(item: NewContentItem) -> str:
-    change = "修改" if item.change_kind == "modified" else "新增"
-    if item.category == "achievement":
-        point = int(item.payload.get("point", 0))
-        titles = item.payload.get("titles", [])
-        title_text = f"｜称号：{titles[0].get('name', '')}" if titles else ""
-        return f"{change}｜{item.entity_id}｜{point} 点{title_text}"
-    if item.category == "pet_skin":
-        pet_name = str(item.payload.get("pet_name", ""))
-        return f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
-    if item.category == "skill":
-        pets = item.payload.get("pets", [])
-        names = (
-            "、".join(
-                str(pet.get("name", "")).strip()
-                for pet in pets
-                if isinstance(pet, dict) and str(pet.get("name", "")).strip()
-            )
-            if isinstance(pets, list)
-            else ""
-        )
-        suffix = f"｜{names}" if names else ""
-        return f"{change}｜{item.entity_id}{suffix}"
-    if item.category in {"autocard_card", "autocard_role"}:
-        kind = "角色" if item.category == "autocard_role" else "卡牌"
-        return f"{change}｜{item.entity_id}｜{kind}"
-    if item.category == "autocard_sanctuary_effect":
-        sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
-        if not sanctuary:
-            sanctuary = f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
-        pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
-        pet = f"｜精灵王：{pet_name}" if pet_name else ""
-        unlock_round = int(item.payload.get("unlock_round", 0))
-        phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
-        return f"{change}｜{sanctuary}{pet}｜{phase}"
-    return f"{change}｜{item.entity_id}"
+    return format_new_content_item_description(item)
 
 
 async def _resolve_new_content_selection(
@@ -501,8 +478,52 @@ async def _replace_prompt(
     prompt: Prompt[_NewContentAction],
 ) -> None:
     matcher.state[PROMPT_STATE_KEY] = prompt
-    send_result = await matcher.send(prompt.build_event_message(event))
+    snapshot = matcher.state.get(NEW_CONTENT_SNAPSHOT_KEY)
+    layout = matcher.state.get(NEW_CONTENT_MENU_LAYOUT_KEY)
+    services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
+    if not isinstance(snapshot, NewContentSnapshot) or not isinstance(
+        layout, _NewContentMenuLayout
+    ) or not isinstance(services, _NewContentServices):
+        await matcher.finish("新增内容会话已失效，请重新发送指令。")
+        return
+    send_result = await matcher.send(
+        await _render_content_prompt(
+            prompt,
+            snapshot,
+            layout,
+            services.menu_renderer,
+            event,
+        )
+    )
     update_queued_menu_anchor(matcher, event, send_result)
+
+
+async def _render_content_prompt(
+    prompt: Prompt[_NewContentAction],
+    snapshot: NewContentSnapshot,
+    layout: _NewContentMenuLayout,
+    renderer: Any,
+    event: Event,
+) -> str | Message:
+    """Render only this menu as an image; preserve text as a resilient fallback."""
+
+    try:
+        image = await renderer(
+            snapshot,
+            layout.display_categories,
+            layout.root_categories,
+            layout.expanded_categories,
+        )
+    except Exception:
+        logger.exception("new content menu rendering failed; falling back to text")
+        return prompt.build_event_message(event)
+
+    message = Message()
+    if isinstance(event, GroupMessageEvent):
+        message += MessageSegment.at(event.user_id)
+        message += MessageSegment.text(" ")
+    message += MessageSegment.image(image)
+    return message
 
 
 async def _send_item_detail(
@@ -702,3 +723,4 @@ class _NewContentServices:
     mintmark: Any
     equipment: Any
     autocard: Any
+    menu_renderer: Any

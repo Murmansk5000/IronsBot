@@ -248,6 +248,9 @@ HEADLESS_SEER_PASSWORD=
 # Add only when [[operations.headless.workers]] references these names.
 HEADLESS_SEER_WORKER_2_USER_ID=
 HEADLESS_SEER_WORKER_2_PASSWORD=
+# Names are examples; use the names referenced by seer.lucky_skin_window.accounts.
+MUR_ID=
+MUR_PASSWORD=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -261,6 +264,7 @@ GITHUB_WORKFLOW_TOKEN=
 | `HEADLESS_SEER_PASSWORD` | Optional Seer account password as an MD5 value. |
 | `HEADLESS_SEER_WORKER_*_USER_ID` | Additional interchangeable query account referenced by `[[operations.headless.workers]]`. |
 | `HEADLESS_SEER_WORKER_*_PASSWORD` | Password for the corresponding additional query account. |
+| Custom lucky-window variables | Player ID/password names referenced by `player_id_env` and `password_env`; these accounts use isolated short-lived sessions. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
@@ -301,7 +305,7 @@ Feature names are used in `[features.group_policy]` and
 | `bili` | `bili_query` + `bili_push`. |
 | `seer_activity_query` | In-game activity and ending-soon activity queries. |
 | `seer_activity_push` | In-game activity ending reminders. |
-| `activity` / `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
+| `seer_activity` | `seer_activity_query` + `seer_activity_push`. |
 | `server_status_query` | Server status / open-server query. |
 | `server_status_push` | Server status broadcast pushes. |
 | `server_status` | `server_status_query` + `server_status_push`. |

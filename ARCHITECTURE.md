@@ -329,11 +329,14 @@ HEADLESS_SEER_USER_ID
 HEADLESS_SEER_PASSWORD
 SENDPIC_CNB_TOKEN
 GITHUB_WORKFLOW_TOKEN
+<credential names referenced by *_env fields in TOML>
 ```
 
-The loader explicitly maps those variables into the single `Settings` model.
-No component reads `os.environ`, NoneBot driver config, or dotenv files after
-bootstrap.
+The loader explicitly maps fixed variables and credential references such as
+`user_id_env`, `player_id_env`, and `password_env` into the single `Settings`
+model. No component reads `os.environ`, NoneBot driver config, or dotenv files
+after bootstrap. A new account credential must reuse this loader mechanism;
+services and plugins must not read environment variables directly.
 
 `config.example.toml` and `.env.example` are the only tracked configuration
 templates. Development and production use the same schema. Docker Compose,

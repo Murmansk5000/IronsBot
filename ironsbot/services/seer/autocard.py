@@ -64,6 +64,10 @@ class AutocardEntry:
     name: str
     text: str
     image_url: str
+    description: str = ""
+    skill_name: str = ""
+    skill_text: str = ""
+    skill_upgrade: str = ""
 
 
 @dataclass(slots=True, frozen=True)
@@ -391,10 +395,32 @@ def _build_entry(
     kind: str,
     item: dict[str, Any],
 ) -> AutocardEntry:
+    is_role = kind == "role"
     return AutocardEntry(
         kind=kind,
         item_id=_int_field(item, "id"),
         name=_entry_name(item),
         text=_format_autocard_entry(dataset, kind, item),
         image_url=_autocard_image_url(kind, item),
+        description=_clean_text(
+            _field(item, "desc" if is_role else "des", default="")
+        ),
+        skill_name=(
+            _clean_text(_field(item, "skillName", "skill_name", default=""))
+            if is_role
+            else ""
+        ),
+        skill_text=_clean_text(
+            _field(
+                item,
+                "skillTxt" if is_role else "cardTxt",
+                "skill_txt" if is_role else "card_txt",
+                default="",
+            )
+        ),
+        skill_upgrade=(
+            _clean_text(_field(item, "skillUpgrade", "skill_upgrade", default=""))
+            if is_role
+            else ""
+        ),
     )
