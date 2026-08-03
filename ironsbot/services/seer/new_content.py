@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -65,6 +67,8 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "autocard_role": "新增群星牌角色",
     "autocard_sanctuary_effect": "新增群星牌圣域",
 }
+_CONFIG_VERSION_DATE_LENGTH = 8
+_CONFIG_VERSION_TIMESTAMP_LENGTH = 14
 
 
 class NewContentIndexUnavailableError(RuntimeError):
@@ -259,10 +263,43 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
     return NewContentSnapshot(
         baseline_established=bool(release["baseline_established"]),
         config_version=str(release["current_config_version"]),
-        weekly_cycle=str(release["weekly_cycle"]),
+        weekly_cycle=_current_content_date(
+            str(release["current_config_version"]),
+            str(release["weekly_cycle"]),
+        ),
         items=tuple(items),
         category_states=tuple(category_states),
     )
+
+
+def _current_content_date(config_version: str, fallback: str) -> str:
+    """Show the current release date, not the older comparison baseline date."""
+
+    try:
+        if (
+            len(config_version) == _CONFIG_VERSION_TIMESTAMP_LENGTH
+            and config_version.isdigit()
+        ):
+            return (
+                datetime.strptime(config_version, "%Y%m%d%H%M%S")
+                .replace(tzinfo=timezone.utc)
+                .astimezone(ZoneInfo("Asia/Shanghai"))
+                .date()
+                .isoformat()
+            )
+        if (
+            len(config_version) == _CONFIG_VERSION_DATE_LENGTH
+            and config_version.isdigit()
+        ):
+            return (
+                datetime.strptime(config_version, "%Y%m%d")
+                .replace(tzinfo=timezone.utc)
+                .date()
+                .isoformat()
+            )
+    except ValueError:
+        pass
+    return fallback
 
 
 def new_content_unavailable_message() -> str:

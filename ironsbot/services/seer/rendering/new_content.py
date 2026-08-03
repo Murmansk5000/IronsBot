@@ -47,6 +47,7 @@ class NewContentMenuItemDict(TypedDict):
     gender_name: str
     type_icon: str | None
     gender_icon: str | None
+    image_layout: str
     is_category: bool
     expanded: bool
     image: str | None
@@ -126,6 +127,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                 "gender_name": "",
                 "type_icon": None,
                 "gender_icon": None,
+                "image_layout": "square",
                 "is_category": True,
                 "expanded": expanded,
                 "image": None,
@@ -150,6 +152,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                         "gender_name": details.gender_name,
                         "type_icon": None,
                         "gender_icon": _gender_icon_data_uri(details.gender_id),
+                        "image_layout": _item_image_layout(item),
                         "is_category": False,
                         "expanded": False,
                         "image": None,
@@ -178,10 +181,10 @@ async def render_new_content_menu(  # noqa: PLR0913
         template_path=NEW_CONTENT_TEMPLATE_PATH,
         template_name="template.html.j2",
         templates={
-            "weekly_cycle": snapshot.weekly_cycle,
+            "content_date": snapshot.weekly_cycle,
             "items": rows,
         },
-        max_width=780,
+        max_width=1080,
         allow_refit=False,
     )
     if cacheable:
@@ -581,7 +584,20 @@ async def _sanctuary_item_image(
 ) -> str | None:
     """Use the explicit sanctuary relation instead of guessing from its name."""
 
-    payload = item.payload
+    relation_kind, resource_id = _sanctuary_relation(item.payload)
+    if relation_kind == "card":
+        entry = autocard.select(
+            AutocardPromptValue(kind="card", item_id=resource_id)
+        )
+        return await _autocard_entry_image(images, entry)
+    if relation_kind == "pet":
+        return await _fetch_data_uri(images, "pet_head", resource_id)
+    return None
+
+
+def _sanctuary_relation(payload: dict[str, object]) -> tuple[str, int]:
+    """Return the explicit target kind and ID carried by a sanctuary record."""
+
     relation_type = str(
         payload.get("target_type")
         or payload.get("source_type")
@@ -603,11 +619,19 @@ async def _sanctuary_item_image(
         pet_id = pet_id or target_id
 
     if card_id:
-        entry = autocard.select(AutocardPromptValue(kind="card", item_id=card_id))
-        return await _autocard_entry_image(images, entry)
+        return "card", card_id
     if pet_id:
-        return await _fetch_data_uri(images, "pet_head", pet_id)
-    return None
+        return "pet", pet_id
+    return "", 0
+
+
+def _item_image_layout(item: NewContentItem) -> str:
+    if item.category in {"autocard_card", "autocard_role"}:
+        return "portrait"
+    if item.category == "autocard_sanctuary_effect":
+        relation_kind, _resource_id = _sanctuary_relation(item.payload)
+        return "portrait" if relation_kind == "card" else "square"
+    return "square"
 
 
 async def _autocard_entry_image(
