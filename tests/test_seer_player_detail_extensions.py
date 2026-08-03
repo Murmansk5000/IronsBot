@@ -22,6 +22,7 @@ def _action(
         feature="player_lineup_private",
         label=label,
         aliases=aliases,
+        command_help_id="private_player_lineup.query",
         query=AsyncMock(return_value=QueryReply(text="ok")),
         action=ActionDefinition("lineup", "阵容"),
     )
