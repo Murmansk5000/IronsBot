@@ -6,6 +6,7 @@ from ironsbot.core.bilibili import (
     BiliPushTargetConfig,
 )
 from ironsbot.core.features import FeatureService
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
     account_uid,
@@ -213,6 +214,16 @@ class BiliTargetService:
                 return sorted(rule.uids)
             return []
         return self.monitored_uids() if self.features.is_superuser(user_id) else []
+
+    def can_target_query_history(self, target: MessageTarget) -> bool:
+        """Whether recipients of a push can use the ``动态`` history command."""
+
+        if target.target_type == "group":
+            return self.features.group_has_feature(target.target_id, "bili_query")
+        return self.features.is_private_feature_allowed(
+            target.target_id,
+            "bili_query",
+        )
 
     def _rules(self, target_type: PushTargetType) -> dict[int, BiliTargetRule]:
         return (

@@ -16,6 +16,7 @@ from ironsbot.plugins.bilibili.delivery import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
+    DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 
 PUB_TS = 1781004683
 EXPECTED_FULL_PUSH_COUNT = 2
+QUERY_ENABLED_GROUP_ID = 1001
 
 
 def _item(
@@ -115,6 +117,29 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
     )
     assert FIRE_MANUAL_LINK_MESSAGE not in str(
         service._transform_target_message("正文", MessageTarget("private", 2002))
+    )
+
+
+def test_delivery_service_only_appends_history_hint_for_query_targets(
+    tmp_path: Path,
+) -> None:
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", object()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        can_query_history=lambda target: target.target_id == QUERY_ENABLED_GROUP_ID,
+    )
+
+    assert DYNAMIC_HISTORY_HINT in str(
+        service._transform_target_message(
+            "正文",
+            MessageTarget("group", QUERY_ENABLED_GROUP_ID),
+        )
+    )
+    assert DYNAMIC_HISTORY_HINT not in str(
+        service._transform_target_message("正文", MessageTarget("group", 1002))
     )
 
 
