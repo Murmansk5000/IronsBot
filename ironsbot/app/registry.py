@@ -153,6 +153,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         config.bilibili.push.content_max_chars,
         config.bilibili.push.summary_max_chars,
         config.bilibili.push.summary_use_ai,
+        bilibili_service.targets.can_target_query_history,
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,
