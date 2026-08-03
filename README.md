@@ -144,10 +144,8 @@ services:
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、`HEADLESS_SEER_USER_ID`、
-  `HEADLESS_SEER_PASSWORD`、额外的 `HEADLESS_SEER_USER_ID_<名称>` /
-  `HEADLESS_SEER_PASSWORD_<名称>` 对、TOML 引用的自定义账号变量、
-  `SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
+- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
+  `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例环境变量：
 
@@ -155,13 +153,9 @@ services:
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
 AI_KEY=
-HEADLESS_SEER_USER_ID=
-HEADLESS_SEER_PASSWORD=
-# 仅在 TOML 配置额外无头工作账号时需要
-HEADLESS_SEER_WORKER_2_USER_ID=
-HEADLESS_SEER_WORKER_2_PASSWORD=
-# 每个幸运橱窗米米号使用 LUCKY_WINDOW_SEER_PASSWORD_<米米号>。
-LUCKY_WINDOW_SEER_PASSWORD_105023264=
+# 为 [[seer.player_accounts]] 中需要登录的账号设置密码 MD5。
+SEER_PASSWORD_123456789=
+SEER_PASSWORD_987654321=
 SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
@@ -173,6 +167,18 @@ GITHUB_WORKFLOW_TOKEN=
 多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
 所有公共查询账号会组成可互换的工作池；米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
+
+### 幸运橱窗
+
+幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的 QQ 用户开放。需要：
+
+1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
+2. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。
+3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；密码不写入 TOML。
+4. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
+5. QQ 用户将默认米米号绑定为该账号的 `player_id`。
+
+每天配置的 `time` 到达时，机器人会自动登录该专用账号，读取当天四个皮肤并向未在 `TD` 退订的用户私聊通知。手动发送“橱窗”时，若当天已有缓存会直接返回；没有缓存时，机器人会先说明将登录的绑定米米号，只有回复“是”或“y”后才会登录查询。回复“否”或“n”取消本次查询。
 
 `APP_CONFIG_PATH` 是容器内路径。Docker/Unraid 常用值是 `/config/ironsbot.toml`；
 宿主机上的真实位置取决于你把哪个目录挂载到了 `/config`。例如 Windows Docker
@@ -318,7 +324,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `query` | 常用查询组合：赛尔查询、精灵配置图、图片、榜单、B站查询、活动查询、开服查询。 |
 | `seer` | 全部赛尔查询子功能总开关。 |
 | `seer_player` | 米米号绑定、玩家基础信息及收集/巅峰/群星牌快捷查询。 |
-| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户，TD 可退订每日私聊提醒。 |
+| `lucky_skin_window` | 查询当天幸运橱窗刷新出的四个皮肤；仅限 TOML 授权且已绑定对应米米号的用户。无当天缓存时，用户确认登录后才查询；TD 可退订每日私聊提醒。 |
 | `player_lineup_private` | 查询公开阵容；群聊和私聊都使用这个独立权限。 |
 | `seer_team` | 战队 ID 查询。 |
 | `seer_pet` | 精灵、技能、魂印、立绘、皮肤查询。 |
@@ -353,11 +359,6 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `fire_manual_ad` | 主动推送末尾追加火火手册链接。 |
 | `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
-
-### 手动橱窗的缓存与登录确认
-
-手动橱窗命中该账号当天缓存时直接返回，不登录；没有缓存时先说明将登录的账号，
-只有回复“是”/“y”后才查询，回复“否”/“n”取消且不登录。定时提醒仍按原计划独立执行。
 
 ## 数据与缓存
 
@@ -509,7 +510,10 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 不需要改成私有镜像。Docker socket、上述两个容器变量，以及 `enabled = true` 都是必要条件；
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
-公共无头账号由 `seer.player_accounts` 中 `query_worker = true` 的条目决定；需要登录的账号使用固定 `SEER_PASSWORD_<player_id>` 环境变量。本阶段仍传入旧登录接口使用的 MD5，尚未引入后继明文规范化。每个账号独立连接，阵容复用公共池，不单独登录。
+凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
+公共无头账号由 `[[seer.player_accounts]]` 中 `query_worker = true` 的条目决定；
+每个账号密码使用 `SEER_PASSWORD_<player_id>`。每个账号独立连接，查询和刷榜可并行；
+阵容功能复用公共账号池，不单独登录。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 
