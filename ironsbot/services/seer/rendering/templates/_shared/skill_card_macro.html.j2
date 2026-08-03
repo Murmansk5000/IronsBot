@@ -56,7 +56,7 @@
         &nbsp;&nbsp;|&nbsp;&nbsp; 命中率: <strong>{{ skill.accuracy }}{% if skill.accuracy != "必中" %}%{% endif
             %}</strong>
         {% if skill.priority != 0 %}
-        &nbsp;&nbsp;|&nbsp;&nbsp; 优先级: <strong>{{ "+" if skill.priority > 0 else "" }}{{ skill.priority }}</strong>
+        &nbsp;&nbsp;|&nbsp;&nbsp; 先制<strong>{{ "+" if skill.priority > 0 else "" }}{{ skill.priority }}</strong>
         {% endif %}
         {% if skill.crit_rate is not none %}
         &nbsp;&nbsp;|&nbsp;&nbsp; 暴击率: <strong>{{ skill.crit_rate }}%</strong>
