@@ -42,7 +42,6 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
     sub_key: int,
     target_score: int,
     gap_index: int,
-    rank_offset: int,
     result: RankScoreSearchResult,
     deps: RankScoreSegmentDependencies,
 ) -> None:
@@ -76,7 +75,6 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
         items=proof_items,
         page_start=proof_page_start,
         target_score=target_score,
-        rank_offset=rank_offset,
         fetched_at=fetched_at,
     )
     if proof is None:
@@ -97,7 +95,6 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     target_score: int,
     search_limit: int | None = None,
     start_index: int = 0,
-    rank_offset: int = 0,
     sample_limit: int | None = None,
     deps: RankScoreSegmentDependencies,
 ) -> RankScoreSearchResult:
@@ -122,7 +119,6 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         target_score=target_score,
         start_index=start_index,
         end_index=end_index,
-        rank_offset=rank_offset,
         result=result,
         sample_limit=sample_limit,
         candidate_starts=deps.cached_score_candidate_page_starts(
@@ -171,7 +167,6 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             sub_key=sub_key,
             target_score=target_score,
             gap_index=score_range.insertion_index,
-            rank_offset=rank_offset,
             result=result,
             deps=deps,
         )
@@ -180,8 +175,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     first_same_or_lower = score_range.match_start
     tie_end = score_range.match_end
     result.truncated = score_range.truncated
-    result.start_rank = first_same_or_lower + 1 + rank_offset
-    result.end_rank = tie_end + rank_offset
+    result.start_rank = first_same_or_lower + 1
+    result.end_rank = tie_end
     result.total_count = max(0, tie_end - first_same_or_lower)
 
     sample_indexes = score_segment_sample_indexes(

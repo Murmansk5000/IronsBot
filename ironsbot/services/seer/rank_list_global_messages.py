@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.local_rank_formatting import format_peak_rating_score
-from ironsbot.services.seer.rank_list_formatting import batch_raw_start, now_text
+from ironsbot.services.seer.rank_list_formatting import now_text
 from ironsbot.services.seer.rank_list_models import RANK_LIST_SIZE, GlobalRankSpec
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ def format_global_rank_line(
     index: int,
     spec: GlobalRankSpec,
 ) -> str:
-    rank = index + 1 + spec.rank_offset
+    rank = index + 1
     return f"{rank}. {item.nick}（{item.id}） {_format_score(item.score, spec)}"
 
 
@@ -53,7 +53,7 @@ def format_global_rank_message(
     lines.extend(
         format_global_rank_line(
             item,
-            index=batch_raw_start(spec, start_rank) + index,
+            index=start_rank - 1 + index,
             spec=spec,
         )
         for index, item in enumerate(items)

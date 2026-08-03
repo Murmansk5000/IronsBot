@@ -37,20 +37,16 @@ def format_rank_window(
     return f"第 {start_rank}-{start_rank + actual_count - 1} 名"
 
 
-def batch_raw_start(spec: GlobalRankSpec, start_rank: int) -> int:
-    return max(spec.start, start_rank - 1 - spec.rank_offset)
-
-
 def page_cache_rank_interval(
     page: Any,
-    spec: GlobalRankSpec,
+    _spec: GlobalRankSpec,
 ) -> tuple[int, int] | None:
     expected_count = int(getattr(page, "expected_count", page.item_count))
     if expected_count <= 0:
         return None
 
-    start_rank = page.start_index + 1 + spec.rank_offset
-    end_rank = page.start_index + expected_count + spec.rank_offset
+    start_rank = page.start_index + 1
+    end_rank = page.start_index + expected_count
     return max(1, start_rank), max(1, end_rank)
 
 

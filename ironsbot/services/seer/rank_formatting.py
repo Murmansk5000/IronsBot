@@ -29,6 +29,9 @@ def format_rank_position_text(
     if result is None:
         return ""
 
+    if result.excluded:
+        return "不参与公开榜单"
+
     if result.rank is not None:
         return f"{style.ranked_prefix}{result.rank}{style.ranked_suffix}"
 

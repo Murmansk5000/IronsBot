@@ -30,10 +30,7 @@ from ironsbot.services.seer.player_request_protection import (
     PlayerRequestReconnectError,
     player_request_protection_message,
 )
-from ironsbot.services.seer.rank_list_formatting import (
-    batch_raw_start,
-    timestamp_text,
-)
+from ironsbot.services.seer.rank_list_formatting import timestamp_text
 from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_message,
 )
@@ -271,11 +268,12 @@ class RankQueryService:
             source="榜单查询",
             group_id=group_id,
         ):
-            result = await self._rank.fetch_range_result(
+            result = await self._rank.fetch_visible_range_result(
                 game,
+                rank_key=command.rank_key,
                 key=spec.key,
                 sub_key=spec.sub_key,
-                start=batch_raw_start(spec, command.start_rank),
+                start_rank=command.start_rank,
                 count=command.limit,
             )
         return format_global_rank_message(
@@ -310,8 +308,7 @@ class RankQueryService:
                 title=spec.title,
                 score_name=spec.unit,
                 target_score=command.score,
-                start_index=spec.start,
-                rank_offset=spec.rank_offset,
+                rank_key=command.rank_key,
                 sample_limit=display_limit,
             )
         logger.info(
