@@ -123,15 +123,15 @@ log_file = "logs/ironsbot.log"
 error_log_file = "logs/ironsbot.error.log"
 # Default: "cache"
 # EN: Root directory for disposable caches. It may be deleted safely.
-# ZH: 可安全整体删除的临时缓存根目录；幸运橱窗当天缓存位于 cache/runtime/。
+# ZH: 可安全整体删除的临时缓存根目录。
 cache_root = "cache"
 # Default: "data/state/qq_state.sqlite"
 # EN: Consolidated low-volume QQ user and group state.
 # ZH: QQ 用户与群聊低频状态统一数据库；保存绑定、额度、退订、偏好和订阅。
 qq_state = "data/state/qq_state.sqlite"
 # Default: "data/state/runtime_state.sqlite"
-# EN: Consolidated operational checkpoint state.
-# ZH: 运行任务状态统一数据库；保存活动提醒、审核提醒等检查点。
+# EN: Consolidated operational checkpoint and daily-result state.
+# ZH: 运行任务状态统一数据库；保存活动提醒、审核提醒和幸运橱窗当天结果。
 runtime_state = "data/state/runtime_state.sqlite"
 # Existing deployments must migrate the old small state databases while the
 # bot is stopped. See README "状态库迁移"; do not move files by hand.

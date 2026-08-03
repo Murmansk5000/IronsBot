@@ -390,9 +390,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
         subscriptions,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
-        SqliteLuckySkinWindowCache(
-            cache_paths.runtime_dir() / "lucky_skin_window.sqlite"
-        ),
+        SqliteLuckySkinWindowCache(settings.paths.runtime_state),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(

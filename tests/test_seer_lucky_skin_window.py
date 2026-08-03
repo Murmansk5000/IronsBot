@@ -265,9 +265,7 @@ def _service(
         bindings,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
-        SqliteLuckySkinWindowCache(
-            tmp_path / "cache/runtime/lucky_skin_window.sqlite"
-        ),
+        SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         today=lambda: date(2026, 8, 3),
     )
     return service, game, _Delivery(), bindings, sessions
@@ -450,6 +448,18 @@ def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) 
     assert len(game.calls) == 1
 
 
+def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
+    first, _game, _delivery, _bindings, first_sessions = _service(tmp_path)
+    asyncio.run(first.check_for_user(1001))
+    assert len(first_sessions.opens) == 1
+
+    recreated, _game, _delivery, _bindings, recreated_sessions = _service(tmp_path)
+    cached = asyncio.run(recreated.check_for_user(1001))
+
+    assert cached.from_cache
+    assert recreated_sessions.opens == []
+
+
 def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
@@ -559,7 +569,7 @@ def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
     tmp_path: Path,
 ) -> None:
     cache = SqliteLuckySkinWindowCache(
-        tmp_path / "cache/runtime/lucky_skin_window.sqlite"
+        tmp_path / "runtime_state.sqlite"
     )
     cache.prepare_day(day="2026-08-02")
     cache.put_if_absent(
