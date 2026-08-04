@@ -99,42 +99,73 @@ def format_peak_line(  # noqa: PLR0913
     )
 
 
-def format_compact_peak_section(
+def format_compact_peak_section(  # noqa: PLR0913
     peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
     local_summary: LocalRankSummary,
     *,
     player_id: int | None = None,
     nick: str | None = None,
+    nick_error: str | None = None,
+    available_modes: frozenset[str] | None = None,
+    mode_errors: dict[str, str] | None = None,
 ) -> str:
     lines = ["【巅峰之战】", format_player_data_time()]
     if player_id is not None:
-        lines.append(format_player_identity(player_id, nick))
+        lines.append(format_player_identity(player_id, nick, nick_error))
+
+    resolved_modes = (
+        available_modes
+        if available_modes is not None
+        else frozenset(("standard", "wild", "expert"))
+    )
+    errors = mode_errors or {}
+
+    def unavailable_text(mode: str, *, current: bool = False) -> str:
+        prefix = "当前" if current else ""
+        return f"{prefix}暂未获取（{errors.get(mode, '查询未完成')}）"
 
     standard_score = peak.current_j_rank * 100_000 + peak.current_j_star
     wild_score = peak.current_k_rank * 100_000 + peak.current_k_star
+    standard_available = "standard" in resolved_modes
+    wild_available = "wild" in resolved_modes
+    expert_available = "expert" in resolved_modes
     standard_current, standard_stats_available = _resolve_peak_current(
         peak_rank_summary.standard,
-        candidate_score=standard_score if peak.current_j_all > 0 else None,
-        fallback_text=format_rank_star_compact(
-            peak.current_j_rank,
-            peak.current_j_star,
+        candidate_score=(
+            standard_score if standard_available and peak.current_j_all > 0 else None
+        ),
+        fallback_text=(
+            format_rank_star_compact(peak.current_j_rank, peak.current_j_star)
+            if standard_available
+            else unavailable_text("standard", current=True)
         ),
         score_formatter=_format_peak_rating_score,
     )
     wild_current, wild_stats_available = _resolve_peak_current(
         peak_rank_summary.wild,
-        candidate_score=wild_score if peak.current_k_all > 0 else None,
-        fallback_text=format_rank_star_compact(
-            peak.current_k_rank,
-            peak.current_k_star,
+        candidate_score=(
+            wild_score if wild_available and peak.current_k_all > 0 else None
+        ),
+        fallback_text=(
+            format_rank_star_compact(peak.current_k_rank, peak.current_k_star)
+            if wild_available
+            else unavailable_text("wild", current=True)
         ),
         score_formatter=_format_peak_rating_score,
     )
     expert_current, expert_stats_available = _resolve_peak_current(
         peak_rank_summary.expert,
-        candidate_score=peak.current_z_score if peak.current_z_all > 0 else None,
-        fallback_text=f"{peak.current_z_score}分",
+        candidate_score=(
+            peak.current_z_score
+            if expert_available and peak.current_z_all > 0
+            else None
+        ),
+        fallback_text=(
+            f"{peak.current_z_score}分"
+            if expert_available
+            else unavailable_text("expert", current=True)
+        ),
         score_formatter=lambda score: f"{score}分",
     )
 
@@ -143,9 +174,10 @@ def format_compact_peak_section(
             format_peak_line(
                 "竞技",
                 current=standard_current,
-                history=format_rank_star_compact(
-                    peak.history_j_rank,
-                    peak.history_j_star,
+                history=(
+                    format_rank_star_compact(peak.history_j_rank, peak.history_j_star)
+                    if standard_available
+                    else unavailable_text("standard")
                 ),
                 match_count=peak.current_j_all if standard_stats_available else 0,
                 win_rate=(
@@ -162,9 +194,10 @@ def format_compact_peak_section(
             format_peak_line(
                 "狂野",
                 current=wild_current,
-                history=format_rank_star_compact(
-                    peak.history_k_rank,
-                    peak.history_k_star,
+                history=(
+                    format_rank_star_compact(peak.history_k_rank, peak.history_k_star)
+                    if wild_available
+                    else unavailable_text("wild")
                 ),
                 match_count=peak.current_k_all if wild_stats_available else 0,
                 win_rate=(
@@ -181,7 +214,11 @@ def format_compact_peak_section(
             format_peak_line(
                 "专家",
                 current=expert_current,
-                history=f"{peak.history_z_score}分",
+                history=(
+                    f"{peak.history_z_score}分"
+                    if expert_available
+                    else unavailable_text("expert")
+                ),
                 match_count=peak.current_z_all if expert_stats_available else 0,
                 win_rate=(
                     format_win_rate(peak.current_z_win, peak.current_z_all)
