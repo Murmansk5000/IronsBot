@@ -47,47 +47,47 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.scheduler import Scheduler
 
 _COMMANDS = ("幸运橱窗", "橱窗")
-_WATCH_LIST_COMMANDS = ("关注皮肤", "订阅皮肤", "皮肤关注", "皮肤订阅")
+_WATCH_LIST_COMMANDS = ("关注橱窗", "订阅橱窗", "橱窗关注", "橱窗订阅")
 _WATCH_REMOVE_COMMANDS = (
-    "取消关注皮肤",
-    "取消订阅皮肤",
-    "取消皮肤关注",
-    "取消皮肤订阅",
-    "退订皮肤",
-    "皮肤退订",
+    "取消关注橱窗",
+    "取消订阅橱窗",
+    "取消橱窗关注",
+    "取消橱窗订阅",
+    "退订橱窗",
+    "橱窗退订",
 )
 _WATCH_CLEAR_COMMANDS = (
-    "清空关注皮肤",
-    "清空订阅皮肤",
-    "清空皮肤关注",
-    "清空皮肤订阅",
+    "清空关注橱窗",
+    "清空订阅橱窗",
+    "清空橱窗关注",
+    "清空橱窗订阅",
 )
 _WATCH_RESET_COMMANDS = (
-    "重置关注皮肤",
-    "重置订阅皮肤",
-    "重置皮肤关注",
-    "重置皮肤订阅",
+    "重置关注橱窗",
+    "重置订阅橱窗",
+    "重置橱窗关注",
+    "重置橱窗订阅",
 )
 _ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
 _WATCH_LIST_ACTION = ActionDefinition(
     "seer.lucky_skin_window.watch.list",
-    "查看关注皮肤",
+    "查看橱窗关注",
 )
 _WATCH_ADD_ACTION = ActionDefinition(
     "seer.lucky_skin_window.watch.add",
-    "新增关注皮肤",
+    "新增橱窗关注",
 )
 _WATCH_REMOVE_ACTION = ActionDefinition(
     "seer.lucky_skin_window.watch.remove",
-    "取消关注皮肤",
+    "取消橱窗关注",
 )
 _WATCH_CLEAR_ACTION = ActionDefinition(
     "seer.lucky_skin_window.watch.clear",
-    "清空关注皮肤",
+    "清空橱窗关注",
 )
 _WATCH_RESET_ACTION = ActionDefinition(
     "seer.lucky_skin_window.watch.reset",
-    "重置关注皮肤",
+    "重置橱窗关注",
 )
 _JOB_PREFIX = "lucky_skin_window:"
 _LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
@@ -110,7 +110,7 @@ def plugin_definition(
             order=16,
             visible=partial(_help_visible, service=service, features=features),
             notes=(
-                "发送“橱窗”查看；可用“关注皮肤”或“订阅皮肤”管理星标；可在“TD”中退订每日提醒。",
+                "发送“橱窗”查看；可用“关注橱窗”或“订阅橱窗”管理星标；可在“TD”中退订每日提醒。",
             ),
         ),
         commands=(
@@ -126,42 +126,42 @@ def plugin_definition(
             CommandDescriptor(
                 id=_WATCH_LIST_ACTION.id,
                 plugin_id="lucky_skin_window",
-                section="关注皮肤",
-                examples=("关注皮肤 / 订阅皮肤", "皮肤关注 / 皮肤订阅"),
-                description="查看当前 QQ 的皮肤关注（订阅）列表",
+                section="橱窗关注",
+                examples=("关注橱窗 / 订阅橱窗", "橱窗关注 / 橱窗订阅"),
+                description="查看当前 QQ 的幸运橱窗关注列表",
                 features_any=("lucky_skin_window",),
                 show_in_poke=True,
             ),
             CommandDescriptor(
                 id=_WATCH_ADD_ACTION.id,
                 plugin_id="lucky_skin_window",
-                section="关注皮肤",
-                examples=("关注皮肤1400538 / 订阅皮肤1400538", "皮肤订阅名称"),
-                description="按皮肤 ID、资源 ID 或名称新增关注（订阅）",
+                section="橱窗关注",
+                examples=("关注橱窗1400538 / 订阅橱窗1400538", "橱窗订阅名称"),
+                description="按皮肤 ID、资源 ID 或名称新增橱窗关注",
                 features_any=("lucky_skin_window",),
             ),
             CommandDescriptor(
                 id=_WATCH_REMOVE_ACTION.id,
                 plugin_id="lucky_skin_window",
-                section="关注皮肤",
-                examples=("取消关注皮肤1400538 / 退订皮肤1400538", "皮肤退订名称"),
-                description="取消关注（退订）指定皮肤",
+                section="橱窗关注",
+                examples=("取消关注橱窗1400538 / 退订橱窗1400538", "橱窗退订名称"),
+                description="取消指定皮肤的橱窗关注",
                 features_any=("lucky_skin_window",),
             ),
             CommandDescriptor(
                 id=_WATCH_CLEAR_ACTION.id,
                 plugin_id="lucky_skin_window",
-                section="关注皮肤",
-                examples=("清空关注皮肤 / 清空订阅皮肤",),
-                description="清空当前 QQ 的皮肤关注（订阅）列表",
+                section="橱窗关注",
+                examples=("清空关注橱窗 / 清空订阅橱窗",),
+                description="清空当前 QQ 的幸运橱窗关注列表",
                 features_any=("lucky_skin_window",),
             ),
             CommandDescriptor(
                 id=_WATCH_RESET_ACTION.id,
                 plugin_id="lucky_skin_window",
-                section="关注皮肤",
-                examples=("重置关注皮肤 / 重置订阅皮肤",),
-                description="恢复 TOML 中配置的初始皮肤关注（订阅）列表",
+                section="橱窗关注",
+                examples=("重置关注橱窗 / 重置订阅橱窗",),
+                description="恢复 TOML 中配置的初始幸运橱窗关注列表",
                 features_any=("lucky_skin_window",),
             ),
         ),
@@ -281,7 +281,7 @@ async def _finish_watch_access_error(
     await finish_event_reply(
         matcher,
         event,
-        f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再管理皮肤订阅。",
+        f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再管理橱窗关注。",
     )
 
 
@@ -511,7 +511,7 @@ def _apply_watch_change(
 
 
 def _format_watch_list(items: tuple[LuckySkinWatchItem, ...]) -> str:
-    lines = ["【关注皮肤（皮肤订阅）】"]
+    lines = ["【幸运橱窗关注】"]
     if not items:
         lines.append("暂无关注皮肤。")
     else:
@@ -521,8 +521,8 @@ def _format_watch_list(items: tuple[LuckySkinWatchItem, ...]) -> str:
         )
     lines.extend(
         (
-            "发送“关注皮肤 / 订阅皮肤 + ID或名称”新增，",
-            "发送“取消关注皮肤 / 退订皮肤 + ID或名称”取消。",
+            "发送“关注橱窗 / 订阅橱窗 + ID或名称”新增，",
+            "发送“取消关注橱窗 / 退订橱窗 + ID或名称”取消。",
         )
     )
     return "\n".join(lines)
@@ -540,6 +540,7 @@ def _install(
     service: LuckySkinWindowService,
     features: FeatureService,
 ) -> None:
+    priority = registry.priority("lucky_skin_window")
     matcher = registry.on_message(
         policy=CommandPolicy.command(
             _ACTION.id,
@@ -548,7 +549,7 @@ def _install(
         ),
         rule=Rule(bind_async(_matches_query, features=features))
         & explicit_command(),
-        priority=registry.priority("seer_query"),
+        priority=priority,
         block=True,
     )
     matcher.append_handler(bind_async(_handle_query, service))
@@ -566,7 +567,7 @@ def _install(
             )
         )
         & explicit_command(),
-        priority=registry.priority("seer_query"),
+        priority=priority,
         block=True,
     )
     watch_list.append_handler(bind_async(_handle_watch_list, service))
@@ -584,7 +585,7 @@ def _install(
             )
         )
         & explicit_command(),
-        priority=registry.priority("seer_query"),
+        priority=priority,
         block=True,
     )
     watch_add.append_handler(
@@ -608,7 +609,7 @@ def _install(
             )
         )
         & explicit_command(),
-        priority=registry.priority("seer_query"),
+        priority=priority,
         block=True,
     )
     watch_remove.append_handler(
@@ -633,7 +634,7 @@ def _install(
                 )
             )
             & explicit_command(),
-            priority=registry.priority("seer_query"),
+            priority=priority,
             block=True,
         )
         watch_action.append_handler(bind_async(handler, service))

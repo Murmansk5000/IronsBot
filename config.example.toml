@@ -77,6 +77,7 @@ seer_team = 11
 seer_rank = 12
 seer_rank_help = 13
 seer_autocard = 14
+lucky_skin_window = 15
 seer_type = 20
 seer_equipment = 21
 seer_peak = 22

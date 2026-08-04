@@ -37,6 +37,7 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowService,
 )
 from tests.helpers.onebot_events import private_message_event
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -383,13 +384,44 @@ def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None
                 )
 
         assert not await lucky_skin_window_plugin._matches_watch_change(
-            private_message_event("关注皮肤", user_id=1001),
+            private_message_event("关注橱窗", user_id=1001),
             cast("Any", {}),
             commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
             features=features,
         )
+        for legacy_command in ("关注皮肤", "订阅皮肤"):
+            assert not await lucky_skin_window_plugin._matches_watch_exact(
+                private_message_event(legacy_command, user_id=1001),
+                cast("Any", {}),
+                commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+                features=features,
+            )
 
     asyncio.run(check())
+
+
+def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
+    runtime = build_test_runtime(state_path=tmp_path / "runtime_state.sqlite")
+    registry = runtime.matcher_registry()
+
+    lucky_skin_window_plugin._install(
+        registry,
+        service=service,
+        features=cast("FeatureService", _Features()),
+    )
+
+    assert registry.message_matchers
+    assert all(
+        matcher.priority == runtime.matcher_priorities.lucky_skin_window
+        for matcher in registry.message_matchers
+    )
+    assert (
+        runtime.matcher_priorities.lucky_skin_window
+        < runtime.matcher_priorities.seer_pet
+    )
 
 
 def test_watch_list_matches_before_binding_and_replies_with_the_problem(
@@ -398,7 +430,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
 ) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
     bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
-    event = private_message_event("订阅皮肤", user_id=1001)
+    event = private_message_event("订阅橱窗", user_id=1001)
     replies: list[str] = []
 
     async def capture_reply(
@@ -425,7 +457,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
 
     asyncio.run(check())
 
-    assert replies == ["❌ 请先绑定 TOML 指定的米米号 90001 后再管理皮肤订阅。"]
+    assert replies == ["❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"]
 
 
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:

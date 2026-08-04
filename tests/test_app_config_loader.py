@@ -203,6 +203,7 @@ def _assert_default_matcher_priorities(
     assert matcher_priority.seer_pet > matcher_priority.seer_rank
     assert matcher_priority.pet_config < matcher_priority.seer_pet
     assert matcher_priority.seer_mintmark > matcher_priority.seer_rank
+    assert matcher_priority.lucky_skin_window < matcher_priority.seer_pet
     priorities = matcher_priority.model_dump()
     non_negative_priorities = [value for value in priorities.values() if value >= 0]
     assert len(non_negative_priorities) == len(set(non_negative_priorities))
