@@ -1,5 +1,5 @@
 from ironsbot.config.models.messaging import MessageConfig, MessageScheduledAction
-from ironsbot.plugins.messaging import (
+from ironsbot.plugins.onebot.messaging import (
     command_descriptors as configured_message_commands,
 )
 

@@ -378,10 +378,30 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                         / "onebot"
                         / "sendpic"
                         / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "blacklist.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "meeting.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "red_packet.py",
                     ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "ai" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "ai" / "intent.py",

@@ -21,7 +21,7 @@ def _ensure_nonebot_initialized() -> None:
             ["handle_player_detail_reply"],
         ),
         (
-            "ironsbot.plugins.messaging.push_subscription_handlers",
+            "ironsbot.plugins.onebot.messaging.push_subscription_handlers",
             ["handle_push_subscription_menu", "handle_push_subscription_select"],
         ),
     ],

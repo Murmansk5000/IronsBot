@@ -31,18 +31,6 @@ from ironsbot.plugins.headless_seer_notice import (
 from ironsbot.plugins.headless_seer_runtime import (
     plugin_contribution as headless_runtime_plugin_contribution,
 )
-from ironsbot.plugins.messaging import (
-    plugin_contribution as messaging_plugin_contribution,
-)
-from ironsbot.plugins.messaging.blacklist import (
-    plugin_contribution as blacklist_plugin_contribution,
-)
-from ironsbot.plugins.messaging.meeting import (
-    plugin_contribution as meeting_plugin_contribution,
-)
-from ironsbot.plugins.messaging.red_packet import (
-    plugin_contribution as red_packet_plugin_contribution,
-)
 from ironsbot.plugins.onebot.about import (
     plugin_contribution as about_plugin_contribution,
 )
@@ -52,6 +40,18 @@ from ironsbot.plugins.onebot.help.hint import (
 )
 from ironsbot.plugins.onebot.lucky_skin_window import (
     plugin_contribution as lucky_skin_window_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging import (
+    plugin_contribution as messaging_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.blacklist import (
+    plugin_contribution as blacklist_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.meeting import (
+    plugin_contribution as meeting_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.red_packet import (
+    plugin_contribution as red_packet_plugin_contribution,
 )
 from ironsbot.plugins.onebot.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,

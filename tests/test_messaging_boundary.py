@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FORBIDDEN_PLUGIN_HELPER_IMPORT = "from ironsbot.plugins.messaging import"
+FORBIDDEN_PLUGIN_HELPER_IMPORT = "from ironsbot.plugins.onebot.messaging import"
 
 
 def _python_files_under(*roots: Path) -> list[Path]:
@@ -15,7 +15,7 @@ def test_feature_code_uses_shared_messaging_helpers() -> None:
     scanned_files = [
         path
         for path in _python_files_under(ROOT / "ironsbot" / "plugins")
-        if "ironsbot/plugins/messaging" not in path.as_posix()
+        if "ironsbot/plugins/onebot/messaging" not in path.as_posix()
     ]
     scanned_files.extend(_python_files_under(ROOT / "ironsbot" / "services"))
 
