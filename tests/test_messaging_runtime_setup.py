@@ -21,6 +21,7 @@ from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageConfig,
+    MessageKeywordReplyAction,
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
@@ -102,6 +103,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     data_path: Path,
     *,
     commands: list[MessageCommandAction] | None = None,
+    keyword_replies: list[MessageKeywordReplyAction] | None = None,
     schedules: list[MessageScheduledAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
@@ -114,6 +116,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(),
         commands=commands or [],
+        keyword_replies=keyword_replies or [],
         schedules=schedules or [],
     )
     resources = build_test_runtime(
@@ -362,6 +365,54 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
     )
     assert private_action.id == "activity_link"
     assert group_action.at_user_ids == [3001]
+
+
+def test_keyword_reply_uses_feature_policy_after_exact_commands(
+    tmp_path: Path,
+) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        commands=[
+            MessageCommandAction(
+                id="exact_reply",
+                commands=["出出"],
+                feature="text",
+                message="精确回复",
+            )
+        ],
+        keyword_replies=[
+            MessageKeywordReplyAction(
+                id="keyword_reply",
+                keywords=["出出"],
+                feature="text",
+                message="关键词回复",
+            )
+        ],
+        group_policy={"1001": ["text"]},
+    )
+
+    exact_state: dict[str, object] = {}
+    keyword_state: dict[str, object] = {}
+    assert matcher_rules.match_message_command(
+        group_member_message_event("出出", user_id=2002, group_id=1001),
+        exact_state,
+        messaging=messaging,
+    )
+    assert matcher_rules.match_message_command(
+        group_member_message_event("今天出出了", user_id=2002, group_id=1001),
+        keyword_state,
+        messaging=messaging,
+    )
+    exact_action = cast(
+        "MessageCommandAction",
+        exact_state[matcher_rules.MESSAGE_ACTION_KEY],
+    )
+    keyword_action = cast(
+        "MessageKeywordReplyAction",
+        keyword_state[matcher_rules.MESSAGE_ACTION_KEY],
+    )
+    assert exact_action.id == "exact_reply"
+    assert keyword_action.id == "keyword_reply"
 
 
 def test_unified_schedule_delivers_to_private_and_group_targets(
