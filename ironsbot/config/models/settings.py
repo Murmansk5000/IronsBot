@@ -113,6 +113,7 @@ class MatcherPriorityConfig(BaseModel):
     seer_rank: int = Field(default=12, ge=0)
     seer_rank_help: int = Field(default=13, ge=0)
     seer_autocard: int = Field(default=14, ge=0)
+    lucky_skin_window: int = Field(default=15, ge=0)
     seer_type: int = Field(default=20, ge=0)
     seer_equipment: int = Field(default=21, ge=0)
     seer_peak: int = Field(default=22, ge=0)
