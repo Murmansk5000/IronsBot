@@ -6,7 +6,13 @@
 
 Docker image for [IronsBot](https://github.com/Murmansk5000/IronsBot), a NoneBot2 / OneBot v11 QQ bot focused on Seer queries and Unraid deployment.
 
-The single `PluginDefinition` registry installs user features and lifecycle hooks. Upstream-derived code is retained only where it is still required for data, rendering, or protocol support.
+Built-in plugins are discovered from the standard NoneBot TOML manifest. Each
+plugin exposes `PluginMetadata` and contributes matchers, command contracts and
+lifecycle work through `PluginContribution`; `CommandCatalog` is the only
+authority for direct user-command semantics. The temporary private-extension
+bootstrap only adapts configured external extensions and is not a second plugin
+registry. Upstream-derived code is retained only where it is still required for
+data, rendering, or protocol support.
 
 ## Images
 

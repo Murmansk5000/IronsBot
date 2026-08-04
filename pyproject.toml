@@ -45,6 +45,9 @@ nonebot-adapter-onebot = [
 [tool.setuptools.packages.find]
 include = ["ironsbot*"]
 
+[tool.setuptools.package-data]
+ironsbot = ["manifests/*.toml"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 
