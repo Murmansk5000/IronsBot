@@ -88,6 +88,7 @@ class SqlitePlayerBindingStore:
                     choice_completed = 1,
                     last_changed_at = excluded.last_changed_at,
                     updated_at = excluded.updated_at
+                WHERE player_bindings.player_id != excluded.player_id
                 """,
                 (qq_user_id, player_id, player_nick, now, now, now),
             )

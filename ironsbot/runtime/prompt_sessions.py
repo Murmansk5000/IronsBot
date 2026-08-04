@@ -27,11 +27,15 @@ if TYPE_CHECKING:
 TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
 QUEUED_CONVERSATION_TOKEN_STATE_KEY = "_ironsbot_queued_conversation_token"
 QUEUED_CONVERSATION_TICKET_STATE_KEY = "_ironsbot_queued_conversation_ticket"
+QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY = (
+    "_ironsbot_queued_conversation_keep_open"
+)
 QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY = (
     "_ironsbot_queued_conversation_shared_reply"
 )
 COMMAND_COOLDOWN_TOKEN_STATE_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
 IN_FLIGHT_REQUEST_TOKEN_STATE_KEY = "_ironsbot_in_flight_request_token"  # nosec B105
+MAX_CLAIMED_MENU_INPUTS = 4096
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +88,16 @@ class _QueuedConversation:
     semantic_request_resolver: QueuedSemanticRequestResolver | None = None
     request_service: InFlightRequestService | None = None
     active: bool = True
-    keep_open: bool = False
+    parallel: bool = False
     _next_ticket: int = 0
     _active_ticket: int | None = None
     _active_request_token: object | None = None
+    _parallel_request_tokens: dict[int, object | None] = field(default_factory=dict)
+    _parallel_ready_ticket: int | None = None
+    _parallel_dispatched: set[int] = field(default_factory=set)
+    _parallel_waiters: deque[tuple[int, Future[bool]]] = field(
+        default_factory=deque
+    )
     _waiters: deque[tuple[int, Future[bool], object | None]] = field(
         default_factory=deque
     )
@@ -145,33 +155,51 @@ class _QueuedConversation:
     ) -> None:
         self.semantic_request_resolver = resolver
 
-    async def acquire(self, request_token: object | None = None) -> int | None:
+    def reserve(
+        self,
+        request_token: object | None = None,
+    ) -> tuple[int, Future[bool]] | None:
         if not self.active:
             self._release_request_token(request_token)
             return None
         self._next_ticket += 1
         ticket = self._next_ticket
         future: Future[bool] = get_running_loop().create_future()
-        if self._active_ticket is None:
+        if self.parallel:
+            self._parallel_request_tokens[ticket] = request_token
+            if self._parallel_ready_ticket is None:
+                self._parallel_ready_ticket = ticket
+                future.set_result(True)
+            else:
+                self._parallel_waiters.append((ticket, future))
+        elif self._active_ticket is None:
             self._active_ticket = ticket
             self._active_request_token = request_token
             future.set_result(True)
         else:
             self._waiters.append((ticket, future, request_token))
+        return ticket, future
+
+    async def acquire(self, request_token: object | None = None) -> int | None:
+        reservation = self.reserve(request_token)
+        if reservation is None:
+            return None
+        ticket, future = reservation
         try:
             await future
         except BaseException:
-            self._waiters = deque(
-                item for item in self._waiters if item[0] != ticket
-            )
-            self._release_request_token(request_token)
+            self.abort(ticket)
             raise
         if self.active:
             return ticket
-        self._release_request_token(request_token)
+        self.abort(ticket)
         return None
 
     def complete(self, ticket: int) -> None:
+        if self.parallel:
+            self._parallel_dispatched.discard(ticket)
+            self._parallel_request_tokens.pop(ticket, None)
+            return
         if self._active_ticket != ticket:
             return
         self._active_ticket = None
@@ -186,9 +214,69 @@ class _QueuedConversation:
             future.set_result(True)
             break
 
+    def abort(self, ticket: int) -> None:
+        if self.parallel:
+            token = self._parallel_request_tokens.pop(ticket, None)
+            self._parallel_dispatched.discard(ticket)
+            if self._parallel_ready_ticket == ticket:
+                self._parallel_ready_ticket = None
+                self._advance_parallel_dispatch()
+            else:
+                parallel_retained: deque[tuple[int, Future[bool]]] = deque()
+                for queued_ticket, future in self._parallel_waiters:
+                    if queued_ticket == ticket:
+                        if not future.done():
+                            future.cancel()
+                        continue
+                    parallel_retained.append((queued_ticket, future))
+                self._parallel_waiters = parallel_retained
+            self._release_request_token(token)
+            return
+        if self._active_ticket == ticket:
+            token = self._active_request_token
+            self.complete(ticket)
+            self._release_request_token(token)
+            return
+        retained: deque[tuple[int, Future[bool], object | None]] = deque()
+        for item in self._waiters:
+            if item[0] == ticket:
+                self._release_request_token(item[2])
+                if not item[1].done():
+                    item[1].cancel()
+                continue
+            retained.append(item)
+        self._waiters = retained
+
+    @property
+    def active_ticket_count(self) -> int:
+        if self.parallel:
+            return len(self._parallel_dispatched)
+        return int(self._active_ticket is not None)
+
+    def mark_dispatched(self, ticket: int) -> None:
+        if not self.parallel or self._parallel_ready_ticket != ticket:
+            return
+        self._parallel_dispatched.add(ticket)
+        self._parallel_ready_ticket = None
+        self._advance_parallel_dispatch()
+
     def close(self) -> None:
         self.active = False
-        self.keep_open = False
+        if self.parallel:
+            pending_tickets = {
+                ticket for ticket, _future in self._parallel_waiters
+            }
+            if self._parallel_ready_ticket is not None:
+                pending_tickets.add(self._parallel_ready_ticket)
+            for ticket in pending_tickets:
+                self._release_request_token(
+                    self._parallel_request_tokens.pop(ticket, None)
+                )
+            for _, future in self._parallel_waiters:
+                if not future.done():
+                    future.cancel()
+            self._parallel_waiters.clear()
+            self._parallel_ready_ticket = None
         for _, future, request_token in self._waiters:
             self._release_request_token(request_token)
             if not future.done():
@@ -198,6 +286,18 @@ class _QueuedConversation:
     def _release_request_token(self, token: object | None) -> None:
         if token is not None and self.request_service is not None:
             self.request_service.release(token)
+
+    def _advance_parallel_dispatch(self) -> None:
+        while self.active and self._parallel_waiters:
+            ticket, future = self._parallel_waiters.popleft()
+            if future.cancelled():
+                self._release_request_token(
+                    self._parallel_request_tokens.pop(ticket, None)
+                )
+                continue
+            self._parallel_ready_ticket = ticket
+            future.set_result(True)
+            return
 
 
 class PromptSessionManager:
@@ -209,6 +309,8 @@ class PromptSessionManager:
         self._queued_by_token: dict[str, _QueuedConversation] = {}
         self._queued_expiry_handles: dict[str, TimerHandle] = {}
         self._cancelled_queued_tokens: set[str] = set()
+        self._cancelled_active_tickets: dict[str, int] = {}
+        self._claimed_inputs: dict[tuple[int, str, int], None] = {}
 
     def acquire(self, session_id: str) -> int:
         version = self._versions.get(session_id, 0) + 1
@@ -239,6 +341,7 @@ class PromptSessionManager:
         conversation_session_id: str | None = None,
         menu_anchor: GroupMenuAnchor | None = None,
         allow_group_reply_exit: bool = False,
+        parallel: bool = False,
     ) -> _QueuedConversation:
         key = f"{namespace}:{event_session_id}"
         if existing := self._queued_by_key.get(key):
@@ -259,6 +362,7 @@ class PromptSessionManager:
             conversation_session_id=conversation_session_id,
             menu_anchor=menu_anchor,
             allow_group_reply_exit=allow_group_reply_exit,
+            parallel=parallel,
             semantic_request_resolver=semantic_request_resolver,
             request_service=request_service,
         )
@@ -277,20 +381,23 @@ class PromptSessionManager:
         ticket = state.get(QUEUED_CONVERSATION_TICKET_STATE_KEY)
         token = state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
         state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
+        keep_open = bool(state.pop(QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY, False))
         if context is None or not isinstance(ticket, int):
-            if context is not None:
-                context.keep_open = False
             if isinstance(token, str) and isinstance(ticket, int):
-                self._cancelled_queued_tokens.discard(token)
+                self._finish_cancelled_ticket(token)
             return
-        if not context.active or not context.keep_open:
+        context.complete(ticket)
+        if not context.active:
             self._close_queued_conversation(context)
             return
-        context.keep_open = False
+        if not keep_open:
+            if context.parallel:
+                return
+            self._close_queued_conversation(context)
+            return
         context.state = dict(state)
         context.state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
         context.state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
-        context.complete(ticket)
 
     def cancel_queued_conversation(self, state: T_State) -> None:
         if context := self.queued_conversation(state):
@@ -304,9 +411,29 @@ class PromptSessionManager:
         state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
         state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
         if context is not None and isinstance(ticket, int):
-            context.keep_open = True
             context.complete(ticket)
         return context
+
+    def claim_input(self, event: Event) -> bool:
+        raw_message_id = getattr(event, "message_id", None)
+        if raw_message_id is None:
+            message_id = id(event)
+        else:
+            try:
+                message_id = int(raw_message_id)
+            except (TypeError, ValueError):
+                message_id = id(event)
+        key = (
+            int(getattr(event, "self_id", 0) or 0),
+            event.get_session_id(),
+            message_id,
+        )
+        if key in self._claimed_inputs:
+            return False
+        self._claimed_inputs[key] = None
+        if len(self._claimed_inputs) > MAX_CLAIMED_MENU_INPUTS:
+            self._claimed_inputs.pop(next(iter(self._claimed_inputs)))
+        return True
 
     def queued_conversation_is_cancelled(self, state: T_State) -> bool:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
@@ -334,9 +461,20 @@ class PromptSessionManager:
         self._queued_by_token.pop(context.token, None)
 
     def _cancel_queued_conversation(self, context: _QueuedConversation) -> None:
-        if context._active_ticket is not None:
+        if context.active_ticket_count:
             self._cancelled_queued_tokens.add(context.token)
+            self._cancelled_active_tickets[context.token] = (
+                context.active_ticket_count
+            )
         self._close_queued_conversation(context)
+
+    def _finish_cancelled_ticket(self, token: str) -> None:
+        remaining = self._cancelled_active_tickets.get(token, 0) - 1
+        if remaining > 0:
+            self._cancelled_active_tickets[token] = remaining
+            return
+        self._cancelled_active_tickets.pop(token, None)
+        self._cancelled_queued_tokens.discard(token)
 
     def _expire_queued_conversation(self, token: str) -> None:
         self._queued_expiry_handles.pop(token, None)

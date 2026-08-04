@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Resolve player-query targets from numbers, bindings, or one @ member."""
+"""Resolve player-query targets from references, bindings, or one @ member."""
 
 from __future__ import annotations
 
@@ -9,9 +9,14 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
 from ironsbot.runtime.message_input import message_input_context
+from ironsbot.runtime.onebot_context import event_group_id
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from nonebot.adapters import Event
+
+    from ironsbot.config.player_accounts import PlayerAccountRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +24,19 @@ class PlayerTargetResolution:
     player_id: int | None
     offer_binding: bool
     error: str | None = None
+
+
+def resolve_event_player_reference(
+    accounts: PlayerAccountRegistry,
+    event: Event,
+    reference: object,
+) -> int | None:
+    """Resolve one numeric or configured player reference in event scope."""
+
+    return accounts.resolve_player_id(
+        reference,
+        group_id=event_group_id(event) if isinstance(event, MessageEvent) else None,
+    )
 
 
 def resolve_player_target(  # noqa: PLR0911
@@ -41,7 +59,7 @@ def resolve_player_target(  # noqa: PLR0911
             return PlayerTargetResolution(
                 None,
                 offer_binding=False,
-                error="米米号数字和 @成员 不能同时使用，请保留其中一种。",
+                error="米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。",
             )
         if len(context.member_user_ids) != 1:
             return PlayerTargetResolution(

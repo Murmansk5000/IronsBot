@@ -30,6 +30,7 @@ from ironsbot.services.seer.rank_list_parsing import (
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
+from .player_target import resolve_event_player_reference
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
@@ -85,8 +86,9 @@ def _is_rank_player_command(
         partial(
             parse_rank_player_command,
             resolve_player_id=partial(
-                group.player_accounts.resolve_player_id,
-                group_id=event_group_id(event),
+                resolve_event_player_reference,
+                group.player_accounts,
+                event,
             ),
         ),
         RANK_PLAYER_COMMAND_KEY,

@@ -16,6 +16,7 @@ from ironsbot.services.operations.headless_errors import (
 )
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestDispatcher,
+    HeadlessRequestPriority,
     HeadlessWorkerSlot,
     PooledHeadlessGame,
 )
@@ -188,7 +189,7 @@ class HeadlessService:
             for account in accounts
             if account.password is not None
         ]
-        if len(clients) < max(1, len(credentials)):
+        if len(clients) < len(credentials):
             message = "not enough headless clients for configured workers"
             raise ValueError(message)
         self._workers = [
@@ -243,6 +244,16 @@ class HeadlessService:
     @property
     def configured_worker_count(self) -> int:
         return self._dispatcher.configured_worker_count
+
+    @property
+    def idle_worker_count(self) -> int:
+        return self._dispatcher.idle_worker_count
+
+    @property
+    def pending_request_counts(self) -> dict[HeadlessRequestPriority, int]:
+        """Ready public-pool packets grouped by their effective priority."""
+
+        return self._dispatcher.pending_request_counts
 
     @property
     def reconnect_times(self) -> list[str]:

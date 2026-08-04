@@ -17,8 +17,7 @@ class FakeCommandAction:
 
 @dataclass(slots=True)
 class FakeScheduleAction:
-    hour: int
-    minute: int
+    time: str
     day_of_week: str | None = None
 
 
@@ -49,7 +48,7 @@ def test_build_schedule_job_id_sanitizes_raw_id() -> None:
 
 
 def test_build_schedule_trigger_kwargs_omits_empty_day_of_week() -> None:
-    assert build_schedule_trigger_kwargs(FakeScheduleAction(hour=23, minute=5)) == {
+    assert build_schedule_trigger_kwargs(FakeScheduleAction(time="23:05")) == {
         "hour": 23,
         "minute": 5,
         "second": 0,
@@ -58,7 +57,7 @@ def test_build_schedule_trigger_kwargs_omits_empty_day_of_week() -> None:
 
 def test_build_schedule_trigger_kwargs_keeps_day_of_week() -> None:
     assert build_schedule_trigger_kwargs(
-        FakeScheduleAction(hour=8, minute=30, day_of_week="fri")
+        FakeScheduleAction(time="08:30", day_of_week="fri")
     ) == {
         "hour": 8,
         "minute": 30,

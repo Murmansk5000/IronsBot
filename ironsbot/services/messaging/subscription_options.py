@@ -37,7 +37,7 @@ def schedule_key(index: int, task: ScheduledPushTask) -> str:
 
 def schedule_label(index: int, task: ScheduledPushTask) -> str:
     name = _schedule_display_name(index, task)
-    time_label = f"{task.hour:02d}:{task.minute:02d}"
+    time_label = task.time
     if task.day_of_week:
         time_label = f"{task.day_of_week} {time_label}"
     return f"{name}（{time_label}）"

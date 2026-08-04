@@ -10,10 +10,14 @@ from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestDispatcher,
     HeadlessRequestPriority,
+    HeadlessRequestPriorityState,
     HeadlessWorkerSlot,
+    HeadlessWorkflowState,
     PooledHeadlessGame,
     headless_request_priority_scope,
+    headless_workflow_scope,
 )
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -182,3 +186,195 @@ async def test_failed_packet_retries_on_another_healthy_worker() -> None:
     assert result == f"{SECOND_WORKER_ID}:retry"
     assert events == [(10000, "retry"), (SECOND_WORKER_ID, "retry")]
     assert game.user_id == SECOND_WORKER_ID
+
+
+@pytest.mark.asyncio
+async def test_request_feedback_reflects_actual_worker_dispatch_state() -> None:
+    game, _events, started = _pool(1)
+    release = asyncio.Event()
+    feedback: list[tuple[str, bool]] = []
+
+    async def send_feedback(label: str, *, queued: bool) -> None:
+        feedback.append((label, queued))
+
+    with request_feedback_scope("first", send_feedback):
+        first = asyncio.create_task(game.step("first", release))
+    await started.setdefault("first", asyncio.Event()).wait()
+
+    with request_feedback_scope("second", send_feedback):
+        second = asyncio.create_task(game.step("second"))
+    await asyncio.sleep(0)
+
+    assert feedback == [("first", False), ("second", True)]
+    release.set()
+    await asyncio.gather(first, second)
+
+
+@pytest.mark.asyncio
+async def test_request_feedback_is_sent_only_for_the_first_packet() -> None:
+    game, _events, _started = _pool(1)
+    feedback: list[tuple[str, bool]] = []
+
+    async def send_feedback(label: str, *, queued: bool) -> None:
+        feedback.append((label, queued))
+
+    with request_feedback_scope("workflow", send_feedback):
+        await game.step("first")
+        await game.step("second")
+
+    assert feedback == [("workflow", False)]
+
+
+@pytest.mark.asyncio
+async def test_earlier_workflow_resumes_before_backfilled_workflow() -> None:
+    game, events, started = _pool(1)
+    release = asyncio.Event()
+    first_workflow = HeadlessWorkflowState(
+        sequence=1,
+        label="first",
+        user_id=1,
+        priority_state=HeadlessRequestPriorityState(
+            HeadlessRequestPriority.INTERACTIVE
+        ),
+    )
+    later_workflow = HeadlessWorkflowState(
+        sequence=2,
+        label="later",
+        user_id=2,
+        priority_state=HeadlessRequestPriorityState(
+            HeadlessRequestPriority.INTERACTIVE
+        ),
+    )
+
+    async def first() -> None:
+        with (
+            headless_workflow_scope(first_workflow),
+            headless_request_priority_scope(
+                HeadlessRequestPriority.INTERACTIVE,
+                state=first_workflow.priority_state,
+            ),
+        ):
+            await game.step("first-1", release)
+            await game.step("first-2")
+
+    async def later() -> None:
+        with (
+            headless_workflow_scope(later_workflow),
+            headless_request_priority_scope(
+                HeadlessRequestPriority.INTERACTIVE,
+                state=later_workflow.priority_state,
+            ),
+        ):
+            await game.step("later")
+
+    first_task = asyncio.create_task(first())
+    await started.setdefault("first-1", asyncio.Event()).wait()
+    later_task = asyncio.create_task(later())
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(first_task, later_task)
+
+    assert [label for _worker, label in events] == [
+        "first-1",
+        "first-2",
+        "later",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_idle_worker_backfills_a_later_workflow() -> None:
+    game, events, started = _pool(2)
+    release = asyncio.Event()
+    first_workflow = HeadlessWorkflowState(
+        sequence=1,
+        label="first",
+        user_id=1,
+        priority_state=HeadlessRequestPriorityState(
+            HeadlessRequestPriority.INTERACTIVE
+        ),
+    )
+    later_workflow = HeadlessWorkflowState(
+        sequence=2,
+        label="later",
+        user_id=2,
+        priority_state=HeadlessRequestPriorityState(
+            HeadlessRequestPriority.INTERACTIVE
+        ),
+    )
+
+    async def submit(
+        workflow: HeadlessWorkflowState,
+        label: str,
+        wait: asyncio.Event | None,
+    ) -> None:
+        with (
+            headless_workflow_scope(workflow),
+            headless_request_priority_scope(
+                HeadlessRequestPriority.INTERACTIVE,
+                state=workflow.priority_state,
+            ),
+        ):
+            await game.step(label, wait)
+
+    first_task = asyncio.create_task(submit(first_workflow, "first", release))
+    await started.setdefault("first", asyncio.Event()).wait()
+    later_task = asyncio.create_task(submit(later_workflow, "later", release))
+    await started.setdefault("later", asyncio.Event()).wait()
+    release.set()
+    await asyncio.gather(first_task, later_task)
+
+    assert {label for _worker, label in events} == {"first", "later"}
+
+
+@pytest.mark.asyncio
+async def test_ready_packets_follow_the_five_player_workflow_priorities() -> None:
+    game, events, started = _pool(1)
+    release = asyncio.Event()
+
+    async def held_background() -> None:
+        with headless_request_priority_scope(HeadlessRequestPriority.BACKGROUND):
+            await game.step("held", release)
+
+    async def queued(
+        label: str,
+        priority: HeadlessRequestPriority,
+        sequence: int,
+    ) -> None:
+        state = HeadlessRequestPriorityState(priority)
+        workflow = HeadlessWorkflowState(
+            sequence=sequence,
+            label=label,
+            user_id=sequence,
+            priority_state=state,
+        )
+        with (
+            headless_workflow_scope(workflow),
+            headless_request_priority_scope(priority, state=state),
+        ):
+            await game.step(label)
+
+    held_task = asyncio.create_task(held_background())
+    await started.setdefault("held", asyncio.Event()).wait()
+    tasks = [
+        asyncio.create_task(
+            queued("interactive", HeadlessRequestPriority.INTERACTIVE, 0)
+        ),
+        asyncio.create_task(queued("basic", HeadlessRequestPriority.BASIC, 1)),
+        asyncio.create_task(
+            queued("super-detail", HeadlessRequestPriority.SUPERUSER_DETAIL, 2)
+        ),
+        asyncio.create_task(
+            queued("super-basic", HeadlessRequestPriority.SUPERUSER_BASIC, 3)
+        ),
+    ]
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(held_task, *tasks)
+
+    assert [label for _worker, label in events] == [
+        "held",
+        "super-basic",
+        "super-detail",
+        "basic",
+        "interactive",
+    ]

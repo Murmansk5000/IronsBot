@@ -160,15 +160,16 @@ SENDPIC_CNB_TOKEN=
 GITHUB_WORKFLOW_TOKEN=
 ```
 
-每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名、`public` 和
-`query_worker`。需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量，填写明文即可；
+每个赛尔账号在 `[[seer.player_accounts]]` 中声明米米号、可读名称、可选别名和 `public`。
+需要登录的账号密码使用 `SEER_PASSWORD_<player_id>` 环境变量，填写明文即可；
 机器人仅在内存中将其转换为旧登录接口所需的 MD5。
-`query_worker = true` 的账号组成可互换的公共查询池；幸运橱窗仅引用账号库中的账号，
+`[operations.headless].accounts` 引用的账号组成可互换的公共查询池，支持账号名称、别名和
+数字米米号；幸运橱窗仅引用账号库中的账号，
 使用独立短时会话，不占用公共查询池。
 `public = true` 时，账号的文字 `name` / `aliases` 可在任意会话查询；`public = false` 时，只有
 `[seer.player_account_aliases]` 声明的群可使用它们，其他位置仍可直接填写数字米米号。绑定时必须
 直接填写数字米米号。
-多个幸运橱窗账号按到达顺序串行登录和查询，不会同时建立橱窗会话。
+多个幸运橱窗账号按到达顺序串行登录和查询；每个账号当天首次成功结果会持久化，重启后仍可复用。
 所有公共查询账号会组成可互换的工作池；米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
 
@@ -364,6 +365,11 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
 
+### 时间与类别菜单
+
+定时消息及本地榜刷新使用 `time`；本快照仍保留代码中的旧 hour/minute 转换。
+新增内容先选择类别再选择条目，不再读取 `seer.new_content.expanded_categories`。
+
 ### 榜单排除与可见名次
 
 `seer.rank.exclusions` 配置内部账号和各榜单的排除项。内部账号不写入玩家样本；
@@ -528,10 +534,7 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 不需要改成私有镜像。Docker socket、上述两个容器变量，以及 `enabled = true` 都是必要条件；
 首次拉取失败时会保留上一次成功安装的扩展；没有可用包时，阵容功能不会注册。
 
-凭据缺失或私有镜像没有安装时，主机器人仍会正常启动，`阵容` 不会响应。
-公共无头账号由 `[[seer.player_accounts]]` 中 `query_worker = true` 的条目决定；
-每个账号密码使用 `SEER_PASSWORD_<player_id>`。每个账号独立连接，查询和刷榜可并行；
-阵容功能复用公共账号池，不单独登录。
+公共无头查询池由 `[operations.headless].accounts` 的账号引用决定，空列表表示不启用公共池。账号名称、别名和数字米米号仍按当时账号库校验；不再读取 `query_worker`。每个账号独立连接，阵容复用公共池。
 
 如果不想让机器人自然启动时检查镜像，可改为：
 

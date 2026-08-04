@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import asyncio
 
+    from ironsbot.services.seer.player_binding import PlayerBindingState
     from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
     from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
@@ -27,6 +28,7 @@ class PlayerQueryResult:
     pending: PendingPlayerQuery | None = None
     message: str = ""
     offer_binding: bool = False
+    binding_replacement: PlayerBindingState | None = None
 
 
 @dataclass(frozen=True, slots=True)
