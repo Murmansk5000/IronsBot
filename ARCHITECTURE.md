@@ -421,7 +421,7 @@ The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
 `ironsbot.custom_plugins.pet_config`,
 `ironsbot.plugins.seer.query`,
-`ironsbot.plugins.seer.lucky_skin_window`, `ironsbot.plugins.team_audit`,
+`ironsbot.plugins.seer.lucky_skin_window`, `ironsbot.plugins.onebot.team_audit`,
 `ironsbot.plugins.onebot.team_resource`, and the
 `ironsbot.plugins.startup_notice`, `ironsbot.plugins.headless_seer_notice`,
 `ironsbot.plugins.headless_seer_runtime`, and the messaging `blacklist`,

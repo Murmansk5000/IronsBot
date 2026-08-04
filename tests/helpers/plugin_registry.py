@@ -48,6 +48,9 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.onebot.team_audit import (
+    plugin_contribution as team_audit_plugin_contribution,
+)
 from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
@@ -78,9 +81,6 @@ from ironsbot.plugins.seer.rank_help import (
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.plugins.startup_notice import (
     plugin_contribution as startup_notice_plugin_contribution,
-)
-from ironsbot.plugins.team_audit import (
-    plugin_contribution as team_audit_plugin_contribution,
 )
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
