@@ -38,6 +38,29 @@ The following distinctions are mandatory during the migration:
   normal runtime code must use exactly one schema and one read path after that
   migration succeeds.
 
+### Normative Reading Rules
+
+This document contains both a description of the running application and the
+architecture it is moving toward. They have different force:
+
+1. A **target** rule is mandatory for new cross-feature design, even when the
+   current application has not reached that state yet.
+2. A **transition** rule names an existing bridge only to constrain and remove
+   it. It never grants permission to extend that bridge with new ownership.
+3. A **baseline** rule freezes visible behaviour while its implementation is
+   moved. It does not prescribe the package, class, or registry that must own
+   that behaviour later.
+4. When a current implementation and a target rule appear to disagree, the
+   target rule decides new design. The current implementation may only receive
+   a minimal correctness fix or an explicitly scoped migration step.
+
+Every architecture change must label the contract it changes as **target**,
+**transition**, or **baseline** in its plan and commit description. A document
+or review must not call a transitional type the "single" or "unique" contract
+without the qualifier "current bootstrap bridge". This specifically prevents
+`PluginDefinition` from being mistaken for the future plugin, command, or
+lifecycle contract.
+
 Current transition items are `PluginDefinition`, the application plugin
 registry, `MatcherRegistry`, and the renderer data lookups listed in the
 Phase 0 guard below. They keep the current OneBot application runnable; they
@@ -46,6 +69,18 @@ replaces the first three with the standard NoneBot manifest, `PluginMetadata`,
 `PluginContribution`, `CommandCatalog`, and a matcher factory. Phase 4 removes
 renderer-owned persistence lookups. No new subsystem may be built on those
 transition items merely because they already exist.
+
+The authoritative long-term ownership is therefore:
+
+- `PluginMetadata` owns plugin identity and static metadata;
+- `PluginContribution` owns a plugin's explicit runtime contributions;
+- `CommandCatalog` and `CommandContract` own direct-command semantics;
+- the feature-policy service owns permission decisions; and
+- `ApplicationLifecycle` owns application lifecycle and background task
+  ownership.
+
+`PluginDefinition` owns none of those target responsibilities. Until Phase 2
+removes it, it only decides how the existing OneBot implementation is loaded.
 
 ## Engineering Principles
 
@@ -76,6 +111,37 @@ The following rules are mandatory:
 - Preserve intentionally cohesive low-level modules such as binary/SWF
   parsers and protocol schedulers. Splitting files only to make a tree look
   symmetrical is not an architectural improvement.
+
+## Change Design Gate
+
+Before changing production code, the implementation plan must answer these
+questions in writing. A small bug fix may answer them in one short paragraph;
+a migration must answer each one explicitly.
+
+1. **Semantic owner:** What domain capability owns the behaviour? The answer
+   must not be "this plugin already handles something similar."
+2. **Reusable input/output:** Which existing typed value, port, resolver, or
+   repository is reused? If none exists, why is a new narrow interface the
+   correct boundary?
+3. **Adapter boundary:** Which code is transport adaptation, and which code is
+   platform-neutral policy? Adapter event types must stop at the plugin or
+   adapter boundary.
+4. **Persistence boundary:** Which lifecycle-owned store owns the data? State
+   must be keyed by the correct actor/conversation/entity identity rather than
+   by a feature-local convenience key.
+5. **Migration boundary:** Does the change replace an old path? If so, name
+   the one-time tool, rollback point, removal condition, and test. Runtime
+   dual-read or dual-write is not an acceptable default.
+6. **User contract:** Which existing command, reply, rate limit, permission,
+   or scheduled behaviour is preserved or intentionally changed?
+7. **Proof:** Which focused tests, architecture tests, static checks, and
+   smoke checks demonstrate the result?
+
+Do not solve a repeated need by adding a feature-specific parser, storage
+file, background loop, command keyword list, or renderer query. First look
+for the real shared abstraction. A new abstraction is justified only when it
+has a clear domain owner and removes meaningful duplication; it is not
+justified as a speculative framework.
 
 ## Code Size And Cohesion
 
@@ -300,6 +366,34 @@ Each phase must be independently reviewable, have migration/rollback guidance
 where persistent data changes, and avoid leaving an old and new runtime path
 active indefinitely.
 
+## Work Execution And Progress Reporting
+
+Architecture work is performed as a hierarchy of **program -> phase -> task**.
+The tracked plan is the source of execution status, not a substitute for code
+or tests. Every active implementation update must report both levels:
+
+```text
+Program  [████░░░░░░] 40%  estimated remaining: 6 h
+Phase 2  [███░░░░░░░] 30%  estimated remaining: 90 min
+Task     [██████░░░░] 60%  estimated remaining: 25 min
+```
+
+The percentages are estimates based on completed, verifiable tasks, not a
+claim of linear certainty. Re-estimate when investigation changes scope;
+state why the estimate changed. Do not hide a blocked task behind a broad
+percentage. Report the blocker, the affected phase, what was tried, and the
+next safe action.
+
+At the start of each task, record its target contract, touched repositories,
+acceptance checks, rollback strategy, and whether it changes public behaviour.
+At completion, report the changed files, tests actually run, remaining risks,
+and the next task. A task may be committed only when it leaves the branch
+coherent and independently testable; unrelated worktree changes remain
+unstaged.
+
+The practical checklist and review template live in
+[docs/engineering-workflow.md](docs/engineering-workflow.md).
+
 ## Target Package Layout
 
 ```text
@@ -494,8 +588,9 @@ class PluginDefinition:
 
 `app.registry.build_plugin_registry(...)` currently returns one ordered tuple
 of `PluginDefinition` values. Until Phase 2 removes it, that tuple is only the
-operational loading source for the existing application. It must not become an
-additional authority over the target contracts:
+operational loading source for the existing OneBot application. It is the
+current bootstrap source, not the unique architectural contract. It must not
+become an additional authority over the target contracts:
 
 - plugin installation order;
 - feature ownership;
@@ -798,7 +893,9 @@ The repository must include tests that prove:
 
 - the dependency graph above;
 - one settings loader and no global settings access;
-- one plugin registry and no reflective internal plugin/runtime references;
+- one current bootstrap registry until Phase 2, with no reflective internal
+  plugin/runtime references; the registry must not acquire target-contract
+  ownership;
 - all internal message matchers have an explicit command policy;
 - only bootstrap registers driver lifecycle hooks;
 - only `SqliteDatabase` calls `sqlite3.connect`;
