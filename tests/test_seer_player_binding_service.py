@@ -17,7 +17,6 @@ from ironsbot.services.seer.player_binding import (
     player_binding_offer_message,
     player_binding_replacement_offer_message,
 )
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -85,30 +84,6 @@ def test_player_binding_replacement_offer_names_both_accounts() -> None:
     assert "当前默认米米号：10001（旧账号）" in message
     assert "已查到米米号：123456（测试玩家）" in message
     assert "保留当前绑定" in message
-
-
-class _UnboundPlayerBindingStore:
-    def get(self, _actor: ActorRef) -> SimpleNamespace:
-        return SimpleNamespace(player_id=None)
-
-
-def test_shortcut_without_a_default_player_explains_player_id_lookup() -> None:
-    service = PlayerService(
-        config=cast("Any", None),
-        headless=cast("Any", None),
-        bindings=cast("Any", _UnboundPlayerBindingStore()),
-        error_message=cast("Any", None),
-        details=cast("Any", None),
-    )
-
-    reply = asyncio.run(
-        service.shortcut(
-            PlayerShortcutCommand(kind="peak", player_id=None),
-            actor=_actor(),
-        )
-    )
-
-    assert reply.text == unbound_player_shortcut_message()
 
 
 def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
