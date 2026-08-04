@@ -31,6 +31,9 @@ from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
+from ironsbot.plugins.team_audit import (
+    plugin_contribution as team_audit_plugin_contribution,
+)
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
@@ -274,5 +277,9 @@ def build_test_plugin_registry(
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,
+        ),
+        team_audit_plugin_contribution(
+            scheduler=SchedulerFacade(),
+            service=resources.team_audit,
         ),
     )

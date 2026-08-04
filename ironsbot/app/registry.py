@@ -80,7 +80,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
     )
-    from ironsbot.plugins.team import install as install_team_audit
     from ironsbot.plugins.team.resource import install as install_team_resource
 
     config = settings
@@ -93,7 +92,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     bilibili_service = resources.bilibili
     bilibili_login = resources.bilibili_login
     messaging = resources.messaging
-    team_audit_service = resources.team_audit
     team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
@@ -520,26 +518,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     ),
                 ),
                 first_bot_connect=(("render_crash_report", report_render_crash),),
-            ),
-        ),
-        PluginContribution(
-            id="team_audit",
-            features=frozenset({Feature.TEAM_AUDIT}),
-            install=partial(
-                install_team_audit,
-                scheduler=scheduler,
-                service=team_audit_service,
-            ),
-            hooks=PluginHooks(
-                bot_connect=(
-                    (
-                        "team_audit_followups",
-                        partial(
-                            team_audit_service.start,
-                            scheduler=scheduler,
-                        ),
-                    ),
-                ),
             ),
         ),
         PluginContribution(

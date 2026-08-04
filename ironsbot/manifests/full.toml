@@ -14,4 +14,5 @@ plugin_dirs = []
   "ironsbot.plugins.messaging.red_packet",
   "ironsbot.plugins.fire_manual_ad",
   "ironsbot.plugins.seer.rank_help",
+  "ironsbot.plugins.team_audit",
 ]

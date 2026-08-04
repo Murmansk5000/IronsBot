@@ -103,6 +103,16 @@ def test_manifest_rank_help_owns_its_command_descriptors() -> None:
     assert {command.plugin_id for command in contribution.commands} == {"rank_help"}
 
 
+def test_manifest_team_audit_owns_its_feature_and_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["team_audit"]
+
+    assert contribution.features == frozenset({Feature.TEAM_AUDIT})
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.bot_connect] == [
+        "team_audit_followups"
+    ]
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -208,6 +218,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "seer"
                     / "rank_help"
                     / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:
