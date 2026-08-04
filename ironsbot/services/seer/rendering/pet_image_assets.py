@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Immutable image assets shared by the peak rendering documents."""
+"""Immutable pet-head and type-icon assets shared by Seer renderers."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class PeakRenderAssets:
-    """Data-URI assets prepared before peak presentation starts."""
+class PetImageAssets:
+    """Data-URI assets prepared before a pet-oriented presentation starts."""
 
     pet_heads: tuple[tuple[int, str], ...]
     type_icons: tuple[tuple[int, str], ...]

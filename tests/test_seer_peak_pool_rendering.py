@@ -16,7 +16,6 @@ from ironsbot.services.seer.peak import (
     PeakVoteItemSnapshot,
     PeakVotePoolInput,
 )
-from ironsbot.services.seer.rendering.peak_assets import PeakRenderAssets
 from ironsbot.services.seer.rendering.peak_pool import (
     peak_pool_cache_key,
     present_peak_pool,
@@ -25,6 +24,7 @@ from ironsbot.services.seer.rendering.peak_pool_vote import (
     peak_pool_vote_cache_key,
     present_peak_pool_vote,
 )
+from ironsbot.services.seer.rendering.pet_image_assets import PetImageAssets
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.images import SeerImageSource
@@ -90,7 +90,7 @@ def test_peak_pool_presentation_uses_preloaded_assets() -> None:
     document = present_peak_pool(
         _pools(),
         "竞技池",
-        PeakRenderAssets(
+        PetImageAssets(
             pet_heads=((70, "rei"), (71, "gaiya")),
             type_icons=((1, "electric"), (2, "fight")),
         ),
@@ -188,7 +188,7 @@ def test_peak_vote_presentation_uses_snapshot_and_fallback_name() -> None:
     document = present_peak_pool_vote(
         _vote_pools(),
         "2026-08-05 12:00",
-        PeakRenderAssets(pet_heads=((70, "rei"),), type_icons=((1, "electric"),)),
+        PetImageAssets(pet_heads=((70, "rei"),), type_icons=((1, "electric"),)),
     )
 
     assert document.pools[0].ranks[0].name == "雷伊"

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.peak import PeakPoolSnapshot
 
     from . import HtmlTemplateRenderer
-    from .peak_assets import PeakRenderAssets
+    from .pet_image_assets import PetImageAssets
 
 CELL_WIDTH = 100 + 2 * 2  # pet-cell width + border
 CELL_GAP = 10
@@ -80,7 +80,7 @@ def peak_pool_cache_key(
 def present_peak_pool(
     pools: Sequence[PeakPoolSnapshot],
     pool_type: str,
-    assets: PeakRenderAssets,
+    assets: PetImageAssets,
 ) -> PeakPoolRenderDocument:
     """Prepare a deterministic pool document without I/O or clock access."""
     head_icons = assets.pet_head_by_resource_id

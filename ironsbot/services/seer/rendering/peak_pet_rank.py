@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     )
 
     from . import HtmlTemplateRenderer
-    from .peak_assets import PeakRenderAssets
+    from .pet_image_assets import PetImageAssets
 
 TABLE_WIDTH = 580
 CONTAINER_PADDING = 20 * 2
@@ -85,7 +85,7 @@ def peak_pet_rank_cache_key(input_: PeakPetRankRenderInput) -> str:
 
 def present_peak_pet_rank(
     input_: PeakPetRankRenderInput,
-    assets: PeakRenderAssets,
+    assets: PetImageAssets,
 ) -> PeakPetRankRenderDocument:
     """Prepare a deterministic pet-rank document without I/O or clock access."""
     pet_map = {pet.id: pet for pet in input_.pets}

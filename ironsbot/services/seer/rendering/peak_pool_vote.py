@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     )
 
     from . import HtmlTemplateRenderer
-    from .peak_assets import PeakRenderAssets
+    from .pet_image_assets import PetImageAssets
 
 TABLE_WIDTH = 400
 CONTAINER_PADDING = 20 * 2
@@ -79,7 +79,7 @@ def peak_pool_vote_cache_key(
 def present_peak_pool_vote(
     pools: Sequence[PeakVotePoolInput],
     generated_at: str,
-    assets: PeakRenderAssets,
+    assets: PetImageAssets,
 ) -> PeakPoolVoteRenderDocument:
     """Prepare a deterministic vote document without I/O or clock access."""
     pet_map = {

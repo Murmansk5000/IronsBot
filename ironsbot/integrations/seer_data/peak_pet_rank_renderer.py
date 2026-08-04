@@ -11,7 +11,7 @@ from ironsbot.services.seer.rendering.peak_pet_rank import (
     render_peak_pet_rank_document,
 )
 
-from .peak_render_assets import load_peak_render_assets
+from .pet_image_assets import load_pet_image_assets
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.images import SeerImageSource
@@ -32,7 +32,11 @@ async def render_peak_pet_rank(
     content_key = peak_pet_rank_cache_key(input_)
     if cached := cache.get(_CACHE_CATEGORY, content_key):
         return cached
-    assets = await load_peak_render_assets(images, input_.pets)
+    assets = await load_pet_image_assets(
+        images,
+        resource_ids=(pet.resource_id for pet in input_.pets),
+        type_ids=(pet.type_id for pet in input_.pets),
+    )
     document = present_peak_pet_rank(input_, assets)
     rendered = await render_peak_pet_rank_document(render_html, document)
     cache.put(_CACHE_CATEGORY, content_key, rendered)

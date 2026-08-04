@@ -11,7 +11,7 @@ from ironsbot.services.seer.rendering.peak_pool_vote import (
     render_peak_pool_vote_document,
 )
 
-from .peak_render_assets import load_peak_render_assets
+from .pet_image_assets import load_pet_image_assets
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -35,9 +35,10 @@ async def render_peak_pool_vote(
     content_key = peak_pool_vote_cache_key(pools, generated_at)
     if cached := cache.get(_CACHE_CATEGORY, content_key):
         return cached
-    assets = await load_peak_render_assets(
+    assets = await load_pet_image_assets(
         images,
-        (pet for pool in pools for pet in pool.pets),
+        resource_ids=(pet.resource_id for pool in pools for pet in pool.pets),
+        type_ids=(pet.type_id for pool in pools for pet in pool.pets),
     )
     document = present_peak_pool_vote(pools, generated_at, assets)
     rendered = await render_peak_pool_vote_document(render_html, document)

@@ -14,11 +14,11 @@ from ironsbot.services.seer.peak import (
     PeakPetRankRenderInput,
     PeakPetSnapshot,
 )
-from ironsbot.services.seer.rendering.peak_assets import PeakRenderAssets
 from ironsbot.services.seer.rendering.peak_pet_rank import (
     peak_pet_rank_cache_key,
     present_peak_pet_rank,
 )
+from ironsbot.services.seer.rendering.pet_image_assets import PetImageAssets
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.images import SeerImageSource
@@ -68,7 +68,7 @@ def _input() -> PeakPetRankRenderInput:
 def test_peak_pet_rank_presentation_uses_prepared_assets() -> None:
     document = present_peak_pet_rank(
         _input(),
-        PeakRenderAssets(
+        PetImageAssets(
             pet_heads=((70, "rei"), (71, "gaiya")),
             type_icons=((1, "electric"), (2, "fight")),
         ),
