@@ -137,6 +137,18 @@ def test_manifest_activity_owns_its_commands_and_schedule() -> None:
     ]
 
 
+def test_manifest_headless_notice_owns_its_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["headless_notice"]
+
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "headless_reconnect_jobs"
+    ]
+    assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
+        "headless_seer_check"
+    ]
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -180,7 +192,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "db_sync",
         "headless_seer",
         "messaging",
-        "headless_reconnect_jobs",
         "scheduled_restart_jobs",
         "bilibili_monitor_jobs",
         "local_rank_jobs",
@@ -188,16 +199,17 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "lucky_skin_window_schedule",
         "team_resource_jobs",
         "activity_reminder_jobs",
+        "headless_reconnect_jobs",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "scheduler",
         "headless_seer",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
-        "headless_seer_check",
         "bilibili_check",
         "startup_notice",
         "render_crash_report",
+        "headless_seer_check",
     ]
     assert [name for name, _hook in lifecycle.bot_connect_hooks] == [
         "team_audit_followups",
@@ -245,6 +257,11 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "team" / "resource.py",
                     ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "headless_seer_notice"
+                    / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

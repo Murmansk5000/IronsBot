@@ -17,6 +17,9 @@ from ironsbot.plugins.activity import (
 from ironsbot.plugins.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
+from ironsbot.plugins.headless_seer_notice import (
+    plugin_contribution as headless_notice_plugin_contribution,
+)
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
 from ironsbot.plugins.help.hint import (
     plugin_contribution as help_hint_plugin_contribution,
@@ -298,5 +301,9 @@ def build_test_plugin_registry(
             service=resources.activity,
             features=runtime.features,
             scheduler=SchedulerFacade(),
+        ),
+        headless_notice_plugin_contribution(
+            scheduler=SchedulerFacade(),
+            service=headless,
         ),
     )

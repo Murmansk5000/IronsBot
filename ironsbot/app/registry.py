@@ -64,7 +64,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     )
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.operations.db_sync import install as install_db_sync
-    from ironsbot.plugins.operations.headless import register_reconnect_jobs
     from ironsbot.plugins.operations.restart import register_restart_jobs
     from ironsbot.plugins.operations.startup import send_startup_notice
     from ironsbot.plugins.operations.status.handlers import (
@@ -151,9 +150,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         scheduler=scheduler,
         activity_service=activity_service,
     )
-
-    async def check_headless_on_connect(_bot: Bot) -> None:
-        await headless.check_on_connect()
 
     async def check_bilibili_on_connect(bot: Bot) -> None:
         await bili_monitor.check_on_connect(str(bot.self_id))
@@ -313,23 +309,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     (
                         "messaging",
                         partial(messaging.start, scheduler),
-                    ),
-                ),
-            ),
-        ),
-        PluginContribution(
-            id="headless_notice",
-            hooks=PluginHooks(
-                startup=(
-                    (
-                        "headless_reconnect_jobs",
-                        partial(register_reconnect_jobs, scheduler, headless),
-                    ),
-                ),
-                first_bot_connect=(
-                    (
-                        "headless_seer_check",
-                        check_headless_on_connect,
                     ),
                 ),
             ),
