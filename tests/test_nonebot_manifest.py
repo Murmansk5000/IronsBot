@@ -30,6 +30,8 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.onebot.bootstrap",
             "ironsbot.plugins.bilibili",
             "ironsbot.plugins.messaging",
+            "ironsbot.plugins.ai",
+            "ironsbot.plugins.ai.intent",
             "ironsbot.plugins.operations.server_status",
             "ironsbot.plugins.operations.docker_update",
             "ironsbot.plugins.operations.db_sync",

@@ -4,18 +4,14 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from ironsbot.app.command_directory.dynamic import ai_intent_commands
-from ironsbot.app.command_directory.plugins import ai_chat_commands
 from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
-from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
 )
-from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -35,8 +31,6 @@ def build_plugin_registry(
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
-    from ironsbot.plugins.ai import install as install_ai
-    from ironsbot.plugins.ai.intent import install as install_ai_intent
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
@@ -46,16 +40,10 @@ def build_plugin_registry(
     features = resources.features
     admin_notices = resources.admin_notices
     headless = resources.headless
-    team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
     seer_resources = resources.seer
     pet_config_service = resources.pet_config
-    ai_service = resources.ai
-    bot_mention_block_service = BotMentionBlockService(
-        config.messaging.command_cooldown
-    )
-    ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginContribution, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
@@ -162,69 +150,6 @@ def build_plugin_registry(
                     ),
                 ),
                 first_bot_connect=(("render_crash_report", report_render_crash),),
-            ),
-        ),
-        PluginContribution(
-            id="ai_chat",
-            features=frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE}),
-            help=HelpEntry(
-                name="AI聊天",
-                description="接入 OpenAI-compatible API 的自定义聊天插件",
-                group="ai",
-                order=10,
-                visible=partial(
-                    feature_help_visible,
-                    features=features,
-                    feature="ai_chat",
-                    enabled=bool(config.ai.api_key.strip()),
-                ),
-            ),
-            commands=ai_chat_commands(enabled=bool(config.ai.api_key.strip())),
-            install=(
-                partial(
-                    install_ai,
-                    service=ai_service,
-                    features=features,
-                    group_aliases=config.features.group_aliases,
-                    bot_mention_block_service=bot_mention_block_service,
-                )
-                if config.ai.api_key.strip()
-                else None
-            ),
-        ),
-        PluginContribution(
-            id="ai_intent",
-            features=frozenset(
-                {
-                    Feature.AI_INTENT,
-                    Feature.AI_INTENT_TEAM_RECOMMEND,
-                    Feature.AI_INTENT_FIRE_MANUAL,
-                }
-            ),
-            help=HelpEntry(
-                name="AI意图分析",
-                description="按配置识别简短意图，并触发对应回复或功能。",
-                group="ai",
-                order=20,
-                visible=partial(
-                    feature_help_visible,
-                    features=features,
-                    feature="ai_intent",
-                    enabled=(
-                        bool(config.ai.api_key.strip())
-                        and config.ai.intent_actions_enabled
-                    ),
-                ),
-            ),
-            commands=ai_intent_command_descriptors,
-            install=partial(
-                install_ai_intent,
-                service=ai_service,
-                group_aliases=config.features.group_aliases,
-                team_resource=team_resource_service,
-                command_help_ids=tuple(
-                    command.id for command in ai_intent_command_descriptors
-                ),
             ),
         ),
     )

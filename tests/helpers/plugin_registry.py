@@ -14,6 +14,10 @@ from ironsbot.plugins.about import plugin_contribution as about_plugin_contribut
 from ironsbot.plugins.activity import (
     plugin_contribution as activity_plugin_contribution,
 )
+from ironsbot.plugins.ai import plugin_contribution as ai_chat_plugin_contribution
+from ironsbot.plugins.ai.intent import (
+    plugin_contribution as ai_intent_plugin_contribution,
+)
 from ironsbot.plugins.bilibili import (
     plugin_contribution as bilibili_plugin_contribution,
 )
@@ -304,6 +308,17 @@ def build_test_plugin_registry(
             service=resources.messaging,
             activity_service=resources.activity,
             scheduler=SchedulerFacade(),
+        ),
+        ai_chat_plugin_contribution(
+            settings=config,
+            service=resources.ai,
+            features=runtime.features,
+        ),
+        ai_intent_plugin_contribution(
+            settings=config,
+            service=resources.ai,
+            features=runtime.features,
+            team_resource=resources.team_resource,
         ),
         server_status_plugin_contribution(
             service=resources.server_status,

@@ -316,6 +316,7 @@ adding fields or side registries to the central bootstrap bridge.
 The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.plugins.activity`, `ironsbot.plugins.bilibili`,
 `ironsbot.plugins.messaging`,
+`ironsbot.plugins.ai` / `.intent`,
 `ironsbot.plugins.operations.server_status`,
 `ironsbot.plugins.operations.docker_update`, `ironsbot.plugins.operations.db_sync`,
 `ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,

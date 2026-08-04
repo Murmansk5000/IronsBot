@@ -22,7 +22,10 @@ except ValueError:
 
 from ironsbot.app.external_plugins import load_external_plugin
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature
+from ironsbot.plugins.ai import command_descriptors as ai_chat_commands
+from ironsbot.plugins.ai.intent import command_descriptors as ai_intent_commands
 from ironsbot.runtime.plugins import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
@@ -171,6 +174,33 @@ def test_manifest_messaging_owns_its_commands_and_schedule() -> None:
     assert [name for name, _hook in contribution.hooks.startup] == ["messaging"]
 
 
+def test_manifest_ai_chat_owns_its_features_and_commands() -> None:
+    contribution = DEFINITIONS_BY_ID["ai_chat"]
+
+    assert contribution.features == frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE})
+    assert contribution.commands == ()
+    assert {command.plugin_id for command in ai_chat_commands(enabled=True)} == {
+        "ai_chat"
+    }
+
+
+def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
+    contribution = DEFINITIONS_BY_ID["ai_intent"]
+
+    assert contribution.features == frozenset(
+        {
+            Feature.AI_INTENT,
+            Feature.AI_INTENT_TEAM_RECOMMEND,
+            Feature.AI_INTENT_FIRE_MANUAL,
+        }
+    )
+    assert contribution.commands == ()
+    enabled_settings = Settings.model_validate({"ai": {"api_key": "test"}})
+    assert {command.plugin_id for command in ai_intent_commands(enabled_settings)} == {
+        "ai_intent"
+    }
+
+
 def test_manifest_server_status_owns_its_commands_and_feature() -> None:
     contribution = DEFINITIONS_BY_ID["server_status"]
 
@@ -266,7 +296,9 @@ def test_manifest_contributions_follow_the_legacy_bridge() -> None:
     assert plugin_ids[:4] == ("apscheduler", "localstore", "htmlkit", "saa")
     assert plugin_ids.index("seer_query") < plugin_ids.index("bilibili")
     assert plugin_ids.index("bilibili") < plugin_ids.index("messaging")
-    assert plugin_ids.index("messaging") < plugin_ids.index("server_status")
+    assert plugin_ids.index("messaging") < plugin_ids.index("ai_chat")
+    assert plugin_ids.index("ai_chat") < plugin_ids.index("ai_intent")
+    assert plugin_ids.index("ai_intent") < plugin_ids.index("server_status")
     assert plugin_ids.index("server_status") < plugin_ids.index("docker_update")
     assert plugin_ids.index("docker_update") < plugin_ids.index("db_sync")
 
@@ -341,6 +373,8 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
                     ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "ai" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "ai" / "intent.py",
                     ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
                     ROOT
                     / "ironsbot"
