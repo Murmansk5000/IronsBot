@@ -14,7 +14,7 @@ except ValueError:
 from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature, FeatureConfig, FeatureService
-from ironsbot.plugins.help.menu import visible_help_entries
+from ironsbot.plugins.onebot.help.menu import visible_help_entries
 from ironsbot.runtime.commands import CommandCatalog
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry

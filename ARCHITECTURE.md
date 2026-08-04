@@ -411,13 +411,13 @@ adding fields or side registries to a temporary bootstrap adapter.
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
-The first verified migrations are `ironsbot.plugins.about`,
+The first verified migrations are `ironsbot.plugins.onebot.about`,
 `ironsbot.plugins.activity`, `ironsbot.plugins.bilibili`,
 `ironsbot.plugins.messaging`,
 `ironsbot.plugins.ai` / `.intent`,
 `ironsbot.plugins.operations.server_status`,
 `ironsbot.plugins.operations.docker_update`, `ironsbot.plugins.operations.db_sync`,
-`ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,
+`ironsbot.plugins.onebot.help` / `.hint`, `ironsbot.plugins.onebot.sendpic`,
 `ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.onebot.seer.rank_help`,
 `ironsbot.custom_plugins.pet_config`,
 `ironsbot.plugins.onebot.seer.query`,
@@ -431,7 +431,7 @@ them directly, and each package supplies its own metadata and contribution.
 the standard manifest directly discovers the required third-party runtime
 plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
-`fire_manual_ad` owns its passive feature policy contribution; `sendpic`,
+`fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,
 `meeting`, `rank_help`, and `onebot.team_resource` also own the command descriptors
 for the matchers they install.
 Every subsequent private-extension migration follows that pattern and removes

@@ -354,10 +354,30 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                 )
                 if path in {
                     ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
-                    ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "help" / "hint.py",
-                    ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "about"
+                        / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "help"
+                        / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "help"
+                        / "hint.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "sendpic"
+                        / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",

@@ -12,7 +12,6 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
-from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
 from ironsbot.plugins.activity import (
     plugin_contribution as activity_plugin_contribution,
 )
@@ -32,10 +31,6 @@ from ironsbot.plugins.headless_seer_notice import (
 from ironsbot.plugins.headless_seer_runtime import (
     plugin_contribution as headless_runtime_plugin_contribution,
 )
-from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
-from ironsbot.plugins.help.hint import (
-    plugin_contribution as help_hint_plugin_contribution,
-)
 from ironsbot.plugins.messaging import (
     plugin_contribution as messaging_plugin_contribution,
 )
@@ -48,6 +43,13 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.onebot.about import (
+    plugin_contribution as about_plugin_contribution,
+)
+from ironsbot.plugins.onebot.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.onebot.help.hint import (
+    plugin_contribution as help_hint_plugin_contribution,
+)
 from ironsbot.plugins.onebot.lucky_skin_window import (
     plugin_contribution as lucky_skin_window_plugin_contribution,
 )
@@ -56,6 +58,9 @@ from ironsbot.plugins.onebot.seer.query import (
 )
 from ironsbot.plugins.onebot.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
+)
+from ironsbot.plugins.onebot.sendpic import (
+    plugin_contribution as sendpic_plugin_contribution,
 )
 from ironsbot.plugins.onebot.team_audit import (
     plugin_contribution as team_audit_plugin_contribution,
@@ -78,7 +83,6 @@ from ironsbot.plugins.scheduled_restart import (
 from ironsbot.plugins.scheduler import (
     plugin_contribution as scheduler_plugin_contribution,
 )
-from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.plugins.startup_notice import (
     plugin_contribution as startup_notice_plugin_contribution,
 )
@@ -192,8 +196,8 @@ def build_test_plugin_registry(
             ),
             lucky_skin_window=SimpleNamespace(
                 enabled=False,
-                is_eligible_user=lambda _user_id: False,
-                account_for_user=lambda _user_id: None,
+                is_eligible_actor=lambda _actor: False,
+                account_for_actor=lambda _actor: None,
             ),
             messaging=SimpleNamespace(
                 refresh_push_time_jobs=_noop_refresh_push_time,
