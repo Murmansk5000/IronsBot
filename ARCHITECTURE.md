@@ -62,10 +62,11 @@ prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
 Current transition items are `MatcherRegistry`, the private-extension bootstrap
-adapter, and the renderer data lookups listed in the Phase 0 guard below. They
-keep the current OneBot application runnable; they are not the architecture
-that new cross-feature work should target. Phase 2 has completed built-in
-plugin discovery through the standard NoneBot manifest and uses
+adapter, the legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and
+the renderer data lookups listed in the Phase 0 guard below. They keep the
+current OneBot application runnable; they are not the architecture that new
+cross-feature work should target. Phase 2 has completed built-in plugin
+discovery through the standard NoneBot manifest and uses
 `PluginContribution` as the runtime contract. The remaining Phase 2 work
 replaces `MatcherRegistry` with a matcher factory and removes the temporary
 private-extension adapter. Phase 4 removes renderer-owned persistence lookups.
