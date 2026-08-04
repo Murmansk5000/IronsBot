@@ -34,7 +34,7 @@ from ironsbot.services.seer.rank_list_models import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
-    RankPlayerCommand,
+    RankPlayerTargetCommand,
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_list_parsing import (
@@ -42,7 +42,7 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
-    parse_rank_player_command,
+    parse_rank_player_target_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
@@ -247,35 +247,41 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
     assert parse_rank_score_command("群星牌榜第3149名") is None
 
 
-def test_parse_rank_player_command_treats_plain_digits_as_player_id() -> None:
-    assert parse_rank_player_command("成就榜123456") == RankPlayerCommand(
+def test_parse_rank_player_target_command_preserves_plain_digits() -> None:
+    assert parse_rank_player_target_command("成就榜123456") == RankPlayerTargetCommand(
         rank_key="成就点数",
-        player_id=123456,
+        player_reference="123456",
     )
-    assert parse_rank_player_command("群星之巅榜712345678") == RankPlayerCommand(
-        rank_key="群星牌",
-        player_id=712345678,
+    assert (
+        parse_rank_player_target_command("群星之巅榜712345678")
+        == RankPlayerTargetCommand(
+            rank_key="群星牌",
+            player_reference="712345678",
+        )
     )
-    assert parse_rank_player_command("竞技榜123456") == RankPlayerCommand(
+    assert parse_rank_player_target_command("竞技榜123456") == RankPlayerTargetCommand(
         rank_key="竞技段位",
-        player_id=123456,
+        player_reference="123456",
     )
-    assert parse_rank_player_command("样本成就榜123456") is None
-    assert parse_rank_player_command("成就榜第123456名") is None
-    assert parse_rank_player_command("成就榜5000点") is None
-    assert parse_rank_player_command("群星牌榜26") is None
-    assert parse_rank_player_command("竞技榜49999") is None
-
-
-def test_parse_rank_player_command_can_resolve_configured_account_alias() -> None:
-    assert parse_rank_player_command(
-        "群星之巅榜sample_player",
-        resolve_player_id=lambda reference: (
-            712345678 if reference == "sample_player" else None
-        ),
-    ) == RankPlayerCommand(
+    assert parse_rank_player_target_command("样本成就榜123456") is None
+    assert parse_rank_player_target_command("成就榜第123456名") is None
+    assert parse_rank_player_target_command("成就榜5000点") is None
+    assert parse_rank_player_target_command("群星牌榜26") == RankPlayerTargetCommand(
         rank_key="群星牌",
-        player_id=712345678,
+        player_reference="26",
+    )
+    assert parse_rank_player_target_command("竞技榜49999") == RankPlayerTargetCommand(
+        rank_key="竞技段位",
+        player_reference="49999",
+    )
+
+
+def test_parse_rank_player_target_command_preserves_configured_account_alias() -> None:
+    assert parse_rank_player_target_command(
+        "群星之巅榜sample_player",
+    ) == RankPlayerTargetCommand(
+        rank_key="群星牌",
+        player_reference="sample_player",
     )
 
 
@@ -296,17 +302,13 @@ def test_parse_rank_player_command_can_resolve_configured_account_alias() -> Non
         "专家榜",
     ),
 )
-def test_all_global_rank_families_resolve_player_aliases(alias: str) -> None:
-    expected_player_id = 712345678
-    command = parse_rank_player_command(
+def test_all_global_rank_families_preserve_player_aliases(alias: str) -> None:
+    command = parse_rank_player_target_command(
         f"{alias}示例账号",
-        resolve_player_id=lambda reference: (
-            expected_player_id if reference == "示例账号" else None
-        ),
     )
 
     assert command is not None
-    assert command.player_id == expected_player_id
+    assert command.player_reference == "示例账号"
 
 
 @pytest.mark.parametrize(
@@ -326,13 +328,16 @@ def test_all_global_rank_families_resolve_player_aliases(alias: str) -> None:
         ("专家榜", "专家段位"),
     ],
 )
-def test_all_global_rank_families_treat_plain_number_as_player_id(
+def test_all_global_rank_families_preserve_plain_number_player_targets(
     alias: str,
     rank_key: str,
 ) -> None:
-    assert parse_rank_player_command(f"{alias}123456") == RankPlayerCommand(
-        rank_key=rank_key,
-        player_id=123456,
+    assert (
+        parse_rank_player_target_command(f"{alias}123456")
+        == RankPlayerTargetCommand(
+            rank_key=rank_key,
+            player_reference="123456",
+        )
     )
     assert parse_rank_list_command(f"{alias}123456") is None
 

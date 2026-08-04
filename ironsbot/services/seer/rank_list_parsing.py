@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
 
 from ironsbot.core.commands import normalize_command_text, strip_command_prefix
-from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.rank_catalog import RANK_COMMAND_MAP
 from ironsbot.services.seer.rank_list_models import (
     BATCH_CACHE_PREFIXES,
@@ -19,13 +17,10 @@ from ironsbot.services.seer.rank_list_models import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
-    RankPlayerCommand,
+    RankPlayerTargetCommand,
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
@@ -87,28 +82,25 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
     return RankScoreCommand(rank_key=rank_key, score=score)
 
 
-def parse_rank_player_command(
-    text: str,
-    *,
-    resolve_player_id: Callable[[str], int | None] | None = None,
-) -> RankPlayerCommand | None:
+def parse_rank_player_target_command(text: str) -> RankPlayerTargetCommand | None:
+    """Parse a global-rank player target without resolving platform input."""
+
     command = normalize_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
 
     kind, rank_key, suffix = parsed
-    if kind != "global" or not suffix:
+    if kind != "global":
         return None
-    if resolve_player_id is not None:
-        player_id = resolve_player_id(suffix)
-    elif suffix.isdecimal():
-        player_id = int(suffix) if is_valid_player_id(int(suffix)) else None
-    else:
-        player_id = None
-    if player_id is None:
+    if suffix and _parse_rank_window(suffix) is not None:
         return None
-    return RankPlayerCommand(rank_key=rank_key, player_id=player_id)
+    if parse_rank_score_command(text) is not None:
+        return None
+    return RankPlayerTargetCommand(
+        rank_key=rank_key,
+        player_reference=suffix or None,
+    )
 
 
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
