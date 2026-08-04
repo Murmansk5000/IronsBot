@@ -62,15 +62,17 @@ prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
 Current transition items are `MatcherRegistry`, the private-extension bootstrap
-adapter, and the renderer data lookups listed in the Phase 0 guard below. They
-keep the current OneBot application runnable; they are not the architecture
-that new cross-feature work should target. Phase 2 has completed built-in
-plugin discovery through the standard NoneBot manifest and uses
-`PluginContribution` as the runtime contract. The remaining Phase 2 work
-replaces `MatcherRegistry` with a matcher factory and removes the temporary
-private-extension adapter. Phase 4 removes renderer-owned persistence lookups.
-No new subsystem may be built on those transition items merely because they
-already exist.
+adapter, the legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and
+the renderer data lookups listed in the Phase 0 guard below. They keep the
+current OneBot application runnable; they are not the architecture that new
+cross-feature work should target. Phase 2 has completed built-in plugin
+discovery through the standard NoneBot manifest. `PluginContribution` is the
+current plugin-local way to submit explicit runtime contributions; it is not an
+application registry or a catch-all authority for every plugin concern. The
+remaining Phase 2 work replaces `MatcherRegistry` with a matcher factory and
+removes the temporary private-extension adapter. Phase 4 removes
+renderer-owned persistence lookups. No new subsystem may be built on those
+transition items merely because they already exist.
 
 The authoritative long-term ownership is therefore:
 
@@ -84,6 +86,55 @@ The authoritative long-term ownership is therefore:
 The temporary private-extension adapter owns none of those target
 responsibilities. It only adapts configured external private contributions
 until that extension boundary has a standard declarative replacement.
+
+### Plugin Contract Terminology
+
+Plugin-related terms name separate responsibilities. They must not be collapsed
+into a fictional "single plugin contract" in code, plans, reviews, or future
+architecture work:
+
+| Term | Owns | Does not own |
+| --- | --- | --- |
+| `PluginMetadata` | Static plugin identity and NoneBot metadata | Matchers, commands, lifecycle policy, or feature decisions |
+| `PluginContribution` | A plugin's explicit runtime contributions submitted during installation | A central plugin registry, command semantics, or cross-plugin policy |
+| `CommandCatalog` / `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
+| Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
+| `ApplicationLifecycle` | Process lifecycle, owned tasks, and startup/shutdown ordering | Plugin metadata or user-command semantics |
+
+`PluginDefinition` is a retired historical type. It may be mentioned only when
+documenting a completed migration or inspecting old Git history; new code,
+interfaces, tests, and diagrams must not introduce it or treat it as a current
+contract. When a responsibility needs an authority, name the narrow authority
+from the table rather than saying that a plugin, manifest, or contribution
+object owns everything.
+
+### Transition Inventory And Admission Rule
+
+The following table is the working inventory for architecture tasks. It
+prevents a currently working bridge from being treated as a design option for
+new code. A row marked **transition** may receive a narrowly scoped bug fix,
+or lose one consumer in a migration. It must not receive a new service,
+feature, persistence schema, or policy decision.
+
+| Responsibility | Status | Current safe boundary | Required direction before new ownership |
+| --- | --- | --- | --- |
+| Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
+| `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
+| Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
+| Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
+| Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
+| OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
+| OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
+| Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
+| Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
+| Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
+| Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
+
+Before adding cross-feature code, locate its row in this table. If it has no
+row, add a target responsibility with an owner and a testable boundary first.
+If it is a transition row, the proposed diff must make the row smaller or
+strictly preserve it; adding a second caller is a design failure even if the
+tests pass.
 
 ## Engineering Principles
 
@@ -182,7 +233,9 @@ Platform = Literal["onebot", "qq_official"]
 @dataclass(frozen=True, slots=True)
 class ActorRef:
     platform: Platform
-    user_id: str
+    id: str
+    kind: Literal["user", "member"] = "user"
+    scope_id: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class ConversationRef:
@@ -209,6 +262,45 @@ mentions and reply contexts only after a `ConversationRef` has been routed to
 a OneBot bot. Existing `OneBotDelivery` callers still use `MessageTarget`
 until the Phase 3 one-direction migration; new services must use the
 platform-neutral port instead.
+
+`services.team.audit.TeamAuditService` is the first complete reference use
+case for this boundary. Its workflow, reminder store, scheduler jobs, and
+outbound messages use `ConversationRef`, `ActorRef`, and `OutboundMessenger`.
+The OneBot plugin converts notice events at the edge, while
+`integrations.onebot.team_audit` owns configured feature policy, bot routing,
+and group-member probes. Future transport migrations should follow this shape
+rather than passing numeric IDs or adapter bot instances into a service.
+
+`services.messaging.admin_notice.AdminNoticeService` is the reference use case
+for platform-neutral operational delivery. It selects `ActorRef` and
+`ConversationRef` recipients through feature policy and sends an
+`OutboundMessage` through an explicit `AdminNoticeSender` port. The OneBot
+adapter may delegate to the legacy `OneBotDelivery` chain while that chain is
+being retired, because the adapter is the only place that knows numeric QQ
+targets, routing, subscriptions, queueing, and rate limits. A new notification
+service must use this shape or a narrower domain port; it must not import
+`MessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
+
+`services.activity.ActivityService` applies the same ownership to scheduled
+activity reminders: the service creates typed recipients and an
+`OutboundMessage`, while `integrations.onebot.activity` preserves the current
+OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
+The current push-preference SQLite schema still stores OneBot target IDs; its
+conversion is confined to composition until the later identity-state migration.
+
+Lucky-skin-window notification delivery now follows this rule: its service
+owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
+the OneBot adapter owns numeric QQ conversion, unsubscription, daily-hint
+deduplication and `OneBotDelivery`. Team-resource subscriptions use the same
+shape: `TeamResourceService` owns typed conversations, actors, subscriptions
+and low-resource policy, while `OneBotTeamResourceNoticeSender` owns QQ number
+conversion, mentions and legacy delivery. The remaining messaging scheduler
+migrations are ordered by semantic overlap, not file size. Each task must
+extract a typed service-side port and move the corresponding OneBot
+`MessageTarget` call into `integrations.onebot`; it must not add another
+platform-neutral wrapper around `MessageTarget`. This keeps current
+subscription, queue, rate-limit and failure semantics available while reducing
+the old chain one domain at a time.
 
 The eventual composition is:
 
@@ -319,28 +411,32 @@ adding fields or side registries to a temporary bootstrap adapter.
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
-The first verified migrations are `ironsbot.plugins.about`,
-`ironsbot.plugins.activity`, `ironsbot.plugins.bilibili`,
-`ironsbot.plugins.messaging`,
-`ironsbot.plugins.ai` / `.intent`,
-`ironsbot.plugins.operations.server_status`,
-`ironsbot.plugins.operations.docker_update`, `ironsbot.plugins.operations.db_sync`,
-`ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,
-`ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
-`ironsbot.custom_plugins.pet_config`,
-`ironsbot.plugins.seer.query`,
-`ironsbot.plugins.seer.lucky_skin_window`, `ironsbot.plugins.team_audit`,
-`ironsbot.plugins.team.resource`, and the
-`ironsbot.plugins.startup_notice`, `ironsbot.plugins.headless_seer_notice`,
-`ironsbot.plugins.headless_seer_runtime`, and the messaging `blacklist`,
-`meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
-them directly, and each package supplies its own metadata and contribution.
-`ironsbot.plugins.scheduler` likewise owns scheduler lifecycle binding, while
-the standard manifest directly discovers the required third-party runtime
+The first verified migrations are `ironsbot.plugins.onebot.about`,
+`ironsbot.plugins.onebot.activity`, `ironsbot.plugins.onebot.bilibili`,
+`ironsbot.plugins.onebot.messaging`,
+`ironsbot.plugins.onebot.ai` / `.intent`,
+`ironsbot.plugins.onebot.operations.server_status`,
+`ironsbot.plugins.onebot.operations.docker_update`,
+`ironsbot.plugins.onebot.operations.db_sync`,
+`ironsbot.plugins.onebot.help` / `.hint`, `ironsbot.plugins.onebot.sendpic`,
+`ironsbot.plugins.onebot.fire_manual_ad`, `ironsbot.plugins.onebot.seer.rank_help`,
+`ironsbot.plugins.onebot.pet_config`,
+`ironsbot.plugins.onebot.seer.query`,
+`ironsbot.plugins.onebot.lucky_skin_window`, `ironsbot.plugins.onebot.team_audit`,
+`ironsbot.plugins.onebot.team_resource`, and the
+`ironsbot.plugins.onebot.startup_notice`,
+`ironsbot.plugins.onebot.headless_seer_notice`,
+`ironsbot.plugins.onebot.headless_seer_runtime`,
+`ironsbot.plugins.onebot.scheduler`, and the messaging `blacklist`, `meeting`,
+`red_packet`, and `onebot.scheduled_restart` modules: the manifest loads them
+directly, and each package supplies its own metadata and contribution. Seer rank
+refresh job registration is application service code in
+`services.seer.rank_refresh_scheduler`, not a OneBot event adapter. The standard
+manifest directly discovers the required third-party runtime
 plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
-`fire_manual_ad` owns its passive feature policy contribution; `sendpic`,
-`meeting`, `rank_help`, and `team.resource` also own the command descriptors
+`fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,
+`meeting`, `rank_help`, and `onebot.team_resource` also own the command descriptors
 for the matchers they install.
 Every subsequent private-extension migration follows that pattern and removes
 its bootstrap adapter responsibility in the same change.
@@ -383,6 +479,30 @@ Future data work follows these rules:
 - A downloaded data release is validated for schema version and required tables
   before atomic replacement. Incompatible data disables only the affected
   feature and notifies administrators without removing the data-update path.
+
+### Cross-Repository Data Publication Contract
+
+When a user-facing Seer capability depends on extracted official data, its
+truth must be produced and versioned by the data repository rather than
+reconstructed inside IronsBot. A change that crosses `seerapi`,
+`seerapi-models`, and IronsBot follows this fixed order:
+
+1. `seerapi` defines the normalized fact table, source provenance, ambiguity
+   record, schema version, and build-time validation.
+2. `seerapi-models` exposes the published fact through an ORM/repository
+   contract; it must not expose raw extraction tables as a shortcut for
+   renderers.
+3. A real data release is built and checked for required tables, deterministic
+   rows, assets, and integrity before a consumer is allowed to rely on it.
+4. IronsBot consumes the published view through `integrations.seer_data` and
+   passes a render-ready view model to its renderer.
+
+The consuming repository must not add a second association resolver, raw SWF
+conversion fallback, best-effort text guesser, or legacy-table read merely to
+cover a missing data release. Missing required facts are a release/schema
+failure with observable diagnostics and a recoverable `/更新数据` path. A
+one-time migration may transform old local data before deployment, but normal
+runtime reads one published schema only.
 
 ## Gradual Migration Plan
 
@@ -889,9 +1009,10 @@ remaining target-state work:
   adapter transport imports from `core` and `services`.
 
 The renderer allowlist is a debt register, not an exception to the target
-rule. It contains only the three existing Seer rendering data lookup modules
-and must shrink in Phase 4. Adding an item requires a product-approved
-migration plan; a new renderer must receive a view model and assets instead.
+rule. It contains only the remaining `custom_pet_info.py` transition module
+and must reach an empty set in Phase 4. Adding an item requires a
+product-approved migration plan; a new renderer must receive a view model and
+assets instead.
 
 ## Current OneBot Behaviour Baseline
 
@@ -906,9 +1027,11 @@ reference for users:
   policy. Prompts and selection menus keep their own anchored session state.
 - **Permissions and identity:** the current feature policy resolves configured
   group and user aliases, group/private feature access, group-manager roles,
-  and superuser bypass. OneBot user and group identifiers are still integers
-  at this boundary. Seer player IDs already use a shared resolver for numeric
-  IDs, aliases, one direct mention, and the caller's default binding.
+  and superuser bypass. The OneBot configuration boundary still owns numeric
+  QQ values, but policy and new services expose `ActorRef` and
+  `ConversationRef`; a second platform must not consume the numeric values.
+  Seer player IDs already use a shared resolver for numeric IDs, aliases, one
+  direct mention, and the caller's default binding.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.

@@ -17,6 +17,7 @@ from ironsbot.runtime.semantic_requests import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef
     from ironsbot.core.semantic_requests import SemanticTarget
 
 CommandIdResolver: TypeAlias = Callable[[MessageEvent, T_State], str | None]
@@ -79,7 +80,7 @@ class CommandCooldown(Protocol):
     def admit(
         self,
         *,
-        user_id: int,
+        actor: ActorRef,
         command_id: str,
         now: float | None = None,
     ) -> CooldownDecision: ...

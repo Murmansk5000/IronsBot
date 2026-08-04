@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.services.team.audit import TeamAuditPendingReminder
 
@@ -18,8 +19,8 @@ def _reminder(
     step: int = FIRST_FOLLOWUP_STEP,
 ) -> TeamAuditPendingReminder:
     return TeamAuditPendingReminder(
-        GROUP_ID,
-        USER_ID,
+        _conversation(),
+        _actor(),
         joined_at,
         joined_at + timedelta(hours=delay_hours),
         step,
@@ -33,7 +34,7 @@ def test_team_audit_pending_reminder_roundtrip(tmp_path: Path) -> None:
 
     store.save(reminder)
 
-    assert store.get(GROUP_ID, USER_ID) == reminder
+    assert store.get(_conversation(), _actor()) == reminder
     assert store.list_all() == [reminder]
 
 
@@ -50,7 +51,7 @@ def test_team_audit_pending_reminder_upsert_and_clear(tmp_path: Path) -> None:
     store.save(updated)
 
     assert store.list_all() == [updated]
-    store.clear(GROUP_ID, USER_ID)
+    store.clear(_conversation(), _actor())
     assert store.list_all() == []
 
 
@@ -70,3 +71,37 @@ def test_team_audit_pending_reminder_uses_platform_identity_schema(
     assert {"conversation_platform", "actor_platform"} <= columns
     assert "group_id" not in columns
     assert "user_id" not in columns
+
+
+def test_team_audit_pending_reminder_preserves_non_onebot_identity(
+    tmp_path: Path,
+) -> None:
+    store = SqliteTeamAuditReminderStore(tmp_path / "pending.sqlite")
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "guild", "guild-1")
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL, "member-1", kind="member", scope_id="guild-1"
+    )
+    reminder = TeamAuditPendingReminder(
+        conversation,
+        actor,
+        datetime(2026, 6, 26, 1, 0, tzinfo=timezone.utc),
+        datetime(2026, 6, 27, 1, 0, tzinfo=timezone.utc),
+    )
+
+    store.save(reminder)
+
+    assert store.get(conversation, actor) == reminder
+    assert store.list_all() == [reminder]
+
+
+def _conversation() -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+
+
+def _actor() -> ActorRef:
+    return ActorRef(
+        Platform.ONEBOT,
+        str(USER_ID),
+        kind="member",
+        scope_id=str(GROUP_ID),
+    )

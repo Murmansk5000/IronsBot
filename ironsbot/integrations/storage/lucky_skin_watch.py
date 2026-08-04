@@ -7,12 +7,13 @@ import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.integrations.storage.platform_identity import ActorIdentityColumns
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ironsbot.core.platform import ActorRef
 
 
 _SCHEMA = """
@@ -39,8 +40,7 @@ class SqliteLuckySkinWatchPreferenceStore:
             migration_namespace=MIGRATION_NAMESPACE,
         )
 
-    def get(self, qq_user_id: int) -> tuple[int, ...] | None:
-        actor = _onebot_actor(qq_user_id)
+    def get(self, actor: ActorRef) -> tuple[int, ...] | None:
         with self._database.connect() as connection:
             row = connection.execute(
                 """
@@ -52,8 +52,7 @@ class SqliteLuckySkinWatchPreferenceStore:
             ).fetchone()
         return None if row is None else _decode_skin_ids(row[0])
 
-    def set(self, qq_user_id: int, skin_ids: tuple[int, ...]) -> None:
-        actor = _onebot_actor(qq_user_id)
+    def set(self, actor: ActorRef, skin_ids: tuple[int, ...]) -> None:
         normalized = _normalize_skin_ids(skin_ids)
         now = datetime.now(timezone.utc).isoformat()
         payload = json.dumps(normalized, separators=(",", ":"))
@@ -71,12 +70,6 @@ class SqliteLuckySkinWatchPreferenceStore:
                 """,
                 (*ActorIdentityColumns.from_actor(actor).values(), payload, now, now),
             )
-
-
-def _onebot_actor(user_id: int) -> ActorRef:
-    return ActorRef(Platform.ONEBOT, str(int(user_id)))
-
-
 def _decode_skin_ids(value: object) -> tuple[int, ...]:
     try:
         decoded = json.loads(str(value))

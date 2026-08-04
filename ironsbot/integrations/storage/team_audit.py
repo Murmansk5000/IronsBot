@@ -7,7 +7,6 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
@@ -17,6 +16,8 @@ from ironsbot.services.team.audit import TeamAuditPendingReminder
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 
 _SCHEMA = """
@@ -51,8 +52,6 @@ class SqliteTeamAuditReminderStore:
         )
 
     def save(self, reminder: TeamAuditPendingReminder) -> None:
-        conversation = _group_conversation(reminder.group_id)
-        actor = _member_actor(reminder.group_id, reminder.user_id)
         with self._database.connect() as conn:
             conn.execute(
                 """
@@ -70,8 +69,8 @@ class SqliteTeamAuditReminderStore:
                     step = excluded.step
                 """,
                 (
-                    *_conversation_values(conversation),
-                    *_actor_values(actor),
+                    *_conversation_values(reminder.conversation),
+                    *_actor_values(reminder.actor),
                     _datetime_text(reminder.joined_at),
                     _datetime_text(reminder.remind_at),
                     reminder.step,
@@ -80,8 +79,8 @@ class SqliteTeamAuditReminderStore:
 
     def get(
         self,
-        group_id: int,
-        user_id: int,
+        conversation: ConversationRef,
+        actor: ActorRef,
     ) -> TeamAuditPendingReminder | None:
         with self._database.connect() as conn:
             row = conn.execute(
@@ -95,8 +94,8 @@ class SqliteTeamAuditReminderStore:
                   AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
                 """,
                 (
-                    *_conversation_values(_group_conversation(group_id)),
-                    *_actor_values(_member_actor(group_id, user_id)),
+                    *_conversation_values(conversation),
+                    *_actor_values(actor),
                 ),
             ).fetchone()
         return None if row is None else _row_to_reminder(row)
@@ -109,15 +108,12 @@ class SqliteTeamAuditReminderStore:
                        actor_platform, actor_kind, actor_id, actor_scope_id,
                        joined_at, remind_at, step
                 FROM pending_team_audit_reminders
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND actor_platform = ? AND actor_kind = ?
                 ORDER BY remind_at, conversation_id, actor_id
-                """,
-                (Platform.ONEBOT.value, "group", Platform.ONEBOT.value, "member"),
+                """
             ).fetchall()
         return [_row_to_reminder(row) for row in rows]
 
-    def clear(self, group_id: int, user_id: int) -> None:
+    def clear(self, conversation: ConversationRef, actor: ActorRef) -> None:
         with self._database.connect() as conn:
             conn.execute(
                 """
@@ -127,8 +123,8 @@ class SqliteTeamAuditReminderStore:
                   AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
                 """,
                 (
-                    *_conversation_values(_group_conversation(group_id)),
-                    *_actor_values(_member_actor(group_id, user_id)),
+                    *_conversation_values(conversation),
+                    *_actor_values(actor),
                 ),
             )
 
@@ -146,24 +142,11 @@ def _row_to_reminder(row: sqlite3.Row) -> TeamAuditPendingReminder:
         row["actor_scope_id"],
     ).to_actor()
     return TeamAuditPendingReminder(
-        _onebot_group_id(conversation),
-        _onebot_user_id(actor),
+        conversation,
+        actor,
         _parse_datetime(str(row["joined_at"])),
         _parse_datetime(str(row["remind_at"])),
         max(1, int(row["step"])),
-    )
-
-
-def _group_conversation(group_id: int) -> ConversationRef:
-    return ConversationRef(Platform.ONEBOT, "group", str(int(group_id)))
-
-
-def _member_actor(group_id: int, user_id: int) -> ActorRef:
-    return ActorRef(
-        Platform.ONEBOT,
-        str(int(user_id)),
-        kind="member",
-        scope_id=str(int(group_id)),
     )
 
 
@@ -173,18 +156,6 @@ def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:
 
 def _actor_values(actor: ActorRef) -> tuple[str, str, str, str]:
     return ActorIdentityColumns.from_actor(actor).values()
-
-
-def _onebot_group_id(conversation: ConversationRef) -> int:
-    if conversation.platform is not Platform.ONEBOT or conversation.kind != "group":
-        raise ValueError
-    return int(conversation.id)
-
-
-def _onebot_user_id(actor: ActorRef) -> int:
-    if actor.platform is not Platform.ONEBOT or actor.kind != "member":
-        raise ValueError
-    return int(actor.id)
 
 
 def _datetime_text(value: datetime) -> str:

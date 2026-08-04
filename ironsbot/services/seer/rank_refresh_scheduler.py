@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+"""Register Seer rank refresh jobs with the application scheduler."""
+
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
-
-from nonebot import logger
 
 from ironsbot.core.time import daily_time_parts
 from ironsbot.services.operations.scheduler import JobRegistry
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 
 SEER_QUERY_JOB_PREFIX = "seer_"
+logger = logging.getLogger(__name__)
 
 
 def _minute_of_day(value: str) -> int:

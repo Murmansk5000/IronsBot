@@ -42,20 +42,10 @@ from .custom_pet_models import (
     SoulmarkDict,
     SpecialEffectDict,
 )
-from .custom_pet_soulmark_icons import (
-    load_soulmark_icons,
-    resolve_soulmark_icon_urls,
-)
-from .custom_pet_special_effects import (
-    _add_linked_glossary_effects,
-    _add_named_status_icons,
-    _add_pet_linked_status_effects,
-    _add_skill_red_effects,
-    _add_soulmark_highlight_status_effects,
-    _assign_special_effect_colors,
-    _deduplicate_special_effects,
-    _extract_special_effects,
-    _sort_special_effects,
+from .pet_effect_presentation import (
+    PetDerivedDisplayData,
+    SoulmarkIconAsset,
+    assign_special_effect_colors,
 )
 
 SPECIAL_SOULMARK_PET_ID = 2500
@@ -361,12 +351,22 @@ async def _load_special_effect_icons(
 def _extract_soulmark(
     soulmarks: list[SoulmarkORM],
     effect_colors: Mapping[str, str] | None = None,
+    *,
+    display_order: Mapping[int, int] | None = None,
+    icon_assets: Mapping[int, SoulmarkIconAsset] | None = None,
 ) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
-    # The link table has no display-order column. Soulmark IDs are allocated
-    # chronologically, so use them as a stable old-to-new fallback for entries
-    # that have no official upgraded-to relation.
-    for sm in sorted(soulmarks, key=lambda soulmark: int(soulmark.id)):
+    display_order = display_order or {}
+    icon_assets = icon_assets or {}
+    for sm in sorted(
+        soulmarks,
+        key=lambda soulmark: (
+            int(soulmark.id) not in display_order,
+            display_order.get(int(soulmark.id), int(soulmark.id)),
+            int(soulmark.id),
+        ),
+    ):
+        icon_asset = icon_assets.get(int(sm.id))
         result = SoulmarkDict(
             id=int(sm.id),
             desc=_format_soulmark_desc(sm, effect_colors or {}),
@@ -375,9 +375,13 @@ def _extract_soulmark(
             is_adv=sm.is_adv,
             pve_effective=sm.pve_effective,
             tags=[t.name for t in sm.tag] if sm.tag else [],
-            icon_id=None,
+            icon_id=icon_asset.icon_id if icon_asset else None,
             icon_asset_url=None,
-            icon=None,
+            icon=(
+                to_data_uri(icon_asset.png, mime_type=icon_asset.content_type)
+                if icon_asset
+                else None
+            ),
         )
 
         results.append(result)
@@ -579,10 +583,11 @@ async def render_custom_pet_info(
     images: SeerImageSource,
     render_html: HtmlTemplateRenderer,
     pet: PetORM,
+    derived_display: PetDerivedDisplayData,
 ) -> bytes:
     """渲染精灵信息卡片图片，返回 PNG 图片字节"""
     pet_id = int(pet.id)
-    cached = cache.get("custom_pet_info_v16", str(pet_id))
+    cached = cache.get("custom_pet_info_v17", str(pet_id))
     if cached is not None:
         return cached
 
@@ -599,22 +604,29 @@ async def render_custom_pet_info(
     activation_items = _build_activation_items(pet, session)
     partner_data = load_pet_partner(session, pet_id)
     pet_partner = _build_pet_partner(partner_data, session)
-    special_effects = _extract_special_effects(pet)
-    _add_pet_linked_status_effects(session, special_effects, pet_id=pet_id)
-    _add_skill_red_effects(session, pet, special_effects)
-    _add_soulmark_highlight_status_effects(session, pet, special_effects)
-    _add_named_status_icons(session, special_effects)
-    _add_linked_glossary_effects(session, special_effects)
-    _add_named_status_icons(session, special_effects)
-    _deduplicate_special_effects(special_effects)
-    _sort_special_effects(special_effects)
-    _assign_special_effect_colors(pet, special_effects)
+    special_effects = [
+        SpecialEffectDict(
+            name=effect.name,
+            desc=effect.description,
+            sources=list(effect.sources),
+            glossary_id=effect.glossary_id,
+            status_id=effect.status_id,
+            icon=None,
+        )
+        for effect in derived_display.special_effects
+    ]
+    assign_special_effect_colors(pet, special_effects)
     effect_colors = {
         effect["name"]: color
         for effect in special_effects
         if (color := effect.get("color")) is not None
     }
-    soulmarks: list[SoulmarkDict] = _extract_soulmark(pet.soulmark, effect_colors)
+    soulmarks: list[SoulmarkDict] = _extract_soulmark(
+        pet.soulmark,
+        effect_colors,
+        display_order=derived_display.soulmark_display_order,
+        icon_assets=derived_display.soulmark_icons,
+    )
     if pet_data.id == SPECIAL_SOULMARK_PET_ID:
         soulmarks.append(
             {
@@ -634,7 +646,6 @@ async def render_custom_pet_info(
         soulmarks,
         partner_data,
     )
-    resolve_soulmark_icon_urls(session, soulmarks, pet_id=pet_id)
     all_skills: list[SkillDict] = [
         skill
         for skill_list in [
@@ -682,7 +693,6 @@ async def render_custom_pet_info(
         _load_activation_item_icons(images, activation_items),
         _load_pet_partner_item_icons(images, pet_partner),
         _load_special_effect_icons(images, special_effects),
-        load_soulmark_icons(images, soulmarks),
     )
 
     (
@@ -755,5 +765,5 @@ async def render_custom_pet_info(
         max_width=1200,
         allow_refit=False,
     )
-    cache.put("custom_pet_info_v16", str(pet_id), result)
+    cache.put("custom_pet_info_v17", str(pet_id), result)
     return result

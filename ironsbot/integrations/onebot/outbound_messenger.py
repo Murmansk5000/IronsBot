@@ -3,25 +3,29 @@
 
 from __future__ import annotations
 
-from base64 import b64encode
 from typing import TYPE_CHECKING, Any
 
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
 
 from ironsbot.core.outbound import (
-    BinaryImagePart,
     DeliveryCapabilities,
-    MentionPart,
     OutboundMessage,
-    RemoteImagePart,
     ReplyContext,
     SendResult,
-    TextPart,
 )
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.message_rendering import (
+    OneBotOutboundMessageError,
+    render_onebot_outbound_message,
+)
+from ironsbot.integrations.onebot.outbound import (
+    GroupOutboundRateLimitService,
+    use_preacquired_push_permit,
+)
 
 if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Message
+
     from ironsbot.integrations.onebot.delivery import OneBotMessageSender
     from ironsbot.integrations.onebot.router import BotRouter
 
@@ -44,25 +48,16 @@ _UNSUPPORTED_CAPABILITIES = DeliveryCapabilities(
 )
 
 
-class OneBotOutboundMessageError(ValueError):
-    @classmethod
-    def unsupported_mention(cls) -> OneBotOutboundMessageError:
-        return cls("OneBot mentions require a numeric group member")
-
-    @classmethod
-    def unsupported_part(cls, part: object) -> OneBotOutboundMessageError:
-        return cls(f"Unsupported outbound part: {type(part).__name__}")
-
-    @classmethod
-    def invalid_reply_id(cls) -> OneBotOutboundMessageError:
-        return cls("OneBot reply message IDs must be numeric")
-
-
 class OneBotOutboundMessenger:
     """Translate core outbound values only after routing to a OneBot bot."""
 
-    def __init__(self, router: BotRouter) -> None:
+    def __init__(
+        self,
+        router: BotRouter,
+        outbound: GroupOutboundRateLimitService,
+    ) -> None:
         self._router = router
+        self._outbound = outbound
 
     def capabilities_for(
         self,
@@ -79,7 +74,7 @@ class OneBotOutboundMessenger:
         conversation: ConversationRef,
         message: OutboundMessage,
     ) -> SendResult:
-        return await self._deliver(conversation, message)
+        return await self._deliver(conversation, message, proactive=True)
 
     async def reply(
         self,
@@ -90,6 +85,7 @@ class OneBotOutboundMessenger:
             context.conversation,
             message,
             reply_to_id=context.message_id,
+            proactive=False,
         )
 
     async def _deliver(
@@ -98,27 +94,39 @@ class OneBotOutboundMessenger:
         message: OutboundMessage,
         *,
         reply_to_id: str | None = None,
+        proactive: bool,
     ) -> SendResult:
         if not _supports_conversation(conversation):
             return SendResult(
                 delivered=False,
                 error_code="unsupported_conversation",
-                error_message=(
-                    "OneBot only supports private and group conversations"
-                ),
+                error_message=("OneBot only supports private and group conversations"),
             )
         try:
-            rendered = _render_message(
-                conversation,
+            rendered = render_onebot_outbound_message(
                 message,
+                conversation=conversation,
                 reply_to_id=reply_to_id,
             )
-        except ValueError as error:
+        except OneBotOutboundMessageError as error:
             return SendResult(
                 delivered=False,
                 error_code="unsupported_message",
                 error_message=str(error),
             )
+        return await self._send_rendered(
+            conversation,
+            rendered,
+            proactive=proactive,
+        )
+
+    async def _send_rendered(
+        self,
+        conversation: ConversationRef,
+        rendered: Message,
+        *,
+        proactive: bool,
+    ) -> SendResult:
         bot = self._router.for_conversation(conversation)
         if bot is None:
             return SendResult(
@@ -126,9 +134,29 @@ class OneBotOutboundMessenger:
                 error_code="bot_unavailable",
                 error_message="No connected OneBot bot can deliver this message",
             )
+        decision = (
+            await self._outbound.acquire_push(
+                _group_id(conversation),
+                source="platform outbound",
+            )
+            if proactive
+            else None
+        )
+        if decision is not None and not decision.allowed:
+            return SendResult(
+                delivered=False,
+                error_code=decision.reason or "rate_limit",
+                error_message="Outbound group message is rate limited",
+            )
         try:
-            result = await _send_onebot_message(bot, conversation, rendered)
+            with use_preacquired_push_permit(
+                self._outbound,
+                decision.permit if decision is not None else None,
+            ):
+                result = await _send_onebot_message(bot, conversation, rendered)
         except Exception as error:  # noqa: BLE001 - delivery boundary
+            if decision is not None:
+                self._outbound.rollback(decision.permit)
             logger.warning(
                 "OneBot outbound delivery failed: kind={} id={} error={}",
                 conversation.kind,
@@ -159,34 +187,8 @@ def _supports_conversation(conversation: ConversationRef) -> bool:
     )
 
 
-def _render_message(
-    conversation: ConversationRef,
-    message: OutboundMessage,
-    *,
-    reply_to_id: str | None,
-) -> Message:
-    rendered = Message()
-    if reply_to_id is not None:
-        rendered += MessageSegment.reply(_onebot_id(reply_to_id))
-    for part in message.parts:
-        if isinstance(part, TextPart):
-            rendered += MessageSegment.text(part.text)
-        elif isinstance(part, BinaryImagePart):
-            encoded = b64encode(part.content).decode("ascii")
-            rendered += MessageSegment.image(f"base64://{encoded}")
-        elif isinstance(part, RemoteImagePart):
-            rendered += MessageSegment.image(part.url)
-        elif isinstance(part, MentionPart):
-            if (
-                conversation.kind != "group"
-                or part.actor.platform is not Platform.ONEBOT
-                or not part.actor.id.isdecimal()
-            ):
-                raise OneBotOutboundMessageError.unsupported_mention()
-            rendered += MessageSegment.at(int(part.actor.id))
-        else:
-            raise OneBotOutboundMessageError.unsupported_part(part)
-    return rendered
+def _group_id(conversation: ConversationRef) -> int | None:
+    return int(conversation.id) if conversation.kind == "group" else None
 
 
 async def _send_onebot_message(
@@ -198,12 +200,6 @@ async def _send_onebot_message(
     if conversation.kind == "private":
         return await bot.send_private_msg(user_id=target_id, message=message)
     return await bot.send_group_msg(group_id=target_id, message=message)
-
-
-def _onebot_id(value: str) -> int:
-    if not value.isdecimal():
-        raise OneBotOutboundMessageError.invalid_reply_id()
-    return int(value)
 
 
 def _result_message_id(result: object) -> str | None:

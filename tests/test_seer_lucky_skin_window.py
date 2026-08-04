@@ -16,9 +16,10 @@ from ironsbot.config.models.seer import (
     PlayerAccountConfig,
 )
 from ironsbot.config.player_accounts import build_player_account_registry
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
-from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.integrations.onebot.lucky_skin_window import (
+    OneBotLuckySkinWindowSubscriptionOptions,
+)
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
 )
@@ -27,13 +28,12 @@ from ironsbot.integrations.storage.lucky_skin_window import (
 )
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.seer import lucky_skin_window as lucky_skin_window_plugin
-from ironsbot.services.messaging.subscriptions import (
-    PushSubscriptionOption,
-)
+from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
+from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+    LuckySkinWindowAccount,
     LuckySkinWindowBindingError,
     LuckySkinWindowService,
 )
@@ -41,11 +41,10 @@ from tests.helpers.onebot_events import private_message_event
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterator
     from pathlib import Path
 
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
     from ironsbot.services.seer.data import SeerDataAccess
 
 EXPECTED_COMMAND_ID = 45866
@@ -81,6 +80,9 @@ def _actor(user_id: int) -> ActorRef:
 
 
 class _Features:
+    def actor_has_feature(self, _actor: ActorRef, _feature: str) -> bool:
+        return True
+
     def is_private_feature_allowed(self, _user_id: int, _feature: str) -> bool:
         return True
 
@@ -160,45 +162,23 @@ class _Sessions:
             self.active -= 1
 
 
-class _Delivery:
+class _NotificationSender:
     def __init__(self) -> None:
-        self.messages: list[tuple[list[MessageTarget], str, str | None]] = []
+        self.messages: list[tuple[ActorRef, str, str]] = []
+        self._sent: set[tuple[ActorRef, str]] = set()
 
-    async def send_targets(  # noqa: PLR0913 - MessageDelivery protocol signature
+    async def send_daily_notice(
         self,
-        targets: Iterable[MessageTarget],
+        actor: ActorRef,
         message: Any,
         *,
-        bot: Any | None = None,
-        action_name: str = "message action",
-        interval_seconds: float = 1.5,
-        message_limiter: MessageLimiter | None = None,
-        subscription_key: str | None = None,
-    ) -> TargetSendSummary:
-        del bot, action_name, interval_seconds, message_limiter
-        selected = list(targets)
-        self.messages.append(
-            (
-                selected,
-                str(message),
-                subscription_key,
-            )
-        )
-        return TargetSendSummary(selected, [])
-
-    async def broadcast(
-        self,
-        message: Any,
-        **_kwargs: object,
-    ) -> TargetSendSummary:
-        del message
-        return TargetSendSummary([], [])
-
-    def default_bot(self) -> None:
-        return None
-
-    def bot_for_target(self, _target: MessageTarget) -> None:
-        return None
+        day: str,
+    ) -> bool:
+        if (actor, day) in self._sent:
+            return False
+        self._sent.add((actor, day))
+        self.messages.append((actor, str(message), day))
+        return True
 
 
 class _PluginService:
@@ -206,18 +186,18 @@ class _PluginService:
         self.cached = cached
         self.queries = 0
 
-    def cached_for_user(self, _user_id: int) -> object | None:
+    def cached_for_actor(self, _actor: ActorRef) -> object | None:
         return self.cached
 
-    def account_for_user(self, _user_id: int) -> SimpleNamespace:
+    def account_for_actor(self, _actor: ActorRef) -> SimpleNamespace:
         return SimpleNamespace(player_id=90001)
 
-    async def check_for_user(self, _user_id: int) -> object:
+    async def check_for_actor(self, _actor: ActorRef) -> object:
         self.queries += 1
         return object()
 
-    def format_result(self, _result: object, *, user_id: int) -> str:
-        return f"橱窗结果：{user_id}"
+    def format_result(self, _result: object, *, actor: ActorRef) -> str:
+        return f"橱窗结果：{actor.id}"
 
 
 def _service(
@@ -227,7 +207,7 @@ def _service(
 ) -> tuple[
     LuckySkinWindowService,
     _Game,
-    _Delivery,
+    _NotificationSender,
     SqlitePlayerBindingStore,
     _Sessions,
 ]:
@@ -236,67 +216,86 @@ def _service(
     bindings.bind(actor=_actor(1002), player_id=90002, player_nick="乙")
     game = _Game()
     sessions = _Sessions(game)
+    config = LuckySkinWindowConfig(
+        enabled=True,
+        accounts=[
+            LuckySkinWindowAccountConfig(
+                user="owner",
+                account="owner_account",
+                watched_skin_ids=[1_400_101],
+            ),
+            LuckySkinWindowAccountConfig(
+                user="friend",
+                account="friend_account",
+                watched_skin_ids=[102],
+            ),
+        ],
+    )
+    player_accounts = build_player_account_registry(
+        [
+            PlayerAccountConfig(
+                player_id=90001,
+                name="owner_account",
+                password="owner-secret",
+            ),
+            PlayerAccountConfig(
+                player_id=90002,
+                name="friend_account",
+                password="friend-secret",
+            ),
+        ]
+    )
+    notification_sender = _NotificationSender()
     service = LuckySkinWindowService(
-        LuckySkinWindowConfig(
-            enabled=True,
-            accounts=[
-                LuckySkinWindowAccountConfig(
-                    user="owner",
-                    account="owner_account",
-                    watched_skin_ids=[1_400_101],
+        config,
+        (
+            LuckySkinWindowAccount(
+                actor=_actor(1001),
+                player_account=player_accounts.resolve(
+                    "owner_account",
+                    location="test.owner_account",
                 ),
-                LuckySkinWindowAccountConfig(
-                    user="friend",
-                    account="friend_account",
-                    watched_skin_ids=[102],
+                watched_skin_ids=(1_400_101,),
+            ),
+            LuckySkinWindowAccount(
+                actor=_actor(1002),
+                player_account=player_accounts.resolve(
+                    "friend_account",
+                    location="test.friend_account",
                 ),
-            ],
-        ),
-        OneBotReferenceResolver({}, {"owner": 1001, "friend": 1002}),
-        build_player_account_registry(
-            [
-                PlayerAccountConfig(
-                    player_id=90001,
-                    name="owner_account",
-                    password="owner-secret",
-                ),
-                PlayerAccountConfig(
-                    player_id=90002,
-                    name="friend_account",
-                    password="friend-secret",
-                ),
-            ]
+                watched_skin_ids=(102,),
+            ),
         ),
         cast("FeatureService", _Features()),
         cast("Any", sessions),
         cast("SeerDataAccess", _Data()),
         bindings,
-        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
         SqliteLuckySkinWindowCache(
             tmp_path / "runtime_state.sqlite",
             legacy_paths=(() if legacy_cache_path is None else (legacy_cache_path,)),
         ),
+        notification_sender,
         today=lambda: date(2026, 8, 3),
     )
-    return service, game, _Delivery(), bindings, sessions
+    return service, game, notification_sender, bindings, sessions
 
 
 def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
 
     async def check() -> None:
-        result = await service.check_for_user(1001)
+        result = await service.check_for_actor(_actor(1001))
         assert [offer.skin_id for offer in result.offers] == [101, 102, 103, 104]
-        owner_message = service.format_result(result, user_id=1001)
-        friend_message = service.format_result(result, user_id=1002)
+        owner_message = service.format_result(result, actor=_actor(1001))
+        friend_message = service.format_result(result, actor=_actor(1002))
         assert "皮肤101（皮肤ID：101，资源ID：1400101） ★ 关注" in owner_message
         assert "皮肤102（皮肤ID：102，资源ID：1400102） ★ 关注" in friend_message
 
     asyncio.run(check())
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
-        asyncio.run(service.check_for_user(1001))
+        asyncio.run(service.check_for_actor(_actor(1001)))
 
 
 def test_watch_defaults_accept_resource_ids_and_seed_only_once(
@@ -306,50 +305,49 @@ def test_watch_defaults_accept_resource_ids_and_seed_only_once(
 
     assert [
         (item.skin_id, item.resource_id)
-        for item in service.watched_skins(1001)
+        for item in service.watched_skins(_actor(1001))
     ] == [(101, 1_400_101)]
 
-    service.config.accounts[0].watched_skin_ids = [1_400_102]
-    assert service.clear_watched_skins(1001)
-    assert service.watched_skins(1001) == ()
+    assert service.clear_watched_skins(_actor(1001))
+    assert service.watched_skins(_actor(1001)) == ()
 
-    reset = service.reset_watched_skins(1001)
+    reset = service.reset_watched_skins(_actor(1001))
     assert [(item.skin_id, item.resource_id) for item in reset] == [
-        (102, 1_400_102)
+        (101, 1_400_101)
     ]
 
 
 def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
-    by_id = service.resolve_watch_candidates(1001, str(WATCH_SKIN_ID))
-    by_resource_id = service.resolve_watch_candidates(1001, "1400103")
-    by_name = service.resolve_watch_candidates(1001, f"皮肤{WATCH_SKIN_ID}")
+    by_id = service.resolve_watch_candidates(_actor(1001), str(WATCH_SKIN_ID))
+    by_resource_id = service.resolve_watch_candidates(_actor(1001), "1400103")
+    by_name = service.resolve_watch_candidates(_actor(1001), f"皮肤{WATCH_SKIN_ID}")
 
     assert by_id == by_resource_id == by_name
     assert by_id[0].skin_id == WATCH_SKIN_ID
-    assert service.add_watched_skin(1001, by_id[0].skin_id)
-    assert not service.add_watched_skin(1001, by_id[0].skin_id)
-    assert service.remove_watched_skin(1001, by_id[0].skin_id)
-    assert not service.remove_watched_skin(1001, by_id[0].skin_id)
+    assert service.add_watched_skin(_actor(1001), by_id[0].skin_id)
+    assert not service.add_watched_skin(_actor(1001), by_id[0].skin_id)
+    assert service.remove_watched_skin(_actor(1001), by_id[0].skin_id)
+    assert not service.remove_watched_skin(_actor(1001), by_id[0].skin_id)
 
 
 def test_watch_preferences_are_isolated_by_qq_user(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
-    assert service.add_watched_skin(1001, 104)
-    assert [item.skin_id for item in service.watched_skins(1001)] == [101, 104]
-    assert [item.skin_id for item in service.watched_skins(1002)] == [102]
+    assert service.add_watched_skin(_actor(1001), 104)
+    assert [item.skin_id for item in service.watched_skins(_actor(1001))] == [101, 104]
+    assert [item.skin_id for item in service.watched_skins(_actor(1002))] == [102]
 
 
 def test_empty_watch_preference_remains_initialized(tmp_path: Path) -> None:
     path = tmp_path / "qq_state.sqlite"
     store = SqliteLuckySkinWatchPreferenceStore(path)
 
-    assert store.get(1001) is None
-    store.set(1001, ())
+    assert store.get(_actor(1001)) is None
+    store.set(_actor(1001), ())
 
-    assert SqliteLuckySkinWatchPreferenceStore(path).get(1001) == ()
+    assert SqliteLuckySkinWatchPreferenceStore(path).get(_actor(1001)) == ()
 
 
 def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None:
@@ -469,7 +467,7 @@ def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
     message = lucky_skin_window_plugin._format_watch_list(
-        service.watched_skins(1001)
+        service.watched_skins(_actor(1001))
     )
 
     assert "皮肤ID：101，资源ID：1400101" in message
@@ -478,24 +476,16 @@ def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
 def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
     service, game, delivery, _bindings, _headless = _service(tmp_path)
 
-    asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
+    asyncio.run(service.send_daily_notifications())
 
     assert len(game.calls) == EXPECTED_DAILY_NOTICES
     assert {command_id for command_id, _body in game.calls} == {EXPECTED_COMMAND_ID}
     assert all(body == EXPECTED_REQUEST for _command_id, body in game.calls)
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
-    messages = {
-        targets[0].target_id: message
-        for targets, message, _key in delivery.messages
-    }
+    messages = {int(actor.id): message for actor, message, _day in delivery.messages}
     assert "皮肤101（皮肤ID：101，资源ID：1400101） ★ 关注" in messages[1001]
     assert "皮肤102（皮肤ID：102，资源ID：1400102） ★ 关注" in messages[1002]
-    assert all(
-        key == LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY
-        for _targets, _message, key in delivery.messages
-    )
-
-    asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
+    asyncio.run(service.send_daily_notifications())
     assert len(game.calls) == EXPECTED_DAILY_NOTICES
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
 
@@ -503,7 +493,10 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
 def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
 
-    options = service.subscription_options("private", 1001)
+    options = OneBotLuckySkinWindowSubscriptionOptions(
+        service,
+        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+    ).subscription_options("private", 1001)
     assert options == [
         PushSubscriptionOption(
             key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -511,16 +504,22 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
             feature="lucky_skin_window",
         )
     ]
-    assert service.subscription_options("group", 1001) == []
+    assert OneBotLuckySkinWindowSubscriptionOptions(
+        service,
+        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+    ).subscription_options("group", 1001) == []
 
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
-    assert service.subscription_options("private", 1001) == []
+    assert OneBotLuckySkinWindowSubscriptionOptions(
+        service,
+        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+    ).subscription_options("private", 1001) == []
 
 
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.check_for_user(1001))
+    asyncio.run(service.check_for_actor(_actor(1001)))
 
     assert sessions.opens == [
         (90001, "owner-secret", "幸运橱窗")
@@ -531,8 +530,8 @@ def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> No
 def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.check_for_user(1001))
-    cached = asyncio.run(service.check_for_user(1001))
+    asyncio.run(service.check_for_actor(_actor(1001)))
+    cached = asyncio.run(service.check_for_actor(_actor(1001)))
 
     assert cached.from_cache
     assert len(sessions.opens) == 1
@@ -541,11 +540,11 @@ def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) 
 
 def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
     first, _game, _delivery, _bindings, first_sessions = _service(tmp_path)
-    asyncio.run(first.check_for_user(1001))
+    asyncio.run(first.check_for_actor(_actor(1001)))
     assert len(first_sessions.opens) == 1
 
     recreated, _game, _delivery, _bindings, recreated_sessions = _service(tmp_path)
-    cached = asyncio.run(recreated.check_for_user(1001))
+    cached = asyncio.run(recreated.check_for_actor(_actor(1001)))
 
     assert cached.from_cache
     assert recreated_sessions.opens == []
@@ -566,7 +565,7 @@ def test_legacy_cache_for_the_same_account_survives_a_storage_upgrade(
         tmp_path,
         legacy_cache_path=legacy_path,
     )
-    cached = asyncio.run(service.check_for_user(1001))
+    cached = asyncio.run(service.check_for_actor(_actor(1001)))
 
     assert cached.from_cache
     assert sessions.opens == []
@@ -591,7 +590,7 @@ def test_legacy_cache_never_crosses_configured_accounts(tmp_path: Path) -> None:
         legacy_cache_path=legacy_path,
     )
 
-    assert service.cached_for_user(1001) is None
+    assert service.cached_for_actor(_actor(1001)) is None
     assert sessions.opens == []
     assert game.calls == []
 
@@ -599,12 +598,12 @@ def test_legacy_cache_never_crosses_configured_accounts(tmp_path: Path) -> None:
 def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    assert service.cached_for_user(1001) is None
+    assert service.cached_for_actor(_actor(1001)) is None
     assert sessions.opens == []
     assert game.calls == []
 
-    asyncio.run(service.check_for_user(1001))
-    cached = service.cached_for_user(1001)
+    asyncio.run(service.check_for_actor(_actor(1001)))
+    cached = service.cached_for_actor(_actor(1001))
 
     assert cached is not None
     assert cached.from_cache
@@ -721,7 +720,7 @@ def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
 def test_daily_notice_logs_in_automatically(tmp_path: Path) -> None:
     service, game, delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
+    asyncio.run(service.send_daily_notifications())
 
     assert sessions.opens == [
         (90001, "owner-secret", "幸运橱窗"),
@@ -739,8 +738,8 @@ def test_different_accounts_never_open_dedicated_sessions_concurrently(
 
     async def check_both() -> None:
         await asyncio.gather(
-            service.check_for_user(1001),
-            service.check_for_user(1002),
+            service.check_for_actor(_actor(1001)),
+            service.check_for_actor(_actor(1002)),
         )
 
     asyncio.run(check_both())

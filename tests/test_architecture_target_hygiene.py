@@ -15,8 +15,6 @@ RENDERING = SERVICES / "seer" / "rendering"
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset(
     {
         "custom_pet_info.py",
-        "custom_pet_soulmark_icons.py",
-        "custom_pet_special_effects.py",
     }
 )
 FORBIDDEN_TRANSPORT_IMPORT_PREFIXES = (

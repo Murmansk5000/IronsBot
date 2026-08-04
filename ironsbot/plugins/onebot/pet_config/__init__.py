@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
-from ironsbot.plugins.seer.query.commands.query_rules import (
+from ironsbot.plugins.onebot.seer.query.commands.query_rules import (
     not_fixed_image_command,
     not_rank_query,
 )
@@ -109,7 +109,7 @@ def install(
     if not enabled:
         return
 
-    from ironsbot.plugins.seer.query.query_conversation import (
+    from ironsbot.plugins.onebot.seer.query.query_conversation import (
         make_query_handler,
     )
 

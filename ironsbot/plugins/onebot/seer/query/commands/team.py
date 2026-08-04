@@ -12,6 +12,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply
@@ -45,16 +46,16 @@ async def _handle_team_query(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    group_id = (
-        int(event.group_id)
-        if isinstance(event, GroupMessageEvent)
-        else None
-    )
+    context = message_input_context(event)
     reply = await service.query(
         state[TEAM_IDS_KEY],
         TeamQueryActor(
-            user_id=int(event.user_id),
-            group_id=group_id,
+            actor=context.message.actor,
+            conversation=(
+                context.message.conversation
+                if isinstance(event, GroupMessageEvent)
+                else None
+            ),
             can_manage=can_manage_group_event(features, event),
         ),
     )

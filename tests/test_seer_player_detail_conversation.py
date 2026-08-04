@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 from nonebot.exception import FinishedException
 
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.plugins.seer.query.commands import player_detail_conversation
-from ironsbot.plugins.seer.query.commands.player_context import (
+from ironsbot.plugins.onebot.seer.query.commands import player_detail_conversation
+from ironsbot.plugins.onebot.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
@@ -326,7 +326,7 @@ def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_mem
     )
     monkeypatch.setattr(player_detail_conversation, "finish_event_reply", finish_reply)
     features = SimpleNamespace(
-        is_group_feature_allowed=lambda _user_id, _group_id, feature: (
+        is_feature_allowed=lambda _actor, _conversation, feature: (
             feature == "seer_player"
         )
     )

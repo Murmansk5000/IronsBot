@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from pytest import MonkeyPatch
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
 
 from ironsbot.services.seer.pet_partner import (
     PetPartner,
@@ -16,18 +14,14 @@ from ironsbot.services.seer.pet_partner import (
     PetPartnerSkillItem,
 )
 from ironsbot.services.seer.rendering import custom_pet_info
-from ironsbot.services.seer.rendering.custom_pet_soulmark_icons import (
-    resolve_soulmark_icon_urls,
+from ironsbot.services.seer.rendering.pet_effect_presentation import (
+    PetDerivedDisplayData,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ironsbot.services.seer.rendering import TemplatePath
-
-
-TEST_SOULMARK_ICON_ID = 1644
-TRANSIENT_SOULMARK_ICON_ID = 806
 
 
 def _soulmark_dict(soulmark_id: int = 100) -> custom_pet_info.SoulmarkDict:
@@ -174,16 +168,6 @@ async def test_pet_render_snapshots_lazy_relationships_before_image_fetch(
     )
     monkeypatch.setattr(
         custom_pet_info,
-        "_add_pet_linked_status_effects",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        custom_pet_info,
-        "_add_skill_red_effects",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        custom_pet_info,
         "_gender_icon_data_uri",
         lambda _gender_id: "gender",
     )
@@ -193,6 +177,7 @@ async def test_pet_render_snapshots_lazy_relationships_before_image_fetch(
         cast("Any", _Images(after_await)),
         render_html,
         cast("Any", pet),
+        PetDerivedDisplayData((), {}, {}),
     )
 
     assert result == b"rendered"
@@ -372,187 +357,6 @@ def test_partition_soulmarks_uses_official_upgrade_link_before_text_matching() -
 
     assert base == [base_soulmark]
     assert upgraded == [upgraded_soulmark]
-
-
-def test_resolve_soulmark_icon_prefers_embedded_png() -> None:
-    engine = create_engine("sqlite:///:memory:")
-    with Session(engine) as session:
-        session.execute(
-            text(
-                """
-                CREATE TABLE soulmark_icon (
-                    soulmark_id INTEGER NOT NULL,
-                    pet_id INTEGER NOT NULL,
-                    effect_id INTEGER NOT NULL,
-                    icon_id INTEGER NOT NULL,
-                    icon_asset_url TEXT,
-                    icon_asset_status INTEGER NOT NULL,
-                    icon_png BLOB,
-                    icon_png_available INTEGER NOT NULL,
-                    icon_png_content_type TEXT NOT NULL,
-                    PRIMARY KEY (soulmark_id, pet_id, effect_id, icon_id)
-                )
-                """
-            )
-        )
-        session.execute(
-            text(
-                """
-                INSERT INTO soulmark_icon
-                    (
-                        soulmark_id,
-                        pet_id,
-                        effect_id,
-                        icon_id,
-                        icon_asset_url,
-                        icon_asset_status,
-                        icon_png,
-                        icon_png_available,
-                        icon_png_content_type
-                    )
-                VALUES
-                    (
-                        100,
-                        4450,
-                        2041,
-                        :icon_id,
-                        :url,
-                        200,
-                        :png,
-                        1,
-                        'image/png'
-                    )
-                """
-            ),
-            {
-                "url": "https://seer.61.com/resource/effectIcon/1644.swf",
-                "png": b"\x89PNG\r\n\x1a\nicon",
-                "icon_id": TEST_SOULMARK_ICON_ID,
-            },
-        )
-        soulmark = _soulmark_dict(100)
-
-        resolve_soulmark_icon_urls(
-            session,
-            [soulmark],
-            pet_id=4450,
-        )
-
-    assert soulmark["icon_id"] == TEST_SOULMARK_ICON_ID
-    assert soulmark["icon_asset_url"] is None
-    assert soulmark["icon"] == "data:image/png;base64,iVBORw0KGgppY29u"
-
-
-def test_resolve_soulmark_icon_falls_back_to_legacy_swf_url() -> None:
-    engine = create_engine("sqlite:///:memory:")
-    with Session(engine) as session:
-        session.execute(
-            text(
-                """
-                CREATE TABLE soulmark_icon (
-                    soulmark_id INTEGER NOT NULL,
-                    pet_id INTEGER NOT NULL,
-                    effect_id INTEGER NOT NULL,
-                    icon_id INTEGER NOT NULL,
-                    icon_asset_url TEXT,
-                    PRIMARY KEY (soulmark_id, pet_id, effect_id, icon_id)
-                )
-                """
-            )
-        )
-        session.execute(
-            text(
-                """
-                INSERT INTO soulmark_icon
-                    (soulmark_id, pet_id, effect_id, icon_id, icon_asset_url)
-                VALUES (100, 4450, 2041, :icon_id, :url)
-                """
-            ),
-            {
-                "url": "https://seer.61.com/resource/effectIcon/1644.swf",
-                "icon_id": TEST_SOULMARK_ICON_ID,
-            },
-        )
-        soulmark = _soulmark_dict(100)
-
-        resolve_soulmark_icon_urls(
-            session,
-            [soulmark],
-            pet_id=4450,
-        )
-
-    assert soulmark["icon_id"] == TEST_SOULMARK_ICON_ID
-    assert soulmark["icon_asset_url"] == (
-        "https://seer.61.com/resource/effectIcon/1644.swf"
-    )
-    assert soulmark["icon"] is None
-
-
-def test_resolve_soulmark_icon_recovers_url_after_transient_build_failure() -> None:
-    engine = create_engine("sqlite:///:memory:")
-    with Session(engine) as session:
-        session.execute(
-            text(
-                """
-                CREATE TABLE soulmark_icon (
-                    soulmark_id INTEGER NOT NULL,
-                    pet_id INTEGER NOT NULL,
-                    effect_id INTEGER NOT NULL,
-                    icon_id INTEGER NOT NULL,
-                    icon_asset_url TEXT,
-                    icon_asset_status INTEGER NOT NULL,
-                    icon_png BLOB,
-                    icon_png_available INTEGER NOT NULL,
-                    icon_png_content_type TEXT NOT NULL,
-                    PRIMARY KEY (soulmark_id, pet_id, effect_id, icon_id)
-                )
-                """
-            )
-        )
-        session.execute(
-            text(
-                """
-                INSERT INTO soulmark_icon
-                    (
-                        soulmark_id,
-                        pet_id,
-                        effect_id,
-                        icon_id,
-                        icon_asset_url,
-                        icon_asset_status,
-                        icon_png,
-                        icon_png_available,
-                        icon_png_content_type
-                    )
-                VALUES (
-                    832,
-                    3524,
-                    1116,
-                    :icon_id,
-                    NULL,
-                    0,
-                    NULL,
-                    0,
-                    ''
-                )
-                """
-            ),
-            {"icon_id": TRANSIENT_SOULMARK_ICON_ID},
-        )
-        soulmark = _soulmark_dict(832)
-
-        resolve_soulmark_icon_urls(
-            session,
-            [soulmark],
-            pet_id=3524,
-        )
-
-    assert soulmark["icon_id"] == TRANSIENT_SOULMARK_ICON_ID
-    assert soulmark["icon_asset_url"] == (
-        "https://seer.61.com/resource/effectIcon/"
-        f"{TRANSIENT_SOULMARK_ICON_ID}.swf"
-    )
-    assert soulmark["icon"] is None
 
 
 def test_extract_soulmark_orders_unlinked_4354_variants_old_to_new() -> None:

@@ -24,7 +24,7 @@ from ironsbot.runtime.commands import (
 )
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.permissions import can_manage_group_event
+from ironsbot.runtime.permissions import is_group_owner_or_admin_event
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -119,10 +119,11 @@ def _is_team_resource_query(
     *,
     service: TeamResourceService,
 ) -> bool:
+    context = message_input_context(event)
     target = _subscription_target(event)
     return target is not None and service.matches_target_query(
         event.get_plaintext(),
-        user_id=event.user_id,
+        actor=context.message.actor,
         target=target,
     )
 
@@ -132,12 +133,13 @@ def _is_team_resource_manage(
     *,
     service: TeamResourceService,
 ) -> bool:
+    context = message_input_context(event)
     command = service.parse_manage(event.get_plaintext())
     target = _subscription_target(event)
     return (
         command is not None
         and target is not None
-        and service.allows_target(event.user_id, target)
+        and service.allows_target(context.message.actor, target)
     )
 
 
@@ -146,12 +148,15 @@ def _is_team_resource_prompt_choice(
     *,
     service: TeamResourceService,
 ) -> bool:
+    if not isinstance(event, GroupMessageEvent):
+        return False
+    context = message_input_context(event)
+    target = TeamResourceSubscriptionTarget(context.message.conversation)
     return (
-        isinstance(event, GroupMessageEvent)
-        and parse_confirmation(event.get_plaintext()) is not None
-        and can_manage_group_event(service, event)
-        and service.allows(event.user_id, event.group_id)
-        and service.has_pending_prompt(event.group_id)
+        parse_confirmation(event.get_plaintext()) is not None
+        and _can_manage_event(service, event)
+        and service.allows_target(context.message.actor, target)
+        and service.has_pending_prompt(context.message.conversation)
     )
 
 
@@ -160,6 +165,7 @@ async def handle_team_resource_manage(
     event: MessageEvent,
     service: TeamResourceService,
 ) -> None:
+    context = message_input_context(event)
     target = _subscription_target(event)
     if target is None:
         await matcher.finish()
@@ -176,10 +182,7 @@ async def handle_team_resource_manage(
         )
         return
 
-    if isinstance(event, GroupMessageEvent) and not can_manage_group_event(
-        service,
-        event,
-    ):
+    if isinstance(event, GroupMessageEvent) and not _can_manage_event(service, event):
         await finish_event_reply(
             matcher,
             event,
@@ -197,7 +200,11 @@ async def handle_team_resource_manage(
             team_id=team_id,
         )
     else:
-        if command.has_manual_mention and target.is_group and not target.at_user_ids:
+        if (
+            command.has_manual_mention
+            and target.is_group
+            and not target.mention_actors
+        ):
             await finish_event_reply(
                 matcher,
                 event,
@@ -209,7 +216,7 @@ async def handle_team_resource_manage(
             target=target,
             team_id=team_id,
             threshold=command.threshold,
-            operator_id=event.user_id,
+            operator=context.message.actor,
         )
     await finish_event_reply(matcher, event, message)
 
@@ -219,12 +226,13 @@ async def handle_team_resource_prompt_choice(
     event: GroupMessageEvent,
     service: TeamResourceService,
 ) -> None:
+    context = message_input_context(event)
     choice = parse_confirmation(event.get_plaintext())
     if choice is None:
         await matcher.finish()
     message = service.answer_prompt(
-        group_id=event.group_id,
-        user_id=event.user_id,
+        conversation=context.message.conversation,
+        actor=context.message.actor,
         accepted=choice,
     )
     if message is None:
@@ -346,23 +354,27 @@ def plugin_contribution(
     )
 
 
-def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
-    return tuple(
-        int(member.id) for member in message_input_context(event).member_mentions
+def _can_manage_event(service: TeamResourceService, event: GroupMessageEvent) -> bool:
+    return service.is_superuser(message_input_context(event).message.actor) or (
+        is_group_owner_or_admin_event(event)
     )
+
+
+def _mention_actors_from_event(event: GroupMessageEvent):
+    return message_input_context(event).member_mentions
 
 
 def _subscription_target(
     event: MessageEvent,
 ) -> TeamResourceSubscriptionTarget | None:
+    context = message_input_context(event)
     if isinstance(event, GroupMessageEvent):
         return TeamResourceSubscriptionTarget(
-            "group",
-            event.group_id,
-            _at_user_ids_from_event(event),
+            context.message.conversation,
+            context.member_mentions,
         )
     if isinstance(event, PrivateMessageEvent):
-        return TeamResourceSubscriptionTarget("private", event.user_id)
+        return TeamResourceSubscriptionTarget(context.message.actor)
     return None
 
 

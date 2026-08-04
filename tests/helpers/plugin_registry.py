@@ -5,82 +5,88 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
-from ironsbot.custom_plugins.pet_config import (
-    plugin_contribution as pet_config_plugin_contribution,
-)
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
-from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
-from ironsbot.plugins.activity import (
+from ironsbot.plugins.onebot.about import (
+    plugin_contribution as about_plugin_contribution,
+)
+from ironsbot.plugins.onebot.activity import (
     plugin_contribution as activity_plugin_contribution,
 )
-from ironsbot.plugins.ai import plugin_contribution as ai_chat_plugin_contribution
-from ironsbot.plugins.ai.intent import (
+from ironsbot.plugins.onebot.ai import (
+    plugin_contribution as ai_chat_plugin_contribution,
+)
+from ironsbot.plugins.onebot.ai.intent import (
     plugin_contribution as ai_intent_plugin_contribution,
 )
-from ironsbot.plugins.bilibili import (
+from ironsbot.plugins.onebot.bilibili import (
     plugin_contribution as bilibili_plugin_contribution,
 )
-from ironsbot.plugins.fire_manual_ad import (
+from ironsbot.plugins.onebot.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
-from ironsbot.plugins.headless_seer_notice import (
+from ironsbot.plugins.onebot.headless_seer_notice import (
     plugin_contribution as headless_notice_plugin_contribution,
 )
-from ironsbot.plugins.headless_seer_runtime import (
+from ironsbot.plugins.onebot.headless_seer_runtime import (
     plugin_contribution as headless_runtime_plugin_contribution,
 )
-from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
-from ironsbot.plugins.help.hint import (
+from ironsbot.plugins.onebot.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.onebot.help.hint import (
     plugin_contribution as help_hint_plugin_contribution,
 )
-from ironsbot.plugins.messaging import (
-    plugin_contribution as messaging_plugin_contribution,
-)
-from ironsbot.plugins.messaging.blacklist import (
-    plugin_contribution as blacklist_plugin_contribution,
-)
-from ironsbot.plugins.messaging.meeting import (
-    plugin_contribution as meeting_plugin_contribution,
-)
-from ironsbot.plugins.messaging.red_packet import (
-    plugin_contribution as red_packet_plugin_contribution,
-)
-from ironsbot.plugins.operations.db_sync import (
-    plugin_contribution as db_sync_plugin_contribution,
-)
-from ironsbot.plugins.operations.docker_update import (
-    plugin_contribution as docker_update_plugin_contribution,
-)
-from ironsbot.plugins.operations.server_status import (
-    plugin_contribution as server_status_plugin_contribution,
-)
-from ironsbot.plugins.scheduled_restart import (
-    plugin_contribution as scheduled_restart_plugin_contribution,
-)
-from ironsbot.plugins.scheduler import (
-    plugin_contribution as scheduler_plugin_contribution,
-)
-from ironsbot.plugins.seer.lucky_skin_window import (
+from ironsbot.plugins.onebot.lucky_skin_window import (
     plugin_contribution as lucky_skin_window_plugin_contribution,
 )
-from ironsbot.plugins.seer.query import (
+from ironsbot.plugins.onebot.messaging import (
+    plugin_contribution as messaging_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.blacklist import (
+    plugin_contribution as blacklist_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.meeting import (
+    plugin_contribution as meeting_plugin_contribution,
+)
+from ironsbot.plugins.onebot.messaging.red_packet import (
+    plugin_contribution as red_packet_plugin_contribution,
+)
+from ironsbot.plugins.onebot.operations.db_sync import (
+    plugin_contribution as db_sync_plugin_contribution,
+)
+from ironsbot.plugins.onebot.operations.docker_update import (
+    plugin_contribution as docker_update_plugin_contribution,
+)
+from ironsbot.plugins.onebot.operations.server_status import (
+    plugin_contribution as server_status_plugin_contribution,
+)
+from ironsbot.plugins.onebot.pet_config import (
+    plugin_contribution as pet_config_plugin_contribution,
+)
+from ironsbot.plugins.onebot.scheduled_restart import (
+    plugin_contribution as scheduled_restart_plugin_contribution,
+)
+from ironsbot.plugins.onebot.scheduler import (
+    plugin_contribution as scheduler_plugin_contribution,
+)
+from ironsbot.plugins.onebot.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,
 )
-from ironsbot.plugins.seer.rank_help import (
+from ironsbot.plugins.onebot.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
-from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
-from ironsbot.plugins.startup_notice import (
+from ironsbot.plugins.onebot.sendpic import (
+    plugin_contribution as sendpic_plugin_contribution,
+)
+from ironsbot.plugins.onebot.startup_notice import (
     plugin_contribution as startup_notice_plugin_contribution,
 )
-from ironsbot.plugins.team.resource import (
-    plugin_contribution as team_resource_plugin_contribution,
-)
-from ironsbot.plugins.team_audit import (
+from ironsbot.plugins.onebot.team_audit import (
     plugin_contribution as team_audit_plugin_contribution,
+)
+from ironsbot.plugins.onebot.team_resource import (
+    plugin_contribution as team_resource_plugin_contribution,
 )
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
@@ -192,8 +198,8 @@ def build_test_plugin_registry(
             ),
             lucky_skin_window=SimpleNamespace(
                 enabled=False,
-                is_eligible_user=lambda _user_id: False,
-                account_for_user=lambda _user_id: None,
+                is_eligible_actor=lambda _actor: False,
+                account_for_actor=lambda _actor: None,
             ),
             messaging=SimpleNamespace(
                 refresh_push_time_jobs=_noop_refresh_push_time,
@@ -399,7 +405,6 @@ def build_test_plugin_registry(
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,
             runtime.features,
-            resources.delivery,
             SchedulerFacade(),
         ),
         team_audit_plugin_contribution(

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.config.models.messaging import OutboundRateLimitConfig
 from ironsbot.core.outbound import (
     BinaryImagePart,
     MentionPart,
@@ -13,7 +14,9 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.outbound import OutboundRateLimitDecision
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
+from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message
@@ -46,7 +49,13 @@ class _Router:
 
 
 def _messenger(bot: _Bot | None = None) -> OneBotOutboundMessenger:
-    return OneBotOutboundMessenger(cast("Any", _Router(bot)))
+    runtime = build_test_runtime(
+        outbound_config=OutboundRateLimitConfig(enabled=False),
+    )
+    return OneBotOutboundMessenger(
+        cast("Any", _Router(bot)),
+        runtime.delivery.outbound,
+    )
 
 
 @pytest.mark.asyncio
@@ -97,3 +106,37 @@ async def test_onebot_outbound_messenger_rejects_unsupported_conversation() -> N
     assert not messenger.capabilities_for(
         ConversationRef(Platform.QQ_OFFICIAL, "group", "1001")
     ).can_send_proactively
+
+
+@pytest.mark.asyncio
+async def test_onebot_outbound_messenger_drops_rate_limited_proactive_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _Bot()
+    runtime = build_test_runtime(
+        outbound_config=OutboundRateLimitConfig(enabled=False),
+    )
+
+    async def reject_push(
+        group_id: int | None,
+        *,
+        source: str,
+    ) -> OutboundRateLimitDecision:
+        assert group_id == GROUP_ID
+        assert source == "platform outbound"
+        return OutboundRateLimitDecision(allowed=False, reason="rate_limit")
+
+    monkeypatch.setattr(runtime.delivery.outbound, "acquire_push", reject_push)
+    messenger = OneBotOutboundMessenger(
+        cast("Any", _Router(bot)),
+        runtime.delivery.outbound,
+    )
+
+    result = await messenger.send(
+        ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)),
+        OutboundMessage((TextPart("hello"),)),
+    )
+
+    assert not result.delivered
+    assert result.error_code == "rate_limit"
+    assert bot.group_messages == []

@@ -1,4 +1,4 @@
-from ironsbot.plugins.seer.rank_help import command_descriptors
+from ironsbot.plugins.onebot.seer.rank_help import command_descriptors
 from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,

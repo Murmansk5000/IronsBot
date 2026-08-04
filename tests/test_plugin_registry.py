@@ -22,8 +22,8 @@ except ValueError:
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature
-from ironsbot.plugins.ai import command_descriptors as ai_chat_commands
-from ironsbot.plugins.ai.intent import command_descriptors as ai_intent_commands
+from ironsbot.plugins.onebot.ai import command_descriptors as ai_chat_commands
+from ironsbot.plugins.onebot.ai.intent import command_descriptors as ai_intent_commands
 from ironsbot.runtime.plugins import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
@@ -354,45 +354,167 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                 )
                 if path in {
                     ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
-                    ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "help" / "hint.py",
-                    ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
-                    ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
-                    ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "ai" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "ai" / "intent.py",
-                    ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "about"
+                        / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "help"
+                        / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "help"
+                        / "hint.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
+                    / "onebot"
+                    / "sendpic"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "pet_config"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "blacklist.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "meeting.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "messaging"
+                    / "red_packet.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "bilibili"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "ai"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "ai"
+                    / "intent.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "fire_manual_ad"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
                     / "seer"
                     / "rank_help"
                     / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "seer" / "query" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "seer" / "lucky_skin_window.py",
-                    ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "team" / "resource.py",
-                    ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "db_sync.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "docker_update.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "server_status.py",
-                    ROOT / "ironsbot" / "plugins" / "startup_notice" / "__init__.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
+                    / "onebot"
+                    / "seer"
+                    / "query"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "lucky_skin_window.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "team_audit.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "team_resource.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "activity"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "operations"
+                    / "db_sync.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "operations"
+                    / "docker_update.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "operations"
+                    / "server_status.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "startup_notice"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
                     / "headless_seer_notice"
                     / "__init__.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
+                    / "onebot"
                     / "headless_seer_runtime"
                     / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "scheduler" / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "scheduled_restart"
+                    / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "scheduler"
+                        / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

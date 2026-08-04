@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.plugins.seer.query.commands.player_target import (
+from ironsbot.plugins.onebot.seer.query.commands.player_target import (
     resolve_event_player_reference,
     resolve_player_target,
 )
