@@ -24,6 +24,7 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
     configured_rank_specs,
     filter_standard_rank_page_summaries,
     rank_refresh_target_label,
+    rank_target_limit,
 )
 
 if TYPE_CHECKING:
@@ -115,7 +116,11 @@ class RankAdminService:
             spec,
             pages,
             ttl_seconds=self._policy.page_cache_ttl_seconds,
-            target_limit=rank_refresh_target_label(
+            target_limit=rank_target_limit(
+                refresh.config,
+                command.rank_key,
+            ),
+            target_label=rank_refresh_target_label(
                 refresh.config,
                 command.rank_key,
             ),
@@ -151,6 +156,7 @@ class RankAdminService:
                     rank_key=rank_key,
                 ),
                 targets_by_rank.get(rank_key, ()),
+                rank_target_limit(refresh.config, rank_key),
                 rank_refresh_target_label(refresh.config, rank_key),
             )
             for rank_key, spec in specs
