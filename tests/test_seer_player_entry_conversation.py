@@ -18,6 +18,7 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
@@ -258,9 +259,36 @@ def test_player_commands_resolve_configured_account_names() -> None:
     )
 
 
+def test_player_query_reuses_target_resolved_during_matcher_admission(
+    monkeypatch: Any,
+) -> None:
+    resolved_target = PlayerIdResolution(_ACCOUNT_PLAYER_ID, offer_binding=True)
+    resolve_target = Mock(return_value=resolved_target)
+    monkeypatch.setattr(player, "resolve_player_target", resolve_target)
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
+        cast("Any", object()),
+    )
+    state: dict[str, object] = {}
+    event = group_message_event(f"米米号{_ACCOUNT_PLAYER_ID}")
+
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
+    asyncio.run(
+        player.validate_player_id(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    resolve_target.assert_called_once()
+    assert state[player.PLAYER_ID_KEY] == _ACCOUNT_PLAYER_ID
+
+
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
 
@@ -282,7 +310,7 @@ def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
 
 def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
     event = group_message_event(
@@ -298,7 +326,7 @@ def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
 
 def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
     state: dict[str, object] = {}
@@ -310,7 +338,10 @@ def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> Non
             state,
         )
     )
-    assert state[player.BOT_COMMAND_ARG_KEY] == "12"
+    target = state[player.PLAYER_TARGET_RESOLUTION_KEY]
+    assert isinstance(target, PlayerIdResolution)
+    assert target.player_id is None
+    assert target.error == "未找到该米米号或已开放的玩家别名。"
 
 
 def test_player_shortcut_reports_an_unknown_account_suffix() -> None:

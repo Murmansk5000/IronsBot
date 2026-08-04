@@ -1130,11 +1130,11 @@ reference for users:
   `ConversationRef`; a second platform must not consume the numeric values.
   Seer player IDs use a shared resolver for numeric IDs, aliases, one direct
   mention, and the caller's default binding. The OneBot player-query and
-  binding adapters and global-rank player queries now forward their raw
-  reference through that resolver with a scoped alias-lookup port. Shortcut
-  and detail-extension parsers still pre-resolve configured aliases during
-  command admission; they are transition consumers and must move to the same
-  raw-reference contract before another player-ID input form is added.
+  binding adapters, global-rank player queries, and shortcut/detail-extension
+  commands forward their raw reference through that resolver with a scoped
+  alias-lookup port. Matcher admission retains the one resolution result for
+  its handler; it does not resolve an alias once to decide admission and a
+  second time to execute the service command.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.
