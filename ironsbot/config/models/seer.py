@@ -52,22 +52,10 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "logo",
     "text",
 )
-NEW_CONTENT_CATEGORY_KEYS: tuple[str, ...] = (
-    "achievement",
-    "pet",
-    "pet_skin",
-    "skill",
-    "mintmark",
-    "suit",
-    "equip",
-    "mount",
-    "autocard_card",
-    "autocard_role",
-    "autocard_sanctuary_effect",
-)
 RANK_PAGE_REFRESH_TIME_ERROR = (
     "seer.rank.page_refresh.times must contain daily HH:MM times"
 )
+LOCAL_RANK_REFRESH_TIME_ERROR = "seer.local_rank.time must use HH:MM"
 RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR = (
     "seer.rank.page_refresh.interval_offset_minutes must be smaller than "
     "interval_minutes"
@@ -367,14 +355,13 @@ class RankPageRefreshConfig(BaseModel):
 
 
 class PlayerRankLookupConfig(BaseModel):
-    """Bounded fair scheduling for rank sections in player detail replies."""
+    """Bounded parallel scheduling for rank sections in player detail replies."""
 
     model_config = ConfigDict(extra="forbid")
 
     page_timeout_seconds: float = Field(default=8, gt=0)
     total_timeout_seconds: float = Field(default=60, gt=0)
     page_retry_count: int = Field(default=1, ge=0, le=3)
-    pages_per_turn: int = Field(default=1, ge=1, le=5)
 
     @model_validator(mode="after")
     def validate_budget(self) -> "PlayerRankLookupConfig":
@@ -485,12 +472,36 @@ class LocalRankConfig(BaseModel):
     max_players: int = Field(default=5000, ge=1)
     batch_limit: int = Field(default=100, ge=1)
     auto_refresh: bool = True
-    refresh_hour: int = Field(default=3, ge=0, le=23)
-    refresh_minute: int = Field(default=30, ge=0, le=59)
+    time: str = "03:30"
     refresh_limit: int = Field(default=300, ge=1)
     refresh_max_age_hours: int = Field(default=24, ge=0)
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
     path: SQLitePath = Path("data/seer/player_query_cache.sqlite")
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_time_fields(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+
+        data = dict(value)
+        legacy_hour = data.pop("refresh_hour", None)
+        legacy_minute = data.pop("refresh_minute", None)
+        if data.get("time") is not None or legacy_hour is None:
+            return data
+
+        try:
+            hour = int(legacy_hour)
+            minute = int(legacy_minute) if legacy_minute is not None else 0
+        except (TypeError, ValueError) as exc:
+            raise ValueError(LOCAL_RANK_REFRESH_TIME_ERROR) from exc
+        data["time"] = f"{hour:02d}:{minute:02d}"
+        return data
+
+    @field_validator("time")
+    @classmethod
+    def normalize_time(cls, value: str) -> str:
+        return normalize_daily_time(value, error_message=LOCAL_RANK_REFRESH_TIME_ERROR)
 
 
 class TeamResourceConfig(BaseModel):
@@ -540,23 +551,6 @@ class SeasonCountdownConfig(BaseModel):
         raise ValueError("season time must be an ISO datetime")  # noqa: TRY003
 
 
-class NewContentMenuConfig(BaseModel):
-    """Control which new-content categories expand in the root menu."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    expanded_categories: NormalizedStringList = Field(default_factory=list)
-
-    @field_validator("expanded_categories")
-    @classmethod
-    def normalize_expanded_categories(cls, value: list[str]) -> list[str]:
-        return _normalize_sections(
-            value,
-            NEW_CONTENT_CATEGORY_KEYS,
-            path="seer.new_content.expanded_categories",
-        )
-
-
 class PlayerAccountConfig(BaseModel):
     """Named Seer account available to headless services and scoped aliases."""
 
@@ -566,7 +560,6 @@ class PlayerAccountConfig(BaseModel):
     name: str
     aliases: list[str] = Field(default_factory=list)
     public: bool = False
-    query_worker: bool = False
     password: str | None = Field(default=None, exclude=True, repr=False)
 
     @field_validator("name")
@@ -652,7 +645,6 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
-    new_content: NewContentMenuConfig = Field(default_factory=NewContentMenuConfig)
     lucky_skin_window: LuckySkinWindowConfig = Field(
         default_factory=LuckySkinWindowConfig
     )

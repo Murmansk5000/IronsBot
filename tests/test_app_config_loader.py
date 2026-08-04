@@ -29,9 +29,7 @@ from ironsbot.config.models.operations import (
     DockerUpdateConfig,
 )
 from ironsbot.config.models.seer import (
-    NEW_CONTENT_CATEGORY_KEYS,
     LuckySkinWindowConfig,
-    NewContentMenuConfig,
     PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
     TeamResourceConfig,
@@ -280,7 +278,6 @@ def test_example_config_parses() -> None:
     )
     _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.commands == ["战队"]
-    assert config.seer.new_content.expanded_categories == []
     assert config.seer.lucky_skin_window == LuckySkinWindowConfig()
     assert config.paths.qq_state == Path("data/state/qq_state.sqlite")
     assert "autocard" in config.seer.player.sections
@@ -345,15 +342,28 @@ def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
         MessageScheduledAction(
             message="私聊定时推送",
-            hour=23,
+            time="23:00",
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
         MessageScheduledAction(
             id="每日 提醒",
             message="私聊定时推送",
-            hour=23,
+            time="23:00",
         )
+
+
+def test_scheduled_push_migrates_legacy_hour_and_minute() -> None:
+    action = MessageScheduledAction.model_validate(
+        {
+            "id": "daily",
+            "message": "私聊定时推送",
+            "hour": 23,
+            "minute": 5,
+        }
+    )
+
+    assert action.time == "23:05"
 
 
 def test_scheduled_push_ids_are_globally_unique() -> None:
@@ -363,12 +373,12 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
                 MessageScheduledAction(
                     id="daily",
                     message="私聊定时推送",
-                    hour=23,
+                    time="23:00",
                 ),
                 MessageScheduledAction(
                     id="daily",
                     message="群聊定时推送",
-                    hour=23,
+                    time="23:00",
                 ),
             ],
         )
@@ -478,19 +488,6 @@ def test_rank_page_refresh_active_window_requires_start_and_end() -> None:
         RankPageRefreshConfig(active_start="07:30")
 
 
-def test_new_content_menu_config_validates_expanded_categories() -> None:
-    assert NewContentMenuConfig(
-        expanded_categories=["pet", "skill", "pet"]
-    ).expanded_categories == ["pet", "skill"]
-    all_categories = NewContentMenuConfig(expanded_categories=["all"])
-    assert all_categories.expanded_categories == list(NEW_CONTENT_CATEGORY_KEYS)
-    with pytest.raises(
-        ValidationError,
-        match=re.escape("seer.new_content.expanded_categories"),
-    ):
-        NewContentMenuConfig(expanded_categories=["unknown_category"])
-
-
 def test_missing_app_config_fails_without_mutating_disk(tmp_path: Path) -> None:
     config_path = tmp_path / "config" / "ironsbot.toml"
     with pytest.raises(ConfigFileNotFoundError, match="未找到 IronsBot 配置文件"):
@@ -579,8 +576,7 @@ at_user_ids = [123456789]
 [[messaging.schedules]]
 id = "daily_reminder"
 name = "Daily reminder"
-hour = 23
-minute = 0
+time = "23:00"
 message = "daily message"
 feature = "text_push"
 at_user_ids = [123456789]
@@ -650,7 +646,7 @@ owner = ["custom_reminder"]
 
 [[messaging.schedules]]
 id = "custom_reminder"
-hour = 23
+time = "23:00"
 message = "remember"
 feature = "custom_reminder"
 """.strip(),
@@ -763,8 +759,7 @@ at_user_ids = ["at_user", "202"]
 
 [[messaging.schedules]]
 id = "custom_schedule"
-hour = 12
-minute = 0
+time = "12:00"
 message = "scheduled reply"
 feature = "private_extension"
 at_user_ids = ["at_user", 202]
@@ -1307,7 +1302,9 @@ player_id = 23456789
 name = "worker_two"
 aliases = ["worker alias", "测试无头"]
 public = true
-query_worker = true
+
+[operations.headless]
+accounts = ["测试无头", "worker_two", 23456789]
 """.strip(),
         encoding="utf-8",
     )
@@ -1328,7 +1325,7 @@ query_worker = true
     assert worker.name == "worker_two"
     assert worker.player_id == ADDITIONAL_HEADLESS_USER_ID
     assert worker.password == expected_digest
-    assert settings.player_accounts.query_workers == (worker,)
+    assert settings.headless_accounts == (worker,)
     assert (
         settings.player_accounts.resolve_player_id("worker alias")
         == worker.player_id
@@ -1435,7 +1432,53 @@ allowed_group = ["all"]
     )
 
 
-def test_query_worker_requires_standard_password_environment(tmp_path: Path) -> None:
+def test_headless_account_requires_standard_password_environment(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+
+[operations.headless]
+accounts = ["worker_two"]
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"operations\.headless\.accounts\[0\].*SEER_PASSWORD_23456789",
+    ):
+        load_settings(config_path, env={})
+
+
+def test_headless_accounts_reject_unknown_references(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[[seer.player_accounts]]
+player_id = 23456789
+name = "worker_two"
+
+[operations.headless]
+accounts = ["missing_worker"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=r"operations\.headless\.accounts\[0\].*unknown player account",
+    ):
+        load_settings(config_path, env={})
+
+
+def test_legacy_query_worker_is_ignored_with_warning(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -1446,8 +1489,11 @@ query_worker = true
 """.strip(),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="SEER_PASSWORD_23456789"):
-        load_settings(config_path, env={})
+
+    settings = load_settings(config_path, env={})
+
+    assert settings.headless_accounts == ()
+    assert "seer.player_accounts[0].query_worker" in capsys.readouterr().err
 
 
 def test_player_accounts_reject_inline_credentials(

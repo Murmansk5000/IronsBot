@@ -18,6 +18,7 @@ from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.runtime.semantic_requests import ActionDefinition
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -98,7 +99,11 @@ def test_player_info_prompt_includes_visible_private_extension(
 def test_player_detail_uses_the_shared_shortcut_executor(
     monkeypatch: Any,
 ) -> None:
-    service = SimpleNamespace(shortcut=AsyncMock(return_value=QueryReply(text="peak")))
+    async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
+        await send_request_feedback(queued=False)
+        return QueryReply(text="peak")
+
+    service = SimpleNamespace(shortcut=AsyncMock(side_effect=shortcut))
     continue_conversation = AsyncMock()
     monkeypatch.setattr(
         player_detail_conversation,
@@ -142,6 +147,11 @@ def test_player_detail_uses_the_shared_shortcut_executor(
 
     assert service.shortcut.await_count == EXPECTED_CONVERSATION_CONTINUES
     assert continue_conversation.await_count == EXPECTED_CONVERSATION_CONTINUES
+    assert send_status.await_count == EXPECTED_CONVERSATION_CONTINUES
+    assert all(
+        call.args[2] == "⏳ 巅峰之战正在查询，完成后会直接发送结果。"
+        for call in send_status.await_args_list
+    )
 
 
 def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
@@ -353,7 +363,11 @@ def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_mem
 def test_player_detail_delegates_a_registered_private_action(
     monkeypatch: Any,
 ) -> None:
-    action_query = AsyncMock(return_value=QueryReply(text="private reply"))
+    async def query(*_args: object) -> QueryReply:
+        await send_request_feedback(queued=True)
+        return QueryReply(text="private reply")
+
+    action_query = AsyncMock(side_effect=query)
     extensions = PlayerDetailExtensionRegistry()
     extensions.register(
         PlayerDetailExtensionAction(
@@ -372,6 +386,8 @@ def test_player_detail_delegates_a_registered_private_action(
         "_continue_player_detail_conversation",
         continue_conversation,
     )
+    send_status = AsyncMock()
+    monkeypatch.setattr(player_detail_conversation, "send_event_reply", send_status)
     event = group_message_event("1")
     state: dict[str, object] = {
         PLAYER_ID_KEY: PLAYER_ID,
@@ -393,6 +409,12 @@ def test_player_detail_delegates_a_registered_private_action(
     call = continue_conversation.await_args
     assert call is not None
     assert call.kwargs["prompt"] == "private reply"
+    send_status.assert_awaited_once()
+    status_call = send_status.await_args
+    assert status_call is not None
+    assert status_call.args[2] == (
+        "⏳ 已收到：private action，已加入队列，完成后会直接发送结果。"
+    )
 
 
 def test_player_detail_semantic_request_matches_direct_shortcuts() -> None:

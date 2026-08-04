@@ -109,22 +109,17 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
         snapshot,
         _NewContentMenuLayout(
             display_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
-            root_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
-            expanded_categories=frozenset(AUTOCARD_NEW_CONTENT_CATEGORIES),
         ),
     )
 
     assert [item.name for item in prompt.items] == [
-        "▼ 新增群星牌",
-        "测试卡牌",
-        "▼ 新增群星牌角色",
-        "测试角色",
-        "▼ 新增群星牌圣域",
-        "潮涌",
+        "▶ 新增群星牌",
+        "▶ 新增群星牌角色",
+        "▶ 新增群星牌圣域",
     ]
 
 
-def test_new_content_root_menu_collapses_categories_by_default() -> None:
+def test_new_content_root_menu_only_lists_categories() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -150,8 +145,6 @@ def test_new_content_root_menu_collapses_categories_by_default() -> None:
         snapshot,
         _NewContentMenuLayout(
             display_categories=("pet", "skill"),
-            root_categories=("pet", "skill"),
-            expanded_categories=frozenset(),
         ),
     )
 
@@ -159,53 +152,13 @@ def test_new_content_root_menu_collapses_categories_by_default() -> None:
         "▶ 新增精灵",
         "▶ 新增技能",
     ]
-    assert prompt.get_item_by_input("a1") is not None
-    assert prompt.get_item_by_input("b1") is not None
+    assert prompt.get_item_by_input("a1") is None
+    assert prompt.get_item_by_input("b1") is None
     assert "a1. 超级噗纽" not in prompt.build_message()
     assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
 
 
-def test_new_content_root_menu_expands_only_configured_categories() -> None:
-    pet = NewContentItem(
-        category="pet",
-        entity_id=4927,
-        name="超级噗纽",
-        sort_value=4927,
-        payload={},
-    )
-    skill = NewContentItem(
-        category="skill",
-        entity_id=38474,
-        name="金属缠绕",
-        sort_value=38474,
-        payload={},
-    )
-    snapshot = NewContentSnapshot(
-        baseline_established=True,
-        config_version="20260731",
-        weekly_cycle="2026-07-31",
-        items=(pet, skill),
-    )
-
-    prompt = _content_prompt(
-        snapshot,
-        _NewContentMenuLayout(
-            display_categories=("pet", "skill"),
-            root_categories=("pet", "skill"),
-            expanded_categories=frozenset(("pet",)),
-        ),
-    )
-
-    assert [item.name for item in prompt.items if item.is_visible] == [
-        "▼ 新增精灵",
-        "超级噗纽",
-        "▶ 新增技能",
-    ]
-    assert prompt.get_item_by_input("a1") is not None
-    assert prompt.get_item_by_input("b1") is not None
-
-
-def test_new_content_category_selection_opens_a_focused_stable_key_menu() -> None:
+def test_new_content_category_selection_opens_a_numeric_menu() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -235,22 +188,55 @@ def test_new_content_category_selection_opens_a_focused_stable_key_menu() -> Non
     )
     root_layout = _NewContentMenuLayout(
         display_categories=("pet", "skill", "achievement"),
-        root_categories=("pet", "skill", "achievement"),
-        expanded_categories=frozenset(("achievement",)),
     )
     layout = _focus_new_content_category(root_layout, "achievement")
 
     prompt = _content_prompt(snapshot, layout)
 
     assert prompt.title == "🆕【新增成就】输入编号查看详情：\n"
-    assert "c1. 深海之泪" in prompt.build_message()
+    assert "1. 深海之泪" in prompt.build_message()
     assert "a. ▶ 新增精灵" not in prompt.build_message()
     assert "b. ▶ 新增技能" not in prompt.build_message()
-    assert prompt.get_item_by_input("c1") is not None
+    assert prompt.get_item_by_input("1") is not None
+    assert prompt.get_item_by_input("c1") is None
+
+
+def test_new_pet_category_uses_plain_numeric_choices() -> None:
+    first = NewContentItem(
+        category="pet",
+        entity_id=4927,
+        name="超级噗纽",
+        sort_value=4927,
+        payload={},
+    )
+    second = NewContentItem(
+        category="pet",
+        entity_id=4928,
+        name="维克佐斯",
+        sort_value=4928,
+        payload={},
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(first, second),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(
+            display_categories=("pet",),
+            focused_category="pet",
+        ),
+    )
+
+    assert "1. 超级噗纽" in prompt.build_message()
+    assert "2. 维克佐斯" in prompt.build_message()
     assert prompt.get_item_by_input("a1") is None
 
 
-def test_new_content_category_shortcut_reuses_root_letter_key() -> None:
+def test_new_content_category_shortcut_uses_numeric_keys() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -280,8 +266,6 @@ def test_new_content_category_shortcut_reuses_root_letter_key() -> None:
     )
     layout = _NewContentMenuLayout(
         display_categories=("achievement",),
-        root_categories=("pet", "skill", "achievement"),
-        expanded_categories=frozenset(("achievement",)),
         focused_category="achievement",
     )
 
@@ -289,67 +273,4 @@ def test_new_content_category_shortcut_reuses_root_letter_key() -> None:
 
     assert "a. " not in prompt.build_message()
     assert "b. " not in prompt.build_message()
-    assert "c1. 深海之泪" in prompt.build_message()
-
-
-def test_all_generated_new_content_keys_follow_the_category_inventory() -> None:
-    from nonebot.adapters.onebot.v11 import Message, PrivateMessageEvent
-
-    from ironsbot.plugins.seer.query.commands.data_queries import _is_new_content_input
-    from ironsbot.runtime.prompts import Prompt, PromptItem
-    from ironsbot.services.seer.new_content import NEW_CONTENT_CATEGORIES
-    from ironsbot.plugins.seer.query.commands.data_queries import _NewContentMenuLayout
-
-    items = tuple(
-        NewContentItem(
-            category=category, entity_id=index + 1, name="synthetic",
-            sort_value=index + 1, payload={},
-        )
-        for index, category in enumerate(NEW_CONTENT_CATEGORIES)
-    )
-    snapshot = NewContentSnapshot(
-        baseline_established=True, config_version="synthetic",
-        weekly_cycle="synthetic", items=items,
-    )
-    layout = _NewContentMenuLayout(
-        display_categories=NEW_CONTENT_CATEGORIES,
-        root_categories=NEW_CONTENT_CATEGORIES,
-        expanded_categories=frozenset(NEW_CONTENT_CATEGORIES),
-    )
-    prompt = _content_prompt(snapshot, layout)
-
-    def input_event(text: str) -> PrivateMessageEvent:
-        return PrivateMessageEvent.model_validate({
-            "time": 0, "self_id": 1, "post_type": "message",
-            "message_type": "private", "sub_type": "friend", "message_id": 1,
-            "user_id": 2, "message": Message(text), "original_message": Message(text),
-            "raw_message": text, "font": 0,
-            "sender": {"user_id": 2, "nickname": "synthetic"}, "to_me": False,
-        })
-
-    expected_roots = [chr(ord("a") + i) for i in range(len(NEW_CONTENT_CATEGORIES))]
-    assert len(prompt.items) == len(expected_roots) * 2
-    assert [item.key for item in prompt.items] == [
-        key for root in expected_roots for key in (root, root + "1")
-    ]
-    for item in prompt.items:
-        key = item.key
-        assert key is not None
-        for spelling in (key, key.upper()):
-            for text in (spelling, "  " + spelling + " \t"):
-                assert _is_new_content_input(input_event(text))
-        assert prompt.get_item_by_input(key) is item
-    assert _is_new_content_input(input_event("0"))
-    unknown = chr(ord("a") + len(NEW_CONTENT_CATEGORIES))
-    for key in (unknown, unknown + "1", "?", "00", "a0", "a01", "a-1", "a1x"):
-        for spelling in (key, key.upper()):
-            for text in (spelling, "  " + spelling + " \t"):
-                assert not _is_new_content_input(input_event(text))
-        assert prompt.get_item_by_input(key) is None
-    # Legal grammar alone never grants a nonexistent choice.
-    assert prompt.get_item_by_input("a99999") is None
-    ordinary = Prompt(title="ordinary", items=[PromptItem("one", "", 1)])
-    first = ordinary.get_item_by_input("1")
-    assert first is not None
-    assert first.value == 1
-    assert ordinary.get_item_by_input("a") is None
+    assert "1. 深海之泪" in prompt.build_message()

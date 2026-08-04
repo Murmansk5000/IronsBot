@@ -5,9 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import (
-    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
-)
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -26,6 +24,7 @@ from ironsbot.runtime.rules import (
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
+from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -40,11 +39,12 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 from .player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_BINDING_PENDING_KEY,
+    PLAYER_BINDING_REPLACEMENT_KEY,
     PLAYER_ID_KEY,
     PLAYER_QUERY_IS_EXPLICIT_KEY,
 )
 from .player_detail_conversation import send_player_info_with_detail_prompt
-from .player_target import resolve_player_target
+from .player_target import resolve_event_player_reference, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -60,8 +60,6 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
-
-
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -79,13 +77,23 @@ async def prompt_for_unbound_player_id(
     )
 
 
-async def _is_player_id_query(event: Event, state: T_State) -> bool:
+async def _is_player_id_query(
+    dependencies: PlayerCommandDependencies,
+    event: Event,
+    state: T_State,
+) -> bool:
     arg = extract_player_query_arg(event.get_plaintext())
     if arg is None:
         return False
     if not arg:
         state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
         return True
+    if not arg.isdecimal() and resolve_event_player_reference(
+        dependencies.player_accounts,
+        event,
+        arg,
+    ) is None:
+        return False
     state[BOT_COMMAND_ARG_KEY] = arg
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
     return True
@@ -109,9 +117,10 @@ async def validate_player_id(
     numeric_player_id = None
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
         player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        numeric_player_id = dependencies.player_accounts.resolve_player_id(
+        numeric_player_id = resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
             player_reference,
-            group_id=event_group_id(event),
         )
         if numeric_player_id is None:
             await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
@@ -198,6 +207,10 @@ async def _handle_player_query_result(
         return
     if result.offer_binding:
         state[PLAYER_BINDING_PENDING_KEY] = pending
+        if result.binding_replacement is not None:
+            state[PLAYER_BINDING_REPLACEMENT_KEY] = result.binding_replacement
+        else:
+            state.pop(PLAYER_BINDING_REPLACEMENT_KEY, None)
         await enter_event_reply_conversation(
             matcher,
             event,
@@ -210,7 +223,10 @@ async def _handle_player_query_result(
                 )
                 is not None
             ),
-            prompt=dependencies.player.binding_offer(pending),
+            prompt=dependencies.player.binding_offer(
+                pending,
+                replacement=result.binding_replacement,
+            ),
         )
     await _send_pending_player_query(
         dependencies,
@@ -236,10 +252,12 @@ async def handle_player_binding_choice(
     )
     if choice is None:
         return
+    replacement = state.get(PLAYER_BINDING_REPLACEMENT_KEY)
     dependencies.player.save_binding_choice(
         event.user_id,
         pending,
         accepted=choice,
+        replacing_existing=isinstance(replacement, PlayerBindingState),
     )
     await _send_pending_player_query(
         dependencies,
@@ -335,7 +353,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.player.query",),
         ),
         rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(_is_player_id_query)
+        & Rule(bind_async(_is_player_id_query, dependencies))
         & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
