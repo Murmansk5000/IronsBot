@@ -75,6 +75,27 @@
     迁移中的适配器可以复用旧投递链以保留队列、退订和限流，但不得把这些类型
     重新传回 service。
 
+## 插件术语与权威边界
+
+不能再把插件相关对象统称为“唯一插件契约”。它们职责不同，后续设计和代码
+审查必须使用准确名称：
+
+| 需要描述的事情 | 唯一权威 |
+| --- | --- |
+| 插件静态身份与 NoneBot 元数据 | `PluginMetadata` |
+| 插件安装时提交 matcher、job、hook 等运行时贡献 | `PluginContribution` |
+| 用户可输入命令的语法、示例、权限、帮助、戳一戳与 AI 认领 | `CommandCatalog` / `CommandContract` |
+| 某个用户或会话是否有功能权限 | feature-policy service |
+| 进程生命周期、后台任务与关闭顺序 | `ApplicationLifecycle` |
+
+`PluginDefinition` 已退出当前架构。除迁移记录或 Git 历史说明外，不得在新代码、
+测试、计划、图示或文档中重新引入它，也不得以“临时方便”为由恢复中央插件注册
+表。`PluginContribution` 只是一项插件局部的运行时提交记录，不能承担命令目录、
+权限策略、帮助布局或跨插件生命周期等第二份权威。
+
+评审发现“插件负责……”这类笼统表述时，必须改为上表中的具体责任；若没有
+对应权威，先补最小目标契约和边界测试，再写业务实现。
+
 ## 过渡边界准入
 
 开始实现前，先对照 `ARCHITECTURE.md` 的“Transition Inventory And Admission

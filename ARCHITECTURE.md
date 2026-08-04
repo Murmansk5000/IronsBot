@@ -66,12 +66,13 @@ adapter, the legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and
 the renderer data lookups listed in the Phase 0 guard below. They keep the
 current OneBot application runnable; they are not the architecture that new
 cross-feature work should target. Phase 2 has completed built-in plugin
-discovery through the standard NoneBot manifest and uses
-`PluginContribution` as the runtime contract. The remaining Phase 2 work
-replaces `MatcherRegistry` with a matcher factory and removes the temporary
-private-extension adapter. Phase 4 removes renderer-owned persistence lookups.
-No new subsystem may be built on those transition items merely because they
-already exist.
+discovery through the standard NoneBot manifest. `PluginContribution` is the
+current plugin-local way to submit explicit runtime contributions; it is not an
+application registry or a catch-all authority for every plugin concern. The
+remaining Phase 2 work replaces `MatcherRegistry` with a matcher factory and
+removes the temporary private-extension adapter. Phase 4 removes
+renderer-owned persistence lookups. No new subsystem may be built on those
+transition items merely because they already exist.
 
 The authoritative long-term ownership is therefore:
 
@@ -86,6 +87,27 @@ The temporary private-extension adapter owns none of those target
 responsibilities. It only adapts configured external private contributions
 until that extension boundary has a standard declarative replacement.
 
+### Plugin Contract Terminology
+
+Plugin-related terms name separate responsibilities. They must not be collapsed
+into a fictional "single plugin contract" in code, plans, reviews, or future
+architecture work:
+
+| Term | Owns | Does not own |
+| --- | --- | --- |
+| `PluginMetadata` | Static plugin identity and NoneBot metadata | Matchers, commands, lifecycle policy, or feature decisions |
+| `PluginContribution` | A plugin's explicit runtime contributions submitted during installation | A central plugin registry, command semantics, or cross-plugin policy |
+| `CommandCatalog` / `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
+| Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
+| `ApplicationLifecycle` | Process lifecycle, owned tasks, and startup/shutdown ordering | Plugin metadata or user-command semantics |
+
+`PluginDefinition` is a retired historical type. It may be mentioned only when
+documenting a completed migration or inspecting old Git history; new code,
+interfaces, tests, and diagrams must not introduce it or treat it as a current
+contract. When a responsibility needs an authority, name the narrow authority
+from the table rather than saying that a plugin, manifest, or contribution
+object owns everything.
+
 ### Transition Inventory And Admission Rule
 
 The following table is the working inventory for architecture tasks. It
@@ -96,7 +118,7 @@ feature, persistence schema, or policy decision.
 
 | Responsibility | Status | Current safe boundary | Required direction before new ownership |
 | --- | --- | --- | --- |
-| `PluginContribution` and direct command metadata | target | Plugin-local contribution plus `CommandCatalog` | Extend the existing contract; never recreate an application registry. |
+| Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
