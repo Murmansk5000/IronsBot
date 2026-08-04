@@ -56,7 +56,7 @@ from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_refresh_start_message,
 )
 
-DETAIL_PROGRESS_WIDTH = 50
+PROGRESS_WIDTH = 100
 
 
 @dataclass(frozen=True)
@@ -731,7 +731,7 @@ def test_build_rank_page_cache_status_message_groups_valid_and_stale_pages() -> 
     assert "过期缓存：1 段，3 名" in message
     assert "过期区间：11-13" in message
     progress = next(line for line in message.splitlines() if line.startswith("进度："))
-    assert len(progress.removeprefix("进度：")) == DETAIL_PROGRESS_WIDTH
+    assert len(progress.removeprefix("进度：")) == PROGRESS_WIDTH
     assert "█" in progress and "▓" in progress and "░" in progress
 
     empty_message = build_rank_page_cache_status_message(
@@ -834,7 +834,7 @@ def test_rank_page_cache_status_maps_entry_states_to_target_positions() -> None:
     assert "新鲜完整：100 名（40.0%）｜部分：40 名（16.0%）" in message
     assert "过期：50 名（20.0%）｜缺失：60 名（24.0%）" in message
     progress = next(line for line in message.splitlines() if line.startswith("进度："))
-    assert progress.removeprefix("进度：") == "█" * 20 + "▒" * 20 + "▓" * 10
+    assert progress.removeprefix("进度：") == "█" * 40 + "▒" * 40 + "▓" * 20
     assert "位置：1" in message
     assert "125" in message
     assert message.splitlines()[3].endswith("250")
@@ -848,7 +848,7 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
         end_rank=200,
         spec=spec,
     )
-    assert build_rank_page_cache_overview_message(
+    overview = build_rank_page_cache_overview_message(
         [
             (
                 "测试",
@@ -866,12 +866,15 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
                 "前 500 名",
             )
         ],
-    ) == (
-        "📦【榜单页缓存】\n"
-        "图例：█ 新鲜完整｜▓ 过期｜▒ 部分｜░ 缺失（左侧为第 1 名）\n"
-        "测试榜：[██████░░░░░░░░░░░░░░░░░░░░░░░░] 100/500 名（20.0%）"
-        "｜下一刷 缺失:101-200"
     )
+    assert overview.splitlines()[:2] == [
+        "📦【榜单页缓存】",
+        "图例：█ 新鲜完整｜▓ 过期｜▒ 部分｜░ 缺失（左侧为第 1 名）",
+    ]
+    overview_line = overview.splitlines()[2]
+    progress = overview_line.split("[", maxsplit=1)[1].split("]", maxsplit=1)[0]
+    assert progress == "█" * 20 + "░" * 80
+    assert overview_line.endswith("100/500 名（20.0%）｜下一刷 缺失:101-200")
     assert build_rank_page_refresh_start_message(
         RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
     ) == "🔄 正在刷新皮肤图鉴榜缓存。"

@@ -34,8 +34,7 @@ _STATUS_TIEBREAK = {
     _PARTIAL: 2,
     _MISSING: 3,
 }
-_OVERVIEW_PROGRESS_WIDTH = 30
-_DETAIL_PROGRESS_WIDTH = 50
+_PROGRESS_WIDTH = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,11 +258,11 @@ def build_rank_page_cache_status_message(  # noqa: PLR0913 - message inputs are 
     if resolved_target:
         position_scale = _position_scale(
             target_count=resolved_target,
-            width=_DETAIL_PROGRESS_WIDTH,
+            width=_PROGRESS_WIDTH,
         )
         lines.extend(
             [
-                f"进度：{_progress_bar(coverage, width=_DETAIL_PROGRESS_WIDTH)}",
+                f"进度：{_progress_bar(coverage, width=_PROGRESS_WIDTH)}",
                 f"位置：{position_scale}",
                 *_coverage_lines(coverage),
             ]
@@ -325,7 +324,7 @@ def build_rank_page_cache_overview_message(
             )
         title = spec.title if spec.title.endswith("榜") else f"{spec.title}榜"
         lines.append(
-            f"{title}：[{_progress_bar(coverage, width=_OVERVIEW_PROGRESS_WIDTH)}] "
+            f"{title}：[{_progress_bar(coverage, width=_PROGRESS_WIDTH)}] "
             f"{coverage.stored_count}/{target_limit} 名"
             f"（{_percentage(coverage.stored_count, target_limit)}）"
             f"｜下一刷 {next_text}"
