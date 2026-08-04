@@ -1081,13 +1081,13 @@ stale_age_max_multiplier = 5.0
 # ZH: 每页榜单请求人数。
 page_size = 100
 # Default: 10
-# EN: Maximum rank pages refreshed per scheduled/manual run.
-# ZH: 每轮最多刷新多少页，也就是最多多少次榜单请求。
-pages_per_run = 3
+# EN: Total rank pages refreshed by the whole worker pool in one run.
+# ZH: 每轮由整个无头池合计最多刷新多少页，不会随账号数倍增。
+pages_per_run = 20
 # Default: 0
 # EN: If > 0, each run refreshes a random number of pages between this value and pages_per_run.
-# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数。
-pages_per_run_min = 1
+# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数；总页数仍由整个无头池分摊。
+pages_per_run_min = 10
 # Default: 0
 # EN: Interval-based refresh in minutes. 0 disables interval scheduling.
 # ZH: 按间隔刷榜，0 表示关闭；例如 10 表示每 10 分钟一轮。
@@ -1102,13 +1102,13 @@ interval_offset_minutes = 4
 # ZH: 每轮调度额外随机延后秒数，避免总在整点/固定秒触发。
 schedule_jitter_seconds = 240
 # Default: 0.0
-# EN: Seconds to wait between page requests in one refresh run.
-# ZH: 同一轮刷榜中，每个榜单页请求之间的固定等待秒数。
-request_interval_seconds = 3.0
+# EN: Minimum seconds between scheduled rank-page slots. Scheduled runs also spread the selected batch across their interval.
+# ZH: 定时刷榜页槽位的最小间隔秒数；定时任务还会把本轮页面均匀铺在整个调度间隔内。
+request_interval_seconds = 8.0
 # Default: 0.0
-# EN: Random extra seconds added to each inter-page wait.
-# ZH: 每个榜单页请求之间额外增加的随机等待秒数，降低固定频率特征。
-request_jitter_seconds = 3.0
+# EN: Maximum random offset applied to scheduled page slots; manual runs add up to this delay.
+# ZH: 定时页槽位的最大随机偏移秒数；手动刷新则额外延后不超过该值，用于避免固定频率。
+request_jitter_seconds = 12.0
 # Default: ""; EN: Optional active refresh window start. ZH: 可选的刷榜活跃时间起点。
 active_start = "07:30"
 # Default: ""; EN: Optional active refresh window end; may cross midnight.

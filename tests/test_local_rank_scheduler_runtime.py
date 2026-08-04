@@ -58,6 +58,8 @@ class FakeScheduler:
 
 
 class FakeHeadless:
+    healthy_worker_count = 3
+
     def get_game(self) -> object:
         return object()
 
@@ -67,9 +69,17 @@ class FakeRefreshService:
         self.config = config
         self._result = result
         self.background_calls: list[bool] = []
+        self.parallelism_calls: list[int] = []
 
-    async def refresh(self, _game: object, *, background: bool = False) -> object:
+    async def refresh(
+        self,
+        _game: object,
+        *,
+        background: bool = False,
+        max_parallelism: int = 1,
+    ) -> object:
         self.background_calls.append(background)
+        self.parallelism_calls.append(max_parallelism)
         return self._result
 
 
@@ -161,7 +171,13 @@ def test_scheduled_refreshes_use_background_priority() -> None:
         )
         pages = FakeRefreshService(
             SimpleNamespace(enabled=True, active_start="", active_end=""),
-            SimpleNamespace(total=1, success=1, failed=0),
+            SimpleNamespace(
+                total=1,
+                success=1,
+                failed=0,
+                parallelism=3,
+                worker_page_counts={},
+            ),
         )
 
         await seer_runtime._scheduled_local_rank_refresh(
@@ -175,5 +191,7 @@ def test_scheduled_refreshes_use_background_priority() -> None:
 
         assert local.background_calls == [True]
         assert pages.background_calls == [True]
+        assert local.parallelism_calls == [1]
+        assert pages.parallelism_calls == [3]
 
     asyncio.run(run())
