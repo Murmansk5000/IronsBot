@@ -26,7 +26,7 @@ def messaging_help_visible(
 ) -> bool:
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
-    actions = [*config.commands, *config.schedules]
+    actions = [*config.commands, *config.keyword_replies, *config.schedules]
     return any(
         action.enabled
         and event_is_feature_visible_in_help(features, event, action.feature)
@@ -48,6 +48,19 @@ def configured_message_commands(
             show_in_poke=True,
         )
         for action in config.commands
+        if action.enabled
+    )
+    keyword_replies = tuple(
+        CommandDescriptor(
+            id=f"messaging.keyword.{action.id}",
+            plugin_id="messaging",
+            section="关键词回复",
+            examples=tuple(action.keywords),
+            description=action.name or "消息包含关键词时自动回复",
+            features_any=(action.feature,),
+            interaction="automatic",
+        )
+        for action in config.keyword_replies
         if action.enabled
     )
     schedules = tuple(
@@ -80,6 +93,7 @@ def configured_message_commands(
     )
     return (
         *configured,
+        *keyword_replies,
         *schedules,
         *commands_from_rows(
             "messaging",

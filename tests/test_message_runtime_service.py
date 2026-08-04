@@ -5,6 +5,7 @@ from ironsbot.services.messaging.service import (
     build_schedule_job_id,
     build_schedule_trigger_kwargs,
     find_command_action,
+    find_keyword_reply_action,
 )
 
 
@@ -19,6 +20,13 @@ class FakeCommandAction:
 class FakeScheduleAction:
     time: str
     day_of_week: str | None = None
+
+
+@dataclass(slots=True)
+class FakeKeywordReplyAction:
+    enabled: bool
+    keywords: list[str]
+    feature: str = "text"
 
 
 def test_command_text_matches_ignores_spacing_and_case() -> None:
@@ -36,6 +44,30 @@ def test_find_command_action_skips_disabled_and_disallowed() -> None:
         [disabled, disallowed, allowed],
         is_allowed=lambda action: action.feature == "text",
     ) is allowed
+
+
+def test_find_keyword_reply_action_uses_literal_contains_matching() -> None:
+    disabled = FakeKeywordReplyAction(enabled=False, keywords=["出出"])
+    disallowed = FakeKeywordReplyAction(
+        enabled=True,
+        keywords=["出出"],
+        feature="blocked",
+    )
+    allowed = FakeKeywordReplyAction(enabled=True, keywords=["出出"])
+
+    assert find_keyword_reply_action(
+        "今天出出了",
+        [disabled, disallowed, allowed],
+        is_allowed=lambda action: action.feature == "text",
+    ) is allowed
+    assert (
+        find_keyword_reply_action(
+            "今天出去玩",
+            [allowed],
+            is_allowed=lambda _action: True,
+        )
+        is None
+    )
 
 
 def test_build_schedule_job_id_sanitizes_raw_id() -> None:

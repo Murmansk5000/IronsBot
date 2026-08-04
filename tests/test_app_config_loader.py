@@ -591,6 +591,33 @@ at_user_ids = [123456789]
     assert config.messaging.schedules[0].at_user_ids == [123456789]
 
 
+def test_keyword_reply_actions_parse_and_register_features(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+main = 123456789
+
+[features.group_policy]
+main = ["chuchu_reply"]
+
+[[messaging.keyword_replies]]
+id = "chuchu_reply"
+keywords = ["出出"]
+message = "出出是蛆"
+feature = "chuchu_reply"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.messaging.keyword_replies[0].keywords == ["出出"]
+    assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
+
+
 
 def test_message_command_feature_registers_for_bundle_and_group_policy(
     tmp_path: Path,
