@@ -55,6 +55,15 @@ from ironsbot.plugins.onebot.messaging.meeting import (
 from ironsbot.plugins.onebot.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.onebot.operations.db_sync import (
+    plugin_contribution as db_sync_plugin_contribution,
+)
+from ironsbot.plugins.onebot.operations.docker_update import (
+    plugin_contribution as docker_update_plugin_contribution,
+)
+from ironsbot.plugins.onebot.operations.server_status import (
+    plugin_contribution as server_status_plugin_contribution,
+)
 from ironsbot.plugins.onebot.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
@@ -75,15 +84,6 @@ from ironsbot.plugins.onebot.team_audit import (
 )
 from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
-)
-from ironsbot.plugins.operations.db_sync import (
-    plugin_contribution as db_sync_plugin_contribution,
-)
-from ironsbot.plugins.operations.docker_update import (
-    plugin_contribution as docker_update_plugin_contribution,
-)
-from ironsbot.plugins.operations.server_status import (
-    plugin_contribution as server_status_plugin_contribution,
 )
 from ironsbot.plugins.scheduler import (
     plugin_contribution as scheduler_plugin_contribution,

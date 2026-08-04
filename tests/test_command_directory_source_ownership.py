@@ -6,28 +6,28 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
 )
-from ironsbot.plugins.onebot.seer.query.command_catalog import (
-    command_descriptors as seer_commands,
-)
-from ironsbot.plugins.operations.db_sync import (
+from ironsbot.plugins.onebot.operations.db_sync import (
     FORCE_MANUAL_SYNC_COMMANDS,
     MANUAL_SYNC_COMMANDS,
 )
-from ironsbot.plugins.operations.db_sync import (
+from ironsbot.plugins.onebot.operations.db_sync import (
     command_descriptors as data_sync_commands,
 )
-from ironsbot.plugins.operations.docker_update import (
+from ironsbot.plugins.onebot.operations.docker_update import (
     command_descriptors as docker_update_commands,
 )
-from ironsbot.plugins.operations.server_status import (
+from ironsbot.plugins.onebot.operations.server_status import (
     command_descriptors as server_status_commands,
 )
-from ironsbot.plugins.operations.status.command_text import (
+from ironsbot.plugins.onebot.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
+)
+from ironsbot.plugins.onebot.seer.query.command_catalog import (
+    command_descriptors as seer_commands,
 )
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (

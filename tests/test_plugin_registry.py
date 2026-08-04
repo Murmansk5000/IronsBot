@@ -461,9 +461,24 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "onebot"
                     / "activity"
                     / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "db_sync.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "docker_update.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "server_status.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "operations"
+                    / "db_sync.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "operations"
+                    / "docker_update.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "operations"
+                    / "server_status.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
