@@ -3,7 +3,9 @@ plugin_dirs = []
 
 [tool.nonebot.plugins]
 "@local" = [
+  "nonebot_plugin_saa",
   "ironsbot.plugins.onebot.bootstrap",
   "ironsbot.plugins.about",
   "ironsbot.plugins.help",
+  "ironsbot.plugins.sendpic",
 ]

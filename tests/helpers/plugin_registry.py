@@ -12,6 +12,7 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
@@ -234,5 +235,9 @@ def build_test_plugin_registry(
             features=runtime.features,
             commands=resources.commands,
             ignored_plugins=tuple(config.features.help.ignored_plugins),
+        ),
+        sendpic_plugin_contribution(
+            service=resources.sendpic,
+            features=runtime.features,
         ),
     )

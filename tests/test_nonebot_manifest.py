@@ -26,8 +26,10 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
     assert document["tool"]["nonebot"]["plugin_dirs"] == []
     assert document["tool"]["nonebot"]["plugins"] == {
         "@local": [
+            "nonebot_plugin_saa",
             "ironsbot.plugins.onebot.bootstrap",
             "ironsbot.plugins.about",
             "ironsbot.plugins.help",
+            "ironsbot.plugins.sendpic",
         ]
     }

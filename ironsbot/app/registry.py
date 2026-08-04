@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from ironsbot.app.command_directory.dynamic import (
     ai_intent_commands,
-    configured_image_commands,
     configured_message_commands,
     messaging_help_visible,
 )
@@ -102,7 +101,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     bilibili_service = resources.bilibili
     bilibili_login = resources.bilibili_login
     messaging = resources.messaging
-    sendpic_service = resources.sendpic
     team_audit_service = resources.team_audit
     team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
@@ -187,17 +185,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                 resources.commands,
                 config.player_accounts,
             )
-        )
-
-    def install_sendpic(registry: MatcherRegistry) -> None:
-        from ironsbot.plugins.sendpic.matchers import (
-            install as install_configured_images,
-        )
-
-        install_configured_images(
-            registry,
-            sendpic_service,
-            features,
         )
 
     def start_docker_update() -> None:
@@ -650,18 +637,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                 install_help_hint,
                 service=help_hint_service,
             ),
-        ),
-        PluginContribution(
-            id="sendpic",
-            features=frozenset({Feature.IMAGE}),
-            help=HelpEntry(
-                name="图片发送",
-                description="发送固定图片或配置的图片库内容",
-                group="other",
-                order=20,
-            ),
-            commands=configured_image_commands(config),
-            install=install_sendpic,
         ),
         PluginContribution(
             id="meeting",

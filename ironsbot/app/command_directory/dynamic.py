@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
 from ironsbot.app.command_directory.rows import commands_from_rows
-from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
 
@@ -139,35 +138,6 @@ def _schedule_label(
     title = name or "定时推送"
     timing = f"每天 {time}" if day_of_week is None else f"每周 {day_of_week} {time}"
     return f"{title}（{timing}）"
-
-
-def configured_image_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
-    fixed = tuple(
-        CommandDescriptor(
-            id=f"sendpic.fixed.{command}",
-            plugin_id="sendpic",
-            section="固定图片",
-            examples=(command,),
-            description="发送固定图片",
-            features_any=("image",),
-            show_in_poke=True,
-        )
-        for command in FIXED_IMAGE_COMMANDS
-    )
-    configured = tuple(
-        CommandDescriptor(
-            id=f"sendpic.{item.id}",
-            plugin_id="sendpic",
-            section="自定义图片",
-            examples=(item.command, *sorted(item.aliases)),
-            description="发送配置的图片；可在命令后附加编号",
-            features_any=("image",),
-            show_in_poke=True,
-        )
-        for item in config.messaging.sendpic.configs
-        if item.id in config.messaging.sendpic.enabled_ids
-    )
-    return (*fixed, *configured)
 
 
 def ai_intent_commands(config: Settings) -> tuple[CommandDescriptor, ...]:

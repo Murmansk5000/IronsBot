@@ -9,6 +9,7 @@ import nonebot
 import tomli
 
 if TYPE_CHECKING:
+    import pytest
     from nonebot.internal.driver import Driver
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,7 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.app.external_plugins import load_external_plugin
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
@@ -47,6 +49,37 @@ def test_plugin_contributions_cover_feature_ownership() -> None:
 
     assert owned_features | OPTIONAL_PRIVATE_FEATURES == set(Feature)
     assert len(DEFINITIONS_BY_ID) == len(DEFINITIONS)
+
+
+def test_manifest_sendpic_owns_its_command_descriptors() -> None:
+    contribution = DEFINITIONS_BY_ID["sendpic"]
+
+    assert contribution.features == frozenset({Feature.IMAGE})
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"sendpic"}
+
+
+def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+    loaded: list[str] = []
+
+    def get_plugin(_name: str) -> object:
+        return object()
+
+    def load_plugin(name: str) -> None:
+        loaded.append(name)
+
+    monkeypatch.setattr(
+        "ironsbot.app.external_plugins.nonebot.get_plugin",
+        get_plugin,
+    )
+    monkeypatch.setattr(
+        "ironsbot.app.external_plugins.nonebot.load_plugin",
+        load_plugin,
+    )
+
+    load_external_plugin("nonebot_plugin_saa")
+
+    assert loaded == []
 
 
 def test_registry_installs_foundation_before_dependents() -> None:
@@ -119,6 +152,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
                     ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

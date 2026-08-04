@@ -307,17 +307,18 @@ adding fields or side registries to the central bootstrap bridge.
 
 | Responsibility | Current bridge | Target authority | Migration completion |
 | --- | --- | --- | --- |
-| Plugin discovery and loading | Standard TOML loads a temporary local bootstrap module, which delegates to `app.registry` | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No application plugin registry remains. |
+| Plugin discovery and loading | Standard TOML loads declared third-party prerequisites and a temporary local bootstrap module, which delegates to `app.registry` | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No application plugin registry remains. |
 | Plugin identity and static metadata | Bootstrap `PluginMetadata` only | `PluginMetadata` in each top-level plugin package | Metadata is loaded without importing application registry code. |
 | Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + central contribution bridge | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
-The first verified migrations are `ironsbot.plugins.about` and
-`ironsbot.plugins.help`: the manifest loads them directly, and each package
-supplies its own metadata and contribution. Every subsequent plugin migration
-follows that pattern and removes its entry from the central bridge in the same
-change.
+The first verified migrations are `ironsbot.plugins.about`,
+`ironsbot.plugins.help`, and `ironsbot.plugins.sendpic`: the manifest loads
+them directly, and each package supplies its own metadata and contribution.
+`sendpic` also owns the command descriptors for the matchers it installs.
+Every subsequent plugin migration follows that pattern and removes its entry
+from the central bridge in the same change.
 
 The target system must not retain an adapter merely to keep the old registry
 alive. A phase may use a short-lived migration tool, but ordinary runtime must
