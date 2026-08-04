@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.aliases import AliasIndex
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.seer_ids import is_valid_player_id
 
@@ -72,8 +73,8 @@ class PlayerAccountRegistry:
         private_alias_groups: Mapping[int, Iterable[str]] | None = None,
     ) -> None:
         by_player_id: dict[int, PlayerAccount] = {}
-        by_reference: dict[str, PlayerAccount] = {}
-        public_by_name: dict[str, PlayerAccount] = {}
+        by_reference = AliasIndex[PlayerAccount](normalize_command_text)
+        public_by_name = AliasIndex[PlayerAccount](normalize_command_text)
         for account in accounts:
             if account.player_id in by_player_id:
                 raise PlayerAccountReferenceError.duplicate_player_id(
@@ -86,18 +87,21 @@ class PlayerAccountRegistry:
                     value,
                     location="seer.player_accounts",
                 )
-                if normalized in by_reference:
+                if not by_reference.resolve_alias(normalized).is_empty:
                     raise PlayerAccountReferenceError.duplicate_name(
                         "seer.player_accounts",
                         value,
                     )
-                by_reference[normalized] = account
+                by_reference.add(normalized, account)
             if account.public:
                 for value in (account.name, *account.aliases):
-                    public_by_name[_normalize_name(
-                        value,
-                        location="seer.player_accounts",
-                    )] = account
+                    public_by_name.add(
+                        _normalize_name(
+                            value,
+                            location="seer.player_accounts",
+                        ),
+                        account,
+                    )
         self._by_player_id = by_player_id
         self._by_reference = by_reference
         self._public_by_name = public_by_name
@@ -121,7 +125,7 @@ class PlayerAccountRegistry:
             if account is None:
                 raise PlayerAccountReferenceError.unknown_account(location, value)
             return account
-        account = self._by_reference.get(normalize_command_text(value))
+        account = self._by_reference.resolve_alias(value).unique_value
         if account is None:
             raise PlayerAccountReferenceError.unknown_account(location, value)
         return account
@@ -141,9 +145,14 @@ class PlayerAccountRegistry:
             player_id = int(text)
             return player_id if is_valid_player_id(player_id) else None
         normalized = normalize_command_text(text)
-        account = self._public_by_name.get(normalized)
+        account = self._public_by_name.resolve_alias(normalized).unique_value
         if account is None and group_id is not None:
-            account = self._private_by_group.get(group_id, {}).get(normalized)
+            aliases = self._private_by_group.get(group_id)
+            account = (
+                aliases.resolve_alias(normalized).unique_value
+                if aliases is not None
+                else None
+            )
         return account.player_id if account is not None else None
 
     def account_for_player_id(self, player_id: int) -> PlayerAccount | None:
@@ -152,10 +161,10 @@ class PlayerAccountRegistry:
     def _build_private_alias_groups(
         self,
         group_references: Mapping[int, Iterable[str]],
-    ) -> dict[int, dict[str, PlayerAccount]]:
-        groups: dict[int, dict[str, PlayerAccount]] = {}
+    ) -> dict[int, AliasIndex[PlayerAccount]]:
+        groups: dict[int, AliasIndex[PlayerAccount]] = {}
         for group_id, references in group_references.items():
-            aliases = groups.setdefault(group_id, {})
+            aliases = groups.setdefault(group_id, AliasIndex(normalize_command_text))
             for reference in references:
                 if reference == "all":
                     accounts = self.accounts
@@ -166,7 +175,11 @@ class PlayerAccountRegistry:
                     ),)
                 for account in accounts:
                     for value in (account.name, *account.aliases):
-                        aliases[normalize_command_text(value)] = account
+                        normalized = normalize_command_text(value)
+                        existing = aliases.resolve_alias(normalized)
+                        if any(match.value is account for match in existing.matches):
+                            continue
+                        aliases.add(normalized, account)
         return groups
 
 

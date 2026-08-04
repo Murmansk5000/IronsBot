@@ -17,11 +17,11 @@ def _ensure_nonebot_initialized() -> None:
     ("module_name", "handler_names"),
     [
         (
-            "ironsbot.plugins.seer.query.commands.player_detail_conversation",
+            "ironsbot.plugins.onebot.seer.query.commands.player_detail_conversation",
             ["handle_player_detail_reply"],
         ),
         (
-            "ironsbot.plugins.messaging.push_subscription_handlers",
+            "ironsbot.plugins.onebot.messaging.push_subscription_handlers",
             ["handle_push_subscription_menu", "handle_push_subscription_select"],
         ),
     ],

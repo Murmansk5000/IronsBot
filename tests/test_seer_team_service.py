@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.config.models.seer import TeamQueryConfig
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
     TeamQueryActor,
@@ -19,6 +20,14 @@ if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
 
 TEAM_ID = 123456
+
+
+def _actor(user_id: int = 1) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
+
+
+def _group(group_id: int = 456) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 @dataclass(frozen=True)
@@ -118,7 +127,7 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
 
     message = await service.query(
         (TEAM_ID,),
-        TeamQueryActor(user_id=1, group_id=None, can_manage=False),
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
     )
 
     assert "【战队信息：测试战队】" in message
@@ -136,7 +145,7 @@ async def test_team_service_rejects_more_than_three_ids_without_querying() -> No
 
     message = await service.query(
         (123456, 234567, 345678, 456789),
-        TeamQueryActor(user_id=1, group_id=None, can_manage=False),
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
     )
 
     assert "一次最多查询 3 个战队" in message
@@ -149,7 +158,7 @@ async def test_team_service_adds_subscription_prompt_for_group_manager() -> None
 
     message = await service.query(
         (TEAM_ID,),
-        TeamQueryActor(user_id=1, group_id=456, can_manage=True),
+        TeamQueryActor(actor=_actor(), conversation=_group(), can_manage=True),
     )
 
     assert message.endswith("订阅提示")
@@ -162,7 +171,7 @@ async def test_team_service_formats_timeout() -> None:
 
     assert await service.query(
         (TEAM_ID,),
-        TeamQueryActor(user_id=1, group_id=None, can_manage=False),
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
     ) == "❌ 战队 123456 查询超时，请稍后再试。"
 
 
@@ -172,7 +181,7 @@ async def test_team_service_rejects_invalid_id_before_io() -> None:
 
     message = await service.query(
         (1,),
-        TeamQueryActor(user_id=1, group_id=456, can_manage=True),
+        TeamQueryActor(actor=_actor(), conversation=_group(), can_manage=True),
     )
 
     assert "100000 ~ 2000000000" in message

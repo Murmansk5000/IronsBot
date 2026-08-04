@@ -5,12 +5,15 @@ import math
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.core.response_admission import (
     FeedbackOnce,
     ResponseAdmissionDecision,
 )
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef
 
 _ENTRY_PRUNE_INTERVAL_SECONDS = 60.0
 
@@ -32,12 +35,12 @@ class CommandCooldownConfig(Protocol):
 
 
 class SuperuserLookup(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
 class CommandCooldownToken:
-    user_id: int
+    actor: ActorRef
     command_id: str
 
 
@@ -55,7 +58,7 @@ class _CommandCooldownEntry:
 class CommandCooldownService:
     config: CommandCooldownConfig
     features: SuperuserLookup
-    _entries: dict[tuple[int, str], _CommandCooldownEntry] = field(
+    _entries: dict[tuple[ActorRef, str], _CommandCooldownEntry] = field(
         default_factory=dict
     )
     _last_prune_at: float = 0.0
@@ -63,7 +66,7 @@ class CommandCooldownService:
     def admit(
         self,
         *,
-        user_id: int,
+        actor: ActorRef,
         command_id: str,
         now: float | None = None,
     ) -> CommandCooldownDecision:
@@ -71,13 +74,13 @@ class CommandCooldownService:
         if (
             not self.config.enabled
             or not windows
-            or self.features.is_superuser(user_id)
+            or self.features.is_actor_superuser(actor)
         ):
             return CommandCooldownDecision(allowed=True)
 
         current_time = time.monotonic() if now is None else now
         self._prune_expired(current_time)
-        key = (user_id, command_id)
+        key = (actor, command_id)
         entry = self._entries.setdefault(key, _CommandCooldownEntry())
         self._trim_entry(entry, windows, current_time)
 
@@ -103,7 +106,7 @@ class CommandCooldownService:
         return CommandCooldownDecision(
             allowed=True,
             token=CommandCooldownToken(
-                user_id,
+                actor,
                 command_id,
             ),
         )
@@ -116,7 +119,7 @@ class CommandCooldownService:
     ) -> None:
         if not isinstance(token, CommandCooldownToken):
             return
-        entry = self._entries.get((token.user_id, token.command_id))
+        entry = self._entries.get((token.actor, token.command_id))
         if entry is None or not entry.in_progress:
             return
         current_time = time.monotonic() if now is None else now
@@ -129,7 +132,7 @@ class CommandCooldownService:
 
         if not isinstance(token, CommandCooldownToken):
             return
-        entry = self._entries.get((token.user_id, token.command_id))
+        entry = self._entries.get((token.actor, token.command_id))
         if entry is None or not entry.in_progress:
             return
         entry.in_progress = False
@@ -143,7 +146,7 @@ class CommandCooldownService:
         if current_time - self._last_prune_at < _ENTRY_PRUNE_INTERVAL_SECONDS:
             return
         self._last_prune_at = current_time
-        retained: dict[tuple[int, str], _CommandCooldownEntry] = {}
+        retained: dict[tuple[ActorRef, str], _CommandCooldownEntry] = {}
         for key, entry in self._entries.items():
             self._trim_entry(entry, self.config.windows_for(key[1]), current_time)
             if entry.in_progress or entry.completed_at:
@@ -159,9 +162,7 @@ class CommandCooldownService:
         if not windows:
             entry.completed_at.clear()
             return
-        oldest_allowed = current_time - max(
-            window.window_seconds for window in windows
-        )
+        oldest_allowed = current_time - max(window.window_seconds for window in windows)
         while entry.completed_at and entry.completed_at[0] <= oldest_allowed:
             entry.completed_at.popleft()
 

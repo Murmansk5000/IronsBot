@@ -9,6 +9,7 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
@@ -20,6 +21,7 @@ from ironsbot.services.operations.headless_pool import (
     HeadlessWorkerSlot,
     PooledHeadlessGame,
 )
+from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
     from ironsbot.config.player_accounts import PlayerAccount
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.operations.scheduler import Scheduler
 
 logger = getLogger(__name__)
 
@@ -128,9 +131,7 @@ class _HeadlessWorkerRuntime:
 
 def in_headless_notice_quiet_window(now: datetime) -> bool:
     current_time = now.time()
-    daily_quiet = (
-        current_time >= DAILY_QUIET_START or current_time <= DAILY_QUIET_END
-    )
+    daily_quiet = current_time >= DAILY_QUIET_START or current_time <= DAILY_QUIET_END
     friday_quiet = (
         now.weekday() == FRIDAY_UPDATE_WEEKDAY
         and FRIDAY_QUIET_START <= current_time <= FRIDAY_QUIET_END
@@ -179,11 +180,7 @@ class HeadlessService:
         self._request_interval_seconds = max(request_interval_seconds, 0.0)
         self._state_notifications = state_notifications
         self._now = now or (lambda: datetime.now(LOCAL_TZ))
-        clients = (
-            list(client)
-            if isinstance(client, Sequence)
-            else [client]
-        )
+        clients = list(client) if isinstance(client, Sequence) else [client]
         credentials = [
             (account.name, account.player_id, str(account.password))
             for account in accounts
@@ -207,9 +204,7 @@ class HeadlessService:
         self._available = asyncio.Event()
         self._state_listeners: list[HeadlessStateListener] = []
         operations = (
-            getattr(clients[0], "operations", None)
-            if clients
-            else None
+            getattr(clients[0], "operations", None) if clients else None
         ) or HeadlessOperationTracker()
         client_spawner = getattr(clients[0], "spawn", None) if clients else None
         task_spawner = spawn or cast(
@@ -306,16 +301,10 @@ class HeadlessService:
             *(self._login_worker(worker) for worker in self._workers),
             return_exceptions=True,
         )
-        successful = [
-            int(result)
-            for result in results
-            if isinstance(result, int)
-        ]
+        successful = [int(result) for result in results if isinstance(result, int)]
         if not successful:
             errors = "；".join(
-                str(result)
-                for result in results
-                if isinstance(result, BaseException)
+                str(result) for result in results if isinstance(result, BaseException)
             )
             raise RuntimeError(errors or "无头工作账号均未登录成功")
         self._dispatcher.dispatch()
@@ -359,9 +348,7 @@ class HeadlessService:
             )
         )
         if not game.is_logged_in:
-            message = (
-                f"{worker.name}({worker.user_id}) 登录未完成，已进入自动重连"
-            )
+            message = f"{worker.name}({worker.user_id}) 登录未完成，已进入自动重连"
             raise RuntimeError(message)
         await self._record_worker_state(
             worker,
@@ -430,6 +417,21 @@ class HeadlessService:
             return
 
         await self._refresh_worker_states(source=f"定时重连 {scheduled_time}")
+
+    def register_reconnect_jobs(self, scheduler: Scheduler) -> None:
+        registry = JobRegistry(scheduler, prefix="headless_reconnect_check:")
+        for scheduled_time in self.reconnect_times:
+            hour, minute = daily_time_parts(scheduled_time)
+            registry.add(
+                self.reconnect,
+                "cron",
+                job_id=scheduled_time,
+                args=[scheduled_time],
+                hour=hour,
+                minute=minute,
+                second=0,
+                timezone="Asia/Shanghai",
+            )
 
     async def mark_available(
         self,

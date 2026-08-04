@@ -1,10 +1,22 @@
 # SPDX-License-Identifier: MIT
+"""Conversation-scoped scheduled-push preferences.
+
+The public methods retain the current OneBot-oriented ``target_type`` and
+``target_id`` parameters while the repository persists only platform-neutral
+``ConversationRef`` columns. The adapter boundary will replace those legacy
+parameters before another delivery platform is enabled.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.storage.platform_identity import (
+    ConversationIdentityColumns,
+)
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.messaging.subscriptions import (
     PushPreferencePruneResult,
@@ -21,39 +33,70 @@ if TYPE_CHECKING:
     from collections.abc import Set as AbstractSet
     from contextlib import AbstractContextManager
 
+
 PUSH_SUBSCRIPTION_SCHEMA = (
-    "CREATE TABLE IF NOT EXISTS push_unsubscriptions ("
-    "target_type TEXT NOT NULL, "
-    "target_id INTEGER NOT NULL, "
-    "subscription_key TEXT NOT NULL, "
-    "feature TEXT NOT NULL, "
-    "created_at TEXT NOT NULL, "
-    "PRIMARY KEY (target_type, target_id, subscription_key)"
-    ")",
-    "CREATE INDEX IF NOT EXISTS idx_push_unsubscriptions_lookup "
-    "ON push_unsubscriptions (target_type, subscription_key, target_id)",
-    "CREATE TABLE IF NOT EXISTS push_time_preferences ("
-    "target_type TEXT NOT NULL, "
-    "target_id INTEGER NOT NULL, "
-    "subscription_key TEXT NOT NULL, "
-    "preference_type TEXT NOT NULL, "
-    "value TEXT NOT NULL, "
-    "updated_at TEXT NOT NULL, "
-    "PRIMARY KEY (target_type, target_id, subscription_key, preference_type)"
-    ")",
-    "CREATE INDEX IF NOT EXISTS idx_push_time_preferences_lookup "
-    "ON push_time_preferences "
-    "(target_type, subscription_key, preference_type, target_id)",
-    "CREATE TABLE IF NOT EXISTS push_daily_hints ("
-    "target_type TEXT NOT NULL, "
-    "target_id INTEGER NOT NULL, "
-    "hint_key TEXT NOT NULL, "
-    "delivered_on TEXT NOT NULL, "
-    "updated_at TEXT NOT NULL, "
-    "PRIMARY KEY (target_type, target_id, hint_key)"
-    ")",
-    "CREATE INDEX IF NOT EXISTS idx_push_daily_hints_lookup "
-    "ON push_daily_hints (target_type, hint_key, delivered_on)",
+    """
+    CREATE TABLE IF NOT EXISTS push_unsubscriptions (
+        conversation_platform TEXT NOT NULL,
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        subscription_key TEXT NOT NULL,
+        feature TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (
+            conversation_platform, conversation_kind, conversation_id,
+            subscription_key
+        )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_push_unsubscriptions_lookup
+    ON push_unsubscriptions (
+        conversation_platform, conversation_kind, subscription_key,
+        conversation_id
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS push_time_preferences (
+        conversation_platform TEXT NOT NULL,
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        subscription_key TEXT NOT NULL,
+        preference_type TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (
+            conversation_platform, conversation_kind, conversation_id,
+            subscription_key, preference_type
+        )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_push_time_preferences_lookup
+    ON push_time_preferences (
+        conversation_platform, conversation_kind, subscription_key,
+        preference_type, conversation_id
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS push_daily_hints (
+        conversation_platform TEXT NOT NULL,
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        hint_key TEXT NOT NULL,
+        delivered_on TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (
+            conversation_platform, conversation_kind, conversation_id, hint_key
+        )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_push_daily_hints_lookup
+    ON push_daily_hints (
+        conversation_platform, conversation_kind, hint_key, delivered_on
+    )
+    """,
 )
 PUSH_SUBSCRIPTION_MIGRATIONS = (
     SqliteMigration(1, PUSH_SUBSCRIPTION_SCHEMA),
@@ -64,6 +107,11 @@ MIGRATION_NAMESPACE = "push_subscriptions"
 class PushUnsubscribeStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self._database = SqliteDatabase(
+            self.path,
+            migrations=PUSH_SUBSCRIPTION_MIGRATIONS,
+            migration_namespace=MIGRATION_NAMESPACE,
+        )
 
     def target_unsubscribed_keys(
         self,
@@ -72,9 +120,12 @@ class PushUnsubscribeStore:
     ) -> set[str]:
         with self._connect() as con:
             rows = con.execute(
-                "SELECT subscription_key FROM push_unsubscriptions "
-                "WHERE target_type = ? AND target_id = ?",
-                (target_type, int(target_id)),
+                """
+                SELECT subscription_key FROM push_unsubscriptions
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ?
+                """,
+                _conversation_values(target_type, target_id),
             ).fetchall()
         return {str(row[0]) for row in rows}
 
@@ -86,9 +137,12 @@ class PushUnsubscribeStore:
     ) -> bool:
         with self._connect() as con:
             row = con.execute(
-                "SELECT 1 FROM push_unsubscriptions "
-                "WHERE target_type = ? AND target_id = ? AND subscription_key = ?",
-                (target_type, int(target_id), subscription_key),
+                """
+                SELECT 1 FROM push_unsubscriptions
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND subscription_key = ?
+                """,
+                (*_conversation_values(target_type, target_id), subscription_key),
             ).fetchone()
         return row is not None
 
@@ -99,13 +153,21 @@ class PushUnsubscribeStore:
         subscription_key: str,
         feature: str,
     ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = _now()
         with self._connect() as con:
             con.execute(
-                "INSERT OR REPLACE INTO push_unsubscriptions "
-                "(target_type, target_id, subscription_key, feature, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (target_type, int(target_id), subscription_key, feature, now),
+                """
+                INSERT OR REPLACE INTO push_unsubscriptions (
+                    conversation_platform, conversation_kind, conversation_id,
+                    subscription_key, feature, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    *_conversation_values(target_type, target_id),
+                    subscription_key,
+                    feature,
+                    now,
+                ),
             )
 
     def restore_target(
@@ -116,9 +178,12 @@ class PushUnsubscribeStore:
     ) -> None:
         with self._connect() as con:
             con.execute(
-                "DELETE FROM push_unsubscriptions "
-                "WHERE target_type = ? AND target_id = ? AND subscription_key = ?",
-                (target_type, int(target_id), subscription_key),
+                """
+                DELETE FROM push_unsubscriptions
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND subscription_key = ?
+                """,
+                (*_conversation_values(target_type, target_id), subscription_key),
             )
 
     def filter_subscribed_target_ids(
@@ -127,22 +192,25 @@ class PushUnsubscribeStore:
         target_ids: Iterable[int],
         subscription_key: str,
     ) -> list[int]:
-        deduped_target_ids = list(
-            dict.fromkeys(int(target_id) for target_id in target_ids)
-        )
-        if not deduped_target_ids:
+        requested = list(dict.fromkeys(int(target_id) for target_id in target_ids))
+        if not requested:
             return []
         with self._connect() as con:
             rows = con.execute(
-                "SELECT target_id FROM push_unsubscriptions "
-                "WHERE target_type = ? AND subscription_key = ?",
-                (target_type, subscription_key),
+                """
+                SELECT conversation_id FROM push_unsubscriptions
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND subscription_key = ?
+                """,
+                (Platform.ONEBOT.value, target_type, subscription_key),
             ).fetchall()
-        requested = set(deduped_target_ids)
-        blocked = {int(row[0]) for row in rows if int(row[0]) in requested}
-        return [
-            target_id for target_id in deduped_target_ids if target_id not in blocked
-        ]
+        wanted = set(requested)
+        blocked = {
+            int(row[0])
+            for row in rows
+            if str(row[0]).isdecimal() and int(row[0]) in wanted
+        }
+        return [target_id for target_id in requested if target_id not in blocked]
 
     def filter_subscribed_user_ids(
         self,
@@ -167,10 +235,17 @@ class PushUnsubscribeStore:
     ) -> str | None:
         with self._connect() as con:
             row = con.execute(
-                "SELECT value FROM push_time_preferences "
-                "WHERE target_type = ? AND target_id = ? "
-                "AND subscription_key = ? AND preference_type = ?",
-                (target_type, int(target_id), subscription_key, preference_type),
+                """
+                SELECT value FROM push_time_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND subscription_key = ?
+                  AND preference_type = ?
+                """,
+                (
+                    *_conversation_values(target_type, target_id),
+                    subscription_key,
+                    preference_type,
+                ),
             ).fetchone()
         return None if row is None else str(row[0])
 
@@ -182,19 +257,20 @@ class PushUnsubscribeStore:
         preference_type: PushPreferenceType,
         value: str,
     ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as con:
             con.execute(
-                "INSERT OR REPLACE INTO push_time_preferences "
-                "(target_type, target_id, subscription_key, preference_type, "
-                "value, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                """
+                INSERT OR REPLACE INTO push_time_preferences (
+                    conversation_platform, conversation_kind, conversation_id,
+                    subscription_key, preference_type, value, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
-                    target_type,
-                    int(target_id),
+                    *_conversation_values(target_type, target_id),
                     subscription_key,
                     preference_type,
                     value,
-                    now,
+                    _now(),
                 ),
             )
 
@@ -207,10 +283,17 @@ class PushUnsubscribeStore:
     ) -> None:
         with self._connect() as con:
             con.execute(
-                "DELETE FROM push_time_preferences "
-                "WHERE target_type = ? AND target_id = ? "
-                "AND subscription_key = ? AND preference_type = ?",
-                (target_type, int(target_id), subscription_key, preference_type),
+                """
+                DELETE FROM push_time_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND subscription_key = ?
+                  AND preference_type = ?
+                """,
+                (
+                    *_conversation_values(target_type, target_id),
+                    subscription_key,
+                    preference_type,
+                ),
             )
 
     def target_time_preferences(
@@ -220,20 +303,15 @@ class PushUnsubscribeStore:
     ) -> dict[tuple[str, PushPreferenceType], str]:
         with self._connect() as con:
             rows = con.execute(
-                "SELECT subscription_key, preference_type, value "
-                "FROM push_time_preferences "
-                "WHERE target_type = ? AND target_id = ?",
-                (target_type, int(target_id)),
+                """
+                SELECT subscription_key, preference_type, value
+                FROM push_time_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ?
+                """,
+                _conversation_values(target_type, target_id),
             ).fetchall()
-        preferences: dict[tuple[str, PushPreferenceType], str] = {}
-        for key, preference_type, value in rows:
-            preference_type_text = str(preference_type)
-            if preference_type_text not in {"cron_time", "activity_lead_hours"}:
-                continue
-            preferences[
-                (str(key), cast("PushPreferenceType", preference_type_text))
-            ] = str(value)
-        return preferences
+        return _time_preference_values(rows)
 
     def mark_daily_hint_sent(
         self,
@@ -244,20 +322,26 @@ class PushUnsubscribeStore:
         today: str | None = None,
     ) -> bool:
         delivered_on = today or datetime.now().astimezone().date().isoformat()
-        now = datetime.now(timezone.utc).isoformat()
+        values = _conversation_values(target_type, target_id)
         with self._connect() as con:
             row = con.execute(
-                "SELECT delivered_on FROM push_daily_hints "
-                "WHERE target_type = ? AND target_id = ? AND hint_key = ?",
-                (target_type, int(target_id), hint_key),
+                """
+                SELECT delivered_on FROM push_daily_hints
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND hint_key = ?
+                """,
+                (*values, hint_key),
             ).fetchone()
             if row is not None and str(row[0]) == delivered_on:
                 return False
             con.execute(
-                "INSERT OR REPLACE INTO push_daily_hints "
-                "(target_type, target_id, hint_key, delivered_on, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (target_type, int(target_id), hint_key, delivered_on, now),
+                """
+                INSERT OR REPLACE INTO push_daily_hints (
+                    conversation_platform, conversation_kind, conversation_id,
+                    hint_key, delivered_on, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (*values, hint_key, delivered_on, _now()),
             )
         return True
 
@@ -270,12 +354,17 @@ class PushUnsubscribeStore:
     ) -> list[PushTimePreference]:
         with self._connect() as con:
             rows = con.execute(
-                "SELECT target_type, target_id, subscription_key, preference_type, "
-                "value, updated_at FROM push_time_preferences "
-                "WHERE (? IS NULL OR target_type = ?) "
-                "AND (? IS NULL OR subscription_key = ?) "
-                "AND (? IS NULL OR preference_type = ?)",
+                """
+                SELECT conversation_platform, conversation_kind, conversation_id,
+                       subscription_key, preference_type, value, updated_at
+                FROM push_time_preferences
+                WHERE conversation_platform = ?
+                  AND (? IS NULL OR conversation_kind = ?)
+                  AND (? IS NULL OR subscription_key = ?)
+                  AND (? IS NULL OR preference_type = ?)
+                """,
                 (
+                    Platform.ONEBOT.value,
                     target_type,
                     target_type,
                     subscription_key,
@@ -284,38 +373,39 @@ class PushUnsubscribeStore:
                     preference_type,
                 ),
             ).fetchall()
-        return [
-            PushTimePreference(
-                target_type=target_type_row,
-                target_id=int(target_id),
-                subscription_key=str(key),
-                preference_type=preference_type_row,
-                value=str(value),
-                updated_at=str(updated_at),
+        result: list[PushTimePreference] = []
+        for _platform, kind, target_id, key, stored_type, value, updated_at in rows:
+            if kind not in {"private", "group"} or not str(target_id).isdecimal():
+                continue
+            if stored_type not in {"cron_time", "activity_lead_hours"}:
+                continue
+            result.append(
+                PushTimePreference(
+                    target_type=cast("PushTargetType", kind),
+                    target_id=int(target_id),
+                    subscription_key=str(key),
+                    preference_type=cast("PushPreferenceType", stored_type),
+                    value=str(value),
+                    updated_at=str(updated_at),
+                )
             )
-            for (
-                target_type_row,
-                target_id,
-                key,
-                preference_type_row,
-                value,
-                updated_at,
-            ) in rows
-            if target_type_row in {"private", "group"}
-            and preference_type_row in {"cron_time", "activity_lead_hours"}
-        ]
+        return result
 
     def preference_targets(self) -> set[PushPreferenceTarget]:
         with self._connect() as con:
             rows = con.execute(
-                "SELECT target_type, target_id FROM push_unsubscriptions "
-                "UNION "
-                "SELECT target_type, target_id FROM push_time_preferences"
+                """
+                SELECT conversation_platform, conversation_kind, conversation_id
+                FROM push_unsubscriptions
+                UNION
+                SELECT conversation_platform, conversation_kind, conversation_id
+                FROM push_time_preferences
+                """
             ).fetchall()
         return {
-            (cast("PushTargetType", target_type), int(target_id))
-            for target_type, target_id in rows
-            if target_type in {"private", "group"}
+            target
+            for row in rows
+            if (target := _legacy_onebot_target(row)) is not None
         }
 
     def prune_invalid_preferences(
@@ -330,95 +420,121 @@ class PushUnsubscribeStore:
             AbstractSet[PushTimePreferenceIdentity],
         ],
     ) -> PushPreferencePruneResult:
-        deleted_unsubscriptions = 0
-        deleted_time_preferences = 0
-
         with self._connect() as con:
-            unsubscribe_rows = con.execute(
-                "SELECT target_type, target_id, subscription_key "
-                "FROM push_unsubscriptions"
-            ).fetchall()
-            for target_type_raw, target_id_raw, subscription_key_raw in (
-                unsubscribe_rows
-            ):
-                target_type = str(target_type_raw)
-                target_id = int(target_id_raw)
-                subscription_key = str(subscription_key_raw)
-                target = (
-                    (
-                        cast("PushTargetType", target_type),
-                        target_id,
-                    )
-                    if target_type in {"private", "group"}
-                    else None
-                )
-                if (
-                    target is not None
-                    and subscription_key
-                    in valid_unsubscription_keys.get(target, set())
-                ):
-                    continue
-                con.execute(
-                    "DELETE FROM push_unsubscriptions "
-                    "WHERE target_type = ? AND target_id = ? "
-                    "AND subscription_key = ?",
-                    (target_type, target_id, subscription_key),
-                )
-                deleted_unsubscriptions += 1
-
-            time_rows = con.execute(
-                "SELECT target_type, target_id, subscription_key, preference_type "
-                "FROM push_time_preferences"
-            ).fetchall()
-            for (
-                target_type_raw,
-                target_id_raw,
-                subscription_key_raw,
-                preference_type_raw,
-            ) in time_rows:
-                target_type = str(target_type_raw)
-                target_id = int(target_id_raw)
-                subscription_key = str(subscription_key_raw)
-                preference_type = str(preference_type_raw)
-                target = (
-                    (
-                        cast("PushTargetType", target_type),
-                        target_id,
-                    )
-                    if target_type in {"private", "group"}
-                    else None
-                )
-                identity = (
-                    subscription_key,
-                    cast("PushPreferenceType", preference_type),
-                )
-                if (
-                    target is not None
-                    and preference_type in {"cron_time", "activity_lead_hours"}
-                    and identity in valid_time_preferences.get(target, set())
-                ):
-                    continue
-                con.execute(
-                    "DELETE FROM push_time_preferences "
-                    "WHERE target_type = ? AND target_id = ? "
-                    "AND subscription_key = ? AND preference_type = ?",
-                    (
-                        target_type,
-                        target_id,
-                        subscription_key,
-                        preference_type,
-                    ),
-                )
-                deleted_time_preferences += 1
-
+            deleted_unsubscriptions = self._prune_unsubscriptions(
+                con,
+                valid_unsubscription_keys,
+            )
+            deleted_time_preferences = self._prune_time_preferences(
+                con,
+                valid_time_preferences,
+            )
         return PushPreferencePruneResult(
             unsubscriptions_deleted=deleted_unsubscriptions,
             time_preferences_deleted=deleted_time_preferences,
         )
 
+    def _prune_unsubscriptions(
+        self,
+        con: sqlite3.Connection,
+        valid: Mapping[PushPreferenceTarget, AbstractSet[str]],
+    ) -> int:
+        rows = con.execute(
+            """
+            SELECT conversation_platform, conversation_kind, conversation_id,
+                   subscription_key
+            FROM push_unsubscriptions
+            """
+        ).fetchall()
+        deleted = 0
+        for platform, kind, target_id, key in rows:
+            target = _legacy_onebot_target((platform, kind, target_id))
+            if target is None or str(key) in valid.get(target, set()):
+                continue
+            con.execute(
+                """
+                DELETE FROM push_unsubscriptions
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND subscription_key = ?
+                """,
+                (platform, kind, target_id, key),
+            )
+            deleted += 1
+        return deleted
+
+    def _prune_time_preferences(
+        self,
+        con: sqlite3.Connection,
+        valid: Mapping[PushPreferenceTarget, AbstractSet[PushTimePreferenceIdentity]],
+    ) -> int:
+        rows = con.execute(
+            """
+            SELECT conversation_platform, conversation_kind, conversation_id,
+                   subscription_key, preference_type
+            FROM push_time_preferences
+            """
+        ).fetchall()
+        deleted = 0
+        for platform, kind, target_id, key, preference_type in rows:
+            target = _legacy_onebot_target((platform, kind, target_id))
+            identity = (str(key), cast("PushPreferenceType", preference_type))
+            if (
+                target is None
+                or preference_type not in {"cron_time", "activity_lead_hours"}
+                or identity in valid.get(target, set())
+            ):
+                continue
+            con.execute(
+                """
+                DELETE FROM push_time_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND subscription_key = ?
+                  AND preference_type = ?
+                """,
+                (platform, kind, target_id, key, preference_type),
+            )
+            deleted += 1
+        return deleted
+
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
-        return SqliteDatabase(
-            self.path,
-            migrations=PUSH_SUBSCRIPTION_MIGRATIONS,
-            migration_namespace=MIGRATION_NAMESPACE,
-        ).connect()
+        return self._database.connect()
+
+
+def _conversation_values(
+    target_type: PushTargetType,
+    target_id: int,
+) -> tuple[str, str, str]:
+    conversation = ConversationRef(
+        Platform.ONEBOT,
+        target_type,
+        str(int(target_id)),
+    )
+    return ConversationIdentityColumns.from_conversation(conversation).values()
+
+
+def _legacy_onebot_target(row: object) -> PushPreferenceTarget | None:
+    platform, kind, target_id = tuple(row)  # type: ignore[arg-type]
+    if (
+        platform != Platform.ONEBOT.value
+        or kind not in {"private", "group"}
+        or not str(target_id).isdecimal()
+    ):
+        return None
+    return cast("PushTargetType", kind), int(target_id)
+
+
+def _time_preference_values(
+    rows: object,
+) -> dict[tuple[str, PushPreferenceType], str]:
+    preferences: dict[tuple[str, PushPreferenceType], str] = {}
+    for key, preference_type, value in rows:  # type: ignore[union-attr]
+        if preference_type not in {"cron_time", "activity_lead_hours"}:
+            continue
+        preferences[(str(key), cast("PushPreferenceType", preference_type))] = str(
+            value
+        )
+    return preferences
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()

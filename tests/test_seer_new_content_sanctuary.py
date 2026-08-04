@@ -7,7 +7,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.seer.query.commands.data_queries import (
+from ironsbot.plugins.onebot.seer.query.commands.data_queries import (
     _autocard_sanctuary_effect_detail,
     _content_prompt,
     _focus_new_content_category,

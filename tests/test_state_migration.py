@@ -112,6 +112,65 @@ def _seed_legacy_state(root: Path) -> None:
         ),
     )
     _execute(
+        root / "seer/team_resource_subscriptions.sqlite",
+        (
+            """
+            CREATE TABLE team_resource_subscriptions (
+                group_id INTEGER, team_id INTEGER, team_name TEXT, threshold INTEGER,
+                at_user_ids TEXT, created_by INTEGER, updated_by INTEGER,
+                created_at TEXT, updated_at TEXT
+            )
+            """,
+            """
+            INSERT INTO team_resource_subscriptions VALUES (
+                2001, 3001, '示例战队', 1000, '1001,1002,1001', 1001, 1002,
+                '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z'
+            )
+            """,
+            """
+            CREATE TABLE team_resource_subscription_prompts (
+                group_id INTEGER, team_id INTEGER, team_name TEXT, prompted_by INTEGER,
+                prompted_at TEXT, handled_by INTEGER, handled_at TEXT, accepted INTEGER
+            )
+            """,
+            """
+            INSERT INTO team_resource_subscription_prompts VALUES (
+                2001, 3001, '示例战队', 1001, '2026-08-04T00:00:00Z',
+                1002, '2026-08-04T00:01:00Z', 1
+            )
+            """,
+            """
+            CREATE TABLE team_resource_private_subscriptions (
+                user_id INTEGER, team_id INTEGER, team_name TEXT, threshold INTEGER,
+                created_at TEXT, updated_at TEXT
+            )
+            """,
+            """
+            INSERT INTO team_resource_private_subscriptions VALUES (
+                1001, 3001, '示例战队', 1000,
+                '2026-08-04T00:00:00Z', '2026-08-04T00:00:00Z'
+            )
+            """,
+        ),
+    )
+    _execute(
+        root / "team_audit_welcome/pending.sqlite",
+        (
+            """
+            CREATE TABLE pending_team_audit_reminders (
+                group_id INTEGER, user_id INTEGER, joined_at TEXT,
+                remind_at TEXT
+            )
+            """,
+            """
+            INSERT INTO pending_team_audit_reminders VALUES (
+                2001, 1001, '2026-08-04T00:00:00Z',
+                '2026-08-05T00:00:00Z'
+            )
+            """,
+        ),
+    )
+    _execute(
         root / "messaging/reply_limits.sqlite",
         ("CREATE TABLE group_reply_line_limits (group_id INTEGER PRIMARY KEY)",),
     )
@@ -155,12 +214,16 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
     assert runtime_state.exists()
     assert not (data_root / "seer/player_bindings.sqlite").exists()
     assert not (data_root / "messaging/reply_limits.sqlite").exists()
-    assert (
-        result.backup_path / "legacy/seer/player_bindings.sqlite"
-    ).exists()
+    assert (result.backup_path / "legacy/seer/player_bindings.sqlite").exists()
     assert (result.backup_path / "manifest.json").exists()
 
     with sqlite3.connect(qq_state) as connection:
+        assert connection.execute(
+            """
+            SELECT actor_platform, actor_kind, actor_id, actor_scope_id, player_id
+            FROM player_bindings
+            """
+        ).fetchall() == [("onebot", "user", "1234567890", "", 812345678)]
         assert connection.execute(
             "SELECT player_id, player_nick FROM player_bindings"
         ).fetchall() == [(812345678, "示例玩家")]
@@ -171,6 +234,13 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
             ("daily", "new_feature"),
             ("legacy-only", "legacy_feature"),
         ]
+        assert connection.execute(
+            """
+            SELECT conversation_id, team_id, actor_id, position
+            FROM team_resource_subscription_mentions
+            ORDER BY position
+            """
+        ).fetchall() == [("2001", 3001, "1001", 0), ("2001", 3001, "1002", 1)]
         namespaces = {
             str(row[0])
             for row in connection.execute(
@@ -179,6 +249,7 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
         }
         assert namespaces == {
             "bilibili_preferences",
+            "lucky_skin_watch",
             "player_bindings",
             "player_query_limits",
             "push_subscriptions",
@@ -190,6 +261,12 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
         assert connection.execute(
             "SELECT activity_id FROM sent_activity_reminders"
         ).fetchall() == [(7,)]
+        assert connection.execute(
+            """
+            SELECT conversation_id, actor_kind, actor_id, actor_scope_id
+            FROM pending_team_audit_reminders
+            """
+        ).fetchall() == [("2001", "member", "1001", "2001")]
         namespaces = {
             str(row[0])
             for row in connection.execute(

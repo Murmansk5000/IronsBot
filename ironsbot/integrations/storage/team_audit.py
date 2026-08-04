@@ -1,41 +1,44 @@
 # SPDX-License-Identifier: MIT
+"""Platform-neutral storage for team-audit follow-up reminders."""
+
 from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.storage.sqlite import (
-    SqliteDatabase,
-    SqliteMigration,
-    ensure_sqlite_columns,
+from ironsbot.integrations.storage.platform_identity import (
+    ActorIdentityColumns,
+    ConversationIdentityColumns,
 )
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.team.audit import TeamAuditPendingReminder
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pending_team_audit_reminders (
-    group_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
+    conversation_platform TEXT NOT NULL,
+    conversation_kind TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    actor_platform TEXT NOT NULL,
+    actor_kind TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    actor_scope_id TEXT NOT NULL DEFAULT '',
     joined_at TEXT NOT NULL,
     remind_at TEXT NOT NULL,
     step INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (group_id, user_id)
+    PRIMARY KEY (
+        conversation_platform, conversation_kind, conversation_id,
+        actor_platform, actor_kind, actor_id, actor_scope_id
+    )
 )
 """
-
-
-def _ensure_step_column(connection: sqlite3.Connection) -> None:
-    ensure_sqlite_columns(
-        connection,
-        table_name="pending_team_audit_reminders",
-        columns={"step": "step INTEGER NOT NULL DEFAULT 1"},
-    )
-
-
-_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,), _ensure_step_column),)
+_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
 MIGRATION_NAMESPACE = "team_audit"
 
 
@@ -53,17 +56,21 @@ class SqliteTeamAuditReminderStore:
             conn.execute(
                 """
                 INSERT INTO pending_team_audit_reminders (
-                    group_id, user_id, joined_at, remind_at, step
-                )
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(group_id, user_id) DO UPDATE SET
+                    conversation_platform, conversation_kind, conversation_id,
+                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    joined_at, remind_at, step
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    conversation_platform, conversation_kind, conversation_id,
+                    actor_platform, actor_kind, actor_id, actor_scope_id
+                ) DO UPDATE SET
                     joined_at = excluded.joined_at,
                     remind_at = excluded.remind_at,
                     step = excluded.step
                 """,
                 (
-                    reminder.group_id,
-                    reminder.user_id,
+                    *_conversation_values(reminder.conversation),
+                    *_actor_values(reminder.actor),
                     _datetime_text(reminder.joined_at),
                     _datetime_text(reminder.remind_at),
                     reminder.step,
@@ -72,17 +79,24 @@ class SqliteTeamAuditReminderStore:
 
     def get(
         self,
-        group_id: int,
-        user_id: int,
+        conversation: ConversationRef,
+        actor: ActorRef,
     ) -> TeamAuditPendingReminder | None:
         with self._database.connect() as conn:
             row = conn.execute(
                 """
-                SELECT group_id, user_id, joined_at, remind_at, step
+                SELECT conversation_platform, conversation_kind, conversation_id,
+                       actor_platform, actor_kind, actor_id, actor_scope_id,
+                       joined_at, remind_at, step
                 FROM pending_team_audit_reminders
-                WHERE group_id = ? AND user_id = ?
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND actor_platform = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
                 """,
-                (group_id, user_id),
+                (
+                    *_conversation_values(conversation),
+                    *_actor_values(actor),
+                ),
             ).fetchone()
         return None if row is None else _row_to_reminder(row)
 
@@ -90,30 +104,58 @@ class SqliteTeamAuditReminderStore:
         with self._database.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT group_id, user_id, joined_at, remind_at, step
+                SELECT conversation_platform, conversation_kind, conversation_id,
+                       actor_platform, actor_kind, actor_id, actor_scope_id,
+                       joined_at, remind_at, step
                 FROM pending_team_audit_reminders
-                ORDER BY remind_at, group_id, user_id
+                ORDER BY remind_at, conversation_id, actor_id
                 """
             ).fetchall()
         return [_row_to_reminder(row) for row in rows]
 
-    def clear(self, group_id: int, user_id: int) -> None:
+    def clear(self, conversation: ConversationRef, actor: ActorRef) -> None:
         with self._database.connect() as conn:
             conn.execute(
-                "DELETE FROM pending_team_audit_reminders "
-                "WHERE group_id = ? AND user_id = ?",
-                (group_id, user_id),
+                """
+                DELETE FROM pending_team_audit_reminders
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND actor_platform = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                """,
+                (
+                    *_conversation_values(conversation),
+                    *_actor_values(actor),
+                ),
             )
 
 
 def _row_to_reminder(row: sqlite3.Row) -> TeamAuditPendingReminder:
+    conversation = ConversationIdentityColumns(
+        row["conversation_platform"],
+        row["conversation_kind"],
+        row["conversation_id"],
+    ).to_conversation()
+    actor = ActorIdentityColumns(
+        row["actor_platform"],
+        row["actor_kind"],
+        row["actor_id"],
+        row["actor_scope_id"],
+    ).to_actor()
     return TeamAuditPendingReminder(
-        int(row["group_id"]),
-        int(row["user_id"]),
-        _parse_datetime(row["joined_at"]),
-        _parse_datetime(row["remind_at"]),
+        conversation,
+        actor,
+        _parse_datetime(str(row["joined_at"])),
+        _parse_datetime(str(row["remind_at"])),
         max(1, int(row["step"])),
     )
+
+
+def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:
+    return ConversationIdentityColumns.from_conversation(conversation).values()
+
+
+def _actor_values(actor: ActorRef) -> tuple[str, str, str, str]:
+    return ActorIdentityColumns.from_actor(actor).values()
 
 
 def _datetime_text(value: datetime) -> str:

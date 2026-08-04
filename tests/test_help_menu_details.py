@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-from ironsbot.plugins.help.menu import HelpMenuEntry, format_plugin_detail
+from ironsbot.plugins.onebot.help.menu import HelpMenuEntry, format_plugin_detail
 from ironsbot.runtime.commands import CommandDescriptor
 
 

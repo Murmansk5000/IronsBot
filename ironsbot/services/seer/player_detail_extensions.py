@@ -7,12 +7,16 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import ActorRef
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
     from ironsbot.core.semantic_requests import ActionDefinition
 
-PlayerDetailActionQuery = Callable[[int, int, int | None], Awaitable[QueryReply]]
+PlayerDetailActionQuery = Callable[
+    [int, int, int | None, ActorRef],
+    Awaitable[QueryReply],
+]
 _BUILTIN_ALIASES = frozenset({"收集", "巅峰", "群星牌"})
 
 

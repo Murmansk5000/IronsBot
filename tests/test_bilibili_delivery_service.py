@@ -4,15 +4,15 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from ironsbot.plugins.onebot.bilibili.delivery import (
+    build_dynamic_content_message,
+    build_dynamic_link_message,
+)
 
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.bilibili.delivery import (
-    build_dynamic_content_message,
-    build_dynamic_link_message,
-)
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,

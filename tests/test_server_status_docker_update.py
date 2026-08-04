@@ -649,7 +649,7 @@ def test_target_image_pull_retries_transient_registry_eof(
 
 
 def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    lifecycle = ApplicationLifecycle.from_plugins(
+    lifecycle = ApplicationLifecycle.from_contributions(
         cast("Driver", object()),
         build_test_plugin_registry(),
         task_owner=TaskOwner(),

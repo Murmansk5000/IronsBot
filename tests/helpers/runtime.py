@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
@@ -16,6 +18,7 @@ from ironsbot.core.features import (
     FeatureService,
 )
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -56,11 +59,12 @@ def build_test_runtime(  # noqa: PLR0913
     schedule_features: frozenset[str] = frozenset(),
     outbound_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe: PushUnsubscribeConfig | None = None,
-    state_path: Path = Path("data/state/qq_state.sqlite"),
+    state_path: Path | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
     matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
     resolved_feature_config = feature_config or FeatureConfig()
+    isolated_state_path = state_path or _isolated_state_path()
     features = FeatureService(
         resolved_feature_config,
         frozenset(superuser_ids),
@@ -83,12 +87,15 @@ def build_test_runtime(  # noqa: PLR0913
                 resolved_feature_config.user_aliases,
             ),
         ),
-        PushUnsubscribeStore(state_path),
+        PushUnsubscribeStore(isolated_state_path),
     )
     return TestRuntime(
         features=features,
         delivery=delivery,
-        admin_notices=AdminNoticeService(features, delivery),
+        admin_notices=AdminNoticeService(
+            features,
+            OneBotAdminNoticeSender(delivery),
+        ),
         cooldown=CommandCooldownService(
             cooldown_config or CommandCooldownConfig(),
             features,
@@ -101,3 +108,8 @@ def build_test_runtime(  # noqa: PLR0913
         prompt_sessions=PromptSessionManager(),
         tasks=tasks,
     )
+
+
+def _isolated_state_path() -> Path:
+    temp_root = Path(os.environ.get("TEMP", Path.cwd()))
+    return temp_root / f"ironsbot-test-state-{uuid4().hex}.sqlite"

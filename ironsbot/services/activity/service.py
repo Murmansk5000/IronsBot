@@ -6,13 +6,14 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.commands import positive_int_list
 
 from .catalog import build_active_activity_infos
 from .delivery import (
     ActivityReminderDelivery,
+    ActivityReminderRecipient,
     ActivityReminderTargets,
     build_reminder_delivery,
     filter_reminders_before_send,
@@ -37,7 +38,6 @@ ACTIVITY_PUSH_SUBSCRIPTION_KEY = "seer_activity_push"
 EMPTY_CURRENT_ACTIVITY_MESSAGE = "📭 当前没有从活动中心读到正在进行的活动。"
 EMPTY_SOON_ENDING_ACTIVITY_MESSAGE = "📭 当前没有读到不足 7 天结束的活动。"
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
-TargetType = Literal["group", "private"]
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -52,7 +52,7 @@ class ActivityService:
     filter_unsent: Callable[[list[ActivityReminder]], list[ActivityReminder]]
     mark_sent: Callable[[list[ActivityReminder], datetime], None]
     preference_values: Callable[[], Iterable[str]]
-    preference_for_target: Callable[[TargetType, int], str | None]
+    preference_for_target: Callable[[ActivityReminderRecipient], str | None]
     targets: Callable[[], ActivityReminderTargets]
     broadcast: Callable[[ActivityReminderDelivery], Awaitable[bool]]
     now: Callable[[], datetime]
@@ -63,10 +63,7 @@ class ActivityService:
                 activity
                 for activity in self.cache.items
                 if activity.end_time > now
-                and (
-                    activity.start_time is None
-                    or activity.start_time <= now
-                )
+                and (activity.start_time is None or activity.start_time <= now)
             ]
 
         rows, notice_text = await asyncio.gather(
@@ -236,22 +233,22 @@ class ActivityService:
         return sorted(lead_hours, reverse=True)
 
     def _targets_for_lead(self, lead_hours: int) -> ActivityReminderTargets:
-        def effective(target_type: TargetType, target_id: int) -> list[int]:
-            preference = self.preference_for_target(target_type, target_id)
+        def effective(target: ActivityReminderRecipient) -> list[int]:
+            preference = self.preference_for_target(target)
             if preference is None:
                 return self.config.lead_hours
             return positive_int_list(preference) or self.config.lead_hours
 
         targets = self.targets()
         return ActivityReminderTargets(
-            group_ids=tuple(
-                group_id
-                for group_id in targets.group_ids
-                if lead_hours in effective("group", group_id)
+            group_conversations=tuple(
+                conversation
+                for conversation in targets.group_conversations
+                if lead_hours in effective(conversation)
             ),
-            private_user_ids=tuple(
-                user_id
-                for user_id in targets.private_user_ids
-                if lead_hours in effective("private", user_id)
+            private_actors=tuple(
+                actor
+                for actor in targets.private_actors
+                if lead_hours in effective(actor)
             ),
         )

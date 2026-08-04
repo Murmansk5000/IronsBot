@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.prompts import Prompt, PromptItem, _prompt_semantic_request
 from ironsbot.runtime.semantic_requests import ActionDefinition, SemanticTarget
@@ -42,8 +43,8 @@ def test_prompt_identity_uses_the_selected_stable_target() -> None:
 
 def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
     class Features:
-        def is_superuser(self, user_id: int) -> bool:
-            del user_id
+        def is_actor_superuser(self, actor: ActorRef) -> bool:
+            del actor
             return False
 
     prompt = Prompt[Any](
@@ -69,15 +70,15 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
     assert repeated_identity is not None
 
     first = service.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=first_identity,
     )
     second = service.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=second_identity,
     )
     repeated = service.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=repeated_identity,
     )
 

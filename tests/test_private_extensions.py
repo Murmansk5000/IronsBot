@@ -43,7 +43,7 @@ def _package_archive(
                     "id": "player_lineup",
                     "path": "player_lineup",
                     "module": module,
-                    "factory": "build_plugin_definition",
+                    "factory": "build_plugin_contribution",
                 }
             ],
         }
@@ -61,9 +61,9 @@ def _package_archive(
                 archive,
                 f"{PRIVATE_EXTENSIONS_ROOT}/player_lineup/ironsbot_private_lineup/plugin.py",
                 (
-                    b"from ironsbot.runtime.plugins import PluginDefinition\n"
-                    b"def build_plugin_definition(_runtime):\n"
-                    b"    return PluginDefinition(id='private_test')\n"
+                    b"from ironsbot.runtime.plugins import PluginContribution\n"
+                    b"def build_plugin_contribution(_runtime):\n"
+                    b"    return PluginContribution(id='private_test')\n"
                 ),
             )
     return result.getvalue()
@@ -167,13 +167,13 @@ def test_disabled_private_extensions_do_not_load_a_cached_package(
     assert catalog.extension_ids == ()
 
 
-def test_private_catalog_loads_only_plugin_definitions(tmp_path: Path) -> None:
+def test_private_catalog_loads_only_plugin_contributions(tmp_path: Path) -> None:
     install_private_extension_archive(_package_archive(), tmp_path)
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
 
     runtime = cast("PrivateExtensionRuntime", object())
-    definitions = catalog.load_plugin_definitions(runtime)
+    contributions = catalog.load_plugin_contributions(runtime)
 
-    assert tuple(definition.id for definition in definitions) == ("private_test",)
+    assert tuple(contribution.id for contribution in contributions) == ("private_test",)
