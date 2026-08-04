@@ -74,10 +74,10 @@ class ApplicationLifecycle:
     _installed: bool = field(default=False, init=False)
 
     @classmethod
-    def from_plugins(
+    def from_contributions(
         cls,
         driver: Driver,
-        definitions: tuple[PluginContribution, ...],
+        contributions: tuple[PluginContribution, ...],
         *,
         task_owner: TaskOwner,
         resource_shutdown_hooks: tuple[NamedLifecycleHook, ...] = (),
@@ -87,29 +87,29 @@ class ApplicationLifecycle:
             task_owner=task_owner,
             startup_hooks=tuple(
                 hook
-                for definition in definitions
-                for hook in definition.hooks.startup
+                for contribution in contributions
+                for hook in contribution.hooks.startup
             ),
             shutdown_hooks=tuple(
                 hook
-                for definition in definitions
-                for hook in definition.hooks.shutdown
+                for contribution in contributions
+                for hook in contribution.hooks.shutdown
             ),
             resource_shutdown_hooks=resource_shutdown_hooks,
             first_bot_connect_hooks=tuple(
                 hook
-                for definition in definitions
-                for hook in definition.hooks.first_bot_connect
+                for contribution in contributions
+                for hook in contribution.hooks.first_bot_connect
             ),
             bot_connect_hooks=tuple(
                 hook
-                for definition in definitions
-                for hook in definition.hooks.bot_connect
+                for contribution in contributions
+                for hook in contribution.hooks.bot_connect
             ),
             bot_disconnect_hooks=tuple(
                 hook
-                for definition in definitions
-                for hook in definition.hooks.bot_disconnect
+                for contribution in contributions
+                for hook in contribution.hooks.bot_disconnect
             ),
         )
 

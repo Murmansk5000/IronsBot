@@ -56,19 +56,21 @@ architecture it is moving toward. They have different force:
 
 Every architecture change must label the contract it changes as **target**,
 **transition**, or **baseline** in its plan and commit description. A document
-or review must not call a transitional type the "single" or "unique" contract
-without the qualifier "current bootstrap bridge". This specifically prevents
-`PluginDefinition` from being mistaken for the future plugin, command, or
-lifecycle contract.
+or review must not call a transitional mechanism the "single" or "unique"
+contract without the qualifier "current bootstrap bridge". This specifically
+prevents the central application registry from being mistaken for the future
+plugin, command, or lifecycle contract.
 
-Current transition items are `PluginDefinition`, the application plugin
-registry, `MatcherRegistry`, and the renderer data lookups listed in the
-Phase 0 guard below. They keep the current OneBot application runnable; they
-are not the architecture that new cross-feature work should target. Phase 2
-replaces the first three with the standard NoneBot manifest, `PluginMetadata`,
-`PluginContribution`, `CommandCatalog`, and a matcher factory. Phase 4 removes
-renderer-owned persistence lookups. No new subsystem may be built on those
-transition items merely because they already exist.
+Current transition items are the central application plugin registry,
+`MatcherRegistry`, and the renderer data lookups listed in the Phase 0 guard
+below. They keep the current OneBot application runnable; they are not the
+architecture that new cross-feature work should target. Phase 2 has switched
+top-level discovery to the standard NoneBot manifest and uses
+`PluginContribution` as the runtime contract. Its remaining work moves each
+contribution out of the central registry and replaces `MatcherRegistry` with a
+matcher factory. Phase 4 removes renderer-owned persistence lookups. No new
+subsystem may be built on those transition items merely because they already
+exist.
 
 The authoritative long-term ownership is therefore:
 
@@ -79,8 +81,9 @@ The authoritative long-term ownership is therefore:
 - `ApplicationLifecycle` owns application lifecycle and background task
   ownership.
 
-`PluginDefinition` owns none of those target responsibilities. Until Phase 2
-removes it, it only decides how the existing OneBot implementation is loaded.
+The central contribution bridge owns none of those target responsibilities. It
+only supplies existing OneBot contributions while Phase 2 moves them into their
+own manifest-loaded packages.
 
 ## Engineering Principles
 
@@ -287,27 +290,26 @@ reusable contracts rather than adding feature-local regexes:
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
 
-The current `PluginDefinition` registry remains a frozen OneBot-era bootstrap
-bridge until a tested migration replaces it. It is only the current mechanism
-for loading existing plugins; it is not the long-term owner of command
-semantics, feature policy, help content, or lifecycle design. Do not create a
-second parallel manifest merely for the future target. When migration begins,
-the new manifest must become the one authority for the responsibilities it
-owns, and the corresponding responsibility must be removed from the bridge in
-the same migration.
+The current central registry remains a frozen OneBot-era contribution bridge
+until each contribution is declared by its own top-level plugin package. It is
+only a temporary supplier to the standard NoneBot manifest path; it is not the
+long-term owner of command semantics, feature policy, help content, or
+lifecycle design. Do not create a second parallel manifest merely for the
+future target. Each migration moves one responsibility to the manifest-backed
+plugin and deletes it from this bridge in the same work item.
 
 ## Contract Ownership During Migration
 
 Every responsibility has exactly one target authority. A transitional bridge
 may temporarily invoke that authority, but it must not redefine or duplicate
 its data. New work must extend the target authority in this table rather than
-adding fields or side registries to `PluginDefinition`.
+adding fields or side registries to the central bootstrap bridge.
 
 | Responsibility | Current bridge | Target authority | Migration completion |
 | --- | --- | --- | --- |
-| Plugin discovery and loading | `app.registry` + `PluginDefinition` | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` | No application plugin registry remains. |
-| Plugin identity and static metadata | `PluginDefinition` fields | `PluginMetadata` in each top-level plugin package | Metadata is loaded without importing application registry code. |
-| Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + plugin install callback | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Plugin discovery and loading | Standard TOML loads a temporary local bootstrap module, which delegates to `app.registry` | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No application plugin registry remains. |
+| Plugin identity and static metadata | Bootstrap `PluginMetadata` only | `PluginMetadata` in each top-level plugin package | Metadata is loaded without importing application registry code. |
+| Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + central contribution bridge | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
@@ -529,15 +531,15 @@ creates a process-wide infrastructure client.
 ## Application Composition
 
 `app.composition.build_application(settings)` is the only composition root.
-Today it still receives the transitional registry described below. After Phase
-2, standard NoneBot TOML selects and loads the plugin manifest first; scoped
-plugin contributions are then passed to composition. In either state, it:
+Standard NoneBot TOML selects and loads the configured plugin profile first;
+scoped plugin contributions are then passed to composition. The currently
+loaded bridge contribution still supplies existing definitions from the central
+registry, but that bridge is not a second discovery path. Composition:
 
 1. creates infrastructure resources;
 2. creates repositories and service objects with explicit constructor
    dependencies;
-3. builds the current bootstrap registry during transition, or validates the
-   manifest contributions after Phase 2;
+3. validates manifest contributions and freezes the command catalog;
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
@@ -578,31 +580,35 @@ the lifecycle state machine.
 Background tasks are created through the lifecycle task owner. Every task has
 a name, an owner, cancellation on shutdown, and observable failure logging.
 
-## Frozen Plugin Bootstrap Bridge (Current Implementation)
+## Frozen Plugin Contribution Bridge (Current Implementation)
 
-`PluginDefinition` is a frozen OneBot bootstrap bridge, not a plugin contract
-for new design. Existing definitions remain only until Phase 2 has an
-end-to-end replacement with the same behaviour and tests. Do not add fields,
-new feature ownership, command metadata, help metadata, lifecycle concepts, or
-new plugin families to this bridge.
+`PluginContribution` is the runtime contribution contract. The current
+`app.registry.build_plugin_registry(...)` supplier is a frozen OneBot bootstrap
+bridge, not the plugin discovery contract for new design. Existing central
+definitions remain only until Phase 2 has one top-level manifest-loaded package
+per plugin with the same behaviour and tests. Do not add fields, new feature
+ownership, command metadata, help metadata, lifecycle concepts, or new plugin
+families to this bridge.
 
 The current bridge is:
 
 ```python
 @dataclass(frozen=True, slots=True)
-class PluginDefinition:
+class PluginContribution:
     id: str
     features: frozenset[Feature]
     help: HelpEntry | None
+    commands: tuple[CommandDescriptor, ...] = ()
     install: Callable[[MatcherRegistry], None] | None = None
     hooks: PluginHooks = PluginHooks()
 ```
 
 `app.registry.build_plugin_registry(...)` currently returns one ordered tuple
-of `PluginDefinition` values. Until Phase 2 removes it, that tuple is only the
-operational loading source for the existing OneBot application. It is the
-current bootstrap source, not the unique architectural contract. It must not
-become an additional authority over the target contracts:
+of `PluginContribution` values. The standard manifest discovers one temporary
+bootstrap package, which contributes this tuple during the scoped loading
+window. Until Phase 2 removes the central supplier, that tuple is a temporary
+operational bridge, not the unique architectural contract. It must not become
+an additional authority over the target contracts:
 
 - plugin installation order;
 - feature ownership;

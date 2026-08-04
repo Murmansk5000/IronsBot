@@ -51,7 +51,7 @@ def test_registry_installs_foundation_before_dependents() -> None:
 
 
 def test_registry_is_the_lifecycle_order_authority() -> None:
-    lifecycle = ApplicationLifecycle.from_plugins(
+    lifecycle = ApplicationLifecycle.from_contributions(
         cast("Driver", object()),
         DEFINITIONS,
         task_owner=TaskOwner(),
@@ -109,6 +109,11 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                 imported = forbidden_imports.intersection(
                     alias.name for alias in node.names
                 )
+                if (
+                    path == ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py"
+                    and imported == {"PluginMetadata"}
+                ):
+                    continue
                 if imported:
                     violations.append(
                         f"{path.relative_to(ROOT)} imports {sorted(imported)}"

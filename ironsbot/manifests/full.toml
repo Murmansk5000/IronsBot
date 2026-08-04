@@ -1,0 +1,5 @@
+[tool.nonebot]
+plugin_dirs = []
+
+[tool.nonebot.plugins]
+"@local" = ["ironsbot.plugins.onebot.bootstrap"]

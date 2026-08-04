@@ -1,22 +1,21 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
+from ironsbot.app.application import Application
 from ironsbot.app.file_logging import FileLogging
-from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.private_extensions import (
     PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -170,11 +169,8 @@ from ironsbot.services.team.resource import TeamResourceService
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from nonebot.internal.driver import Driver
-
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
-    from ironsbot.runtime.plugins import PluginContribution
     from ironsbot.services.messaging.delivery import (
         MessageDelivery,
         MessageLimiter,
@@ -184,34 +180,6 @@ LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
-@dataclass(slots=True)
-class Application:
-    settings: Settings
-    driver: Driver
-    asgi: Any
-    scheduler: SchedulerFacade
-    file_logging: FileLogging
-    http_clients: HttpClients
-    databases: DatabaseManager
-    prompt_sessions: PromptSessionManager
-    resources: ApplicationResources
-    plugins: tuple[PluginContribution, ...]
-    matchers: MatcherRegistry
-    lifecycle: ApplicationLifecycle
-    _installed: bool = field(default=False, init=False)
-
-    def install(self) -> None:
-        if self._installed:
-            return
-        for plugin in self.plugins:
-            if plugin.install is not None:
-                plugin.install(self.matchers)
-        self.matchers.validate_command_catalog(self.resources.commands)
-        self.matchers.install_postprocessor()
-        self.lifecycle.install()
-        self._installed = True
-
-
 def _build_activity_service(  # noqa: PLR0913 - composition root
     config: ActivityConfig,
     runtime_state_path: Path,
@@ -752,19 +720,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,
     )
-    plugins = build_plugin_registry(
-        settings=settings,
-        resources=resources,
-        scheduler=scheduler,
-    )
-    command_catalog.load(
-        plugins,
-        known_features=(
-            *(feature.value for feature in Feature),
-            *features.command_features,
-            *features.schedule_features,
-        ),
-    )
     matchers = MatcherRegistry(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
@@ -772,16 +727,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         in_flight_requests=InFlightRequestService(
             features,
             settings.messaging.command_cooldown,
-        ),
-    )
-    lifecycle = ApplicationLifecycle.from_plugins(
-        driver,
-        plugins,
-        task_owner=task_owner,
-        resource_shutdown_hooks=(
-            ("file_logging", file_logging.close),
-            ("http_clients", http_clients.close),
-            ("databases", databases.close),
         ),
     )
     return Application(
@@ -794,7 +739,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         databases=databases,
         prompt_sessions=prompt_sessions,
         resources=resources,
-        plugins=plugins,
+        contributions=(),
         matchers=matchers,
-        lifecycle=lifecycle,
+        task_owner=task_owner,
+        known_features=(
+            *(feature.value for feature in Feature),
+            *features.command_features,
+            *features.schedule_features,
+        ),
+        resource_shutdown_hooks=(
+            ("file_logging", file_logging.close),
+            ("http_clients", http_clients.close),
+            ("databases", databases.close),
+        ),
     )

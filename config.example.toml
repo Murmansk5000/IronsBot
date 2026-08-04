@@ -56,6 +56,10 @@ log_level = "INFO"
 # EN: Command prefixes. Empty string enables direct keyword commands.
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
+# Default: "full"
+# EN: Bundled NoneBot plugin profile. Normal deployments use full.
+# ZH: 内置 NoneBot 插件配置；正常部署使用 full。
+plugin_manifest = "full"
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。

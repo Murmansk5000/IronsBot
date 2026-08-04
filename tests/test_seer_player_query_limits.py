@@ -518,7 +518,7 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
         service._shortcut_live = fetch_live  # type: ignore[method-assign]
         reply = await service.shortcut(
             PlayerShortcutCommand(kind="collection", player_id=DEFAULT_PLAYER_ID),
-            USER_ID,
+            ACTOR,
         )
         assert reply.text == "cached reply"
 

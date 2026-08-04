@@ -5,17 +5,14 @@ from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
     from nonebot.plugin import PluginMetadata
 
-    from ironsbot.app.resources import ApplicationResources
-    from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import Feature
-    from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.commands import CommandDescriptor
     from ironsbot.runtime.matchers import MatcherRegistry
 
@@ -82,6 +79,14 @@ class PluginInstallContextError(RuntimeError):
         )
 
 
+class PluginContributionError(ValueError):
+    """Raised when declarative plugin contributions cannot be composed."""
+
+    @classmethod
+    def duplicate_ids(cls, plugin_ids: tuple[str, ...]) -> PluginContributionError:
+        return cls("duplicate plugin contribution ids: " + ", ".join(plugin_ids))
+
+
 _INSTALL_CONTEXT: ContextVar[PluginInstallContext | None] = ContextVar(
     "ironsbot_plugin_install_context",
     default=None,
@@ -97,9 +102,9 @@ class PluginInstallContext:
     loading, so it cannot become a runtime service locator.
     """
 
-    settings: Settings
-    resources: ApplicationResources
-    scheduler: SchedulerFacade
+    settings: Any
+    resources: Any
+    scheduler: Any
     _loaded: list[LoadedPluginContribution]
 
     def contribute(
@@ -124,9 +129,9 @@ class PluginInstallContext:
 @contextmanager
 def scoped_plugin_install_context(
     *,
-    settings: Settings,
-    resources: ApplicationResources,
-    scheduler: SchedulerFacade,
+    settings: Any,
+    resources: Any,
+    scheduler: Any,
 ) -> Iterator[PluginInstallContext]:
     """Expose composition dependencies while `nonebot.load_from_toml()` runs."""
 
@@ -150,3 +155,15 @@ def current_plugin_install_context() -> PluginInstallContext:
     if context is None:
         raise PluginInstallContextError.unavailable()
     return context
+
+
+def validate_plugin_contributions(
+    contributions: tuple[PluginContribution, ...],
+) -> tuple[PluginContribution, ...]:
+    """Validate the minimal invariants shared by every plugin-loading path."""
+
+    ids = tuple(contribution.id for contribution in contributions)
+    duplicate_ids = tuple(sorted({item for item in ids if ids.count(item) > 1}))
+    if duplicate_ids:
+        raise PluginContributionError.duplicate_ids(duplicate_ids)
+    return contributions
