@@ -37,13 +37,16 @@ from ironsbot.services.seer.player_shortcuts import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies
-from .player_target import resolve_event_player_reference, resolve_player_target
+from .player_target import (
+    event_player_reference_lookup,
+    resolve_event_player_reference,
+    resolve_player_target,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionAction,
     )
-    from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.query_result import QueryReply
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
@@ -137,7 +140,15 @@ async def handle_player_shortcut(
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
     target = resolve_player_target(
         event,
-        numeric_player_id=command.player_id,
+        player_reference=(
+            command.player_reference
+            if command.player_reference is not None
+            else str(command.player_id) if command.player_id is not None else None
+        ),
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=service.default_player_id,
     )
     if target.error is not None:
@@ -173,7 +184,13 @@ async def handle_player_extension_shortcut(
         return
     target = resolve_player_target(
         event,
-        numeric_player_id=command.player_id,
+        player_reference=(
+            str(command.player_id) if command.player_id is not None else None
+        ),
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=dependencies.player.default_player_id,
     )
     if target.error is not None:
@@ -208,14 +225,23 @@ def _shortcut_command_id(
 
 
 def _shortcut_semantic_request(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     event: MessageEvent,
     state: T_State,
 ) -> SemanticRequest | None:
+    service = dependencies.player
     command = state.get(_SHORTCUT_COMMAND_KEY)
+    player_id = getattr(command, "player_id", None)
     target = resolve_player_target(
         event,
-        numeric_player_id=getattr(command, "player_id", None),
+        player_reference=(
+            getattr(command, "player_reference", None)
+            or (str(player_id) if player_id is not None else None)
+        ),
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=service.default_player_id,
     )
     player_id = target.player_id
@@ -242,16 +268,23 @@ def _extension_shortcut_command_id(
 
 
 def _extension_shortcut_semantic_request(
-    service: PlayerService,
+    dependencies: PlayerCommandDependencies,
     event: MessageEvent,
     state: T_State,
 ) -> SemanticRequest | None:
+    service = dependencies.player
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
     if not isinstance(command, PlayerExtensionShortcutCommand):
         return None
     target = resolve_player_target(
         event,
-        numeric_player_id=command.player_id,
+        player_reference=(
+            str(command.player_id) if command.player_id is not None else None
+        ),
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=service.default_player_id,
     )
     if not (
@@ -282,7 +315,7 @@ def install(group: SeerMatcherGroup) -> None:
             _shortcut_command_id,
             help_ids=("seer.player.default",),
             semantic_request=lambda event, state: _shortcut_semantic_request(
-                group.resources.player,
+                dependencies,
                 event,
                 state,
             ),
@@ -312,7 +345,7 @@ def install(group: SeerMatcherGroup) -> None:
                 for action in extension_actions
             ),
             semantic_request=lambda event, state: _extension_shortcut_semantic_request(
-                group.resources.player,
+                dependencies,
                 event,
                 state,
             ),
