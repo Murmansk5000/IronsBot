@@ -130,7 +130,10 @@ def command_descriptors() -> tuple[CommandDescriptor, ...]:
                     "bilibili.refresh",
                     tuple(f"/{command}" for command in DYNAMIC_UPDATE_COMMANDS[:1]),
                     "立即刷新订阅动态",
-                    {"access": (CommandAccess(audience="superuser"),)},
+                    {
+                        "access": (CommandAccess(audience="superuser"),),
+                        "routing_aliases": DYNAMIC_UPDATE_COMMANDS,
+                    },
                 ),
             ),
         ),
