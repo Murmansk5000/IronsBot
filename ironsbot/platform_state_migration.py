@@ -26,7 +26,10 @@ from ironsbot.integrations.storage.platform_state_schema import (
     source_table_counts,
     table_exists,
 )
-from ironsbot.integrations.storage.sqlite import open_sqlite_connection
+from ironsbot.integrations.storage.sqlite import (
+    open_memory_sqlite_connection,
+    open_sqlite_connection,
+)
 
 _VERSION = 1
 _MARKER_TABLE = "ironsbot_platform_identity_migration"
@@ -45,6 +48,8 @@ _QQ_NAMESPACES = frozenset(
 _RUNTIME_NAMESPACES = frozenset({"activity_reminder", "skin_window", "team_audit"})
 _QQ_IDENTITY_NAMESPACES = _QQ_NAMESPACES
 _RUNTIME_IDENTITY_NAMESPACES = frozenset({"team_audit"})
+_AI_NAMESPACES = frozenset({"ai_memory"})
+_AI_IDENTITY_NAMESPACES = _AI_NAMESPACES
 
 
 class PlatformStateMigrationError(RuntimeError):
@@ -222,9 +227,9 @@ def _resolve_path(root: Path, configured: Path | None, default: str) -> Path:
 
 def _validate_in_memory(paths: PlatformStatePaths, expected: dict[str, int]) -> None:
     temporary = (
-        sqlite3.connect(":memory:"),
-        sqlite3.connect(":memory:"),
-        sqlite3.connect(":memory:"),
+        open_memory_sqlite_connection(),
+        open_memory_sqlite_connection(),
+        open_memory_sqlite_connection(),
     )
     try:
         for connection in temporary:
@@ -301,12 +306,19 @@ def _build_connections(
     )
     _mark_migrated(runtime_state)
 
+    _create_meta(ai_memory)
     create_ai_memory_schema(ai_memory)
     copy_ai_memory(paths.ai_memory, ai_memory)
     copy_passthrough_tables(
         paths.ai_memory,
         ai_memory,
-        excluded=AI_IDENTITY_TABLES | {_MARKER_TABLE},
+        excluded=AI_IDENTITY_TABLES | {_MARKER_TABLE, _META_TABLE},
+    )
+    _copy_namespaces(
+        paths.ai_memory,
+        ai_memory,
+        _AI_NAMESPACES,
+        _AI_IDENTITY_NAMESPACES,
     )
     _mark_migrated(ai_memory)
 
@@ -333,9 +345,7 @@ def _copy_namespaces(
     timestamp = datetime.now(timezone.utc).isoformat()
     for namespace in namespaces:
         version = (
-            1
-            if namespace in identity_namespaces
-            else source_versions.get(namespace, 1)
+            1 if namespace in identity_namespaces else source_versions.get(namespace, 1)
         )
         target.execute(
             "INSERT INTO ironsbot_schema_migrations VALUES (?, ?, ?)",

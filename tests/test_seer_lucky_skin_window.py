@@ -18,6 +18,7 @@ from ironsbot.config.models.seer import (
 from ironsbot.config.player_accounts import build_player_account_registry
 from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
 )
@@ -73,6 +74,10 @@ EXPECTED_REQUEST = (
     351004,
 )
 WATCH_SKIN_ID = 103
+
+
+def _actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
 
 
 class _Features:
@@ -227,8 +232,8 @@ def _service(
     _Sessions,
 ]:
     bindings = SqlitePlayerBindingStore(tmp_path / "qq_state.sqlite")
-    bindings.bind(qq_user_id=1001, player_id=90001, player_nick="甲")
-    bindings.bind(qq_user_id=1002, player_id=90002, player_nick="乙")
+    bindings.bind(actor=_actor(1001), player_id=90001, player_nick="甲")
+    bindings.bind(actor=_actor(1002), player_id=90002, player_nick="乙")
     game = _Game()
     sessions = _Sessions(game)
     service = LuckySkinWindowService(
@@ -289,7 +294,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
         assert "皮肤102（皮肤ID：102，资源ID：1400102） ★ 关注" in friend_message
 
     asyncio.run(check())
-    bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
+    bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
         asyncio.run(service.check_for_user(1001))
 
@@ -429,7 +434,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
     tmp_path: Path,
 ) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
-    bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
+    bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     event = private_message_event("订阅橱窗", user_id=1001)
     replies: list[str] = []
 
@@ -508,7 +513,7 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     ]
     assert service.subscription_options("group", 1001) == []
 
-    bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
+    bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     assert service.subscription_options("private", 1001) == []
 
 

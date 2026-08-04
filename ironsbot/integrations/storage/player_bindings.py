@@ -4,36 +4,31 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.storage.platform_identity import ActorIdentityColumns
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.seer.player_binding import PlayerBindingState
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.core.platform import ActorRef
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_bindings (
-    qq_user_id INTEGER PRIMARY KEY,
+    actor_platform TEXT NOT NULL,
+    actor_kind TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    actor_scope_id TEXT NOT NULL DEFAULT '',
     player_id INTEGER,
     player_nick TEXT,
     choice_completed INTEGER NOT NULL DEFAULT 0,
+    last_changed_at TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id)
 )
 """
-_MIGRATIONS = (
-    SqliteMigration(1, (_SCHEMA,)),
-    SqliteMigration(
-        2,
-        (
-            "ALTER TABLE player_bindings ADD COLUMN last_changed_at TEXT",
-            """
-            UPDATE player_bindings
-            SET last_changed_at = updated_at
-            WHERE player_id IS NOT NULL AND last_changed_at IS NULL
-            """,
-        ),
-    ),
-)
+_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
 MIGRATION_NAMESPACE = "player_bindings"
 
 
@@ -45,20 +40,22 @@ class SqlitePlayerBindingStore:
             migration_namespace=MIGRATION_NAMESPACE,
         )
 
-    def get(self, qq_user_id: int) -> PlayerBindingState:
+    def get(self, actor: ActorRef) -> PlayerBindingState:
+        identity = ActorIdentityColumns.from_actor(actor)
         with self._database.connect() as conn:
             row = conn.execute(
                 """
                 SELECT player_id, player_nick, choice_completed, last_changed_at
                 FROM player_bindings
-                WHERE qq_user_id = ?
+                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
+                  AND actor_scope_id = ?
                 """,
-                (qq_user_id,),
+                identity.values(),
             ).fetchone()
         if row is None:
-            return PlayerBindingState(qq_user_id)
+            return PlayerBindingState(actor)
         return PlayerBindingState(
-            qq_user_id,
+            actor,
             None if row[0] is None else int(row[0]),
             str(row[1] or ""),
             bool(row[2]),
@@ -68,64 +65,72 @@ class SqlitePlayerBindingStore:
     def bind(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         player_nick: str,
         changed_at: datetime | None = None,
     ) -> None:
         now = _utc_now(changed_at)
+        identity = ActorIdentityColumns.from_actor(actor)
         with self._database.connect() as conn:
             conn.execute(
                 """
                 INSERT INTO player_bindings(
-                    qq_user_id, player_id, player_nick,
+                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    player_id, player_nick,
                     choice_completed, last_changed_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, 1, ?, ?, ?)
-                ON CONFLICT(qq_user_id) DO UPDATE SET
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                ON CONFLICT(actor_platform, actor_kind, actor_id, actor_scope_id)
+                DO UPDATE SET
                     player_id = excluded.player_id,
                     player_nick = excluded.player_nick,
                     choice_completed = 1,
                     last_changed_at = excluded.last_changed_at,
                     updated_at = excluded.updated_at
-                WHERE player_bindings.player_id != excluded.player_id
+                WHERE player_bindings.player_id IS NOT excluded.player_id
                 """,
-                (qq_user_id, player_id, player_nick, now, now, now),
+                (*identity.values(), player_id, player_nick, now, now, now),
             )
 
-    def decline(self, *, qq_user_id: int) -> None:
+    def decline(self, *, actor: ActorRef) -> None:
         now = _utc_now()
+        identity = ActorIdentityColumns.from_actor(actor)
         with self._database.connect() as conn:
             conn.execute(
                 """
                 INSERT INTO player_bindings(
-                    qq_user_id, player_id, player_nick,
+                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    player_id, player_nick,
                     choice_completed, last_changed_at, created_at, updated_at
                 )
-                VALUES (?, NULL, '', 1, NULL, ?, ?)
-                ON CONFLICT(qq_user_id) DO UPDATE SET
+                VALUES (?, ?, ?, ?, NULL, '', 1, NULL, ?, ?)
+                ON CONFLICT(actor_platform, actor_kind, actor_id, actor_scope_id)
+                DO UPDATE SET
                     choice_completed = 1,
                     updated_at = excluded.updated_at
                 """,
-                (qq_user_id, now, now),
+                (*identity.values(), now, now),
             )
 
     def unbind(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         changed_at: datetime | None = None,
     ) -> bool:
         now = _utc_now(changed_at)
+        identity = ActorIdentityColumns.from_actor(actor)
         with self._database.connect() as conn:
             cursor = conn.execute(
                 """
                 UPDATE player_bindings
                 SET player_id = NULL, player_nick = '',
                     choice_completed = 1, last_changed_at = ?, updated_at = ?
-                WHERE qq_user_id = ? AND player_id IS NOT NULL
+                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
+                  AND actor_scope_id = ? AND player_id IS NOT NULL
                 """,
-                (now, now, qq_user_id),
+                (now, now, *identity.values()),
             )
             return cursor.rowcount > 0
 

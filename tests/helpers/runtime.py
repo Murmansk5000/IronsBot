@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
@@ -56,11 +58,12 @@ def build_test_runtime(  # noqa: PLR0913
     schedule_features: frozenset[str] = frozenset(),
     outbound_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe: PushUnsubscribeConfig | None = None,
-    state_path: Path = Path("data/state/qq_state.sqlite"),
+    state_path: Path | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
     matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
     resolved_feature_config = feature_config or FeatureConfig()
+    isolated_state_path = state_path or _isolated_state_path()
     features = FeatureService(
         resolved_feature_config,
         frozenset(superuser_ids),
@@ -83,7 +86,7 @@ def build_test_runtime(  # noqa: PLR0913
                 resolved_feature_config.user_aliases,
             ),
         ),
-        PushUnsubscribeStore(state_path),
+        PushUnsubscribeStore(isolated_state_path),
     )
     return TestRuntime(
         features=features,
@@ -101,3 +104,8 @@ def build_test_runtime(  # noqa: PLR0913
         prompt_sessions=PromptSessionManager(),
         tasks=tasks,
     )
+
+
+def _isolated_state_path() -> Path:
+    temp_root = Path(os.environ.get("TEMP", Path.cwd()))
+    return temp_root / f"ironsbot-test-state-{uuid4().hex}.sqlite"

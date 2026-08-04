@@ -340,6 +340,12 @@ Future data work follows these rules:
   timestamped backup, integrity and cardinality checks, then atomic
   replacement. The table-by-table contract is in
   [docs/platform-state-migration.md](docs/platform-state-migration.md).
+- A normal runtime repository persists only `ActorRef` or `ConversationRef`
+  columns. OneBot integers may be adapted at a transport-facing wrapper while
+  Phase 1 is in progress, but they must not be a database column, a primary
+  key, or the persistence contract of a core service. Adding a second schema,
+  a lazy legacy import, or a dual-read branch is prohibited; use the offline
+  migration instead.
 - A downloaded data release is validated for schema version and required tables
   before atomic replacement. Incompatible data disables only the affected
   feature and notifies administrators without removing the data-update path.

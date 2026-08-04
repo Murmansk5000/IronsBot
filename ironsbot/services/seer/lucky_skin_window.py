@@ -16,6 +16,7 @@ from seerapi_models import PetSkinORM
 from sqlmodel import Session, col, select
 
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 
 if TYPE_CHECKING:
@@ -64,6 +65,12 @@ _REQUEST = (
 )
 _SKIN_OFFSET = 9
 _SKIN_COUNT = 4
+
+
+def _onebot_actor(user_id: int) -> ActorRef:
+    """Adapt the current OneBot-only service input at its outer boundary."""
+
+    return ActorRef(Platform.ONEBOT, str(int(user_id)))
 
 
 class LuckySkinWindowCache(Protocol):
@@ -200,7 +207,7 @@ class LuckySkinWindowService:
         account = self.account_for_user(user_id)
         if not self.enabled or account is None:
             return False
-        return self._bindings.get(user_id).player_id == account.player_id
+        return self._bindings.get(_onebot_actor(user_id)).player_id == account.player_id
 
     def subscription_options(
         self,
@@ -353,7 +360,7 @@ class LuckySkinWindowService:
         account = self.account_for_user(user_id)
         if not self.enabled or account is None:
             raise LuckySkinWindowNotConfiguredError
-        if self._bindings.get(user_id).player_id != account.player_id:
+        if self._bindings.get(_onebot_actor(user_id)).player_id != account.player_id:
             raise LuckySkinWindowBindingError(account.player_id)
         return account
 

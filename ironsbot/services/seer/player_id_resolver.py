@@ -41,6 +41,8 @@ class PlayerIdResolver:
         self,
         context: MessageInputContext,
         reference: str | None,
+        *,
+        allow_default_binding: bool = True,
     ) -> PlayerIdResolution:
         """Resolve current-message input without considering quoted mentions."""
 
@@ -61,9 +63,15 @@ class PlayerIdResolver:
                     else None
                 ),
             )
+        if allow_default_binding:
+            return PlayerIdResolution(
+                self._binding_lookup(context.message.actor),
+                offer_binding=False,
+            )
         return PlayerIdResolution(
-            self._binding_lookup(context.message.actor),
+            None,
             offer_binding=False,
+            error="请填写米米号、已开放的玩家别名，或直接 @ 一名已绑定成员。",
         )
 
     def _resolve_member_mentions(

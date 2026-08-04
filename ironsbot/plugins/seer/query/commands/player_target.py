@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.config.player_accounts import PlayerAccountRegistry
+    from ironsbot.core.platform import ActorRef
 
 
 def resolve_event_player_reference(
@@ -39,15 +40,17 @@ def resolve_player_target(
     event: MessageEvent,
     *,
     numeric_player_id: int | None,
-    binding_for_user: Callable[[int], int | None],
+    binding_for_user: Callable[[ActorRef], int | None],
+    allow_default_binding: bool = True,
 ) -> PlayerIdResolution:
     """Adapt current OneBot input to the shared player-ID resolver."""
     context = message_input_context(event)
     resolver = PlayerIdResolver(
         lambda _reference, _conversation: numeric_player_id,
-        lambda actor: binding_for_user(int(actor.id)),
+        binding_for_user,
     )
     return resolver.resolve(
         context,
         "resolved-player-reference" if numeric_player_id is not None else None,
+        allow_default_binding=allow_default_binding,
     )

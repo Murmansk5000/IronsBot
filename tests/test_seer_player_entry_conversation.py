@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.seer.query.commands.player_context import (
@@ -24,6 +25,10 @@ from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
 
 _ACCOUNT_PLAYER_ID = 949105380
+
+
+def _actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
 
 
 def test_player_conversation_flows_share_one_session() -> None:
@@ -78,7 +83,7 @@ def test_pending_confirmation_reuses_the_fetched_player(
     )
 
     service.save_binding_choice.assert_called_once_with(
-        event.user_id,
+        _actor(event.user_id),
         pending,
         accepted=True,
         replacing_existing=False,
@@ -102,7 +107,7 @@ def test_pending_replacement_confirmation_marks_the_existing_binding(
         player_message="玩家详情",
         section_plan=cast("Any", object()),
     )
-    replacement = player.PlayerBindingState(10001, 777777, "旧账号")
+    replacement = player.PlayerBindingState(_actor(10001), 777777, "旧账号")
     service = SimpleNamespace(save_binding_choice=Mock())
     send_pending = AsyncMock()
     monkeypatch.setattr(player, "_send_pending_player_query", send_pending)
@@ -126,7 +131,7 @@ def test_pending_replacement_confirmation_marks_the_existing_binding(
     )
 
     service.save_binding_choice.assert_called_once_with(
-        event.user_id,
+        _actor(event.user_id),
         pending,
         accepted=False,
         replacing_existing=True,
@@ -368,28 +373,82 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
     assert command.player_id == _ACCOUNT_PLAYER_ID
 
 
-def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
-    finish_reply = AsyncMock()
-    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
-    service = SimpleNamespace(bind_player=AsyncMock())
+def test_binding_command_resolves_account_aliases(monkeypatch: Any) -> None:
+    service = SimpleNamespace(
+        bind_player=AsyncMock(),
+        default_player_id=lambda _actor: None,
+    )
+    send_result = AsyncMock()
+    monkeypatch.setattr(player, "_handle_player_query_result", send_result)
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="sample_player",
+                aliases=("示例账号",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    service.bind_player.return_value = cast("Any", object())
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
         cast("Any", object()),
+        player_accounts=registry,
     )
+    event = group_message_event("绑定米米号示例账号")
 
     asyncio.run(
         player.handle_player_binding_command(
             dependencies,
             cast("Any", object()),
-            group_message_event("绑定米米号示例账号"),
+            event,
             {player.BOT_COMMAND_ARG_KEY: "示例账号"},
         )
     )
 
-    call = finish_reply.await_args
-    assert call is not None
-    assert call.args[2].startswith("绑定米米号请直接填写数字")
-    service.bind_player.assert_not_awaited()
+    service.bind_player.assert_awaited_once_with(
+        _ACCOUNT_PLAYER_ID,
+        actor=_actor(event.user_id),
+        group_id=event.group_id,
+    )
+
+
+def test_binding_command_resolves_one_directly_mentioned_member(
+    monkeypatch: Any,
+) -> None:
+    service = SimpleNamespace(
+        bind_player=AsyncMock(),
+        default_player_id=lambda actor: (
+            _ACCOUNT_PLAYER_ID if actor.id == "456789" else None
+        ),
+    )
+    monkeypatch.setattr(player, "_handle_player_query_result", AsyncMock())
+    event = group_message_event(
+        "绑定米米号",
+        message=Message(MessageSegment.at(456789) + MessageSegment.text("绑定米米号")),
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+    service.bind_player.return_value = cast("Any", object())
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            event,
+            {player.BOT_COMMAND_ARG_KEY: ""},
+        )
+    )
+
+    service.bind_player.assert_awaited_once_with(
+        _ACCOUNT_PLAYER_ID,
+        actor=_actor(event.user_id),
+        group_id=event.group_id,
+    )
 
 
 def test_shortcut_without_default_shows_explicit_player_id_help(
@@ -467,7 +526,7 @@ def test_shortcut_sends_loading_reply_before_query(
     assert "巅峰之战正在查询" in loading_call.args[2]
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="peak", player_id=949105380),
-        event.user_id,
+        _actor(event.user_id),
         group_id=event.group_id,
     )
     finish_reply.assert_awaited_once()

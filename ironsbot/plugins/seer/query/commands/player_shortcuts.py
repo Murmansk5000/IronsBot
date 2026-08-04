@@ -16,6 +16,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import member_target_command
@@ -150,7 +151,7 @@ async def handle_player_shortcut(
     reply = await execute_player_shortcut(
         service,
         command,
-        event.user_id,
+        message_input_context(event).message.actor,
         group_id=event_group_id(event),
         send_status=send_status,
     )

@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar
 
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -239,15 +240,9 @@ class RankQueryService:
             return "❌ 只有本群群主、管理员或超级管理员可以修改榜单默认显示条数。"
         max_limit = self._display.config.max_display_limit
         if limit < 1 or limit > max_limit:
-            return (
-                f"❌ 榜单默认显示条数必须在 1~{max_limit} 之间，"
-                f"当前输入：{limit}。"
-            )
+            return f"❌ 榜单默认显示条数必须在 1~{max_limit} 之间，当前输入：{limit}。"
         self._display.set_group_limit(group_id, user_id, limit)
-        return (
-            f"✅ 本群榜单默认显示条数已设置为 {limit} 名"
-            f"（群号：{group_id}）。"
-        )
+        return f"✅ 本群榜单默认显示条数已设置为 {limit} 名（群号：{group_id}）。"
 
     async def _global_message(
         self,
@@ -329,9 +324,7 @@ class RankQueryService:
             spec,
             result,
             timestamp=(
-                timestamp_text(result.fetched_at)
-                if result.fetched_at
-                else None
+                timestamp_text(result.fetched_at) if result.fetched_at else None
             ),
             display_limit=display_limit,
         )
@@ -362,9 +355,7 @@ class RankQueryService:
     def _local_message(self, command: RankListCommand) -> str:
         spec = LOCAL_RANKS[command.rank_key]
         season_sub_key = (
-            self._rank.current_peak_sub_key()
-            if spec.season_limited
-            else None
+            self._rank.current_peak_sub_key() if spec.season_limited else None
         )
         entries, sample_count = self._local_rank.entries(
             spec.metric_key,
@@ -377,9 +368,7 @@ class RankQueryService:
             entries,
             sample_count=sample_count,
             season_sub_key=(
-                str(season_sub_key)
-                if season_sub_key is not None
-                else None
+                str(season_sub_key) if season_sub_key is not None else None
             ),
             start_rank=command.start_rank,
             requested_count=command.limit,
@@ -393,7 +382,7 @@ class RankQueryService:
         if self._quotas is None or qq_user_id is None:
             return ""
         decision = self._quotas.check(
-            qq_user_id=qq_user_id,
+            actor=_onebot_actor(qq_user_id),
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
         )
@@ -407,7 +396,7 @@ class RankQueryService:
         if self._quotas is None or qq_user_id is None:
             return ""
         decision = self._quotas.consume(
-            qq_user_id=qq_user_id,
+            actor=_onebot_actor(qq_user_id),
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
         )
@@ -451,3 +440,7 @@ _PLAYER_REQUEST_ERRORS = (
     PlayerRequestPausedError,
     PlayerRequestReconnectError,
 )
+
+
+def _onebot_actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(int(user_id)))

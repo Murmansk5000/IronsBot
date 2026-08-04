@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 from nonebot.exception import FinishedException
 
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.plugins.seer.query.commands import player_detail_conversation
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
@@ -91,9 +92,7 @@ def test_player_info_prompt_includes_visible_private_extension(
     assert state[PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY] == (
         ("1", PLAYER_COLLECTION_KEY),
     )
-    assert state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] == (
-        ("2", "private_action"),
-    )
+    assert state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] == (("2", "private_action"),)
 
 
 def test_player_detail_uses_the_shared_shortcut_executor(
@@ -131,7 +130,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
 
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="peak", player_id=PLAYER_ID),
-        event.user_id,
+        ActorRef(Platform.ONEBOT, str(event.user_id)),
         group_id=event.group_id,
     )
     asyncio.run(
@@ -189,7 +188,7 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
 
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
-        replying_member.user_id,
+        ActorRef(Platform.ONEBOT, str(replying_member.user_id)),
         group_id=replying_member.group_id,
     )
 
@@ -245,7 +244,7 @@ def test_shared_player_menu_reply_creates_the_replying_members_context(
 
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
-        event.user_id,
+        ActorRef(Platform.ONEBOT, str(event.user_id)),
         group_id=event.group_id,
     )
     assert state[PLAYER_ID_KEY] == PLAYER_ID

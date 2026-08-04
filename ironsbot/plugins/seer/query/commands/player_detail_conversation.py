@@ -20,6 +20,7 @@ from ironsbot.runtime.matchers import (
     bind_async,
     get_prompt_session_manager,
 )
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
@@ -163,7 +164,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     reply = await execute_player_shortcut(
         service,
         PlayerShortcutCommand(kind=kind, player_id=player_id),
-        event.user_id,
+        message_input_context(event).message.actor,
         group_id=event_group_id(event),
         send_status=send_status,
     )

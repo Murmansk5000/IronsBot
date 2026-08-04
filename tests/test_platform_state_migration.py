@@ -161,12 +161,6 @@ def _seed_legacy_platform_state(root: Path) -> None:
                 '2026-08-04T00:01:00Z', 1
             )
             """,
-            """
-            CREATE TABLE sent_activity_reminders (
-                activity_id INTEGER PRIMARY KEY, sent_at TEXT
-            )
-            """,
-            "INSERT INTO sent_activity_reminders VALUES (1, '2026-08-04T00:00:00Z')",
         ),
     )
     _execute(
@@ -183,6 +177,12 @@ def _seed_legacy_platform_state(root: Path) -> None:
                 2001, 1001, '2026-08-04T00:00:00Z', '2026-08-05T00:00:00Z', 1
             )
             """,
+            """
+            CREATE TABLE sent_activity_reminders (
+                activity_id INTEGER PRIMARY KEY, sent_at TEXT
+            )
+            """,
+            "INSERT INTO sent_activity_reminders VALUES (1, '2026-08-04T00:00:00Z')",
         ),
     )
     _execute(
@@ -259,9 +259,6 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
             ORDER BY position
             """
         ).fetchall() == [("1001", 0), ("1002", 1)]
-        assert connection.execute(
-            "SELECT sent_at FROM sent_activity_reminders"
-        ).fetchall() == [("2026-08-04T00:00:00Z",)]
         columns = {
             row[1]
             for row in connection.execute("PRAGMA table_info(player_bindings)")
@@ -274,6 +271,9 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
             FROM pending_team_audit_reminders
             """
         ).fetchall() == [("2001", "member", "1001", "2001")]
+        assert connection.execute(
+            "SELECT sent_at FROM sent_activity_reminders"
+        ).fetchall() == [("2026-08-04T00:00:00Z",)]
     with sqlite3.connect(data_root / "ai_chat/memory.sqlite") as connection:
         assert connection.execute(
             """

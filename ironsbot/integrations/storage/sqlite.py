@@ -202,6 +202,12 @@ def open_sqlite_connection(
     return sqlite3.connect(resolved, timeout=5.0)
 
 
+def open_memory_sqlite_connection() -> sqlite3.Connection:
+    """Open an isolated SQLite connection for storage migration validation."""
+
+    return sqlite3.connect(":memory:", timeout=5.0)
+
+
 def sqlite_table_columns(
     connection: sqlite3.Connection,
     table_name: str,
@@ -209,9 +215,7 @@ def sqlite_table_columns(
     table_sql = quote_sqlite_identifier(table_name)
     return {
         str(row[1])
-        for row in connection.execute(
-            f"PRAGMA table_info({table_sql})"
-        ).fetchall()
+        for row in connection.execute(f"PRAGMA table_info({table_sql})").fetchall()
     }
 
 
@@ -229,9 +233,7 @@ def ensure_sqlite_columns(
         quote_sqlite_identifier(column_name)
         if column_name in existing:
             continue
-        connection.execute(
-            f"ALTER TABLE {table_sql} ADD COLUMN {column_definition}"
-        )
+        connection.execute(f"ALTER TABLE {table_sql} ADD COLUMN {column_definition}")
         existing.add(column_name)
         added.add(column_name)
 

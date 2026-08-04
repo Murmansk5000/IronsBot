@@ -21,6 +21,7 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceResolver,
     normalize_alias_mapping,
 )
+from ironsbot.core.platform import ActorRef, Platform
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -522,6 +523,16 @@ class FeatureService:
 
     def is_superuser(self, user_id: int) -> bool:
         return user_id in self.superuser_ids
+
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        """Map a configured OneBot superuser policy to a platform actor."""
+
+        if actor.platform is not Platform.ONEBOT:
+            return False
+        try:
+            return self.is_superuser(int(actor.id))
+        except ValueError:
+            return False
 
     def is_conversation_blocked(
         self,

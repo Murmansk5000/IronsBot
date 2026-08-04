@@ -14,6 +14,7 @@ from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import (
@@ -148,7 +149,7 @@ async def handle_player(
     explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
     result = await dependencies.player.query(
         int(state[PLAYER_ID_KEY]),
-        qq_user_id=event.user_id,
+        actor=message_input_context(event).message.actor,
         explicit=explicit,
         group_id=event_group_id(event),
     )
@@ -168,19 +169,29 @@ async def handle_player_binding_command(
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    if not player_reference.isdecimal():
-        await finish_event_reply(
-            matcher,
+    player_id = (
+        resolve_event_player_reference(
+            dependencies.player_accounts,
             event,
-            "绑定米米号请直接填写数字米米号，例如“绑定米米号123456”。",
+            player_reference,
         )
+        if player_reference
+        else None
+    )
+    target = resolve_player_target(
+        event,
+        numeric_player_id=player_id,
+        binding_for_user=dependencies.player.default_player_id,
+        allow_default_binding=False,
+    )
+    if target.error is not None:
+        await finish_event_reply(matcher, event, target.error)
         return
-    player_id = dependencies.player_accounts.resolve_player_id(player_reference)
-    if player_id is None:
+    if target.player_id is None:
         await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
     result = await dependencies.player.bind_player(
-        player_id,
-        qq_user_id=event.user_id,
+        target.player_id,
+        actor=message_input_context(event).message.actor,
         group_id=event_group_id(event),
     )
     await _handle_player_query_result(
@@ -254,7 +265,7 @@ async def handle_player_binding_choice(
         return
     replacement = state.get(PLAYER_BINDING_REPLACEMENT_KEY)
     dependencies.player.save_binding_choice(
-        event.user_id,
+        message_input_context(event).message.actor,
         pending,
         accepted=choice,
         replacing_existing=isinstance(replacement, PlayerBindingState),
@@ -278,7 +289,10 @@ async def _send_pending_player_query(
     plan = pending.section_plan
 
     def after_initial_reply_sent() -> None:
-        dependencies.player.record_returned_query(event.user_id, pending)
+        dependencies.player.record_returned_query(
+            message_input_context(event).message.actor,
+            pending,
+        )
         dependencies.player.start_background_refresh(
             pending,
             group_id=event_group_id(event),
@@ -308,7 +322,7 @@ async def handle_player_unbind(
     await finish_event_reply(
         matcher,
         event,
-        service.unbind(event.user_id),
+        service.unbind(message_input_context(event).message.actor),
     )
 
 

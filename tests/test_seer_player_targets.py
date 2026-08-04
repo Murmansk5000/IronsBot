@@ -3,6 +3,7 @@
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.plugins.seer.query.commands.player_target import (
     resolve_event_player_reference,
     resolve_player_target,
@@ -12,8 +13,9 @@ from tests.helpers.onebot_events import group_message_event
 PLAYER_ID = 105_023_264
 
 
-def _binding_for(user_id: int) -> int | None:
-    return {456: PLAYER_ID}.get(user_id)
+def _binding_for(actor: ActorRef) -> int | None:
+    assert actor.platform is Platform.ONEBOT
+    return {"456": PLAYER_ID}.get(actor.id)
 
 
 def test_player_target_uses_one_current_message_member_mention() -> None:
@@ -105,6 +107,18 @@ def test_player_target_reports_an_unbound_mentioned_member() -> None:
 
     assert target.player_id is None
     assert target.error == "该成员尚未绑定米米号。"
+
+
+def test_player_target_can_require_an_explicit_reference() -> None:
+    target = resolve_player_target(
+        group_message_event("绑定米米号"),
+        numeric_player_id=None,
+        binding_for_user=_binding_for,
+        allow_default_binding=False,
+    )
+
+    assert target.player_id is None
+    assert target.error == "请填写米米号、已开放的玩家别名，或直接 @ 一名已绑定成员。"
 
 
 def test_event_player_reference_respects_public_and_group_scoped_aliases() -> None:

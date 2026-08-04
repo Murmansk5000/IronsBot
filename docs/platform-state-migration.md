@@ -65,7 +65,7 @@ identities.
 | QQ `group_id` | `ConversationRef(Platform.ONEBOT, 'group', str(value))` |
 | private `target_type='private'`, `target_id` | `ConversationRef(Platform.ONEBOT, 'private', str(target_id))` |
 | group `target_type='group'`, `target_id` | `ConversationRef(Platform.ONEBOT, 'group', str(target_id))` |
-| comma-separated `at_user_ids` | validated sequence of OneBot user actors, stored as structured JSON actor records rather than integer CSV |
+| comma-separated `at_user_ids` | validated sequence of OneBot user actors in the normalized `team_resource_subscription_mentions` relation |
 | team audit `(group_id, user_id)` | group conversation plus `ActorRef(Platform.ONEBOT, str(user_id), kind='member', scope_id=str(group_id))` |
 
 Malformed integers, unknown `target_type` values, invalid JSON, duplicate target
@@ -76,8 +76,20 @@ coerce, or merge them.
 ## Executable Command
 
 The tool is exposed through the existing offline migration module. It remains
-dry-run by default. Use the path visible **inside** the process that runs the
-command:
+dry-run by default. There are two source layouts, and each has one supported
+command. Use the path visible **inside** the process that runs the command:
+
+1. **Separate legacy state files** such as
+   `seer/player_bindings.sqlite` and `messaging/push_unsubscriptions.sqlite`:
+
+   ```text
+   uv run python -m ironsbot.state_migration --data-root <data-root>
+   ```
+
+   This command creates the target `state/qq_state.sqlite` and
+   `state/runtime_state.sqlite` directly with platform-neutral columns.
+
+2. **Already consolidated but pre-neutral shared state**:
 
 ```text
 # Docker container invocation: --data-root /app/data
@@ -90,10 +102,13 @@ uv run python -m ironsbot.state_migration \
 After a successful dry run, repeat the exact command with `--apply`. The
 optional `--qq-state`, `--runtime-state`, `--ai-memory`, and `--backup-root`
 arguments override their respective paths for test or recovery environments.
+Run only the command that matches the current layout. Neither command is a
+runtime fallback and neither should be scheduled from the bot process.
 
 Do not run this against a production data directory until the application
 release that reads the platform-neutral schema is deployed. The normal runtime
-never invokes this command.
+never invokes this command, adds old columns, or attempts a best-effort import
+when an old schema is found.
 
 ## Required Migration Procedure
 

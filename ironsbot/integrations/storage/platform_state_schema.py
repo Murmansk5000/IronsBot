@@ -311,11 +311,13 @@ def copy_runtime_state(source: Path, target: sqlite3.Connection) -> None:
                 "INSERT INTO pending_team_audit_reminders VALUES "
                 "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    *ConversationIdentityColumns.from_conversation(conversation).values(),
+                    *ConversationIdentityColumns.from_conversation(
+                        conversation
+                    ).values(),
                     *ActorIdentityColumns.from_actor(actor).values(),
                     row["joined_at"],
                     row["remind_at"],
-                    row["step"],
+                    dict(row).get("step", 1),
                 ),
             )
 
@@ -339,7 +341,9 @@ def copy_ai_memory(source: Path, target: sqlite3.Connection) -> None:
                     row["id"],
                     *ActorIdentityColumns.from_actor(actor).values(),
                     row["session_key"],
-                    *ConversationIdentityColumns.from_conversation(conversation).values(),
+                    *ConversationIdentityColumns.from_conversation(
+                        conversation
+                    ).values(),
                     row["role"],
                     row["content"],
                     row["created_at"],
@@ -484,7 +488,9 @@ def _copy_conversation_preferences(
             target.execute(
                 f"INSERT INTO {table} VALUES ({placeholders})",
                 (
-                    *ConversationIdentityColumns.from_conversation(conversation).values(),
+                    *ConversationIdentityColumns.from_conversation(
+                        conversation
+                    ).values(),
                     *(row[column] for column in columns),
                 ),
             )
@@ -628,10 +634,13 @@ def _rows(connection: sqlite3.Connection, table: str) -> list[sqlite3.Row]:
 
 
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
-    return connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (table,),
-    ).fetchone() is not None
+    return (
+        connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,),
+        ).fetchone()
+        is not None
+    )
 
 
 def _read(path: Path) -> sqlite3.Connection:
