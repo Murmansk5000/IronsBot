@@ -1,25 +1,36 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
-from typing import TYPE_CHECKING, TypedDict
+"""Pure presentation and HTML rendering for peak-pool vote documents."""
 
-from ironsbot.core import time
-from ironsbot.services.seer.images import SeerImageSource, to_data_uri
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import TYPE_CHECKING
+
 from ironsbot.services.seer.render_paths import (
     PEAK_POOL_VOTE_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
 
-from . import HtmlTemplateRenderer
-
 if TYPE_CHECKING:
-    from ironsbot.services.seer.peak import PeakPetSnapshot
-    from ironsbot.services.seer.rank_models import RankEntry
+    from collections.abc import Mapping, Sequence
+
+    from ironsbot.services.seer.peak import (
+        PeakPetSnapshot,
+        PeakVoteItemSnapshot,
+        PeakVotePoolInput,
+    )
+
+    from . import HtmlTemplateRenderer
+    from .peak_assets import PeakRenderAssets
 
 TABLE_WIDTH = 400
 CONTAINER_PADDING = 20 * 2
 
 
-class VoteRankDict(TypedDict):
+@dataclass(frozen=True, slots=True)
+class PeakVoteRankDocument:
     rank: int
     pet_id: int
     name: str
@@ -28,90 +39,115 @@ class VoteRankDict(TypedDict):
     type_icon: str
 
 
-class VotePoolDict(TypedDict):
+@dataclass(frozen=True, slots=True)
+class PeakVotePoolDocument:
     title: str
-    ranks: list[VoteRankDict]
+    ranks: tuple[PeakVoteRankDocument, ...]
 
 
-class VotePoolInput(TypedDict):
-    items: "list[RankEntry]"
-    title: str
-    pets: "list[PeakPetSnapshot]"
+@dataclass(frozen=True, slots=True)
+class PeakPoolVoteRenderDocument:
+    pools: tuple[PeakVotePoolDocument, ...]
+    generated_at: str
 
-
-async def render_peak_pool_vote(
-    images: SeerImageSource,
-    render_html: HtmlTemplateRenderer,
-    pools: list[VotePoolInput],
-) -> bytes:
-    """渲染巅峰池票选结果图片，返回 PNG 图片字节"""
-    pet_map: dict[int, "PeakPetSnapshot"] = {}
-    unique_rids: dict[str, None] = {}
-    unique_type_ids: dict[int, None] = {}
-
-    for pool in pools:
-        for pet in pool["pets"]:
-            pet_map[pet.id] = pet
-            unique_rids.setdefault(str(pet.resource_id), None)
-            unique_type_ids.setdefault(pet.type_id, None)
-
-    rid_list = list(unique_rids)
-    type_id_list = list(unique_type_ids)
-
-    results = await asyncio.gather(
-        *(images.fetch("pet_head", rid) for rid in rid_list),
-        *(images.fetch("element_type", str(tid)) for tid in type_id_list),
-    )
-
-    head_bytes_list = results[: len(rid_list)]
-    type_bytes_list = results[len(rid_list) :]
-
-    head_data_uris: dict[str, str] = {
-        rid: to_data_uri(data)
-        for rid, data in zip(rid_list, head_bytes_list, strict=True)
-    }
-    type_data_uris: dict[int, str] = {
-        tid: to_data_uri(data)
-        for tid, data in zip(type_id_list, type_bytes_list, strict=True)
-    }
-
-    pool_dicts: list[VotePoolDict] = []
-    for pool in pools:
-        ranks: list[VoteRankDict] = []
-        for i, info in enumerate(pool["items"], 1):
-            pet = pet_map.get(info.id)
-            if pet is not None:
-                head_img = head_data_uris[str(pet.resource_id)]
-                type_icon = type_data_uris[pet.type_id]
-                name = pet.name
-            else:
-                head_img = ""
-                type_icon = ""
-                name = info.nick
-            ranks.append(
-                {
-                    "rank": i,
-                    "pet_id": info.id,
-                    "name": name,
-                    "score": info.score,
-                    "head_img": head_img,
-                    "type_icon": type_icon,
-                }
-            )
-        pool_dicts.append(
-            {
-                "title": pool["title"],
-                "ranks": ranks,
-            }
+    @property
+    def templates(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {"pools": self.pools, "generated_at": self.generated_at},
         )
 
+
+def peak_pool_vote_cache_key(
+    pools: Sequence[PeakVotePoolInput],
+    generated_at: str,
+) -> str:
+    """Fingerprint every value that changes a rendered peak-vote image."""
+    values = tuple(
+        (
+            pool.title,
+            tuple((item.id, item.name, item.score) for item in pool.items),
+            tuple(
+                (pet.id, pet.name, pet.resource_id, pet.type_id)
+                for pet in pool.pets
+            ),
+        )
+        for pool in pools
+    )
+    return hashlib.sha256(repr((values, generated_at)).encode()).hexdigest()
+
+
+def present_peak_pool_vote(
+    pools: Sequence[PeakVotePoolInput],
+    generated_at: str,
+    assets: PeakRenderAssets,
+) -> PeakPoolVoteRenderDocument:
+    """Prepare a deterministic vote document without I/O or clock access."""
+    pet_map = {
+        pet.id: pet
+        for pool in pools
+        for pet in pool.pets
+    }
+    head_icons = assets.pet_head_by_resource_id
+    type_icons = assets.type_icon_by_id
+    documents = tuple(
+        PeakVotePoolDocument(
+            title=pool.title,
+            ranks=tuple(
+                _present_rank(
+                    rank=index,
+                    item=item,
+                    pet_map=pet_map,
+                    head_icons=head_icons,
+                    type_icons=type_icons,
+                )
+                for index, item in enumerate(pool.items, 1)
+            ),
+        )
+        for pool in pools
+    )
+    return PeakPoolVoteRenderDocument(
+        pools=documents,
+        generated_at=generated_at,
+    )
+
+
+def _present_rank(
+    *,
+    rank: int,
+    item: PeakVoteItemSnapshot,
+    pet_map: Mapping[int, PeakPetSnapshot],
+    head_icons: Mapping[int, str],
+    type_icons: Mapping[int, str],
+) -> PeakVoteRankDocument:
+    pet = pet_map.get(item.id)
+    if pet is None:
+        return PeakVoteRankDocument(
+            rank=rank,
+            pet_id=item.id,
+            name=item.name,
+            score=item.score,
+            head_img="",
+            type_icon="",
+        )
+    return PeakVoteRankDocument(
+        rank=rank,
+        pet_id=item.id,
+        name=pet.name,
+        score=item.score,
+        head_img=head_icons[pet.resource_id],
+        type_icon=type_icons[pet.type_id],
+    )
+
+
+async def render_peak_pool_vote_document(
+    render_html: HtmlTemplateRenderer,
+    document: PeakPoolVoteRenderDocument,
+) -> bytes:
+    """Render one prepared vote document without loading data or assets."""
     return await render_html(
         template_path=[PEAK_POOL_VOTE_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
-        templates={
-            "pools": pool_dicts,
-            "generated_at": time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M"),
-        },
+        templates=document.templates,
         max_width=TABLE_WIDTH + CONTAINER_PADDING + 20,
         allow_refit=False,
     )

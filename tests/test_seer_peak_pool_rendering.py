@@ -7,11 +7,23 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
-from ironsbot.services.seer.peak import PeakPetSnapshot, PeakPoolSnapshot
+from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
+    render_peak_pool_vote,
+)
+from ironsbot.services.seer.peak import (
+    PeakPetSnapshot,
+    PeakPoolSnapshot,
+    PeakVoteItemSnapshot,
+    PeakVotePoolInput,
+)
 from ironsbot.services.seer.rendering.peak_assets import PeakRenderAssets
 from ironsbot.services.seer.rendering.peak_pool import (
     peak_pool_cache_key,
     present_peak_pool,
+)
+from ironsbot.services.seer.rendering.peak_pool_vote import (
+    peak_pool_vote_cache_key,
+    present_peak_pool_vote,
 )
 
 if TYPE_CHECKING:
@@ -157,3 +169,69 @@ async def test_peak_pool_adapter_deduplicates_assets_and_writes_final_cache() ->
 
 async def _unexpected_render(**_kwargs: object) -> bytes:
     raise AssertionError
+
+
+def _vote_pools() -> tuple[PeakVotePoolInput, ...]:
+    return (
+        PeakVotePoolInput(
+            title="限2池票选",
+            items=(
+                PeakVoteItemSnapshot(id=100, name="旧名", score=123),
+                PeakVoteItemSnapshot(id=999, name="未收录", score=100),
+            ),
+            pets=(_pet(100, "雷伊", 70, 1),),
+        ),
+    )
+
+
+def test_peak_vote_presentation_uses_snapshot_and_fallback_name() -> None:
+    document = present_peak_pool_vote(
+        _vote_pools(),
+        "2026-08-05 12:00",
+        PeakRenderAssets(pet_heads=((70, "rei"),), type_icons=((1, "electric"),)),
+    )
+
+    assert document.pools[0].ranks[0].name == "雷伊"
+    assert document.pools[0].ranks[0].head_img == "rei"
+    assert document.pools[0].ranks[1].name == "未收录"
+    assert document.pools[0].ranks[1].type_icon == ""
+
+
+def test_peak_vote_cache_key_changes_with_rendered_time() -> None:
+    pools = _vote_pools()
+
+    assert peak_pool_vote_cache_key(
+        pools,
+        "2026-08-05 12:00",
+    ) != peak_pool_vote_cache_key(pools, "2026-08-05 12:01")
+
+
+@pytest.mark.asyncio
+async def test_peak_vote_adapter_deduplicates_assets_and_writes_final_cache() -> None:
+    cache = _Cache()
+    images = _Images()
+    captured: dict[str, Any] = {}
+
+    async def render_html(**kwargs: Any) -> bytes:
+        captured.update(kwargs)
+        return b"rendered-vote"
+
+    generated_at = "2026-08-05 12:00"
+    result = await render_peak_pool_vote(
+        cast("RenderCache", cache),
+        cast("SeerImageSource", images),
+        cast("HtmlTemplateRenderer", render_html),
+        _vote_pools(),
+        generated_at,
+    )
+
+    assert result == b"rendered-vote"
+    assert images.requests == [("pet_head", "70"), ("element_type", "1")]
+    assert captured["templates"]["generated_at"] == generated_at
+    assert cache.writes == [
+        (
+            "peak_pool_vote",
+            peak_pool_vote_cache_key(_vote_pools(), generated_at),
+            b"rendered-vote",
+        )
+    ]
