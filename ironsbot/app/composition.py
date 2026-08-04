@@ -36,6 +36,7 @@ from ironsbot.integrations.http.bilibili import (
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
+from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.outbound import (
@@ -312,7 +313,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions,
     )
     push_message_limiter = partial(append_fire_manual_ad_for_target, features)
-    admin_notices = AdminNoticeService(features, delivery)
+    admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
     install_outbound_rate_limit_hooks(outbound)
 
     activity = _build_activity_service(

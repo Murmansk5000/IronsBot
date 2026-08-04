@@ -18,6 +18,7 @@ from ironsbot.core.features import (
     FeatureService,
 )
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -91,7 +92,10 @@ def build_test_runtime(  # noqa: PLR0913
     return TestRuntime(
         features=features,
         delivery=delivery,
-        admin_notices=AdminNoticeService(features, delivery),
+        admin_notices=AdminNoticeService(
+            features,
+            OneBotAdminNoticeSender(delivery),
+        ),
         cooldown=CommandCooldownService(
             cooldown_config or CommandCooldownConfig(),
             features,

@@ -5,7 +5,7 @@ import asyncio
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Bot, Message
+from nonebot.adapters.onebot.v11 import Bot  # noqa: TC002
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
@@ -17,7 +17,7 @@ from ironsbot.runtime.plugins import (
 
 if TYPE_CHECKING:
     from ironsbot.config.models.operations import StartupConfig
-    from ironsbot.core.messaging import TargetSendSummary
+    from ironsbot.services.messaging.admin_notice import AdminNoticeSendSummary
     from ironsbot.services.operations.startup import StartupNoticeService
 
 __plugin_meta__ = PluginMetadata(
@@ -36,9 +36,9 @@ async def _send_notice_part(
     message_text: str,
     subscription_key: str,
     action_name: str,
-) -> TargetSendSummary:
+) -> AdminNoticeSendSummary:
     return await service.admin_notices.send(
-        Message(message_text),
+        message_text,
         action_name=action_name,
         interval_seconds=1.2,
         subscription_key=subscription_key,
@@ -64,7 +64,7 @@ async def send_startup_notice(
         if config.delay > 0:
             await asyncio.sleep(config.delay)
 
-        summaries: list[TargetSendSummary] = []
+        summaries: list[AdminNoticeSendSummary] = []
         summaries.append(
             await _send_notice_part(
                 message_text=config.message,

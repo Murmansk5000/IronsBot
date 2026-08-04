@@ -1,19 +1,14 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
 
-from ironsbot.core.messaging import TargetSendSummary
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.plugins.bilibili import auth
 from ironsbot.services.bilibili.auth import LoginQrMessageParts
 from ironsbot.services.bilibili.login import BiliLoginNotice
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from tests.helpers.runtime import build_test_runtime
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Message
 
 
 @pytest.mark.asyncio
@@ -24,36 +19,44 @@ async def test_bili_login_notice_uses_admin_notice(
 
     async def fake_send_admin_notice(
         _service: AdminNoticeService,
-        message: str | Message,
+        message: OutboundMessage,
         **kwargs: object,
-    ) -> TargetSendSummary:
-        sent.update(message=str(message), **kwargs)
-        return TargetSendSummary([], [])
+    ) -> object:
+        sent.update(message=message, **kwargs)
+        return object()
 
-    monkeypatch.setattr(AdminNoticeService, "send", fake_send_admin_notice)
+    monkeypatch.setattr(
+        AdminNoticeService,
+        "send_message",
+        fake_send_admin_notice,
+    )
 
     await auth.send_bili_login_notice(
         build_test_runtime().admin_notices,
         BiliLoginNotice("请重新登录 B站。"),
     )
 
-    assert sent["message"] == "请重新登录 B站。"
+    assert sent["message"] == OutboundMessage((TextPart("请重新登录 B站。"),))
     assert sent["action_name"] == "Bilibili login notice"
     assert sent["subscription_key"] == "bili_login_notice"
 
 
-def test_bili_login_qrcode_notice_renders_onebot_message() -> None:
-    message = auth.build_bili_login_message(
+def test_bili_login_qrcode_notice_builds_platform_neutral_message() -> None:
+    message = auth.build_bili_login_outbound_message(
         BiliLoginNotice(
             "请重新登录 B站。\n",
             LoginQrMessageParts(
                 tip_text="请扫码",
-                image_base64="encoded",
+                image_base64="cG5n",
             ),
         )
     )
 
-    rendered = str(message)
-    assert rendered.startswith("请重新登录 B站。")
-    assert "base64://encoded" in rendered
-    assert rendered.endswith("请扫码")
+    assert message == OutboundMessage(
+        (
+            TextPart("请重新登录 B站。\n"),
+            BinaryImagePart(b"png", "image/png"),
+            TextPart("\n"),
+            TextPart("请扫码"),
+        )
+    )

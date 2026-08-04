@@ -183,7 +183,9 @@ Platform = Literal["onebot", "qq_official"]
 @dataclass(frozen=True, slots=True)
 class ActorRef:
     platform: Platform
-    user_id: str
+    id: str
+    kind: Literal["user", "member"] = "user"
+    scope_id: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class ConversationRef:
@@ -218,6 +220,16 @@ The OneBot plugin converts notice events at the edge, while
 `integrations.onebot.team_audit` owns configured feature policy, bot routing,
 and group-member probes. Future transport migrations should follow this shape
 rather than passing numeric IDs or adapter bot instances into a service.
+
+`services.messaging.admin_notice.AdminNoticeService` is the reference use case
+for platform-neutral operational delivery. It selects `ActorRef` and
+`ConversationRef` recipients through feature policy and sends an
+`OutboundMessage` through an explicit `AdminNoticeSender` port. The OneBot
+adapter may delegate to the legacy `OneBotDelivery` chain while that chain is
+being retired, because the adapter is the only place that knows numeric QQ
+targets, routing, subscriptions, queueing, and rate limits. A new notification
+service must use this shape or a narrower domain port; it must not import
+`MessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
 
 The eventual composition is:
 
@@ -915,9 +927,11 @@ reference for users:
   policy. Prompts and selection menus keep their own anchored session state.
 - **Permissions and identity:** the current feature policy resolves configured
   group and user aliases, group/private feature access, group-manager roles,
-  and superuser bypass. OneBot user and group identifiers are still integers
-  at this boundary. Seer player IDs already use a shared resolver for numeric
-  IDs, aliases, one direct mention, and the caller's default binding.
+  and superuser bypass. The OneBot configuration boundary still owns numeric
+  QQ values, but policy and new services expose `ActorRef` and
+  `ConversationRef`; a second platform must not consume the numeric values.
+  Seer player IDs already use a shared resolver for numeric IDs, aliases, one
+  direct mention, and the caller's default binding.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.
