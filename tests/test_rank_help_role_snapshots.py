@@ -4,7 +4,10 @@ from typing import TYPE_CHECKING
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature, FeatureConfig, FeatureService
-from ironsbot.plugins.help.menu import entry_from_definition, format_plugin_detail
+from ironsbot.plugins.onebot.help.menu import (
+    entry_from_definition,
+    format_plugin_detail,
+)
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.onebot_context import command_context
 from tests.helpers.onebot_events import group_message_event, private_message_event

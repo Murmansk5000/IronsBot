@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
+
+from ironsbot.core.features import Feature
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
+    from nonebot.plugin import PluginMetadata
 
-    from ironsbot.core.features import Feature
     from ironsbot.runtime.commands import CommandDescriptor
     from ironsbot.runtime.matchers import MatcherRegistry
 
@@ -42,10 +46,183 @@ class PluginHooks:
 
 
 @dataclass(frozen=True, slots=True)
-class PluginDefinition:
+class PluginContribution:
+    """One plugin's explicit runtime contributions during installation.
+
+    This is deliberately not plugin discovery metadata. Standard NoneBot TOML
+    remains responsible for discovering top-level plugins; the scoped install
+    context collects these contributions after their modules are loaded.
+    """
+
     id: str
     features: frozenset[Feature] = frozenset()
     help: HelpEntry | None = None
     commands: tuple[CommandDescriptor, ...] = ()
     install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
+
+
+@dataclass(frozen=True, slots=True)
+class LoadedPluginContribution:
+    """A contribution paired with its NoneBot top-level plugin metadata."""
+
+    metadata: PluginMetadata
+    contribution: PluginContribution
+
+
+class PluginInstallContextError(RuntimeError):
+    """Raised when a plugin tries to access scoped install dependencies late."""
+
+    @classmethod
+    def unavailable(cls) -> PluginInstallContextError:
+        return cls(
+            "plugin install context is only available while NoneBot loads plugins"
+        )
+
+
+class PluginContributionError(ValueError):
+    """Raised when declarative plugin contributions cannot be composed."""
+
+    @classmethod
+    def duplicate_ids(cls, plugin_ids: tuple[str, ...]) -> PluginContributionError:
+        return cls("duplicate plugin contribution ids: " + ", ".join(plugin_ids))
+
+    @classmethod
+    def missing_feature_owners(
+        cls,
+        features: tuple[Feature, ...],
+    ) -> PluginContributionError:
+        return cls(
+            "features have no owning plugin contribution: "
+            + ", ".join(feature.value for feature in features)
+        )
+
+
+class PluginContributionCatalogError(RuntimeError):
+    @classmethod
+    def already_loaded(cls) -> PluginContributionCatalogError:
+        return cls("plugin contribution catalog is already loaded")
+
+
+OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
+
+
+class PluginContributionCatalog:
+    """Read-only view of the contributions frozen by application configuration."""
+
+    def __init__(self) -> None:
+        self._contributions: tuple[PluginContribution, ...] = ()
+        self._loaded = False
+
+    def load(self, contributions: tuple[PluginContribution, ...]) -> None:
+        if self._loaded:
+            raise PluginContributionCatalogError.already_loaded()
+        self._contributions = contributions
+        self._loaded = True
+
+    @property
+    def contributions(self) -> tuple[PluginContribution, ...]:
+        return self._contributions
+
+
+_INSTALL_CONTEXT: ContextVar[PluginInstallContext | None] = ContextVar(
+    "ironsbot_plugin_install_context",
+    default=None,
+)
+
+
+@dataclass(slots=True)
+class PluginInstallContext:
+    """Explicit dependencies available only while NoneBot loads local plugins.
+
+    The context exists to bridge declarative NoneBot module loading and the
+    already-built application resources. It is reset immediately after module
+    loading, so it cannot become a runtime service locator.
+    """
+
+    settings: Any
+    resources: Any
+    scheduler: Any
+    _loaded: list[LoadedPluginContribution]
+
+    def contribute(
+        self,
+        metadata: PluginMetadata,
+        *contributions: PluginContribution,
+    ) -> None:
+        self._loaded.extend(
+            LoadedPluginContribution(metadata=metadata, contribution=contribution)
+            for contribution in contributions
+        )
+
+    @property
+    def contributions(self) -> tuple[PluginContribution, ...]:
+        return tuple(item.contribution for item in self._loaded)
+
+    @property
+    def loaded_contributions(self) -> tuple[LoadedPluginContribution, ...]:
+        return tuple(self._loaded)
+
+
+@contextmanager
+def scoped_plugin_install_context(
+    *,
+    settings: Any,
+    resources: Any,
+    scheduler: Any,
+) -> Iterator[PluginInstallContext]:
+    """Expose composition dependencies while `nonebot.load_from_toml()` runs."""
+
+    context = PluginInstallContext(
+        settings=settings,
+        resources=resources,
+        scheduler=scheduler,
+        _loaded=[],
+    )
+    token = _INSTALL_CONTEXT.set(context)
+    try:
+        yield context
+    finally:
+        _INSTALL_CONTEXT.reset(token)
+
+
+def current_plugin_install_context() -> PluginInstallContext:
+    """Return the active install context or fail outside the loading window."""
+
+    context = _INSTALL_CONTEXT.get()
+    if context is None:
+        raise PluginInstallContextError.unavailable()
+    return context
+
+
+def active_plugin_install_context() -> PluginInstallContext | None:
+    """Return the scoped install context when a top-level plugin is loading."""
+
+    return _INSTALL_CONTEXT.get()
+
+
+def validate_plugin_contributions(
+    contributions: tuple[PluginContribution, ...],
+    *,
+    required_features: frozenset[Feature] | None = None,
+) -> tuple[PluginContribution, ...]:
+    """Validate the minimal invariants shared by every plugin-loading path."""
+
+    ids = tuple(contribution.id for contribution in contributions)
+    duplicate_ids = tuple(sorted({item for item in ids if ids.count(item) > 1}))
+    if duplicate_ids:
+        raise PluginContributionError.duplicate_ids(duplicate_ids)
+    if required_features is None:
+        return contributions
+    owned_features = {
+        feature for contribution in contributions for feature in contribution.features
+    }
+    missing_features = tuple(
+        sorted(
+            required_features - owned_features - OPTIONAL_PRIVATE_FEATURES,
+            key=lambda feature: feature.value,
+        )
+    )
+    if missing_features:
+        raise PluginContributionError.missing_feature_owners(missing_features)
+    return contributions

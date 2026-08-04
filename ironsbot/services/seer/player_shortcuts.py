@@ -45,6 +45,7 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
     from ironsbot.services.seer.player_service import PlayerService
@@ -173,7 +174,7 @@ def player_request_admission_message(label: str, *, queued: bool) -> str:
 async def execute_player_shortcut(
     service: PlayerService,
     command: PlayerShortcutCommand,
-    qq_user_id: int,
+    actor: ActorRef,
     *,
     group_id: int | None,
     send_status: PlayerShortcutStatusSender | None = None,
@@ -192,7 +193,7 @@ async def execute_player_shortcut(
     ):
         return await service.shortcut(
             command,
-            qq_user_id,
+            actor,
             group_id=group_id,
         )
 

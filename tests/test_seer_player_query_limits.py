@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.time import TZ_CN
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.player_query_limits import (
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 USER_ID = 10001
+ACTOR = ActorRef(Platform.ONEBOT, str(USER_ID))
 DEFAULT_PLAYER_ID = 123456
 OTHER_PLAYER_ID = 654321
 NOW = datetime(2026, 7, 21, 12, tzinfo=TZ_CN)
@@ -34,8 +36,8 @@ class _Features:
     def __init__(self, *, superuser: bool = False) -> None:
         self._superuser = superuser
 
-    def is_superuser(self, user_id: int) -> bool:
-        _ = user_id
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        _ = actor
         return self._superuser
 
 
@@ -70,25 +72,25 @@ def test_unbound_daily_quota_is_recorded_only_when_consumed(tmp_path: Path) -> N
     quota = _quota(tmp_path, bindings, bound_default_daily_limit=10)
 
     initial = quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     )
     assert initial.allowed
     assert initial.message == ""
     assert quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
 
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
     denied = quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID,
         action_key="peak",
     )
@@ -110,18 +112,18 @@ def test_unbound_quota_omits_upgrade_hint_when_binding_does_not_increase_limit(
         bound_default_daily_limit=2,
     )
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="peak",
     ).allowed
 
     denied = quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID,
         action_key="collection",
     )
@@ -133,7 +135,7 @@ def test_unbound_quota_omits_upgrade_hint_when_binding_does_not_increase_limit(
 def test_bound_default_budget_is_shared_by_player_actions(tmp_path: Path) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     bindings.bind(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         player_nick="tester",
         changed_at=NOW,
@@ -141,17 +143,17 @@ def test_bound_default_budget_is_shared_by_player_actions(tmp_path: Path) -> Non
     quota = _quota(tmp_path, bindings)
 
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="peak",
     ).allowed
     assert not quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="collection",
     ).allowed
@@ -160,7 +162,7 @@ def test_bound_default_budget_is_shared_by_player_actions(tmp_path: Path) -> Non
 def test_other_player_budget_is_separate_by_player_and_action(tmp_path: Path) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     bindings.bind(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         player_nick="tester",
         changed_at=NOW,
@@ -168,22 +170,22 @@ def test_other_player_budget_is_separate_by_player_and_action(tmp_path: Path) ->
     quota = _quota(tmp_path, bindings)
 
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID,
         action_key="peak",
     ).allowed
     assert not quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID,
         action_key="peak",
     ).allowed
     assert quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID,
         action_key="collection",
     ).allowed
     assert quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID + 1,
         action_key="peak",
     ).allowed
@@ -200,7 +202,7 @@ def test_superuser_bypasses_persistent_budget(tmp_path: Path) -> None:
     )
 
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
@@ -218,19 +220,19 @@ def test_next_beijing_day_has_a_new_budget(tmp_path: Path) -> None:
     )
 
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
     assert not quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="peak",
     ).allowed
 
     current += timedelta(days=1)
     assert quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="peak",
     ).allowed
@@ -263,12 +265,12 @@ def test_player_query_consumes_quota_only_after_its_reply_is_returned(
         service._query = fail  # type: ignore[method-assign]
         failed = await service.query(
             DEFAULT_PLAYER_ID,
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             explicit=True,
         )
         assert failed.message == "failed"
         assert quota.check(
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             player_id=DEFAULT_PLAYER_ID,
             action_key="player",
         ).allowed
@@ -287,24 +289,24 @@ def test_player_query_consumes_quota_only_after_its_reply_is_returned(
         service._query = succeed  # type: ignore[method-assign]
         success = await service.query(
             DEFAULT_PLAYER_ID,
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             explicit=True,
         )
         assert success.pending is not None
         assert quota.check(
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             player_id=DEFAULT_PLAYER_ID,
             action_key="player",
         ).allowed
 
-        service.record_returned_query(USER_ID, success.pending)
+        service.record_returned_query(ACTOR, success.pending)
         assert not quota.check(
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             player_id=DEFAULT_PLAYER_ID,
             action_key="player",
         ).allowed
 
-        service.record_returned_query(USER_ID, success.pending)
+        service.record_returned_query(ACTOR, success.pending)
 
     asyncio.run(run())
 
@@ -353,24 +355,24 @@ def test_player_query_prefers_live_until_quota_then_uses_cache(
         service._query = succeed  # type: ignore[method-assign]
         first = await service.query(
             DEFAULT_PLAYER_ID,
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             explicit=True,
         )
         assert first.pending is not None
-        service.record_returned_query(USER_ID, first.pending)
+        service.record_returned_query(ACTOR, first.pending)
 
         second = await service.query(
             DEFAULT_PLAYER_ID,
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             explicit=True,
         )
         assert second.pending is not None
         assert second.pending.player_message == "live-2"
-        service.record_returned_query(USER_ID, second.pending)
+        service.record_returned_query(ACTOR, second.pending)
 
         cached = await service.query(
             DEFAULT_PLAYER_ID,
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             explicit=True,
         )
         assert cached.pending is not None
@@ -437,14 +439,14 @@ def test_player_detail_uses_valid_cache_without_quota_or_live_request(
             kind="collection",
             player_id=DEFAULT_PLAYER_ID,
         )
-        assert (await service.shortcut(command, USER_ID)).text == "old-cache"
-        assert (await service.shortcut(command, USER_ID)).text == "old-cache"
-        assert (await service.shortcut(command, USER_ID)).text == "old-cache"
+        assert (await service.shortcut(command, ACTOR)).text == "old-cache"
+        assert (await service.shortcut(command, ACTOR)).text == "old-cache"
+        assert (await service.shortcut(command, ACTOR)).text == "old-cache"
 
     asyncio.run(run())
     assert live_calls == 0
     assert quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="collection",
     ).allowed
@@ -456,7 +458,7 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     quota = _quota(tmp_path, bindings, unbound_daily_limit=1)
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
     ).allowed
@@ -523,7 +525,7 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
     asyncio.run(run())
     assert live_calls == 0
     assert not quota.check(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=DEFAULT_PLAYER_ID,
         action_key="collection",
     ).allowed
@@ -535,7 +537,7 @@ def test_initial_binding_choice_uses_the_default_player_quota(
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     quota = _quota(tmp_path, bindings)
     assert quota.consume(
-        qq_user_id=USER_ID,
+        actor=ACTOR,
         player_id=OTHER_PLAYER_ID,
         action_key="player",
     ).allowed
@@ -562,23 +564,23 @@ def test_initial_binding_choice_uses_the_default_player_quota(
             player_message="ok",
             section_plan=cast("Any", object()),
         )
-        service.save_binding_choice(USER_ID, pending, accepted=True)
+        service.save_binding_choice(ACTOR, pending, accepted=True)
 
-        assert bindings.get(USER_ID).player_id == DEFAULT_PLAYER_ID
+        assert bindings.get(ACTOR).player_id == DEFAULT_PLAYER_ID
         assert quota.check(
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             player_id=DEFAULT_PLAYER_ID,
             action_key="player",
         ).allowed
 
-        service.record_returned_query(USER_ID, pending)
+        service.record_returned_query(ACTOR, pending)
         assert quota.consume(
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             player_id=DEFAULT_PLAYER_ID,
             action_key="peak",
         ).allowed
         assert not quota.check(
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             player_id=DEFAULT_PLAYER_ID,
             action_key="collection",
         ).allowed
@@ -601,7 +603,7 @@ def test_player_query_rechecks_budget_when_it_leaves_the_queue(
     class _Queue:
         async def run(self, operation: Any, **_kwargs: Any) -> PlayerQueryResult:
             quota.consume(
-                qq_user_id=USER_ID,
+                actor=ACTOR,
                 player_id=DEFAULT_PLAYER_ID,
                 action_key="player",
             )
@@ -635,7 +637,7 @@ def test_player_query_rechecks_budget_when_it_leaves_the_queue(
         service._query = succeed  # type: ignore[method-assign]
         result = await service.query(
             DEFAULT_PLAYER_ID,
-            qq_user_id=USER_ID,
+            actor=ACTOR,
             explicit=True,
         )
 

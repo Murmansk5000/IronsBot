@@ -6,7 +6,7 @@
 
 IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
-当前主线已经转为显式插件架构：通用功能位于 `ironsbot/plugins`，部署者自行维护的扩展按独立清单加载；二者都由统一注册表安装。原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
+OneBot 事件入口位于 `ironsbot/plugins/onebot`，查询与渲染等业务由应用服务统一组合。扩展按当前扩展清单加载，不再从 `ironsbot/custom_plugins` 扫描。
 
 ## 功能
 
@@ -131,7 +131,7 @@ services:
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
 `python -m ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动。私有扩展从配置的数据目录读取
 `manifest.json`，调用清单指定的工厂并传入 `PrivateExtensionRuntime`；
-`ironsbot/app/registry.py` 将工厂返回的 `PluginDefinition` 纳入统一安装流程。
+OneBot bootstrap 通过当前安装上下文收集其返回的 `PluginContribution`，由应用安装。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
@@ -364,6 +364,13 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `fire_manual_ad` | 主动推送末尾追加火火手册链接。 |
 | `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
+
+### 平台身份状态升级
+
+此阶段开始以 `ActorRef` / `ConversationRef` 的平台、类别和作用域字段保存状态。
+已有旧状态库应停机并完整备份，再按 [平台状态迁移](docs/platform-state-migration.md)
+执行原工具 dry-run，确认后才 `--apply`；验证成功后再启动新读取方。
+该迁移不会把 OneBot QQ 身份隐式转换为官方 OpenID，普通启动也不会自动迁移。
 
 ## 数据与缓存
 
