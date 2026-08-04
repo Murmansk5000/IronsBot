@@ -14,6 +14,9 @@ from ironsbot.plugins.about import plugin_contribution as about_plugin_contribut
 from ironsbot.plugins.activity import (
     plugin_contribution as activity_plugin_contribution,
 )
+from ironsbot.plugins.bilibili import (
+    plugin_contribution as bilibili_plugin_contribution,
+)
 from ironsbot.plugins.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
@@ -278,6 +281,18 @@ def build_test_plugin_registry(
         *build_plugin_registry(
             settings=config,
             resources=resources,
+            scheduler=SchedulerFacade(),
+        ),
+        bilibili_plugin_contribution(
+            service=resources.bilibili,
+            login=resources.bilibili_login,
+            features=runtime.features,
+            config=config.bilibili,
+            delivery=resources.delivery,
+            subscriptions=resources.subscriptions,
+            admin_notices=resources.admin_notices,
+            message_limiter=resources.push_message_limiter,
+            ai_service=resources.ai,
             scheduler=SchedulerFacade(),
         ),
         server_status_plugin_contribution(

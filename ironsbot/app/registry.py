@@ -9,10 +9,7 @@ from ironsbot.app.command_directory.dynamic import (
     configured_message_commands,
     messaging_help_visible,
 )
-from ironsbot.app.command_directory.plugins import (
-    ai_chat_commands,
-    bilibili_commands,
-)
+from ironsbot.app.command_directory.plugins import ai_chat_commands
 from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.app.plugin_visibility import feature_help_visible
@@ -22,9 +19,6 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     PluginHooks,
 )
-from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
-from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
@@ -47,12 +41,6 @@ def build_plugin_registry(
     )
     from ironsbot.plugins.ai import install as install_ai
     from ironsbot.plugins.ai.intent import install as install_ai_intent
-    from ironsbot.plugins.bilibili.auth import send_bili_login_notice
-    from ironsbot.plugins.bilibili.commands import install as install_bilibili
-    from ironsbot.plugins.bilibili.delivery import (
-        build_dynamic_content_message,
-        build_dynamic_link_message,
-    )
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
@@ -61,12 +49,9 @@ def build_plugin_registry(
 
     config = settings
     features = resources.features
-    delivery = resources.delivery
     admin_notices = resources.admin_notices
     activity_service = resources.activity
     headless = resources.headless
-    bilibili_service = resources.bilibili
-    bilibili_login = resources.bilibili_login
     messaging = resources.messaging
     team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
@@ -76,30 +61,6 @@ def build_plugin_registry(
     ai_service = resources.ai
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
-    )
-    bili_notice_sender = partial(send_bili_login_notice, admin_notices)
-    bili_auth_invalid = partial(
-        bilibili_login.notify_required,
-        send_notice=bili_notice_sender,
-        is_online=lambda: delivery.default_bot() is not None,
-    )
-    bili_push_delivery = BilibiliPushDeliveryService(
-        delivery,
-        resources.subscriptions,
-        build_dynamic_link_message,
-        build_dynamic_content_message,
-        append_text_hint,
-        resources.push_message_limiter,
-        getattr(ai_service, "summarize_bilibili_dynamic", None),
-        config.bilibili.push.content_max_chars,
-        config.bilibili.push.summary_max_chars,
-        config.bilibili.push.summary_use_ai,
-        bilibili_service.targets.can_target_query_history,
-    )
-    bili_monitor = BilibiliMonitorService(
-        bilibili_service,
-        bili_auth_invalid,
-        bili_push_delivery.send,
     )
     messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
@@ -127,9 +88,6 @@ def build_plugin_registry(
         scheduler=scheduler,
         activity_service=activity_service,
     )
-
-    async def check_bilibili_on_connect(bot: Bot) -> None:
-        await bili_monitor.check_on_connect(str(bot.self_id))
 
     def install_seer_query(registry: MatcherRegistry) -> None:
         from ironsbot.plugins.seer.query.commands.install import install
@@ -204,38 +162,6 @@ def build_plugin_registry(
                     (
                         "messaging",
                         partial(messaging.start, scheduler),
-                    ),
-                ),
-            ),
-        ),
-        PluginContribution(
-            id="bilibili",
-            features=frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH}),
-            help=HelpEntry(
-                name="B站动态",
-                description="查询、刷新和自动推送已订阅 UID 的 Bilibili 动态",
-                group="message",
-                order=20,
-            ),
-            commands=bilibili_commands(),
-            install=partial(
-                install_bilibili,
-                service=bilibili_service,
-                features=features,
-                monitor=bili_monitor,
-                targets=bilibili_service.targets,
-            ),
-            hooks=PluginHooks(
-                startup=(
-                    (
-                        "bilibili_monitor_jobs",
-                        partial(bili_monitor.register_job, scheduler),
-                    ),
-                ),
-                first_bot_connect=(
-                    (
-                        "bilibili_check",
-                        check_bilibili_on_connect,
                     ),
                 ),
             ),

@@ -141,6 +141,20 @@ def test_manifest_data_sync_owns_its_commands_and_schedule() -> None:
     assert [name for name, _hook in contribution.hooks.startup] == ["db_sync"]
 
 
+def test_manifest_bilibili_owns_its_commands_and_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["bilibili"]
+
+    assert contribution.features == frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH})
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"bilibili"}
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "bilibili_monitor_jobs"
+    ]
+    assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
+        "bilibili_check"
+    ]
+
+
 def test_manifest_server_status_owns_its_commands_and_feature() -> None:
     contribution = DEFINITIONS_BY_ID["server_status"]
 
@@ -234,7 +248,8 @@ def test_manifest_contributions_follow_the_legacy_bridge() -> None:
     plugin_ids = tuple(definition.id for definition in DEFINITIONS)
 
     assert plugin_ids[:4] == ("apscheduler", "localstore", "htmlkit", "saa")
-    assert plugin_ids.index("seer_query") < plugin_ids.index("server_status")
+    assert plugin_ids.index("seer_query") < plugin_ids.index("bilibili")
+    assert plugin_ids.index("bilibili") < plugin_ids.index("server_status")
     assert plugin_ids.index("server_status") < plugin_ids.index("docker_update")
     assert plugin_ids.index("docker_update") < plugin_ids.index("db_sync")
 
@@ -249,9 +264,9 @@ def test_contributions_define_the_lifecycle_order() -> None:
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "scheduler",
         "messaging",
-        "bilibili_monitor_jobs",
         "local_rank_jobs",
         "rank_page_jobs",
+        "bilibili_monitor_jobs",
         "docker_update",
         "db_sync",
         "lucky_skin_window_schedule",
@@ -266,8 +281,8 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "headless_seer",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
-        "bilibili_check",
         "render_crash_report",
+        "bilibili_check",
         "startup_notice",
         "headless_seer_check",
     ]
@@ -307,6 +322,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
+                    ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
                     ROOT
                     / "ironsbot"

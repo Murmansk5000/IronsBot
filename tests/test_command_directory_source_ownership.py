@@ -1,8 +1,6 @@
-from ironsbot.app.command_directory.plugins import (
-    bilibili_commands,
-)
 from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.plugins.activity import command_descriptors as activity_commands
+from ironsbot.plugins.bilibili import command_descriptors as bilibili_commands
 from ironsbot.plugins.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
