@@ -346,6 +346,7 @@ def build_test_plugin_registry(
             settings=config,
             service=resources.ai,
             features=runtime.features,
+            commands=resources.commands,
         ),
         ai_intent_plugin_contribution(
             settings=config,
