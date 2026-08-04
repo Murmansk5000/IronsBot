@@ -39,7 +39,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.team import resource
+from ironsbot.plugins.onebot import team_resource as resource
 
 TEAM_ID = 1234567
 TEAM_THRESHOLD = 2000

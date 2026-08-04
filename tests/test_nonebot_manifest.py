@@ -52,7 +52,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.custom_plugins.pet_config",
             "ironsbot.plugins.seer.lucky_skin_window",
             "ironsbot.plugins.team_audit",
-            "ironsbot.plugins.team.resource",
+            "ironsbot.plugins.onebot.team_resource",
             "ironsbot.plugins.activity",
             "ironsbot.plugins.startup_notice",
             "ironsbot.plugins.headless_seer_notice",

@@ -422,7 +422,7 @@ The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.custom_plugins.pet_config`,
 `ironsbot.plugins.seer.query`,
 `ironsbot.plugins.seer.lucky_skin_window`, `ironsbot.plugins.team_audit`,
-`ironsbot.plugins.team.resource`, and the
+`ironsbot.plugins.onebot.team_resource`, and the
 `ironsbot.plugins.startup_notice`, `ironsbot.plugins.headless_seer_notice`,
 `ironsbot.plugins.headless_seer_runtime`, and the messaging `blacklist`,
 `meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
@@ -432,7 +432,7 @@ the standard manifest directly discovers the required third-party runtime
 plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
 `fire_manual_ad` owns its passive feature policy contribution; `sendpic`,
-`meeting`, `rank_help`, and `team.resource` also own the command descriptors
+`meeting`, `rank_help`, and `onebot.team_resource` also own the command descriptors
 for the matchers they install.
 Every subsequent private-extension migration follows that pattern and removes
 its bootstrap adapter responsibility in the same change.
