@@ -77,6 +77,7 @@ seer_team = 11
 seer_rank = 12
 seer_rank_help = 13
 seer_autocard = 14
+lucky_skin_window = 15
 seer_type = 20
 seer_equipment = 21
 seer_peak = 22
@@ -123,15 +124,15 @@ log_file = "logs/ironsbot.log"
 error_log_file = "logs/ironsbot.error.log"
 # Default: "cache"
 # EN: Root directory for disposable caches. It may be deleted safely.
-# ZH: 可安全整体删除的临时缓存根目录；幸运橱窗当天缓存位于 cache/runtime/。
+# ZH: 可安全整体删除的临时缓存根目录。
 cache_root = "cache"
 # Default: "data/state/qq_state.sqlite"
 # EN: Consolidated low-volume QQ user and group state.
 # ZH: QQ 用户与群聊低频状态统一数据库；保存绑定、额度、退订、偏好和订阅。
 qq_state = "data/state/qq_state.sqlite"
 # Default: "data/state/runtime_state.sqlite"
-# EN: Consolidated operational checkpoint state.
-# ZH: 运行任务状态统一数据库；保存活动提醒、审核提醒等检查点。
+# EN: Consolidated operational checkpoint and daily-result state.
+# ZH: 运行任务状态统一数据库；保存活动提醒、审核提醒和幸运橱窗当天结果。
 runtime_state = "data/state/runtime_state.sqlite"
 # Existing deployments must migrate the old small state databases while the
 # bot is stopped. See README "状态库迁移"; do not move files by hand.
@@ -553,6 +554,22 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 # feature = "seerinfo_link"
 
 # Default: []
+# EN: Keyword replies use literal contains matching. They only reply when the
+# message contains a configured keyword; exact command actions above still win.
+# ZH: 关键词回复使用普通“包含”匹配；消息中出现关键词即可回复，且完整口令优先。
+# Like command actions, the feature key must be enabled for the current group
+# or private user. Keywords are not regular commands and are shown as automatic
+# replies in help.
+# 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
+# 帮助中会显示为自动回复。
+#
+# [[messaging.keyword_replies]]
+# id = "chuchu_reply"
+# keywords = ["出出"]
+# message = "出出是蛆"
+# feature = "chuchu_reply"
+
+# Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
 # feature is enabled; `at_user_ids` accepts user aliases or QQ IDs and only
 # applies to group delivery.
@@ -564,7 +581,7 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 # resets TD and push-time preferences for that schedule.
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, message, hour, minute,
+# Example task fields: id, name, enabled, feature, message, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
@@ -779,8 +796,9 @@ mention_initial_max_responses = 3
 # ZH: 赛尔账号库。密码统一放在容器环境变量 SEER_PASSWORD_<player_id>；填写明文即可，
 # IronsBot 会在内存中转换为旧登录接口所需的 MD5。public=true 时，name 和 aliases 可在
 # 任意会话中用于查询；public=false 时，仅 [seer.player_account_aliases] 声明的群可用这些
-# 别名，其他位置仍可直接填写数字米米号。绑定米米号必须直接填写数字。query_worker=true 的账号
-# 自动加入公共无头查询池。
+# 别名。所有以米米号为目标的入口统一支持这些名称/别名，包括玩家基础资料、收集、巅峰、
+# 群星牌、阵容类扩展和全服榜玩家查询；其他位置仍可直接填写数字米米号。绑定米米号必须
+# 直接填写数字。账号用途由各功能自己的账号引用列表决定。
 #
 # [[seer.player_accounts]]
 # player_id = 123456789
@@ -868,8 +886,6 @@ enabled = false
 # ZH: 后台预热结果在内存中的保留秒数。
 cache_ttl_seconds = 300.0
 
-# EN: watched_skin_ids seeds each user preference only once; commands may change it. Watching marks, never filters, the four offers.
-# ZH: watched_skin_ids 仅首次初始化；关注管理可修改、清空或重置，不过滤四个结果。
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。手动查询当天无缓存时会先确认登录。
@@ -879,8 +895,8 @@ cache_ttl_seconds = 300.0
 # restarts. Different lucky-window accounts run one at a time to avoid
 # concurrent dedicated logins.
 # ZH: 每个账号使用固定规则的环境变量建立隔离的短时会话，不占用也不替换公共查询
-# worker。不同橱窗账号严格串行登录和查询；当天首次成功结果会落盘缓存，机器人
-# 重启后也不会重复登录。
+# worker。不同橱窗账号严格串行登录和查询；每个账号当天首次成功结果会落盘缓存，
+# 机器人重启后也不会重复登录。
 enabled = false
 # Default: "00:02"; EN: Daily check time in HH:MM. ZH: 每日检查时间，格式 HH:MM。
 time = "00:02"
@@ -891,13 +907,17 @@ timeout_seconds = 15.0
 # Add one table per QQ user allowed to query and receive a configured account's
 # window. `user` accepts a [features.user_aliases] alias or QQ ID. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must
-# bind that same player ID. `watched_skin_ids` only adds a ★ marker. The user
-# also needs lucky_skin_window in their user policy; group use additionally
-# needs it in the group policy.
+# bind that same player ID. `watched_skin_ids` accepts either the skin table ID
+# or its 140xxxx resource ID and seeds the user's watch list only once. Users
+# can later manage that list with QQ commands. Watching only adds a ★ marker.
+# The user also needs lucky_skin_window in their user policy; group use
+# additionally needs it in the group policy.
 # ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；
 # account 引用 seer.player_accounts 中的 name、aliases 或米米号，用户必须绑定
-# 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 只标记
-# ★ 关注。用户策略还需启用 lucky_skin_window；群聊还需要在该群策略中启用。
+# 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 可填写
+# 皮肤表 ID 或 140xxxx 资源 ID，仅在首次使用时初始化关注列表；之后可通过 QQ 指令
+# 修改。关注只标记 ★，不会过滤每日四个皮肤。用户策略还需启用
+# lucky_skin_window；群聊还需要在该群策略中启用。
 #
 # [[seer.lucky_skin_window.accounts]]
 # user = "owner"
@@ -968,7 +988,7 @@ max_display_limit = 100
 # EN: Optional per-group display defaults. Keys can be group aliases or QQ group IDs.
 # ZH: 可选的按群默认显示条数；键可以写群别名或 QQ 群号。
 display_limits = {}
-# 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
+
 [seer.rank.exclusions]
 # Taomee 内部号会从所有官方榜单和机器人本地样本中隐藏。
 # 这里填入已确认的米米号；列表会自动去重。
@@ -1372,34 +1392,3 @@ times = "04:30"
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。
 signal_parent = true
-
-# EN: Keyword replies use literal contains matching. They only reply when the
-# message contains a configured keyword; exact command actions above still win.
-# ZH: 关键词回复使用普通“包含”匹配；消息中出现关键词即可回复，且完整口令优先。
-# Like command actions, the feature key must be enabled for the current group
-# or private user. Keywords are not regular commands and are shown as automatic
-# replies in help.
-# 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
-# 帮助中会显示为自动回复。
-#
-# [[messaging.keyword_replies]]
-# id = "chuchu_reply"
-# keywords = ["出出"]
-# message = "出出是蛆"
-# feature = "chuchu_reply"
-
-# Default: []
-# EN: Scheduled text pushes. Each task delivers to users and groups where its
-# feature is enabled; `at_user_ids` accepts user aliases or QQ IDs and only
-# applies to group delivery.
-# ZH: 定时文本推送默认同时面向私聊和群聊；feature 在用户/群策略中启用后才会投递。
-# Like command actions, a schedule's feature is registered from TOML and may
-# be referenced by bundles and target policies.
-# 与命令动作相同，定时动作的 feature 会从 TOML 注册，可被组合和目标策略引用。
-# `id` is required, must stay stable, and must be globally unique. Renaming it
-# resets TD and push-time preferences for that schedule.
-# `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
-# `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, message, time,
-# day_of_week, at_user_ids.
-# Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
