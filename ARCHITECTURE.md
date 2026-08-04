@@ -321,6 +321,7 @@ The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.plugins.operations.docker_update`, `ironsbot.plugins.operations.db_sync`,
 `ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,
 `ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
+`ironsbot.custom_plugins.pet_config`,
 `ironsbot.plugins.seer.lucky_skin_window`, `ironsbot.plugins.team_audit`,
 `ironsbot.plugins.team.resource`, and the
 `ironsbot.plugins.startup_notice`, `ironsbot.plugins.headless_seer_notice`,

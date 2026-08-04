@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.settings import Settings
+from ironsbot.custom_plugins.pet_config import (
+    plugin_contribution as pet_config_plugin_contribution,
+)
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
@@ -363,6 +366,11 @@ def build_test_plugin_registry(
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,
+        ),
+        pet_config_plugin_contribution(
+            service=resources.pet_config,
+            features=runtime.features,
+            config=config.pet_config,
         ),
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,

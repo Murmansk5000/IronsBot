@@ -104,6 +104,13 @@ def test_manifest_rank_help_owns_its_command_descriptors() -> None:
     assert {command.plugin_id for command in contribution.commands} == {"rank_help"}
 
 
+def test_manifest_pet_config_owns_its_command_descriptor() -> None:
+    contribution = DEFINITIONS_BY_ID["pet_config"]
+
+    assert contribution.features == frozenset({Feature.PET_CONFIG})
+    assert {command.plugin_id for command in contribution.commands} == {"pet_config"}
+
+
 def test_manifest_team_audit_owns_its_feature_and_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["team_audit"]
 

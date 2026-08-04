@@ -28,9 +28,6 @@ def build_plugin_registry(
     resources: ApplicationResources,
     scheduler: SchedulerFacade,
 ) -> tuple[PluginContribution, ...]:
-    from ironsbot.custom_plugins.pet_config import (
-        plugin_definition as pet_config_definition,
-    )
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
@@ -43,7 +40,6 @@ def build_plugin_registry(
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
     seer_resources = resources.seer
-    pet_config_service = resources.pet_config
     definitions: tuple[PluginContribution, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
@@ -97,11 +93,6 @@ def build_plugin_registry(
         PluginContribution(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
-        ),
-        pet_config_definition(
-            service=pet_config_service,
-            features=features,
-            config=config.pet_config,
         ),
         PluginContribution(
             id="seer_query",
