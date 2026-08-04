@@ -412,7 +412,7 @@ adding fields or side registries to a temporary bootstrap adapter.
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
 The first verified migrations are `ironsbot.plugins.onebot.about`,
-`ironsbot.plugins.activity`, `ironsbot.plugins.bilibili`,
+`ironsbot.plugins.activity`, `ironsbot.plugins.onebot.bilibili`,
 `ironsbot.plugins.onebot.messaging`,
 `ironsbot.plugins.onebot.ai` / `.intent`,
 `ironsbot.plugins.operations.server_status`,

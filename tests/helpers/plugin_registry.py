@@ -15,9 +15,6 @@ from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.activity import (
     plugin_contribution as activity_plugin_contribution,
 )
-from ironsbot.plugins.bilibili import (
-    plugin_contribution as bilibili_plugin_contribution,
-)
 from ironsbot.plugins.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
@@ -35,6 +32,9 @@ from ironsbot.plugins.onebot.ai import (
 )
 from ironsbot.plugins.onebot.ai.intent import (
     plugin_contribution as ai_intent_plugin_contribution,
+)
+from ironsbot.plugins.onebot.bilibili import (
+    plugin_contribution as bilibili_plugin_contribution,
 )
 from ironsbot.plugins.onebot.help import plugin_contribution as help_plugin_contribution
 from ironsbot.plugins.onebot.help.hint import (

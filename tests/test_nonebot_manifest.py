@@ -33,7 +33,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.scheduler",
             "ironsbot.plugins.onebot.seer.query",
             "ironsbot.plugins.onebot.bootstrap",
-            "ironsbot.plugins.bilibili",
+            "ironsbot.plugins.onebot.bilibili",
             "ironsbot.plugins.onebot.messaging",
             "ironsbot.plugins.onebot.ai",
             "ironsbot.plugins.onebot.ai.intent",

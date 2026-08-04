@@ -1,6 +1,6 @@
 from ironsbot.plugins.activity import command_descriptors as activity_commands
-from ironsbot.plugins.bilibili import command_descriptors as bilibili_commands
-from ironsbot.plugins.bilibili.command_rules import (
+from ironsbot.plugins.onebot.bilibili import command_descriptors as bilibili_commands
+from ironsbot.plugins.onebot.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
     DYNAMIC_MENU_COMMANDS,
