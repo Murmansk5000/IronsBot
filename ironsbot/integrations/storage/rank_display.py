@@ -7,7 +7,6 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
@@ -16,6 +15,8 @@ from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 
 _SCHEMA = """
@@ -44,7 +45,7 @@ class SqliteRankDisplayStore:
             migration_namespace=MIGRATION_NAMESPACE,
         )
 
-    def get(self, group_id: int) -> int | None:
+    def get(self, conversation: ConversationRef) -> int | None:
         try:
             with self._database.connect() as conn:
                 row = conn.execute(
@@ -53,15 +54,20 @@ class SqliteRankDisplayStore:
                     WHERE conversation_platform = ? AND conversation_kind = ?
                       AND conversation_id = ?
                     """,
-                    _group_values(group_id),
+                    ConversationIdentityColumns.from_conversation(
+                        conversation
+                    ).values(),
                 ).fetchone()
         except sqlite3.Error:
             return None
         return int(row[0]) if row is not None else None
 
-    def set(self, group_id: int, user_id: int, limit: int) -> None:
-        conversation = _group_conversation(group_id)
-        actor = ActorRef(Platform.ONEBOT, str(int(user_id)))
+    def set(
+        self,
+        conversation: ConversationRef,
+        actor: ActorRef,
+        limit: int,
+    ) -> None:
         with self._database.connect() as conn:
             conn.execute(
                 """
@@ -87,13 +93,3 @@ class SqliteRankDisplayStore:
                     *ActorIdentityColumns.from_actor(actor).values(),
                 ),
             )
-
-
-def _group_conversation(group_id: int) -> ConversationRef:
-    return ConversationRef(Platform.ONEBOT, "group", str(int(group_id)))
-
-
-def _group_values(group_id: int) -> tuple[str, str, str]:
-    return ConversationIdentityColumns.from_conversation(
-        _group_conversation(group_id)
-    ).values()

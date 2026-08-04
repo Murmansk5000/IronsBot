@@ -15,6 +15,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import explicit_command
@@ -56,7 +57,9 @@ def _is_rank_list_command(
 ) -> bool:
     command = parse_rank_list_command(
         event.get_plaintext(),
-        default_limit=service.default_limit(event_group_id(event)),
+        default_limit=service.default_limit(
+            message_input_context(event).message.conversation
+        ),
     )
     if command is None:
         return False
@@ -119,6 +122,7 @@ async def _handle_score(
 ) -> None:
     message = await service.score(
         state[RANK_SCORE_COMMAND_KEY],
+        conversation=message_input_context(event).message.conversation,
         group_id=event_group_id(event),
         qq_user_id=event.user_id,
     )
@@ -204,7 +208,7 @@ async def _handle_cache_status(
     await finish_event_reply(
         matcher,
         event,
-        service.cache_status(event_group_id(event)),
+        service.cache_status(message_input_context(event).message.conversation),
     )
 
 
@@ -227,10 +231,9 @@ async def _handle_display_limit(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    group_id = event_group_id(event)
     message = service.set_display_limit(
-        group_id=group_id,
-        user_id=int(event.user_id),
+        conversation=message_input_context(event).message.conversation,
+        actor=message_input_context(event).message.actor,
         can_manage=(
             isinstance(event, GroupMessageEvent)
             and can_manage_group_event(features, event)

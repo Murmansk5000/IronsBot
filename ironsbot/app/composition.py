@@ -18,6 +18,7 @@ from ironsbot.app.private_extensions import (
 )
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -483,7 +484,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     local_rank.remove_excluded_samples()
     rank_display = RankDisplayService(
         settings.seer.rank,
-        settings.onebot_references,
+        {
+            ConversationRef(Platform.ONEBOT, "group", str(group_id)): limit
+            for reference, limit in settings.seer.rank.display_limits.items()
+            for group_id in (
+                settings.onebot_references.resolve_group(
+                    reference,
+                    location=f"seer.rank.display_limits.{reference}",
+                ),
+            )
+        },
         SqliteRankDisplayStore(settings.paths.qq_state),
     )
     rank_page_refresh = RankPageRefreshService(
@@ -531,7 +541,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             refresh_limit=settings.seer.local_rank.refresh_limit,
             refresh_max_age_hours=(settings.seer.local_rank.refresh_max_age_hours),
             page_cache_ttl_seconds=(settings.seer.rank.page_cache_ttl_seconds),
-            display_limit=rank_display.limit_for_group,
+            display_limit=rank_display.limit_for_conversation,
         ),
         rank,
         local_rank,

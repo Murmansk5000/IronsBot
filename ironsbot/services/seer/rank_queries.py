@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar
 
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -102,8 +102,8 @@ class RankQueryService:
         self._quotas = quotas
         self._requests = requests
 
-    def default_limit(self, group_id: int | None) -> int:
-        return self._display.limit_for_group(group_id)
+    def default_limit(self, conversation: ConversationRef | None) -> int:
+        return self._display.limit_for_conversation(conversation)
 
     async def list(
         self,
@@ -131,6 +131,7 @@ class RankQueryService:
         self,
         command: RankScoreCommand,
         *,
+        conversation: ConversationRef | None,
         group_id: int | None,
         qq_user_id: int | None = None,
     ) -> str:
@@ -139,7 +140,7 @@ class RankQueryService:
                 lambda: self._score_message(
                     self._headless.get_game(),
                     command,
-                    display_limit=self.default_limit(group_id),
+                    display_limit=self.default_limit(conversation),
                     group_id=group_id,
                 ),
                 user_id=qq_user_id,
@@ -229,20 +230,20 @@ class RankQueryService:
     def set_display_limit(
         self,
         *,
-        group_id: int | None,
-        user_id: int,
+        conversation: ConversationRef | None,
+        actor: ActorRef,
         can_manage: bool,
         limit: int,
     ) -> str:
-        if group_id is None:
+        if conversation is None or conversation.kind != "group":
             return "❌ 这个设置只能在群聊中修改。"
         if not can_manage:
             return "❌ 只有本群群主、管理员或超级管理员可以修改榜单默认显示条数。"
         max_limit = self._display.config.max_display_limit
         if limit < 1 or limit > max_limit:
             return f"❌ 榜单默认显示条数必须在 1~{max_limit} 之间，当前输入：{limit}。"
-        self._display.set_group_limit(group_id, user_id, limit)
-        return f"✅ 本群榜单默认显示条数已设置为 {limit} 名（群号：{group_id}）。"
+        self._display.set_conversation_limit(conversation, actor, limit)
+        return f"✅ 本群榜单默认显示条数已设置为 {limit} 名。"
 
     async def _global_message(
         self,
