@@ -603,6 +603,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             partial(
                 render_published_pet_info,
                 render_cache,
+                seer_database,
                 seer_images,
                 render_scheduler.render,
             ),

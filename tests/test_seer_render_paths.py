@@ -23,7 +23,8 @@ TEMPLATE_PATHS = (
 )
 
 ACTIVE_RENDER_MODULES = (
-    "ironsbot.services.seer.rendering.custom_pet_info",
+    "ironsbot.services.seer.rendering.pet_info_presentation",
+    "ironsbot.services.seer.rendering.pet_info_renderer",
     "ironsbot.services.seer.rendering.peak_pet_rank",
     "ironsbot.services.seer.rendering.peak_pool",
     "ironsbot.services.seer.rendering.peak_pool_vote",

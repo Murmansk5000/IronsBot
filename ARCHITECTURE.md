@@ -108,6 +108,30 @@ contract. When a responsibility needs an authority, name the narrow authority
 from the table rather than saying that a plugin, manifest, or contribution
 object owns everything.
 
+### Architecture Documentation Merge Rule
+
+Architecture-document merge conflicts are resolved by responsibility, not by
+choosing whichever wording is easiest to merge. A conflict is not evidence
+that both designs must survive in the running application.
+
+When resolving a conflict, preserve these parts in order:
+
+1. the current normative target and its named authority;
+2. the verified current bridge, explicitly marked `transition` when it still
+   exists; and
+3. the completion condition that deletes the bridge.
+
+Discard an older unqualified claim that a retired registry, a bootstrap
+adapter, or `PluginDefinition` is the application's single plugin contract.
+Do not recreate an old code type, compatibility wrapper, or second registry
+merely to make prose from two branches agree. If both branches contain useful
+facts, rewrite them into the target/transition/completion form above and add
+or update the matching transition-inventory row in the same change.
+
+Git reports a text conflict because two branches touched nearby lines; it does
+not establish an architectural conflict. The verified code state and this
+document's target authority decide the resolution.
+
 ### Transition Inventory And Admission Rule
 
 The following table is the working inventory for architecture tasks. It
@@ -1004,15 +1028,12 @@ remaining target-state work:
   filesystem, network, task, or SQLite side effect.
 - `tests/test_structure_size_hygiene.py` enforces the 800-line production
   module limit.
-- `tests/test_architecture_target_hygiene.py` prevents new renderer persistence
-  dependencies outside an explicit Phase 4 transition allowlist and forbids
-  adapter transport imports from `core` and `services`.
+- `tests/test_architecture_target_hygiene.py` forbids renderer persistence
+  dependencies and adapter transport imports from `core` and `services`.
 
-The renderer allowlist is a debt register, not an exception to the target
-rule. It contains only the remaining `custom_pet_info.py` transition module
-and must reach an empty set in Phase 4. Adding an item requires a
-product-approved migration plan; a new renderer must receive a view model and
-assets instead.
+The Phase 4 renderer persistence allowlist is empty. A new renderer must
+receive a detached view model and its assets; it cannot acquire a new database
+or transport exception.
 
 ## Current OneBot Behaviour Baseline
 
@@ -1057,9 +1078,11 @@ reference for users:
 Phase 0 observations to resolve in later phases are also explicit: the
 current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
 uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The source tree currently has renderer-owned SQL lookup debt and
-existing Bandit findings with no high-severity result; neither is silently
-suppressed by this phase.
+migration. The completed Phase 4 pet-info path now loads a detached snapshot in
+`integrations.seer_data`, prepares a render document in a pure presenter, and
+renders without ORM, SQL, HTTP, filesystem, or association inference. Existing
+Bandit findings with no high-severity result remain tracked rather than silently
+suppressed.
 
 ## Enforcement
 
