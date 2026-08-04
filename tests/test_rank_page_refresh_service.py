@@ -77,6 +77,73 @@ def test_select_rank_page_refresh_targets_prefers_first_missing_gap() -> None:
     ]
 
 
+def test_rank_page_refresh_reserves_one_page_for_each_incomplete_rank() -> None:
+    first_rank = GlobalRankSpec("甲榜", key=1, sub_key=2, unit="分")
+    second_rank = GlobalRankSpec("乙榜", key=3, sub_key=4, unit="分")
+    config = RankPageRefreshConfig(
+        target_limit=200,
+        page_size=100,
+        pages_per_run=2,
+        refresh_stale_after_hours=24,
+    )
+    current = time.time()
+
+    targets = select_rank_page_refresh_targets(
+        [("甲", first_rank), ("乙", second_rank)],
+        {
+            "甲": [],
+            "乙": [
+                page_summary(
+                    start_index=0,
+                    end_index=99,
+                    fetched_at=current,
+                )
+            ],
+        },
+        config=config,
+    )
+
+    assert [(target.rank_key, target.start_rank) for target in targets] == [
+        ("甲", 1),
+        ("乙", 101),
+    ]
+
+
+def test_rank_page_refresh_coverage_deficit_breaks_equal_page_priority() -> None:
+    lower_gap_rank = GlobalRankSpec("低缺口榜", key=1, sub_key=2, unit="分")
+    higher_gap_rank = GlobalRankSpec("高缺口榜", key=3, sub_key=4, unit="分")
+    config = RankPageRefreshConfig(
+        target_limit=400,
+        target_limits={"低缺口": 400, "高缺口": 200},
+        page_size=100,
+        pages_per_run=1,
+        refresh_stale_after_hours=24,
+    )
+    current = time.time()
+    complete_page = lambda index: page_summary(  # noqa: E731 - compact fixtures
+        start_index=index,
+        end_index=index + 99,
+        fetched_at=current,
+    )
+
+    targets = select_rank_page_refresh_targets(
+        [("低缺口", lower_gap_rank), ("高缺口", higher_gap_rank)],
+        {
+            "低缺口": [
+                complete_page(100),
+                complete_page(200),
+                complete_page(300),
+            ],
+            "高缺口": [complete_page(100)],
+        },
+        config=config,
+    )
+
+    assert [(target.rank_key, target.start_rank) for target in targets] == [
+        ("高缺口", 1),
+    ]
+
+
 def test_select_rank_page_refresh_targets_uses_partial_missing_ratio() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     config = RankPageRefreshConfig(

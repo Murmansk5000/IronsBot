@@ -29,6 +29,12 @@ class _RankPageRefreshCandidate:
     rank_order: int
 
 
+@dataclass(frozen=True, slots=True)
+class _RankPageRefreshCandidateGroup:
+    candidates: tuple[_RankPageRefreshCandidate, ...]
+    coverage_deficit: float
+
+
 def rank_target_limit(config: RankPageRefreshConfig, rank_key: str) -> int:
     return config.target_limits.get(rank_key, config.target_limit)
 
@@ -174,8 +180,10 @@ def _build_rank_page_candidates(  # noqa: PLR0913
     target_limit: int,
     stale_after_seconds: int,
     rank_order: int,
-) -> list[_RankPageRefreshCandidate]:
+) -> _RankPageRefreshCandidateGroup:
     candidates: list[_RankPageRefreshCandidate] = []
+    coverage_deficit = 0.0
+    covered_page_count = 0
     score_cutoff = rank_score_cutoff(config, rank_key)
     for start_rank, end_rank, raw_start, raw_end in page_refresh_rank_ranges(
         spec,
@@ -183,9 +191,11 @@ def _build_rank_page_candidates(  # noqa: PLR0913
         page_size=config.page_size,
     ):
         page = pages_by_range.get((raw_start, raw_end))
+        covered_page_count += 1
         reason = _page_reason(page, stale_after_seconds=stale_after_seconds)
         if reason is None:
             continue
+        coverage_deficit += _page_defect_ratio(page, reason=reason)
         target = RankPageRefreshTarget(
             rank_key,
             spec,
@@ -209,7 +219,23 @@ def _build_rank_page_candidates(  # noqa: PLR0913
         )
         if _page_reaches_score_cutoff(page, score_cutoff=score_cutoff):
             break
-    return candidates
+    return _RankPageRefreshCandidateGroup(
+        candidates=tuple(candidates),
+        coverage_deficit=coverage_deficit / max(covered_page_count, 1),
+    )
+
+
+def _candidate_sort_key(
+    candidate: _RankPageRefreshCandidate,
+    *,
+    coverage_deficit: float,
+) -> tuple[float, int, int, int]:
+    return (
+        -candidate.score * (1 + coverage_deficit),
+        candidate.target.start_rank,
+        candidate.rank_order,
+        candidate.target.raw_start,
+    )
 
 
 def select_rank_page_refresh_targets(
@@ -217,7 +243,14 @@ def select_rank_page_refresh_targets(
     summaries: Mapping[str, Sequence[CachedRankPageSummary]],
     *,
     config: RankPageRefreshConfig,
+    limit: int | None = None,
 ) -> list[RankPageRefreshTarget]:
+    page_budget = min(
+        max(limit if limit is not None else config.pages_per_run, 0),
+        config.pages_per_run,
+    )
+    if page_budget <= 0:
+        return []
     stale_after_seconds = config.refresh_stale_after_hours * 3600
     pages_by_rank = {
         rank_key: {
@@ -226,9 +259,9 @@ def select_rank_page_refresh_targets(
         }
         for rank_key, _spec in rank_specs
     }
-    candidates: list[_RankPageRefreshCandidate] = []
+    candidate_groups: list[_RankPageRefreshCandidateGroup] = []
     for rank_order, (rank_key, spec) in enumerate(rank_specs):
-        candidates.extend(
+        candidate_groups.append(
             _build_rank_page_candidates(
                 rank_key=rank_key,
                 spec=spec,
@@ -239,18 +272,51 @@ def select_rank_page_refresh_targets(
                 rank_order=rank_order,
             )
         )
-    candidates.sort(
-        key=lambda candidate: (
-            -candidate.score,
-            candidate.target.start_rank,
-            candidate.rank_order,
-            candidate.target.raw_start,
+
+    # First reserve one best page for every rank with a coverage gap. When the
+    # page budget is smaller than the number of incomplete ranks, the same
+    # weighted order decides which gaps are repaired first.
+    reserved = [
+        (
+            min(
+                group.candidates,
+                key=lambda candidate: _candidate_sort_key(
+                    candidate,
+                    coverage_deficit=group.coverage_deficit,
+                ),
+            ),
+            group.coverage_deficit,
+        )
+        for group in candidate_groups
+        if group.candidates
+    ]
+    reserved.sort(
+        key=lambda item: _candidate_sort_key(
+            item[0],
+            coverage_deficit=item[1],
         )
     )
-    return [
-        candidate.target
-        for candidate in candidates[: config.pages_per_run]
+    selected = reserved[:page_budget]
+    selected_keys = {
+        (candidate.target.rank_key, candidate.target.raw_start)
+        for candidate, _coverage_deficit in selected
+    }
+
+    remaining = [
+        (candidate, group.coverage_deficit)
+        for group in candidate_groups
+        for candidate in group.candidates
+        if (candidate.target.rank_key, candidate.target.raw_start)
+        not in selected_keys
     ]
+    remaining.sort(
+        key=lambda item: _candidate_sort_key(
+            item[0],
+            coverage_deficit=item[1],
+        )
+    )
+    selected.extend(remaining[: page_budget - len(selected)])
+    return [candidate.target for candidate, _coverage_deficit in selected]
 
 
 def filter_standard_rank_page_summaries(
@@ -303,10 +369,17 @@ def preview_rank_page_refresh_targets(
     config: RankPageRefreshConfig,
     rank: RankService,
     rank_keys: Sequence[str] | None = None,
+    *,
+    limit: int | None = None,
 ) -> list[RankPageRefreshTarget]:
     rank_specs = configured_rank_specs(config, rank, rank_keys)
     summaries = {
         rank_key: rank.cache.summary(key=spec.key, sub_key=spec.sub_key)
         for rank_key, spec in rank_specs
     }
-    return select_rank_page_refresh_targets(rank_specs, summaries, config=config)
+    return select_rank_page_refresh_targets(
+        rank_specs,
+        summaries,
+        config=config,
+        limit=limit,
+    )
