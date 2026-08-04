@@ -10,7 +10,6 @@ from ironsbot.app.command_directory.dynamic import (
     messaging_help_visible,
 )
 from ironsbot.app.command_directory.operations import (
-    data_sync_commands,
     docker_update_commands,
     server_status_commands,
 )
@@ -62,7 +61,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         build_dynamic_link_message,
     )
     from ironsbot.plugins.messaging.matchers import install as install_messaging
-    from ironsbot.plugins.operations.db_sync import install as install_db_sync
     from ironsbot.plugins.operations.status.handlers import (
         install as install_server_status,
     )
@@ -87,7 +85,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     seer_resources = resources.seer
     pet_config_service = resources.pet_config
     ai_service = resources.ai
-    data_sync_service = resources.data_sync
     docker_update_service = resources.docker_update
     startup_notice_service = resources.startup_notice
     bot_mention_block_service = BotMentionBlockService(
@@ -168,13 +165,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             consume_docker_startup_preflight_notice(),
         )
 
-    async def start_data_sync() -> None:
-        startup_notice_service.add(
-            "startup_data_sync",
-            "startup data sync notice",
-            await data_sync_service.startup(scheduler),
-        )
-
     definitions = (
         PluginContribution(
             id="apscheduler",
@@ -220,27 +210,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             ),
             hooks=PluginHooks(
                 startup=(("docker_update", start_docker_update),),
-            ),
-        ),
-        PluginContribution(
-            id="db_sync",
-            help=HelpEntry(
-                name="数据更新",
-                description="构建并同步赛尔数据库与别名数据库",
-                group="admin",
-                order=20,
-                visible=partial(
-                    superuser_help_visible,
-                    features=features,
-                ),
-            ),
-            commands=data_sync_commands(),
-            install=partial(
-                install_db_sync,
-                service=data_sync_service,
-            ),
-            hooks=PluginHooks(
-                startup=(("db_sync", start_data_sync),),
             ),
         ),
         PluginContribution(

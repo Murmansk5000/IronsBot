@@ -28,6 +28,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
         "@local": [
             "nonebot_plugin_saa",
             "ironsbot.plugins.onebot.bootstrap",
+            "ironsbot.plugins.operations.db_sync",
             "ironsbot.plugins.about",
             "ironsbot.plugins.help",
             "ironsbot.plugins.help.hint",

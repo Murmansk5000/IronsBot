@@ -133,6 +133,14 @@ def test_manifest_activity_owns_its_commands_and_schedule() -> None:
     ]
 
 
+def test_manifest_data_sync_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["db_sync"]
+
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"db_sync"}
+    assert [name for name, _hook in contribution.hooks.startup] == ["db_sync"]
+
+
 def test_manifest_lucky_skin_window_owns_its_commands_and_schedule() -> None:
     contribution = DEFINITIONS_BY_ID["lucky_skin_window"]
 
@@ -206,11 +214,11 @@ def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) 
     assert loaded == []
 
 
-def test_registry_installs_foundation_before_dependents() -> None:
+def test_manifest_contributions_follow_the_legacy_bridge() -> None:
     plugin_ids = tuple(definition.id for definition in DEFINITIONS)
 
     assert plugin_ids[:4] == ("apscheduler", "localstore", "htmlkit", "saa")
-    assert plugin_ids.index("db_sync") < plugin_ids.index("seer_query")
+    assert plugin_ids.index("seer_query") < plugin_ids.index("db_sync")
 
 
 def test_contributions_define_the_lifecycle_order() -> None:
@@ -223,11 +231,11 @@ def test_contributions_define_the_lifecycle_order() -> None:
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "scheduler",
         "docker_update",
-        "db_sync",
         "messaging",
         "bilibili_monitor_jobs",
         "local_rank_jobs",
         "rank_page_jobs",
+        "db_sync",
         "lucky_skin_window_schedule",
         "team_resource_jobs",
         "activity_reminder_jobs",
@@ -292,6 +300,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "team" / "resource.py",
                     ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "db_sync.py",
                     ROOT / "ironsbot" / "plugins" / "startup_notice" / "__init__.py",
                     ROOT
                     / "ironsbot"

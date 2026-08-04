@@ -36,6 +36,9 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.operations.db_sync import (
+    plugin_contribution as db_sync_plugin_contribution,
+)
 from ironsbot.plugins.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
@@ -269,6 +272,12 @@ def build_test_plugin_registry(
         *build_plugin_registry(
             settings=config,
             resources=resources,
+            scheduler=SchedulerFacade(),
+        ),
+        db_sync_plugin_contribution(
+            service=resources.data_sync,
+            features=runtime.features,
+            startup_notice=resources.startup_notice,
             scheduler=SchedulerFacade(),
         ),
         about_plugin_contribution(),

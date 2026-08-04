@@ -1,5 +1,4 @@
 from ironsbot.app.command_directory.operations import (
-    data_sync_commands,
     docker_update_commands,
     server_status_commands,
 )
@@ -17,6 +16,9 @@ from ironsbot.plugins.bilibili.command_rules import (
 from ironsbot.plugins.operations.db_sync import (
     FORCE_MANUAL_SYNC_COMMANDS,
     MANUAL_SYNC_COMMANDS,
+)
+from ironsbot.plugins.operations.db_sync import (
+    command_descriptors as data_sync_commands,
 )
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
@@ -53,9 +55,7 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
     assert bilibili["bilibili.private_push_mode"].examples == (
         f"{BILI_PUSH_MODE_COMMANDS[0]} <账号> <内容|链接|默认>",
     )
-    assert bilibili["bilibili.refresh"].examples == (
-        f"/{DYNAMIC_UPDATE_COMMANDS[0]}",
-    )
+    assert bilibili["bilibili.refresh"].examples == (f"/{DYNAMIC_UPDATE_COMMANDS[0]}",)
     assert activity["activity.ending"].examples == SOON_ENDING_ACTIVITY_COMMANDS[:1]
     assert activity["activity.current"].examples == (
         f"/{CURRENT_ACTIVITY_COMMANDS[0]}",

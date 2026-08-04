@@ -2,10 +2,6 @@
 from __future__ import annotations
 
 from ironsbot.app.command_directory.rows import commands_from_rows
-from ironsbot.plugins.operations.db_sync import (
-    FORCE_MANUAL_SYNC_COMMANDS,
-    MANUAL_SYNC_COMMANDS,
-)
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
@@ -50,11 +46,7 @@ def server_status_commands() -> tuple[CommandDescriptor, ...]:
                     "server_status.headless_instances",
                     HEADLESS_INSTANCE_STATUS_COMMANDS,
                     "查看公共查询池与临时专用会话的当前在线实例数",
-                    {
-                        "access": (
-                            CommandAccess(scope="private", audience="superuser"),
-                        )
-                    },
+                    {"access": (CommandAccess(scope="private", audience="superuser"),)},
                 ),
             ),
         ),
@@ -83,28 +75,6 @@ def docker_update_commands() -> tuple[CommandDescriptor, ...]:
                 "docker_update.image_check",
                 DOCKER_CHECK_UPDATE_COMMANDS,
                 "只检查远端镜像，不拉取或重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-        ),
-    )
-
-
-def data_sync_commands() -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "db_sync",
-        "超级管理员",
-        None,
-        (
-            (
-                "db_sync.update",
-                tuple(f"/{command}" for command in MANUAL_SYNC_COMMANDS),
-                "构建远程数据并同步到机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "db_sync.force_update",
-                tuple(f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS),
-                "忽略本地指纹，强制同步数据",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
