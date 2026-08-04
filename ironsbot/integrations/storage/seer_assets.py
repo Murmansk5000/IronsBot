@@ -5,10 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
-import os
 import time
-import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -18,6 +15,8 @@ from ironsbot.services.seer.images import (
     ImageSourceError,
     ImageSourceStatusError,
 )
+
+from .verified_file_cache import VerifiedFileCache
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -49,7 +48,7 @@ class SeerAssetStore:
     ) -> None:
         self._source = source
         self._memory = _MemoryAssetCache(limits.memory_max_size_bytes)
-        self._disk = _DiskAssetCache(cache_dir, limits.disk_max_size_bytes)
+        self._disk = VerifiedFileCache(cache_dir, limits.disk_max_size_bytes)
         self._network = asyncio.Semaphore(limits.max_network_concurrent)
         self._negative_ttl_seconds = limits.negative_ttl_seconds
         self._negative: dict[str, float] = {}
@@ -176,96 +175,6 @@ class _MemoryAssetCache:
         while self._size_bytes > self._max_size_bytes:
             _key, evicted = self._entries.popitem(last=False)
             self._size_bytes -= len(evicted)
-
-
-class _DiskAssetCache:
-    def __init__(self, directory: Path, max_size_bytes: int) -> None:
-        self._directory = directory
-        self._max_size_bytes = max_size_bytes
-
-    def get(self, cache_key: str) -> bytes | None:
-        index_path = self._index_path(cache_key)
-        try:
-            metadata = json.loads(index_path.read_text(encoding="utf-8"))
-            digest = str(metadata["sha256"])
-            asset_path = self._asset_path(cache_key, digest)
-            asset = asset_path.read_bytes()
-        except (FileNotFoundError, OSError, TypeError, ValueError, KeyError):
-            return None
-        if hashlib.sha256(asset).hexdigest() != digest:
-            self._remove_entry(index_path, asset_path)
-            return None
-        os.utime(asset_path, None)
-        return asset
-
-    def put(self, cache_key: str, asset: bytes) -> None:
-        digest = hashlib.sha256(asset).hexdigest()
-        asset_path = self._asset_path(cache_key, digest)
-        index_path = self._index_path(cache_key)
-        self._directory.mkdir(parents=True, exist_ok=True)
-        self._atomic_write_bytes(asset_path, asset)
-        self._atomic_write_text(
-            index_path,
-            json.dumps({"sha256": digest}, separators=(",", ":")),
-        )
-        self._cleanup()
-
-    def _cleanup(self) -> None:
-        if not self._directory.exists():
-            return
-        indexed_assets = self._indexed_assets()
-        assets = sorted(
-            self._directory.glob("*.bin"),
-            key=lambda path: path.stat().st_atime,
-        )
-        total_size = sum(path.stat().st_size for path in assets)
-        for asset_path in assets:
-            if total_size <= self._max_size_bytes:
-                break
-            size = asset_path.stat().st_size
-            total_size -= size
-            asset_path.unlink(missing_ok=True)
-            if (index_path := indexed_assets.get(asset_path.name)) is not None:
-                index_path.unlink(missing_ok=True)
-
-    def _indexed_assets(self) -> dict[str, Path]:
-        indexed: dict[str, Path] = {}
-        for index_path in self._directory.glob("*.json"):
-            try:
-                metadata = json.loads(index_path.read_text(encoding="utf-8"))
-                digest = str(metadata["sha256"])
-            except (OSError, TypeError, ValueError, KeyError):
-                index_path.unlink(missing_ok=True)
-                continue
-            asset_path = self._asset_path(index_path.stem, digest)
-            if asset_path.exists():
-                indexed[asset_path.name] = index_path
-            else:
-                index_path.unlink(missing_ok=True)
-        return indexed
-
-    def _index_path(self, cache_key: str) -> Path:
-        return self._directory / f"{cache_key}.json"
-
-    def _asset_path(self, cache_key: str, digest: str) -> Path:
-        return self._directory / f"{cache_key}-{digest}.bin"
-
-    @staticmethod
-    def _atomic_write_bytes(path: Path, data: bytes) -> None:
-        temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
-        temporary.write_bytes(data)
-        temporary.replace(path)
-
-    @staticmethod
-    def _atomic_write_text(path: Path, value: str) -> None:
-        temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
-        temporary.write_text(value, encoding="utf-8")
-        temporary.replace(path)
-
-    @staticmethod
-    def _remove_entry(index_path: Path, asset_path: Path) -> None:
-        index_path.unlink(missing_ok=True)
-        asset_path.unlink(missing_ok=True)
 
 
 def _cache_key(*parts: str) -> str:

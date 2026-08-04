@@ -491,6 +491,11 @@ Future data work follows these rules:
 - Native HTML rendering passes through one `RenderCoordinator`. It is fixed at
   one native render at a time and has an explicit timeout; callers cannot add
   feature-local HTMLKit semaphores or background render tasks.
+- Disposable rendered images use the same atomic, checksum-verified byte-store
+  primitive as Seer assets. Their cache key includes the published data version,
+  render category and payload, plus a startup fingerprint of the rendering
+  implementation and templates; a renderer change therefore cannot reuse a
+  stale image from a mounted cache directory.
 - Official effect relationships retain provenance and ambiguity records. The
   runtime renderer uses a prepared `PetRenderViewModel` and never tries to
   infer a new association from free text.

@@ -16,6 +16,7 @@ from ironsbot.app.private_extensions import (
     PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
+from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -24,7 +25,6 @@ from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
-from ironsbot.integrations.htmlkit import render_html_template
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.bilibili import (
@@ -34,7 +34,6 @@ from ironsbot.integrations.http.bilibili import (
     request_bili_login_qr,
 )
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
@@ -95,8 +94,6 @@ from ironsbot.integrations.storage.push_subscriptions import (
 )
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
-from ironsbot.integrations.storage.render_cache import FileRenderCache
-from ironsbot.integrations.storage.seer_assets import build_seer_asset_store
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
@@ -171,7 +168,6 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
-from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
@@ -462,19 +458,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    seer_images = build_seer_asset_store(
-        HttpSeerImageSource(http_clients),
-        cache_paths.assets_dir(),
+    seer_images, render_cache, render_coordinator = build_seer_rendering_components(
+        http_clients,
+        cache_paths,
         settings.seer.render,
-    )
-    render_cache = FileRenderCache(
-        cache_paths.render_dir(),
-        settings.seer.render.final_cache_max_size_mb * 1024 * 1024,
-        db_version_getter=seer_database.version,
-    )
-    render_coordinator = RenderCoordinator(
-        render_html_template,
-        settings.seer.render.native_timeout_seconds,
+        seer_database,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,

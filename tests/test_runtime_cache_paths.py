@@ -33,7 +33,7 @@ def test_render_cache_recreates_deleted_cache_root(tmp_path: Path) -> None:
     cache = FileRenderCache(
         paths.render_dir(),
         max_size_bytes=1024,
-        db_version_getter=lambda: "version",
+        version_getter=lambda: "version",
     )
 
     cache.put("pet_info", "25", b"first")
