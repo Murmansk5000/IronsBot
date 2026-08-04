@@ -318,7 +318,7 @@ The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,
 `ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
 `ironsbot.plugins.team_audit`, `ironsbot.plugins.team.resource`, and the
-`ironsbot.plugins.headless_seer_notice`, and the messaging `blacklist`,
+`ironsbot.plugins.headless_seer_notice`, `ironsbot.plugins.headless_seer_runtime`, and the messaging `blacklist`,
 `meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
 them directly, and each package supplies its own metadata and contribution.
 `fire_manual_ad` owns its passive feature policy contribution; `sendpic`,

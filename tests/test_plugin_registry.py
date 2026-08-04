@@ -42,9 +42,7 @@ def test_plugin_registry_validates() -> None:
 
 def test_plugin_contributions_cover_feature_ownership() -> None:
     owned_features = {
-        feature
-        for definition in DEFINITIONS
-        for feature in definition.features
+        feature for definition in DEFINITIONS for feature in definition.features
     }
 
     assert owned_features | OPTIONAL_PRIVATE_FEATURES == set(Feature)
@@ -117,9 +115,7 @@ def test_manifest_team_resource_owns_its_commands_and_schedule() -> None:
     contribution = DEFINITIONS_BY_ID["team_resource"]
 
     assert contribution.features == frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION})
-    assert {command.plugin_id for command in contribution.commands} == {
-        "team_resource"
-    }
+    assert {command.plugin_id for command in contribution.commands} == {"team_resource"}
     assert [name for name, _hook in contribution.hooks.startup] == [
         "team_resource_jobs"
     ]
@@ -147,6 +143,14 @@ def test_manifest_headless_notice_owns_its_lifecycle() -> None:
     assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
         "headless_seer_check"
     ]
+
+
+def test_manifest_headless_runtime_owns_its_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["headless_seer"]
+
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.startup] == ["headless_seer"]
+    assert [name for name, _hook in contribution.hooks.shutdown] == ["headless_seer"]
 
 
 def test_manifest_scheduled_restart_owns_its_lifecycle() -> None:
@@ -199,7 +203,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "scheduler",
         "docker_update",
         "db_sync",
-        "headless_seer",
         "messaging",
         "bilibili_monitor_jobs",
         "local_rank_jobs",
@@ -208,6 +211,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "team_resource_jobs",
         "activity_reminder_jobs",
         "headless_reconnect_jobs",
+        "headless_seer",
         "scheduled_restart_jobs",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
@@ -274,8 +278,9 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT
                     / "ironsbot"
                     / "plugins"
-                    / "scheduled_restart"
+                    / "headless_seer_runtime"
                     / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

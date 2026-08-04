@@ -20,6 +20,9 @@ from ironsbot.plugins.fire_manual_ad import (
 from ironsbot.plugins.headless_seer_notice import (
     plugin_contribution as headless_notice_plugin_contribution,
 )
+from ironsbot.plugins.headless_seer_runtime import (
+    plugin_contribution as headless_runtime_plugin_contribution,
+)
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
 from ironsbot.plugins.help.hint import (
     plugin_contribution as help_hint_plugin_contribution,
@@ -309,6 +312,7 @@ def build_test_plugin_registry(
             scheduler=SchedulerFacade(),
             service=headless,
         ),
+        headless_runtime_plugin_contribution(service=headless),
         scheduled_restart_plugin_contribution(
             config=config.operations.restart,
             scheduler=SchedulerFacade(),

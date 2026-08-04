@@ -263,13 +263,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             commands=docker_update_commands(),
         ),
         PluginContribution(
-            id="headless_seer",
-            hooks=PluginHooks(
-                startup=(("headless_seer", headless.start),),
-                shutdown=(("headless_seer", headless.shutdown),),
-            ),
-        ),
-        PluginContribution(
             id="messaging",
             features=frozenset(
                 {

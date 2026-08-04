@@ -18,5 +18,6 @@ plugin_dirs = []
   "ironsbot.plugins.team.resource",
   "ironsbot.plugins.activity",
   "ironsbot.plugins.headless_seer_notice",
+  "ironsbot.plugins.headless_seer_runtime",
   "ironsbot.plugins.scheduled_restart",
 ]
