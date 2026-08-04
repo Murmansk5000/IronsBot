@@ -81,10 +81,24 @@ async def _scheduled_rank_page_refresh(
         logger.info("rank page cache auto refresh skipped: outside active window")
         return
 
-    result = await service.refresh(headless.get_game, background=True)
+    parallelism = headless.healthy_worker_count
+    if parallelism <= 0:
+        logger.info("rank page cache auto refresh skipped: no healthy worker")
+        return
+
+    result = await service.refresh(
+        headless.get_game,
+        background=True,
+        max_parallelism=parallelism,
+    )
+    workers = ",".join(
+        f"{user_id}:{count}"
+        for user_id, count in sorted(result.worker_page_counts.items())
+    ) or "none"
     logger.info(
         "rank page cache auto refresh finished: "
-        f"total={result.total}, success={result.success}, failed={result.failed}"
+        f"total={result.total}, success={result.success}, failed={result.failed}, "
+        f"parallelism={result.parallelism}, workers={workers}"
     )
 
 

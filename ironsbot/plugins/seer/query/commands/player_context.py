@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
+
 PLAYER_ID_KEY = "player_id"
 PLAYER_CONVERSATION_NAMESPACE = "seer_player"
 PLAYER_DETAIL_NAMESPACE = PLAYER_CONVERSATION_NAMESPACE
@@ -21,3 +23,4 @@ class PlayerDetailMenuContext:
     has_collection: bool
     has_peak: bool
     has_autocard: bool
+    base_snapshot: PlayerBaseSnapshot | None = None
