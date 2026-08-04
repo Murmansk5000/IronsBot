@@ -505,9 +505,11 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
   pixels.
 
 The current Phase 4 transition has this target shape for published pet info,
-type matchup, peak-pool, peak-vote, and peak-pet-rank images. Rank, lineup,
-and other renderer paths remain **transition** work. They may receive narrow
-correctness fixes, but new rendering features must start from the target
+type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player
+lineup image. The private lineup keeps its own presentation module, but its
+adapter alone owns asset loading, final-cache access, and the HTML render port.
+Rank and other renderer paths remain **transition** work. They may receive
+narrow correctness fixes, but new rendering features must start from the target
 pipeline above instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
@@ -1124,13 +1126,13 @@ reference for users:
 Phase 0 observations to resolve in later phases are also explicit: the
 current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
 uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The Phase 4 pet-info, type-matchup, peak-pool, peak-vote, and
-peak-pet-rank paths use detached snapshots, shared image assets, immutable
-render documents, and pure HTML rendering. Their renderer modules do not
-perform ORM, SQL, HTTP, filesystem, or association inference. Remaining render
-paths are explicitly transitional, not alternative patterns to copy. Existing
-Bandit findings with no high-severity result remain tracked rather than silently
-suppressed.
+migration. The Phase 4 pet-info, type-matchup, peak-pool, peak-vote,
+peak-pet-rank, and private player-lineup paths use detached snapshots, shared
+image assets, immutable render documents, and pure HTML rendering. Their
+renderer modules do not perform ORM, SQL, HTTP, filesystem, or association
+inference. Remaining render paths are explicitly transitional, not alternative
+patterns to copy. Existing Bandit findings with no high-severity result remain
+tracked rather than silently suppressed.
 
 ## Enforcement
 
