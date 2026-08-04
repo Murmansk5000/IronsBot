@@ -21,7 +21,7 @@ if TYPE_CHECKING:
         LifecycleHook,
         NamedBotLifecycleHook,
         NamedLifecycleHook,
-        PluginDefinition,
+        PluginContribution,
     )
 
 T = TypeVar("T")
@@ -77,7 +77,7 @@ class ApplicationLifecycle:
     def from_plugins(
         cls,
         driver: Driver,
-        definitions: tuple[PluginDefinition, ...],
+        definitions: tuple[PluginContribution, ...],
         *,
         task_owner: TaskOwner,
         resource_shutdown_hooks: tuple[NamedLifecycleHook, ...] = (),

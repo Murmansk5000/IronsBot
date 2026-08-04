@@ -35,7 +35,7 @@ from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.runtime.plugins import (
     HelpEntry,
-    PluginDefinition,
+    PluginContribution,
     PluginHooks,
 )
 from ironsbot.runtime.replies import append_text_hint
@@ -71,7 +71,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     settings: Settings,
     resources: ApplicationResources,
     scheduler: SchedulerFacade,
-) -> tuple[PluginDefinition, ...]:
+) -> tuple[PluginContribution, ...]:
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
@@ -162,7 +162,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     )
     messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
-    definitions: tuple[PluginDefinition, ...] = ()
+    definitions: tuple[PluginContribution, ...] = ()
 
     def install_scheduler(_registry: MatcherRegistry) -> None:
         load_external_plugin("nonebot_plugin_apscheduler")
@@ -244,7 +244,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         )
 
     definitions = (
-        PluginDefinition(
+        PluginContribution(
             id="apscheduler",
             install=install_scheduler,
             hooks=PluginHooks(
@@ -252,24 +252,24 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 shutdown=(("scheduler", scheduler.shutdown),),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="localstore",
             install=external_install("nonebot_plugin_localstore"),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="htmlkit",
             install=external_install("nonebot_plugin_htmlkit"),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="conversation_blacklist",
             features=frozenset({Feature.BLACKLIST}),
             install=partial(install_blacklist, features=features),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="server_status",
             features=frozenset({Feature.SERVER_STATUS_QUERY}),
             help=HelpEntry(
@@ -295,7 +295,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 startup=(("docker_update", start_docker_update),),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="db_sync",
             help=HelpEntry(
                 name="数据更新",
@@ -316,7 +316,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 startup=(("db_sync", start_data_sync),),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="docker_update",
             help=HelpEntry(
                 name="镜像维护",
@@ -330,14 +330,14 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             ),
             commands=docker_update_commands(),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="headless_seer",
             hooks=PluginHooks(
                 startup=(("headless_seer", headless.start),),
                 shutdown=(("headless_seer", headless.shutdown),),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="messaging",
             features=frozenset(
                 {
@@ -379,7 +379,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="headless_notice",
             hooks=PluginHooks(
                 startup=(
@@ -396,7 +396,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="scheduled_restart",
             hooks=PluginHooks(
                 startup=(
@@ -421,7 +421,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="bilibili",
             features=frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH}),
             help=HelpEntry(
@@ -453,7 +453,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="activity",
             features=frozenset(
                 {Feature.SEER_ACTIVITY_QUERY, Feature.SEER_ACTIVITY_PUSH}
@@ -480,7 +480,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="team_resource",
             features=frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION}),
             help=HelpEntry(
@@ -509,7 +509,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="startup_notice",
             hooks=PluginHooks(
                 first_bot_connect=(
@@ -529,7 +529,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=features,
             config=config.pet_config,
         ),
-        PluginDefinition(
+        PluginContribution(
             id="seer_query",
             features=frozenset(
                 {
@@ -578,7 +578,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 first_bot_connect=(("render_crash_report", report_render_crash),),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="team_audit",
             features=frozenset({Feature.TEAM_AUDIT}),
             install=partial(
@@ -598,11 +598,11 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="fire_manual_ad",
             features=frozenset({Feature.FIRE_MANUAL_AD}),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="red_packet_notice",
             install=partial(
                 install_red_packet_notice,
@@ -610,7 +610,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 admin_notices=admin_notices,
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="ai_chat",
             features=frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE}),
             help=HelpEntry(
@@ -638,7 +638,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 else None
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="ai_intent",
             features=frozenset(
                 {
@@ -673,7 +673,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="about",
             features=frozenset({Feature.ABOUT}),
             help=HelpEntry(
@@ -686,7 +686,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             commands=about_commands(),
             install=install_about,
         ),
-        PluginDefinition(
+        PluginContribution(
             id="help",
             features=frozenset({Feature.HELP}),
             help=HelpEntry(
@@ -699,14 +699,14 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             commands=help_commands(),
             install=install_help,
         ),
-        PluginDefinition(
+        PluginContribution(
             id="help_hint",
             install=partial(
                 install_help_hint,
                 service=help_hint_service,
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="sendpic",
             features=frozenset({Feature.IMAGE}),
             help=HelpEntry(
@@ -718,7 +718,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             commands=configured_image_commands(config),
             install=install_sendpic,
         ),
-        PluginDefinition(
+        PluginContribution(
             id="meeting",
             features=frozenset({Feature.MEETING}),
             help=HelpEntry(
@@ -736,7 +736,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 features=features,
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="rank_help",
             features=frozenset({Feature.SEER_RANK}),
             help=HelpEntry(
@@ -759,16 +759,16 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             scheduler,
         ),
     )
-    private_definitions = resources.private_extensions.load_plugin_definitions(
+    private_contributions = resources.private_extensions.load_plugin_contributions(
         resources.private_extension_runtime
     )
-    definitions = (*definitions, *private_definitions)
+    definitions = (*definitions, *private_contributions)
     validate_plugin_registry(definitions)
     return definitions
 
 
 def validate_plugin_registry(
-    definitions: tuple[PluginDefinition, ...],
+    definitions: tuple[PluginContribution, ...],
 ) -> None:
     ids = [definition.id for definition in definitions]
     duplicates = sorted({plugin_id for plugin_id in ids if ids.count(plugin_id) > 1})

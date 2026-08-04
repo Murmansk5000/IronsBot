@@ -10,7 +10,7 @@ from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
 
 CommandScope = Literal["group", "private", "both"]
 CommandAudience = Literal["regular", "group_manager", "superuser"]
@@ -281,7 +281,7 @@ class CommandCatalog:
 
     def load(
         self,
-        definitions: Iterable["PluginDefinition"],
+        definitions: Iterable["PluginContribution"],
         *,
         known_features: Iterable[str] = (),
     ) -> None:

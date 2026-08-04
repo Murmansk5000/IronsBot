@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import MatcherRegistry
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
 
 
 def _help_prompt_message(event: MessageEvent, text: str):
@@ -145,7 +145,7 @@ def _create_selection_handler(
 
 def install(
     registry: MatcherRegistry,
-    definitions: tuple[PluginDefinition, ...],
+    definitions: tuple[PluginContribution, ...],
     features: FeatureService,
     commands: CommandCatalog,
     *,

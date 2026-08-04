@@ -28,7 +28,7 @@ from ironsbot.core.time import daily_time_parts
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
-from ironsbot.runtime.plugins import HelpEntry, PluginDefinition, PluginHooks
+from ironsbot.runtime.plugins import HelpEntry, PluginContribution, PluginHooks
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, explicit_command
@@ -99,8 +99,8 @@ def plugin_definition(
     features: FeatureService,
     delivery: MessageDelivery,
     scheduler: Scheduler,
-) -> PluginDefinition:
-    return PluginDefinition(
+) -> PluginContribution:
+    return PluginContribution(
         id="lucky_skin_window",
         features=frozenset({Feature.LUCKY_SKIN_WINDOW}),
         help=HelpEntry(

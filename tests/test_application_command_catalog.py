@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from ironsbot.app.composition import Application
 from ironsbot.runtime.commands import CommandCatalog
-from ironsbot.runtime.plugins import PluginDefinition
+from ironsbot.runtime.plugins import PluginContribution
 
 
 def test_application_validates_the_catalog_after_matcher_registration() -> None:
@@ -27,7 +27,7 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
         calls.append("plugin")
 
     commands = CommandCatalog()
-    plugins = (PluginDefinition(id="example", install=install_plugin),)
+    plugins = (PluginContribution(id="example", install=install_plugin),)
     commands.load(plugins)
     application = Application(
         settings=cast("Any", object()),

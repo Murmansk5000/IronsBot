@@ -174,7 +174,7 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
     from ironsbot.services.messaging.delivery import (
         MessageDelivery,
         MessageLimiter,
@@ -195,7 +195,7 @@ class Application:
     databases: DatabaseManager
     prompt_sessions: PromptSessionManager
     resources: ApplicationResources
-    plugins: tuple[PluginDefinition, ...]
+    plugins: tuple[PluginContribution, ...]
     matchers: MatcherRegistry
     lifecycle: ApplicationLifecycle
     _installed: bool = field(default=False, init=False)

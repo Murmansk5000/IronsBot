@@ -20,7 +20,7 @@ from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from ironsbot.app.composition import ApplicationResources
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
 
 
 async def _noop_startup(_scheduler: object) -> None:
@@ -61,7 +61,7 @@ async def _noop_query() -> str:
 
 def build_test_plugin_registry(
     settings: Settings | None = None,
-) -> tuple[PluginDefinition, ...]:
+) -> tuple[PluginContribution, ...]:
     config = settings or Settings()
     runtime = build_test_runtime(
         feature_config=config.features,
@@ -213,7 +213,7 @@ def build_test_plugin_registry(
             commands=CommandCatalog(),
             help_hint=object(),
             private_extensions=SimpleNamespace(
-                load_plugin_definitions=lambda _runtime: ()
+                load_plugin_contributions=lambda _runtime: ()
             ),
             private_extension_runtime=object(),
         ),
