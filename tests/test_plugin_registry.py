@@ -81,6 +81,13 @@ def test_manifest_red_packet_owns_its_passive_matchers() -> None:
     assert contribution.commands == ()
 
 
+def test_manifest_fire_manual_ad_owns_its_feature() -> None:
+    contribution = DEFINITIONS_BY_ID["fire_manual_ad"]
+
+    assert contribution.features == frozenset({Feature.FIRE_MANUAL_AD})
+    assert contribution.commands == ()
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -178,6 +185,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
+                    ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

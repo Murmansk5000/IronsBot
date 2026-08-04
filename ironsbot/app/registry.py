@@ -546,10 +546,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             ),
         ),
         PluginContribution(
-            id="fire_manual_ad",
-            features=frozenset({Feature.FIRE_MANUAL_AD}),
-        ),
-        PluginContribution(
             id="ai_chat",
             features=frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE}),
             help=HelpEntry(

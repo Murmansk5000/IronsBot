@@ -11,6 +11,9 @@ from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
+from ironsbot.plugins.fire_manual_ad import (
+    plugin_contribution as fire_manual_ad_plugin_contribution,
+)
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
 from ironsbot.plugins.messaging.blacklist import (
     plugin_contribution as blacklist_plugin_contribution,
@@ -260,4 +263,5 @@ def build_test_plugin_registry(
             config=config.messaging.red_packet_notice,
             admin_notices=runtime.admin_notices,
         ),
+        fire_manual_ad_plugin_contribution(),
     )
