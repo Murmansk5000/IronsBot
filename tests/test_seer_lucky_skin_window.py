@@ -347,36 +347,85 @@ def test_empty_watch_preference_remains_initialized(tmp_path: Path) -> None:
 
 
 def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None:
-    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
+    _service_instance, _game, _delivery, _bindings, _headless = _service(tmp_path)
     features = cast("FeatureService", _Features())
 
     async def check() -> None:
         list_state: dict[str, object] = {}
-        assert await lucky_skin_window_plugin._matches_watch_exact(
-            private_message_event("关注皮肤", user_id=1001),
-            cast("Any", list_state),
-            command="关注皮肤",
-            service=service,
-            features=features,
-        )
-        change_state: dict[str, object] = {}
-        assert await lucky_skin_window_plugin._matches_watch_change(
-            private_message_event("关注皮肤 1400103", user_id=1001),
-            cast("Any", change_state),
-            command="关注皮肤",
-            service=service,
-            features=features,
-        )
-        assert change_state[lucky_skin_window_plugin.BOT_COMMAND_ARG_KEY] == "1400103"
+        for commands in (
+            lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+            lucky_skin_window_plugin._WATCH_CLEAR_COMMANDS,
+            lucky_skin_window_plugin._WATCH_RESET_COMMANDS,
+        ):
+            for command in commands:
+                assert await lucky_skin_window_plugin._matches_watch_exact(
+                    private_message_event(command, user_id=1001),
+                    cast("Any", list_state),
+                    commands=commands,
+                    features=features,
+                )
+
+        for commands in (
+            lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+            lucky_skin_window_plugin._WATCH_REMOVE_COMMANDS,
+        ):
+            for command in commands:
+                change_state: dict[str, object] = {}
+                assert await lucky_skin_window_plugin._matches_watch_change(
+                    private_message_event(f"{command} 1400103", user_id=1001),
+                    cast("Any", change_state),
+                    commands=commands,
+                    features=features,
+                )
+                assert (
+                    change_state[lucky_skin_window_plugin.BOT_COMMAND_ARG_KEY]
+                    == "1400103"
+                )
+
         assert not await lucky_skin_window_plugin._matches_watch_change(
             private_message_event("关注皮肤", user_id=1001),
             cast("Any", {}),
-            command="关注皮肤",
-            service=service,
+            commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
             features=features,
         )
 
     asyncio.run(check())
+
+
+def test_watch_list_matches_before_binding_and_replies_with_the_problem(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, bindings, _headless = _service(tmp_path)
+    bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
+    event = private_message_event("订阅皮肤", user_id=1001)
+    replies: list[str] = []
+
+    async def capture_reply(
+        _matcher: object,
+        _event: object,
+        message: str,
+    ) -> None:
+        replies.append(message)
+
+    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", capture_reply)
+
+    async def check() -> None:
+        assert await lucky_skin_window_plugin._matches_watch_exact(
+            event,
+            cast("Any", {}),
+            commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+            features=cast("FeatureService", _Features()),
+        )
+        await lucky_skin_window_plugin._handle_watch_list(
+            service,
+            cast("Any", object()),
+            event,
+        )
+
+    asyncio.run(check())
+
+    assert replies == ["❌ 请先绑定 TOML 指定的米米号 90001 后再管理皮肤订阅。"]
 
 
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
