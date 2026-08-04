@@ -75,6 +75,30 @@
     迁移中的适配器可以复用旧投递链以保留队列、退订和限流，但不得把这些类型
     重新传回 service。
 
+## 过渡边界准入
+
+开始实现前，先对照 `ARCHITECTURE.md` 的“Transition Inventory And Admission
+Rule”。每个改动只允许属于以下三种之一：
+
+1. 扩展已有 `target` 契约；
+2. 修复 `baseline` 可见行为，且不增加新的依赖方向；
+3. 让一个 `transition` 责任减少一个消费者、一个持久化读写路径或一个平台泄漏。
+
+以下情况必须暂停实现并先补最小设计，而不是把需求继续接到现有模块：
+
+- service 构造函数需要 `OneBotReferenceResolver`、`MessageTarget`、
+  `OneBotDelivery`、NoneBot `Bot` 或 CQ 消息；
+- service 的公开方法以 `group_id`、`qq_user_id`、`target_type` 之类的传输
+  身份为业务参数，而不是接收 `ActorRef`、`ConversationRef` 或领域实体 ID；
+- 为了一个新命令、推送或缓存增加第二份关键词、路由、退订、别名或状态表；
+- 新代码需要从 renderer、plugin 或运行时 bridge 反向读取数据库、配置或业务
+  服务；
+- 计划以“先兼容两套路径”为理由，在正常运行时加入双读、双写或默认回退。
+
+遇到这些信号时，设计记录必须写明：目标 port 或值对象、现有行为如何由平台
+适配器保留、旧路径减少的范围、删除条件和针对性的防扩张测试。只有一次性停机
+迁移工具可以读取旧 schema；它不属于服务正常运行路径。
+
 ## 文档同步纪律
 
 架构文档不是事后说明。每个改变目标契约、过渡桥接或完成条件的提交，必须同时

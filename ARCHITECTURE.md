@@ -86,6 +86,33 @@ The temporary private-extension adapter owns none of those target
 responsibilities. It only adapts configured external private contributions
 until that extension boundary has a standard declarative replacement.
 
+### Transition Inventory And Admission Rule
+
+The following table is the working inventory for architecture tasks. It
+prevents a currently working bridge from being treated as a design option for
+new code. A row marked **transition** may receive a narrowly scoped bug fix,
+or lose one consumer in a migration. It must not receive a new service,
+feature, persistence schema, or policy decision.
+
+| Responsibility | Status | Current safe boundary | Required direction before new ownership |
+| --- | --- | --- | --- |
+| `PluginContribution` and direct command metadata | target | Plugin-local contribution plus `CommandCatalog` | Extend the existing contract; never recreate an application registry. |
+| `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
+| Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
+| Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
+| Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
+| OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
+| OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
+| Lucky-skin-window and team-resource delivery | migration queue | Existing behaviour is baseline only | Extract service ports and typed refs before adding delivery, subscription or identity features. |
+| Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
+| Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
+
+Before adding cross-feature code, locate its row in this table. If it has no
+row, add a target responsibility with an owner and a testable boundary first.
+If it is a transition row, the proposed diff must make the row smaller or
+strictly preserve it; adding a second caller is a design failure even if the
+tests pass.
+
 ## Engineering Principles
 
 New behaviour must be designed as a reusable domain capability before a
@@ -237,6 +264,15 @@ activity reminders: the service creates typed recipients and an
 OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
 The current push-preference SQLite schema still stores OneBot target IDs; its
 conversion is confined to composition until the later identity-state migration.
+
+The next delivery migrations are intentionally ordered by existing semantic
+overlap, not by file size: first lucky-skin-window notification delivery, then
+team-resource subscription delivery, then the remaining messaging schedulers.
+Each task must extract a typed service-side port and move the corresponding
+OneBot `MessageTarget` call into `integrations.onebot`; it must not add another
+platform-neutral wrapper around `MessageTarget`. This order keeps current
+subscription, queue, rate-limit and failure semantics available while reducing
+the old chain one domain at a time.
 
 The eventual composition is:
 
