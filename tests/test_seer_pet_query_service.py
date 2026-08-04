@@ -15,8 +15,6 @@ from ironsbot.services.seer.skin_image_resolution import SkinImageResolution
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from seerapi_models import PetORM
-
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
 
@@ -104,12 +102,6 @@ class SessionBoundPet:
         self.resource_id = 1
         self._data = data
 
-    @property
-    def base_stats(self) -> object:
-        assert self._data.session_active
-        return object()
-
-
 class SessionBoundImagePet:
     id = 1
     name = "精灵"
@@ -130,9 +122,9 @@ def _service(
 ) -> PetQueryService:
     rendered = [] if rendered is None else rendered
 
-    async def render(pet: PetORM) -> bytes:
-        rendered.append(pet)
-        return f"rendered:{pet.id}".encode()
+    async def render(pet_id: int) -> bytes:
+        rendered.append(pet_id)
+        return f"rendered:{pet_id}".encode()
 
     return PetQueryService(
         cast("SeerDataAccess", data),
@@ -262,17 +254,18 @@ async def test_single_pet_info_query_renders_image() -> None:
 
     assert result.reply is not None
     assert result.reply.image == b"rendered:1"
-    assert rendered == [pet]
+    assert rendered == [pet.id]
 
 
 @pytest.mark.asyncio
-async def test_pet_info_query_renders_before_data_session_closes() -> None:
+async def test_pet_info_query_renders_after_data_session_closes() -> None:
     data = FakeData()
     pet = SessionBoundPet(data)
     data.pets = (pet,)
 
-    async def render(session_bound_pet: PetORM) -> bytes:
-        _ = session_bound_pet.base_stats
+    async def render(pet_id: int) -> bytes:
+        assert pet_id == pet.id
+        assert data.session_active is False
         return b"rendered"
 
     service = PetQueryService(
@@ -289,13 +282,14 @@ async def test_pet_info_query_renders_before_data_session_closes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pet_info_selection_renders_before_data_session_closes() -> None:
+async def test_pet_info_selection_renders_after_data_session_closes() -> None:
     data = FakeData()
     pet = SessionBoundPet(data)
     data.pets = (pet,)
 
-    async def render(session_bound_pet: PetORM) -> bytes:
-        _ = session_bound_pet.base_stats
+    async def render(pet_id: int) -> bytes:
+        assert pet_id == pet.id
+        assert data.session_active is False
         return b"rendered"
 
     service = PetQueryService(

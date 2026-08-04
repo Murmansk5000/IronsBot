@@ -372,6 +372,14 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 执行原工具 dry-run，确认后才 `--apply`；验证成功后再启动新读取方。
 该迁移不会把 OneBot QQ 身份隐式转换为官方 OpenID，普通启动也不会自动迁移。
 
+### 渲染预算与素材缓存
+
+此阶段 `seer.render.final_cache_max_size_mb` 控制最终图片缓存；原 `cache_max_size_mb`
+和 `runtime.concurrency.render_max_concurrent` 已不再是有效旋钮。
+原生 HTML 渲染固定单并发，`native_timeout_seconds` 单位为秒；素材内存/磁盘预算和
+获取并发分别由同表的 `asset_*` 字段控制。example 给出当时模型支持的字段，
+不改变模型默认值，不把旧显式预算或示例值称为新的运行默认值。
+
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：

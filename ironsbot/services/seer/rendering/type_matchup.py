@@ -1,16 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
-from typing import TypedDict
+"""Pure presentation and HTML rendering for type-matchup documents."""
 
-from ironsbot.services.seer.images import SeerImageSource, to_data_uri
-from ironsbot.services.seer.render_cache import RenderCache
+from __future__ import annotations
+
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import TYPE_CHECKING
+
 from ironsbot.services.seer.render_paths import TYPE_MATCHUP_TEMPLATE_PATH
-from ironsbot.services.seer.type_calc import (
-    TypeCombinationSnapshot,
-    TypeMatchup,
-)
 
-from . import HtmlTemplateRenderer
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ironsbot.services.seer.type_calc import (
+        TypeCombinationSnapshot,
+        TypeMatchup,
+    )
+
+    from . import HtmlTemplateRenderer
 
 GRID_COLUMNS = 10
 CELL_SIZE = 72
@@ -21,120 +28,91 @@ GRID_WIDTH = GRID_COLUMNS * CELL_SIZE + (GRID_COLUMNS - 1) * CELL_GAP
 MAX_WIDTH = GRID_WIDTH + SECTION_OVERHEAD + CONTAINER_PADDING
 
 
-class MatchupItemDict(TypedDict):
+@dataclass(frozen=True, slots=True)
+class TypeMatchupAssets:
+    """Data-URI assets detached from the image source."""
+
+    icons: tuple[tuple[int, str], ...]
+    target_icon: str
+    target_icon_secondary: str | None
+
+    @property
+    def icon_by_id(self) -> Mapping[int, str]:
+        return MappingProxyType(dict(self.icons))
+
+
+@dataclass(frozen=True, slots=True)
+class TypeMatchupItemDocument:
     icon: str
     name: str
     multiplier: float
 
 
-def _is_custom_type_combination(target: TypeCombinationSnapshot) -> bool:
-    return target.id < 0
+@dataclass(frozen=True, slots=True)
+class TypeMatchupRenderDocument:
+    type_name: str
+    type_icon: str
+    type_icon_secondary: str | None
+    attack_items: tuple[TypeMatchupItemDocument, ...]
+    defense_items: tuple[TypeMatchupItemDocument, ...]
 
-
-async def _resolve_custom_target_icons(
-    images: SeerImageSource,
-    target: TypeCombinationSnapshot,
-    *,
-    target_icon_data_uri: str | None,
-    target_icon_secondary_data_uri: str | None,
-) -> tuple[str, str | None]:
-    """Use single-type icons for custom combinations."""
-    if target.secondary_id is None:
-        if target_icon_data_uri is not None:
-            return target_icon_data_uri, None
-        primary_bytes = await images.fetch("element_type", str(target.primary_id))
-        return to_data_uri(primary_bytes), None
-
-    if target_icon_data_uri is not None and target_icon_secondary_data_uri is not None:
-        return target_icon_data_uri, target_icon_secondary_data_uri
-
-    primary_bytes, secondary_bytes = await asyncio.gather(
-        images.fetch("element_type", str(target.primary_id)),
-        images.fetch("element_type", str(target.secondary_id)),
-    )
-    return to_data_uri(primary_bytes), to_data_uri(secondary_bytes)
-
-
-async def render_type_matchup(  # noqa: PLR0913
-    cache: RenderCache,
-    images: SeerImageSource,
-    render_html: HtmlTemplateRenderer,
-    matchup: TypeMatchup,
-    *,
-    target_icon_data_uri: str | None = None,
-    target_icon_secondary_data_uri: str | None = None,
-) -> bytes:
-    """渲染属性克制面板图片，返回 PNG 图片字节。
-
-    包含攻击效果和被攻击效果两个区域，支持自定义属性组合渲染。
-    """
-    cached = cache.get("type_matchup", matchup.cache_key)
-    if cached is not None:
-        return cached
-
-    target = matchup.target
-
-    all_combo_ids: dict[int, None] = {}
-    for combo, _ in matchup.attack_table:
-        all_combo_ids.setdefault(combo.id, None)
-    for combo, _ in matchup.defense_table:
-        all_combo_ids.setdefault(combo.id, None)
-
-    id_list = list(all_combo_ids)
-    icon_bytes_list = await asyncio.gather(
-        *(images.fetch("element_type", str(cid)) for cid in id_list)
-    )
-    icon_map: dict[int, str] = {
-        cid: to_data_uri(data)
-        for cid, data in zip(id_list, icon_bytes_list, strict=True)
-    }
-    type_icon_secondary: str | None = None
-    if _is_custom_type_combination(target):
-        target_icon_data_uri, type_icon_secondary = await _resolve_custom_target_icons(
-            images,
-            target,
-            target_icon_data_uri=target_icon_data_uri,
-            target_icon_secondary_data_uri=target_icon_secondary_data_uri,
+    @property
+    def templates(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {
+                "type_name": self.type_name,
+                "type_icon": self.type_icon,
+                "type_icon_secondary": self.type_icon_secondary,
+                "attack_items": self.attack_items,
+                "defense_items": self.defense_items,
+                "cell_size": CELL_SIZE,
+                "cell_gap": CELL_GAP,
+            }
         )
-    else:
-        if target_icon_data_uri is None:
-            target_icon_data_uri = icon_map.get(target.id)
-        if target_icon_data_uri is None:
-            target_icon_data_uri = to_data_uri(
-                await images.fetch("element_type", str(target.id))
-            )
 
-    attack_items: list[MatchupItemDict] = sorted(
-        [
-            {"icon": icon_map[combo.id], "name": combo.name, "multiplier": mult}
-            for combo, mult in matchup.attack_table
-        ],
-        key=lambda x: x["multiplier"],
-        reverse=True,
-    )
-    defense_items: list[MatchupItemDict] = sorted(
-        [
-            {"icon": icon_map[combo.id], "name": combo.name, "multiplier": mult}
-            for combo, mult in matchup.defense_table
-        ],
-        key=lambda x: x["multiplier"],
-        reverse=True,
+
+def present_type_matchup(
+    matchup: TypeMatchup,
+    assets: TypeMatchupAssets,
+) -> TypeMatchupRenderDocument:
+    """Create a deterministic template document without I/O or data access."""
+    icons = assets.icon_by_id
+    return TypeMatchupRenderDocument(
+        type_name=matchup.target.name,
+        type_icon=assets.target_icon,
+        type_icon_secondary=assets.target_icon_secondary,
+        attack_items=_present_items(matchup.attack_table, icons),
+        defense_items=_present_items(matchup.defense_table, icons),
     )
 
-    result = await render_html(
+
+def _present_items(
+    values: list[tuple[TypeCombinationSnapshot, float]],
+    icons: Mapping[int, str],
+) -> tuple[TypeMatchupItemDocument, ...]:
+    return tuple(
+        TypeMatchupItemDocument(
+            icon=icons[combination.id],
+            name=combination.name,
+            multiplier=multiplier,
+        )
+        for combination, multiplier in sorted(
+            values,
+            key=lambda value: value[1],
+            reverse=True,
+        )
+    )
+
+
+async def render_type_matchup_document(
+    render_html: HtmlTemplateRenderer,
+    document: TypeMatchupRenderDocument,
+) -> bytes:
+    """Render a prepared document without reading data or fetching assets."""
+    return await render_html(
         template_path=TYPE_MATCHUP_TEMPLATE_PATH,
         template_name="template.html.j2",
-        templates={
-            "type_name": target.name,
-            "type_icon": target_icon_data_uri,
-            "type_icon_secondary": type_icon_secondary,
-            "attack_items": attack_items,
-            "defense_items": defense_items,
-            "cell_size": CELL_SIZE,
-            "cell_gap": CELL_GAP,
-        },
+        templates=document.templates,
         max_width=MAX_WIDTH,
         allow_refit=False,
     )
-    cache.put("type_matchup", matchup.cache_key, result)
-    return result
