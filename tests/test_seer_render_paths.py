@@ -33,6 +33,7 @@ ACTIVE_RENDER_MODULES = (
     "ironsbot.integrations.seer_data.peak_pool_renderer",
     "ironsbot.integrations.seer_data.peak_render_assets",
     "ironsbot.integrations.seer_data.peak_pool_vote_renderer",
+    "ironsbot.integrations.seer_data.peak_pet_rank_renderer",
     "ironsbot.integrations.seer_data.type_matchup_renderer",
 )
 

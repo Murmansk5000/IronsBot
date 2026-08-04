@@ -62,6 +62,9 @@ from ironsbot.integrations.onebot.team_resource import (
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
+    render_peak_pet_rank,
+)
 from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
 from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
@@ -174,7 +177,6 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryService,
 )
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
-from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
 from ironsbot.services.seer.type_query import TypeQueryService
@@ -618,8 +620,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             ),
             partial(
                 render_peak_pet_rank,
-                images=seer_images,
-                render_html=render_coordinator.render,
+                render_cache,
+                seer_images,
+                render_coordinator.render,
             ),
         ),
         MintmarkQueryService(

@@ -128,8 +128,8 @@ def _service(
         rendered["vote_session_open"] = data.query_open
         return b"vote"
 
-    async def render_pet(**kwargs: Any) -> bytes:
-        rendered["pet"] = kwargs
+    async def render_pet(input_: Any) -> bytes:
+        rendered["pet"] = input_
         return b"pet"
 
     return PeakQueryService(
@@ -214,14 +214,14 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
 
     assert result.image == b"pet"
     assert data.get_many_open is False
-    assert rendered["pet"]["pet_map"] == {
-        7: PeakPetSnapshot(
+    assert rendered["pet"].pets == (
+        PeakPetSnapshot(
             id=7,
             name="雷伊",
             resource_id=1007,
             type_id=4,
-        )
-    }
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -354,7 +354,7 @@ async def test_peak_vote_reports_render_timeout(
     async def render_pool(_pools: Any, _title: str) -> bytes:
         return b"pool"
 
-    async def render_pet(**_kwargs: Any) -> bytes:
+    async def render_pet(_input: Any) -> bytes:
         return b"pet"
 
     async def report(_message: str) -> None:
