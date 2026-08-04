@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date
 from struct import pack
@@ -35,6 +36,7 @@ from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
     LuckySkinWindowBindingError,
     LuckySkinWindowService,
+    _parse_skin_ids,
 )
 from tests.helpers.onebot_events import private_message_event
 from tests.helpers.runtime import build_test_runtime
@@ -124,7 +126,7 @@ class _Game:
     ) -> tuple[None, bytes]:
         del timeout
         self.calls.append((int(command_id), body))
-        values = (0,) * 9 + (101, 102, 103, 104)
+        values = (0,) * 8 + (101, 102, 103, 104)
         return None, pack(f"!{len(values)}I", *values)
 
 
@@ -292,6 +294,19 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
         asyncio.run(service.check_for_user(1001))
+
+
+def test_lucky_skin_response_uses_the_first_of_four_offers() -> None:
+    # The following uint is unrelated metadata.  Starting at index 9 would
+    # omit skin 705 and incorrectly include 50 as the last offer.
+    values = (0, 0, 0, 18, 0, 0, 0, 0, 705, 338, 239, 207, 50)
+
+    assert _parse_skin_ids(pack(f"!{len(values)}I", *values)) == (
+        705,
+        338,
+        239,
+        207,
+    )
 
 
 def test_watch_defaults_accept_resource_ids_and_seed_only_once(
@@ -711,6 +726,33 @@ def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
     cache.prepare_day(day="2026-08-03")
 
     assert cache.get(player_id=90001, day="2026-08-03") is None
+
+
+def test_storage_upgrade_discards_results_from_the_old_decoder(tmp_path: Path) -> None:
+    path = tmp_path / "runtime_state.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE ironsbot_schema_migrations (
+                namespace TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO ironsbot_schema_migrations
+            VALUES ('skin_window', 3, '2026-08-05T00:00:00Z');
+            CREATE TABLE lucky_skin_window_cache (
+                player_id INTEGER PRIMARY KEY,
+                skin_ids_json TEXT NOT NULL,
+                recorded_at TEXT NOT NULL
+            );
+            INSERT INTO lucky_skin_window_cache
+            VALUES (90001, '[338,239,207,50]', '2026-08-05T00:00:00Z');
+            """
+        )
+
+    cache = SqliteLuckySkinWindowCache(path)
+
+    assert cache.get(player_id=90001, day="2026-08-05") is None
 
 
 def test_daily_notice_logs_in_automatically(tmp_path: Path) -> None:

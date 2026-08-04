@@ -589,3 +589,67 @@ async def test_queued_conversation_expiry_suppresses_active_reply() -> None:
     state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
     manager.finish_queued_conversation(state)
     assert not manager.queued_conversation_is_cancelled(state)
+
+
+@pytest.mark.asyncio
+async def test_pending_conversation_holds_early_menu_input_until_activation() -> None:
+    manager = PromptSessionManager()
+    owner = private_message_event("米米号105023264", user_id=2, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="player_detail",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={"player_id": 105_023_264},
+        reply_check=lambda event: event.get_plaintext().strip() in {"1", "2"},
+        pending_reply_check=lambda event: event.get_session_id()
+        == owner.get_session_id()
+        and event.get_plaintext().strip().isdigit(),
+        handlers=[],
+        pending=True,
+        parallel=True,
+    )
+    early_selection = private_message_event("2", user_id=2, self_id=1)
+
+    assert context.matches(early_selection)
+    reservation = context.reserve()
+    assert reservation is not None
+    ticket, ready = reservation
+    await ready
+    activation = asyncio.create_task(context.wait_until_active())
+    await asyncio.sleep(0)
+
+    assert not activation.done()
+    context.activate(
+        state={"player_id": 105_023_264, "choices": ("1", "2")},
+        reply_check=lambda event: event.get_plaintext().strip() in {"1", "2"},
+        group_reply_check=None,
+        menu_anchor=None,
+        allow_group_reply_exit=False,
+        semantic_request_resolver=None,
+    )
+
+    assert await activation
+    assert context.state == {"player_id": 105_023_264, "choices": ("1", "2")}
+    context.complete(ticket)
+
+
+@pytest.mark.asyncio
+async def test_unactivated_conversation_cancels_after_first_level_command() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="player_detail",
+        event_session_id="private_2",
+        state={},
+        reply_check=lambda _event: True,
+        pending_reply_check=lambda _event: True,
+        handlers=[],
+        pending=True,
+    )
+    state: T_State = {QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token}
+    waiting = asyncio.create_task(context.wait_until_active())
+    await asyncio.sleep(0)
+
+    manager.finish_queued_conversation(state)
+
+    assert not await waiting
+    assert not context.active

@@ -279,7 +279,7 @@ async def _start_new_content(  # noqa: PLR0913
         prompt,
         _resolve_new_content_selection,
         _is_new_content_input,
-        prompt_message=await _render_content_prompt(
+        prompt_message=_render_content_prompt(
             prompt,
             snapshot,
             layout,

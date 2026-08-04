@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.runtime import prompts
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.prompts import Prompt, PromptItem, _prompt_semantic_request
 from ironsbot.runtime.semantic_requests import ActionDefinition, SemanticTarget
@@ -142,3 +144,76 @@ def test_hidden_prompt_items_require_unique_explicit_keys() -> None:
                 PromptItem("莫缇", "新增｜4923", 4923, is_visible=False),
             ],
         )
+
+
+@pytest.mark.asyncio
+async def test_async_prompt_message_reserves_input_before_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+
+    class PromptSessions:
+        def acquire(self, session_id: str) -> int:
+            assert session_id == "group_4_2"
+            return 1
+
+        def make_rule(
+            self,
+            session_id: str,
+            version: int,
+            input_check: object,
+        ) -> object:
+            del input_check
+            assert (session_id, version) == ("group_4_2", 1)
+            return object()
+
+        def cancel_queued_conversation(self, state: dict[str, object]) -> None:
+            del state
+
+    async def reserve_input(
+        matcher: object,
+        handlers: list[object],
+        **kwargs: object,
+    ) -> None:
+        del matcher, handlers, kwargs
+        order.append("reserve")
+
+    async def render_menu() -> str:
+        assert order == ["reserve"]
+        order.append("render")
+        return "menu"
+
+    async def activate_menu(
+        matcher: object,
+        handlers: list[object],
+        rule: object,
+        prompt: object,
+        **kwargs: object,
+    ) -> None:
+        del matcher, handlers, rule, kwargs
+        assert prompt == "menu"
+        order.append("activate")
+
+    async def resolve_selection(selection: object, matcher: object) -> None:
+        del selection, matcher
+
+    sessions = PromptSessions()
+
+    def get_sessions(_matcher: object) -> PromptSessions:
+        return sessions
+
+    monkeypatch.setattr(prompts, "get_prompt_session_manager", get_sessions)
+    monkeypatch.setattr(prompts, "begin_queued_conversation", reserve_input)
+    monkeypatch.setattr(prompts, "_enter_prompt_loop", activate_menu)
+
+    matcher = cast("Any", SimpleNamespace(state={}))
+    await prompts.enter_prompt(
+        matcher,
+        group_message_event("新增内容", user_id=2, group_id=4),
+        matcher.state,
+        Prompt(title="新增内容", items=[PromptItem("新增精灵", "1 项", "pet")]),
+        resolve_selection,
+        prompt_message=render_menu(),
+    )
+
+    assert order == ["reserve", "render", "activate"]
