@@ -606,6 +606,16 @@ class FeatureService:
             for user_id in sorted(self.superuser_ids)
         ]
 
+    def actors_with_superusers(self, feature: str) -> list[ActorRef]:
+        """Return private feature actors plus configured superusers once each."""
+
+        return unique_items(
+            [
+                *self.actors_for_feature(feature),
+                *self.superuser_actors(),
+            ]
+        )
+
     def is_conversation_blocked(
         self,
         user_id: int,

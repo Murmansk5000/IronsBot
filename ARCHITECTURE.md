@@ -231,6 +231,13 @@ targets, routing, subscriptions, queueing, and rate limits. A new notification
 service must use this shape or a narrower domain port; it must not import
 `MessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
 
+`services.activity.ActivityService` applies the same ownership to scheduled
+activity reminders: the service creates typed recipients and an
+`OutboundMessage`, while `integrations.onebot.activity` preserves the current
+OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
+The current push-preference SQLite schema still stores OneBot target IDs; its
+conversion is confined to composition until the later identity-state migration.
+
 The eventual composition is:
 
 ```text

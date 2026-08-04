@@ -3,26 +3,22 @@
 
 from __future__ import annotations
 
-from base64 import b64encode
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
-
-from ironsbot.core.outbound import (
-    BinaryImagePart,
-    MentionPart,
-    OutboundMessage,
-    RemoteImagePart,
-    TextPart,
+from ironsbot.integrations.onebot.message_rendering import (
+    OneBotOutboundMessageError,
+    render_onebot_outbound_message,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.target_refs import partition_onebot_targets
 from ironsbot.services.messaging.admin_notice import (
     AdminNoticeRecipient,
     AdminNoticeSendSummary,
 )
 
 if TYPE_CHECKING:
+    from ironsbot.core.outbound import OutboundMessage
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.integrations.onebot.delivery import OneBotDelivery
 
 
@@ -42,33 +38,35 @@ class OneBotAdminNoticeSender:
         action_name: str,
         interval_seconds: float,
     ) -> AdminNoticeSendSummary:
-        rendered_message = _render_onebot_message(message)
-        if rendered_message is None:
+        try:
+            rendered_message = render_onebot_outbound_message(message)
+        except OneBotOutboundMessageError:
             return AdminNoticeSendSummary(
                 (),
                 (*private_actors, *group_conversations),
             )
 
-        actors, invalid_actors = _onebot_private_actors(private_actors)
-        conversations, invalid_conversations = _onebot_group_conversations(
-            group_conversations
+        targets = partition_onebot_targets(
+            private_actors=private_actors,
+            group_conversations=group_conversations,
         )
         result = await self.delivery.broadcast(
             rendered_message,
-            private_user_ids=tuple(int(actor.id) for actor in actors),
-            group_ids=tuple(int(conversation.id) for conversation in conversations),
+            private_user_ids=targets.private_user_ids,
+            group_ids=targets.group_ids,
             action_name=action_name,
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
         )
         succeeded: list[AdminNoticeRecipient] = []
         failed: list[AdminNoticeRecipient] = [
-            *invalid_actors,
-            *invalid_conversations,
+            *targets.invalid_actors,
+            *targets.invalid_conversations,
         ]
-        actor_by_id = {int(actor.id): actor for actor in actors}
+        actor_by_id = {int(actor.id): actor for actor in targets.private_actors}
         conversation_by_id = {
-            int(conversation.id): conversation for conversation in conversations
+            int(conversation.id): conversation
+            for conversation in targets.group_conversations
         }
         for target in result.succeeded:
             recipient = _recipient_for_target(
@@ -89,59 +87,6 @@ class OneBotAdminNoticeSender:
             if recipient is not None:
                 failed.append(recipient)
         return AdminNoticeSendSummary(tuple(succeeded), tuple(failed))
-
-
-def _render_onebot_message(message: OutboundMessage) -> Message | None:
-    rendered = Message()
-    for part in message.parts:
-        if isinstance(part, TextPart):
-            rendered += MessageSegment.text(part.text)
-        elif isinstance(part, BinaryImagePart):
-            encoded = b64encode(part.content).decode("ascii")
-            rendered += MessageSegment.image(f"base64://{encoded}")
-        elif isinstance(part, RemoteImagePart):
-            rendered += MessageSegment.image(part.url)
-        elif isinstance(part, MentionPart):
-            return None
-    return rendered
-
-
-def _onebot_private_actors(
-    actors: tuple[ActorRef, ...],
-) -> tuple[tuple[ActorRef, ...], tuple[ActorRef, ...]]:
-    valid = tuple(actor for actor in actors if _is_onebot_private_actor(actor))
-    return valid, tuple(actor for actor in actors if actor not in valid)
-
-
-def _onebot_group_conversations(
-    conversations: tuple[ConversationRef, ...],
-) -> tuple[tuple[ConversationRef, ...], tuple[ConversationRef, ...]]:
-    valid = tuple(
-        conversation
-        for conversation in conversations
-        if _is_onebot_group_conversation(conversation)
-    )
-    return valid, tuple(
-        conversation for conversation in conversations if conversation not in valid
-    )
-
-
-def _is_onebot_private_actor(actor: ActorRef) -> bool:
-    return (
-        actor.platform is Platform.ONEBOT
-        and actor.kind == "user"
-        and actor.id.isdecimal()
-        and int(actor.id) > 0
-    )
-
-
-def _is_onebot_group_conversation(conversation: ConversationRef) -> bool:
-    return (
-        conversation.platform is Platform.ONEBOT
-        and conversation.kind == "group"
-        and conversation.id.isdecimal()
-        and int(conversation.id) > 0
-    )
 
 
 def _recipient_for_target(

@@ -18,7 +18,7 @@ from ironsbot.app.private_extensions import (
 )
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -36,6 +36,7 @@ from ironsbot.integrations.http.bilibili import (
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
+from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
@@ -103,7 +104,6 @@ from ironsbot.services.activity.repository import ActivityRepository
 from ironsbot.services.activity.service import (
     ACTIVITY_PUSH_SUBSCRIPTION_KEY,
     ActivityService,
-    TargetType,
 )
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
@@ -180,10 +180,6 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
-    )
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
@@ -195,11 +191,10 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
     config: ActivityConfig,
     runtime_state_path: Path,
     features: FeatureService,
-    message_delivery: MessageDelivery,
+    sender: OneBotActivityReminderSender,
     databases: DatabaseManager,
     subscriptions: PushUnsubscribeStore,
     notice_source: UnityNoticeSource,
-    message_limiter: MessageLimiter,
 ) -> ActivityService:
     sent_store = ActivitySentStore(runtime_state_path)
     repository = ActivityRepository()
@@ -217,40 +212,42 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
             )
         )
 
-    def preference_for_target(
-        target_type: TargetType,
-        target_id: int,
-    ) -> str | None:
+    def preference_for_target(target: ActorRef | ConversationRef) -> str | None:
+        if (
+            isinstance(target, ActorRef)
+            and target.platform is Platform.ONEBOT
+            and target.kind == "user"
+            and target.id.isdecimal()
+        ):
+            target_type = "private"
+        elif (
+            isinstance(target, ConversationRef)
+            and target.platform is Platform.ONEBOT
+            and target.kind == "group"
+            and target.id.isdecimal()
+        ):
+            target_type = "group"
+        else:
+            return None
         return subscriptions.get_time_preference(
             target_type,
-            target_id,
+            int(target.id),
             ACTIVITY_PUSH_SUBSCRIPTION_KEY,
             ACTIVITY_LEAD_HOURS_PREFERENCE,
         )
 
     def targets() -> ActivityReminderTargets:
         return ActivityReminderTargets(
-            group_ids=tuple(
-                features.groups_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+            group_conversations=tuple(
+                features.conversations_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
             ),
-            private_user_ids=tuple(
-                features.users_with_superusers(
-                    features.users_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-                )
+            private_actors=tuple(
+                features.actors_with_superusers(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
             ),
         )
 
     async def broadcast(reminder: ActivityReminderDelivery) -> bool:
-        summary = await message_delivery.broadcast(
-            reminder.message,
-            group_ids=reminder.group_ids,
-            private_user_ids=reminder.private_user_ids,
-            action_name=reminder.action_name,
-            interval_seconds=1.2,
-            message_limiter=message_limiter,
-            subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-        )
-        return bool(summary.succeeded)
+        return await sender.send(reminder)
 
     return ActivityService(
         config=config,
@@ -320,14 +317,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.activity,
         settings.paths.runtime_state,
         features,
-        delivery,
+        OneBotActivityReminderSender(delivery, push_message_limiter),
         databases,
         subscriptions,
         UnityNoticeSource(
             http_clients.origin,
             settings.activity.notice_timeout_seconds,
         ),
-        push_message_limiter,
     )
     headless_operations = HeadlessOperationTracker()
     player_accounts = settings.player_accounts
