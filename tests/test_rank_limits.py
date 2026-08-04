@@ -316,7 +316,12 @@ def test_score_rank_lookup_finds_rank_with_binary_search(
     assert result.score == BINARY_TARGET_SCORE
     assert max(requested_indexes) == RANK_LIMIT - 1
     assert len(requested_indexes) <= DEFAULT_PROBE_LIMIT
-    assert requested_pages == [(BINARY_TARGET_INDEX, BINARY_TARGET_INDEX)]
+    assert requested_pages == [
+        (BINARY_TARGET_INDEX, BINARY_TARGET_INDEX),
+        (0, 99),
+        (100, 199),
+        (200, 299),
+    ]
 
 
 def test_score_rank_lookup_limits_tied_score_page_scan(
@@ -1092,7 +1097,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
     )
 
     assert result.queried is True
-    assert requested_ranges == [(0, 99)]
+    assert requested_ranges == [(0, 99), (0, 99)]
     assert result.rank == 1
     assert result.score == CACHED_SCORE + 1
 
@@ -1140,7 +1145,7 @@ def test_cached_rank_without_target_score_is_verified_nearby(
         )
     )
 
-    assert requested_ranges == [(0, 99)]
+    assert requested_ranges == [(0, 99), (0, 99)]
     assert result.rank == 1
     assert result.score == CACHED_SCORE + 1
 
@@ -1185,7 +1190,7 @@ def test_cached_rank_confirms_its_own_page_before_expanding(
         )
     )
 
-    assert requested_ranges == [(100, 199)]
+    assert requested_ranges == [(100, 199), (0, 99), (100, 199)]
     assert result.rank == MOVED_RANK
     assert result.cost.lightweight_confirmed
     assert not result.cost.expanded

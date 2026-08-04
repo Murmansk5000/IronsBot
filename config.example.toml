@@ -970,6 +970,44 @@ max_display_limit = 100
 # EN: Optional per-group display defaults. Keys can be group aliases or QQ group IDs.
 # ZH: 可选的按群默认显示条数；键可以写群别名或 QQ 群号。
 display_limits = {}
+
+[seer.rank.exclusions]
+# Taomee 内部号会从所有官方榜单和机器人本地样本中隐藏。
+# 这里填入已确认的米米号；列表会自动去重。
+# Default: built-in confirmed Taomee internal accounts.
+# EN: Accounts hidden from every official rank and the local sample.
+# ZH: 已确认的淘米内部号；所有官方榜单与本地样本都会过滤。
+taomee_internal_user_ids = [
+    389438787, 963527044, 961510772, 914692158, 962236717,
+    960755946, 930395179, 964791989, 960957048, 962883553,
+    963833963, 963123185, 963190850, 961392272, 960351788,
+    964035946, 963236961, 961625369, 51010611,
+]
+
+[seer.rank.exclusions.user_ids_by_rank]
+# 正常玩家的统计异常号只从对应官方榜单隐藏，不影响其它榜单或本地样本。
+# 可用榜单键：图鉴积分、成就点数、精灵图鉴、皮肤图鉴、刻印图鉴、套装图鉴、
+# 部件图鉴、座驾图鉴、群星牌、竞技、狂野、专家。
+# Default: built-in confirmed anomalies for 精灵图鉴 only.
+# EN: Per-rank anomalous accounts; they remain visible in all other ranks.
+# ZH: 按榜单单独配置的异常账号；不会扩散到其它榜单或本地样本。
+"图鉴积分" = []
+"成就点数" = []
+"精灵图鉴" = [
+    75576625, 563101901, 941831079, 129030222, 962351895,
+    569440141, 141312889, 674021793, 163443467, 960649568,
+    206601225, 925171143, 810989428,
+]
+"皮肤图鉴" = []
+"刻印图鉴" = []
+"套装图鉴" = []
+"部件图鉴" = []
+"座驾图鉴" = []
+"群星牌" = []
+"竞技" = []
+"狂野" = []
+"专家" = []
+
 # 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
 [seer.rank.player_lookup]
 # Default: 8; EN: Timeout for one official leaderboard page request.

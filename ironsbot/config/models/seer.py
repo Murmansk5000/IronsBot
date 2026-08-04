@@ -17,6 +17,11 @@ from ironsbot.core.commands import NormalizedStringList, string_list
 from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
     OneBotReferenceList,
 )
+from ironsbot.core.rank_exclusions import (
+    DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
+    DEFAULT_TAOMEE_INTERNAL_USER_IDS,
+    RANK_EXCLUSION_SUPPORTED_KEYS,
+)
 from ironsbot.core.seer_ids import PLAYER_ID_MAX, PLAYER_ID_MIN
 from ironsbot.core.time import normalize_daily_time, normalized_daily_times
 
@@ -99,6 +104,17 @@ DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "专家段位",
 )
 MAX_RANK_DISPLAY_LIMIT = 100
+RANK_EXCLUSION_USER_ID_ERROR = "seer.rank.exclusions user IDs must be positive"
+RANK_EXCLUSION_RANK_KEY_ERROR = (
+    "seer.rank.exclusions.user_ids_by_rank contains an unsupported rank key"
+)
+
+
+class RankExclusionRankKeyError(ValueError):
+    def __init__(self, unknown: set[str]) -> None:
+        super().__init__(
+            f"{RANK_EXCLUSION_RANK_KEY_ERROR}: {', '.join(sorted(unknown))}"
+        )
 
 
 def _coerce_sections(value: object) -> object:
@@ -354,6 +370,44 @@ class PlayerRankLookupConfig(BaseModel):
         return self
 
 
+class RankExclusionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    taomee_internal_user_ids: tuple[int, ...] = DEFAULT_TAOMEE_INTERNAL_USER_IDS
+    user_ids_by_rank: dict[str, tuple[int, ...]] = Field(
+        default_factory=lambda: {
+            rank_key: tuple(user_ids)
+            for rank_key, user_ids in DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK.items()
+        }
+    )
+
+    @field_validator("taomee_internal_user_ids", mode="after")
+    @classmethod
+    def normalize_taomee_ids(cls, value: tuple[int, ...]) -> tuple[int, ...]:
+        return _normalize_rank_exclusion_ids(value)
+
+    @field_validator("user_ids_by_rank", mode="after")
+    @classmethod
+    def normalize_rank_ids(
+        cls,
+        value: dict[str, tuple[int, ...]],
+    ) -> dict[str, tuple[int, ...]]:
+        unknown = set(value).difference(RANK_EXCLUSION_SUPPORTED_KEYS)
+        if unknown:
+            raise RankExclusionRankKeyError(unknown)
+        return {
+            rank_key: _normalize_rank_exclusion_ids(user_ids)
+            for rank_key, user_ids in value.items()
+        }
+
+
+def _normalize_rank_exclusion_ids(value: tuple[int, ...]) -> tuple[int, ...]:
+    normalized = tuple(dict.fromkeys(int(user_id) for user_id in value))
+    if any(user_id <= 0 for user_id in normalized):
+        raise ValueError(RANK_EXCLUSION_USER_ID_ERROR)
+    return normalized
+
+
 class RankQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -374,6 +428,7 @@ class RankQueryConfig(BaseModel):
     score_search_tie_page_limit: int = Field(default=5, ge=1)
     page_cache_path: SQLitePath = Path("data/seer/rank_page_cache.sqlite")
     peak_subkey: int | None = Field(default=None, ge=0)
+    exclusions: RankExclusionConfig = Field(default_factory=RankExclusionConfig)
     player_lookup: PlayerRankLookupConfig = Field(
         default_factory=PlayerRankLookupConfig
     )

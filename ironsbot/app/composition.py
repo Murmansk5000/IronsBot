@@ -512,7 +512,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.seer.player,
         rank,
         player_requests,
+        rank.exclusion_policy,
     )
+    local_rank.remove_excluded_samples()
     rank_display = RankDisplayService(
         settings.seer.rank,
         settings.onebot_references,

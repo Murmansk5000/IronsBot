@@ -47,6 +47,27 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.scheduler import Scheduler
 
 _COMMANDS = ("幸运橱窗", "橱窗")
+_WATCH_LIST_COMMANDS = ("关注皮肤", "订阅皮肤", "皮肤关注", "皮肤订阅")
+_WATCH_REMOVE_COMMANDS = (
+    "取消关注皮肤",
+    "取消订阅皮肤",
+    "取消皮肤关注",
+    "取消皮肤订阅",
+    "退订皮肤",
+    "皮肤退订",
+)
+_WATCH_CLEAR_COMMANDS = (
+    "清空关注皮肤",
+    "清空订阅皮肤",
+    "清空皮肤关注",
+    "清空皮肤订阅",
+)
+_WATCH_RESET_COMMANDS = (
+    "重置关注皮肤",
+    "重置订阅皮肤",
+    "重置皮肤关注",
+    "重置皮肤订阅",
+)
 _ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
 _WATCH_LIST_ACTION = ActionDefinition(
     "seer.lucky_skin_window.watch.list",
@@ -89,7 +110,7 @@ def plugin_definition(
             order=16,
             visible=partial(_help_visible, service=service, features=features),
             notes=(
-                "发送“橱窗”查看；可用“关注皮肤”管理星标；可在“TD”中退订每日提醒。",
+                "发送“橱窗”查看；可用“关注皮肤”或“订阅皮肤”管理星标；可在“TD”中退订每日提醒。",
             ),
         ),
         commands=(
@@ -106,8 +127,8 @@ def plugin_definition(
                 id=_WATCH_LIST_ACTION.id,
                 plugin_id="lucky_skin_window",
                 section="关注皮肤",
-                examples=("关注皮肤",),
-                description="查看当前 QQ 的关注皮肤列表",
+                examples=("关注皮肤 / 订阅皮肤", "皮肤关注 / 皮肤订阅"),
+                description="查看当前 QQ 的皮肤关注（订阅）列表",
                 features_any=("lucky_skin_window",),
                 show_in_poke=True,
             ),
@@ -115,32 +136,32 @@ def plugin_definition(
                 id=_WATCH_ADD_ACTION.id,
                 plugin_id="lucky_skin_window",
                 section="关注皮肤",
-                examples=("关注皮肤1400538", "关注皮肤名称"),
-                description="按皮肤 ID、资源 ID 或名称新增关注",
+                examples=("关注皮肤1400538 / 订阅皮肤1400538", "皮肤订阅名称"),
+                description="按皮肤 ID、资源 ID 或名称新增关注（订阅）",
                 features_any=("lucky_skin_window",),
             ),
             CommandDescriptor(
                 id=_WATCH_REMOVE_ACTION.id,
                 plugin_id="lucky_skin_window",
                 section="关注皮肤",
-                examples=("取消关注皮肤1400538", "取消关注皮肤名称"),
-                description="取消关注指定皮肤",
+                examples=("取消关注皮肤1400538 / 退订皮肤1400538", "皮肤退订名称"),
+                description="取消关注（退订）指定皮肤",
                 features_any=("lucky_skin_window",),
             ),
             CommandDescriptor(
                 id=_WATCH_CLEAR_ACTION.id,
                 plugin_id="lucky_skin_window",
                 section="关注皮肤",
-                examples=("清空关注皮肤",),
-                description="清空当前 QQ 的关注皮肤列表",
+                examples=("清空关注皮肤 / 清空订阅皮肤",),
+                description="清空当前 QQ 的皮肤关注（订阅）列表",
                 features_any=("lucky_skin_window",),
             ),
             CommandDescriptor(
                 id=_WATCH_RESET_ACTION.id,
                 plugin_id="lucky_skin_window",
                 section="关注皮肤",
-                examples=("重置关注皮肤",),
-                description="恢复 TOML 中配置的初始关注列表",
+                examples=("重置关注皮肤 / 重置订阅皮肤",),
+                description="恢复 TOML 中配置的初始皮肤关注（订阅）列表",
                 features_any=("lucky_skin_window",),
             ),
         ),
@@ -175,36 +196,19 @@ async def _matches_query(
     event: MessageEvent,
     state: T_State,
     *,
-    service: LuckySkinWindowService,
     features: FeatureService,
 ) -> bool:
     _ = state
     if "".join(event.get_plaintext().split()) not in _COMMANDS:
         return False
-    if service.account_for_user(event.user_id) is None:
-        return False
-    if isinstance(event, GroupMessageEvent):
-        return features.is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            "lucky_skin_window",
-        )
-    return isinstance(event, PrivateMessageEvent) and (
-        features.is_private_feature_allowed(
-            event.user_id,
-            "lucky_skin_window",
-        )
-    )
+    return _watch_feature_allowed(event, features=features)
 
 
-def _watch_management_allowed(
+def _watch_feature_allowed(
     event: MessageEvent,
     *,
-    service: LuckySkinWindowService,
     features: FeatureService,
 ) -> bool:
-    if not service.is_eligible_user(event.user_id):
-        return False
     if isinstance(event, GroupMessageEvent):
         return features.is_group_feature_allowed(
             event.user_id,
@@ -220,14 +224,13 @@ async def _matches_watch_exact(
     event: MessageEvent,
     state: T_State,
     *,
-    command: str,
-    service: LuckySkinWindowService,
+    commands: tuple[str, ...],
     features: FeatureService,
 ) -> bool:
     _ = state
     return (
-        event.get_plaintext().strip() == command
-        and _watch_management_allowed(event, service=service, features=features)
+        event.get_plaintext().strip() in commands
+        and _watch_feature_allowed(event, features=features)
     )
 
 
@@ -235,22 +238,21 @@ async def _matches_watch_change(
     event: MessageEvent,
     state: T_State,
     *,
-    command: str,
-    service: LuckySkinWindowService,
+    commands: tuple[str, ...],
     features: FeatureService,
 ) -> bool:
     text = event.get_plaintext().strip()
-    if not text.startswith(command):
+    for command in sorted(commands, key=len, reverse=True):
+        if not text.startswith(command):
+            continue
+        arg = text[len(command) :].strip()
+        if not arg:
+            return False
+        if _watch_feature_allowed(event, features=features):
+            state[BOT_COMMAND_ARG_KEY] = arg
+            return True
         return False
-    arg = text[len(command) :].strip()
-    if not arg or not _watch_management_allowed(
-        event,
-        service=service,
-        features=features,
-    ):
-        return False
-    state[BOT_COMMAND_ARG_KEY] = arg
-    return True
+    return False
 
 
 def _semantic_request(
@@ -265,6 +267,21 @@ def _semantic_request(
         action=_ACTION,
         target=SemanticTarget(target_key, f"{target_key} 幸运橱窗"),
         source=SemanticRequestSource.DIRECT,
+    )
+
+
+async def _finish_watch_access_error(
+    matcher: Matcher,
+    event: MessageEvent,
+    error: LuckySkinWindowNotConfiguredError | LuckySkinWindowBindingError,
+) -> None:
+    if isinstance(error, LuckySkinWindowNotConfiguredError):
+        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
+        return
+    await finish_event_reply(
+        matcher,
+        event,
+        f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再管理皮肤订阅。",
     )
 
 
@@ -373,10 +390,15 @@ async def _handle_watch_list(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
+    try:
+        items = service.watched_skins(event.user_id)
+    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
+        await _finish_watch_access_error(matcher, event, error)
+        return
     await finish_event_reply(
         matcher,
         event,
-        _format_watch_list(service.watched_skins(event.user_id)),
+        _format_watch_list(items),
     )
 
 
@@ -388,7 +410,11 @@ async def _handle_watch_change(
     state: T_State,
 ) -> None:
     arg = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    candidates = service.resolve_watch_candidates(event.user_id, arg)
+    try:
+        candidates = service.resolve_watch_candidates(event.user_id, arg)
+    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
+        await _finish_watch_access_error(matcher, event, error)
+        return
     if not candidates:
         await finish_event_reply(matcher, event, f"❌ 未找到皮肤：{arg}")
         return
@@ -442,7 +468,11 @@ async def _handle_watch_clear(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    changed = service.clear_watched_skins(event.user_id)
+    try:
+        changed = service.clear_watched_skins(event.user_id)
+    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
+        await _finish_watch_access_error(matcher, event, error)
+        return
     message = "已清空关注皮肤。" if changed else "当前没有关注皮肤。"
     await finish_event_reply(matcher, event, message)
 
@@ -452,7 +482,11 @@ async def _handle_watch_reset(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
-    items = service.reset_watched_skins(event.user_id)
+    try:
+        items = service.reset_watched_skins(event.user_id)
+    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
+        await _finish_watch_access_error(matcher, event, error)
+        return
     await finish_event_reply(
         matcher,
         event,
@@ -477,7 +511,7 @@ def _apply_watch_change(
 
 
 def _format_watch_list(items: tuple[LuckySkinWatchItem, ...]) -> str:
-    lines = ["【关注皮肤】"]
+    lines = ["【关注皮肤（皮肤订阅）】"]
     if not items:
         lines.append("暂无关注皮肤。")
     else:
@@ -485,7 +519,12 @@ def _format_watch_list(items: tuple[LuckySkinWatchItem, ...]) -> str:
             f"{index}. {item.name}（{_watch_item_ids(item)}）"
             for index, item in enumerate(items, start=1)
         )
-    lines.append("发送“关注皮肤+ID或名称”新增，发送“取消关注皮肤+ID或名称”取消。")
+    lines.extend(
+        (
+            "发送“关注皮肤 / 订阅皮肤 + ID或名称”新增，",
+            "发送“取消关注皮肤 / 退订皮肤 + ID或名称”取消。",
+        )
+    )
     return "\n".join(lines)
 
 
@@ -507,7 +546,7 @@ def _install(
             help_ids=(_ACTION.id,),
             semantic_request=partial(_semantic_request, service),
         ),
-        rule=Rule(bind_async(_matches_query, service=service, features=features))
+        rule=Rule(bind_async(_matches_query, features=features))
         & explicit_command(),
         priority=registry.priority("seer_query"),
         block=True,
@@ -522,8 +561,7 @@ def _install(
         rule=Rule(
             bind_async(
                 _matches_watch_exact,
-                command="关注皮肤",
-                service=service,
+                commands=_WATCH_LIST_COMMANDS,
                 features=features,
             )
         )
@@ -541,8 +579,7 @@ def _install(
         rule=Rule(
             bind_async(
                 _matches_watch_change,
-                command="关注皮肤",
-                service=service,
+                commands=_WATCH_LIST_COMMANDS,
                 features=features,
             )
         )
@@ -566,8 +603,7 @@ def _install(
         rule=Rule(
             bind_async(
                 _matches_watch_change,
-                command="取消关注皮肤",
-                service=service,
+                commands=_WATCH_REMOVE_COMMANDS,
                 features=features,
             )
         )
@@ -583,17 +619,16 @@ def _install(
         )
     )
 
-    for action, command, handler in (
-        (_WATCH_CLEAR_ACTION, "清空关注皮肤", _handle_watch_clear),
-        (_WATCH_RESET_ACTION, "重置关注皮肤", _handle_watch_reset),
+    for action, commands, handler in (
+        (_WATCH_CLEAR_ACTION, _WATCH_CLEAR_COMMANDS, _handle_watch_clear),
+        (_WATCH_RESET_ACTION, _WATCH_RESET_COMMANDS, _handle_watch_reset),
     ):
         watch_action = registry.on_message(
             policy=CommandPolicy.command(action.id, help_ids=(action.id,)),
             rule=Rule(
                 bind_async(
                     _matches_watch_exact,
-                    command=command,
-                    service=service,
+                    commands=commands,
                     features=features,
                 )
             )

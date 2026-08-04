@@ -15,7 +15,6 @@ from ironsbot.services.seer.rank_constants import (
     OUTFIT_PART_RANK_SUB_KEY,
     OUTFIT_RANK_KEY,
     OUTFIT_SUIT_RANK_SUB_KEY,
-    PET_KIND_RANK_ANOMALY_COUNT,
     PET_KIND_RANK_KEY,
     PET_KIND_RANK_SUB_KEY,
     SKIN_RANK_KEY,
@@ -43,8 +42,6 @@ class GlobalRankSpec:
     key: int
     sub_key: int
     unit: str
-    start: int = 0
-    rank_offset: int = 0
     peak_season_sub_key: bool = False
     score_format: str = ""
 
@@ -103,8 +100,6 @@ GLOBAL_RANKS: dict[str, GlobalRankSpec] = {
         PET_KIND_RANK_KEY,
         PET_KIND_RANK_SUB_KEY,
         "项",
-        start=PET_KIND_RANK_ANOMALY_COUNT,
-        rank_offset=-PET_KIND_RANK_ANOMALY_COUNT,
     ),
     "皮肤图鉴": GlobalRankSpec("皮肤图鉴榜", SKIN_RANK_KEY, SKIN_RANK_SUB_KEY, "款"),
     "套装图鉴": GlobalRankSpec(

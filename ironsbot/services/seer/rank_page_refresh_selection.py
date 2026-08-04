@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from math import log1p, sqrt
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.rank_list_formatting import batch_raw_start
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
 from ironsbot.services.seer.rank_page_refresh_models import RankPageRefreshTarget
 
@@ -69,14 +68,14 @@ def configured_rank_specs(
 
 
 def page_refresh_rank_ranges(
-    spec: GlobalRankSpec,
+    _spec: GlobalRankSpec,
     *,
     target_limit: int,
     page_size: int,
 ) -> Iterable[tuple[int, int, int, int]]:
     for start_rank in range(1, target_limit + 1, page_size):
         end_rank = min(target_limit, start_rank + page_size - 1)
-        raw_start = batch_raw_start(spec, start_rank)
+        raw_start = start_rank - 1
         raw_end = raw_start + (end_rank - start_rank)
         yield start_rank, end_rank, raw_start, raw_end
 

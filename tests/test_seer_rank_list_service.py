@@ -17,7 +17,6 @@ from ironsbot.services.seer.rank_cache_messages import (
     build_rank_batch_start_message,
 )
 from ironsbot.services.seer.rank_list_formatting import (
-    batch_raw_start,
     format_rank_intervals,
     merge_rank_intervals,
     page_cache_rank_interval,
@@ -430,19 +429,17 @@ def test_timestamp_text_uses_china_timezone() -> None:
     assert timestamp_text(0) == "1970-01-01 08:00:00"
 
 
-def test_format_global_rank_line_applies_spec_rank_offset() -> None:
+def test_format_global_rank_line_uses_visible_index() -> None:
     spec = GlobalRankSpec(
         title="测试榜",
         key=1,
         sub_key=2,
         unit="分",
-        start=10,
-        rank_offset=-2,
     )
     item = RankItem(nick="Alice", id=100, score=123)
 
     assert format_global_rank_line(item, index=10, spec=spec) == (
-        "9. Alice（100） 123分"
+        "11. Alice（100） 123分"
     )
 
 
@@ -657,33 +654,16 @@ def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
     )
 
 
-def test_batch_raw_start_respects_spec_start_and_rank_offset() -> None:
-    first_rank_raw_start = 8
-    rank_30_raw_start = 37
-    spec = GlobalRankSpec(
-        title="测试榜",
-        key=1,
-        sub_key=2,
-        unit="项",
-        start=8,
-        rank_offset=-8,
-    )
-
-    assert batch_raw_start(spec, 1) == first_rank_raw_start
-    assert batch_raw_start(spec, 30) == rank_30_raw_start
-
-
 def test_page_cache_rank_interval_and_interval_formatting() -> None:
     spec = GlobalRankSpec(
         title="测试榜",
         key=1,
         sub_key=2,
         unit="项",
-        rank_offset=-2,
     )
     page = PageSummary(start_index=10, item_count=5)
 
-    assert page_cache_rank_interval(page, spec) == (9, 13)
+    assert page_cache_rank_interval(page, spec) == (11, 15)
     assert page_cache_rank_interval(
         PageSummary(start_index=10, item_count=0),
         spec,
