@@ -62,6 +62,9 @@ from ironsbot.integrations.onebot.team_resource import (
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.new_content_renderer import (
+    render_new_content_menu,
+)
 from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
     render_peak_pet_rank,
 )
@@ -176,7 +179,6 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
-from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
 from ironsbot.services.seer.type_query import TypeQueryService
