@@ -474,9 +474,13 @@ ironsbot/
     rules.py
 ```
 
-The target package has no `shared`, `utils`, `plugin_catalog`,
-`plugin_manifest`, or command cooldown manifest. Code currently owned by those
-locations moves to its actual owner:
+The target package has no `shared`, `utils`, `plugin_catalog`, custom
+reflection-based plugin-discovery module, or command cooldown manifest. This
+does not prohibit the standard NoneBot TOML plugin manifest, nor the
+configuration field that selects one declared manifest profile. The selector is
+declarative configuration only: it never becomes a second discovery list or a
+runtime registry. Code currently owned by those locations moves to its actual
+owner:
 
 - pure values and policy rules belong to `core`;
 - application use cases belong to `services`;
@@ -525,13 +529,15 @@ creates a process-wide infrastructure client.
 ## Application Composition
 
 `app.composition.build_application(settings)` is the only composition root.
-Today it still receives the transitional registry described below; after Phase
-2 it receives manifest contributions. In either state, it:
+Today it still receives the transitional registry described below. After Phase
+2, standard NoneBot TOML selects and loads the plugin manifest first; scoped
+plugin contributions are then passed to composition. In either state, it:
 
 1. creates infrastructure resources;
 2. creates repositories and service objects with explicit constructor
    dependencies;
-3. builds the immutable plugin registry;
+3. builds the current bootstrap registry during transition, or validates the
+   manifest contributions after Phase 2;
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
@@ -607,8 +613,11 @@ Those are not permissions to add a second source of truth. The migration must
 move each responsibility to the target authority in the ownership table and
 then delete it from this bridge.
 
-There is no parallel module manifest, help layout map, feature-to-module map,
-runtime setup string list, or reflective `module:function` lookup.
+The standard NoneBot TOML manifest is the sole plugin discovery source after
+Phase 2. A configuration value may select a named, declared manifest profile
+such as `full` or `core`, but it cannot list modules itself. There is no
+parallel application manifest, help layout map, feature-to-module map, runtime
+setup string list, or reflective `module:function` lookup.
 
 Every message matcher is created through `runtime.matchers.MatcherRegistry`.
 Creation requires one explicit command policy:
