@@ -20,6 +20,10 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.outbound import (
+    GroupOutboundRateLimitService,
+    use_preacquired_push_permit,
+)
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.delivery import OneBotMessageSender
@@ -61,8 +65,13 @@ class OneBotOutboundMessageError(ValueError):
 class OneBotOutboundMessenger:
     """Translate core outbound values only after routing to a OneBot bot."""
 
-    def __init__(self, router: BotRouter) -> None:
+    def __init__(
+        self,
+        router: BotRouter,
+        outbound: GroupOutboundRateLimitService,
+    ) -> None:
         self._router = router
+        self._outbound = outbound
 
     def capabilities_for(
         self,
@@ -79,7 +88,7 @@ class OneBotOutboundMessenger:
         conversation: ConversationRef,
         message: OutboundMessage,
     ) -> SendResult:
-        return await self._deliver(conversation, message)
+        return await self._deliver(conversation, message, proactive=True)
 
     async def reply(
         self,
@@ -90,6 +99,7 @@ class OneBotOutboundMessenger:
             context.conversation,
             message,
             reply_to_id=context.message_id,
+            proactive=False,
         )
 
     async def _deliver(
@@ -98,14 +108,13 @@ class OneBotOutboundMessenger:
         message: OutboundMessage,
         *,
         reply_to_id: str | None = None,
+        proactive: bool,
     ) -> SendResult:
         if not _supports_conversation(conversation):
             return SendResult(
                 delivered=False,
                 error_code="unsupported_conversation",
-                error_message=(
-                    "OneBot only supports private and group conversations"
-                ),
+                error_message=("OneBot only supports private and group conversations"),
             )
         try:
             rendered = _render_message(
@@ -119,6 +128,19 @@ class OneBotOutboundMessenger:
                 error_code="unsupported_message",
                 error_message=str(error),
             )
+        return await self._send_rendered(
+            conversation,
+            rendered,
+            proactive=proactive,
+        )
+
+    async def _send_rendered(
+        self,
+        conversation: ConversationRef,
+        rendered: Message,
+        *,
+        proactive: bool,
+    ) -> SendResult:
         bot = self._router.for_conversation(conversation)
         if bot is None:
             return SendResult(
@@ -126,9 +148,29 @@ class OneBotOutboundMessenger:
                 error_code="bot_unavailable",
                 error_message="No connected OneBot bot can deliver this message",
             )
+        decision = (
+            await self._outbound.acquire_push(
+                _group_id(conversation),
+                source="platform outbound",
+            )
+            if proactive
+            else None
+        )
+        if decision is not None and not decision.allowed:
+            return SendResult(
+                delivered=False,
+                error_code=decision.reason or "rate_limit",
+                error_message="Outbound group message is rate limited",
+            )
         try:
-            result = await _send_onebot_message(bot, conversation, rendered)
+            with use_preacquired_push_permit(
+                self._outbound,
+                decision.permit if decision is not None else None,
+            ):
+                result = await _send_onebot_message(bot, conversation, rendered)
         except Exception as error:  # noqa: BLE001 - delivery boundary
+            if decision is not None:
+                self._outbound.rollback(decision.permit)
             logger.warning(
                 "OneBot outbound delivery failed: kind={} id={} error={}",
                 conversation.kind,
@@ -157,6 +199,10 @@ def _supports_conversation(conversation: ConversationRef) -> bool:
         and conversation.id.isdecimal()
         and int(conversation.id) > 0
     )
+
+
+def _group_id(conversation: ConversationRef) -> int | None:
+    return int(conversation.id) if conversation.kind == "group" else None
 
 
 def _render_message(

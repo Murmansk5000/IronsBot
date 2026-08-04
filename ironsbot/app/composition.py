@@ -42,8 +42,13 @@ from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     install_outbound_rate_limit_hooks,
 )
+from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.team_audit import (
+    OneBotTeamAuditMembershipProbe,
+    OneBotTeamAuditPolicy,
+)
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
@@ -296,13 +301,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
     player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
+    bot_router = BotRouter(
+        settings.messaging.bot_routing,
+        settings.onebot_references,
+    )
     delivery = OneBotDelivery(
         outbound,
         settings.messaging.push_unsubscribe,
-        BotRouter(
-            settings.messaging.bot_routing,
-            settings.onebot_references,
-        ),
+        bot_router,
         subscriptions,
     )
     push_message_limiter = partial(append_fire_manual_ad_for_target, features)
@@ -427,9 +433,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     team_audit = TeamAuditService(
         settings.messaging.team_audit_welcome,
         SqliteTeamAuditReminderStore(settings.paths.runtime_state),
-        features,
-        delivery,
-        OneBotGroupProbe(),
+        OneBotTeamAuditPolicy(features),
+        OneBotOutboundMessenger(bot_router, outbound),
+        OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
     )
     rank = RankService(
         settings.seer.rank,

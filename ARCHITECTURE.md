@@ -210,6 +210,14 @@ a OneBot bot. Existing `OneBotDelivery` callers still use `MessageTarget`
 until the Phase 3 one-direction migration; new services must use the
 platform-neutral port instead.
 
+`services.team.audit.TeamAuditService` is the first complete reference use
+case for this boundary. Its workflow, reminder store, scheduler jobs, and
+outbound messages use `ConversationRef`, `ActorRef`, and `OutboundMessenger`.
+The OneBot plugin converts notice events at the edge, while
+`integrations.onebot.team_audit` owns configured feature policy, bot routing,
+and group-member probes. Future transport migrations should follow this shape
+rather than passing numeric IDs or adapter bot instances into a service.
+
 The eventual composition is:
 
 ```text

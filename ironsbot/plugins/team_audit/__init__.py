@@ -14,6 +14,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.plugins import (
     PluginContribution,
@@ -41,7 +42,6 @@ def _is_group_increase(event: NoticeEvent) -> bool:
 
 
 async def handle_team_audit_welcome(
-    bot: Bot,
     event: GroupIncreaseNoticeEvent,
     *,
     scheduler: Scheduler,
@@ -50,12 +50,31 @@ async def handle_team_audit_welcome(
     if event.user_id == event.self_id:
         return
     await service.welcome(
-        group_id=event.group_id,
-        user_id=event.user_id,
+        conversation=ConversationRef(
+            Platform.ONEBOT,
+            "group",
+            str(event.group_id),
+        ),
+        actor=ActorRef(
+            Platform.ONEBOT,
+            str(event.user_id),
+            kind="member",
+            scope_id=str(event.group_id),
+        ),
         joined_at=datetime.now(timezone.utc),
         scheduler=scheduler,
-        bot=bot,
     )
+
+
+async def start_team_audit_followups(
+    _bot: Bot,
+    *,
+    scheduler: Scheduler,
+    service: TeamAuditService,
+) -> None:
+    """Adapt NoneBot's connection hook to the core scheduler lifecycle."""
+
+    await service.start(scheduler=scheduler)
 
 
 def install(
@@ -92,7 +111,11 @@ def plugin_contribution(
             bot_connect=(
                 (
                     "team_audit_followups",
-                    partial(service.start, scheduler=scheduler),
+                    partial(
+                        start_team_audit_followups,
+                        scheduler=scheduler,
+                        service=service,
+                    ),
                 ),
             ),
         ),

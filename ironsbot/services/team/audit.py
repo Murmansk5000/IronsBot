@@ -4,15 +4,20 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
+from hashlib import sha256
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
-from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.outbound import (
+    MentionPart,
+    OutboundMessage,
+    OutboundMessenger,
+    TextPart,
+)
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import TeamAuditWelcomeConfig
-    from ironsbot.core.features import FeatureService
-    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.operations.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
@@ -25,8 +30,8 @@ FINAL_FOLLOWUP_STEP = 2
 
 
 class TeamAuditPendingReminder(NamedTuple):
-    group_id: int
-    user_id: int
+    conversation: ConversationRef
+    actor: ActorRef
     joined_at: datetime
     remind_at: datetime
     step: int = FIRST_FOLLOWUP_STEP
@@ -35,22 +40,29 @@ class TeamAuditPendingReminder(NamedTuple):
 class TeamAuditReminderStore(Protocol):
     def save(self, reminder: TeamAuditPendingReminder) -> None: ...
 
-    def get(self, group_id: int, user_id: int) -> TeamAuditPendingReminder | None: ...
+    def get(
+        self,
+        conversation: ConversationRef,
+        actor: ActorRef,
+    ) -> TeamAuditPendingReminder | None: ...
 
     def list_all(self) -> list[TeamAuditPendingReminder]: ...
 
-    def clear(self, group_id: int, user_id: int) -> None: ...
+    def clear(self, conversation: ConversationRef, actor: ActorRef) -> None: ...
 
 
-class TeamAuditGroupProbe(Protocol):
-    async def can_access(self, bot: Any, *, group_id: int) -> bool: ...
+class TeamAuditPolicy(Protocol):
+    def enabled_for(self, conversation: ConversationRef) -> bool: ...
+
+
+class TeamAuditMembershipProbe(Protocol):
+    async def can_access(self, conversation: ConversationRef) -> bool: ...
 
     async def has_member(
         self,
-        bot: Any,
+        conversation: ConversationRef,
         *,
-        group_id: int,
-        user_id: int,
+        actor: ActorRef,
     ) -> bool: ...
 
 
@@ -58,45 +70,46 @@ class TeamAuditGroupProbe(Protocol):
 class TeamAuditService:
     _config: TeamAuditWelcomeConfig
     _store: TeamAuditReminderStore
-    _features: FeatureService
-    _delivery: MessageDelivery
-    _group_probe: TeamAuditGroupProbe
+    _policy: TeamAuditPolicy
+    _messenger: OutboundMessenger
+    _membership_probe: TeamAuditMembershipProbe
 
-    def active_for_group(self, group_id: int) -> bool:
-        return self._config.enabled and self._features.group_has_feature(
-            group_id,
-            TEAM_AUDIT_FEATURE,
-        )
+    def active_for(self, conversation: ConversationRef) -> bool:
+        return self._config.enabled and self._policy.enabled_for(conversation)
 
     async def welcome(
         self,
         *,
-        group_id: int,
-        user_id: int,
+        conversation: ConversationRef,
+        actor: ActorRef,
         joined_at: datetime,
         scheduler: Scheduler,
-        bot: Any,
     ) -> None:
-        if not self.active_for_group(group_id):
+        if not self.active_for(conversation):
             return
-        await self._delivery.send_targets(
-            [MessageTarget("group", group_id, (user_id,))],
-            self._config.message,
-            bot=bot,
-            action_name="team audit welcome",
-            interval_seconds=0,
+        result = await self._messenger.send(
+            conversation,
+            OutboundMessage((MentionPart(actor), TextPart(self._config.message))),
         )
+        if not result.delivered:
+            logger.warning(
+                "team audit welcome send failed: conversation=%s:%s actor=%s error=%s",
+                conversation.kind,
+                conversation.id,
+                actor.id,
+                result.error_code or result.error_message,
+            )
         if not self._config.followup_enabled:
             return
         reminder = self._record(
-            group_id=group_id,
-            user_id=user_id,
+            conversation=conversation,
+            actor=actor,
             joined_at=joined_at,
             delay_hours=self._config.followup_after_hours,
         )
         self.schedule(scheduler, reminder)
 
-    async def start(self, _bot: Any, *, scheduler: Scheduler) -> None:
+    async def start(self, *, scheduler: Scheduler) -> None:
         await self.schedule_pending(scheduler)
         JobRegistry(scheduler, prefix=TEAM_AUDIT_JOB_PREFIX).add(
             self.schedule_pending,
@@ -129,76 +142,62 @@ class TeamAuditService:
             self.send_followup,
             "date",
             run_date=run_at,
-            args=[reminder.group_id, reminder.user_id],
+            args=[reminder.conversation, reminder.actor],
             kwargs={"scheduler": scheduler},
-            job_id=f"{reminder.group_id}_{reminder.user_id}",
+            job_id=_reminder_job_suffix(reminder),
             misfire_grace_time=3600,
         )
 
     async def send_followup(
         self,
-        group_id: int,
-        user_id: int,
+        conversation: ConversationRef,
+        actor: ActorRef,
         *,
         scheduler: Scheduler,
     ) -> None:
-        reminder = self._pending_reminder(group_id, user_id)
+        reminder = self._pending_reminder(conversation, actor)
         if reminder is None:
             return
 
-        target = MessageTarget("group", group_id, (user_id,))
-        bot = self._delivery.bot_for_target(target)
-        if bot is None:
-            logger.warning(
-                "team audit followup skipped: no connected bot for "
-                "group=%s user=%s",
-                group_id,
-                user_id,
-            )
+        if not await self._membership_probe.can_access(conversation):
             return
-        if not await self._group_probe.can_access(bot, group_id=group_id):
-            return
-        if not await self._group_probe.has_member(
-            bot,
-            group_id=group_id,
-            user_id=user_id,
-        ):
-            self._store.clear(group_id, user_id)
+        if not await self._membership_probe.has_member(conversation, actor=actor):
+            self._store.clear(conversation, actor)
             return
 
-        summary = await self._delivery.send_targets(
-            [target],
-            self._followup_message(reminder),
-            bot=bot,
-            action_name="team audit followup",
-            interval_seconds=0,
+        result = await self._messenger.send(
+            conversation,
+            OutboundMessage(
+                (MentionPart(actor), TextPart(self._followup_message(reminder)))
+            ),
         )
-        if not summary.succeeded:
+        if not result.delivered:
             logger.warning(
-                "team audit followup send failed: group=%s user=%s bot_self_id=%s",
-                group_id,
-                user_id,
-                getattr(bot, "self_id", "unknown"),
+                "team audit followup send failed: conversation=%s:%s actor=%s error=%s",
+                conversation.kind,
+                conversation.id,
+                actor.id,
+                result.error_code or result.error_message,
             )
             return
         self._finish_followup(scheduler, reminder)
 
     def _pending_reminder(
         self,
-        group_id: int,
-        user_id: int,
+        conversation: ConversationRef,
+        actor: ActorRef,
     ) -> TeamAuditPendingReminder | None:
         if not self._followup_enabled:
             return None
-        reminder = self._store.get(group_id, user_id)
+        reminder = self._store.get(conversation, actor)
         if reminder is None:
             return None
         final_disabled = (
             reminder.step >= FINAL_FOLLOWUP_STEP
             and not self._config.final_followup_enabled
         )
-        if final_disabled or not self.active_for_group(group_id):
-            self._store.clear(group_id, user_id)
+        if final_disabled or not self.active_for(conversation):
+            self._store.clear(conversation, actor)
             return None
         return reminder
 
@@ -209,16 +208,16 @@ class TeamAuditService:
     def _record(
         self,
         *,
-        group_id: int,
-        user_id: int,
+        conversation: ConversationRef,
+        actor: ActorRef,
         joined_at: datetime,
         delay_hours: float,
         step: int = FIRST_FOLLOWUP_STEP,
     ) -> TeamAuditPendingReminder:
         joined_at = _as_utc(joined_at)
         reminder = TeamAuditPendingReminder(
-            group_id,
-            user_id,
+            conversation,
+            actor,
             joined_at,
             joined_at + timedelta(hours=delay_hours),
             max(FIRST_FOLLOWUP_STEP, int(step)),
@@ -231,20 +230,17 @@ class TeamAuditService:
         scheduler: Scheduler,
         reminder: TeamAuditPendingReminder,
     ) -> None:
-        if (
-            reminder.step < FINAL_FOLLOWUP_STEP
-            and self._config.final_followup_enabled
-        ):
+        if reminder.step < FINAL_FOLLOWUP_STEP and self._config.final_followup_enabled:
             final_reminder = self._record(
-                group_id=reminder.group_id,
-                user_id=reminder.user_id,
+                conversation=reminder.conversation,
+                actor=reminder.actor,
                 joined_at=reminder.joined_at,
                 delay_hours=self._config.final_followup_after_hours,
                 step=FINAL_FOLLOWUP_STEP,
             )
             self.schedule(scheduler, final_reminder)
             return
-        self._store.clear(reminder.group_id, reminder.user_id)
+        self._store.clear(reminder.conversation, reminder.actor)
 
     def _followup_message(self, reminder: TeamAuditPendingReminder) -> str:
         final = reminder.step >= FINAL_FOLLOWUP_STEP
@@ -261,8 +257,8 @@ class TeamAuditService:
         try:
             return template.format(
                 hours=hours,
-                group_id=reminder.group_id,
-                user_id=reminder.user_id,
+                group_id=reminder.conversation.id,
+                user_id=reminder.actor.id,
             )
         except (IndexError, KeyError, ValueError):
             return template
@@ -272,3 +268,20 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _reminder_job_suffix(reminder: TeamAuditPendingReminder) -> str:
+    """Generate a scheduler-safe key without encoding platform IDs in job names."""
+
+    key = "\x1f".join(
+        (
+            reminder.conversation.platform.value,
+            reminder.conversation.kind,
+            reminder.conversation.id,
+            reminder.actor.platform.value,
+            reminder.actor.kind,
+            reminder.actor.id,
+            reminder.actor.scope_id or "",
+        )
+    )
+    return sha256(key.encode("utf-8")).hexdigest()[:24]
