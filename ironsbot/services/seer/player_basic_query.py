@@ -14,7 +14,10 @@ from ironsbot.services.seer.player_query import (
     optional_player_extra,
     plan_player_query_sections,
 )
-from ironsbot.services.seer.player_service_models import PendingPlayerQuery
+from ironsbot.services.seer.player_service_models import (
+    PendingPlayerQuery,
+    PlayerBaseSnapshot,
+)
 from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
 from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
@@ -151,6 +154,13 @@ async def fetch_pending_player_query(
         more_info=more_info,
         player_message=player_message,
         section_plan=plan,
+        base_snapshot=PlayerBaseSnapshot(
+            player_id=player_id,
+            user_info=user_info,
+            more_info=more_info,
+            online_info=online_info,
+            team_name=team_name,
+        ),
     )
 
 
