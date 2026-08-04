@@ -29,6 +29,7 @@ ACTIVE_RENDER_MODULES = (
     "ironsbot.services.seer.rendering.peak_pool",
     "ironsbot.services.seer.rendering.peak_pool_vote",
     "ironsbot.services.seer.rendering.type_matchup",
+    "ironsbot.integrations.seer_data.type_matchup_renderer",
 )
 
 

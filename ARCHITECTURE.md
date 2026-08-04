@@ -1091,11 +1091,12 @@ reference for users:
 Phase 0 observations to resolve in later phases are also explicit: the
 current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
 uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The completed Phase 4 pet-info path now loads a detached snapshot in
-`integrations.seer_data`, prepares a render document in a pure presenter, and
-renders without ORM, SQL, HTTP, filesystem, or association inference. Existing
-Bandit findings with no high-severity result remain tracked rather than silently
-suppressed.
+migration. The completed Phase 4 pet-info path loads a detached snapshot in
+`integrations.seer_data`, while the type-matchup path loads shared image assets
+there; both prepare immutable render documents in pure presenters before HTML
+rendering. Their renderer modules do not perform ORM, SQL, HTTP, filesystem,
+or association inference. Existing Bandit findings with no high-severity result
+remain tracked rather than silently suppressed.
 
 ## Enforcement
 
